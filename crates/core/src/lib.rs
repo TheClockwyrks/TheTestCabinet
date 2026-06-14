@@ -23,6 +23,10 @@ pub mod test_case;
 pub mod validation;
 pub mod validator;
 
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -312,17 +316,54 @@ fn build_prompt(test_case: &TestCaseVersion) -> String {
     )
 }
 
+/// Directory names that are never copied into the published implementation.
+///
+/// `node_modules` is regenerated from the lockfile by a fresh install, so
+/// copying it only bloats the artifact and risks shipping platform-specific
+/// binaries — or the broken tool shims a dereferencing copy would leave behind,
+/// since a package manager's `.bin/*` entries are symlinks whose relative
+/// imports only resolve from their real location.
+const SKIPPED_DIRS: &[&str] = &["node_modules"];
+
 /// Recursively copy a directory tree from `from` to `to`.
+///
+/// Symlinks are recreated as symlinks rather than dereferenced, so any links the
+/// run produced keep pointing at their original targets instead of being
+/// flattened into copies of the target's contents. Dependency directories listed
+/// in [`SKIPPED_DIRS`] are omitted entirely.
 fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
-        let dest = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let name = entry.file_name();
+        if SKIPPED_DIRS.contains(&name.to_str().unwrap_or_default()) {
+            continue;
+        }
+        let dest = to.join(&name);
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            copy_symlink(&entry.path(), &dest)?;
+        } else if file_type.is_dir() {
             copy_tree(&entry.path(), &dest)?;
         } else {
-            std::fs::copy(entry.path(), dest)?;
+            std::fs::copy(entry.path(), &dest)?;
         }
+    }
+    Ok(())
+}
+
+/// Recreate the symlink at `from` at the new location `to`, preserving its
+/// target verbatim. The target is kept as-is (typically relative to the link's
+/// own directory) so the recreated link resolves the same way the original did.
+fn copy_symlink(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+    let target = std::fs::read_link(from)?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, to)?;
+    #[cfg(windows)]
+    if from.is_dir() {
+        std::os::windows::fs::symlink_dir(&target, to)?;
+    } else {
+        std::os::windows::fs::symlink_file(&target, to)?;
     }
     Ok(())
 }
