@@ -59,6 +59,36 @@ cargo fmt --all
 cargo clippy --workspace
 ```
 
+#### Portable (static) `tcab` build
+
+The default build dynamically links against glibc and the generic FHS dynamic
+loader (`/lib64/ld-linux-x86-64.so.2`), which is right for mainstream Linux such
+as Ubuntu. Distributions that do not ship that loader — notably NixOS — cannot
+run such a binary directly.
+
+For those, build a fully static `tcab` via the musl target. A static binary has
+no dynamic linker, so it runs anywhere, including NixOS. This is opt-in and does
+not change the default build.
+
+Prerequisites:
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+# plus a musl C toolchain on PATH (provides `musl-gcc`), because the `ring` TLS
+# backend compiles a little C. On Debian/Ubuntu: `apt-get install musl-tools`.
+```
+
+Then:
+
+```sh
+cargo build-portable   # alias in .cargo/config.toml
+# -> target/x86_64-unknown-linux-musl/release/tcab  (statically linked)
+```
+
+Only the `tcab` CLI is built this way; the Tauri desktop shell is not portable to
+musl. A convenient workflow is to build the static binary in a mainstream-Linux
+environment (for example a container) and copy the single binary to the host.
+
 ### TypeScript
 
 Install all workspace dependencies from the repository root:

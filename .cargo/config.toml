@@ -1,0 +1,22 @@
+# Cargo configuration for The Test Cabinet.
+#
+# The default build is a normal dynamically linked glibc build, which targets
+# mainstream Linux (Ubuntu and similar). This file does NOT change that default.
+#
+# It only adds a convenience alias for a portable, fully static build of the
+# `tcab` CLI via the musl target. A static binary has no dynamic linker, so it
+# runs on distributions that do not ship the generic FHS loader — notably NixOS —
+# as well as on mainstream distributions.
+#
+# Prerequisites (see DEVELOPMENT.md):
+#   rustup target add x86_64-unknown-linux-musl
+#   a musl C toolchain on PATH (musl-gcc), e.g. Debian/Ubuntu `musl-tools`,
+#   needed because the `ring` TLS backend compiles a little C.
+#
+# Build it with:
+#   cargo build-portable
+# The binary is written to:
+#   target/x86_64-unknown-linux-musl/release/tcab
+
+[alias]
+build-portable = "build -p test-cabinet-cli --release --target x86_64-unknown-linux-musl"
