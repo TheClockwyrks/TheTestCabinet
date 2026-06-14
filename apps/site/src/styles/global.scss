@@ -1,0 +1,28 @@
+@use "./tokens" as t;
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: t.$color-bg;
+  color: t.$color-text;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: t.$font-md;
+  line-height: 1.5;
+}
+
+a {
+  color: t.$color-accent;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

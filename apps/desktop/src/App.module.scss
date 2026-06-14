@@ -1,0 +1,60 @@
+@use "./styles/tokens" as t;
+
+.app {
+  min-height: 100vh;
+  background: t.$color-bg;
+  color: t.$color-text;
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: t.$space-xl;
+  box-sizing: border-box;
+}
+
+.title {
+  font-size: t.$font-xl;
+  margin: 0 0 t.$space-2xs;
+}
+
+.subtitle {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-xl;
+}
+
+.sectionLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 t.$space-sm;
+}
+
+.harnessList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.harness {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-md;
+}
+
+.notice {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.error {
+  border-color: t.$color-accent;
+  color: t.$color-text;
+}

@@ -1,0 +1,11 @@
+@use "../../styles/tokens" as t;
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: t.$space-lg;
+}
+
+.empty {
+  color: t.$color-text-muted;
+}

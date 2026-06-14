@@ -1,0 +1,16 @@
+[package]
+name = "test-cabinet-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab"
+path = "src/main.rs"
+
+[dependencies]
+test-cabinet-core = { path = "../core" }
+clap = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }

@@ -245,3 +245,8 @@ $RECYCLE.BIN/
 # be committed.
 test-cases/**/reference/screenshots/
 
+# Cargo build output. Cargo.lock is intentionally committed because this
+# workspace builds applications (the CLI and desktop app), not just libraries.
+/target/
+**/*.rs.bk
+

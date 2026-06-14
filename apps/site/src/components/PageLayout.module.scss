@@ -1,0 +1,21 @@
+@use "../styles/tokens" as t;
+
+.shell {
+  max-width: t.$content-max;
+  margin: 0 auto;
+  padding: t.$space-xl t.$space-md;
+}
+
+.header {
+  margin-bottom: t.$space-xl;
+}
+
+.title {
+  font-size: t.$font-2xl;
+  margin: 0;
+}
+
+.tagline {
+  color: t.$color-text-muted;
+  margin: t.$space-xs 0 0;
+}

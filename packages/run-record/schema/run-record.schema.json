@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://the-test-cabinet.dev/schema/run-record.schema.json",
+  "title": "RunRecord",
+  "description": "The central data contract for a single Test Cabinet benchmark run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "startedAt",
+    "finishedAt",
+    "subject",
+    "metrics",
+    "validation",
+    "links",
+    "status"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "subject": { "$ref": "#/$defs/RunSubject" },
+    "metrics": { "$ref": "#/$defs/RunMetrics" },
+    "validation": { "$ref": "#/$defs/RunValidation" },
+    "links": { "$ref": "#/$defs/RunLinks" },
+    "status": { "$ref": "#/$defs/RunStatus" }
+  },
+  "$defs": {
+    "HarnessSlug": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex",
+        "cline",
+        "antigravity",
+        "goose",
+        "kilo",
+        "opencode",
+        "pi"
+      ]
+    },
+    "RunState": {
+      "type": "string",
+      "enum": ["completed", "failed", "unevaluable"]
+    },
+    "RunSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "testCaseSlug",
+        "testCaseVersion",
+        "harnessSlug",
+        "harnessVersion",
+        "modelId"
+      ],
+      "properties": {
+        "testCaseSlug": { "type": "string" },
+        "testCaseVersion": { "type": "string" },
+        "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
+        "harnessVersion": { "type": ["string", "null"] },
+        "modelId": { "type": "string" }
+      }
+    },
+    "TokenMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uncachedInput", "cachedInput", "output", "reasoning"],
+      "properties": {
+        "uncachedInput": { "type": "integer" },
+        "cachedInput": { "type": "integer" },
+        "output": { "type": "integer" },
+        "reasoning": { "type": "integer" }
+      }
+    },
+    "CostMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparable", "actual"],
+      "properties": {
+        "comparable": { "type": "number" },
+        "actual": { "type": "number" }
+      }
+    },
+    "RunMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runTimeSeconds", "tokens", "cost"],
+      "properties": {
+        "runTimeSeconds": { "type": "number" },
+        "tokens": { "$ref": "#/$defs/TokenMetrics" },
+        "cost": { "$ref": "#/$defs/CostMetrics" }
+      }
+    },
+    "ReferenceComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "similarity"],
+      "properties": {
+        "view": { "type": "string" },
+        "similarity": { "type": "number" }
+      }
+    },
+    "RunValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loaded", "referenceComparisons"],
+      "properties": {
+        "loaded": { "type": "boolean" },
+        "referenceComparisons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ReferenceComparison" }
+        }
+      }
+    },
+    "RunLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRepo", "playableBuild"],
+      "properties": {
+        "sourceRepo": { "type": ["string", "null"] },
+        "playableBuild": { "type": ["string", "null"] }
+      }
+    },
+    "RunStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "detail"],
+      "properties": {
+        "state": { "$ref": "#/$defs/RunState" },
+        "detail": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

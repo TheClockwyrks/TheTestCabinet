@@ -1,0 +1,27 @@
+[package]
+name = "test-cabinet-desktop"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Graphical desktop shell for The Test Cabinet, built with Tauri v2."
+
+# Tauri v2 convention: the application logic lives in a library target shared by
+# the binary and (on mobile) generated entry points, while the binary is a thin
+# wrapper that calls into the library's `run()` entrypoint.
+[lib]
+name = "test_cabinet_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "test-cabinet-desktop"
+path = "src/main.rs"
+
+[dependencies]
+test-cabinet-core = { path = "../core" }
+tauri = { workspace = true }
+serde = { workspace = true }
+
+[build-dependencies]
+tauri-build = { workspace = true }

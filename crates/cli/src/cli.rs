@@ -1,0 +1,153 @@
+//! Clap argument model for `tcab`.
+//!
+//! The argument types live here, separate from the handlers, so the parser is
+//! easy to test in isolation (see `cli.test.rs`).
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use test_cabinet_core::run_record::HarnessSlug;
+
+/// The Test Cabinet command line interface.
+///
+/// `tcab` exposes the headless core so runs can be scripted and benchmark sweeps
+/// run in batch.
+#[derive(Debug, Parser)]
+#[command(
+    name = "tcab",
+    version,
+    about = "The Test Cabinet — script and batch coding-agent benchmark runs",
+    long_about = None,
+)]
+pub struct Cli {
+    /// The subcommand to run.
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// Top-level subcommands, each mapping onto a core capability.
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Launch a run: select a test case version, harness, and model.
+    Run(RunArgs),
+
+    /// Run validation over a produced implementation.
+    Validate(ValidateArgs),
+
+    /// Publish a finished run (idempotent, batch-capable).
+    Publish(PublishArgs),
+
+    /// List supported harnesses and their availability.
+    Harnesses(HarnessesArgs),
+}
+
+/// The agent harness to drive, selectable on the command line.
+///
+/// This mirrors [`HarnessSlug`] from the core so the CLI's accepted values stay
+/// in lockstep with the canonical slugs used in run records and on the site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum HarnessArg {
+    /// Anthropic Claude Code (`claude`).
+    Claude,
+    /// OpenAI Codex (`codex`).
+    Codex,
+    /// Cline (`cline`).
+    Cline,
+    /// Google Antigravity (`antigravity`).
+    Antigravity,
+    /// Goose (`goose`).
+    Goose,
+    /// Kilo Code (`kilo`).
+    Kilo,
+    /// OpenCode (`opencode`).
+    Opencode,
+    /// Pi (`pi`).
+    Pi,
+}
+
+impl From<HarnessArg> for HarnessSlug {
+    fn from(arg: HarnessArg) -> Self {
+        match arg {
+            HarnessArg::Claude => HarnessSlug::Claude,
+            HarnessArg::Codex => HarnessSlug::Codex,
+            HarnessArg::Cline => HarnessSlug::Cline,
+            HarnessArg::Antigravity => HarnessSlug::Antigravity,
+            HarnessArg::Goose => HarnessSlug::Goose,
+            HarnessArg::Kilo => HarnessSlug::Kilo,
+            HarnessArg::Opencode => HarnessSlug::Opencode,
+            HarnessArg::Pi => HarnessSlug::Pi,
+        }
+    }
+}
+
+/// Arguments for `tcab run`.
+///
+/// `disable_version_flag` frees `--version` to mean the *test case* version
+/// rather than clap's auto-generated binary-version flag.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct RunArgs {
+    /// Slug of the test case to run (for example, `pong`).
+    #[arg(long, value_name = "SLUG")]
+    pub test_case: String,
+
+    /// Exact, immutable test case version to run.
+    #[arg(long, value_name = "VERSION")]
+    pub version: String,
+
+    /// Agent harness to drive the run.
+    #[arg(long, value_enum, value_name = "HARNESS")]
+    pub harness: HarnessArg,
+
+    /// Model ID passed to the harness unchanged (opaque to The Test Cabinet).
+    #[arg(long, value_name = "MODEL")]
+    pub model: String,
+
+    /// Directory to write the run record and collected artifacts into.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<std::path::PathBuf>,
+}
+
+/// Arguments for `tcab validate`.
+///
+/// `disable_version_flag` frees `--version` to mean the *test case* version.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct ValidateArgs {
+    /// Path to the produced implementation to validate.
+    #[arg(long, value_name = "DIR")]
+    pub implementation: std::path::PathBuf,
+
+    /// Slug of the test case the implementation was built for.
+    #[arg(long, value_name = "SLUG")]
+    pub test_case: String,
+
+    /// Version of the test case the implementation was built for.
+    #[arg(long, value_name = "VERSION")]
+    pub version: String,
+}
+
+/// Arguments for `tcab publish`.
+#[derive(Debug, Args)]
+pub struct PublishArgs {
+    /// One or more run record files to publish. Multiple values enable batch
+    /// publishing of a sweep's runs in a single invocation.
+    #[arg(value_name = "RUN_RECORD", required = true, num_args = 1..)]
+    pub run_records: Vec<std::path::PathBuf>,
+
+    /// Re-publish even if a run already appears published. Publishing is
+    /// idempotent regardless; this only forces the work to run again.
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Arguments for `tcab harnesses`.
+#[derive(Debug, Args)]
+pub struct HarnessesArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[cfg(test)]
+#[path = "cli.test.rs"]
+mod tests;

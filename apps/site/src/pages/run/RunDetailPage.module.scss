@@ -1,0 +1,85 @@
+@use "../../styles/tokens" as t;
+
+.title {
+  font-size: t.$font-xl;
+  margin: 0 0 t.$space-xs;
+}
+
+.subject {
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-xl;
+}
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  font-size: t.$font-lg;
+  margin: 0 0 t.$space-md;
+}
+
+.embed {
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  color: t.$color-text-muted;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: t.$space-md;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+}
+
+.metricLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.metricValue {
+  font-size: t.$font-lg;
+}
+
+.secondary {
+  color: t.$color-text-muted;
+}
+
+.list {
+  margin: 0;
+  padding-left: t.$space-lg;
+}
+
+.notFound {
+  color: t.$color-text-muted;
+}
+
+.loaded {
+  color: t.$color-positive;
+}
+
+.notLoaded {
+  color: t.$color-negative;
+}

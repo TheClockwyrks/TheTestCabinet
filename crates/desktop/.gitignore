@@ -1,0 +1,5 @@
+# Tauri generated files (schemas, capabilities, platform projects).
+/gen/
+
+# Frontend build output consumed by the bundler (built by apps/desktop).
+/dist/

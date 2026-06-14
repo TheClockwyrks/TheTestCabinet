@@ -1,0 +1,66 @@
+@use "../styles/tokens" as t;
+
+.card {
+  display: block;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  color: inherit;
+
+  &:hover {
+    border-color: t.$color-accent;
+    text-decoration: none;
+  }
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.testCase {
+  font-size: t.$font-lg;
+  font-weight: 600;
+}
+
+.subject {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin-bottom: t.$space-md;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: t.$space-sm t.$space-md;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.metricLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.metricValue {
+  font-size: t.$font-md;
+}
+
+.secondary {
+  color: t.$color-text-muted;
+}
+
+.loaded {
+  color: t.$color-positive;
+}
+
+.notLoaded {
+  color: t.$color-negative;
+}

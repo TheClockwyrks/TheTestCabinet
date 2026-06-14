@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "The Test Cabinet",
+  "version": "0.0.0",
+  "identifier": "dev.thetestcabinet.desktop",
+  "build": {
+    "frontendDist": "../../apps/desktop/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev -w @test-cabinet/desktop",
+    "beforeBuildCommand": "npm run build -w @test-cabinet/desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "The Test Cabinet",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": ["icons/icon.png"]
+  }
+}
