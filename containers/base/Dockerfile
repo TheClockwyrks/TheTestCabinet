@@ -11,7 +11,7 @@
 #
 # This image installs no agent harness. See the sibling directories for the
 # per-harness images.
-FROM node:22-bookworm-slim
+FROM docker.io/library/node:22-bookworm-slim
 
 # Common system packages:
 #   - git: each run is its own fresh repository.
