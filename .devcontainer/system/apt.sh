@@ -26,6 +26,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	jq \
 	musl-tools \
 	ripgrep \
+	shellcheck \
 	ssh \
 	sudo \
 	tar \
