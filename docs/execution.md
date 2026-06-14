@@ -25,7 +25,8 @@ example by deleting files.
 ## Seeding
 
 Each run must be seeded into its own newly created git repository that contains
-**only** the test case's data: its specification, reference visuals, and assets.
+**only** the data a model needs to build the game: the test case's specification
+and its assets.
 
 - A new repository must be created per run so that no prior history exists. Models
   have been observed solving tasks by reading git history to recover a deleted
@@ -33,6 +34,14 @@ Each run must be seeded into its own newly created git repository that contains
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
+- A test case's **reference visuals must not be seeded**. They are harness-side
+  validation material; seeding them would let a model copy the intended UI
+  instead of building it from the specification, the same kind of shortcut the
+  fresh repository is meant to prevent.
+- The seeded specification must be **self-contained**, with no links or
+  references to these harness docs or to any file outside the seeded repository,
+  because none of them exist inside the container. See
+  [Test Cases](./test-cases.md#self-contained-specifications).
 
 ## Model Authored Tests
 

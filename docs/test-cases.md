@@ -44,6 +44,27 @@ Each test case version must contain:
 The specification and assets are what gets seeded into a run. See
 [Execution](./execution.md#seeding).
 
+## Self-Contained Specifications
+
+A test case's specification is seeded into an isolated run container that does
+**not** have access to these vision specs, the harness, or any part of the test
+case other than what is seeded. The specification must therefore be completely
+self-contained.
+
+- It must **not** link to or reference these vision specs, the harness docs, or
+  any other file outside what is seeded with the run. Anything the model needs
+  must be stated inline.
+- It must **not** depend on the reference visuals. Reference visuals are
+  harness-side validation material and are deliberately **not** seeded, so that a
+  model cannot copy them in place of building from the spec. Every visual detail
+  a model needs — palette, layout, measurements, screen contents — must be
+  written into the specification itself.
+- Everything required to build the game must live in the seeded files: the
+  specification and the test case's assets.
+
+These same constraints apply to a test case's assets, which are seeded alongside
+the specification: they must be usable without any file that is not seeded.
+
 ## Assets
 
 The goal of The Test Cabinet is to evaluate model capability on large software

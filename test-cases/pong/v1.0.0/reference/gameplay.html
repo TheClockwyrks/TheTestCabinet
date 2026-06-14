@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Carom — in-match reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specification.md (Playfield, HUD).
+
+  Live positions vary at runtime; this frame is a representative layout used
+  for a soft palette/layout comparison, not a strict pixel match.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Carom — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <div class="net"></div>
+
+      <!-- Mode label -->
+      <div class="mode-tag">SOLO</div>
+
+      <!-- Scores: left = player one, right = opponent -->
+      <div class="score" style="left: 460px">07</div>
+      <div class="score" style="left: 700px">05</div>
+
+      <!-- Static obstacles (mirror-symmetric about the center point) -->
+      <div class="obstacle" style="left: 480px; top: 150px"></div>
+      <div class="obstacle" style="left: 780px; top: 430px"></div>
+
+      <!-- Paddles -->
+      <div class="paddle player" style="left: 48px; top: 245px"></div>
+      <div class="paddle opponent" style="left: 1216px; top: 365px"></div>
+
+      <!-- Ball travelling up-and-right with spin: a curving trail. -->
+      <div class="trail" style="left: 596px; top: 388px; opacity: 0.10"></div>
+      <div class="trail" style="left: 625px; top: 372px; opacity: 0.16"></div>
+      <div class="trail" style="left: 654px; top: 352px; opacity: 0.24"></div>
+      <div class="trail" style="left: 681px; top: 335px; opacity: 0.34"></div>
+      <div class="ball" style="left: 700px; top: 319px"></div>
+    </div>
+  </body>
+</html>
