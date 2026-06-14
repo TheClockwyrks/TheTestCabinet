@@ -250,3 +250,5 @@ test-cases/**/reference/screenshots/
 /target/
 **/*.rs.bk
 
+# Ignore the output of test runs
+runs/
