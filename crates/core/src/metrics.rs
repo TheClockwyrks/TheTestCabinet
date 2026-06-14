@@ -69,8 +69,10 @@ impl Cost {
     /// Compute the comparable cost from token counts and listed prices.
     ///
     /// Reasoning tokens are priced at the output rate.
-    pub fn comparable_from(_counts: &TokenCounts, _prices: &TokenPrices) -> f64 {
-        todo!("derive comparable cost from token classes and listed prices")
+    pub fn comparable_from(counts: &TokenCounts, prices: &TokenPrices) -> f64 {
+        counts.uncached_input as f64 * prices.uncached_input
+            + counts.cached_input as f64 * prices.cached_input
+            + counts.total_output() as f64 * prices.output
     }
 }
 

@@ -85,6 +85,11 @@ pub trait ContainerRuntime: Send + Sync {
 
     /// Stop and remove the container.
     async fn stop(&self, container: &ContainerHandle) -> Result<()>;
+
+    /// Run a single command in a throwaway container from an image and capture
+    /// its output. Used for cost-free probes such as a harness `--version`
+    /// check; it must not require pulling the image from a remote registry.
+    async fn run_once(&self, image: &str, command: &[String]) -> Result<ExecOutput>;
 }
 
 /// Output of a command executed inside a container.

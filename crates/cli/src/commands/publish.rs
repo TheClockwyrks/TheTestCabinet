@@ -17,13 +17,10 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
 
     for record in &args.run_records {
         println!("  - {}", record.display());
-
-        // TODO: load the run record plus its collected artifacts into a
-        // `PublishRequest` and publish via `Publisher::publish` (or
-        // `publish_batch` for the whole set). The core call is idempotent, so
-        // re-publishing is a no-op unless `--force` is given.
-        todo!("publish run record through the core Publisher");
     }
 
-    Ok(())
+    // Publishing releases generated code to public repositories and is a
+    // separate concern from running test cases; it is not implemented yet. The
+    // core `Publisher` seam exists (see `NoopPublisher`) for when it is wired up.
+    anyhow::bail!("publishing is not implemented yet");
 }

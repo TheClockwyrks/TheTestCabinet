@@ -69,6 +69,13 @@ This keeps setup simple and yields an exact, attributable cost for every run.
 - Subscription based authentication is intentionally out of scope for the first
   version. It may be added later for harnesses that support it.
 
+> **Antigravity is API-key incompatible.** Google Antigravity authenticates only
+> through a Google account and reports no token usage in its non-interactive
+> mode. Because the first version supports API-key authentication only, the
+> `antigravity` adapter reports itself unavailable and a run against it fails
+> with a clear error. It remains in the catalog for when subscription auth is
+> added.
+
 ## Usage Reporting
 
 Every invocation must return normalized usage data so that runs are comparable

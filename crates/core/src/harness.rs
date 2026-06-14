@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::execution::{ContainerHandle, ContainerRuntime};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 
@@ -67,24 +68,40 @@ pub struct Availability {
 /// A single supported agent harness.
 ///
 /// Implementations are trait objects so the orchestrator can treat every
-/// harness uniformly.
+/// harness uniformly. The harness CLI itself lives inside a per-harness
+/// container image, so both the availability probe and the session run through a
+/// [`ContainerRuntime`].
 #[async_trait::async_trait]
 pub trait AgentHarness: Send + Sync {
     /// The slug this implementation handles.
     fn slug(&self) -> HarnessSlug;
 
-    /// Resolve the harness binary and confirm it can be invoked, for example via
-    /// `--version`.
+    /// The container image that provides this harness's CLI.
+    fn image(&self) -> String {
+        format!("test-cabinet/{}:latest", self.slug().as_str())
+    }
+
+    /// The environment variable carrying the provider API key, or `None` when
+    /// the harness cannot use API-key authentication (the only mode The Test
+    /// Cabinet supports for now). A `None` harness cannot be run.
+    fn api_key_env(&self) -> Option<&'static str>;
+
+    /// Resolve the harness binary in its image and confirm it can be invoked,
+    /// for example via `--version`.
     ///
     /// This must be cost-free: it must **never** start a session.
-    async fn check_availability(&self) -> Result<Availability>;
+    async fn check_availability(&self, runtime: &dyn ContainerRuntime) -> Result<Availability>;
 
-    /// Drive a single harness session to completion against the seeded
-    /// repository, returning normalized usage.
-    ///
-    /// The session executes inside the run's container; the working directory is
-    /// the seeded repository.
-    async fn invoke(&self, invocation: &HarnessInvocation) -> Result<HarnessOutcome>;
+    /// Drive a single harness session to completion inside an already-started
+    /// run container, returning normalized usage. The container's working
+    /// directory is the seeded repository and its environment already carries
+    /// the API key.
+    async fn invoke(
+        &self,
+        runtime: &dyn ContainerRuntime,
+        container: &ContainerHandle,
+        invocation: &HarnessInvocation,
+    ) -> Result<HarnessOutcome>;
 }
 
 /// Looks up the [`AgentHarness`] implementation for a slug.

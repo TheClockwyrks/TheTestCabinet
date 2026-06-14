@@ -9,15 +9,28 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod container;
 pub mod error;
 pub mod execution;
 pub mod harness;
+pub mod harness_registry;
 pub mod metrics;
+pub mod pricing;
 pub mod publish;
 pub mod run_record;
+pub mod seeding;
 pub mod test_case;
 pub mod validation;
+pub mod validator;
 
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::time::Instant;
+
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
+pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
@@ -26,11 +39,15 @@ pub use execution::{
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
 };
+pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
-pub use publish::{PublishOutcome, PublishRequest, Publisher};
+pub use pricing::OpenRouterPrices;
+pub use publish::{NoopPublisher, PublishOutcome, PublishRequest, Publisher};
 pub use run_record::{HarnessSlug, RunLinks, RunRecord, RunState, RunStatus, RunSubject};
+pub use seeding::FsRepoSeeder;
 pub use test_case::{ReferenceView, TestCase, TestCaseCatalog, TestCaseVersion};
 pub use validation::{CapturedView, LoadCheck, ReferenceComparison, ValidationSummary, Validator};
+pub use validator::BuildValidator;
 
 /// What to run, with what, against which model.
 ///
@@ -76,6 +93,10 @@ where
     pub validator: V,
     /// Publishes finished runs.
     pub publisher: P,
+    /// Looks up model prices for the comparable cost.
+    pub prices: OpenRouterPrices,
+    /// Directory each run's record and collected implementation are written to.
+    pub output_dir: PathBuf,
 }
 
 impl<S, R, C, V, P> Orchestrator<S, R, C, V, P>
@@ -87,60 +108,221 @@ where
     P: Publisher,
 {
     /// Resolve a [`RunRequest`] into an exact, immutable [`TestCaseVersion`].
-    pub fn resolve(&self, _request: &RunRequest) -> Result<TestCaseVersion> {
-        todo!("resolve slug + version against the catalog")
+    pub fn resolve(&self, request: &RunRequest) -> Result<TestCaseVersion> {
+        match &request.test_case_version {
+            Some(version) => self.catalog.resolve(&request.test_case_slug, version),
+            None => self.catalog.resolve_latest(&request.test_case_slug),
+        }
     }
 
     /// Seed a fresh git repository with the test case's specification and assets.
-    pub fn seed(&self, _test_case: &TestCaseVersion) -> Result<SeededRepo> {
-        todo!("seed a fresh repo via the RepoSeeder (spec + assets only)")
+    pub fn seed(&self, test_case: &TestCaseVersion) -> Result<SeededRepo> {
+        self.seeder.seed(&SeedRequest { test_case })
     }
 
     /// Start a container and drive the agent harness to completion against the
     /// seeded repository.
+    ///
+    /// The caller owns the returned [`ContainerHandle`] and must stop it. On any
+    /// failure after the container starts, it is stopped before returning.
     pub async fn execute(
         &self,
         _test_case: &TestCaseVersion,
-        _seeded: &SeededRepo,
-        _request: &RunRequest,
+        seeded: &SeededRepo,
+        request: &RunRequest,
     ) -> Result<(ContainerHandle, HarnessOutcome)> {
-        todo!("start container, look up harness, invoke a single session")
+        let slug = request.harness;
+        let harness = self
+            .harnesses
+            .get(slug)
+            .ok_or_else(|| Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: "no adapter is registered for this harness".to_string(),
+            })?;
+
+        // API-key authentication is the only supported mode for now.
+        let api_key_env = harness
+            .api_key_env()
+            .ok_or_else(|| Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: "API-key authentication is not supported by this harness".to_string(),
+            })?;
+        let api_key = std::env::var(api_key_env).map_err(|_| Error::HarnessUnavailable {
+            slug: slug.as_str().to_string(),
+            detail: format!("environment variable {api_key_env} is not set"),
+        })?;
+
+        let availability = harness.check_availability(&self.runtime).await?;
+        if !availability.available {
+            return Err(Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: availability
+                    .detail
+                    .unwrap_or_else(|| "harness is unavailable".to_string()),
+            });
+        }
+
+        let mut secrets = BTreeMap::new();
+        secrets.insert(api_key_env.to_string(), api_key);
+        let spec = ContainerSpec {
+            image: harness.image(),
+            repo_path: seeded.path.clone(),
+            secrets,
+            network_enabled: true,
+        };
+
+        let handle = self.runtime.start(&spec).await?;
+        let invocation = HarnessInvocation {
+            slug,
+            model_id: request.model_id.clone(),
+            prompt: build_prompt(_test_case),
+        };
+        match harness.invoke(&self.runtime, &handle, &invocation).await {
+            Ok(mut outcome) => {
+                outcome.harness_version = availability.version;
+                Ok((handle, outcome))
+            }
+            Err(err) => {
+                let _ = self.runtime.stop(&handle).await;
+                Err(err)
+            }
+        }
     }
 
     /// Collect run metrics from the harness outcome and elapsed wall-clock time.
     pub fn collect_metrics(
         &self,
-        _outcome: &HarnessOutcome,
-        _run_time_seconds: f64,
+        outcome: &HarnessOutcome,
+        run_time_seconds: f64,
+        prices: &TokenPrices,
     ) -> Result<RunMetrics> {
-        todo!("normalize usage into RunMetrics and derive comparable cost")
+        let tokens = outcome.usage.tokens;
+        let comparable = Cost::comparable_from(&tokens, prices);
+        Ok(RunMetrics {
+            run_time_seconds,
+            tokens,
+            // The exact charged amount is not captured uniformly across harnesses
+            // yet; the comparable figure is the canonical, provider-stable value.
+            cost: Cost {
+                comparable,
+                actual: comparable,
+            },
+        })
     }
 
     /// Run the validation pass over the produced implementation.
     pub fn validate(
         &self,
-        _test_case: &TestCaseVersion,
-        _artifacts: &ArtifactCollection,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
     ) -> Result<ValidationSummary> {
-        todo!("delegate to the Validator over the collected artifacts")
+        self.validator.validate(test_case, artifacts)
     }
 
-    /// Assemble and write out the run record for a finished run.
-    pub fn write_record(&self, _record: &RunRecord) -> Result<()> {
-        todo!("serialize the run record (camelCase JSON) and store it")
+    /// Serialize the run record as camelCase JSON and store it, alongside a copy
+    /// of the produced implementation, under the run's output directory.
+    pub fn write_record(&self, record: &RunRecord, artifacts: &ArtifactCollection) -> Result<()> {
+        let run_dir = self.output_dir.join(&record.id);
+        std::fs::create_dir_all(&run_dir)?;
+
+        let json = serde_json::to_string_pretty(record)?;
+        std::fs::write(run_dir.join("run-record.json"), json)?;
+
+        let implementation = run_dir.join("implementation");
+        copy_tree(&artifacts.repo_path, &implementation)?;
+        Ok(())
     }
 
     /// Publish a finished run: release code, publish the build, append the
     /// record.
-    pub async fn publish(&self, _request: &PublishRequest<'_>) -> Result<PublishOutcome> {
-        todo!("delegate to the Publisher (idempotent)")
+    pub async fn publish(&self, request: &PublishRequest<'_>) -> Result<PublishOutcome> {
+        self.publisher.publish(request).await
     }
 
     /// Drive an entire run end to end through every lifecycle stage.
-    pub async fn run(&self, _request: &RunRequest) -> Result<RunRecord> {
-        todo!(
-            "sequence: resolve -> seed -> execute -> collect metrics -> \
-             validate -> write record"
-        )
+    pub async fn run(&self, request: &RunRequest) -> Result<RunRecord> {
+        let started_at = OffsetDateTime::now_utc();
+        let timer = Instant::now();
+
+        let test_case = self.resolve(request)?;
+        let seeded = self.seed(&test_case)?;
+        let (handle, outcome) = self.execute(&test_case, &seeded, request).await?;
+
+        // Collect the working tree, then always tear the container down.
+        let artifacts = self.collector.collect(&handle).await;
+        let _ = self.runtime.stop(&handle).await;
+        let artifacts = artifacts?;
+
+        let run_time_seconds = timer.elapsed().as_secs_f64();
+        let prices = match self.prices.token_prices(&request.model_id).await {
+            Ok(prices) => prices,
+            Err(err) => {
+                eprintln!(
+                    "warning: could not fetch OpenRouter prices for `{}` ({err}); \
+                     recording zero comparable cost",
+                    request.model_id
+                );
+                TokenPrices::default()
+            }
+        };
+        let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
+        let validation = self.validate(&test_case, &artifacts)?;
+        let finished_at = OffsetDateTime::now_utc();
+
+        let record = RunRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            started_at: started_at.format(&Rfc3339).unwrap_or_default(),
+            finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
+            subject: RunSubject {
+                test_case_slug: test_case.slug.clone(),
+                test_case_version: test_case.version.clone(),
+                harness_slug: request.harness,
+                harness_version: outcome.harness_version.clone(),
+                model_id: request.model_id.clone(),
+            },
+            metrics,
+            validation,
+            links: RunLinks::default(),
+            status: RunStatus {
+                state: RunState::Completed,
+                detail: None,
+            },
+        };
+
+        self.write_record(&record, &artifacts)?;
+        Ok(record)
     }
+}
+
+/// Build the initial instruction handed to the harness for a test case.
+///
+/// The seeded repository's working directory holds the specification, so the
+/// prompt points the harness at it rather than restating the spec.
+fn build_prompt(test_case: &TestCaseVersion) -> String {
+    let spec = test_case
+        .spec_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("specification.md");
+    format!(
+        "Build the game described in `{spec}` in this repository. Implement a \
+         complete, polished, playable browser game that builds to static files \
+         with no backend and no API keys. Follow the specification exactly, and \
+         include a README explaining how to install, run, and build it."
+    )
+}
+
+/// Recursively copy a directory tree from `from` to `to`.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
 }

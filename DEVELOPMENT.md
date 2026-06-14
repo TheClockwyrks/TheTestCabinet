@@ -80,3 +80,41 @@ Other root scripts delegate to each workspace that defines them: `npm run dev`,
 
 The Tauri CLI drives the desktop app, building the Rust shell and the
 `apps/desktop` UI together. Requires the Rust toolchain and Node.js installed.
+
+## Running a test case
+
+A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
+
+1. **A container runtime** — Podman (preferred) or Docker on `PATH`. The runtime
+   is auto-detected; override it with `TCAB_CONTAINER_RUNTIME=<binary>`.
+2. **The harness images** — build the run-container images once (see
+   `containers/README.md`):
+
+   ```sh
+   cd containers && DOCKER=podman ./build.sh claude   # base + the claude image
+   ```
+
+3. **An API key** for the chosen harness, exported into the environment. Each
+   harness reads a specific variable — for example `ANTHROPIC_API_KEY` for
+   `claude`, `OPENAI_API_KEY` for `codex`, and `OPENROUTER_API_KEY` for the
+   OpenRouter-backed harnesses. The key is passed into the run container as a
+   secret and is never written into the seeded repository.
+
+Then launch a run from the repository root (so the `test-cases/` catalog is
+found; override its location with `TCAB_TEST_CASES_DIR`):
+
+```sh
+cargo run -p test-cabinet-cli -- run \
+  --test-case pong --version v1.0.0 \
+  --harness claude --model anthropic/claude-opus-4 \
+  --out-dir runs
+```
+
+This seeds a fresh repository, runs the harness in a container, collects the
+produced implementation, builds and load-checks it, and writes
+`runs/<id>/run-record.json` alongside a copy of the implementation. Check harness
+availability without starting a run (a cost-free `--version` probe) with:
+
+```sh
+cargo run -p test-cabinet-cli -- harnesses
+```

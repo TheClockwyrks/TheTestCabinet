@@ -1,0 +1,31 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run and which
+# reference views are withheld for validation. The testing harness reads this
+# file to resolve a `TestCaseVersion`; see `docs/test-cases.md`.
+
+# Human-readable display name for this test case.
+name = "Carom"
+
+# Path, relative to this version folder, of the specification handed to the
+# model. Seeded into the run as the primary build material.
+spec = "specification.md"
+
+# Asset files or directories (relative to this folder) seeded alongside the
+# spec. Carom is simple enough to need none.
+assets = []
+
+# Reference views used for validation. These are harness-side validation
+# material and are NEVER seeded into a run. Each `view` slug matches a captured
+# screenshot during the load check (see `docs/validation.md`).
+[[reference]]
+view = "title"
+path = "reference/menu.html"
+
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"

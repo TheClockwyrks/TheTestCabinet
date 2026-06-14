@@ -1,19 +1,46 @@
 //! `tcab harnesses` — list supported harnesses and their availability.
 
-use test_cabinet_core::{Availability, HarnessSlug};
+use test_cabinet_core::{
+    Availability, CliContainerRuntime, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug,
+};
 
 use crate::cli::HarnessesArgs;
 
-/// List every supported agent harness alongside whether it is available on this
-/// host.
+/// List every supported agent harness alongside whether it is available.
 ///
-/// Availability resolves the harness's binary and confirms it can be invoked
-/// (for example with a `--version` check). It must **never** start a session or
-/// take any action that could incur cost.
+/// Availability runs a cost-free `--version` probe of each harness's container
+/// image. It must **never** start a session or take any action that could incur
+/// cost. A missing container runtime or image is reported as unavailable with a
+/// reason rather than failing the command.
 pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
+    let registry = DefaultHarnessRegistry::new();
+    let runtime = CliContainerRuntime::detect();
+
     let mut listing: Vec<(HarnessSlug, Availability)> = Vec::with_capacity(HarnessSlug::ALL.len());
     for slug in HarnessSlug::ALL {
-        listing.push((slug, check_availability(slug).await?));
+        let availability = match &runtime {
+            Ok(runtime) => match registry.get(slug) {
+                Some(harness) => harness
+                    .check_availability(runtime)
+                    .await
+                    .unwrap_or_else(|err| Availability {
+                        available: false,
+                        version: None,
+                        detail: Some(err.to_string()),
+                    }),
+                None => Availability {
+                    available: false,
+                    version: None,
+                    detail: Some("no adapter registered".to_string()),
+                },
+            },
+            Err(err) => Availability {
+                available: false,
+                version: None,
+                detail: Some(err.to_string()),
+            },
+        };
+        listing.push((slug, availability));
     }
 
     if args.json {
@@ -23,18 +50,6 @@ pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Probe a single harness for availability without ever starting a session.
-///
-/// This delegates to the core harness layer, which resolves the harness binary
-/// and runs a no-cost probe such as `--version`. It must never start a session
-/// or otherwise incur cost.
-async fn check_availability(_slug: HarnessSlug) -> anyhow::Result<Availability> {
-    // TODO: look the harness up in a `HarnessRegistry` and call
-    // `AgentHarness::check_availability().await`, which is contractually
-    // session-free.
-    todo!("query the core harness layer's no-session availability check");
 }
 
 /// A short, stable label for an availability result.

@@ -17,3 +17,9 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
+toml = { workspace = true }
+tempfile = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

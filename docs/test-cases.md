@@ -44,6 +44,33 @@ Each test case version must contain:
 The specification and assets are what gets seeded into a run. See
 [Execution](./execution.md#seeding).
 
+## Manifest
+
+Each test case version declares its contents in a `test-case.toml` manifest in
+the version folder. The testing harness reads this manifest to resolve the
+version and to decide, unambiguously, what is seeded into a run and what is
+withheld as validation material. Inferring this from file names alone would be
+fragile, so it is stated explicitly.
+
+```toml
+# test-cases/<slug>/<version>/test-case.toml
+name = "Carom"               # human-readable display name
+spec = "specification.md"    # the specification, seeded (relative to this folder)
+assets = []                  # asset files/directories, seeded (relative paths)
+
+# Reference views, withheld from the run and used only for validation.
+[[reference]]
+view = "title"               # view slug, matched against captured screenshots
+path = "reference/menu.html" # the reference visual (relative to this folder)
+```
+
+- `spec` and every entry in `assets` are the **only** files seeded into a run.
+  Asset entries may be files or directories; a directory is seeded recursively.
+- Each `[[reference]]` `view` slug matches a screenshot captured during
+  [validation](./validation.md#reference-comparison); its `path` is **never**
+  seeded. All paths are relative to the version folder and must resolve inside
+  it, keeping a version self-contained.
+
 ## Self-Contained Specifications
 
 A test case's specification is seeded into an isolated run container that does

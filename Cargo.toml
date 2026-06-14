@@ -23,6 +23,14 @@ async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+toml = "0.8"
+tempfile = "3"
+# HTTP client for fetching OpenRouter model prices. rustls avoids a system
+# OpenSSL dependency so the workspace builds cleanly on minimal hosts (NixOS).
+reqwest = { version = "0.12", default-features = false, features = [
+	"json",
+	"rustls-tls",
+] }
 
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }

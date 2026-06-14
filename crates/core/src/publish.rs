@@ -60,3 +60,39 @@ pub trait Publisher: Send + Sync {
         Ok(outcomes)
     }
 }
+
+/// A publisher that refuses to publish.
+///
+/// Publishing releases generated code to public repositories and is a distinct,
+/// explicit operation from running a test case. This stand-in lets a run-only
+/// [`crate::Orchestrator`] be constructed without wiring real publishing; any
+/// attempt to publish through it returns a clear error.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoopPublisher;
+
+#[async_trait::async_trait]
+impl Publisher for NoopPublisher {
+    async fn release_code(&self, _request: &PublishRequest<'_>) -> Result<String> {
+        Err(crate::error::Error::Publish(
+            "publishing is not configured".to_string(),
+        ))
+    }
+
+    async fn release_playable_build(&self, _request: &PublishRequest<'_>) -> Result<String> {
+        Err(crate::error::Error::Publish(
+            "publishing is not configured".to_string(),
+        ))
+    }
+
+    async fn append_run_record(&self, _record: &RunRecord) -> Result<()> {
+        Err(crate::error::Error::Publish(
+            "publishing is not configured".to_string(),
+        ))
+    }
+
+    async fn publish(&self, _request: &PublishRequest<'_>) -> Result<PublishOutcome> {
+        Err(crate::error::Error::Publish(
+            "publishing is not configured".to_string(),
+        ))
+    }
+}
