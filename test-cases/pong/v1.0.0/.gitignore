@@ -1,4 +1,0 @@
-# Rendered reference screenshots are a build output produced by the testing
-# harness from the static HTML mockups in reference/. The mockups are the
-# source of truth; the screenshots are regenerated and must not be committed.
-reference/screenshots/

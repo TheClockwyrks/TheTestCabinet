@@ -30,9 +30,10 @@ all three views and by the specification.
 ## Generating screenshots
 
 The mockups are the source of truth; their rendered screenshots are a build
-output and are **git-ignored** (see [`../.gitignore`](../.gitignore)). The
-testing harness is expected to render each file at a `1280x720` viewport (for
-example with Playwright) and write the images under `reference/screenshots/`:
+output and are **git-ignored** (the repository ignores
+`test-cases/**/reference/screenshots/`). The testing harness is expected to
+render each file at a `1280x720` viewport (for example with Playwright) and write
+the images under `reference/screenshots/`:
 
 ```
 reference/screenshots/title.png
