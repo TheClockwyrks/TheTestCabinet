@@ -1,0 +1,4 @@
+# Host-specific files, created by copying a committed variant into place (see
+# README.md). They are intentionally not committed so host choices stay local.
+docker-compose.local.yml
+.env

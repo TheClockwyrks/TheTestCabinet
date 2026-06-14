@@ -1,0 +1,7 @@
+# Host override for Docker on a mainstream Linux host (the default). Copy this to
+# docker-compose.local.yml (see README.md).
+services:
+  dev:
+    build:
+      args:
+        BUILDARCH: amd64

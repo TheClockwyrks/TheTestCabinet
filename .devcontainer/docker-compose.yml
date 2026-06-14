@@ -1,0 +1,27 @@
+x-devcontainer-build-args: &devcontainer-build-args
+  USERNAME: ${DEVCONTAINER_USERNAME:-vscode}
+  USER_UID: ${DEVCONTAINER_UID:-1000}
+  USER_GID: ${DEVCONTAINER_GID:-1000}
+  DOCKER_GID: ${DOCKER_GID:-999}
+  LAZYGIT_VERSION: 0.61.1
+  NODE_VERSION: 24.16.0
+  RUST_VERSION: stable
+  TZ: ${TZ:-UTC}
+
+services:
+  # Devcontainer used by VS Code.
+  dev:
+    build:
+      args:
+        <<: *devcontainer-build-args
+      context: .
+      dockerfile: ./ubuntu.dockerfile
+    # Keep the container alive after the build's entrypoint exits.
+    command: sleep infinity
+    init: true
+    environment:
+      - TZ=${TZ:-UTC}
+    stdin_open: true
+    tty: true
+    volumes:
+      - ..:/workspaces/the-test-cabinet:rw
