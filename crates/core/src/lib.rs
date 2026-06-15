@@ -9,6 +9,7 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod browser;
 pub mod container;
 pub mod error;
 pub mod event;
@@ -18,6 +19,7 @@ pub mod harness_registry;
 pub mod metrics;
 pub mod pricing;
 pub mod publish;
+pub mod reference;
 pub mod run_record;
 pub mod seeding;
 pub mod test_case;
@@ -52,10 +54,13 @@ pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use pricing::OpenRouterPrices;
 pub use publish::{NoopPublisher, PublishOutcome, PublishRequest, Publisher};
+pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use run_record::{HarnessSlug, RunLinks, RunRecord, RunState, RunStatus, RunSubject};
 pub use seeding::FsRepoSeeder;
-pub use test_case::{ReferenceView, TestCase, TestCaseCatalog, TestCaseVersion};
-pub use validation::{CapturedView, LoadCheck, ReferenceComparison, ValidationSummary, Validator};
+pub use test_case::{
+    Check, CheckAction, ReferenceView, TestCase, TestCaseCatalog, TestCaseVersion,
+};
+pub use validation::{CapturedView, CheckResult, ValidationSummary, Validator};
 pub use validator::BuildValidator;
 
 /// What to run, with what, against which model.
@@ -98,6 +103,8 @@ where
     pub collector: C,
     /// Looks up harness implementations by slug.
     pub harnesses: Box<dyn HarnessRegistry>,
+    /// Renders reference mockups to screenshots for seeding and validation.
+    pub renderer: Box<dyn ReferenceRenderer>,
     /// Runs the validation pass.
     pub validator: V,
     /// Publishes finished runs.
@@ -124,9 +131,23 @@ where
         }
     }
 
-    /// Seed a fresh git repository with the test case's specification and assets.
-    pub fn seed(&self, test_case: &TestCaseVersion) -> Result<SeededRepo> {
-        self.seeder.seed(&SeedRequest { test_case })
+    /// Render the test case's reference mockups to screenshots, used both as
+    /// seeded visual targets and as validation baselines.
+    pub fn render_references(&self, test_case: &TestCaseVersion) -> Result<Vec<RenderedReference>> {
+        self.renderer.render_references(test_case)
+    }
+
+    /// Seed a fresh git repository with the test case's specification, assets,
+    /// and rendered reference screenshots.
+    pub fn seed(
+        &self,
+        test_case: &TestCaseVersion,
+        references: &[RenderedReference],
+    ) -> Result<SeededRepo> {
+        self.seeder.seed(&SeedRequest {
+            test_case,
+            references,
+        })
     }
 
     /// Start a container and drive the agent harness to completion against the
@@ -243,13 +264,15 @@ where
         })
     }
 
-    /// Run the validation pass over the produced implementation.
+    /// Run the validation pass over the produced implementation, scoring each
+    /// declared check against the rendered reference baselines.
     pub fn validate(
         &self,
         test_case: &TestCaseVersion,
         artifacts: &ArtifactCollection,
+        references: &[RenderedReference],
     ) -> Result<ValidationSummary> {
-        self.validator.validate(test_case, artifacts)
+        self.validator.validate(test_case, artifacts, references)
     }
 
     /// Serialize the run record as camelCase JSON and store it, alongside a copy
@@ -282,7 +305,10 @@ where
         let timer = Instant::now();
 
         let test_case = self.resolve(request)?;
-        let seeded = self.seed(&test_case)?;
+        // Render the reference mockups once: the screenshots are both seeded as
+        // visual targets and reused as validation baselines below.
+        let references = self.render_references(&test_case)?;
+        let seeded = self.seed(&test_case, &references)?;
         let (handle, outcome) = self.execute(&test_case, &seeded, request, events).await?;
 
         // Collect the working tree, then always tear the container down.
@@ -315,7 +341,7 @@ where
             }
         };
         let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
-        let validation = self.validate(&test_case, &artifacts)?;
+        let validation = self.validate(&test_case, &artifacts, &references)?;
         let finished_at = OffsetDateTime::now_utc();
 
         let record = RunRecord {

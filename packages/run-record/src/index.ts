@@ -53,16 +53,24 @@ export interface RunMetrics {
   cost: CostMetrics;
 }
 
-/** A single similarity measurement against a reference view. */
-export interface ReferenceComparison {
+/** The result of a single opt-in validation check. */
+export interface CheckResult {
   view: string;
+  /** Whether the implementation could be driven into the view and captured. */
+  reached: boolean;
+  /** Similarity signal in `0..=1` against the reference baseline. */
   similarity: number;
+  /** Detail about a check that could not be completed. */
+  detail: string | null;
 }
 
 /** Validation signals derived from running the produced artifact. */
 export interface RunValidation {
   loaded: boolean;
-  referenceComparisons: ReferenceComparison[];
+  /** Detail about a fatal load failure, when one occurred. */
+  detail: string | null;
+  /** Per-check results for the checks the test case declares. */
+  checks: CheckResult[];
 }
 
 /** Outbound links for a run. Either may be null when not published. */

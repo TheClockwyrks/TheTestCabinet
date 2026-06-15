@@ -3,8 +3,8 @@
 ## Overview
 
 Validation is an automated first pass over a finished implementation. Its purpose
-is to catch gross failures cheaply and, where a test case calls for it, to compare
-an implementation against the reference visuals it was given.
+is to catch gross failures cheaply and, where a test case opts in with a check, to
+compare an implementation against a reference baseline.
 
 Full automated validation is **not** a goal. It is not expected that an entire
 implementation can be assessed automatically. Validation produces signals that are
@@ -21,26 +21,32 @@ nothing renders. The testing harness must:
 - Load it in a headless browser.
 - Detect fatal errors, including build failures and uncaught runtime errors that
   prevent the application from rendering.
-- Capture screenshots of the loaded application.
 
 A run that cannot load is the clearest possible signal and must be recorded as
 such.
 
-## Reference Comparison
+## Checks
 
-When a test case's specification mandates a specific UI, such as a particular menu
-layout, that UI can be validated by comparing a screenshot of the implementation
-against the reference visual the test case provides.
+Reference comparison is **opt-in**, not automatic. A test case seeds reference
+screenshots as visual targets, but those are not validated unless the test case
+declares a **check** for the view. This keeps comparison honest: a view is only
+scored when it can be reached and captured reliably.
 
-- A test case declares which views can be compared and the reference visual for
-  each.
-- The testing harness captures the corresponding screenshots during the load
-  check and compares them against the references.
+- A test case declares each check in its manifest: the view, the reference whose
+  rendered screenshot is the comparison baseline, and the actions that drive the
+  built implementation into that view (no actions means the view shown on load).
+- The harness serves the build, drives it through the check's actions, captures a
+  screenshot, and scores its similarity against the baseline.
 - The result is a similarity signal recorded with the run, not a strict match
-  requirement.
+  requirement. A check that cannot be driven or captured is recorded as not
+  reached rather than as a failure.
+
+Because driving an arbitrary implementation into a deep state is unreliable, most
+test cases will validate only a small number of deterministic views (often just
+the initial screen), even though they seed more references as visual targets.
 
 ## Results
 
 Validation output is summarized into the [run record](./run-records.md) so the
-site can surface, for example, whether a run loaded and how closely it matched any
-declared reference views.
+site can surface, for example, whether a run loaded and how closely each declared
+check matched its reference baseline.

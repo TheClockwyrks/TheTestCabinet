@@ -73,12 +73,13 @@ export function RunDetailPage() {
             {validation.loaded ? "Yes" : "No"}
           </span>
         </p>
-        {validation.referenceComparisons.length > 0 && (
+        {validation.checks.length > 0 && (
           <ul className={styles.list}>
-            {validation.referenceComparisons.map((comparison) => (
-              <li key={comparison.view}>
-                {comparison.view}: {(comparison.similarity * 100).toFixed(1)}%
-                similarity
+            {validation.checks.map((check) => (
+              <li key={check.view}>
+                {check.reached
+                  ? `${check.view}: ${(check.similarity * 100).toFixed(1)}% similarity`
+                  : `${check.view}: not reached${check.detail ? ` (${check.detail})` : ""}`}
               </li>
             ))}
           </ul>

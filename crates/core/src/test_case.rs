@@ -14,8 +14,9 @@ use crate::error::{Error, Result};
 /// The on-disk `test-case.toml` manifest for a single version.
 ///
 /// This is the machine-readable declaration of what a version contains: the
-/// specification and assets that are seeded, and the reference views that are
-/// withheld. See `docs/test-cases.md#manifest`.
+/// specification and assets that are seeded, the reference views (rendered to
+/// screenshots and seeded as visual targets), and the opt-in validation checks.
+/// See `docs/test-cases.md#manifest`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Manifest {
     /// Human-readable display name.
@@ -26,9 +27,13 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
-    /// Reference views, relative to the version folder (NOT seeded).
+    /// Reference views. Each is rendered to a screenshot and seeded as a visual
+    /// target; the reference source is not seeded.
     #[serde(default)]
     reference: Vec<ManifestReference>,
+    /// Opt-in validation checks. Only declared checks run.
+    #[serde(default)]
+    check: Vec<ManifestCheck>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -36,8 +41,22 @@ struct Manifest {
 struct ManifestReference {
     /// The view slug.
     view: String,
-    /// The reference visual path, relative to the version folder.
+    /// The reference source path, relative to the version folder.
     path: PathBuf,
+}
+
+/// A single `[[check]]` entry in the manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestCheck {
+    /// The view slug this check records its result under.
+    view: String,
+    /// The reference view whose rendered screenshot is the comparison baseline.
+    /// Defaults to `view` when omitted.
+    reference: Option<String>,
+    /// The actions that drive the implementation into the view before capture.
+    /// Empty means the view is whatever the implementation shows on load.
+    #[serde(default)]
+    actions: Vec<CheckAction>,
 }
 
 /// The manifest file name expected in every version folder.
@@ -54,25 +73,85 @@ pub struct TestCase {
     pub versions: Vec<String>,
 }
 
-/// A reference view a test case declares for visual comparison.
+/// A reference view a test case declares as a visual target.
 ///
-/// The reference visual itself is harness-side validation material and is
-/// **never** seeded into a run.
+/// The reference is rendered to a screenshot which is **seeded** into a run so
+/// the model can see what the screen should look like. The reference *source*
+/// (the HTML/CSS mockup at [`Self::source_path`]) is never seeded — handing it
+/// over would let a model copy the intended UI instead of building it from the
+/// specification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceView {
-    /// The view name (for example, `main-menu`), matched against captured
-    /// screenshots. See [`crate::validation::ReferenceComparison`].
+    /// The view name (for example, `title`), matched against a declared
+    /// [`Check`]'s baseline.
     pub view: String,
-    /// Path to the reference visual on the host, relative to the version folder.
-    pub reference_path: PathBuf,
+    /// Path to the reference source mockup on the host, relative to the version
+    /// folder. Rendered to a screenshot; never seeded directly.
+    pub source_path: PathBuf,
 }
+
+/// A single action that drives a served implementation toward a view.
+///
+/// Serializes to the JSON shape the browser driver consumes (an internally
+/// tagged `{ "type": … }` object); see `packages/browser-driver/driver.mjs`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CheckAction {
+    /// Pause for `ms` milliseconds.
+    Wait {
+        /// Duration to wait, in milliseconds.
+        ms: u64,
+    },
+    /// Press and release a key (Playwright key name, e.g. `Enter`, `ArrowUp`).
+    Key {
+        /// The key to press.
+        key: String,
+    },
+    /// Hold a key down for `ms` milliseconds, then release it.
+    Hold {
+        /// The key to hold.
+        key: String,
+        /// How long to hold it, in milliseconds.
+        ms: u64,
+    },
+    /// Click a logical-pixel point on the page.
+    Click {
+        /// Horizontal position, in logical pixels.
+        x: f64,
+        /// Vertical position, in logical pixels.
+        y: f64,
+    },
+}
+
+/// An opt-in validation check.
+///
+/// A check drives a produced implementation through [`Self::actions`],
+/// screenshots it, and compares that capture against the screenshot rendered
+/// from the [`Self::reference_view`] reference. Validation runs only the checks
+/// a test case declares; a reference is not validated unless a check names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    /// The view slug this check records its result under.
+    pub view: String,
+    /// The reference view whose rendered screenshot is the comparison baseline.
+    pub reference_view: String,
+    /// The actions that drive the implementation into the view before capture.
+    pub actions: Vec<CheckAction>,
+}
+
+// `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
+// only floats. They originate as exact TOML literals and are only ever compared,
+// never arithmetic'd, so treating them as `Eq` is sound here.
+impl Eq for CheckAction {}
 
 /// A resolved, exact test case version.
 ///
 /// Holds the on-disk location and the manifest of what the version contains.
-/// Only [`Self::spec_path`] and [`Self::asset_paths`] are seeded into a run;
-/// [`Self::reference_views`] are deliberately withheld.
+/// The specification, assets, and the *rendered* reference screenshots are
+/// seeded into a run; the reference *source* mockups are not. The declared
+/// [`Self::checks`] drive validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestCaseVersion {
@@ -86,8 +165,10 @@ pub struct TestCaseVersion {
     pub spec_path: PathBuf,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
-    /// Reference views available for validation (NOT seeded).
+    /// Reference views: rendered to screenshots and seeded as visual targets.
     pub reference_views: Vec<ReferenceView>,
+    /// Opt-in validation checks declared by this version.
+    pub checks: Vec<Check>,
 }
 
 /// Resolves test case slugs and versions against an on-disk catalog.
@@ -208,7 +289,28 @@ impl TestCaseCatalog {
             }
             reference_views.push(ReferenceView {
                 view: reference.view.clone(),
-                reference_path: path,
+                source_path: path,
+            });
+        }
+
+        // Every check must name a reference view that exists, so its baseline
+        // can be rendered. This keeps validation declarations honest.
+        let mut checks = Vec::with_capacity(manifest.check.len());
+        for check in &manifest.check {
+            let reference_view = check
+                .reference
+                .clone()
+                .unwrap_or_else(|| check.view.clone());
+            if !reference_views.iter().any(|r| r.view == reference_view) {
+                return Err(invalid(format!(
+                    "check `{}` references undeclared reference view `{}`",
+                    check.view, reference_view
+                )));
+            }
+            checks.push(Check {
+                view: check.view.clone(),
+                reference_view,
+                actions: check.actions.clone(),
             });
         }
 
@@ -219,6 +321,7 @@ impl TestCaseCatalog {
             spec_path,
             asset_paths,
             reference_views,
+            checks,
         })
     }
 

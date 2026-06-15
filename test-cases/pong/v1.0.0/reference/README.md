@@ -1,22 +1,25 @@
 # Carom — Reference Visuals
 
 These files are the **canonical visual reference** for the Carom test case. They
-are authored as self-contained static HTML on a fixed `1280x720` logical stage
-so the testing harness can render and screenshot them deterministically, and so
-they double as the reference images used for the
-[reference comparison](../validation.md#reference-comparison) step of validation.
+are authored as self-contained static HTML on a fixed `1280x720` logical stage so
+the testing harness can render and screenshot them deterministically. The
+rendered screenshots serve two purposes: they are seeded into a run as visual
+targets, and they are the baselines for any [validation
+check](../validation.md#checks) that names the view.
 
-## Important: not seeded to the run
+## Source is rendered, not seeded
 
-The contents of this `reference/` folder are **harness-side only**. They must
-**not** be seeded into a run's repository. Only [`../specification.md`](../specification.md)
-(and a test case's assets, of which Carom has none) is handed to the model. If
-the reference visuals were seeded, a model could simply copy them instead of
-building the game from the spec.
+The mockup **source** in this `reference/` folder is **harness-side only** and is
+never seeded into a run. What the model receives is the *rendered screenshot* of
+each view (see [Generating screenshots](#generating-screenshots)), seeded as a
+visual target alongside [`../specification.md`](../specification.md). Handing over
+the source HTML/CSS would let a model copy the intended UI instead of building it
+from the spec; a screenshot shows the target without giving away the
+implementation.
 
 ## Views
 
-Each file corresponds to a canonical view slug used by validation:
+Each file corresponds to a canonical view slug:
 
 | View slug   | File              | Description                                  |
 | ----------- | ----------------- | -------------------------------------------- |

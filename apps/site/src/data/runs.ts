@@ -31,7 +31,10 @@ export const runs: RunRecord[] = [
     },
     validation: {
       loaded: true,
-      referenceComparisons: [{ view: "gameplay", similarity: 0.92 }],
+      detail: null,
+      checks: [
+        { view: "title", reached: true, similarity: 0.92, detail: null },
+      ],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/run-0001",
@@ -68,7 +71,8 @@ export const runs: RunRecord[] = [
     },
     validation: {
       loaded: false,
-      referenceComparisons: [],
+      detail: "Build did not load in the reference runtime.",
+      checks: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/run-0002",

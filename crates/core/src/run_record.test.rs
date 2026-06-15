@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::validation::{ReferenceComparison, ValidationSummary};
+use crate::validation::{CheckResult, ValidationSummary};
 
 fn sample_record() -> RunRecord {
     RunRecord {
@@ -33,9 +33,12 @@ fn sample_record() -> RunRecord {
         },
         validation: ValidationSummary {
             loaded: true,
-            reference_comparisons: vec![ReferenceComparison {
-                view: "main-menu".to_string(),
+            detail: None,
+            checks: vec![CheckResult {
+                view: "title".to_string(),
+                reached: true,
                 similarity: 0.92,
+                detail: None,
             }],
         },
         links: RunLinks {
@@ -79,8 +82,9 @@ fn serializes_to_camel_case_contract() {
         },
         "validation": {
             "loaded": true,
-            "referenceComparisons": [
-                { "view": "main-menu", "similarity": 0.92 }
+            "detail": null,
+            "checks": [
+                { "view": "title", "reached": true, "similarity": 0.92, "detail": null }
             ]
         },
         "links": {

@@ -20,19 +20,22 @@ without the scale of the harder cases.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                       |
-| --------------------- | -------------- | --------------------------------------------- |
-| `specification.md`    | **Yes**        | The spec handed to the model; the build task. |
-| `reference/`          | No             | Canonical visual mockups for validation.      |
-| `validation.md`       | No             | What the harness checks automatically.        |
-| `README.md`           | No             | This overview.                                |
+| Path                   | Seeded to run? | Purpose                                            |
+| ---------------------- | -------------- | -------------------------------------------------- |
+| `specification.md`     | **Yes**        | The spec handed to the model; the build task.      |
+| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
+| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as visual targets. |
+| `validation.md`        | No             | What the harness checks automatically.             |
+| `README.md`            | No             | This overview.                                     |
 
 This version has **no assets**: Pong is simple enough to leave all visuals to the
-model, guided by the palette and measurements in the specification.
+model, guided by the palette and measurements in the specification and by the
+seeded reference screenshots.
 
-Only `specification.md` (and assets, when a case has them) is seeded into a run's
-repository. The reference visuals are deliberately withheld so a model cannot
-copy them instead of building from the spec.
+The specification and the rendered reference screenshots are seeded into a run's
+repository (plus assets, when a case has them). The reference *source* mockups
+are not seeded, so a model builds the UI from the spec and the screenshots rather
+than copying the mockup code.
 
 ## Versioning
 

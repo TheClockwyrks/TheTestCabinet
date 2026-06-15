@@ -1,8 +1,9 @@
 //! Execution environment: containerization, seeding, and artifact collection.
 //!
 //! See `docs/execution.md`. Every run executes inside an isolated, containerized
-//! environment seeded with a fresh git repository containing only what the model
-//! needs: the test case's specification and its assets. Reference visuals are
+//! environment seeded with a fresh git repository containing what the model
+//! needs: the test case's specification, its assets, and the rendered reference
+//! screenshots that serve as visual targets. The reference *source* mockups are
 //! never seeded.
 
 use std::collections::BTreeMap;
@@ -11,17 +12,21 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::reference::RenderedReference;
 use crate::test_case::TestCaseVersion;
 
 /// A request to seed a run's repository.
 ///
 /// Seeding creates a fresh git repository with a clean initial commit, no
-/// upstream remote, and no prior history, containing only the test case's
-/// specification and assets.
+/// upstream remote, and no prior history, containing the test case's
+/// specification, assets, and the rendered reference screenshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeedRequest<'a> {
     /// The resolved test case version to seed from.
     pub test_case: &'a TestCaseVersion,
+    /// Reference screenshots rendered for this run, seeded as visual targets.
+    /// The reference source mockups they were rendered from are not seeded.
+    pub references: &'a [RenderedReference],
 }
 
 /// A seeded run repository, ready to be mounted into a container.
@@ -40,8 +45,9 @@ pub struct SeededRepo {
 /// have been observed recovering deleted reference implementations from git
 /// history.
 pub trait RepoSeeder: Send + Sync {
-    /// Create a fresh git repository seeded with the specification and assets
-    /// only. Reference visuals must **not** be included.
+    /// Create a fresh git repository seeded with the specification, assets, and
+    /// the rendered reference screenshots. The reference *source* mockups must
+    /// **not** be included.
     fn seed(&self, request: &SeedRequest<'_>) -> Result<SeededRepo>;
 }
 

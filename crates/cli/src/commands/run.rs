@@ -4,9 +4,9 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    BuildValidator, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
-    FsRepoSeeder, HarnessSlug, NoopPublisher, OpenRouterPrices, Orchestrator, RunRequest,
-    TestCaseCatalog,
+    BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
+    DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, NoopPublisher, OpenRouterPrices,
+    Orchestrator, RunRequest, TestCaseCatalog,
 };
 
 use crate::cli::RunArgs;
@@ -55,6 +55,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
+        renderer: Box::new(BrowserRenderer::new()),
         validator: BuildValidator::new(screenshot_dir),
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
@@ -89,8 +90,25 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     );
     println!("  time:    {:.1}s", record.metrics.run_time_seconds);
     println!("  loaded:  {}", record.validation.loaded);
+    print_checks(&record.validation);
 
     Ok(())
+}
+
+/// Print the per-check validation results, if the test case declared any.
+fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
+    if validation.checks.is_empty() {
+        return;
+    }
+    println!("  checks:");
+    for check in &validation.checks {
+        if check.reached {
+            println!("    {} similarity: {:.2}", check.view, check.similarity);
+        } else {
+            let detail = check.detail.as_deref().unwrap_or("not reached");
+            println!("    {} not reached ({detail})", check.view);
+        }
+    }
 }
 
 /// A short label for a run's terminal state.

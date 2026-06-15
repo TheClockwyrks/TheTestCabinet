@@ -1,0 +1,17 @@
+{
+  "name": "@test-cabinet/browser-driver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Headless-browser driver used by the validator to render reference mockups and to drive and screenshot a produced implementation.",
+  "bin": {
+    "tcab-browser-driver": "./driver.mjs"
+  },
+  "files": [
+    "driver.mjs"
+  ],
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

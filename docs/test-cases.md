@@ -33,24 +33,25 @@ Each test case version must contain:
   vision spec for the test case and is the primary material handed to the model.
   It may record both high and low level details, including mechanics, layouts,
   states, and rules.
-- **Reference visuals** in the form of mockups or images that are representative
-  of the UIs that must be implemented. These are provided so that
-  implementations can be visually compared against an intended design.
+- **Reference visuals** in the form of mockups representative of the UIs that
+  must be implemented. Each is rendered to a screenshot that is seeded into the
+  run as a visual target for the model; the same screenshot is the baseline for
+  any validation check that names the view. The mockup *source* is not seeded.
 - **Assets** such as sprites that the model should use, when the case requires
   assets that should not be left to the model to generate.
 - **Validation criteria** describing what can be checked automatically. See
   [Validation](./validation.md).
 
-The specification and assets are what gets seeded into a run. See
-[Execution](./execution.md#seeding).
+The specification, assets, and rendered reference screenshots are what gets
+seeded into a run. See [Execution](./execution.md#seeding).
 
 ## Manifest
 
 Each test case version declares its contents in a `test-case.toml` manifest in
 the version folder. The testing harness reads this manifest to resolve the
-version and to decide, unambiguously, what is seeded into a run and what is
-withheld as validation material. Inferring this from file names alone would be
-fragile, so it is stated explicitly.
+version and to decide, unambiguously, what is seeded into a run, which references
+are rendered as visual targets, and which validation checks run. Inferring this
+from file names alone would be fragile, so it is stated explicitly.
 
 ```toml
 # test-cases/<slug>/<version>/test-case.toml
@@ -58,18 +59,30 @@ name = "Carom"               # human-readable display name
 spec = "specification.md"    # the specification, seeded (relative to this folder)
 assets = []                  # asset files/directories, seeded (relative paths)
 
-# Reference views, withheld from the run and used only for validation.
+# Reference views. Each `path` mockup is rendered to a screenshot that is seeded
+# as a visual target; the source is not seeded. References are not validated
+# unless a check below names them.
 [[reference]]
-view = "title"               # view slug, matched against captured screenshots
-path = "reference/menu.html" # the reference visual (relative to this folder)
+view = "title"               # view slug
+path = "reference/menu.html" # the reference source mockup (relative to this folder)
+
+# Validation checks (opt-in). Only declared checks run.
+[[check]]
+view = "title"               # the view this check records under
+reference = "title"          # baseline: the rendered screenshot of this reference
+actions = []                 # actions to drive the build into the view (empty = on load)
 ```
 
-- `spec` and every entry in `assets` are the **only** files seeded into a run.
-  Asset entries may be files or directories; a directory is seeded recursively.
-- Each `[[reference]]` `view` slug matches a screenshot captured during
-  [validation](./validation.md#reference-comparison); its `path` is **never**
-  seeded. All paths are relative to the version folder and must resolve inside
-  it, keeping a version self-contained.
+- `spec`, every entry in `assets`, and the **rendered** reference screenshots are
+  what is seeded into a run. Asset entries may be files or directories; a
+  directory is seeded recursively.
+- Each `[[reference]]` is rendered to a screenshot (seeded as a visual target);
+  its `path` **source** is never seeded. All paths are relative to the version
+  folder and must resolve inside it, keeping a version self-contained.
+- Each `[[check]]` is an opt-in validation comparison. Its `reference` must name a
+  declared reference view, whose rendered screenshot is the baseline; `actions`
+  drive the built implementation into the view before capture. See
+  [Validation](./validation.md#checks).
 
 ## Self-Contained Specifications
 
@@ -81,11 +94,12 @@ self-contained.
 - It must **not** link to or reference these vision specs, the harness docs, or
   any other file outside what is seeded with the run. Anything the model needs
   must be stated inline.
-- It must **not** depend on the reference visuals. Reference visuals are
-  harness-side validation material and are deliberately **not** seeded, so that a
-  model cannot copy them in place of building from the spec. Every visual detail
-  a model needs — palette, layout, measurements, screen contents — must be
-  written into the specification itself.
+- It may point at the seeded reference **screenshots** (the rendered visual
+  targets), but must **not** depend on the reference **source** mockups, which
+  are deliberately not seeded so a model cannot copy them in place of building
+  from the spec. Every visual detail a model needs — palette, layout,
+  measurements, screen contents — must still be written into the specification
+  itself; the screenshots illustrate the target, they do not replace the spec.
 - Everything required to build the game must live in the seeded files: the
   specification and the test case's assets.
 

@@ -91,24 +91,27 @@
         "cost": { "$ref": "#/$defs/CostMetrics" }
       }
     },
-    "ReferenceComparison": {
+    "CheckResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["view", "similarity"],
+      "required": ["view", "reached", "similarity", "detail"],
       "properties": {
         "view": { "type": "string" },
-        "similarity": { "type": "number" }
+        "reached": { "type": "boolean" },
+        "similarity": { "type": "number" },
+        "detail": { "type": ["string", "null"] }
       }
     },
     "RunValidation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["loaded", "referenceComparisons"],
+      "required": ["loaded", "detail", "checks"],
       "properties": {
         "loaded": { "type": "boolean" },
-        "referenceComparisons": {
+        "detail": { "type": ["string", "null"] },
+        "checks": {
           "type": "array",
-          "items": { "$ref": "#/$defs/ReferenceComparison" }
+          "items": { "$ref": "#/$defs/CheckResult" }
         }
       }
     },

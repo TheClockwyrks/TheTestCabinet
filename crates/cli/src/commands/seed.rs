@@ -9,7 +9,9 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use test_cabinet_core::{FsRepoSeeder, RepoSeeder, SeedRequest, TestCaseCatalog};
+use test_cabinet_core::{
+    BrowserRenderer, FsRepoSeeder, ReferenceRenderer, RepoSeeder, SeedRequest, TestCaseCatalog,
+};
 
 use crate::cli::SeedArgs;
 
@@ -37,10 +39,19 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;
 
+    // Render the reference mockups to screenshots so the materialized folder
+    // includes the seeded visual targets exactly as a run would. A host without
+    // a browser renders nothing and seeds no reference images, which is reported
+    // below rather than treated as an error.
+    let references = BrowserRenderer::new()
+        .render_references(&test_case)
+        .context("rendering reference screenshots")?;
+
     let seeder = FsRepoSeeder::new(&args.out_dir);
     let seeded = seeder
         .seed(&SeedRequest {
             test_case: &test_case,
+            references: &references,
         })
         .context("seeding the run repository")?;
 
@@ -55,8 +66,19 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     println!("  specification:  {spec_name}");
     println!("  assets:         {}", test_case.asset_paths.len());
     println!(
-        "\nThis mirrors what the harness receives. Reference visuals are \
-         validation-only and are never seeded."
+        "  reference imgs: {} of {}",
+        references.len(),
+        test_case.reference_views.len()
+    );
+    if references.len() < test_case.reference_views.len() {
+        println!(
+            "    (some references did not render; a headless browser is required \
+             to produce the seeded reference images)"
+        );
+    }
+    println!(
+        "\nThis mirrors what the harness receives: the specification, assets, and \
+         rendered reference images. The reference source mockups are not seeded."
     );
 
     Ok(())

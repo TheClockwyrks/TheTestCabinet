@@ -3,12 +3,15 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use test_cabinet_core::{ArtifactCollection, BuildValidator, TestCaseCatalog, Validator};
+use test_cabinet_core::{
+    ArtifactCollection, BrowserRenderer, BuildValidator, ReferenceRenderer, TestCaseCatalog,
+    Validator,
+};
 
 use crate::cli::ValidateArgs;
 
-/// Run the core validation pass (load check plus any reference comparisons) over
-/// an already-produced implementation, summarizing the result.
+/// Run the core validation pass (load check plus any declared checks) over an
+/// already-produced implementation, summarizing the result.
 ///
 /// Validation is a cheap first pass, not a pass/fail gate; the core's
 /// [`Validator`] owns the actual work.
@@ -25,23 +28,33 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         .resolve(&args.test_case, &args.version)
         .with_context(|| format!("resolving {}@{}", args.test_case, args.version))?;
 
+    // Render the reference baselines the declared checks compare against.
+    let references = BrowserRenderer::new()
+        .render_references(&test_case)
+        .context("rendering reference baselines")?;
+
     let artifacts = ArtifactCollection {
         repo_path: args.implementation,
     };
     let validator = BuildValidator::new(std::env::temp_dir().join("tcab/screenshots"));
     let summary = validator
-        .validate(&test_case, &artifacts)
+        .validate(&test_case, &artifacts, &references)
         .context("validation failed")?;
 
     println!("  loaded: {}", summary.loaded);
-    if summary.reference_comparisons.is_empty() {
-        println!("  reference comparisons: none");
+    if let Some(detail) = &summary.detail {
+        println!("  detail: {detail}");
+    }
+    if summary.checks.is_empty() {
+        println!("  checks: none");
     } else {
-        for comparison in &summary.reference_comparisons {
-            println!(
-                "  {} similarity: {:.2}",
-                comparison.view, comparison.similarity
-            );
+        for check in &summary.checks {
+            if check.reached {
+                println!("  {} similarity: {:.2}", check.view, check.similarity);
+            } else {
+                let detail = check.detail.as_deref().unwrap_or("not reached");
+                println!("  {} not reached ({detail})", check.view);
+            }
         }
     }
 

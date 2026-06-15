@@ -30,6 +30,10 @@ versions are declared once in the root `Cargo.toml` under
 - `packages/run-record` — `@test-cabinet/run-record`. Shared TypeScript types and
   JSON Schema for the run record, the central data contract. Apps depend on this
   package for types.
+- `packages/browser-driver` — `@test-cabinet/browser-driver`. A small Playwright
+  driver script (`driver.mjs`) the validator shells out to, used both to render
+  reference mockups to screenshots and to drive and screenshot a produced
+  implementation for a validation check.
 - `apps/desktop` — `@test-cabinet/desktop`. The React + TypeScript + Vite UI that
   is loaded by the Tauri desktop app.
 - `apps/site` — `@test-cabinet/site`. The React + TypeScript + Vite static
@@ -129,9 +133,17 @@ A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
    `claude`, `OPENAI_API_KEY` for `codex`, and `OPENROUTER_API_KEY` for the
    OpenRouter-backed harnesses. The key is passed into the run container as a
    secret and is never written into the seeded repository.
+4. **A headless browser**, for rendering reference screenshots (seeded as visual
+   targets) and running validation checks. Install the Playwright browser once
+   from the repository root with `npx playwright install chromium`; the validator
+   locates `packages/browser-driver/driver.mjs` relative to the working directory
+   (override with `TCAB_BROWSER_DRIVER`). This is optional — without it, runs
+   still complete, but no reference images are seeded and checks record as not
+   reached.
 
-Then launch a run from the repository root (so the `test-cases/` catalog is
-found; override its location with `TCAB_TEST_CASES_DIR`):
+Then launch a run from the repository root (so the `test-cases/` catalog and the
+browser driver are found; override the catalog location with
+`TCAB_TEST_CASES_DIR`):
 
 ```sh
 cargo run -p test-cabinet-cli -- run \
@@ -140,10 +152,12 @@ cargo run -p test-cabinet-cli -- run \
   --out-dir runs
 ```
 
-This seeds a fresh repository, runs the harness in a container, collects the
-produced implementation, builds and load-checks it, and writes
-`runs/<id>/run-record.json` alongside a copy of the implementation. Check harness
-availability without starting a run (a cost-free `--version` probe) with:
+This renders the reference mockups to screenshots, seeds a fresh repository (with
+the specification and those screenshots), runs the harness in a container,
+collects the produced implementation, builds and load-checks it, runs the
+declared validation checks, and writes `runs/<id>/run-record.json` alongside a
+copy of the implementation. Check harness availability without starting a run (a
+cost-free `--version` probe) with:
 
 ```sh
 cargo run -p test-cabinet-cli -- harnesses

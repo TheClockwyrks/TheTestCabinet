@@ -1,8 +1,9 @@
 //! Concrete [`RepoSeeder`]: seed a fresh git repository for a run.
 //!
 //! See `docs/execution.md#seeding`. A run is seeded into a brand-new git
-//! repository containing only the specification and assets — never the reference
-//! visuals — with a single initial commit, no history, and no remote.
+//! repository containing the specification, assets, and the rendered reference
+//! screenshots (visual targets) — but never the reference *source* mockups —
+//! with a single initial commit, no history, and no remote.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,6 +60,21 @@ impl RepoSeeder for FsRepoSeeder {
                 ))
             })?;
             copy_into(asset, &repo.join(relative))?;
+        }
+
+        // Reference screenshots are seeded as visual targets under `reference/`,
+        // one PNG per view, alongside a short notice. The reference source
+        // mockups they were rendered from are deliberately not seeded.
+        if !request.references.is_empty() {
+            let reference_dir = repo.join("reference");
+            for rendered in request.references {
+                copy_file(
+                    &rendered.image_path,
+                    &reference_dir.join(format!("{}.png", rendered.view)),
+                )?;
+            }
+            fs::write(reference_dir.join("README.md"), reference_notice(request))
+                .map_err(seed_err)?;
         }
 
         let initial_commit = init_repo(&repo)?;
@@ -121,6 +137,28 @@ fn copy_into(from: &Path, to: &Path) -> Result<()> {
     } else {
         copy_file(from, to)
     }
+}
+
+/// The README seeded alongside the reference screenshots.
+///
+/// These images are visual targets: the implementation's matching screens should
+/// look like them. The reference source is intentionally absent so the UI is
+/// built from the specification rather than copied.
+fn reference_notice(request: &SeedRequest<'_>) -> String {
+    let mut body = String::from(
+        "# Reference images\n\n\
+         These screenshots show what the corresponding screens of the game should \
+         look like. Use them as visual targets for your implementation — match \
+         their layout, palette, and type. They are images only; build the UI from \
+         the specification.\n\n",
+    );
+    for rendered in request.references {
+        body.push_str(&format!(
+            "- `{}.png` — the `{}` view.\n",
+            rendered.view, rendered.view
+        ));
+    }
+    body
 }
 
 /// Wrap an I/O error as a seeding error.

@@ -84,6 +84,17 @@ match them.
   match-over screen — are described in full under Game States below. Implement
   each as described, in this palette and type.
 
+## Reference images
+
+The `reference/` folder holds screenshots showing how key screens should look:
+
+- `reference/title.png` — the title screen and main menu.
+- `reference/gameplay.png` — a representative in-match frame.
+- `reference/game-over.png` — the match-over screen.
+
+Treat them as visual targets: match their layout, palette, and type. They are
+images only — build the screens from this specification.
+
 ## Playfield
 
 - The field spans the full `1280 &times; 720` area.
@@ -272,11 +283,10 @@ point. Provide a mute toggle, and do not start audio until the player interacts
   `x = 760`, with their tops near `y = 40`.
 - A small, dim mode label (e.g. `SOLO`) sits in the top-left during a match.
 
-## Provided behaviors (acceptance checks)
+## Key behaviors
 
-These behaviors are part of the specification and are **not** hidden from you.
-You are encouraged to cover them with your own automated tests, and to add more.
-Nothing here forbids you from testing your own work.
+The game must exhibit these behaviors. They make good targets for automated
+tests:
 
 - A ball striking the **center** of a **stationary** paddle leaves at angle
   `0` — purely horizontal, toward the opposing goal.

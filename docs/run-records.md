@@ -34,7 +34,7 @@ A run record must capture at least the following.
 ### Validation
 
 - A summary of the [validation](./validation.md) results, including whether the
-  implementation loaded and any reference comparison signals.
+  implementation loaded and the similarity signal from each declared check.
 
 ### Links
 

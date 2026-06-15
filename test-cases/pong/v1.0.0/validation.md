@@ -13,43 +13,36 @@ loads it in a headless browser at a **1280 &times; 720** viewport. It records:
 - Whether the static production build **succeeds**.
 - Whether the page **loads without fatal errors** (no build failure, no uncaught
   exception that prevents rendering).
-- Whether the game actually **renders** — the canvas / play area is present and
-  non-blank after load, rather than an empty or error page.
 
 A build that fails to build, throws on load, or renders nothing is the clearest
 negative signal and is recorded as such.
 
-## Reference comparison
+## Checks
 
-The reference visuals in [`reference/`](./reference/) define three canonical
-views. The harness renders each reference mockup at a `1280 &times; 720` viewport
-to produce the comparison image, captures the corresponding screenshot from the
-implementation, and records a **similarity signal** per view. These are soft
-signals, not strict matches.
+Validation comparisons are **opt-in**: the harness runs only the checks this
+version declares in its `test-case.toml`. A check drives the served build into a
+view, screenshots it at `1280 &times; 720`, and records a **similarity signal**
+against the rendered screenshot of a reference view. These are soft signals, not
+strict matches.
 
-| View slug   | Reference          | How the implementation reaches it          | Comparison strength |
-| ----------- | ------------------ | ------------------------------------------ | ------------------- |
-| `title`     | `menu.html`        | The initial screen shown on load.          | Strong              |
-| `gameplay`  | `gameplay.html`    | A frame captured during an active match.   | Soft (layout)       |
-| `game-over` | `game-over.html`   | The match-over screen.                     | Soft (layout)       |
+Carom declares a single check:
 
-Notes:
+| Check view | Baseline    | How the implementation reaches it | Actions |
+| ---------- | ----------- | --------------------------------- | ------- |
+| `title`    | `menu.html` | The initial screen shown on load. | none    |
 
-- The **`title`** view is deterministic: it is whatever the game shows on load,
-  so it is the most meaningful comparison. The title screen should match
-  `menu.html` in layout, palette, and type.
-- The **`gameplay`** and **`game-over`** views depend on live state and on
-  reaching a screen through input, so they are compared loosely — for field
-  layout, palette, and HUD placement rather than exact ball and paddle
-  positions. A harness that cannot reliably drive the implementation into these
-  states may record only the `title` comparison.
+The **title** view is the only one viable for automated comparison: it is
+deterministic, being whatever the game shows on load, so it needs no actions to
+reach. The title screen should match `menu.html` in layout, palette, and type.
+
+The `gameplay` and `game-over` views are seeded as reference images (visual
+targets for the model) but are **not** validated: both depend on live state and
+on reaching a screen through input, which cannot be driven reliably enough across
+arbitrary implementations to produce a meaningful signal.
 
 ## Recorded signals
 
 Validation contributes the following to the run record:
 
-- Build succeeded (yes/no).
-- Loaded without fatal error (yes/no).
-- Rendered non-blank (yes/no).
-- Per-view reference similarity for the views that could be captured.
-- Screenshots captured during the load check.
+- Whether the implementation loaded (built and rendered without a fatal error).
+- The `title` check's reference similarity, when it could be captured.
