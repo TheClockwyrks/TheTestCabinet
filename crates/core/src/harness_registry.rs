@@ -15,7 +15,9 @@ use serde_json::Value;
 
 use crate::error::{Error, Result};
 use crate::event::{EventFormat, EventKind, EventParser, EventSink, HarnessEvent};
-use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, OutputSink, OutputStream};
+use crate::execution::{
+    ContainerHandle, ContainerRuntime, ExecOutput, OutputSink, OutputStream, RawOutputLine,
+};
 use crate::harness::{AgentHarness, Availability, HarnessInvocation, HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
@@ -159,18 +161,22 @@ impl AgentHarness for CliHarness {
             &invocation.prompt,
         ));
 
-        // Translate each output line into normalized events as it streams. The
-        // translator borrows `events`; scope it so `events` is free again
-        // afterwards to report a terminal failure.
-        let output = {
-            let mut translator = StreamingTranslator {
-                parser: EventParser::new(self.event_format),
-                events: &mut *events,
-            };
-            runtime
-                .exec_streamed(container, &command, &mut translator)
-                .await?
+        // Translate each output line into normalized events as it streams, while
+        // recording the raw lines and the translated events so the run can be
+        // persisted. The translator reborrows `events`; once its fields are taken
+        // and it is dropped, `events` is free again to report a terminal failure.
+        let mut translator = StreamingTranslator {
+            parser: EventParser::new(self.event_format),
+            events: &mut *events,
+            raw: Vec::new(),
+            recorded: Vec::new(),
         };
+        let output = runtime
+            .exec_streamed(container, &command, &mut translator)
+            .await?;
+        let raw_output = std::mem::take(&mut translator.raw);
+        let translated_events = std::mem::take(&mut translator.recorded);
+        drop(translator);
 
         if output.exit_code != 0 {
             let detail = failure_detail(&output);
@@ -194,20 +200,32 @@ impl AgentHarness for CliHarness {
             usage: parse_usage(&output, self.usage),
             harness_version: None,
             reported_cost: parse_reported_cost(&output, self.usage),
+            raw_output,
+            translated_events,
         })
     }
 }
 
-/// Adapts raw output lines into normalized events forwarded to an [`EventSink`].
+/// Adapts raw output lines into normalized events forwarded to an [`EventSink`],
+/// recording both the raw lines and the translated events for persistence.
 struct StreamingTranslator<'a> {
     parser: EventParser,
     events: &'a mut dyn EventSink,
+    /// Every raw line seen, in arrival order, tagged with its stream.
+    raw: Vec<RawOutputLine>,
+    /// Every translated event, in the order produced.
+    recorded: Vec<HarnessEvent>,
 }
 
 impl OutputSink for StreamingTranslator<'_> {
     fn on_line(&mut self, stream: OutputStream, line: &str) {
+        self.raw.push(RawOutputLine {
+            stream,
+            line: line.to_string(),
+        });
         for event in self.parser.ingest(stream, line) {
             self.events.emit(&event);
+            self.recorded.push(event);
         }
     }
 }
@@ -387,7 +405,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Cline,
         },
         HarnessSlug::Antigravity => CliHarness {
             slug,
@@ -437,7 +455,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Goose,
         },
         HarnessSlug::Kilo => CliHarness {
             slug,
@@ -466,7 +484,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Kilo,
         },
         HarnessSlug::Opencode => CliHarness {
             slug,
@@ -495,7 +513,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Opencode,
         },
         HarnessSlug::Pi => CliHarness {
             slug,
@@ -525,7 +543,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Pi,
         },
     };
     Box::new(harness)

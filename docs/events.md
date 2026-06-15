@@ -196,14 +196,28 @@ format onto the event types above. Two broad strategies are used:
 
 - **Structured mapping.** When a harness emits a documented machine readable event
   stream, the harness layer parses it and maps each event to its precise
-  normalized type. [Codex](#codex-event-mapping) and
-  [Claude Code](#claude-code-event-mapping) are mapped this way.
+  normalized type. [Codex](#codex-event-mapping),
+  [Claude Code](#claude-code-event-mapping), [Cline](#cline-event-mapping),
+  [Goose](#goose-event-mapping), [Kilo Code](#kilo-code-event-mapping),
+  [OpenCode](#opencode-event-mapping), and [Pi](#pi-event-mapping) are mapped this
+  way.
 - **Best effort mapping.** For harnesses whose event formats are not yet modeled
   in detail, the harness layer surfaces output as it streams — recognizable
   diagnostics become warning or error events and everything else becomes an
   unknown event carrying the raw output. This still gives callers live visibility
   and full failure output, and a harness can be promoted to a structured mapping
-  later without changing the event contract.
+  later without changing the event contract. Antigravity is mapped this way: it
+  authenticates only with a Google account, so it cannot run in The Test
+  Cabinet's API-key-only mode, and its plain `--print` output carries no
+  structured stream to model.
+
+A structured mapping's exact field names are confirmed against real CLI output
+rather than a published schema. Where a harness's stream has not yet been
+captured from a real run, the mapping reads each field from a small set of
+candidate locations and falls back to an unknown event rather than guessing — and
+the [`raw.jsonl` and `events.jsonl`](./run-records.md#co-located-run-files) files
+a run records make it straightforward to confirm and refine those field names
+against an actual stream.
 
 Regardless of strategy, output a harness writes to standard error is surfaced as
 warning events while the run is in progress, and an invocation that exits non
@@ -313,3 +327,143 @@ range, and success — never the contents the operation returned.
 Claude Code does not emit a stable source for [orchestration](#orchestration)
 activity in this version, so that event type has no Claude Code source; if a
 future version adds one, the corresponding event type must be produced from it.
+
+## Cline Event Mapping
+
+Cline is run with `cline --json`, a line delimited JSON stream. Cline 3.x wraps
+every record in a top-level `type`: `hook_event` (lifecycle bookkeeping,
+consumed), `agent_event` (agent activity nested in its `event` object), and
+`run_result` (the terminal record, whose final text and usage are consumed
+elsewhere). The session id is captured from a `sessionId`, `session_id`, or `id`
+field; the `taskId`/`task_id` fields name the in-memory conversation, not the
+session, and are never captured.
+
+Within an `agent_event`, the nested event's `type` and `contentType` drive the
+mapping. Iteration boundaries, per-step `usage`, and `done` are consumed. A text
+block's streaming delta arrives on `content_start` and is consumed; the matching
+`content_end` carries the complete text and becomes an [agent](#agent-message)
+message. A tool call's input arrives on `content_start` (recorded against its
+`toolCallId`) and is resolved when the `content_end` carries the tool output,
+whose `success` flag — or, for a batch, every item succeeding — sets the success
+field. Tool names map as follows:
+
+| Cline tool | Event |
+| ---------- | ----- |
+| `run_commands`, `execute_command`, `bash` | one [command](#command) per command (a `commands` array or single string) |
+| `read_files`, `read_file` | one [read](#file-read) per file (a `files` array or single path) |
+| `editor`, `write_to_file`, `replace_in_file`, `new_rule` | [write](#file-write) |
+| `apply_patch` | one [write](#file-write) per file named by the patch markers |
+| `search_files`, `search_codebase` | [search](#file-search) |
+| `list_files` | [list](#directory-list) |
+| `skills`, `use_skill` | [skill](#skill) |
+| any other tool | [unknown](#unknown) |
+
+Older Cline versions emit a flat say/ask stream instead of the wrapped records.
+That legacy stream is handled conservatively: a `say` text or completion result
+and an `ask` followup become agent messages, reasoning is consumed, a diagnostic
+`say` becomes an [error](#harness-error), and everything else — including legacy
+tool activity, which is not reconstructed — becomes an unknown event. Cline does
+not emit a stable [orchestration](#orchestration) source in this version.
+
+## Goose Event Mapping
+
+Goose is run with `goose run --output-format stream-json`, a line delimited JSON
+stream of `message`, `notification`, `error`, and `complete` events. The session
+id comes from the named session Goose is launched with. The `complete` event
+carries usage and is consumed; it also flushes the final assistant text.
+
+A `message` event carries a serialized conversation message whose `content` is an
+array of blocks processed in order. Assistant `text` blocks are accumulated into
+one pending message — Goose streams a message as cumulative-or-delta records
+sharing one id, so a record that restates the pending text replaces it and any
+other same-id record is appended — and flushed as an [agent](#agent-message)
+message when other activity follows or the run completes. User text and
+`thinking`/`redactedThinking` blocks carry no activity. A `toolRequest` block is
+recorded against its call id and resolved when the matching `toolResponse`
+arrives, whose `toolResult.status` sets the success field. Tool names, after
+stripping an extension prefix such as `developer__`, map as follows:
+
+| Goose tool | Event |
+| ---------- | ----- |
+| `text_editor` | [read](#file-read) or [write](#file-write), by its command |
+| `read` | [read](#file-read) |
+| `write`, `edit` | [write](#file-write) |
+| `grep`, `glob` | [search](#file-search) |
+| `list` | [list](#directory-list) |
+| `shell` | [command](#command), or a recognized file operation |
+| `load_skill`, `skill` | [skill](#skill) |
+| `todo__*` | consumed — internal session state, no event |
+| any other tool | [unknown](#unknown) |
+
+`notification` events are surfaced as unknown rather than parsed from prose, and
+`error` events become [error](#harness-error) events.
+
+## Kilo Code Event Mapping
+
+Kilo Code is run with `kilo run --format json` and is built on OpenCode-style
+runtime events (see [OpenCode](#opencode-event-mapping)), so it shares that
+stream shape: `step_start`/`step_finish` boundaries (consumed; the latter carries
+usage), `reasoning` (consumed), `text` (an [agent](#agent-message) message),
+self-contained `tool_use` events, and `error` events. The session id is captured
+from `sessionID`. Kilo extends the OpenCode tool set with workflow and semantic
+tools:
+
+| Kilo tool | Event |
+| --------- | ----- |
+| `task`, `agent_manager` | [orchestration](#orchestration) when the spawned agent/session is identified, otherwise [unknown](#unknown) |
+| `codesearch` | [search](#file-search) |
+| all OpenCode tools | as in the [OpenCode mapping](#opencode-event-mapping) |
+
+## OpenCode Event Mapping
+
+OpenCode is run with `opencode run --format json`, a line delimited JSON stream
+of `step_start`, `text`, `tool_use`, `step_finish`, `reasoning`, and `error`
+events, with the session id at `sessionID`. Step boundaries carry usage and are
+consumed, reasoning is model thinking and is consumed, and a `text` event becomes
+an [agent](#agent-message) message.
+
+A `tool_use` event is self-contained — it carries the tool name, input, and a
+terminal status in one event, so no request/response correlation is needed — and
+its `completed`/`error` status sets the success field. Tool names map as follows:
+
+| OpenCode tool | Event |
+| ------------- | ----- |
+| `read` | [read](#file-read) |
+| `write`, `edit` | [write](#file-write) |
+| `apply_patch` | one [write](#file-write) per file named by the patch markers |
+| `grep`, `glob` | [search](#file-search) |
+| `bash` | [command](#command), or a recognized file operation |
+| `skill` | [skill](#skill) |
+| `lsp` | [search](#file-search) when it carries a query/symbol, otherwise [unknown](#unknown) |
+| any other tool (webfetch, websearch, todowrite, question, …) | [unknown](#unknown) |
+
+`error` events become [error](#harness-error) events. OpenCode does not expose
+[orchestration](#orchestration) in this version.
+
+## Pi Event Mapping
+
+Pi is run with `pi --mode json --print`, a line delimited JSON stream of lifecycle
+markers (`session`, `agent_start`/`agent_end`, `turn_start`/`turn_end`,
+`message_start`, `message_update`) and the two activity-bearing records,
+`message_end` and `tool_execution_end`. The session id is captured from the
+`session` record's `id`. Lifecycle markers, the partial `message_update` deltas,
+and `turn_end` (consumed for usage) emit no event.
+
+A `message_end` record whose message role is `assistant` becomes an
+[agent](#agent-message) message — its content is a string or an array of text
+parts — while a non-assistant message (such as the echoed user prompt) is
+ignored. A `tool_execution_end` record is self-contained and carries a
+`toolName`, structured input, and a terminal status; its status or `error` field
+sets the success field. Tool names are matched case-insensitively:
+
+| Pi tool | Event |
+| ------- | ----- |
+| `read` | [read](#file-read) |
+| `write`, `edit` | [write](#file-write) |
+| `search`, `grep`, `glob` | [search](#file-search) |
+| `list` | [list](#directory-list) |
+| `bash`, `shell` | [command](#command), or a recognized file operation |
+| any other tool | [unknown](#unknown) |
+
+Pi does not emit a dedicated [skill](#skill), [warning](#warning), or
+[orchestration](#orchestration) source in this version.

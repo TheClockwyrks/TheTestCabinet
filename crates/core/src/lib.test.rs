@@ -1,7 +1,71 @@
-//! Tests for the crate root, focused on the working-tree copy that produces a
-//! run's published `implementation/` directory.
+//! Tests for the crate root: the working-tree copy that produces a run's
+//! published `implementation/` directory, and the per-run JSONL stream files.
 
-use super::copy_tree;
+use super::{
+    EventFormat, EventKind, EventParser, HarnessEvent, OutputStream, RawOutputLine, copy_tree,
+    write_run_streams,
+};
+
+/// The two JSONL files must round-trip and, crucially, replaying `raw.jsonl`
+/// through a fresh parser must reproduce the events in `events.jsonl`. That
+/// replay property is the whole point of recording both files: a run ships the
+/// real harness output beside its translation so the parsing can be re-checked.
+#[test]
+fn run_streams_persist_raw_output_and_translation_for_replay() {
+    let lines = [
+        (
+            OutputStream::Stdout,
+            r#"{"type":"thread.started","thread_id":"t-1"}"#,
+        ),
+        (
+            OutputStream::Stdout,
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"hi"}}"#,
+        ),
+        (
+            OutputStream::Stdout,
+            r#"{"type":"item.completed","item":{"type":"command_execution","command":"npm test","exit_code":0}}"#,
+        ),
+        (OutputStream::Stderr, "a diagnostic"),
+    ];
+
+    // Translate as a run does, capturing the raw lines and the events together.
+    let mut parser = EventParser::new(EventFormat::Codex);
+    let mut raw = Vec::new();
+    let mut events = Vec::new();
+    for (stream, line) in lines {
+        raw.push(RawOutputLine {
+            stream,
+            line: line.to_string(),
+        });
+        events.extend(parser.ingest(stream, line));
+    }
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_run_streams(dir.path(), &raw, &events).expect("write run streams");
+
+    let raw_back: Vec<RawOutputLine> = std::fs::read_to_string(dir.path().join("raw.jsonl"))
+        .expect("read raw.jsonl")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("deserialize raw line"))
+        .collect();
+    assert_eq!(raw_back, raw);
+
+    let events_back: Vec<HarnessEvent> = std::fs::read_to_string(dir.path().join("events.jsonl"))
+        .expect("read events.jsonl")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("deserialize event line"))
+        .collect();
+    assert_eq!(events_back, events);
+
+    let mut replay = EventParser::new(EventFormat::Codex);
+    let replayed: Vec<EventKind> = raw_back
+        .iter()
+        .flat_map(|entry| replay.ingest(entry.stream, &entry.line))
+        .map(|event| event.kind)
+        .collect();
+    let original: Vec<EventKind> = events.iter().map(|event| event.kind.clone()).collect();
+    assert_eq!(replayed, original);
+}
 
 /// A package manager's `.bin/*` entries are symlinks whose script bodies import
 /// siblings via paths relative to the link's real location. Dereferencing them

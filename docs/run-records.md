@@ -72,3 +72,25 @@ The harness version is not duplicated here; it lives in the subject.
 
 - Whether the run completed, failed, or could not be evaluated, with enough detail
   to understand a failure.
+
+## Co-located Run Files
+
+The record is written into a per-run directory alongside the run's other
+artifacts:
+
+- `run-record.json` — the run record described above.
+- `implementation/` — a copy of the produced working tree.
+- `raw.jsonl` — the harness's raw output, one JSON object per captured line in
+  arrival order, each tagging the [stream](./events.md) the line came from and
+  the line's verbatim text.
+- `events.jsonl` — the [normalized events](./events.md) translated from that raw
+  output, one event per line, in the order they were produced.
+- `writeup.md` — the run's [review](./results.md#reviews), when one has been
+  written.
+
+Recording the raw output beside its translation makes a run's event
+classification auditable: replaying `raw.jsonl` through the harness layer's
+translation reproduces `events.jsonl`, so a real run doubles as a fixture for
+checking the parsing logic. Shipping both files with a run also lets the raw
+stream be inspected directly when diagnosing a harness, and lets a harness's
+translation be re-derived if its mapping later improves.

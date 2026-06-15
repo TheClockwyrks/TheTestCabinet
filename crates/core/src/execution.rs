@@ -99,6 +99,20 @@ pub enum OutputStream {
     Stderr,
 }
 
+/// One captured line of a command's output, tagged with the stream it came from.
+///
+/// A run records every raw line in arrival order so the harness's untranslated
+/// output can be replayed through an [`EventParser`](crate::event::EventParser)
+/// and the translation checked against the recorded normalized events.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawOutputLine {
+    /// The stream the line was written to.
+    pub stream: OutputStream,
+    /// The line, without its trailing newline.
+    pub line: String,
+}
+
 /// Observes a command's output line by line as it is produced.
 ///
 /// A streaming exec calls this for each line as the underlying process writes

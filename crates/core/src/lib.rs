@@ -48,7 +48,7 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    OutputSink, OutputStream, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
+    OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -445,8 +445,43 @@ where
         };
 
         self.write_record(&record, &artifacts)?;
+        // Persist the harness's raw output and its translation beside the record
+        // so a run's event classification can be inspected and re-checked.
+        write_run_streams(
+            &self.output_dir.join(&record.id),
+            &outcome.raw_output,
+            &outcome.translated_events,
+        )?;
         Ok(record)
     }
+}
+
+/// Write a run's raw harness output and its translated events as two JSONL files
+/// in the run directory: `raw.jsonl` carries one stream-tagged line per entry in
+/// arrival order, and `events.jsonl` carries one normalized event per line.
+///
+/// Together they make a run's translation auditable: replaying `raw.jsonl`
+/// through an [`EventParser`] reproduces `events.jsonl`, so the parsing logic can
+/// be checked against real harness output captured from an actual run.
+fn write_run_streams(
+    run_dir: &std::path::Path,
+    raw: &[RawOutputLine],
+    events: &[HarnessEvent],
+) -> Result<()> {
+    write_jsonl(&run_dir.join("raw.jsonl"), raw)?;
+    write_jsonl(&run_dir.join("events.jsonl"), events)?;
+    Ok(())
+}
+
+/// Serialize each item as its own JSON line and write them to `path`.
+fn write_jsonl<T: serde::Serialize>(path: &std::path::Path, items: &[T]) -> Result<()> {
+    let mut contents = String::new();
+    for item in items {
+        contents.push_str(&serde_json::to_string(item)?);
+        contents.push('\n');
+    }
+    std::fs::write(path, contents)?;
+    Ok(())
 }
 
 /// Collect a fixed list of string slices into the owned `Vec<String>` the

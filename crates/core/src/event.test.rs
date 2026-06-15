@@ -19,12 +19,33 @@ fn claude(line: &str) -> Vec<HarnessEvent> {
 /// final line produced. This is how a tool use (recorded silently from an
 /// `assistant` event) is paired with the `user` tool-result that resolves it.
 fn claude_seq(lines: &[&str]) -> Vec<HarnessEvent> {
-    let mut parser = EventParser::new(EventFormat::Claude);
+    seq_last(EventFormat::Claude, lines)
+}
+
+/// Ingest one stdout line through a fresh parser of the given format.
+fn single(format: EventFormat, line: &str) -> Vec<HarnessEvent> {
+    EventParser::new(format).ingest(OutputStream::Stdout, line)
+}
+
+/// Drive one parser through `lines`, returning the events the final line
+/// produced — for harnesses that record a tool call on one line and resolve it
+/// on a later one.
+fn seq_last(format: EventFormat, lines: &[&str]) -> Vec<HarnessEvent> {
+    let mut parser = EventParser::new(format);
     let mut events = Vec::new();
     for line in lines {
         events = parser.ingest(OutputStream::Stdout, line);
     }
     events
+}
+
+/// Drive one parser through `lines`, returning every event produced across them.
+fn parse_all(format: EventFormat, lines: &[&str]) -> Vec<HarnessEvent> {
+    let mut parser = EventParser::new(format);
+    lines
+        .iter()
+        .flat_map(|line| parser.ingest(OutputStream::Stdout, line))
+        .collect()
 }
 
 /// The single event a line is expected to produce, panicking otherwise.
@@ -536,6 +557,356 @@ fn claude_non_json_stdout_is_a_warning() {
         one(claude("not json at all")),
         EventKind::Warning { .. }
     ));
+}
+
+#[test]
+fn opencode_text_and_self_contained_tools_classify() {
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"text","part":{"text":"working"}}"#,
+        )),
+        EventKind::Agent {
+            message: "working".to_string(),
+        }
+    );
+
+    // A nested tool event with a line range from offset + limit.
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","part":{"tool":"read","state":{"status":"completed","input":{"path":"/work/a.ts","offset":5,"limit":10}}}}"#,
+        )),
+        EventKind::Read {
+            path: "/work/a.ts".to_string(),
+            start_line: Some(5),
+            end_line: Some(14),
+            is_success: Some(true),
+        }
+    );
+
+    // A flat tool event whose failed status is reflected.
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","tool":"bash","status":"error","input":{"command":"npm test"}}"#,
+        )),
+        EventKind::Command {
+            command: "npm test".to_string(),
+            working_directory: None,
+            exit_code: None,
+            is_success: Some(false),
+        }
+    );
+
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","tool":"grep","status":"completed","input":{"pattern":"needle","path":"/work/src"}}"#,
+        )),
+        EventKind::Search {
+            query: "needle".to_string(),
+            path: Some("/work/src".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn opencode_steps_reasoning_errors_and_unknowns() {
+    assert!(
+        single(
+            EventFormat::Opencode,
+            r#"{"type":"step_finish","tokens":{"input":1}}"#
+        )
+        .is_empty()
+    );
+    assert!(
+        single(
+            EventFormat::Opencode,
+            r#"{"type":"reasoning","part":{"text":"hmm"}}"#
+        )
+        .is_empty()
+    );
+    assert!(matches!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"error","error":"boom"}"#
+        )),
+        EventKind::Error { .. }
+    ));
+    // A tool with no normalized mapping is surfaced verbatim.
+    assert!(matches!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","tool":"webfetch","status":"completed","input":{"url":"https://x"}}"#,
+        )),
+        EventKind::Unknown { .. }
+    ));
+}
+
+#[test]
+fn kilo_captures_session_and_extends_opencode_tools() {
+    // Session id from one event applies to later events.
+    let events = seq_last(
+        EventFormat::Kilo,
+        &[
+            r#"{"type":"step_start","sessionID":"k-1"}"#,
+            r#"{"type":"tool_use","tool":"write","status":"completed","input":{"path":"/work/x.ts"}}"#,
+        ],
+    );
+    assert_eq!(events[0].session_id.as_deref(), Some("k-1"));
+    assert_eq!(
+        events[0].kind,
+        EventKind::Write {
+            path: "/work/x.ts".to_string(),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+
+    // A workflow tool that identifies its subagent becomes orchestration.
+    assert_eq!(
+        one(single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","tool":"task","status":"completed","input":{"name":"reviewer","sessionId":"sub-1"}}"#,
+        )),
+        EventKind::Orchestration {
+            action: OrchestrationAction::SubagentCompleted,
+            subagent_id: Some("sub-1".to_string()),
+            subagent_name: Some("reviewer".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn pi_messages_and_self_contained_tools_classify() {
+    // The session record sets the id; a completed assistant message is agent text.
+    let events = seq_last(
+        EventFormat::Pi,
+        &[
+            r#"{"type":"session","id":"pi-1"}"#,
+            r#"{"type":"message_end","message":{"role":"assistant","content":"hi there"}}"#,
+        ],
+    );
+    assert_eq!(events[0].session_id.as_deref(), Some("pi-1"));
+    assert_eq!(
+        events[0].kind,
+        EventKind::Agent {
+            message: "hi there".to_string(),
+        }
+    );
+
+    // Array message content joins its text parts.
+    assert_eq!(
+        one(single(
+            EventFormat::Pi,
+            r#"{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}}"#,
+        )),
+        EventKind::Agent {
+            message: "ab".to_string(),
+        }
+    );
+
+    // The echoed user message and partial deltas are lifecycle noise.
+    assert!(
+        single(
+            EventFormat::Pi,
+            r#"{"type":"message_end","message":{"role":"user","content":"prompt"}}"#
+        )
+        .is_empty()
+    );
+    assert!(
+        single(
+            EventFormat::Pi,
+            r#"{"type":"message_update","assistantMessageEvent":{"partial":true}}"#
+        )
+        .is_empty()
+    );
+
+    assert_eq!(
+        one(single(
+            EventFormat::Pi,
+            r#"{"type":"tool_execution_end","toolName":"read","status":"completed","input":{"path":"/work/a.ts"}}"#,
+        )),
+        EventKind::Read {
+            path: "/work/a.ts".to_string(),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+
+    // Tool names match case-insensitively, and an error marks failure.
+    assert_eq!(
+        one(single(
+            EventFormat::Pi,
+            r#"{"type":"tool_execution_end","toolName":"Bash","error":"nope","input":{"command":"make"}}"#,
+        )),
+        EventKind::Command {
+            command: "make".to_string(),
+            working_directory: None,
+            exit_code: None,
+            is_success: Some(false),
+        }
+    );
+}
+
+#[test]
+fn goose_accumulates_assistant_text_and_flushes_at_completion() {
+    // Two same-id records — a cumulative restatement — yield one agent message.
+    let events = parse_all(
+        EventFormat::Goose,
+        &[
+            r#"{"type":"message","id":"m1","message":{"role":"assistant","content":[{"type":"text","text":"hel"}]}}"#,
+            r#"{"type":"message","id":"m1","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#,
+            r#"{"type":"complete","usage":{}}"#,
+        ],
+    );
+    assert_eq!(
+        events,
+        vec![HarnessEvent {
+            timestamp: events[0].timestamp.clone(),
+            session_id: None,
+            kind: EventKind::Agent {
+                message: "hello".to_string(),
+            },
+        }]
+    );
+}
+
+#[test]
+fn goose_tool_request_response_pairs_and_consumes_todos() {
+    // A developer text-editor view, recorded on the request and resolved on the
+    // response, is a read.
+    let read = seq_last(
+        EventFormat::Goose,
+        &[
+            r#"{"type":"message","message":{"role":"assistant","content":[{"type":"toolRequest","id":"t1","toolCall":{"status":"success","value":{"name":"developer__text_editor","arguments":{"command":"view","path":"/work/a.ts"}}}}]}}"#,
+            r#"{"type":"message","message":{"role":"user","content":[{"type":"toolResponse","id":"t1","toolResult":{"status":"success"}}]}}"#,
+        ],
+    );
+    assert_eq!(
+        one(read),
+        EventKind::Read {
+            path: "/work/a.ts".to_string(),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+
+    // The todo extension only manages internal state, so it produces no event.
+    assert!(
+        seq_last(
+            EventFormat::Goose,
+            &[
+                r#"{"type":"message","message":{"role":"assistant","content":[{"type":"toolRequest","id":"d1","toolCall":{"status":"success","value":{"name":"todo__write","arguments":{}}}}]}}"#,
+                r#"{"type":"message","message":{"role":"user","content":[{"type":"toolResponse","id":"d1","toolResult":{"status":"success"}}]}}"#,
+            ],
+        )
+        .is_empty()
+    );
+
+    assert!(matches!(
+        one(single(
+            EventFormat::Goose,
+            r#"{"type":"error","error":"explode"}"#
+        )),
+        EventKind::Error { .. }
+    ));
+}
+
+#[test]
+fn cline_agent_events_text_and_batched_tools() {
+    assert_eq!(
+        one(single(
+            EventFormat::Cline,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"text","text":"done"}}"#,
+        )),
+        EventKind::Agent {
+            message: "done".to_string(),
+        }
+    );
+
+    // A batched read tool, recorded on content_start and resolved on content_end,
+    // yields one read per file with the output's success.
+    let reads = seq_last(
+        EventFormat::Cline,
+        &[
+            r#"{"type":"agent_event","event":{"type":"content_start","contentType":"tool","toolCallId":"c1","toolName":"read_files","input":{"files":["/work/a.ts","/work/b.ts"]}}}"#,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"tool","toolCallId":"c1","output":{"success":true}}}"#,
+        ],
+    );
+    let paths: Vec<_> = reads
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::Read {
+                path, is_success, ..
+            } => {
+                assert_eq!(*is_success, Some(true));
+                path.clone()
+            }
+            other => panic!("expected read, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(paths, vec!["/work/a.ts", "/work/b.ts"]);
+
+    // A batched command tool emits one command per entry, carrying the failure.
+    let commands = seq_last(
+        EventFormat::Cline,
+        &[
+            r#"{"type":"agent_event","event":{"type":"content_start","contentType":"tool","toolCallId":"c2","toolName":"run_commands","input":{"commands":["npm i","npm test"]}}}"#,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"tool","toolCallId":"c2","output":{"success":false}}}"#,
+        ],
+    );
+    assert!(commands.iter().all(|event| matches!(
+        event.kind,
+        EventKind::Command {
+            is_success: Some(false),
+            ..
+        }
+    )));
+    assert_eq!(commands.len(), 2);
+}
+
+#[test]
+fn cline_captures_session_not_task_id_and_reads_legacy_text() {
+    let mut parser = EventParser::new(EventFormat::Cline);
+    // A hook event's taskId is the conversation, not the session, so it is not
+    // captured as the session id.
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"hook_event","taskId":"task-1"}"#,
+    );
+    let before = parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"agent_event","event":{"type":"content_end","contentType":"text","text":"x"}}"#,
+    );
+    assert_eq!(before[0].session_id, None);
+    // A real session id is captured and applied to later events.
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"run_result","sessionId":"sess-9"}"#,
+    );
+    let after = parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"agent_event","event":{"type":"content_end","contentType":"text","text":"y"}}"#,
+    );
+    assert_eq!(after[0].session_id.as_deref(), Some("sess-9"));
+
+    // The legacy say/ask stream still surfaces prose as agent messages.
+    assert_eq!(
+        one(single(
+            EventFormat::Cline,
+            r#"{"type":"say","say":"text","text":"hi"}"#
+        )),
+        EventKind::Agent {
+            message: "hi".to_string(),
+        }
+    );
 }
 
 #[test]

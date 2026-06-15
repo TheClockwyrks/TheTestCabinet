@@ -205,6 +205,19 @@ pub enum EventFormat {
     /// Claude Code's `claude --print --output-format stream-json` JSONL stream,
     /// mapped per `docs/events.md`.
     Claude,
+    /// Cline's `cline --json` JSONL stream, mapped per `docs/events.md`.
+    Cline,
+    /// Goose's `goose run --output-format stream-json` JSONL stream, mapped per
+    /// `docs/events.md`.
+    Goose,
+    /// Kilo Code's `kilo run --format json` JSONL stream, mapped per
+    /// `docs/events.md`.
+    Kilo,
+    /// OpenCode's `opencode run --format json` JSONL stream, mapped per
+    /// `docs/events.md`.
+    Opencode,
+    /// Pi's `pi --mode json --print` JSONL stream, mapped per `docs/events.md`.
+    Pi,
     /// A best effort mapping for harnesses not yet modeled in detail: standard
     /// output lines become unknown events and diagnostics surface as warnings.
     Generic,
@@ -222,10 +235,18 @@ pub struct EventParser {
     /// Claude tool uses seen in `assistant` events, awaiting the matching
     /// tool-result in a later `user` event. Empty for other formats.
     claude_tool_uses: Vec<ClaudeToolUse>,
-    /// The Claude session working directory, captured from the `system` init
-    /// event, used to resolve relative paths to absolute ones. Unset for other
-    /// formats and until the init event is seen.
-    claude_workspace: Option<String>,
+    /// Tool calls recorded from a request event, awaiting the response that
+    /// resolves them, for harnesses that split a call across two events (Cline,
+    /// Goose). Empty for other formats.
+    pending_tools: Vec<PendingTool>,
+    /// Accumulated Goose assistant text for the in-progress message, as
+    /// `(message id, text)`, flushed as an agent event when activity follows or
+    /// the run completes. Goose streams a message as cumulative-or-delta records
+    /// sharing one id, so the fragments are joined rather than emitted each.
+    goose_pending: Option<(String, String)>,
+    /// The session working directory used to resolve relative paths to absolute
+    /// ones, captured from a harness's session/init event. Unset until seen.
+    workspace: Option<String>,
 }
 
 impl EventParser {
@@ -235,7 +256,9 @@ impl EventParser {
             format,
             session_id: None,
             claude_tool_uses: Vec::new(),
-            claude_workspace: None,
+            pending_tools: Vec::new(),
+            goose_pending: None,
+            workspace: None,
         }
     }
 
@@ -260,6 +283,11 @@ impl EventParser {
             OutputStream::Stdout => match self.format {
                 EventFormat::Codex => self.parse_codex(trimmed),
                 EventFormat::Claude => self.parse_claude(trimmed),
+                EventFormat::Cline => self.parse_cline(trimmed),
+                EventFormat::Goose => self.parse_goose(trimmed),
+                EventFormat::Kilo => self.parse_kilo(trimmed),
+                EventFormat::Opencode => self.parse_opencode(trimmed),
+                EventFormat::Pi => self.parse_pi(trimmed),
                 EventFormat::Generic => self.parse_generic(trimmed),
             },
         }
@@ -403,7 +431,7 @@ impl EventParser {
         if let Some(cwd) = value.get("cwd").and_then(Value::as_str)
             && !cwd.is_empty()
         {
-            self.claude_workspace = Some(cwd.to_string());
+            self.workspace = Some(cwd.to_string());
         }
         match value.get("subtype").and_then(Value::as_str) {
             Some("init" | "status" | "thinking_tokens") => Vec::new(),
@@ -422,7 +450,7 @@ impl EventParser {
         else {
             return vec![self.event(EventKind::Unknown { raw: value.clone() })];
         };
-        let workspace = self.claude_workspace.clone();
+        let workspace = self.workspace.clone();
         let mut events = Vec::new();
         // Text blocks within one message are one logical message; join them so a
         // message split across blocks is reported as a single agent event.
@@ -493,7 +521,7 @@ impl EventParser {
                 .collect();
             if matches.len() == 1 {
                 let tool_use = self.claude_tool_uses.remove(matches[0]);
-                let workspace = self.claude_workspace.clone();
+                let workspace = self.workspace.clone();
                 return tool_use
                     .operation
                     .into_event_kinds(success, workspace.as_deref())
@@ -507,9 +535,7 @@ impl EventParser {
         }
         // No matching tool use: a read result still names the file it read, so
         // it can be recovered even when its tool use was not captured.
-        if let Some(kind) =
-            claude_read_result_fallback(block, success, self.claude_workspace.as_deref())
-        {
+        if let Some(kind) = claude_read_result_fallback(block, success, self.workspace.as_deref()) {
             return vec![self.event(kind)];
         }
         vec![self.event(EventKind::Unknown { raw: block.clone() })]
@@ -541,6 +567,453 @@ impl EventParser {
             })];
         }
         Vec::new()
+    }
+
+    /// Capture the first non-empty session id seen under any of `keys`.
+    fn capture_session(&mut self, value: &Value, keys: &[&str]) {
+        if self.session_id.is_none()
+            && let Some(id) = lookup_str(value, keys).filter(|id| !id.is_empty())
+        {
+            self.session_id = Some(id.to_string());
+        }
+    }
+
+    /// Decode a JSONL stdout line, surfacing a non-JSON line as a warning since
+    /// these harnesses emit a JSON stream and a bare line is a diagnostic.
+    fn json_line(&self, line: &str) -> std::result::Result<Value, Vec<HarnessEvent>> {
+        serde_json::from_str::<Value>(line).map_err(|_| {
+            vec![self.event(EventKind::Warning {
+                message: line.to_string(),
+                code: None,
+            })]
+        })
+    }
+
+    /// Resolve a tool call recorded earlier against the response now arriving,
+    /// matching on a unique id. The `classify` closure maps the recorded tool to
+    /// its normalized event kinds; an unmatched or unclassifiable response is
+    /// surfaced verbatim so the stream stays lossless.
+    fn resolve_pending_tool(
+        &mut self,
+        id: Option<&str>,
+        is_success: Option<bool>,
+        raw: &Value,
+        classify: ToolClassifier,
+    ) -> Vec<HarnessEvent> {
+        if let Some(id) = id
+            && let Some(position) = self.pending_tools.iter().position(|tool| tool.id == id)
+        {
+            let tool = self.pending_tools.remove(position);
+            let workspace = self.workspace.clone();
+            return match classify(&tool.name, &tool.input, is_success, workspace.as_deref()) {
+                Some(kinds) => kinds.into_iter().map(|kind| self.event(kind)).collect(),
+                None => vec![self.event(EventKind::Unknown { raw: raw.clone() })],
+            };
+        }
+        vec![self.event(EventKind::Unknown { raw: raw.clone() })]
+    }
+
+    /// Map one line of Cline's `cline --json` JSONL stream.
+    fn parse_cline(&mut self, line: &str) -> Vec<HarnessEvent> {
+        let value = match self.json_line(line) {
+            Ok(value) => value,
+            Err(events) => return events,
+        };
+        // `taskId`/`task_id` name the in-memory conversation, not the session, so
+        // only the dedicated session fields are captured.
+        self.capture_session(&value, &["sessionId", "session_id", "id"]);
+        match value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            // Hook bookkeeping and the terminal record (its text and usage are
+            // consumed elsewhere) carry no agent activity.
+            "hook_event" | "run_result" => Vec::new(),
+            "agent_event" => self.parse_cline_agent_event(&value),
+            // Older Cline versions emit a flat say/ask stream.
+            _ => self.parse_cline_legacy(&value),
+        }
+    }
+
+    /// Handle a Cline `agent_event`, whose real event is nested in `event`.
+    fn parse_cline_agent_event(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        let Some(inner) = value.get("event") else {
+            return vec![self.event(EventKind::Unknown { raw: value.clone() })];
+        };
+        let inner_type = inner
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let content_type = inner
+            .get("contentType")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        match inner_type {
+            // Iteration boundaries, per-step usage, and completion are consumed;
+            // totals come from the `run_result` record instead.
+            "iteration_start" | "iteration_end" | "usage" | "done" => Vec::new(),
+            // A tool's input arrives on content_start; the streaming text delta
+            // is consumed because content_end carries the complete text.
+            "content_start" => {
+                if content_type == "tool" {
+                    self.record_cline_tool(inner);
+                }
+                Vec::new()
+            }
+            "content_end" => match content_type {
+                "text" => match inner
+                    .get("text")
+                    .or_else(|| inner.get("content"))
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty())
+                {
+                    Some(text) => vec![self.event(EventKind::Agent {
+                        message: text.to_string(),
+                    })],
+                    None => Vec::new(),
+                },
+                "tool" => self.complete_cline_tool(inner),
+                _ => vec![self.event(EventKind::Unknown { raw: inner.clone() })],
+            },
+            _ => vec![self.event(EventKind::Unknown { raw: inner.clone() })],
+        }
+    }
+
+    /// Record a Cline tool call's input from its content_start so the matching
+    /// content_end can resolve it with the tool's terminal success.
+    fn record_cline_tool(&mut self, inner: &Value) {
+        let id = inner.get("toolCallId").and_then(Value::as_str);
+        let name = inner.get("toolName").and_then(Value::as_str);
+        if let (Some(id), Some(name)) = (id, name) {
+            self.pending_tools.push(PendingTool {
+                id: id.to_string(),
+                name: name.to_string(),
+                input: inner.get("input").cloned().unwrap_or(Value::Null),
+            });
+        }
+    }
+
+    /// Resolve a Cline tool call's content_end into its normalized event(s).
+    fn complete_cline_tool(&mut self, inner: &Value) -> Vec<HarnessEvent> {
+        let success = cline_tool_success(inner.get("output"));
+        let id = inner.get("toolCallId").and_then(Value::as_str);
+        // The content_end may also restate the name and input, so a call whose
+        // start was missed can still be classified from this record alone.
+        let unmatched = id.is_none()
+            || !self
+                .pending_tools
+                .iter()
+                .any(|tool| Some(tool.id.as_str()) == id);
+        if unmatched && let Some(name) = inner.get("toolName").and_then(Value::as_str) {
+            let input = inner.get("input").cloned().unwrap_or(Value::Null);
+            let workspace = self.workspace.clone();
+            return match classify_cline_tool(name, &input, success, workspace.as_deref()) {
+                Some(kinds) => kinds.into_iter().map(|kind| self.event(kind)).collect(),
+                None => vec![self.event(EventKind::Unknown { raw: inner.clone() })],
+            };
+        }
+        self.resolve_pending_tool(id, success, inner, classify_cline_tool)
+    }
+
+    /// Handle the legacy flat say/ask stream older Cline versions emit. Tool
+    /// activity in that stream is not reconstructed; only prose is mapped, and
+    /// anything ambiguous is surfaced verbatim.
+    fn parse_cline_legacy(&self, value: &Value) -> Vec<HarnessEvent> {
+        match value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "say" => match value.get("say").and_then(Value::as_str).unwrap_or_default() {
+                "text" | "completion_result" => self.cline_legacy_text(value),
+                // Reasoning is model thinking, not agent progress.
+                "reasoning" => Vec::new(),
+                "error" | "api_req_failed" => vec![self.event(EventKind::Error {
+                    message: string_field(value, "text", "cline reported an error"),
+                    code: None,
+                })],
+                _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+            },
+            "ask" => match value.get("ask").and_then(Value::as_str).unwrap_or_default() {
+                "followup" => self.cline_legacy_text(value),
+                _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+            },
+            _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+        }
+    }
+
+    /// Emit a legacy say/ask message's prose as an agent event, when present.
+    fn cline_legacy_text(&self, value: &Value) -> Vec<HarnessEvent> {
+        match value
+            .get("text")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+        {
+            Some(text) => vec![self.event(EventKind::Agent {
+                message: text.to_string(),
+            })],
+            None => Vec::new(),
+        }
+    }
+
+    /// Map one line of Goose's `goose run --output-format stream-json` stream.
+    fn parse_goose(&mut self, line: &str) -> Vec<HarnessEvent> {
+        let value = match self.json_line(line) {
+            Ok(value) => value,
+            Err(events) => return events,
+        };
+        match value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "message" => self.parse_goose_message(&value),
+            "notification" => self.parse_goose_notification(&value),
+            "error" => {
+                let mut events = Vec::new();
+                self.flush_goose_text(&mut events);
+                events.push(self.event(EventKind::Error {
+                    message: harness_error_message(&value, "goose reported an error"),
+                    code: None,
+                }));
+                events
+            }
+            // The run boundary carries usage, consumed elsewhere; flush the final
+            // assistant text so it is not lost.
+            "complete" => {
+                let mut events = Vec::new();
+                self.flush_goose_text(&mut events);
+                events
+            }
+            _ => {
+                let mut events = Vec::new();
+                self.flush_goose_text(&mut events);
+                events.push(self.event(EventKind::Unknown { raw: value.clone() }));
+                events
+            }
+        }
+    }
+
+    /// Process a Goose `message` event's content blocks in order.
+    fn parse_goose_message(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        let Some(message) = value.get("message") else {
+            return vec![self.event(EventKind::Unknown { raw: value.clone() })];
+        };
+        let role = message.get("role").and_then(Value::as_str);
+        let id = dig(value, &[&["id"], &["message", "id"]])
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let Some(content) = message.get("content").and_then(Value::as_array) else {
+            return Vec::new();
+        };
+        let mut events = Vec::new();
+        for block in content {
+            match block
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+            {
+                "text" => {
+                    // Only assistant text is agent progress; user text is the
+                    // echoed prompt.
+                    if role == Some("assistant")
+                        && let Some(text) = block
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .filter(|t| !t.is_empty())
+                    {
+                        self.push_goose_text(&id, text, &mut events);
+                    }
+                }
+                "thinking" | "redactedThinking" => {}
+                "toolRequest" => {
+                    self.flush_goose_text(&mut events);
+                    match goose_tool_request(block) {
+                        Some(tool) => self.pending_tools.push(tool),
+                        None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+                    }
+                }
+                "toolResponse" => {
+                    self.flush_goose_text(&mut events);
+                    let id = goose_tool_id(block, "toolResponse");
+                    let success = goose_response_success(block);
+                    events.extend(self.resolve_pending_tool(
+                        id.as_deref(),
+                        success,
+                        block,
+                        classify_goose_tool,
+                    ));
+                }
+                _ => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+            }
+        }
+        events
+    }
+
+    /// Accumulate a Goose assistant text fragment into the pending message,
+    /// flushing the previous message first when the id changes.
+    fn push_goose_text(&mut self, id: &str, text: &str, events: &mut Vec<HarnessEvent>) {
+        if let Some((pending_id, pending_text)) = &mut self.goose_pending
+            && pending_id == id
+        {
+            // A record that restates the pending text is a cumulative update; any
+            // other same-id record is a delta whose fragment is appended.
+            if text.starts_with(pending_text.as_str()) {
+                *pending_text = text.to_string();
+            } else {
+                pending_text.push_str(text);
+            }
+            return;
+        }
+        self.flush_goose_text(events);
+        self.goose_pending = Some((id.to_string(), text.to_string()));
+    }
+
+    /// Emit the pending Goose assistant text as an agent event, if any.
+    fn flush_goose_text(&mut self, events: &mut Vec<HarnessEvent>) {
+        if let Some((_, text)) = self.goose_pending.take() {
+            events.push(self.event(EventKind::Agent { message: text }));
+        }
+    }
+
+    /// Map a Goose `notification`: structured subagent logs become orchestration
+    /// and everything else is surfaced verbatim rather than parsed from prose.
+    fn parse_goose_notification(&self, value: &Value) -> Vec<HarnessEvent> {
+        vec![self.event(EventKind::Unknown { raw: value.clone() })]
+    }
+
+    /// Map one line of Kilo Code's `kilo run --format json` stream.
+    fn parse_kilo(&mut self, line: &str) -> Vec<HarnessEvent> {
+        self.parse_step_stream(line, classify_kilo_tool)
+    }
+
+    /// Map one line of OpenCode's `opencode run --format json` stream.
+    fn parse_opencode(&mut self, line: &str) -> Vec<HarnessEvent> {
+        self.parse_step_stream(line, classify_opencode_tool)
+    }
+
+    /// Map one line of an OpenCode-style step stream (shared by OpenCode and the
+    /// Kilo Code runtime built on it). Tool events are self-contained, so each is
+    /// classified in place by the supplied `classify` rather than correlated.
+    fn parse_step_stream(&mut self, line: &str, classify: ToolClassifier) -> Vec<HarnessEvent> {
+        let value = match self.json_line(line) {
+            Ok(value) => value,
+            Err(events) => return events,
+        };
+        self.capture_session(&value, &["sessionID", "session_id", "sessionId"]);
+        match value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            // Step boundaries carry usage, and reasoning is model thinking.
+            "step_start" | "step_finish" | "reasoning" => Vec::new(),
+            "text" => match dig(&value, &[&["part", "text"], &["text"]])
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            {
+                Some(text) => vec![self.event(EventKind::Agent {
+                    message: text.to_string(),
+                })],
+                None => Vec::new(),
+            },
+            "tool_use" => {
+                let name = dig(
+                    &value,
+                    &[&["part", "tool"], &["tool"], &["toolName"], &["name"]],
+                )
+                .and_then(Value::as_str);
+                let input = dig(
+                    &value,
+                    &[
+                        &["part", "state", "input"],
+                        &["state", "input"],
+                        &["input"],
+                        &["arguments"],
+                    ],
+                )
+                .cloned()
+                .unwrap_or(Value::Null);
+                let success = step_tool_success(&value);
+                let workspace = self.workspace.clone();
+                match name.and_then(|name| classify(name, &input, success, workspace.as_deref())) {
+                    Some(kinds) if !kinds.is_empty() => {
+                        kinds.into_iter().map(|kind| self.event(kind)).collect()
+                    }
+                    _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+                }
+            }
+            "error" => vec![self.event(EventKind::Error {
+                message: harness_error_message(&value, "harness reported an error"),
+                code: None,
+            })],
+            _ => vec![self.event(EventKind::Unknown { raw: value })],
+        }
+    }
+
+    /// Map one line of Pi's `pi --mode json --print` JSONL stream.
+    fn parse_pi(&mut self, line: &str) -> Vec<HarnessEvent> {
+        let value = match self.json_line(line) {
+            Ok(value) => value,
+            Err(events) => return events,
+        };
+        let event_type = value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        // Only the session record carries the session id.
+        if event_type == "session" {
+            self.capture_session(&value, &["id", "sessionId", "session_id"]);
+        }
+        match event_type {
+            // Lifecycle markers and partial deltas are not agent activity; the
+            // completed message and tool events below carry it.
+            "session" | "agent_start" | "agent_end" | "turn_start" | "turn_end"
+            | "message_start" | "message_update" => Vec::new(),
+            "message_end" => self.parse_pi_message(&value),
+            "tool_execution_end" => self.parse_pi_tool(&value),
+            _ => vec![self.event(EventKind::Unknown { raw: value })],
+        }
+    }
+
+    /// Emit a completed Pi assistant message as an agent event. Non-assistant
+    /// roles (such as the echoed user message) are lifecycle noise.
+    fn parse_pi_message(&self, value: &Value) -> Vec<HarnessEvent> {
+        let Some(message) = dig(
+            value,
+            &[&["message"], &["assistantMessageEvent", "message"]],
+        ) else {
+            return Vec::new();
+        };
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            return Vec::new();
+        }
+        let text = pi_message_text(message);
+        if text.is_empty() {
+            return Vec::new();
+        }
+        vec![self.event(EventKind::Agent { message: text })]
+    }
+
+    /// Resolve a completed Pi `tool_execution_end` into its normalized event(s).
+    fn parse_pi_tool(&self, value: &Value) -> Vec<HarnessEvent> {
+        let name = lookup_str(value, &["toolName", "tool_name", "tool", "name"]);
+        let input = dig(
+            value,
+            &[&["input"], &["arguments"], &["args"], &["toolInput"]],
+        )
+        .cloned()
+        .unwrap_or(Value::Null);
+        let success = pi_tool_success(value);
+        let workspace = self.workspace.clone();
+        match name.and_then(|name| classify_pi_tool(name, &input, success, workspace.as_deref())) {
+            Some(kinds) if !kinds.is_empty() => {
+                kinds.into_iter().map(|kind| self.event(kind)).collect()
+            }
+            _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+        }
     }
 }
 
@@ -792,19 +1265,19 @@ impl ClaudeToolOperation {
                         .map(|limit| start.saturating_add(limit).saturating_sub(1))
                 });
                 Some(Self::Read {
-                    path: normalize_claude_path(path, workspace),
+                    path: normalize_path(path, workspace),
                     start_line,
                     end_line,
                 })
             }
             "Write" | "Edit" | "MultiEdit" => Some(Self::Write {
-                path: normalize_claude_path(
+                path: normalize_path(
                     lookup_str(input, &["file_path", "filePath", "path"])?,
                     workspace,
                 ),
             }),
             "NotebookEdit" => Some(Self::Write {
-                path: normalize_claude_path(
+                path: normalize_path(
                     lookup_str(
                         input,
                         &[
@@ -823,20 +1296,20 @@ impl ClaudeToolOperation {
                 path: input
                     .get("path")
                     .and_then(Value::as_str)
-                    .map(|path| normalize_claude_path(path, workspace)),
+                    .map(|path| normalize_path(path, workspace)),
             }),
             "Glob" => Some(Self::Search {
                 query: lookup_str(input, &["pattern", "glob"])?.to_string(),
                 path: input
                     .get("path")
                     .and_then(Value::as_str)
-                    .map(|path| normalize_claude_path(path, workspace)),
+                    .map(|path| normalize_path(path, workspace)),
             }),
             "LS" => Some(Self::List {
                 path: input
                     .get("path")
                     .and_then(Value::as_str)
-                    .map(|path| normalize_claude_path(path, workspace)),
+                    .map(|path| normalize_path(path, workspace)),
             }),
             "Bash" => Some(Self::Bash {
                 command: lookup_str(input, &["command", "cmd"])?.to_string(),
@@ -883,7 +1356,7 @@ impl ClaudeToolOperation {
             // Claude does not report a stable exit code for Bash results.
             Self::Bash { command } => vec![classify_command(&command, None, Some(success))],
             Self::Skill { name } => {
-                let path = normalize_claude_path(&format!("skills/{name}/SKILL.md"), workspace);
+                let path = normalize_path(&format!("skills/{name}/SKILL.md"), workspace);
                 vec![EventKind::Skill {
                     path,
                     skill_name: Some(name),
@@ -936,7 +1409,7 @@ fn claude_read_result_fallback(
     let path =
         lookup_str(file, &["file_path", "filePath", "path"]).filter(|path| !path.is_empty())?;
     Some(EventKind::Read {
-        path: normalize_claude_path(path, workspace),
+        path: normalize_path(path, workspace),
         start_line: lookup_u32(file, &["start_line", "startLine", "offset"])
             .filter(|line| *line > 0),
         end_line: None,
@@ -1005,7 +1478,7 @@ fn lookup_u32(value: &Value, keys: &[&str]) -> Option<u32> {
 /// Resolve a Claude path to an absolute, `.`/`..`-collapsed form. An absolute
 /// path is normalized in place; a relative path is joined onto the workspace
 /// when one is known and otherwise surfaced as written.
-fn normalize_claude_path(path: &str, workspace: Option<&str>) -> String {
+fn normalize_path(path: &str, workspace: Option<&str>) -> String {
     use std::path::{Component, Path, PathBuf};
     let raw = Path::new(path);
     let candidate = if raw.is_absolute() {
@@ -1026,6 +1499,559 @@ fn normalize_claude_path(path: &str, workspace: Option<&str>) -> String {
         }
     }
     normalized.display().to_string()
+}
+
+/// A tool call recorded from its request event, awaiting the response that
+/// resolves it into a normalized event.
+#[derive(Debug, Clone)]
+struct PendingTool {
+    /// The id a later response references to pair with this call.
+    id: String,
+    /// The tool name, used to select the normalized mapping.
+    name: String,
+    /// The tool input recorded from the request.
+    input: Value,
+}
+
+/// Maps a tool name and input to its normalized event(s), given the tool's
+/// success and the session workspace, or `None` when the tool has no mapping.
+type ToolClassifier = fn(&str, &Value, Option<bool>, Option<&str>) -> Option<Vec<EventKind>>;
+
+/// First sub-value reachable by one of the given key paths, tried in order.
+///
+/// Harness tool events nest their fields inconsistently — a tool's input may sit
+/// at `input`, `arguments`, or `part.state.input` — and these shapes are
+/// confirmed against real CLI output rather than a published schema, so a lookup
+/// tries several candidate locations and takes the first that resolves.
+fn dig<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a Value> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        Some(current)
+    })
+}
+
+/// A harness error's message, from the common error-bearing locations.
+fn harness_error_message(value: &Value, default: &str) -> String {
+    dig(value, &[&["error", "message"], &["message"], &["error"]])
+        .and_then(Value::as_str)
+        .filter(|message| !message.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
+/// Wrap a possibly-empty event list, mapping empty to `None` so the caller emits
+/// an unknown event rather than silently nothing.
+fn non_empty(kinds: Vec<EventKind>) -> Option<Vec<EventKind>> {
+    if kinds.is_empty() { None } else { Some(kinds) }
+}
+
+/// The path of a file operation, from the common path-bearing keys, normalized.
+fn tool_path(input: &Value, workspace: Option<&str>) -> Option<String> {
+    lookup_str(
+        input,
+        &[
+            "path",
+            "file_path",
+            "filePath",
+            "filepath",
+            "abs_path",
+            "absolutePath",
+        ],
+    )
+    .filter(|path| !path.is_empty())
+    .map(|path| normalize_path(path, workspace))
+}
+
+/// A read event from a tool input that names a path, with an optional line range
+/// taken from an explicit range or a starting offset plus a line count.
+fn read_event_kind(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<EventKind> {
+    let path = tool_path(input, workspace)?;
+    let start_line =
+        lookup_u32(input, &["offset", "start_line", "startLine", "line"]).filter(|line| *line > 0);
+    let end_line = lookup_u32(input, &["end_line", "endLine"])
+        .filter(|line| *line > 0)
+        .or_else(|| {
+            start_line.and_then(|start| {
+                lookup_u32(
+                    input,
+                    &["limit", "line_count", "lineCount", "num_lines", "numLines"],
+                )
+                .map(|count| start.saturating_add(count).saturating_sub(1))
+            })
+        });
+    Some(EventKind::Read {
+        path,
+        start_line,
+        end_line,
+        is_success,
+    })
+}
+
+/// A write event from a tool input that names a path.
+fn write_event_kind(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<EventKind> {
+    Some(EventKind::Write {
+        path: tool_path(input, workspace)?,
+        start_line: None,
+        end_line: None,
+        is_success,
+    })
+}
+
+/// A search event from a tool input that carries a pattern or glob.
+fn search_event_kind(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<EventKind> {
+    let query = lookup_str(
+        input,
+        &[
+            "pattern",
+            "query",
+            "regex",
+            "glob",
+            "search",
+            "searchText",
+            "q",
+        ],
+    )
+    .filter(|query| !query.is_empty())?
+    .to_string();
+    let path = lookup_str(input, &["path", "dir", "directory", "cwd", "scope"])
+        .filter(|path| !path.is_empty())
+        .map(|path| normalize_path(path, workspace));
+    Some(EventKind::Search {
+        query,
+        path,
+        is_success,
+    })
+}
+
+/// A list event from a tool input that may name a directory.
+fn list_event_kind(input: &Value, is_success: Option<bool>, workspace: Option<&str>) -> EventKind {
+    let path = lookup_str(input, &["path", "dir", "directory"])
+        .filter(|path| !path.is_empty())
+        .map(|path| normalize_path(path, workspace));
+    EventKind::List { path, is_success }
+}
+
+/// A command event from a tool input that carries a shell command, reusing the
+/// shared command classifier so a recognized file operation is reclassified.
+fn bash_event_kind(input: &Value, is_success: Option<bool>) -> Option<EventKind> {
+    let command =
+        lookup_str(input, &["command", "cmd", "script"]).filter(|command| !command.is_empty())?;
+    Some(classify_command(command, None, is_success))
+}
+
+/// A skill event from a tool input that identifies the loaded skill, preferring
+/// an explicit path, then a skill directory, then the `skills/<name>` convention.
+fn skill_event_kind(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<EventKind> {
+    let name =
+        lookup_str(input, &["name", "skill", "skill_name", "skillName"]).filter(|n| !n.is_empty());
+    let path = if let Some(path) =
+        lookup_str(input, &["path", "file_path", "filePath", "skillPath"]).filter(|p| !p.is_empty())
+    {
+        normalize_path(path, workspace)
+    } else if let Some(dir) = lookup_str(input, &["dir", "directory"]).filter(|dir| !dir.is_empty())
+    {
+        normalize_path(
+            &format!("{}/SKILL.md", dir.trim_end_matches('/')),
+            workspace,
+        )
+    } else {
+        normalize_path(&format!("skills/{}/SKILL.md", name?), workspace)
+    };
+    Some(EventKind::Skill {
+        path,
+        skill_name: name.map(str::to_string),
+        start_line: None,
+        end_line: None,
+        is_success,
+    })
+}
+
+/// Write events from an `apply_patch`-style tool: a direct path field when
+/// present, otherwise the files named by the patch body's markers.
+fn patch_write_events(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Vec<EventKind> {
+    if let Some(path) = tool_path(input, workspace) {
+        return vec![EventKind::Write {
+            path,
+            start_line: None,
+            end_line: None,
+            is_success,
+        }];
+    }
+    let patch = lookup_str(input, &["patch", "diff", "content", "input"]).unwrap_or_default();
+    patch_marker_paths(patch)
+        .into_iter()
+        .map(|path| EventKind::Write {
+            path: normalize_path(&path, workspace),
+            start_line: None,
+            end_line: None,
+            is_success,
+        })
+        .collect()
+}
+
+/// File paths named by `*** Add/Update/Delete File:` and `*** Move to:` markers
+/// in an apply-patch body.
+fn patch_marker_paths(patch: &str) -> Vec<String> {
+    const MARKERS: &[&str] = &[
+        "*** Add File:",
+        "*** Update File:",
+        "*** Delete File:",
+        "*** Move to:",
+    ];
+    let mut paths = Vec::new();
+    for line in patch.lines() {
+        let trimmed = line.trim();
+        for marker in MARKERS {
+            if let Some(path) = trimmed.strip_prefix(marker).map(str::trim)
+                && !path.is_empty()
+                && !paths.iter().any(|seen| seen == path)
+            {
+                paths.push(path.to_string());
+            }
+        }
+    }
+    paths
+}
+
+/// Map an OpenCode tool name and input to its normalized event(s), or `None`
+/// when the tool has no mapping (web tools, todo tools, questions, and so on).
+fn classify_opencode_tool(
+    name: &str,
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    match name.to_ascii_lowercase().as_str() {
+        "read" => read_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "write" | "edit" => write_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "apply_patch" => non_empty(patch_write_events(input, is_success, workspace)),
+        "grep" | "glob" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "bash" => bash_event_kind(input, is_success).map(|kind| vec![kind]),
+        "skill" => skill_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        // `lsp` is a search only when it carries a query/symbol; navigation
+        // operations have none and so fall through to an unknown event.
+        "lsp" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        _ => None,
+    }
+}
+
+/// Map a Kilo Code tool, which extends the OpenCode set with workflow and
+/// semantic-search tools.
+fn classify_kilo_tool(
+    name: &str,
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    match name.to_ascii_lowercase().as_str() {
+        "task" | "agent_manager" => kilo_orchestration(input, is_success),
+        "codesearch" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        _ => classify_opencode_tool(name, input, is_success, workspace),
+    }
+}
+
+/// An orchestration event for a Kilo workflow tool, only when the spawned
+/// agent/session can be identified; otherwise `None` so it is surfaced verbatim.
+fn kilo_orchestration(input: &Value, is_success: Option<bool>) -> Option<Vec<EventKind>> {
+    let subagent_id = lookup_str(
+        input,
+        &["sessionId", "session_id", "agentId", "agent_id", "id"],
+    )
+    .map(str::to_string);
+    let subagent_name = lookup_str(
+        input,
+        &["name", "agent", "subagent", "agentType", "description"],
+    )
+    .map(str::to_string);
+    if subagent_id.is_none() && subagent_name.is_none() {
+        return None;
+    }
+    let action = match is_success {
+        Some(false) => OrchestrationAction::SubagentFailed,
+        _ => OrchestrationAction::SubagentCompleted,
+    };
+    Some(vec![EventKind::Orchestration {
+        action,
+        subagent_id,
+        subagent_name,
+        is_success,
+    }])
+}
+
+/// Map a Pi tool name and input to its normalized event(s). Pi matches tool
+/// names case-insensitively.
+fn classify_pi_tool(
+    name: &str,
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    match name.to_ascii_lowercase().as_str() {
+        "read" => read_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "write" | "edit" => write_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "search" | "grep" | "glob" => {
+            search_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        "list" => Some(vec![list_event_kind(input, is_success, workspace)]),
+        "bash" | "shell" => bash_event_kind(input, is_success).map(|kind| vec![kind]),
+        _ => None,
+    }
+}
+
+/// Map a Cline tool name and input to its normalized event(s).
+fn classify_cline_tool(
+    name: &str,
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    match name {
+        "run_commands" | "execute_command" | "bash" => cline_commands(input, is_success),
+        "read_files" | "read_file" => cline_reads(input, is_success, workspace),
+        "editor" | "write_to_file" | "replace_in_file" | "new_rule" => {
+            write_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        "apply_patch" => non_empty(patch_write_events(input, is_success, workspace)),
+        "search_files" | "search_codebase" => {
+            search_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        "list_files" => Some(vec![list_event_kind(input, is_success, workspace)]),
+        "skills" | "use_skill" => {
+            skill_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        _ => None,
+    }
+}
+
+/// Command events from a Cline command tool, whose input carries either a
+/// `commands` array or a single command string.
+fn cline_commands(input: &Value, is_success: Option<bool>) -> Option<Vec<EventKind>> {
+    if let Some(commands) = input.get("commands").and_then(Value::as_array) {
+        let events = commands
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|command| !command.is_empty())
+            .map(|command| classify_command(command, None, is_success))
+            .collect();
+        return non_empty(events);
+    }
+    bash_event_kind(input, is_success).map(|kind| vec![kind])
+}
+
+/// Read events from a Cline read tool, whose input carries either a `files`
+/// array (of paths or file objects) or a single path.
+fn cline_reads(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    if let Some(files) = input.get("files").and_then(Value::as_array) {
+        let events = files
+            .iter()
+            .filter_map(|file| match file {
+                Value::String(path) => Some(path.as_str()),
+                _ => lookup_str(file, &["path", "file_path", "filePath"]),
+            })
+            .filter(|path| !path.is_empty())
+            .map(|path| EventKind::Read {
+                path: normalize_path(path, workspace),
+                start_line: None,
+                end_line: None,
+                is_success,
+            })
+            .collect();
+        return non_empty(events);
+    }
+    read_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+}
+
+/// Whether a Cline tool output reports success: a `success` flag, or every item
+/// succeeding when the output is a batch of per-item results.
+fn cline_tool_success(output: Option<&Value>) -> Option<bool> {
+    let output = output?;
+    if let Some(success) = output.get("success").and_then(Value::as_bool) {
+        return Some(success);
+    }
+    let items = output
+        .as_array()
+        .or_else(|| output.get("results").and_then(Value::as_array))?;
+    if items.is_empty() {
+        return None;
+    }
+    Some(items.iter().all(|item| {
+        item.get("success")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }))
+}
+
+/// Map a Goose developer/MCP tool name and input to its normalized event(s).
+fn classify_goose_tool(
+    name: &str,
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    // Goose and MCP servers prefix tool names with an extension id. The todo
+    // extension only manages internal session state, so it is consumed.
+    let (extension, base) = match name.split_once("__") {
+        Some((extension, base)) => (Some(extension), base),
+        None => (None, name),
+    };
+    if extension == Some("todo") {
+        return Some(Vec::new());
+    }
+    match base.to_ascii_lowercase().as_str() {
+        "read" => read_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "write" | "edit" => write_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "text_editor" => goose_text_editor(input, is_success, workspace),
+        "shell" => bash_event_kind(input, is_success).map(|kind| vec![kind]),
+        "grep" | "glob" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "list" => Some(vec![list_event_kind(input, is_success, workspace)]),
+        "load_skill" | "skill" => {
+            skill_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        _ => None,
+    }
+}
+
+/// A Goose text-editor tool maps to a read or write according to its command:
+/// inspection commands read, mutation commands write, anything else is unknown.
+fn goose_text_editor(
+    input: &Value,
+    is_success: Option<bool>,
+    workspace: Option<&str>,
+) -> Option<Vec<EventKind>> {
+    match lookup_str(input, &["command", "cmd"]).unwrap_or_default() {
+        "view" | "read" => read_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        "write" | "create" | "overwrite" | "edit" | "str_replace" | "insert" | "move"
+        | "rename" | "delete" => {
+            write_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
+        _ => None,
+    }
+}
+
+/// A pending tool from a Goose `toolRequest` content block.
+fn goose_tool_request(block: &Value) -> Option<PendingTool> {
+    let id = goose_tool_id(block, "toolRequest")?;
+    let name = dig(
+        block,
+        &[
+            &["toolCall", "value", "name"],
+            &["tool_call", "value", "name"],
+            &["name"],
+        ],
+    )
+    .and_then(Value::as_str)?
+    .to_string();
+    let input = dig(
+        block,
+        &[
+            &["toolCall", "value", "arguments"],
+            &["arguments"],
+            &["input"],
+        ],
+    )
+    .cloned()
+    .unwrap_or(Value::Null);
+    Some(PendingTool { id, name, input })
+}
+
+/// The tool-call id carried by a Goose tool request or response block.
+fn goose_tool_id(block: &Value, wrapper: &str) -> Option<String> {
+    dig(block, &[&["id"], &[wrapper, "id"], &["toolCallId"]])
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// Whether a Goose `toolResponse` reports success, from its result status.
+fn goose_response_success(block: &Value) -> Option<bool> {
+    match dig(
+        block,
+        &[
+            &["toolResult", "status"],
+            &["toolResponse", "toolResult", "status"],
+            &["status"],
+        ],
+    )
+    .and_then(Value::as_str)
+    {
+        Some("success") => Some(true),
+        Some("error") => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether an OpenCode-style tool event reports success, from its terminal
+/// status.
+fn step_tool_success(value: &Value) -> Option<bool> {
+    match dig(
+        value,
+        &[
+            &["part", "state", "status"],
+            &["state", "status"],
+            &["status"],
+        ],
+    )
+    .and_then(Value::as_str)
+    {
+        Some("completed" | "success" | "done" | "ok") => Some(true),
+        Some("error" | "failed" | "failure" | "cancelled" | "canceled") => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether a Pi `tool_execution_end` reports success, from its status or error.
+fn pi_tool_success(value: &Value) -> Option<bool> {
+    if value.get("error").is_some_and(|error| !error.is_null()) {
+        return Some(false);
+    }
+    match lookup_str(value, &["status", "state"]) {
+        Some("completed" | "success" | "ok" | "done") => Some(true),
+        Some("error" | "failed" | "failure") => Some(false),
+        _ => None,
+    }
+}
+
+/// The text of a Pi assistant message, whose content is a string or an array of
+/// text parts.
+fn pi_message_text(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                (part.get("type").and_then(Value::as_str) == Some("text"))
+                    .then(|| part.get("text").and_then(Value::as_str))
+                    .flatten()
+            })
+            .collect(),
+        _ => String::new(),
+    }
 }
 
 #[cfg(test)]

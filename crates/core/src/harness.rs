@@ -8,8 +8,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::event::EventSink;
-use crate::execution::{ContainerHandle, ContainerRuntime};
+use crate::event::{EventSink, HarnessEvent};
+use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 
@@ -59,6 +59,12 @@ pub struct HarnessOutcome {
     /// OpenRouter price lookup. Harnesses that do not report a cost leave this
     /// `None` and fall back to OpenRouter-derived pricing.
     pub reported_cost: Option<f64>,
+    /// Every raw output line the harness produced, in arrival order, recorded so
+    /// a run can persist the untranslated stream alongside its translation.
+    pub raw_output: Vec<RawOutputLine>,
+    /// The normalized events translated from the raw output, in the order they
+    /// were produced, recorded for persistence beside the raw stream.
+    pub translated_events: Vec<HarnessEvent>,
 }
 
 /// Reports whether a harness can be invoked on the host.
