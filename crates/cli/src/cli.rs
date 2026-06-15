@@ -37,6 +37,10 @@ pub enum Command {
 
     /// List supported harnesses and their availability.
     Harnesses(HarnessesArgs),
+
+    /// Seed a test case version into a folder to inspect what a run's harness
+    /// receives as input, without launching a container.
+    Seed(SeedArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -146,6 +150,27 @@ pub struct HarnessesArgs {
     /// Emit the listing as JSON instead of a human-readable table.
     #[arg(long)]
     pub json: bool,
+}
+
+/// Arguments for `tcab seed`.
+///
+/// `disable_version_flag` frees `--version` to mean the *test case* version
+/// rather than clap's auto-generated binary-version flag, matching `tcab run`.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct SeedArgs {
+    /// Slug of the test case to seed (for example, `pong`).
+    #[arg(long, value_name = "SLUG")]
+    pub test_case: String,
+
+    /// Exact, immutable test case version to seed.
+    #[arg(long, value_name = "VERSION")]
+    pub version: String,
+
+    /// Directory the seeded repository is created under. Defaults to a `tmp/`
+    /// subfolder of the working directory.
+    #[arg(long, value_name = "DIR", default_value = "tmp")]
+    pub out_dir: std::path::PathBuf,
 }
 
 #[cfg(test)]

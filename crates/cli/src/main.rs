@@ -28,5 +28,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Validate(args) => commands::validate::execute(args).await,
         Command::Publish(args) => commands::publish::execute(args).await,
         Command::Harnesses(args) => commands::harnesses::execute(args).await,
+        Command::Seed(args) => commands::seed::execute(args).await,
     }
 }

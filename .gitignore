@@ -252,3 +252,7 @@ test-cases/**/reference/screenshots/
 
 # Ignore the output of test runs
 runs/
+
+# Scratch output for inspecting seeded run inputs (`tcab seed`). This is local
+# inspection material, not something that should be committed.
+tmp/

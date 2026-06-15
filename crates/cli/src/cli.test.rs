@@ -167,6 +167,49 @@ fn validate_parses_required_arguments() {
 }
 
 #[test]
+fn seed_parses_required_arguments_and_defaults_out_dir() {
+    let cli = Cli::try_parse_from(["tcab", "seed", "--test-case", "pong", "--version", "1.0.0"])
+        .expect("a seed invocation should parse with only its required arguments");
+
+    match cli.command {
+        Command::Seed(args) => {
+            assert_eq!(args.test_case, "pong");
+            assert_eq!(args.version, "1.0.0");
+            // With no override, the seeded repository lands under `tmp/`.
+            assert_eq!(args.out_dir, std::path::PathBuf::from("tmp"));
+        }
+        other => panic!("expected a seed command, got {other:?}"),
+    }
+}
+
+#[test]
+fn seed_accepts_an_out_dir_override() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "seed",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--out-dir",
+        "/tmp/inspect",
+    ])
+    .expect("an explicit --out-dir should parse");
+
+    match cli.command {
+        Command::Seed(args) => assert_eq!(args.out_dir.to_str(), Some("/tmp/inspect")),
+        other => panic!("expected a seed command, got {other:?}"),
+    }
+}
+
+#[test]
+fn seed_requires_a_test_case() {
+    let err = Cli::try_parse_from(["tcab", "seed", "--version", "1.0.0"])
+        .expect_err("omitting --test-case should be a parse error");
+    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+}
+
+#[test]
 fn harnesses_parses_with_json_flag() {
     let cli = Cli::try_parse_from(["tcab", "harnesses", "--json"])
         .expect("the harnesses subcommand should parse");

@@ -7,4 +7,5 @@ pub mod event_printer;
 pub mod harnesses;
 pub mod publish;
 pub mod run;
+pub mod seed;
 pub mod validate;

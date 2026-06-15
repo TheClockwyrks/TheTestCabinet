@@ -43,6 +43,12 @@ and its assets.
   because none of them exist inside the container. See
   [Test Cases](./test-cases.md#self-contained-specifications).
 
+The seeded repository is normally created, mounted, and torn down as part of a
+run, so its contents are never visible on their own. The `tcab seed` command runs
+this same seeding step and leaves the result on disk (under `tmp/` by default) so
+the exact inputs a harness receives — the specification, the seeded assets, and
+the fresh git history — can be inspected without launching a container.
+
 ## Model Authored Tests
 
 The goal of a test case is to measure how well a model writes code in a large
