@@ -7,14 +7,16 @@
 //! produced working tree is collected when the run finishes.
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    ExecOutput,
+    ExecOutput, OutputSink, OutputStream,
 };
 
 /// The container working directory the seeded repository is mounted at. Matches
@@ -140,6 +142,81 @@ impl ContainerRuntime for CliContainerRuntime {
         })
     }
 
+    async fn exec_streamed(
+        &self,
+        container: &ContainerHandle,
+        command: &[String],
+        sink: &mut dyn OutputSink,
+    ) -> Result<ExecOutput> {
+        let mut args = vec![
+            "exec".to_string(),
+            "--workdir".to_string(),
+            WORK_DIR.to_string(),
+            container.id.clone(),
+        ];
+        args.extend(command.iter().cloned());
+
+        // The harness is non-interactive, so close stdin: a harness that probes
+        // stdin (Codex prints "Reading additional input from stdin...") then sees
+        // EOF immediately instead of blocking on a stream that never arrives.
+        let mut child = Command::new(&self.binary)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|err| {
+                Error::ContainerRuntime(format!("failed to run {}: {err}", self.binary))
+            })?;
+
+        let stdout = child.stdout.take().ok_or_else(|| {
+            Error::ContainerRuntime("failed to capture container stdout".to_string())
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            Error::ContainerRuntime("failed to capture container stderr".to_string())
+        })?;
+        let mut stdout = BufReader::new(stdout).lines();
+        let mut stderr = BufReader::new(stderr).lines();
+
+        let mut captured_stdout = String::new();
+        let mut captured_stderr = String::new();
+        let mut stdout_open = true;
+        let mut stderr_open = true;
+
+        // Drain both streams concurrently so neither blocks the other by filling
+        // its pipe buffer, forwarding each line to the sink as it arrives. Only
+        // one select branch runs at a time, so the sink is never borrowed twice.
+        while stdout_open || stderr_open {
+            tokio::select! {
+                line = stdout.next_line(), if stdout_open => match read_line(line)? {
+                    Some(line) => {
+                        sink.on_line(OutputStream::Stdout, &line);
+                        captured_stdout.push_str(&line);
+                        captured_stdout.push('\n');
+                    }
+                    None => stdout_open = false,
+                },
+                line = stderr.next_line(), if stderr_open => match read_line(line)? {
+                    Some(line) => {
+                        sink.on_line(OutputStream::Stderr, &line);
+                        captured_stderr.push_str(&line);
+                        captured_stderr.push('\n');
+                    }
+                    None => stderr_open = false,
+                },
+            }
+        }
+
+        let status = child.wait().await.map_err(|err| {
+            Error::ContainerRuntime(format!("waiting on {} failed: {err}", self.binary))
+        })?;
+        Ok(ExecOutput {
+            exit_code: status.code().unwrap_or(-1),
+            stdout: captured_stdout,
+            stderr: captured_stderr,
+        })
+    }
+
     async fn stop(&self, container: &ContainerHandle) -> Result<()> {
         let args = vec![
             "rm".to_string(),
@@ -230,6 +307,12 @@ impl ArtifactCollector for CliArtifactCollector {
         }
         Ok(ArtifactCollection { repo_path: dest })
     }
+}
+
+/// Map a line read from a piped stream into our [`Result`], turning an I/O error
+/// into a container runtime error.
+fn read_line(line: std::io::Result<Option<String>>) -> Result<Option<String>> {
+    line.map_err(|err| Error::ContainerRuntime(format!("reading container output failed: {err}")))
 }
 
 /// Whether a binary resolves on `PATH`.

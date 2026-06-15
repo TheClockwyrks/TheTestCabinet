@@ -10,7 +10,9 @@ that the same test case can be run against any of them without the rest of the
 testing harness needing to know harness specific details.
 
 This layer is responsible for absorbing harness specific quirks, including how
-each harness is invoked non interactively and how each one reports its usage.
+each harness is invoked non interactively, how each one reports its usage, and
+how each one's activity is translated into the normalized stream defined in
+[Events](./events.md).
 
 ## Supported Harnesses
 
@@ -99,3 +101,12 @@ OpenRouter already use OpenRouter model IDs and pass them through unchanged.
 Harnesses that take a provider-native model ID map it to its OpenRouter
 equivalent — for example Codex receives an OpenAI ID such as `gpt-5.5`, which
 OpenRouter lists as `openai/gpt-5.5`.
+
+## Event Reporting
+
+Beyond its terminal outcome, every invocation produces a live stream of
+normalized [harness events](./events.md) as the harness runs. The agent harness
+layer translates each harness's raw output into that uniform stream so callers can
+render progress while a run is in progress and, when a harness fails, see the
+harness's own diagnostic output instead of a single opaque error. The command
+line interface prints these events as they arrive.

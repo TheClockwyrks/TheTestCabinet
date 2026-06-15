@@ -69,6 +69,27 @@ pub struct ContainerHandle {
     pub id: String,
 }
 
+/// Which standard stream a captured output line came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OutputStream {
+    /// Standard output.
+    Stdout,
+    /// Standard error.
+    Stderr,
+}
+
+/// Observes a command's output line by line as it is produced.
+///
+/// A streaming exec calls this for each line as the underlying process writes
+/// it, before the command finishes, which is what lets callers translate output
+/// into live [events](crate::event) rather than waiting for the full result.
+pub trait OutputSink: Send {
+    /// Handle one line of output from the given stream. The trailing newline is
+    /// not included.
+    fn on_line(&mut self, stream: OutputStream, line: &str);
+}
+
 /// Abstraction over a container runtime (Docker, Podman, or compatible).
 ///
 /// Hard-coding a single runtime is avoided so compatible runtimes can be swapped
@@ -82,6 +103,31 @@ pub trait ContainerRuntime: Send + Sync {
 
     /// Run a command inside the container and wait for it to finish.
     async fn exec(&self, container: &ContainerHandle, command: &[String]) -> Result<ExecOutput>;
+
+    /// Run a command inside the container, forwarding each output line to `sink`
+    /// as it is produced, and return the full captured output once it finishes.
+    ///
+    /// The default implementation falls back to the buffered [`exec`] and replays
+    /// the captured output to the sink afterwards, so a runtime that does not
+    /// stream still drives observers correctly. Runtimes that can stream override
+    /// this to deliver lines live.
+    ///
+    /// [`exec`]: ContainerRuntime::exec
+    async fn exec_streamed(
+        &self,
+        container: &ContainerHandle,
+        command: &[String],
+        sink: &mut dyn OutputSink,
+    ) -> Result<ExecOutput> {
+        let output = self.exec(container, command).await?;
+        for line in output.stdout.lines() {
+            sink.on_line(OutputStream::Stdout, line);
+        }
+        for line in output.stderr.lines() {
+            sink.on_line(OutputStream::Stderr, line);
+        }
+        Ok(output)
+    }
 
     /// Stop and remove the container.
     async fn stop(&self, container: &ContainerHandle) -> Result<()>;

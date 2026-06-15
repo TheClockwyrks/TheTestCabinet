@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::event::EventSink;
 use crate::execution::{ContainerHandle, ContainerRuntime};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
@@ -119,11 +120,15 @@ pub trait AgentHarness: Send + Sync {
     /// run container, returning normalized usage. The container's working
     /// directory is the seeded repository and its environment already carries
     /// the API key.
+    ///
+    /// Normalized [events](crate::event) are emitted to `events` as the harness
+    /// produces output, so callers can observe the run live.
     async fn invoke(
         &self,
         runtime: &dyn ContainerRuntime,
         container: &ContainerHandle,
         invocation: &HarnessInvocation,
+        events: &mut dyn EventSink,
     ) -> Result<HarnessOutcome>;
 }
 

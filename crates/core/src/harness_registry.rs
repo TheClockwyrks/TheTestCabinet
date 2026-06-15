@@ -14,7 +14,8 @@
 use serde_json::Value;
 
 use crate::error::{Error, Result};
-use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput};
+use crate::event::{EventFormat, EventKind, EventParser, EventSink, HarnessEvent};
+use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, OutputSink, OutputStream};
 use crate::harness::{AgentHarness, Availability, HarnessInvocation, HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
@@ -83,6 +84,8 @@ pub struct CliHarness {
     /// Builds the session argument vector (after the binary) from model + prompt.
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
     usage: UsageShape,
+    /// How this harness's raw output is translated into normalized events.
+    event_format: EventFormat,
 }
 
 #[async_trait::async_trait]
@@ -141,6 +144,7 @@ impl AgentHarness for CliHarness {
         runtime: &dyn ContainerRuntime,
         container: &ContainerHandle,
         invocation: &HarnessInvocation,
+        events: &mut dyn EventSink,
     ) -> Result<HarnessOutcome> {
         let mut command = vec![self.binary.to_string()];
         command.extend((self.session_args)(
@@ -148,12 +152,34 @@ impl AgentHarness for CliHarness {
             &invocation.prompt,
         ));
 
-        let output = runtime.exec(container, &command).await?;
+        // Translate each output line into normalized events as it streams. The
+        // translator borrows `events`; scope it so `events` is free again
+        // afterwards to report a terminal failure.
+        let output = {
+            let mut translator = StreamingTranslator {
+                parser: EventParser::new(self.event_format),
+                events: &mut *events,
+            };
+            runtime
+                .exec_streamed(container, &command, &mut translator)
+                .await?
+        };
+
         if output.exit_code != 0 {
+            let detail = failure_detail(&output);
+            // Surface the failure as an error event too, so non-CLI observers see
+            // it in the same stream as the rest of the run.
+            events.emit(&HarnessEvent {
+                timestamp: now_timestamp(),
+                session_id: None,
+                kind: EventKind::Error {
+                    message: detail.clone(),
+                    code: None,
+                },
+            });
             return Err(Error::HarnessInvocation {
                 slug: self.slug.as_str().to_string(),
-                detail: first_line(&output.stderr)
-                    .unwrap_or_else(|| format!("exited with {}", output.exit_code)),
+                detail,
             });
         }
 
@@ -163,6 +189,59 @@ impl AgentHarness for CliHarness {
             reported_cost: parse_reported_cost(&output, self.usage),
         })
     }
+}
+
+/// Adapts raw output lines into normalized events forwarded to an [`EventSink`].
+struct StreamingTranslator<'a> {
+    parser: EventParser,
+    events: &'a mut dyn EventSink,
+}
+
+impl OutputSink for StreamingTranslator<'_> {
+    fn on_line(&mut self, stream: OutputStream, line: &str) {
+        for event in self.parser.ingest(stream, line) {
+            self.events.emit(&event);
+        }
+    }
+}
+
+/// Build a detailed failure message from a harness invocation that exited non
+/// zero.
+///
+/// The previous behavior kept only the first line of standard error, which threw
+/// away the harness's actual complaint. This keeps the tail of whichever stream
+/// carried output — standard error first, then standard output — so the real
+/// cause survives, capped so a runaway log cannot dominate the error.
+fn failure_detail(output: &ExecOutput) -> String {
+    let exit = format!("harness exited with code {}", output.exit_code);
+    let tail = last_lines(&output.stderr, 20).or_else(|| last_lines(&output.stdout, 20));
+    match tail {
+        Some(tail) => format!("{exit}\n{tail}"),
+        None => exit,
+    }
+}
+
+/// The last `max` non-empty lines of `text`, joined with newlines, or `None`
+/// when there are none.
+fn last_lines(text: &str, max: usize) -> Option<String> {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let start = lines.len().saturating_sub(max);
+    Some(lines[start..].join("\n"))
+}
+
+/// The current time as an RFC 3339 string, for stamping synthesized events.
+fn now_timestamp() -> String {
+    use time::format_description::well_known::Rfc3339;
+    time::OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_default()
 }
 
 /// The default registry over all supported harnesses.
@@ -238,6 +317,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Codex => CliHarness {
             slug,
@@ -265,6 +345,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
             },
+            event_format: EventFormat::Codex,
         },
         HarnessSlug::Cline => CliHarness {
             slug,
@@ -293,6 +374,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Antigravity => CliHarness {
             slug,
@@ -309,6 +391,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 ]
             },
             usage: UsageShape::NONE,
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Goose => CliHarness {
             slug,
@@ -339,6 +422,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Kilo => CliHarness {
             slug,
@@ -366,6 +450,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Opencode => CliHarness {
             slug,
@@ -393,6 +478,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
+            event_format: EventFormat::Generic,
         },
         HarnessSlug::Pi => CliHarness {
             slug,
@@ -421,6 +507,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
             },
+            event_format: EventFormat::Generic,
         },
     };
     Box::new(harness)

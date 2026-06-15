@@ -10,6 +10,7 @@ use test_cabinet_core::{
 };
 
 use crate::cli::RunArgs;
+use crate::commands::event_printer::PrintingEventSink;
 
 /// Launch a run for the selected test case version, harness, and model.
 ///
@@ -60,7 +61,14 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         output_dir,
     };
 
-    let record = orchestrator.run(&request).await.context("run failed")?;
+    // Print harness activity live as the run proceeds, rather than waiting in
+    // silence for the run to finish.
+    println!("\nharness activity:");
+    let mut events = PrintingEventSink;
+    let record = orchestrator
+        .run(&request, &mut events)
+        .await
+        .context("run failed")?;
 
     println!(
         "\nrun {} complete ({})",

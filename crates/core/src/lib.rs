@@ -11,6 +11,7 @@
 
 pub mod container;
 pub mod error;
+pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
@@ -36,9 +37,13 @@ use time::format_description::well_known::Rfc3339;
 
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
+pub use event::{
+    EventFormat, EventKind, EventParser, EventSink, HarnessEvent, NoopEventSink,
+    OrchestrationAction,
+};
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    RepoSeeder, SeedRequest, SeededRepo,
+    OutputSink, OutputStream, RepoSeeder, SeedRequest, SeededRepo,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -134,6 +139,7 @@ where
         _test_case: &TestCaseVersion,
         seeded: &SeededRepo,
         request: &RunRequest,
+        events: &mut dyn EventSink,
     ) -> Result<(ContainerHandle, HarnessOutcome)> {
         let slug = request.harness;
         let harness = self
@@ -181,7 +187,10 @@ where
             model_id: request.model_id.clone(),
             prompt: build_prompt(_test_case),
         };
-        match harness.invoke(&self.runtime, &handle, &invocation).await {
+        match harness
+            .invoke(&self.runtime, &handle, &invocation, events)
+            .await
+        {
             Ok(mut outcome) => {
                 outcome.harness_version = availability.version;
                 Ok((handle, outcome))
@@ -260,13 +269,17 @@ where
     }
 
     /// Drive an entire run end to end through every lifecycle stage.
-    pub async fn run(&self, request: &RunRequest) -> Result<RunRecord> {
+    ///
+    /// Normalized [events](crate::event) produced while the harness runs are
+    /// emitted to `events` so callers can observe the run live. Pass
+    /// [`NoopEventSink`] to ignore them.
+    pub async fn run(&self, request: &RunRequest, events: &mut dyn EventSink) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
         let test_case = self.resolve(request)?;
         let seeded = self.seed(&test_case)?;
-        let (handle, outcome) = self.execute(&test_case, &seeded, request).await?;
+        let (handle, outcome) = self.execute(&test_case, &seeded, request, events).await?;
 
         // Collect the working tree, then always tear the container down.
         let artifacts = self.collector.collect(&handle).await;
