@@ -32,6 +32,16 @@ Publishing a run must be an explicit operation that takes a finished run and:
 - Releases its generated code to a public repository.
 - Makes its playable build available for embedding.
 - Adds its run record to the site's dataset.
+- Includes the run's writeup, when one has been authored.
 
 The publish operation must be idempotent and must be usable in batch, so that a
 sweep producing many runs can be published without manual handling of each one.
+
+## Writeups
+
+A published run may include a hand-written
+[writeup](./site.md#implementation-writeups) that the site shows before the
+playable build. A writeup is optional and curatorial — authored separately by a
+person rather than emitted by a run — and it is not part of the
+[run record](./run-records.md) contract. Publishing makes any writeup available
+to the site alongside the run record.

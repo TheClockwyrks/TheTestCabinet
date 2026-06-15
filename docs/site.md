@@ -32,9 +32,27 @@ numbers.
 
 ## Playing and Cloning
 
-Each run has a page that lets a visitor play the implementation directly, by
-embedding its playable build, and that links to the run's public source
-repository so the visitor can clone and run it themselves.
+Each run has a page that links to the run's public source repository, so a
+visitor can clone and run it themselves, and that lets the visitor play the
+implementation directly by embedding its playable build.
+
+A published implementation may be incomplete or visibly broken. That is
+expected: releasing the result as it is, rather than hiding it, is the point. So
+when a run has a [writeup](#implementation-writeups), the embedded build is gated
+behind it — the visitor reads the writeup first and then chooses to launch the
+build, rather than being dropped into a broken page with no context.
+
+## Implementation Writeups
+
+A run may carry a short, hand-written writeup shown on its page before the
+playable build is launched. The writeup is curatorial: it is where known-broken
+elements, caveats, or things worth noticing about an implementation are called
+out, so a visitor knows what to expect before playing.
+
+A writeup is optional and is authored separately from the machine-generated [run
+record](./run-records.md); it is not part of that data contract. A run without a
+writeup simply shows its build without the extra context. Writeups are published
+alongside the run record, as described in [Results](./results.md#writeups).
 
 ## Hosting
 
