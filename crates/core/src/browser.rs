@@ -16,6 +16,8 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
+use uuid::Uuid;
+
 use crate::test_case::CheckAction;
 
 /// The viewport every reference and capture is rendered at.
@@ -55,9 +57,22 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
         format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
     })?;
 
-    if let Some(parent) = out.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| format!("creating capture dir: {err}"))?;
-    }
+    let parent = out.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|err| format!("creating capture dir: {err}"))?;
+
+    // Render to a unique temporary file in the destination directory, then
+    // atomically rename it into place. Reference screenshots are cached at a
+    // stable path that is shared across runs; rendering is deterministic, so two
+    // runs producing the same screenshot write identical bytes and the only
+    // hazard is a torn file from two writers racing on one path. Writing to a
+    // private temp and renaming means every reader sees a complete image.
+    let temp = parent.join(format!(
+        ".{}.{}.tmp",
+        out.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("capture"),
+        Uuid::new_v4(),
+    ));
 
     let actions_json =
         serde_json::to_string(actions).map_err(|err| format!("encoding actions: {err}"))?;
@@ -68,7 +83,7 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
             "--url",
             url,
             "--out",
-            &out.to_string_lossy(),
+            &temp.to_string_lossy(),
             "--actions",
             &actions_json,
             "--width",
@@ -79,7 +94,9 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
         .output()
         .map_err(|err| format!("running browser driver via node: {err}"))?;
 
-    if !output.status.success() || !out.is_file() {
+    if !output.status.success() || !temp.is_file() {
+        // Best-effort cleanup; a partial temp must not be left behind.
+        let _ = std::fs::remove_file(&temp);
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Surface the first meaningful lines. The driver prints the error message
         // first, but a Playwright failure follows it with a box-drawing banner;
@@ -94,6 +111,11 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
             .join("; ");
         return Err(format!("browser driver failed: {message}"));
     }
+
+    std::fs::rename(&temp, out).map_err(|err| {
+        let _ = std::fs::remove_file(&temp);
+        format!("finalizing capture {}: {err}", out.display())
+    })?;
     Ok(())
 }
 

@@ -11,6 +11,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use uuid::Uuid;
+
 use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
@@ -24,12 +26,16 @@ const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]
 pub struct BuildValidator {
-    /// Directory captured screenshots are written under.
+    /// Base directory captured screenshots are written under. Each run's
+    /// captures land in a fresh unique sub-directory of this, so concurrent runs
+    /// never share a capture path.
     screenshot_dir: PathBuf,
 }
 
 impl BuildValidator {
-    /// Write captured screenshots under `screenshot_dir`.
+    /// Write captured screenshots under `screenshot_dir`. Each call to
+    /// [`validate`](Validator::validate) captures into its own unique
+    /// sub-directory of it.
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             screenshot_dir: screenshot_dir.into(),
@@ -96,18 +102,27 @@ impl BuildValidator {
         };
         let url = server.url();
 
+        // Capture this run's screenshots into a fresh unique sub-directory.
+        // Captures are written and then read back to score them, so two
+        // concurrent runs that share a view slug (for example the same test case
+        // run against two models) would otherwise write to — and read from — the
+        // same `{view}.png` path and score against each other's screenshot.
+        let captures = self.screenshot_dir.join(format!("run-{}", Uuid::new_v4()));
+
         let mut results = Vec::with_capacity(test_case.checks.len());
         for check in &test_case.checks {
-            results.push(self.run_check(check, &url, references));
+            results.push(self.run_check(check, &url, &captures, references));
         }
         (results, None)
     }
 
-    /// Drive one check and score it against its reference baseline.
+    /// Drive one check and score it against its reference baseline, capturing its
+    /// screenshot into `captures` (this run's private capture directory).
     fn run_check(
         &self,
         check: &crate::test_case::Check,
         url: &str,
+        captures: &Path,
         references: &[RenderedReference],
     ) -> CheckResult {
         let Some(baseline) = references.iter().find(|r| r.view == check.reference_view) else {
@@ -123,7 +138,7 @@ impl BuildValidator {
             };
         };
 
-        let capture = self.screenshot_dir.join(format!("{}.png", check.view));
+        let capture = captures.join(format!("{}.png", check.view));
         if let Err(detail) = browser::capture(url, &check.actions, &capture) {
             return CheckResult {
                 view: check.view.clone(),
