@@ -15,6 +15,13 @@
   --ttc-positive: #4ade80;
   --ttc-negative: #f87171;
 
+  // Per-tier rating colors, best to worst. Flawless takes a cool cyan to stand
+  // apart from the warm palette; the rest run green → amber → red.
+  --ttc-rating-flawless: #22d3ee;
+  --ttc-rating-great: #4ade80;
+  --ttc-rating-scuffed: #fbbf24;
+  --ttc-rating-broken: #f87171;
+
   --ttc-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
     Consolas, monospace;
   --ttc-display: var(--ttc-font);

@@ -28,9 +28,12 @@ model, and agent harness. Each run is attributed to the
   provider that served the run.
 - The [validation](./validation.md) signals, such as whether the implementation
   loaded.
+- The run's [rating](./results.md#reviews), shown as a per-run quality badge.
 
 The site must not present a ranking or an aggregate score derived from these
-numbers.
+numbers. The rating is shown per run as qualitative context — it is never used
+to sort, rank, or aggregate runs, which would turn the gallery into the
+leaderboard it deliberately is not.
 
 ## Playing and Cloning
 
@@ -46,15 +49,19 @@ build, rather than being dropped into a broken page with no context.
 
 ## Implementation Writeups
 
-A run may carry a short, hand-written writeup shown on its page before the
-playable build is launched. The writeup is curatorial: it is where known-broken
-elements, caveats, or things worth noticing about an implementation are called
-out, so a visitor knows what to expect before playing.
+A run carries a short, hand-written writeup shown on its page before the playable
+build is launched, headed by the run's [rating](./results.md#reviews). The
+writeup is curatorial: it is where known-broken elements, caveats, or things
+worth noticing about an implementation are called out, so a visitor knows what to
+expect before playing, and the rating gives them the reviewer's one-glance
+verdict up front.
 
-A writeup is optional and is authored separately from the machine-generated [run
-record](./run-records.md); it is not part of that data contract. A run without a
-writeup simply shows its build without the extra context. Writeups are published
-alongside the run record, as described in [Results](./results.md#writeups).
+The writeup and rating together form a run's [review](./results.md#reviews). A
+review is authored separately from the machine-generated [run
+record](./run-records.md) and is not part of that data contract. Every published
+run has one — publishing refuses a run without it — so a published run is always
+framed by its review. Reviews are published alongside the run record, as
+described in [Results](./results.md#reviews).
 
 ## Hosting
 

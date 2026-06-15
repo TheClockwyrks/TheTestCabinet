@@ -22,6 +22,7 @@ pub mod pricing;
 pub mod prompt;
 pub mod publish;
 pub mod reference;
+pub mod review;
 pub mod run_record;
 pub mod seeding;
 pub mod test_case;
@@ -62,6 +63,7 @@ pub use publish::{
     SystemCommandRunner,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
+pub use review::{Rating, Writeup, parse_writeup};
 pub use run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
 };

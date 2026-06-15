@@ -1,0 +1,32 @@
+@use "../styles/tokens" as t;
+
+// A run's quality rating, shown as a color-coded chip. The tier color comes from
+// the `--ttc-rating-*` theme tokens, selected by the `data-rating` attribute so
+// the markup stays a single element.
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 t.$space-sm;
+  border: t.$border-hairline solid var(--rating-color);
+  border-radius: t.$radius-sm;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rating-color);
+  background: color-mix(in srgb, var(--rating-color) 14%, transparent);
+  white-space: nowrap;
+
+  &[data-rating="flawless"] {
+    --rating-color: var(--ttc-rating-flawless);
+  }
+  &[data-rating="great"] {
+    --rating-color: var(--ttc-rating-great);
+  }
+  &[data-rating="scuffed"] {
+    --rating-color: var(--ttc-rating-scuffed);
+  }
+  &[data-rating="broken"] {
+    --rating-color: var(--ttc-rating-broken);
+  }
+}

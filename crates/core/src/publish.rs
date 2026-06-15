@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::execution::ArtifactCollection;
+use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 
 /// A request to publish a single finished run.
@@ -20,6 +21,10 @@ pub struct PublishRequest<'a> {
     pub record: &'a RunRecord,
     /// The collected implementation to release.
     pub artifacts: &'a ArtifactCollection,
+    /// The run's hand-written review. Publishing requires one, so it is carried
+    /// by value here rather than left optional — a run without a writeup and
+    /// rating is refused before a request is ever built (see `tcab publish`).
+    pub writeup: &'a Writeup,
 }
 
 /// The result of publishing a run, with the links produced.
@@ -116,6 +121,9 @@ pub struct PublishConfig {
     pub repo_prefix: String,
     /// Path to the gallery dataset that published records are appended to.
     pub dataset_path: PathBuf,
+    /// Directory the site loads run writeups from, where each run's review is
+    /// written as `<run-id>.md` alongside the dataset.
+    pub writeups_dir: PathBuf,
     /// Working tree the dataset lives in, where its update is committed locally.
     pub site_repo_root: PathBuf,
 }
@@ -127,6 +135,7 @@ impl Default for PublishConfig {
             domain: "testcabinet.ai".to_string(),
             repo_prefix: "tcab-".to_string(),
             dataset_path: PathBuf::from("apps/site/src/data/runs.json"),
+            writeups_dir: PathBuf::from("apps/site/src/data/writeups"),
             site_repo_root: PathBuf::from("."),
         }
     }
@@ -157,6 +166,12 @@ impl PublishConfig {
     /// The URL the published build is embedded from.
     pub fn build_url(&self, record: &RunRecord) -> String {
         format!("https://{}/", self.build_fqdn(record))
+    }
+
+    /// Where a run's writeup is written in the site, keyed by run id so the
+    /// gallery can pair it with the record.
+    pub fn writeup_path(&self, record: &RunRecord) -> PathBuf {
+        self.writeups_dir.join(format!("{}.md", record.id))
     }
 }
 
@@ -285,6 +300,17 @@ pub fn append_record_to_dataset(path: &Path, record: &RunRecord) -> Result<bool>
     let json = serde_json::to_string_pretty(&records)?;
     std::fs::write(path, format!("{json}\n"))?;
     Ok(true)
+}
+
+/// Write a run's writeup to the site, in canonical form, creating the writeups
+/// directory if needed. Overwriting is intentional: re-publishing refreshes the
+/// file from the current review, keeping the operation idempotent.
+pub fn write_writeup(path: &Path, writeup: &Writeup) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, writeup.to_file_string())?;
+    Ok(())
 }
 
 /// The captured result of running an external command.
@@ -461,17 +487,27 @@ impl<R: CommandRunner> Publisher for GitHubPublisher<R> {
             playable_build: Some(playable_build.clone()),
         };
 
+        // The writeup is published into the site alongside the record, where the
+        // gallery loads it (and its rating) at build time. Written before the
+        // dataset append so both land in the same commit.
+        let writeup_path = self.config.writeup_path(&record);
+        write_writeup(&writeup_path, request.writeup)?;
+
         let newly_published = append_record_to_dataset(&self.config.dataset_path, &record)?;
         if newly_published {
-            // Commit the dataset change locally; pushing it (which redeploys the
-            // gallery) is deliberately left to the user.
+            // Commit the dataset change and the writeup locally; pushing it (which
+            // redeploys the gallery) is deliberately left to the user.
             let dataset = self
                 .config
                 .dataset_path
                 .to_str()
                 .ok_or_else(|| Error::Publish("dataset path is not valid UTF-8".to_string()))?;
+            let writeup = writeup_path
+                .to_str()
+                .ok_or_else(|| Error::Publish("writeup path is not valid UTF-8".to_string()))?;
             let root = self.config.site_repo_root.as_path();
-            self.require("git", &["add", dataset], Some(root)).await?;
+            self.require("git", &["add", dataset, writeup], Some(root))
+                .await?;
             self.require(
                 "git",
                 &["commit", "-m", &format!("Publish run {}", record.id)],

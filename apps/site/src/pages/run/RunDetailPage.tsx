@@ -1,15 +1,16 @@
 import { useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { RatingBadge } from "../../components/RatingBadge";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useRuns } from "../../data/useRuns";
-import { findWriteup } from "../../data/writeups";
+import { findReview } from "../../data/writeups";
 import { formatInteger, formatRunTime, formatUsd } from "../../format";
 import { PlayableSection } from "./PlayableSection";
 import styles from "./RunDetailPage.module.scss";
 
 export function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
-  const { runs, localIds, loading } = useRuns();
+  const { runs, localIds, localWriteups, loading } = useRuns();
   const run = runId ? runs.find((candidate) => candidate.id === runId) : undefined;
 
   if (!run) {
@@ -24,11 +25,15 @@ export function RunDetailPage() {
 
   const { subject, environment, metrics, validation, links, status } = run;
   const isLocal = localIds.has(run.id);
+  const review = findReview(run.id, localWriteups);
 
   return (
     <PageLayout>
       <h2 className={styles.title}>
         {subject.testCaseSlug} &mdash; {subject.harnessSlug}
+        {review?.rating && (
+          <RatingBadge rating={review.rating} className={styles.tag} />
+        )}
         {isLocal && <UnpublishedTag className={styles.tag} />}
       </h2>
       <p className={styles.subject}>
@@ -39,10 +44,10 @@ export function RunDetailPage() {
           : ""}
       </p>
 
-      {/* Play the implementation, gated behind its writeup when one exists. */}
+      {/* Play the implementation, gated behind its review when one exists. */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Play</h3>
-        <PlayableSection run={run} writeup={findWriteup(run.id)} />
+        <PlayableSection run={run} review={review} />
       </section>
 
       {/* Primary metrics: tokens and cost. Run time is secondary. */}

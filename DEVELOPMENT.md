@@ -189,6 +189,33 @@ The sections below describe the canonical deployment; the benchmark itself does
 not require these specific hosts, but this is the configuration the project
 publishes to.
 
+### Reviewing a run before publishing
+
+Every published run must carry a hand-written
+[review](./docs/results.md#reviews): a writeup and a rating, authored after
+playing the build. Write it as `runs/<id>/writeup.md`, beside the run's
+`run-record.json`, with the rating in YAML frontmatter:
+
+```markdown
+---
+rating: great
+---
+
+Movement and collision feel right. The pause menu doesn't restore keyboard
+focus, but it doesn't block play.
+```
+
+The rating must be one of `flawless`, `great`, `scuffed`, or `broken` (see
+[Results](./docs/results.md#reviews) for what each tier means), and the body must
+not be empty. Preview exactly how the review will appear by running the run
+locally (see below) before publishing — the rating badge and writeup show on the
+run's page just as they will once live.
+
+`tcab publish` refuses to publish a run whose `writeup.md` is missing or whose
+frontmatter has no valid rating, and a missing review in a batch stops the whole
+batch before anything is released. (`--dry-run` lists each run's rating so you
+can confirm the batch is reviewed before publishing for real.)
+
 ### Previewing unpublished runs locally
 
 You can view and play produced-but-unpublished runs in the gallery before
@@ -202,9 +229,10 @@ a dev-only Vite plugin (`apps/site/vite-plugin-local-runs.ts`) scans `runs/` and
 serves each run's `run-record.json` to the gallery, marked **Unpublished**.
 Where a run's implementation has been built (its `dist/`, `build/`, or `out/`
 directory exists, e.g. from validation), the run's detail page embeds and plays
-that local build directly — no hosting required. Records that predate the
-current run-record schema are skipped (and logged). Point the plugin at a
-different directory with `TTC_RUNS_DIR=/path/to/runs`.
+that local build directly — no hosting required. A run's `writeup.md` (with its
+rating) is served too, so a review previews exactly as it will once published.
+Records that predate the current run-record schema are skipped (and logged).
+Point the plugin at a different directory with `TTC_RUNS_DIR=/path/to/runs`.
 
 This is strictly a dev convenience: the plugin is `apply: "serve"` only, so
 `vite build` still emits a fully static, backend-free bundle, and these on-disk
@@ -226,9 +254,10 @@ A publish releases three things:
   self-contained.
 - **Gallery** — the run record, with its source and build links filled in, is
   appended to the site dataset under `apps/site/data/`, and the gallery at
-  `https://testcabinet.ai/` is rebuilt and deployed from it. Any
-  [writeup](./docs/site.md#implementation-writeups) for the run is published into
-  the dataset alongside the record.
+  `https://testcabinet.ai/` is rebuilt and deployed from it. The run's
+  [review](./docs/results.md#reviews) is published alongside the record, written
+  to `apps/site/src/data/writeups/<id>.md` (carrying its rating in frontmatter)
+  and committed with the dataset.
 
 `tcab publish` shells out to the GitHub CLI (`gh`) to create and push
 repositories and to configure Pages, so `gh` must be installed and authenticated

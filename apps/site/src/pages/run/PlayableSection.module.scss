@@ -20,8 +20,8 @@
   color: t.$color-text-muted;
 }
 
-// The pre-launch gate: either the run's writeup or a generic caveat, plus the
-// explicit Launch control. The build never loads until this button is clicked.
+// The pre-launch gate: either the run's review (rating + writeup) or a generic
+// caveat, plus the explicit Launch control. The build never loads until clicked.
 .gate {
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
@@ -31,6 +31,20 @@
 
 .notice {
   margin: 0;
+  color: t.$color-text-muted;
+}
+
+// The rating headline above the writeup: the tier chip and its definition, so a
+// visitor knows what to expect before launching.
+.verdict {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin: 0 0 t.$space-md;
+}
+
+.verdictLabel {
   color: t.$color-text-muted;
 }
 

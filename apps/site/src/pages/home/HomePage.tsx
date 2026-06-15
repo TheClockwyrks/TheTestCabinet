@@ -1,9 +1,12 @@
 import type { RunRecord } from "@test-cabinet/run-record";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { RatingBadge } from "../../components/RatingBadge";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";
+import type { Rating } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";
+import { findReview } from "../../data/writeups";
 import { routes } from "../../routes";
 import {
   formatCompact,
@@ -19,10 +22,12 @@ import styles from "./HomePage.module.scss";
 // column-aligned run log carried over from the gallery. It is not a
 // leaderboard and shows no ranking — runs are ordered purely by recency.
 export function HomePage() {
-  const { runs, localIds } = useRuns();
+  const { runs, localIds, localWriteups } = useRuns();
   const recent = [...runs].sort(byRecencyDesc);
   const featured = recent[0];
   const rest = recent.slice(1);
+  const ratingOf = (run: RunRecord): Rating | null =>
+    findReview(run.id, localWriteups)?.rating ?? null;
 
   return (
     <PageLayout>
@@ -42,7 +47,11 @@ export function HomePage() {
           <p className={styles.empty}>No runs have been published yet.</p>
         ) : (
           <>
-            <FeaturedRun run={featured} local={localIds.has(featured.id)} />
+            <FeaturedRun
+              run={featured}
+              local={localIds.has(featured.id)}
+              rating={ratingOf(featured)}
+            />
             {rest.length > 0 && (
               <div className={styles.log}>
                 <div className={`${styles.row} ${styles.head}`}>
@@ -55,12 +64,14 @@ export function HomePage() {
                   <span className={styles.num}>COST</span>
                   <span className={styles.num}>TIME</span>
                   <span className={styles.num}>OK</span>
+                  <span>RATING</span>
                 </div>
                 {rest.map((run) => (
                   <RunRow
                     key={run.id}
                     run={run}
                     local={localIds.has(run.id)}
+                    rating={ratingOf(run)}
                   />
                 ))}
               </div>
@@ -85,7 +96,15 @@ function timestamp(run: RunRecord): number {
 
 // The lead run: the same vital stats as a log row but given room to breathe,
 // with cross-links into the test case and model behind it.
-function FeaturedRun({ run, local }: { run: RunRecord; local: boolean }) {
+function FeaturedRun({
+  run,
+  local,
+  rating,
+}: {
+  run: RunRecord;
+  local: boolean;
+  rating: Rating | null;
+}) {
   const { subject, metrics, validation } = run;
   const model = findModelByModelId(subject.modelId);
   return (
@@ -97,6 +116,7 @@ function FeaturedRun({ run, local }: { run: RunRecord; local: boolean }) {
         <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
           {formatSlug(subject.testCaseSlug)}
         </Link>
+        {rating && <RatingBadge rating={rating} className={styles.tag} />}
         {local && <UnpublishedTag className={styles.tag} />}
       </h2>
       <p className={styles.featureSubject}>
@@ -154,7 +174,15 @@ function Stat({
   );
 }
 
-function RunRow({ run, local }: { run: RunRecord; local: boolean }) {
+function RunRow({
+  run,
+  local,
+  rating,
+}: {
+  run: RunRecord;
+  local: boolean;
+  rating: Rating | null;
+}) {
   const { subject, metrics, validation } = run;
   return (
     <Link to={routes.runDetail(run.id)} className={styles.row}>
@@ -173,6 +201,13 @@ function RunRow({ run, local }: { run: RunRecord; local: boolean }) {
         className={`${styles.num} ${validation.loaded ? styles.ok : styles.bad}`}
       >
         {validation.loaded ? "[Y]" : "[N]"}
+      </span>
+      <span className={styles.rating}>
+        {rating ? (
+          <RatingBadge rating={rating} />
+        ) : (
+          <span className={styles.noRating}>—</span>
+        )}
       </span>
     </Link>
   );

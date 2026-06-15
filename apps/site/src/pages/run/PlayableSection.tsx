@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { Markdown } from "../../components/Markdown";
+import { RatingBadge } from "../../components/RatingBadge";
+import { RATING_META, type ParsedWriteup } from "../../data/ratings";
 import styles from "./PlayableSection.module.scss";
 
 interface PlayableSectionProps {
   run: RunRecord;
-  writeup: string | undefined;
+  review: ParsedWriteup | undefined;
 }
 
 // A run's playable build is the model's code exactly as it was written, so it
 // may be incomplete or visibly broken. It must NEVER auto-load: the visitor is
-// always shown context first (the hand-written result writeup when one exists,
-// otherwise a short generic caveat) and has to click to launch the embed (see
-// docs/site.md). Once launched it can expand to a near-fullscreen overlay so
-// the game gets keyboard focus without the page scrolling underneath it.
-export function PlayableSection({ run, writeup }: PlayableSectionProps) {
+// always shown context first (the hand-written review — its rating and writeup —
+// when one exists, otherwise a short generic caveat) and has to click to launch
+// the embed (see docs/site.md). Once launched it can expand to a near-fullscreen
+// overlay so the game gets keyboard focus without the page scrolling underneath.
+export function PlayableSection({ run, review }: PlayableSectionProps) {
   const [launched, setLaunched] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -64,13 +66,24 @@ export function PlayableSection({ run, writeup }: PlayableSectionProps) {
     );
   }
 
-  // Gate the launch behind context: the writeup when one exists, otherwise a
-  // generic caveat that this is the model's unedited (and possibly broken) code.
+  // Gate the launch behind context: the review (its rating headline and writeup)
+  // when one exists, otherwise a generic caveat that this is the model's unedited
+  // (and possibly broken) code.
   if (!launched) {
     return (
       <div className={styles.gate}>
-        {writeup ? (
-          <Markdown className={styles.writeupBody}>{writeup}</Markdown>
+        {review ? (
+          <>
+            {review.rating && (
+              <p className={styles.verdict}>
+                <RatingBadge rating={review.rating} />
+                <span className={styles.verdictLabel}>
+                  {RATING_META[review.rating].description}
+                </span>
+              </p>
+            )}
+            <Markdown className={styles.writeupBody}>{review.body}</Markdown>
+          </>
         ) : (
           <p className={styles.notice}>
             This is the model&rsquo;s code exactly as it was written. It has not

@@ -89,11 +89,13 @@ function findBuildDir(runsDir: string, id: string): string | null {
 function collectRuns(runsDir: string): {
   runs: unknown[];
   skipped: string[];
+  writeups: Record<string, string>;
 } {
   const runs: unknown[] = [];
   const skipped: string[] = [];
+  const writeups: Record<string, string> = {};
   if (!existsSync(runsDir)) {
-    return { runs, skipped };
+    return { runs, skipped, writeups };
   }
   for (const entry of readdirSync(runsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -116,9 +118,15 @@ function collectRuns(runsDir: string): {
     if (buildDir && parsed.links.playableBuild == null) {
       parsed.links.playableBuild = `${PREFIX}/builds/${encodeURIComponent(parsed.id)}/`;
     }
+    // Surface the run's writeup (with its rating) so a review can be previewed
+    // in the gallery before it is published.
+    const writeupPath = join(runsDir, entry.name, "writeup.md");
+    if (existsSync(writeupPath)) {
+      writeups[parsed.id] = readFileSync(writeupPath, "utf8");
+    }
     runs.push(parsed);
   }
-  return { runs, skipped };
+  return { runs, skipped, writeups };
 }
 
 const CONTENT_JSON = "application/json; charset=utf-8";
@@ -226,13 +234,13 @@ export function localRuns(options: LocalRunsOptions): Plugin {
           const path = url.split("?")[0]?.slice(PREFIX.length) ?? "";
 
           if (path === "/index.json") {
-            const { runs, skipped } = collectRuns(runsDir);
+            const { runs, skipped, writeups } = collectRuns(runsDir);
             if (skipped.length > 0) {
               server.config.logger.warn(
                 `[local-runs] skipped ${skipped.length} record(s): ${skipped.join(", ")}`,
               );
             }
-            sendJson(res, { runs, skipped });
+            sendJson(res, { runs, skipped, writeups });
             return;
           }
 

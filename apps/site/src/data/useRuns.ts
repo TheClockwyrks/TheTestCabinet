@@ -11,12 +11,15 @@ export interface RunsState {
   runs: RunRecord[];
   /** Ids of runs sourced from local disk — i.e. not yet published. */
   localIds: ReadonlySet<string>;
+  /** Raw writeups for local runs, keyed by run id, for pre-publish preview. */
+  localWriteups: Readonly<Record<string, string>>;
   /** True while local runs are still being fetched (dev only). */
   loading: boolean;
 }
 
 interface LocalRunsResponse {
   runs?: RunRecord[];
+  writeups?: Record<string, string>;
 }
 
 // Assembles the gallery's run list. In dev it fetches produced-but-unpublished
@@ -26,6 +29,7 @@ interface LocalRunsResponse {
 // the fetch is skipped and only published runs are shown.
 export function useRuns(): RunsState {
   const [localRuns, setLocalRuns] = useState<RunRecord[] | null>(null);
+  const [localWriteups, setLocalWriteups] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<boolean>(import.meta.env.DEV);
 
   useEffect(() => {
@@ -36,7 +40,9 @@ export function useRuns(): RunsState {
         response.ok ? (response.json() as Promise<LocalRunsResponse>) : { runs: [] },
       )
       .then((data) => {
-        if (active) setLocalRuns(data.runs ?? []);
+        if (!active) return;
+        setLocalRuns(data.runs ?? []);
+        setLocalWriteups(data.writeups ?? {});
       })
       .catch(() => {
         if (active) setLocalRuns([]);
@@ -57,5 +63,5 @@ export function useRuns(): RunsState {
     publishedRuns.length > 0 || local.length > 0 ? publishedRuns : sampleRuns;
   const runs = [...local, ...base.filter((run) => !localIds.has(run.id))];
 
-  return { runs, localIds, loading };
+  return { runs, localIds, localWriteups, loading };
 }

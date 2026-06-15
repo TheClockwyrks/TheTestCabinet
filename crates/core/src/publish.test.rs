@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
+use crate::review::Rating;
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject};
 use crate::validation::ValidationSummary;
 
@@ -51,6 +52,13 @@ fn sample_record() -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+    }
+}
+
+fn sample_writeup() -> Writeup {
+    Writeup {
+        rating: Rating::Great,
+        body: "Plays well; the pause menu doesn't restore focus.".to_string(),
     }
 }
 
@@ -171,6 +179,7 @@ fn publisher_for(dir: &Path, runner: MockRunner) -> (GitHubPublisher<MockRunner>
     std::fs::create_dir_all(&impl_dir).expect("impl dir");
     let config = PublishConfig {
         dataset_path: dir.join("runs.json"),
+        writeups_dir: dir.join("writeups"),
         site_repo_root: dir.to_path_buf(),
         ..PublishConfig::default()
     };
@@ -185,9 +194,11 @@ async fn publish_creates_private_repo_fills_links_and_records_dataset() {
         repo_path: impl_dir.clone(),
     };
     let record = sample_record();
+    let writeup = sample_writeup();
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
+        writeup: &writeup,
     };
 
     let outcome = publisher.publish(&request).await.expect("publish");
@@ -226,6 +237,21 @@ async fn publish_creates_private_repo_fills_links_and_records_dataset() {
             .any(|c| c.starts_with("git commit") && c.contains("Publish run"))
     );
 
+    // The writeup was published to the site in canonical form, carrying its
+    // rating, and staged in the publish commit.
+    let writeup_file = dir
+        .path()
+        .join("writeups")
+        .join(format!("{}.md", record.id));
+    let written = std::fs::read_to_string(&writeup_file).expect("writeup written");
+    assert_eq!(written, writeup.to_file_string());
+    assert!(written.contains("rating: great"));
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.starts_with("git add") && c.contains(".md"))
+    );
+
     // The record landed in the dataset with its links filled in.
     let stored: Vec<RunRecord> =
         serde_json::from_str(&std::fs::read_to_string(dir.path().join("runs.json")).expect("read"))
@@ -256,9 +282,11 @@ async fn publish_is_idempotent_when_already_released() {
     };
     append_record_to_dataset(&publisher.config().dataset_path, &record).expect("seed dataset");
 
+    let writeup = sample_writeup();
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
+        writeup: &writeup,
     };
     let outcome = publisher.publish(&request).await.expect("publish");
 

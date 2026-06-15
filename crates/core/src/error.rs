@@ -117,6 +117,11 @@ pub enum Error {
     #[error("publish error: {0}")]
     Publish(String),
 
+    /// A run's hand-written review (its writeup and rating) was missing or
+    /// malformed.
+    #[error("review error: {0}")]
+    Review(String),
+
     /// Failed to (de)serialize a value, typically the run record.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
