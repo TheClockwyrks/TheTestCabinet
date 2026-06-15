@@ -1,6 +1,10 @@
 @use "../../styles/tokens" as t;
 
 .title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-md;
   font-size: t.$font-xl;
   margin: 0 0 t.$space-xs;
 }

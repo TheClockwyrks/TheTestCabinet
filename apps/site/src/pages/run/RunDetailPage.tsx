@@ -1,6 +1,7 @@
 import { useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
-import { findRun } from "../../data/runs";
+import { UnpublishedTag } from "../../components/UnpublishedTag";
+import { useRuns } from "../../data/useRuns";
 import { findWriteup } from "../../data/writeups";
 import { formatInteger, formatRunTime, formatUsd } from "../../format";
 import { PlayableSection } from "./PlayableSection";
@@ -8,22 +9,27 @@ import styles from "./RunDetailPage.module.scss";
 
 export function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
-  const run = runId ? findRun(runId) : undefined;
+  const { runs, localIds, loading } = useRuns();
+  const run = runId ? runs.find((candidate) => candidate.id === runId) : undefined;
 
   if (!run) {
     return (
       <PageLayout>
-        <p className={styles.notFound}>No run found for &ldquo;{runId}&rdquo;.</p>
+        <p className={styles.notFound}>
+          {loading ? "Loading…" : <>No run found for &ldquo;{runId}&rdquo;.</>}
+        </p>
       </PageLayout>
     );
   }
 
   const { subject, metrics, validation, links, status } = run;
+  const isLocal = localIds.has(run.id);
 
   return (
     <PageLayout>
       <h2 className={styles.title}>
         {subject.testCaseSlug} &mdash; {subject.harnessSlug}
+        {isLocal && <UnpublishedTag className={styles.tag} />}
       </h2>
       <p className={styles.subject}>
         {subject.modelId} &middot; test case {subject.testCaseVersion}

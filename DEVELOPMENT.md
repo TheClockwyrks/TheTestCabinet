@@ -178,6 +178,29 @@ The sections below describe the canonical deployment; the benchmark itself does
 not require these specific hosts, but this is the configuration the project
 publishes to.
 
+### Previewing unpublished runs locally
+
+You can view and play produced-but-unpublished runs in the gallery before
+publishing anything. With the dev server running:
+
+```sh
+npm run dev -w @test-cabinet/site
+```
+
+a dev-only Vite plugin (`apps/site/vite-plugin-local-runs.ts`) scans `runs/` and
+serves each run's `run-record.json` to the gallery, marked **Unpublished**.
+Where a run's implementation has been built (its `dist/`, `build/`, or `out/`
+directory exists, e.g. from validation), the run's detail page embeds and plays
+that local build directly — no hosting required. Records that predate the
+current run-record schema are skipped (and logged). Point the plugin at a
+different directory with `TTC_RUNS_DIR=/path/to/runs`.
+
+This is strictly a dev convenience: the plugin is `apply: "serve"` only, so
+`vite build` still emits a fully static, backend-free bundle, and these on-disk
+runs are never published as a side effect — only `tcab publish` does that. Until
+real runs are published, the gallery falls back to design-preview samples
+(`apps/site/src/data/sampleRuns.ts`); any local run replaces them.
+
 A publish releases three things:
 
 - **Source** — each run's collected implementation is pushed to its own public

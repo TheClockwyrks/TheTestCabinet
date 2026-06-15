@@ -1,0 +1,151 @@
+@use "../styles/tokens" as t;
+
+// Fixed overlay, top-right, above all page content. Intentionally uses its own
+// fixed neutral palette (not the per-variant `--ttc-*` tokens) so it never
+// camouflages against the variant it controls.
+$switcher-bg: #0a0a0d;
+$switcher-surface: #141418;
+$switcher-border: #2a2a32;
+$switcher-text: #f0f0f4;
+$switcher-muted: #8a8a96;
+$switcher-accent: #e48800;
+$switcher-z: 1000;
+
+.panel {
+  position: fixed;
+  top: t.$space-md;
+  right: t.$space-md;
+  z-index: $switcher-z;
+  width: 14rem;
+  background: $switcher-bg;
+  border: t.$border-hairline solid $switcher-border;
+  border-radius: t.$radius-md;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.6);
+  color: $switcher-text;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: t.$space-sm t.$space-md;
+  border-bottom: t.$border-hairline solid $switcher-border;
+}
+
+.title {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $switcher-accent;
+}
+
+.collapse {
+  background: none;
+  border: none;
+  color: $switcher-muted;
+  font-size: t.$font-lg;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 t.$space-xs;
+
+  &:hover {
+    color: $switcher-text;
+  }
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: t.$space-xs;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  width: 100%;
+  text-align: left;
+  padding: t.$space-sm;
+  background: $switcher-surface;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  color: $switcher-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: $switcher-border;
+  }
+}
+
+.active {
+  border-color: $switcher-accent;
+  background: rgba(228, 136, 0, 0.12);
+}
+
+.key {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: t.$border-hairline solid $switcher-border;
+  border-radius: t.$radius-sm;
+  font-size: t.$font-sm;
+  color: $switcher-muted;
+
+  .active & {
+    color: $switcher-accent;
+    border-color: $switcher-accent;
+  }
+}
+
+.optionText {
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: t.$font-sm;
+  font-weight: 600;
+}
+
+.blurb {
+  font-size: t.$font-sm;
+  color: $switcher-muted;
+}
+
+.hint {
+  margin: 0;
+  padding: t.$space-xs t.$space-md t.$space-sm;
+  font-size: t.$font-sm;
+  color: $switcher-muted;
+}
+
+.reopen {
+  position: fixed;
+  top: t.$space-md;
+  right: t.$space-md;
+  z-index: $switcher-z;
+  padding: t.$space-sm t.$space-md;
+  background: $switcher-bg;
+  border: t.$border-hairline solid $switcher-accent;
+  border-radius: t.$radius-md;
+  color: $switcher-accent;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:hover {
+    background: $switcher-surface;
+  }
+}

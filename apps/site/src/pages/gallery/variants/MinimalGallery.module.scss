@@ -1,0 +1,115 @@
+@use "../../../styles/tokens" as t;
+
+.hero {
+  margin-bottom: t.$space-2xl;
+}
+
+.title {
+  font-family: var(--ttc-display);
+  font-size: t.$font-2xl;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: t.$color-text;
+}
+
+.tagline {
+  margin: t.$space-sm 0 0;
+  max-width: 36rem;
+  color: t.$color-text-muted;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: t.$border-hairline solid t.$color-border;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: t.$space-xl;
+  padding: t.$space-lg t.$space-sm;
+  color: t.$color-text;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  transition:
+    background 0.15s ease,
+    padding-left 0.15s ease;
+
+  &:hover {
+    text-decoration: none;
+    background: t.$color-surface;
+    padding-left: t.$space-md;
+  }
+}
+
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.test {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-lg;
+  font-weight: 600;
+}
+
+.tag {
+  font-size: 0.7rem;
+}
+
+.subject {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.metrics {
+  display: flex;
+  gap: t.$space-xl;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: t.$space-xs;
+}
+
+.metricValue {
+  font-size: t.$font-md;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.loaded .dot {
+  background: t.$color-accent;
+}
+
+.notLoaded .dot {
+  background: t.$color-negative;
+}

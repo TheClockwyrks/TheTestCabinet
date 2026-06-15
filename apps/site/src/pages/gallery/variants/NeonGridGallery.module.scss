@@ -1,0 +1,143 @@
+@use "../../../styles/tokens" as t;
+
+.hero {
+  margin-bottom: t.$space-2xl;
+  text-align: center;
+}
+
+.title {
+  font-family: var(--ttc-display);
+  font-size: t.$font-2xl;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0;
+  color: t.$color-text;
+  text-shadow:
+    0 0 0.5rem t.$color-accent,
+    0 0 1.5rem color-mix(in srgb, t.$color-accent 70%, transparent),
+    0 0 3rem t.$color-accent-2;
+}
+
+.tagline {
+  margin: t.$space-md 0 0;
+  font-size: t.$font-lg;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: t.$color-accent-2;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: t.$space-lg;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  padding: t.$space-lg;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-surface 80%, transparent);
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  box-shadow:
+    0 0 0.75rem color-mix(in srgb, t.$color-accent 45%, transparent),
+    inset 0 0 1rem color-mix(in srgb, t.$color-accent 12%, transparent);
+  transition:
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+
+  &:hover {
+    text-decoration: none;
+    transform: translateY(-0.2rem);
+    box-shadow:
+      0 0 1.5rem t.$color-accent,
+      inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 22%, transparent);
+  }
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.test {
+  font-family: var(--ttc-display);
+  font-size: t.$font-lg;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+.live {
+  background: t.$color-positive;
+  box-shadow: 0 0 0.5rem t.$color-positive;
+}
+
+.dead {
+  background: t.$color-negative;
+  box-shadow: 0 0 0.5rem t.$color-negative;
+}
+
+.subject {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  padding: t.$space-md 0;
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 35%, transparent);
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 35%, transparent);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.statLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.statValue {
+  font-family: var(--ttc-display);
+  font-size: t.$font-lg;
+  font-weight: 700;
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+}
+
+.play {
+  align-self: flex-end;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+}

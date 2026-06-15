@@ -24,16 +24,27 @@ $font-2xl: 2.5rem;
 // Layout sizes.
 $content-max: 64rem;
 $embed-height: 32rem;
+$topbar-height: 4rem;
 
 // Border width (only place px is allowed).
 $border-hairline: 1px;
 
 // Color palette.
-$color-bg: #0f1115;
-$color-surface: #1a1d24;
-$color-border: #2a2f3a;
-$color-text: #e6e8ec;
-$color-text-muted: #9aa3b2;
-$color-accent: #6ea8fe;
-$color-positive: #4ade80;
-$color-negative: #f87171;
+//
+// Colors are intentionally indirected through the per-variant CSS custom
+// properties defined in `variants.scss`. Components keep referencing these SCSS
+// tokens (e.g. `t.$color-surface`); the active `[data-variant]` on <html>
+// supplies the concrete value, so a design variant re-themes the entire app
+// without touching component styles. The fallbacks are the brand defaults
+// (deep black + Clockwyrks orange) used before a variant attaches.
+$color-bg: var(--ttc-bg, #07080a);
+$color-bg-2: var(--ttc-bg-2, #0d0f13);
+$color-surface: var(--ttc-surface, #121419);
+$color-surface-2: var(--ttc-surface-2, #1a1d24);
+$color-border: var(--ttc-border, #262b35);
+$color-text: var(--ttc-text, #e8eaee);
+$color-text-muted: var(--ttc-muted, #8b93a3);
+$color-accent: var(--ttc-accent, #e48800);
+$color-accent-2: var(--ttc-accent-2, #ffb347);
+$color-positive: var(--ttc-positive, #4ade80);
+$color-negative: var(--ttc-negative, #f87171);

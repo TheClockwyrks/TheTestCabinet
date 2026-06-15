@@ -1,0 +1,112 @@
+@use "../styles/tokens" as t;
+
+// Sits behind the app shell (which is positioned at a higher stacking level).
+// Fixed and non-interactive.
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+// Cabinet Hall: a darkened room — a warm pool of light up top fading into black,
+// with a faint floor reflection.
+.backdrop[data-variant="cabinet"] {
+  background:
+    radial-gradient(
+      120% 60% at 50% -10%,
+      rgba(228, 136, 0, 0.1),
+      transparent 60%
+    ),
+    linear-gradient(
+      to bottom,
+      t.$color-bg-2,
+      t.$color-bg 55%,
+      #020203 100%
+    );
+}
+
+// CRT Terminal: near-black amber glass with a vignette.
+.backdrop[data-variant="crt"] {
+  background:
+    radial-gradient(
+      130% 90% at 50% 40%,
+      rgba(255, 180, 55, 0.06),
+      transparent 70%
+    ),
+    t.$color-bg;
+}
+
+// Repeating horizontal scanlines over the CRT backdrop.
+.scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    var(--ttc-scanline) 2px,
+    var(--ttc-scanline) 3px
+  );
+  mix-blend-mode: multiply;
+}
+
+// Neon Grid (and Neon Log): deep void with a sunset glow on the horizon line.
+.backdrop[data-variant="neon"],
+.backdrop[data-variant="neonlog"] {
+  background: linear-gradient(
+    to bottom,
+    t.$color-bg 0%,
+    #0a0414 55%,
+    #14061f 100%
+  );
+}
+
+.neonGlow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 60rem;
+  height: 30rem;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 94, 58, 0.4),
+    rgba(255, 157, 47, 0.12) 45%,
+    transparent 75%
+  );
+  filter: blur(0.5rem);
+}
+
+// A perspective grid receding to a horizon at ~58% height.
+.neonGrid {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  top: 58%;
+  bottom: -10%;
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--ttc-grid) 0,
+      var(--ttc-grid) 1px,
+      transparent 1px,
+      transparent 4rem
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--ttc-grid) 0,
+      var(--ttc-grid) 1px,
+      transparent 1px,
+      transparent 3rem
+    );
+  transform: perspective(18rem) rotateX(62deg);
+  transform-origin: top center;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 70%);
+}
+
+// Minimal: a single soft top wash, otherwise flat deep black.
+.backdrop[data-variant="minimal"] {
+  background: linear-gradient(to bottom, t.$color-bg-2, t.$color-bg 40%);
+}
