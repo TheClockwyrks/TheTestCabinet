@@ -56,6 +56,7 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     let seeded = seeder
         .seed(&SeedRequest {
             test_case: &test_case,
+            variant,
             specs: &specs,
             references: &references,
         })

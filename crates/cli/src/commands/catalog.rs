@@ -233,6 +233,7 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
         let seeded = seeder
             .seed(&SeedRequest {
                 test_case: &test_case,
+                variant: default_variant,
                 specs: &specs,
                 references: &references,
             })

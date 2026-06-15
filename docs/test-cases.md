@@ -33,7 +33,10 @@ Each test case version must contain:
   vision spec for the test case and is the primary material handed to the model.
   It may record both high and low level details, including mechanics, layouts,
   states, and rules. The specification may be split across multiple seeded files
-  (see [Variants](#variants)) rather than living in a single file.
+  (see [Variants](#variants)) rather than living in a single file. Each spec file
+  is either plain Markdown, seeded verbatim, or a Handlebars template (`.hbs`)
+  rendered per run with the selected variant; see
+  [Spec templates](#spec-templates).
 - A **prompt template** (`prompt.hbs`) that is rendered into the instruction
   handed to the harness. See [Prompt template](#prompt-template).
 - **Reference visuals** in the form of mockups representative of the UIs that
@@ -67,10 +70,11 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 assets = []                  # asset files/directories, seeded (relative paths)
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the
-# version folder to a `dest` in the run's workspace.
+# version folder to a `dest` in the run's workspace. A `.hbs` source is rendered
+# (see Spec templates); any other source is seeded verbatim.
 [[spec]]
-source = "specs/overview.md" # source path (relative to this folder)
-dest   = "specs/overview.md" # destination in the run workspace (relative)
+source = "specs/overview.hbs" # source path (relative to this folder); .hbs = rendered
+dest   = "specs/overview.md"  # destination in the run workspace (relative)
 
 # Variants. A case offers one or more; exactly one runs per run. Each seeds the
 # common specs above plus its own additional specs, and may declare its own
@@ -111,7 +115,9 @@ actions = []                 # actions to drive the build into the view (empty =
   see [Prompt template](#prompt-template) below.
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the run
-  workspace. The rendered reference screenshots are seeded too. Asset entries may
+  workspace. A `source` ending in `.hbs` is a Handlebars template rendered into
+  its `dest` (see [Spec templates](#spec-templates)); any other `source` is seeded
+  verbatim. The rendered reference screenshots are seeded too. Asset entries may
   be files or directories; a directory is seeded recursively.
 - Each `[[variant]]` declares a build the case offers. A run selects exactly one
   variant, which seeds the common specs plus the variant's own `spec` entries;
@@ -165,6 +171,34 @@ context exposes exactly:
 Because the absolute paths and variant come from The Test Cabinet at render
 time, a specification never needs to mention `/work` or know which variant is
 running; the prompt points the model at the seeded files for it.
+
+## Spec templates
+
+A spec is normally plain Markdown, seeded into the run verbatim. A spec whose
+`source` ends in `.hbs`, however, is a Handlebars template: The Test Cabinet
+renders it at seed time and writes the result to the spec's `dest` (typically a
+`.md` file), so the seeded specification states facts that depend on the selected
+variant directly — for example naming which configuration this build is — rather
+than hedging about what a run "may" contain. The extension on the `source`
+decides this: `.hbs` is rendered, anything else is copied as-is.
+
+A spec template is rendered under the same rules as the prompt: **strict mode**
+(referencing any variable other than those below is a render error, not a silent
+blank) with HTML escaping disabled (a spec is plain text). The context exposes
+exactly:
+
+- `{{version}}` — the exact test case version string (for example `v1.0.0`).
+- `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
+  selected variant. `description` is empty when the variant declares none.
+
+Unlike the prompt, a spec template is given neither `{{workspace}}` nor the spec
+manifest (`{{#each specs}}`): a spec is a file the model reads in place, so
+absolute in-container paths and the list of seeded files belong to the prompt,
+not the specification. Keeping them out is what lets a spec stay free of
+container paths and of any assumption about how the run is laid out — the same
+reason the prompt, not the spec, carries `/work`. A spec template's seeded output
+must still satisfy [Self-Contained Specifications](#self-contained-specifications)
+for whichever variant renders it.
 
 ## Variants
 

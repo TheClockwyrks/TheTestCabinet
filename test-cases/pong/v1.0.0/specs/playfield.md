@@ -2,11 +2,11 @@
 
 This file defines the geometry of the field and the objects in it. All positions
 and sizes are in the logical-pixel coordinate system defined in
-`specs/overview.md` (a fixed `1280 &times; 720` play area, origin top-left).
+`specs/overview.md` (a fixed `1280 x 720` play area, origin top-left).
 
 ## Playfield
 
-- The field spans the full `1280 &times; 720` area.
+- The field spans the full `1280 x 720` area.
 - The **top wall** (`y = 0`) and **bottom wall** (`y = 720`) are solid; the ball
   reflects off them.
 - The **left and right edges** are goals. The ball passing `x < 0` scores for
@@ -15,7 +15,7 @@ and sizes are in the logical-pixel coordinate system defined in
 
 ## Paddles
 
-- Each paddle is a rounded bar **16 wide &times; 110 tall**.
+- Each paddle is a rounded bar **16 wide x 110 tall**.
 - The **left (player one)** paddle occupies `x` in `[48, 64]`. The **right
   (player two / AI)** paddle occupies `x` in `[1216, 1232]`.
 - A paddle moves only vertically. Its center `y` is clamped so the paddle stays
@@ -27,7 +27,7 @@ and sizes are in the logical-pixel coordinate system defined in
 ## Obstacles
 
 Two **fixed, static** obstacles sit in the field. Each is a rounded bar **20
-wide &times; 140 tall**. They are placed mirror-symmetrically through the field
+wide x 140 tall**. They are placed mirror-symmetrically through the field
 center `(640, 360)`, so neither side is favored:
 
 - **Obstacle A:** `x` in `[480, 500]`, `y` in `[150, 290]` (center `490, 220`).
@@ -45,5 +45,5 @@ The ball reflects off obstacle faces like a wall (see Collision in
 - At the start of the match and after each point, the ball spawns at the center
   `(640, 360)`, holds for a **1.0 s** countdown, then serves toward the player
   who is about to receive (see Scoring and match flow in `specs/flow.md`). The
-  serve direction is within **&plusmn;30&deg;** of horizontal, with a small fixed
+  serve direction is within **+/-30deg** of horizontal, with a small fixed
   vertical component so the first volley is never perfectly flat.

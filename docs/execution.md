@@ -38,6 +38,11 @@ a single specification at the repository root.
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
+- A spec whose source is a Handlebars template (a `.hbs` extension) is
+  **rendered** with the selected variant and version while seeding, and the
+  result lands at the spec's `dest`; every other spec is copied verbatim. This
+  lets a spec state per-variant facts directly instead of hedging about what a run
+  might contain. See [Spec templates](./test-cases.md#spec-templates).
 - A test case's **reference screenshots are seeded** as visual targets so the
   model can see what each screen should look like. The reference **source**
   mockups are **not** seeded: handing over the mockup HTML/CSS would let a model

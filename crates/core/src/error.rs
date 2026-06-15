@@ -65,6 +65,19 @@ pub enum Error {
         detail: String,
     },
 
+    /// Rendering a test case's `.hbs` spec template failed during seeding.
+    #[error("failed to render spec `{spec}` for `{slug}@{version}`: {detail}")]
+    SpecRender {
+        /// The test case slug.
+        slug: String,
+        /// The test case version.
+        version: String,
+        /// The spec source path that failed to render.
+        spec: String,
+        /// Detail describing the failure.
+        detail: String,
+    },
+
     /// The requested agent harness could not be located on the host.
     #[error("agent harness `{slug}` is not available: {detail}")]
     HarnessUnavailable {

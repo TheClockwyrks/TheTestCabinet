@@ -43,13 +43,22 @@ impl RepoSeeder for FsRepoSeeder {
         ));
         fs::create_dir_all(&repo).map_err(seed_err)?;
 
-        // Each spec is copied to its destination path within the fresh
+        // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
-        // the workspace, so joining them onto the repo root is safe. Assets keep
-        // their path relative to the version folder so any references in a spec
-        // (for example `assets/...`) still resolve.
+        // the workspace, so joining them onto the repo root is safe. A spec whose
+        // source is a Handlebars template is rendered with the selected variant
+        // and version before it lands; any other spec is copied verbatim. Assets
+        // keep their path relative to the version folder so any references in a
+        // spec (for example `assets/...`) still resolve.
         for spec in request.specs {
-            copy_file(&spec.source_path, &repo.join(&spec.dest))?;
+            let dest = repo.join(&spec.dest);
+            if is_handlebars(&spec.source_path) {
+                let rendered =
+                    crate::prompt::render_spec(test_case, request.variant, &spec.source_path)?;
+                write_file(&dest, &rendered)?;
+            } else {
+                copy_file(&spec.source_path, &dest)?;
+            }
         }
 
         for asset in &test_case.asset_paths {
@@ -116,12 +125,31 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Whether a spec source is a Handlebars template, identified by a `.hbs`
+/// extension (case-insensitive). Such a spec is rendered before seeding; every
+/// other spec is copied verbatim.
+fn is_handlebars(source: &Path) -> bool {
+    source
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("hbs"))
+}
+
 /// Copy a single file, creating parent directories as needed.
 fn copy_file(from: &Path, to: &Path) -> Result<()> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent).map_err(seed_err)?;
     }
     fs::copy(from, to).map_err(seed_err)?;
+    Ok(())
+}
+
+/// Write `contents` to a file, creating parent directories as needed. Used to
+/// land a rendered `.hbs` spec at its destination.
+fn write_file(to: &Path, contents: &str) -> Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(seed_err)?;
+    }
+    fs::write(to, contents).map_err(seed_err)?;
     Ok(())
 }
 

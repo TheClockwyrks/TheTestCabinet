@@ -1,9 +1,8 @@
 # Carom — Frenzy mode
 
-This file defines the **Frenzy** mode. It is an optional mode included only in
-some builds; if this file is present in your build, implement the mode. It builds
-on the standard modes in `specs/modes/standard.md`, the physics in
-`specs/physics.md`, and the match flow in `specs/flow.md`.
+This file defines the **Frenzy** mode, a mode this build includes alongside the
+standard modes. It builds on the standard modes in `specs/modes/standard.md`, the
+physics in `specs/physics.md`, and the match flow in `specs/flow.md`.
 
 ## Menu entry
 

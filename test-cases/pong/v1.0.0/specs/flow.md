@@ -14,7 +14,7 @@ seeded mode specs under `specs/modes/`.
   side in a fixed, non-random way (for example, always toward player one) so the
   match opens consistently.
 - **Winning.** First to **11 points** wins, and the winner must **lead by at
-  least 2**. If the score reaches 10&ndash;10, play continues until one player is
+  least 2**. If the score reaches 10-10, play continues until one player is
   two points ahead.
 
 ## Game states
@@ -22,10 +22,11 @@ seeded mode specs under `specs/modes/`.
 The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `CAROM`, the tagline `NEON PADDLE
-   DUEL`, and a vertical menu. The menu always lists `SOLO` and `VERSUS`, plus
-   any additional mode defined by a seeded mode spec in this build, and finally
-   `HOW TO PLAY`. The selected item is highlighted. The field furniture
-   (paddles, ball, obstacles, net) may show dimmed behind the menu.
+   DUEL`, and a vertical menu. The menu lists the playable modes defined by the
+   seeded mode specs — each mode spec declares its own entry and where it sits in
+   the menu — followed by `HOW TO PLAY`. The selected item is highlighted. The
+   field furniture (paddles, ball, obstacles, net) may show dimmed behind the
+   menu.
 2. **How to play.** A simple screen describing the controls and the spin and
    obstacle mechanics. Returns to the menu.
 3. **In match.** The live game: paddles, ball, obstacles, net, the two scores

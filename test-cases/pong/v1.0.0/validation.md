@@ -8,7 +8,7 @@ person playing the build.
 ## Load check
 
 The harness builds the produced implementation, serves it as a static site, and
-loads it in a headless browser at a **1280 &times; 720** viewport. It records:
+loads it in a headless browser at a **1280 x 720** viewport. It records:
 
 - Whether the static production build **succeeds**.
 - Whether the page **loads without fatal errors** (no build failure, no uncaught
@@ -21,7 +21,7 @@ negative signal and is recorded as such.
 
 Validation comparisons are **opt-in**: the harness runs only the checks this
 version declares in its `test-case.toml`. A check drives the served build into a
-view, screenshots it at `1280 &times; 720`, and records a **similarity signal**
+view, screenshots it at `1280 x 720`, and records a **similarity signal**
 against the rendered screenshot of a reference view. These are soft signals, not
 strict matches.
 

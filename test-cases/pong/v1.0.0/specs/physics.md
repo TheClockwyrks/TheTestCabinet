@@ -22,7 +22,7 @@ Resolve the ball against the top/bottom walls, the two paddles, and the two
 obstacles. Treat the ball as a circle and each paddle/obstacle as an
 axis-aligned rectangle.
 
-- **Top / bottom wall:** reflect the vertical velocity (`vy &rarr; -vy`) and push
+- **Top / bottom wall:** reflect the vertical velocity (`vy -> -vy`) and push
   the ball back inside the field. Speed is unchanged.
 - **Obstacle:** reflect the velocity component normal to the face that was hit
   (a side hit flips `vx`; a top/bottom hit flips `vy`), and push the ball out of
@@ -42,7 +42,7 @@ When the ball strikes a paddle:
    `offset = (ballCenterY - paddleCenterY) / 55`, clamped to `[-1, 1]` (55 is the
    paddle half-height). The outgoing angle from horizontal is
    `theta = offset * 55deg`. Hitting the paddle center sends the ball straight
-   across; hitting the top or bottom edge sends it off at up to 55&deg;.
+   across; hitting the top or bottom edge sends it off at up to 55deg.
 
 2. **Speed.** `speed = min(speed * 1.04, 980)` (normal/versus). The horizontal
    direction flips to point toward the opposing goal.
@@ -59,7 +59,7 @@ When the ball strikes a paddle:
 
 **How spin curves the ball.** Spin is a signed scalar carried by the ball. Each
 physics step it applies a lateral acceleration **perpendicular to the ball's
-direction of travel**, of magnitude `|spin|` (in px/s&sup2;), curving the path
+direction of travel**, of magnitude `|spin|` (in px/s^2), curving the path
 toward the side determined by the sign of `spin`. Spin **decays** toward zero
 exponentially with a time constant such that it loses about **half its
 magnitude every 0.8 s** (`spin *= 0.5 ^ (dt / 0.8)` per step). Spin persists

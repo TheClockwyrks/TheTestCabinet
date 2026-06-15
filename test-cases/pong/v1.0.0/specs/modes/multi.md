@@ -1,10 +1,9 @@
 # Carom — Multi-ball mode
 
-This file defines the **Multi-ball** mode. It is an optional mode included only
-in some builds; if this file is present in your build, implement the mode. It
-builds on the standard modes in `specs/modes/standard.md`, the geometry in
-`specs/playfield.md`, the physics in `specs/physics.md`, and the match flow in
-`specs/flow.md`.
+This file defines the **Multi-ball** mode, a mode this build includes alongside
+the standard modes. It builds on the standard modes in `specs/modes/standard.md`,
+the geometry in `specs/playfield.md`, the physics in `specs/physics.md`, and the
+match flow in `specs/flow.md`.
 
 ## Menu entry
 
@@ -40,8 +39,8 @@ is `MULTI`.
 - At the start of the match and after every point, all three balls spawn at the
   center `(640, 360)`, hold for the standard **1.0 s** countdown, then serve
   together. Stagger their serve directions so they do not overlap perfectly: give
-  each ball a distinct vertical component within the **&plusmn;30&deg;**-of-
-  horizontal serve cone from `specs/playfield.md` (for example, one angled up,
+  each ball a distinct vertical component within the **+/-30deg**-of-horizontal
+  serve cone from `specs/playfield.md` (for example, one angled up,
   one roughly flat, one angled down). The horizontal direction of the serve
   follows the normal serve rule from `specs/flow.md` (toward the receiver / the
   player who was scored on), and all three balls serve toward that same side.

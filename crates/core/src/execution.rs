@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::reference::RenderedReference;
-use crate::test_case::{SpecFile, TestCaseVersion};
+use crate::test_case::{SpecFile, TestCaseVersion, Variant};
 
 /// The directory the seeded run repository is mounted at inside the run
 /// container, and the working directory the harness builds in. Spec `dest` paths
@@ -30,9 +30,13 @@ pub const WORKSPACE_DIR: &str = "/work";
 pub struct SeedRequest<'a> {
     /// The resolved test case version to seed from.
     pub test_case: &'a TestCaseVersion,
-    /// The specs to seed for the selected variant, each copied from its source
-    /// on the host to its `dest` in the fresh repository. Obtain these from
-    /// [`TestCaseVersion::seeded_specs`] for the chosen variant.
+    /// The selected variant. Its specs are what [`Self::specs`] holds, and it is
+    /// the context handed to any `.hbs` spec template rendered while seeding.
+    pub variant: &'a Variant,
+    /// The specs to seed for the selected variant. A spec whose source is a
+    /// `.hbs` template is rendered into its `dest`; any other spec is copied
+    /// verbatim. Obtain these from [`TestCaseVersion::seeded_specs`] for the
+    /// chosen variant.
     pub specs: &'a [SpecFile],
     /// Reference screenshots rendered for this run, seeded as visual targets.
     /// The reference source mockups they were rendered from are not seeded.

@@ -158,15 +158,18 @@ where
 
     /// Seed a fresh git repository with the selected variant's specs, the test
     /// case's assets, and the rendered reference screenshots. Obtain `specs` from
-    /// [`TestCaseVersion::seeded_specs`] for the chosen variant.
+    /// [`TestCaseVersion::seeded_specs`] for the chosen `variant`, which is also
+    /// the context for rendering any `.hbs` spec.
     pub fn seed(
         &self,
         test_case: &TestCaseVersion,
+        variant: &Variant,
         specs: &[SpecFile],
         references: &[RenderedReference],
     ) -> Result<SeededRepo> {
         self.seeder.seed(&SeedRequest {
             test_case,
+            variant,
             specs,
             references,
         })
@@ -378,7 +381,7 @@ where
         // are both seeded as visual targets and reused as validation baselines
         // below. A variant may add references of its own on top of the common set.
         let references = self.render_references(&test_case, &variant)?;
-        let seeded = self.seed(&test_case, &specs, &references)?;
+        let seeded = self.seed(&test_case, &variant, &specs, &references)?;
         let (handle, outcome, environment) = self
             .execute(&test_case, &variant, &seeded, request, events)
             .await?;

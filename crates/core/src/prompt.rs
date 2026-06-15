@@ -1,5 +1,5 @@
-//! Prompt rendering: turn a test case's `prompt.hbs` into the harness
-//! instruction.
+//! Template rendering: turn a test case's `prompt.hbs` into the harness
+//! instruction, and render any `.hbs` spec into the file seeded into the run.
 //!
 //! The instruction handed to the harness is not hard-coded; each test case
 //! version ships a `prompt.hbs` template that is rendered with the run's
@@ -8,6 +8,14 @@
 //! the specifications themselves — they come from The Test Cabinet, not the
 //! authored spec — and lets a case word its own instruction. See
 //! `docs/test-cases.md#prompt-template`.
+//!
+//! A spec whose source is a Handlebars template (a `.hbs` extension) is rendered
+//! the same way at seed time, so a spec can state facts that depend on the
+//! selected variant — for example which configuration this build is — without
+//! the authored text having to hedge about what a run "may" contain. A spec with
+//! any other extension is seeded verbatim. See `docs/test-cases.md#spec-templates`.
+
+use std::path::Path;
 
 use serde::Serialize;
 
@@ -26,21 +34,49 @@ struct PromptContext<'a> {
     /// repository is mounted and the harness builds (for example `/work`).
     workspace: &'a str,
     /// The selected variant.
-    variant: PromptVariant<'a>,
+    variant: TemplateVariant<'a>,
     /// The seeded specs for the selected variant, in seed order, each with an
     /// absolute in-container path.
     specs: Vec<PromptSpec>,
 }
 
-/// The selected variant, as exposed to a prompt template.
+/// The Handlebars context exposed to a test case's spec `.hbs` template.
+///
+/// A spec template is rendered into the file seeded into the run, so — unlike
+/// the prompt — it is handed neither the in-container workspace path nor the
+/// spec manifest: those belong to the prompt, and keeping them out of specs is
+/// what lets a specification stay free of container paths. A spec template sees
+/// only the selected variant and the version. These are the only variables it
+/// may reference (rendering runs in strict mode); they are documented for
+/// authors in `docs/test-cases.md#spec-templates`.
 #[derive(Debug, Serialize)]
-struct PromptVariant<'a> {
+struct SpecContext<'a> {
+    /// The exact test case version string (for example `v1.0.0`).
+    version: &'a str,
+    /// The selected variant.
+    variant: TemplateVariant<'a>,
+}
+
+/// The selected variant, as exposed to a prompt or spec template.
+#[derive(Debug, Serialize)]
+struct TemplateVariant<'a> {
     /// The variant slug (for example `frenzy`).
     slug: &'a str,
     /// The variant display name.
     name: &'a str,
     /// The optional variant description, or `null` when none is declared.
     description: Option<&'a str>,
+}
+
+impl<'a> TemplateVariant<'a> {
+    /// Build the template view of a resolved [`Variant`].
+    fn new(variant: &'a Variant) -> Self {
+        Self {
+            slug: &variant.slug,
+            name: &variant.name,
+            description: variant.description.as_deref(),
+        }
+    }
 }
 
 /// A single seeded spec, as exposed to a prompt template.
@@ -80,20 +116,57 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
     let specs = test_case.seeded_specs(variant);
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
-        variant: PromptVariant {
-            slug: &variant.slug,
-            name: &variant.name,
-            description: variant.description.as_deref(),
-        },
+        variant: TemplateVariant::new(variant),
         specs: specs.iter().map(prompt_spec).collect(),
     };
 
+    template_engine()
+        .render_template(&template, &context)
+        .map_err(|err| render_err(err.to_string()))
+}
+
+/// Render a `.hbs` spec into the text seeded into the run for the selected
+/// variant.
+///
+/// Seeding calls this for any spec whose source is a Handlebars template; the
+/// rendered text is written to the spec's `dest`. The template is read from
+/// `source_path` and rendered with the [`SpecContext`] under the same rules as
+/// the prompt — strict mode (an unknown variable is an error rather than a
+/// silent blank) and HTML escaping disabled, since a spec is plain text.
+pub(crate) fn render_spec(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    source_path: &Path,
+) -> Result<String> {
+    let render_err = |detail: String| Error::SpecRender {
+        slug: test_case.slug.clone(),
+        version: test_case.version.clone(),
+        spec: source_path.display().to_string(),
+        detail,
+    };
+
+    let template = std::fs::read_to_string(source_path)
+        .map_err(|err| render_err(format!("could not read {}: {err}", source_path.display())))?;
+
+    let context = SpecContext {
+        version: &test_case.version,
+        variant: TemplateVariant::new(variant),
+    };
+
+    template_engine()
+        .render_template(&template, &context)
+        .map_err(|err| render_err(err.to_string()))
+}
+
+/// A Handlebars engine configured the way every test case template is rendered:
+/// strict mode so referencing an undefined variable is an error rather than a
+/// silent empty value, and HTML escaping disabled because the rendered output
+/// (a prompt or a spec) is plain text, not HTML.
+fn template_engine() -> handlebars::Handlebars<'static> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars.register_escape_fn(handlebars::no_escape);
     handlebars
-        .render_template(&template, &context)
-        .map_err(|err| render_err(err.to_string()))
 }
 
 /// Turn a seeded spec into its prompt-facing form: a workspace-relative dest, an

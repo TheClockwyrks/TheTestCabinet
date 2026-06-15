@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::render_prompt;
+use super::{render_prompt, render_spec};
 use crate::test_case::{SpecFile, TestCaseVersion, Variant};
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
@@ -85,4 +85,53 @@ fn strict_mode_rejects_unknown_variables() {
 fn missing_prompt_file_is_an_error() {
     let version = version_with_prompt(PathBuf::from("/does/not/exist/prompt.hbs"));
     assert!(render_prompt(&version, &frenzy()).is_err());
+}
+
+#[test]
+fn render_spec_exposes_the_variant_and_version() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("overview.hbs");
+    std::fs::write(
+        &spec,
+        "Version {{version}} — the {{variant.name}} build ({{variant.slug}}): \
+         {{variant.description}}",
+    )
+    .expect("write spec");
+
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+    let out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+
+    // The version and variant come from The Test Cabinet, not the spec text.
+    assert_eq!(
+        out,
+        "Version v1.0.0 — the Frenzy build (frenzy): Standard plus Frenzy."
+    );
+}
+
+#[test]
+fn render_spec_rejects_unknown_variables() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("overview.hbs");
+    // A spec template sees only the variant and version; the prompt-only
+    // `workspace` is not in scope, so referencing it is a strict-mode error.
+    std::fs::write(&spec, "{{workspace}}").expect("write spec");
+
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+    assert!(
+        render_spec(&version, &frenzy(), &spec).is_err(),
+        "a spec template referencing an unknown variable must be a render error",
+    );
+}
+
+#[test]
+fn render_spec_missing_file_is_an_error() {
+    let version = version_with_prompt(PathBuf::from("/tmp/prompt.hbs"));
+    assert!(
+        render_spec(
+            &version,
+            &frenzy(),
+            &PathBuf::from("/does/not/exist/overview.hbs")
+        )
+        .is_err()
+    );
 }
