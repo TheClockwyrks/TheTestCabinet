@@ -153,17 +153,28 @@ browser driver are found; override the catalog location with
 
 ```sh
 cargo run -p test-cabinet-cli -- run \
-  --test-case pong --version v1.0.0 \
+  --test-case pong --version v1.0.0 --variant base \
   --harness claude --model anthropic/claude-opus-4 \
   --out-dir runs
 ```
 
-This renders the reference mockups to screenshots, seeds a fresh repository (with
-the specification and those screenshots), runs the harness in a container,
+A run targets exactly one variant of the case, selected with `--variant` (it is
+required). This renders the reference mockups to screenshots, seeds a fresh
+repository (with the selected variant's specs and those screenshots), renders the
+prompt from the version's `prompt.hbs` and hands it to the harness in a container,
 collects the produced implementation, builds and load-checks it, runs the
-declared validation checks, and writes `runs/<id>/run-record.json` alongside a
-copy of the implementation. Check harness availability without starting a run (a
-cost-free `--version` probe) with:
+declared validation checks, and writes `runs/<id>/run-record.json` (which records
+the variant) alongside a copy of the implementation. The prompt is rendered and
+handed to the harness, not seeded into the repository; inspect the exact prompt
+a run would send with:
+
+```sh
+cargo run -p test-cabinet-cli -- prompt \
+  --test-case pong --version v1.0.0 --variant base
+```
+
+Check harness availability without starting a run (a cost-free `--version` probe)
+with:
 
 ```sh
 cargo run -p test-cabinet-cli -- harnesses

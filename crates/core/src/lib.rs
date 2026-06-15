@@ -19,6 +19,7 @@ pub mod harness_registry;
 pub mod metrics;
 pub mod models;
 pub mod pricing;
+pub mod prompt;
 pub mod publish;
 pub mod reference;
 pub mod run_record;
@@ -46,7 +47,7 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    OutputSink, OutputStream, RepoSeeder, SeedRequest, SeededRepo,
+    OutputSink, OutputStream, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -55,6 +56,7 @@ pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
 pub use pricing::OpenRouterPrices;
+pub use prompt::render_prompt;
 pub use publish::{
     GitHubPublisher, NoopPublisher, PublishConfig, PublishOutcome, PublishRequest, Publisher,
     SystemCommandRunner,
@@ -65,7 +67,8 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    Check, CheckAction, ReferenceView, TestCase, TestCaseCatalog, TestCaseVersion,
+    Check, CheckAction, ReferenceView, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion,
+    Variant,
 };
 pub use validation::{CapturedView, CheckResult, ValidationSummary, Validator};
 pub use validator::BuildValidator;
@@ -80,6 +83,9 @@ pub struct RunRequest {
     pub test_case_slug: String,
     /// The exact test case version, or `None` to use the latest.
     pub test_case_version: Option<String>,
+    /// The variant of the test case to run. Selects which specs are seeded and is
+    /// recorded in the run record.
+    pub variant: String,
     /// The agent harness to drive.
     pub harness: HarnessSlug,
     /// The opaque model ID to pass to the harness.
@@ -144,15 +150,18 @@ where
         self.renderer.render_references(test_case)
     }
 
-    /// Seed a fresh git repository with the test case's specification, assets,
-    /// and rendered reference screenshots.
+    /// Seed a fresh git repository with the selected variant's specs, the test
+    /// case's assets, and the rendered reference screenshots. Obtain `specs` from
+    /// [`TestCaseVersion::seeded_specs`] for the chosen variant.
     pub fn seed(
         &self,
         test_case: &TestCaseVersion,
+        specs: &[SpecFile],
         references: &[RenderedReference],
     ) -> Result<SeededRepo> {
         self.seeder.seed(&SeedRequest {
             test_case,
+            specs,
             references,
         })
     }
@@ -164,7 +173,8 @@ where
     /// failure after the container starts, it is stopped before returning.
     pub async fn execute(
         &self,
-        _test_case: &TestCaseVersion,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
         seeded: &SeededRepo,
         request: &RunRequest,
         events: &mut dyn EventSink,
@@ -224,7 +234,7 @@ where
         let invocation = HarnessInvocation {
             slug,
             model_id: request.model_id.clone(),
-            prompt: build_prompt(_test_case),
+            prompt: render_prompt(test_case, variant)?,
         };
         match harness
             .invoke(&self.runtime, &handle, &invocation, events)
@@ -354,12 +364,17 @@ where
         let timer = Instant::now();
 
         let test_case = self.resolve(request)?;
+        // Select the variant up front so its specs are what gets seeded and its
+        // slug is what the run record attributes the run to.
+        let variant = test_case.variant(&request.variant)?.clone();
+        let specs = test_case.seeded_specs(&variant);
         // Render the reference mockups once: the screenshots are both seeded as
         // visual targets and reused as validation baselines below.
         let references = self.render_references(&test_case)?;
-        let seeded = self.seed(&test_case, &references)?;
-        let (handle, outcome, environment) =
-            self.execute(&test_case, &seeded, request, events).await?;
+        let seeded = self.seed(&test_case, &specs, &references)?;
+        let (handle, outcome, environment) = self
+            .execute(&test_case, &variant, &seeded, request, events)
+            .await?;
 
         // Collect the working tree, then always tear the container down.
         let artifacts = self.collector.collect(&handle).await;
@@ -401,6 +416,7 @@ where
             subject: RunSubject {
                 test_case_slug: test_case.slug.clone(),
                 test_case_version: test_case.version.clone(),
+                variant: variant.slug.clone(),
                 harness_slug: request.harness,
                 harness_version: outcome.harness_version.clone(),
                 model_id: request.model_id.clone(),
@@ -418,24 +434,6 @@ where
         self.write_record(&record, &artifacts)?;
         Ok(record)
     }
-}
-
-/// Build the initial instruction handed to the harness for a test case.
-///
-/// The seeded repository's working directory holds the specification, so the
-/// prompt points the harness at it rather than restating the spec.
-fn build_prompt(test_case: &TestCaseVersion) -> String {
-    let spec = test_case
-        .spec_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("specification.md");
-    format!(
-        "Build the game described in `{spec}` in this repository. Implement a \
-         complete, polished, playable browser game that builds to static files \
-         with no backend and no API keys. Follow the specification exactly, and \
-         include a README explaining how to install, run, and build it."
-    )
 }
 
 /// Collect a fixed list of string slices into the owned `Vec<String>` the

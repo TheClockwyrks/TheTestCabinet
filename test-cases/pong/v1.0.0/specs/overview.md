@@ -1,0 +1,117 @@
+# Carom — Overview
+
+> This document is part of the specification handed to the model. The full
+> specification is split across several files seeded alongside this one; together
+> they are the primary material for the build. Implement the game they describe.
+
+## Overview
+
+**Carom** is a neon, top-down paddle duel for the browser. Two paddles face each
+other across a dark field; a ball ricochets between them, off the top and bottom
+walls, and off a pair of fixed obstacles in the middle of the field. A player
+scores when the ball passes the far edge behind their opponent's paddle.
+
+Carom is a duel of angles. Its defining mechanic is **spin**: the motion of a
+paddle at the moment it strikes the ball curves the ball's flight afterward, so
+skilled play is about shaping the ball's path, not just blocking it. The fixed
+obstacles turn the field into a bank-shot puzzle.
+
+Carom is inspired by classic paddle-and-ball arcade games but is its own game,
+with an original name, look, spin mechanic, and obstacle layout. Do not
+reproduce the assets, branding, or exact design of any existing game.
+
+## How the specification is organized
+
+This specification is split across several files, all seeded into the build:
+
+- `specs/overview.md` — this file: the overview, goals, hard requirements, free
+  choices, coordinate system, and visual design.
+- `specs/playfield.md` — the playfield, paddles, obstacles, and ball.
+- `specs/physics.md` — the physics loop, collision, and the paddle bounce and
+  spin mechanic.
+- `specs/flow.md` — scoring and match flow, game states, controls, audio, the
+  HUD, key behaviors, and what is out of scope.
+- `specs/modes/standard.md` — the always-present game modes (Solo and Versus)
+  and the AI opponent.
+
+This build may also include **one additional mode spec** under `specs/modes/`.
+The main menu lists the modes defined in the seeded mode specs (always SOLO and
+VERSUS, plus HOW TO PLAY), along with any additional mode spec included in this
+build. Read every seeded spec file before starting; do not assume a mode exists
+unless a spec for it is present in this build.
+
+## Goal of this build
+
+Produce a complete, polished, **playable** game that runs entirely in a browser.
+This is a substantial front-end task: real-time rendered graphics, a physics
+loop, multiple game states and menus, an AI opponent, and a local two-player
+mode. Aim for a build a person would actually enjoy playing, not a tech demo.
+
+### Hard requirements
+
+- **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
+  positioned DOM elements. A text-only or ASCII rendering does not satisfy this
+  test case.
+- **Runs in the browser with no backend.** No server, accounts, database, or
+  network calls at runtime. Everything needed to play must be self-contained.
+- **No API keys or credentials** of any kind to build, run, or play.
+- **Static production build.** The project must build to static files that can
+  be served by any static file server, and must run from that build.
+- **Documentation.** Include a `README.md` in the produced repository explaining
+  what the game is, how to install dependencies, how to run it in development,
+  how to produce the static production build, and the controls.
+
+### Free choices
+
+You choose the language, framework, build tool, and rendering approach, subject
+to the requirements above. Plain TypeScript with Canvas 2D is entirely
+sufficient; a framework is not required. Favor a clean, well-structured codebase
+over any particular technology.
+
+## Coordinate system and presentation
+
+All positions, sizes, and speeds in this document are given in **logical
+pixels** on a fixed **1280 &times; 720** play area (16:9). The origin `(0, 0)` is
+the **top-left**; `x` increases to the right and `y` increases downward.
+
+- The play area scales uniformly to fit the browser window while preserving its
+  16:9 aspect ratio, letterboxed with the background color on the remaining
+  space. The game must remain correct and centered at any window size.
+- Gameplay logic operates in logical-pixel space, independent of the rendered
+  scale.
+
+## Visual design
+
+The look is neon-on-charcoal. The canonical palette and type are defined below;
+match them.
+
+| Element                | Color     |
+| ---------------------- | --------- |
+| Field background       | `#0b0e14` |
+| Player one paddle      | `#3ae7c4` |
+| Player two / AI paddle | `#ff5c8a` |
+| Ball                   | `#f2f5f7` |
+| Obstacles              | `#ffb454` |
+| Center net             | `#243044` |
+| Primary text           | `#e6edf3` |
+| Secondary text         | `#8a94a6` |
+
+- Use a **monospace** type family for all text (scores, menus, labels). Do not
+  depend on a web font that must be downloaded; a system monospace stack is
+  required so the game renders identically offline.
+- Paddles, the ball, and obstacles have a soft neon glow. The center net is a
+  dashed vertical line at `x = 640`.
+- The three canonical screens — the title screen, the in-match view, and the
+  match-over screen — are described in full under Game States in `specs/flow.md`.
+  Implement each as described, in this palette and type.
+
+## Reference images
+
+The `reference/` folder holds screenshots showing how key screens should look:
+
+- `reference/title.png` — the title screen and main menu.
+- `reference/gameplay.png` — a representative in-match frame.
+- `reference/game-over.png` — the match-over screen.
+
+Treat them as visual targets: match their layout, palette, and type. They are
+images only — build the screens from this specification.

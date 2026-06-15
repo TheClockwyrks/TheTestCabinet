@@ -19,6 +19,16 @@ export interface SeededInput {
   url?: string;
 }
 
+/** One variant of a test case, as the catalog records it. */
+export interface VariantSummary {
+  /** The stable slug naming this variant (e.g. `base`). */
+  slug: string;
+  /** Human-readable display name (defaults to the humanized slug). */
+  name: string;
+  /** Inlined site-facing description, or null when none is declared. */
+  description: string | null;
+}
+
 /** A rendered reference screenshot used as a visual target for a view. */
 export interface ReferenceScreenshot {
   /** The view the screenshot depicts (e.g. `title`, `game-over`). */
@@ -40,6 +50,8 @@ export interface TestCaseSummary {
   versions: string[];
   /** The newest version (first of `versions`). */
   latestVersion: string;
+  /** The variants the latest version offers, in declared order (default first). */
+  variants: VariantSummary[];
   /** What a run of the latest version is seeded with. */
   seededInputs: SeededInput[];
   /** Rendered reference screenshots for the latest version. */

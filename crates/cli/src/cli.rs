@@ -42,6 +42,10 @@ pub enum Command {
     /// receives as input, without launching a container.
     Seed(SeedArgs),
 
+    /// Print the prompt a run would hand to the harness for a test case variant,
+    /// without seeding or launching anything.
+    Prompt(PromptArgs),
+
     /// Emit the static-site catalog datasets (test cases and models) the site
     /// reads without a backend.
     Catalog(CatalogArgs),
@@ -101,6 +105,11 @@ pub struct RunArgs {
     /// Exact, immutable test case version to run.
     #[arg(long, value_name = "VERSION")]
     pub version: String,
+
+    /// Variant of the test case to run (for example, `base`). Selects which specs
+    /// are seeded and is recorded in the run record.
+    #[arg(long, value_name = "VARIANT")]
+    pub variant: String,
 
     /// Agent harness to drive the run.
     #[arg(long, value_enum, value_name = "HARNESS")]
@@ -177,10 +186,35 @@ pub struct SeedArgs {
     #[arg(long, value_name = "VERSION")]
     pub version: String,
 
+    /// Variant of the test case to seed (for example, `base`). Selects which
+    /// specs are seeded.
+    #[arg(long, value_name = "VARIANT")]
+    pub variant: String,
+
     /// Directory the seeded repository is created under. Defaults to a `tmp/`
     /// subfolder of the working directory.
     #[arg(long, value_name = "DIR", default_value = "tmp")]
     pub out_dir: std::path::PathBuf,
+}
+
+/// Arguments for `tcab prompt`.
+///
+/// `disable_version_flag` frees `--version` to mean the *test case* version
+/// rather than clap's auto-generated binary-version flag, matching `tcab run`.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct PromptArgs {
+    /// Slug of the test case to render the prompt for (for example, `pong`).
+    #[arg(long, value_name = "SLUG")]
+    pub test_case: String,
+
+    /// Exact, immutable test case version.
+    #[arg(long, value_name = "VERSION")]
+    pub version: String,
+
+    /// Variant of the test case to render the prompt for (for example, `base`).
+    #[arg(long, value_name = "VARIANT")]
+    pub variant: String,
 }
 
 /// Arguments for `tcab catalog`.

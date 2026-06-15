@@ -46,11 +46,26 @@ struct TestCaseEntry {
     versions: Vec<String>,
     /// The newest version, used as the metadata source for this entry.
     latest_version: String,
-    /// The inputs a run of the latest version is seeded with.
+    /// The variants the latest version offers, in declared order. The first is
+    /// the default and the one [`Self::seeded_inputs`] are shown for.
+    variants: Vec<VariantEntry>,
+    /// The inputs a run of the latest version's default variant is seeded with.
     seeded_inputs: Vec<SeededInput>,
     /// The reference screenshots rendered as visual targets for the latest
     /// version.
     reference_screenshots: Vec<ReferenceScreenshot>,
+}
+
+/// A single variant entry in `test-cases.json`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VariantEntry {
+    /// The stable slug naming this variant.
+    slug: String,
+    /// Human-readable display name.
+    name: String,
+    /// Inlined site-facing description, or `null` when none is declared.
+    description: Option<String>,
 }
 
 /// A single seeded input — a file a run's repository is initialized with.
@@ -190,6 +205,23 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
         let description = read_optional_markdown(test_case.description_path.as_deref())
             .with_context(|| format!("reading description for {}", case.slug))?;
 
+        // The default (first) variant is what the seeded-inputs preview shows. A
+        // version always resolves with at least one variant, so `first` is safe.
+        let default_variant = test_case
+            .variants
+            .first()
+            .ok_or_else(|| anyhow!("test case `{}` has no variants", case.slug))?;
+        let specs = test_case.seeded_specs(default_variant);
+        let variants = test_case
+            .variants
+            .iter()
+            .map(|variant| VariantEntry {
+                slug: variant.slug.clone(),
+                name: variant.name.clone(),
+                description: variant.description.clone(),
+            })
+            .collect();
+
         // Render the references and seed exactly as `tcab seed`/`tcab run` do, so
         // the inputs mirror a real run. A host without a headless browser renders
         // no references; that is tolerated and the screenshots are simply absent.
@@ -200,6 +232,7 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
         let seeded = seeder
             .seed(&SeedRequest {
                 test_case: &test_case,
+                specs: &specs,
                 references: &references,
             })
             .with_context(|| format!("seeding {}@{}", case.slug, latest_version))?;
@@ -229,6 +262,7 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
             description,
             versions: case.versions.clone(),
             latest_version,
+            variants,
             seeded_inputs,
             reference_screenshots,
         });

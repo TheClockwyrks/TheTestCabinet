@@ -69,6 +69,8 @@ pub struct RunSubject {
     pub test_case_slug: String,
     /// The exact, immutable test case version.
     pub test_case_version: String,
+    /// The variant of the test case that was run (for example `base`).
+    pub variant: String,
     /// The agent harness slug.
     pub harness_slug: HarnessSlug,
     /// The harness version, where it could be determined.

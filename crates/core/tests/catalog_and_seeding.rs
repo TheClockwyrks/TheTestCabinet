@@ -1,11 +1,11 @@
 //! Integration tests over the real `test-cases/` catalog.
 //!
 //! These resolve the bundled Pong test case through the catalog and seed a fresh
-//! repository from it, asserting the seeding contract: the specification and the
-//! rendered reference images are present, the reference *source* is withheld, and
-//! the repository has a single initial commit.
+//! repository from it, asserting the seeding contract: the selected variant's
+//! specs and the rendered reference images are present, the reference *source* is
+//! withheld, and the repository has a single initial commit.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
     FsRepoSeeder, RenderedReference, RepoSeeder, SeedRequest, TestCaseCatalog,
@@ -28,7 +28,23 @@ fn resolves_pong_from_its_manifest() {
 
     let version = catalog.resolve_latest("pong").expect("resolve latest pong");
     assert_eq!(version.slug, "pong");
-    assert!(version.spec_path.ends_with("specification.md"));
+    // The prompt template and the decomposed common specs are resolved from the
+    // manifest. Every variant seeds the overview spec and the standard mode.
+    assert!(version.prompt_path.ends_with("prompt.hbs"));
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/overview.md")),
+        "the overview spec should be a common spec"
+    );
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/modes/standard.md")),
+        "the standard mode should be common to every variant"
+    );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
     assert_eq!(version.name, "Carom");
@@ -40,6 +56,18 @@ fn resolves_pong_from_its_manifest() {
             .as_ref()
             .is_some_and(|p| p.ends_with("description.md")),
         "the site-facing description should be resolved from the manifest"
+    );
+    // Three variants are offered: base (standard only), frenzy, and multi.
+    let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(variant_slugs, ["base", "frenzy", "multi"]);
+    // The frenzy variant adds the frenzy mode spec on top of the common specs.
+    let frenzy = version.variant("frenzy").expect("frenzy variant");
+    assert!(
+        frenzy
+            .specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/modes/frenzy.md")),
+        "frenzy should add the frenzy mode spec"
     );
     // The three reference views are rendered to screenshots and seeded as visual
     // targets.
@@ -60,6 +88,11 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         .resolve("pong", "v1.0.0")
         .expect("resolve pong v1.0.0");
 
+    // Seed the base variant: the common specs and nothing mode-specific beyond
+    // the standard mode.
+    let base = version.variant("base").expect("base variant");
+    let specs = version.seeded_specs(base);
+
     // Stand in for a rendered reference screenshot. The seeder copies the file
     // verbatim, so its bytes do not need to be a real PNG for this contract test
     // — this keeps the test independent of a headless browser.
@@ -75,12 +108,16 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     let seeded = seeder
         .seed(&SeedRequest {
             test_case: &version,
+            specs: &specs,
             references: &references,
         })
         .expect("seed pong");
 
-    // The specification is seeded at the repository root.
-    assert!(seeded.path.join("specification.md").is_file());
+    // The base variant's specs are seeded at their destination paths.
+    assert!(seeded.path.join("specs/overview.md").is_file());
+    assert!(seeded.path.join("specs/modes/standard.md").is_file());
+    // The base variant does not seed the frenzy mode spec.
+    assert!(!seeded.path.join("specs/modes/frenzy.md").exists());
     // The rendered reference image is seeded as a visual target, with a notice.
     assert!(seeded.path.join("reference/title.png").is_file());
     assert!(seeded.path.join("reference/README.md").is_file());

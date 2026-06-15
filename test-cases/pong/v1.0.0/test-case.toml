@@ -20,13 +20,66 @@ tags = ["arcade", "2d", "paddle", "physics"]
 # NOT seeded into a run; it exists only to introduce the case on the site.
 description = "description.md"
 
-# Path, relative to this version folder, of the specification handed to the
-# model. Seeded into the run as the primary build material.
-spec = "specification.md"
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within
+# the run workspace. The monolithic specification is decomposed by concern so
+# that mode-specific material can be seeded per variant (see `[[variant]]`
+# below). These five files are always present, so the mode specs may reference
+# them freely; the common specs, in turn, must never reference a mode spec that a
+# given variant does not seed (only `modes/standard.md` is always present).
+[[spec]]
+source = "specs/overview.md"
+dest = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+dest = "specs/playfield.md"
+
+[[spec]]
+source = "specs/physics.md"
+dest = "specs/physics.md"
+
+[[spec]]
+source = "specs/flow.md"
+dest = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+dest = "specs/modes/standard.md"
 
 # Asset files or directories (relative to this folder) seeded alongside the
-# spec. Carom is simple enough to need none.
+# specs. Carom is simple enough to need none.
 assets = []
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each variant seeds the common specs above plus its own additive specs. The base
+# variant is listed first, so it is the default. The three variants differ only
+# in which mode spec (if any) they add on top of the always-present standard
+# mode:
+#   - base   — standard modes only (Solo and Versus).
+#   - frenzy — adds the escalating, uncapped-speed Frenzy mode.
+#   - multi  — adds a three-ball mode with ball-to-ball collisions.
+[[variant]]
+slug = "base"
+name = "Base"
+description = "Standard game mode only."
+
+[[variant]]
+slug = "frenzy"
+name = "Frenzy"
+description = "Standard plus the escalating Frenzy mode."
+spec = [{ source = "specs/modes/frenzy.md", dest = "specs/modes/frenzy.md" }]
+
+[[variant]]
+slug = "multi"
+name = "Multi-ball"
+description = "Standard plus a three-ball mode with ball-to-ball collisions."
+spec = [{ source = "specs/modes/multi.md", dest = "specs/modes/multi.md" }]
 
 # Reference views. Each `path` is a static HTML mockup; the harness renders it to
 # a screenshot that is seeded into the run as a visual target for the model. The

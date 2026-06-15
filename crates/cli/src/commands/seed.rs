@@ -25,9 +25,10 @@ use crate::cli::SeedArgs;
 /// for a run.
 pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     println!(
-        "tcab seed: {}@{} into {}",
+        "tcab seed: {}@{} [{}] into {}",
         args.test_case,
         args.version,
+        args.variant,
         args.out_dir.display(),
     );
 
@@ -35,6 +36,10 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     let test_case = catalog
         .resolve(&args.test_case, &args.version)
         .with_context(|| format!("resolving {}@{}", args.test_case, args.version))?;
+    let variant = test_case
+        .variant(&args.variant)
+        .with_context(|| format!("selecting variant `{}`", args.variant))?;
+    let specs = test_case.seeded_specs(variant);
 
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;
@@ -51,19 +56,18 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     let seeded = seeder
         .seed(&SeedRequest {
             test_case: &test_case,
+            specs: &specs,
             references: &references,
         })
         .context("seeding the run repository")?;
 
-    let spec_name = test_case
-        .spec_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("specification");
-
     println!("\nseeded repository: {}", seeded.path.display());
     println!("  initial commit: {}", seeded.initial_commit);
-    println!("  specification:  {spec_name}");
+    println!("  variant:        {}", variant.slug);
+    println!("  specs:          {}", specs.len());
+    for spec in &specs {
+        println!("    {}", spec.dest.display());
+    }
     println!("  assets:         {}", test_case.asset_paths.len());
     println!(
         "  reference imgs: {} of {}",
@@ -77,8 +81,9 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         );
     }
     println!(
-        "\nThis mirrors what the harness receives: the specification, assets, and \
-         rendered reference images. The reference source mockups are not seeded."
+        "\nThis mirrors what the harness receives: the variant's specs, assets, and \
+         rendered reference images. The reference source mockups are not seeded, \
+         and the prompt is rendered separately (see `tcab prompt`)."
     );
 
     Ok(())

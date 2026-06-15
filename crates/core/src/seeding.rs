@@ -43,14 +43,14 @@ impl RepoSeeder for FsRepoSeeder {
         ));
         fs::create_dir_all(&repo).map_err(seed_err)?;
 
-        // The specification is seeded at the repository root under its own file
-        // name; assets keep their path relative to the version folder so any
-        // references in the spec (for example `assets/...`) still resolve.
-        let spec_name = test_case
-            .spec_path
-            .file_name()
-            .ok_or_else(|| Error::Seeding("specification has no file name".to_string()))?;
-        copy_file(&test_case.spec_path, &repo.join(spec_name))?;
+        // Each spec is copied to its destination path within the fresh
+        // repository. Destinations are validated during resolution to stay inside
+        // the workspace, so joining them onto the repo root is safe. Assets keep
+        // their path relative to the version folder so any references in a spec
+        // (for example `assets/...`) still resolve.
+        for spec in request.specs {
+            copy_file(&spec.source_path, &repo.join(&spec.dest))?;
+        }
 
         for asset in &test_case.asset_paths {
             let relative = asset.strip_prefix(&test_case.root).map_err(|_| {

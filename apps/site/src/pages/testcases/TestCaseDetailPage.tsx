@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
@@ -7,7 +7,11 @@ import { Chart } from "../../components/Chart";
 import { barChart, boxAndWhisker } from "../../components/plot/charts";
 import type { BarPoint, BoxPoint } from "../../components/plot/charts";
 import { useTestCases } from "../../data/useTestCases";
-import type { SeededInput, TestCaseSummary } from "../../data/testCases";
+import type {
+  SeededInput,
+  TestCaseSummary,
+  VariantSummary,
+} from "../../data/testCases";
 import { useRuns } from "../../data/useRuns";
 import {
   formatCompact,
@@ -25,11 +29,18 @@ const RECENT_RUNS = 8;
 // (text inlined, reference screenshots rendered), the most recent runs of the
 // case, and distribution charts of token usage and cost. The charts show
 // spread, never a ranking (docs/site.md).
+// The sentinel option that selects every variant rather than narrowing to one.
+const ALL_VARIANTS = "__all__";
+
 export function TestCaseDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const { testCases } = useTestCases();
   const { runs } = useRuns();
   const testCase = testCases.find((entry) => entry.slug === slug);
+
+  // The variant the visitor has narrowed the runs and charts to, or the
+  // all-variants sentinel.
+  const [variant, setVariant] = useState<string>(ALL_VARIANTS);
 
   // Runs of this case, newest first. Memoized so the chart specs are stable.
   const caseRuns = useMemo(
@@ -40,6 +51,16 @@ export function TestCaseDetailPage() {
             .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
         : [],
     [runs, testCase],
+  );
+
+  // The runs after applying the variant filter. Both the recent-runs list and
+  // the distribution charts read from this so they stay in lockstep.
+  const filteredRuns = useMemo(
+    () =>
+      variant === ALL_VARIANTS
+        ? caseRuns
+        : caseRuns.filter((run) => run.subject.variant === variant),
+    [caseRuns, variant],
   );
 
   if (!testCase) {
@@ -76,19 +97,32 @@ export function TestCaseDetailPage() {
       <FileBrowser testCase={testCase} />
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Recent runs</h2>
-        {caseRuns.length === 0 ? (
-          <p className={styles.secondary}>No runs of this case yet.</p>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>Recent runs</h2>
+          {testCase.variants.length > 0 && (
+            <VariantFilter
+              variants={testCase.variants}
+              value={variant}
+              onChange={setVariant}
+            />
+          )}
+        </div>
+        {filteredRuns.length === 0 ? (
+          <p className={styles.secondary}>
+            {caseRuns.length === 0
+              ? "No runs of this case yet."
+              : "No runs of this variant yet."}
+          </p>
         ) : (
           <ul className={styles.runs}>
-            {caseRuns.slice(0, RECENT_RUNS).map((run) => (
+            {filteredRuns.slice(0, RECENT_RUNS).map((run) => (
               <RunRow key={run.id} run={run} />
             ))}
           </ul>
         )}
       </section>
 
-      <CaseCharts runs={caseRuns} />
+      <CaseCharts runs={filteredRuns} />
     </PageLayout>
   );
 }
@@ -154,12 +188,43 @@ function fence(path: string, text: string): string {
   return `\`\`\`${lang}\n${text}\n\`\`\``;
 }
 
+// A labeled dropdown that narrows the recent runs and the distribution charts to
+// a single variant, or to all of them. Kept accessible with a real <label>/<select>.
+function VariantFilter({
+  variants,
+  value,
+  onChange,
+}: {
+  variants: VariantSummary[];
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <label className={styles.filter}>
+      <span className={styles.filterLabel}>Variant</span>
+      <select
+        className={styles.filterSelect}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value={ALL_VARIANTS}>All variants</option>
+        {variants.map((entry) => (
+          <option key={entry.slug} value={entry.slug}>
+            {entry.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function RunRow({ run }: { run: RunRecord }) {
   const { subject, metrics, validation } = run;
   return (
     <li>
       <Link to={routes.runDetail(run.id)} className={styles.runRow}>
         <span className={styles.runHarness}>{subject.harnessSlug}</span>
+        <span className={styles.runVariant}>{subject.variant}</span>
         <span className={styles.runModel}>{subject.modelId}</span>
         <span className={styles.runNum}>{formatCompact(totalTokens(metrics))}</span>
         <span className={styles.runNum}>{formatUsd(metrics.cost.comparable)}</span>

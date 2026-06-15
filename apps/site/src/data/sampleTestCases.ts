@@ -15,6 +15,23 @@ export const sampleTestCases: TestCaseSummary[] = [
       "# Carom\n\n**Carom** is a neon, top-down paddle duel for the browser and the simplest case in the catalog. Its signature mechanic is *spin*: the motion of a paddle as it strikes the ball curves the ball's flight afterward.\n",
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
+    variants: [
+      {
+        slug: "base",
+        name: "Base",
+        description: "The standard duel: capped speed ramp and the fixed obstacle layout.",
+      },
+      {
+        slug: "frenzy",
+        name: "Frenzy",
+        description: "A steeper, uncapped speed ramp so rallies escalate fast.",
+      },
+      {
+        slug: "multi",
+        name: "Multi-ball",
+        description: "Two balls in play at once for a busier field.",
+      },
+    ],
     seededInputs: [
       {
         path: "specification.md",
@@ -40,6 +57,18 @@ export const sampleTestCases: TestCaseSummary[] = [
       "# Phalanx\n\n**Phalanx** is a fixed-shooter where descending ranks of invaders press toward a lone cannon. A medium-difficulty case that demands wave pacing, collision, and escalating difficulty.\n",
     versions: ["v0.9.0"],
     latestVersion: "v0.9.0",
+    variants: [
+      {
+        slug: "base",
+        name: "Base",
+        description: "The standard campaign: escalating waves toward a lone cannon.",
+      },
+      {
+        slug: "frenzy",
+        name: "Frenzy",
+        description: "Denser ranks that descend faster, with no rest between waves.",
+      },
+    ],
     seededInputs: [
       {
         path: "specification.md",

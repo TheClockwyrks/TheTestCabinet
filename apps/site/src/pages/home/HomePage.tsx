@@ -49,6 +49,7 @@ export function HomePage() {
                   <span />
                   <span>TEST</span>
                   <span>HARNESS</span>
+                  <span>VARIANT</span>
                   <span>MODEL</span>
                   <span className={styles.num}>TOKENS</span>
                   <span className={styles.num}>COST</span>
@@ -100,6 +101,8 @@ function FeaturedRun({ run, local }: { run: RunRecord; local: boolean }) {
       </h2>
       <p className={styles.featureSubject}>
         <span className={styles.featureHarness}>{subject.harnessSlug}</span>
+        <span className={styles.featureSep}>&middot;</span>
+        <span className={styles.featureVariant}>{subject.variant}</span>
         <span className={styles.featureSep}>&middot;</span>
         {model ? (
           <Link to={routes.modelDetail(model.slug)} className={styles.featureModel}>
@@ -161,6 +164,7 @@ function RunRow({ run, local }: { run: RunRecord; local: boolean }) {
         {local && <UnpublishedTag className={styles.tag} />}
       </span>
       <span>{subject.harnessSlug}</span>
+      <span className={styles.variant}>{subject.variant}</span>
       <span className={styles.model}>{subject.modelId}</span>
       <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
       <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>

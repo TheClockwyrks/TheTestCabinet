@@ -14,6 +14,13 @@
       "v1.0.0"
     ],
     "latestVersion": "v1.0.0",
+    "variants": [
+      {
+        "slug": "base",
+        "name": "Base",
+        "description": null
+      }
+    ],
     "seededInputs": [
       {
         "path": "specification.md",

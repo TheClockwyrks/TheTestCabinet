@@ -39,6 +39,8 @@ fn run_parses_required_arguments() {
         "pong",
         "--version",
         "1.0.0",
+        "--variant",
+        "base",
         "--harness",
         "claude",
         "--model",
@@ -50,6 +52,7 @@ fn run_parses_required_arguments() {
         Command::Run(args) => {
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
+            assert_eq!(args.variant, "base");
             assert_eq!(args.harness, HarnessArg::Claude);
             assert_eq!(args.model, "some-model-id");
             assert!(args.out_dir.is_none());
@@ -67,10 +70,30 @@ fn run_requires_a_harness() {
         "pong",
         "--version",
         "1.0.0",
+        "--variant",
+        "base",
         "--model",
         "some-model-id",
     ])
     .expect_err("omitting --harness should be a parse error");
+    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+}
+
+#[test]
+fn run_requires_a_variant() {
+    let err = Cli::try_parse_from([
+        "tcab",
+        "run",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--harness",
+        "claude",
+        "--model",
+        "some-model-id",
+    ])
+    .expect_err("omitting --variant should be a parse error");
     assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
 }
 
@@ -83,6 +106,8 @@ fn run_rejects_unknown_harness() {
         "pong",
         "--version",
         "1.0.0",
+        "--variant",
+        "base",
         "--harness",
         "not-a-harness",
         "--model",
@@ -104,6 +129,8 @@ fn every_harness_slug_is_accepted() {
             "pong",
             "--version",
             "1.0.0",
+            "--variant",
+            "base",
             "--harness",
             slug.as_str(),
             "--model",
@@ -168,13 +195,23 @@ fn validate_parses_required_arguments() {
 
 #[test]
 fn seed_parses_required_arguments_and_defaults_out_dir() {
-    let cli = Cli::try_parse_from(["tcab", "seed", "--test-case", "pong", "--version", "1.0.0"])
-        .expect("a seed invocation should parse with only its required arguments");
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "seed",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--variant",
+        "base",
+    ])
+    .expect("a seed invocation should parse with only its required arguments");
 
     match cli.command {
         Command::Seed(args) => {
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
+            assert_eq!(args.variant, "base");
             // With no override, the seeded repository lands under `tmp/`.
             assert_eq!(args.out_dir, std::path::PathBuf::from("tmp"));
         }
@@ -191,6 +228,8 @@ fn seed_accepts_an_out_dir_override() {
         "pong",
         "--version",
         "1.0.0",
+        "--variant",
+        "base",
         "--out-dir",
         "/tmp/inspect",
     ])
@@ -204,9 +243,33 @@ fn seed_accepts_an_out_dir_override() {
 
 #[test]
 fn seed_requires_a_test_case() {
-    let err = Cli::try_parse_from(["tcab", "seed", "--version", "1.0.0"])
+    let err = Cli::try_parse_from(["tcab", "seed", "--version", "1.0.0", "--variant", "base"])
         .expect_err("omitting --test-case should be a parse error");
     assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+}
+
+#[test]
+fn prompt_parses_required_arguments() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "prompt",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--variant",
+        "frenzy",
+    ])
+    .expect("a fully specified prompt invocation should parse");
+
+    match cli.command {
+        Command::Prompt(args) => {
+            assert_eq!(args.test_case, "pong");
+            assert_eq!(args.version, "1.0.0");
+            assert_eq!(args.variant, "frenzy");
+        }
+        other => panic!("expected a prompt command, got {other:?}"),
+    }
 }
 
 #[test]

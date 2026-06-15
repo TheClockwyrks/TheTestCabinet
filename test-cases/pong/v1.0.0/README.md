@@ -22,20 +22,29 @@ without the scale of the harder cases.
 
 | Path                   | Seeded to run? | Purpose                                            |
 | ---------------------- | -------------- | -------------------------------------------------- |
-| `specification.md`     | **Yes**        | The spec handed to the model; the build task.      |
+| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
+| `prompt.hbs`           | **Yes**        | The Handlebars prompt template, rendered per run.  |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
-| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as visual targets. |
+| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
 | `validation.md`        | No             | What the harness checks automatically.             |
 | `README.md`            | No             | This overview.                                     |
 
-This version has **no assets**: Pong is simple enough to leave all visuals to the
-model, guided by the palette and measurements in the specification and by the
-seeded reference screenshots.
+The specification is split across `specs/` by concern: `overview.md`,
+`playfield.md`, `physics.md`, `flow.md`, and the mode specs under `specs/modes/`.
+The common specs (overview, playfield, physics, flow, and `modes/standard.md`)
+are seeded for every variant; each variant adds at most one extra mode spec. The
+case offers three variants — `base` (standard modes only), `frenzy` (adds the
+escalating Frenzy mode), and `multi` (adds a three-ball mode with ball-to-ball
+collisions).
 
-The specification and the rendered reference screenshots are seeded into a run's
+This version has **no assets**: Pong is simple enough to leave all visuals to the
+model, guided by the palette and measurements in the specs and by the seeded
+reference screenshots.
+
+The seeded specs and the rendered reference screenshots are copied into a run's
 repository (plus assets, when a case has them). The reference *source* mockups
-are not seeded, so a model builds the UI from the spec and the screenshots rather
-than copying the mockup code.
+are not seeded, so a model builds the UI from the specs and the screenshots
+rather than copying the mockup code.
 
 ## Versioning
 

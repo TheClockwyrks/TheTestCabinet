@@ -25,8 +25,12 @@ example by deleting files.
 ## Seeding
 
 Each run must be seeded into its own newly created git repository that contains
-the data a model needs to build the game: the test case's specification, its
-assets, and the rendered reference screenshots that serve as visual targets.
+the data a model needs to build the game: the specs of the selected variant, the
+test case's assets, and the rendered reference screenshots that serve as visual
+targets. A run selects exactly one
+[variant](./test-cases.md#variants), and the variant's specs are seeded at their
+declared `dest` paths — the common specs plus that variant's own — rather than as
+a single specification at the repository root.
 
 - A new repository must be created per run so that no prior history exists. Models
   have been observed solving tasks by reading git history to recover a deleted
@@ -40,17 +44,24 @@ assets, and the rendered reference screenshots that serve as visual targets.
   copy the intended UI instead of building it from the specification, the same
   kind of shortcut the fresh repository is meant to prevent. A screenshot conveys
   the target without giving away the implementation.
-- The seeded specification must be **self-contained**, with no links or
-  references to these harness docs or to any file outside the seeded repository,
-  because none of them exist inside the container. It may, however, point at the
-  seeded reference screenshots. See
+- The seeded specs must be **self-contained**, with no links or references to
+  these harness docs or to any file outside the seeded repository, because none
+  of them exist inside the container. They may, however, point at the seeded
+  reference screenshots. See
   [Test Cases](./test-cases.md#self-contained-specifications).
+- The prompt is **not seeded** to disk. It is rendered from the version's
+  `prompt.hbs` template — with the run's in-container workspace path and the
+  selected variant's seeded spec paths — and handed directly to the harness as
+  its instruction. See [Prompt template](./test-cases.md#prompt-template).
 
 The seeded repository is normally created, mounted, and torn down as part of a
 run, so its contents are never visible on their own. The `tcab seed` command runs
-this same seeding step and leaves the result on disk (under `tmp/` by default) so
-the exact inputs a harness receives — the specification, the seeded assets, and
-the fresh git history — can be inspected without launching a container.
+this same seeding step for a chosen variant (`--variant`) and leaves the result
+on disk (under `tmp/` by default) so the exact inputs a harness receives — the
+variant's seeded specs, the seeded assets, and the fresh git history — can be
+inspected without launching a container. Because the prompt is not seeded,
+`tcab prompt` renders and prints the instruction a run would hand the harness for
+a given variant, without seeding or launching anything.
 
 ## Model Authored Tests
 

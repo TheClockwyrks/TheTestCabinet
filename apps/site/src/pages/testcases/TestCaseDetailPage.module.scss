@@ -60,6 +60,49 @@
   margin: 0 0 t.$space-md;
 }
 
+// A header row that pairs the section title with the variant filter control,
+// wrapping to stacked rows on narrow screens.
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+
+  .sectionTitle {
+    margin: 0 0 t.$space-md;
+  }
+}
+
+// The variant filter: a labeled select styled to match the neon surface panels.
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.filterLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.filterSelect {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
 .secondary {
   color: t.$color-text-muted;
 }
@@ -128,11 +171,11 @@
 
 .runRow {
   display: grid;
-  grid-template-columns: 7rem 1.6fr 5rem 5rem 5rem 3rem;
+  grid-template-columns: 7rem 6rem 1.6fr 5rem 5rem 5rem 3rem;
   align-items: center;
   gap: t.$space-md;
   padding: t.$space-sm t.$space-md;
-  min-width: 34rem;
+  min-width: 40rem;
   color: t.$color-text;
   white-space: nowrap;
 
@@ -149,6 +192,13 @@
 
 .runHarness {
   font-weight: 700;
+}
+
+.runVariant {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
 }
 
 .runModel {

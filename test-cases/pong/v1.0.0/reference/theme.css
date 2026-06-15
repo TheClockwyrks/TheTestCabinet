@@ -5,7 +5,7 @@
  * Every mockup is authored on a fixed 1280x720 logical stage so the testing
  * harness can render and screenshot them at a 1280x720 viewport. Colors,
  * positions, and type below are the source of truth referenced by
- * ../specification.md.
+ * the seeded specs under ../specs/.
  */
 
 :root {

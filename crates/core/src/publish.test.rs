@@ -17,6 +17,7 @@ fn sample_record() -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
             // Dots are not DNS-label-safe; the slug must reduce them to hyphens.

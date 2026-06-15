@@ -18,7 +18,9 @@ be handled client side.
 ## Gallery
 
 The site presents published runs as a gallery that can be browsed by test case,
-model, and agent harness. For each run it surfaces:
+model, and agent harness. Each run is attributed to the
+[variant](./test-cases.md#variants) of the case it built, taken from its
+[run record](./run-records.md#subject). For each run it surfaces:
 
 - The token counts and cost from the run's metrics. These are the primary numbers
   shown.

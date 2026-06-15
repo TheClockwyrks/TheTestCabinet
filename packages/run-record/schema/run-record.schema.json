@@ -51,6 +51,7 @@
       "required": [
         "testCaseSlug",
         "testCaseVersion",
+        "variant",
         "harnessSlug",
         "harnessVersion",
         "modelId"
@@ -58,6 +59,7 @@
       "properties": {
         "testCaseSlug": { "type": "string" },
         "testCaseVersion": { "type": "string" },
+        "variant": { "type": "string" },
         "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
         "harnessVersion": { "type": ["string", "null"] },
         "modelId": { "type": "string" }

@@ -37,6 +37,8 @@ export interface RunEnvironment {
 export interface RunSubject {
   testCaseSlug: string;
   testCaseVersion: string;
+  /** The variant of the test case that was run (e.g. `"base"`). */
+  variant: string;
   harnessSlug: HarnessSlug;
   /** Null when the harness does not report a version. */
   harnessVersion: string | null;

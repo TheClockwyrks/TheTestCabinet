@@ -13,6 +13,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "pong",
       testCaseVersion: "v1.0.0",
+      variant: "base",
       harnessSlug: "codex",
       harnessVersion: "0.139.0",
       modelId: "gpt-5.4-mini",
@@ -53,6 +54,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "carom",
       testCaseVersion: "v1.2.0",
+      variant: "frenzy",
       harnessSlug: "claude",
       harnessVersion: "2.1.0",
       modelId: "claude-opus-4-8",
@@ -94,6 +96,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "phalanx",
       testCaseVersion: "v0.9.0",
+      variant: "base",
       harnessSlug: "opencode",
       harnessVersion: "0.42.1",
       modelId: "gemini-3.0-pro",
@@ -140,6 +143,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "serpentine",
       testCaseVersion: "v1.0.0",
+      variant: "multi",
       harnessSlug: "goose",
       harnessVersion: "1.5.2",
       modelId: "gpt-5.4",
@@ -179,6 +183,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "brickfall",
       testCaseVersion: "v0.4.0",
+      variant: "base",
       harnessSlug: "cline",
       harnessVersion: "3.2.0",
       modelId: "claude-sonnet-4-6",
@@ -219,6 +224,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "cascade",
       testCaseVersion: "v1.1.0",
+      variant: "frenzy",
       harnessSlug: "kilo",
       harnessVersion: "0.7.4",
       modelId: "gpt-5.4",
@@ -265,6 +271,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "belt",
       testCaseVersion: "v0.8.0",
+      variant: "base",
       harnessSlug: "antigravity",
       harnessVersion: null,
       modelId: "gemini-3.0-flash",
@@ -313,6 +320,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "pong",
       testCaseVersion: "v1.0.0",
+      variant: "frenzy",
       harnessSlug: "pi",
       harnessVersion: "0.3.1",
       modelId: "claude-haiku-4-5",
@@ -342,6 +350,89 @@ export const sampleRuns: RunRecord[] = [
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-pong-pi",
       playableBuild: "https://builds.testcabinet.ai/sample-pong-pi/",
+    },
+    status: { state: "completed", detail: null },
+  },
+  {
+    id: "sample-carom-codex-base",
+    startedAt: "2026-06-15T13:05:00Z",
+    finishedAt: "2026-06-15T13:18:21Z",
+    subject: {
+      testCaseSlug: "carom",
+      testCaseVersion: "v1.2.0",
+      variant: "base",
+      harnessSlug: "codex",
+      harnessVersion: "0.139.0",
+      modelId: "gpt-5.4",
+    },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/codex:latest",
+      nodeVersion: "v22.14.0",
+    },
+    metrics: {
+      runTimeSeconds: 801,
+      tokens: {
+        uncachedInput: 71240,
+        cachedInput: 1402330,
+        output: 58110,
+        reasoning: 30220,
+      },
+      cost: { comparable: 1.214, actual: 1.214 },
+    },
+    validation: {
+      loaded: true,
+      detail: null,
+      checks: [
+        { view: "menu", name: "Menu", reached: true, similarity: 0.92, detail: null },
+        { view: "match", name: "Match", reached: true, similarity: 0.851, detail: null },
+      ],
+    },
+    links: {
+      sourceRepo: "https://github.com/the-test-cabinet/sample-carom-codex-base",
+      playableBuild: "https://builds.testcabinet.ai/sample-carom-codex-base/",
+    },
+    status: { state: "completed", detail: null },
+  },
+  {
+    id: "sample-carom-goose-multi",
+    startedAt: "2026-06-15T14:12:00Z",
+    finishedAt: "2026-06-15T14:33:48Z",
+    subject: {
+      testCaseSlug: "carom",
+      testCaseVersion: "v1.2.0",
+      variant: "multi",
+      harnessSlug: "goose",
+      harnessVersion: "1.5.2",
+      modelId: "gemini-3.0-pro",
+    },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/goose:latest",
+      nodeVersion: "v22.14.0",
+    },
+    metrics: {
+      runTimeSeconds: 1308,
+      tokens: {
+        uncachedInput: 95110,
+        cachedInput: 1980040,
+        output: 81230,
+        reasoning: 0,
+      },
+      cost: { comparable: 1.553, actual: 1.553 },
+    },
+    validation: {
+      loaded: true,
+      detail: null,
+      checks: [
+        { view: "menu", name: "Menu", reached: true, similarity: 0.889, detail: null },
+        { view: "match", name: "Match", reached: true, similarity: 0.812, detail: null },
+        { view: "spin", name: "Spin", reached: true, similarity: 0.741, detail: null },
+      ],
+    },
+    links: {
+      sourceRepo: "https://github.com/the-test-cabinet/sample-carom-goose-multi",
+      playableBuild: "https://builds.testcabinet.ai/sample-carom-goose-multi/",
     },
     status: { state: "completed", detail: null },
   },

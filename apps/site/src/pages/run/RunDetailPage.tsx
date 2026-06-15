@@ -32,7 +32,8 @@ export function RunDetailPage() {
         {isLocal && <UnpublishedTag className={styles.tag} />}
       </h2>
       <p className={styles.subject}>
-        {subject.modelId} &middot; test case {subject.testCaseVersion}
+        {subject.modelId} &middot; test case {subject.testCaseVersion} &middot;{" "}
+        <span className={styles.variant}>{subject.variant}</span> variant
         {subject.harnessVersion
           ? ` · harness v${subject.harnessVersion}`
           : ""}

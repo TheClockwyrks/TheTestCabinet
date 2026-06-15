@@ -31,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Publish(args) => commands::publish::execute(args).await,
         Command::Harnesses(args) => commands::harnesses::execute(args).await,
         Command::Seed(args) => commands::seed::execute(args).await,
+        Command::Prompt(args) => commands::prompt::execute(args).await,
         Command::Catalog(args) => commands::catalog::execute(args).await,
     }
 }

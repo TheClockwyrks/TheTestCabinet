@@ -12,7 +12,7 @@ check](../validation.md#checks) that names the view.
 The mockup **source** in this `reference/` folder is **harness-side only** and is
 never seeded into a run. What the model receives is the *rendered screenshot* of
 each view (see [Generating screenshots](#generating-screenshots)), seeded as a
-visual target alongside [`../specification.md`](../specification.md). Handing over
+visual target alongside the seeded specs under [`../specs/`](../specs/). Handing over
 the source HTML/CSS would let a model copy the intended UI instead of building it
 from the spec; a screenshot shows the target without giving away the
 implementation.
@@ -28,7 +28,7 @@ Each file corresponds to a canonical view slug:
 | `game-over` | `game-over.html`  | Match-over result panel.                     |
 
 `theme.css` holds the shared palette, type, and field furniture referenced by
-all three views and by the specification.
+all three views and by the specification (the seeded specs under `../specs/`).
 
 ## Generating screenshots
 

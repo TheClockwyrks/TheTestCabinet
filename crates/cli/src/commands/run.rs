@@ -23,6 +23,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let request = RunRequest {
         test_case_slug: args.test_case,
         test_case_version: Some(args.version),
+        variant: args.variant,
         harness,
         model_id: args.model,
     };
@@ -40,9 +41,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
 
     let runtime = CliContainerRuntime::detect().context("locating a container runtime")?;
     println!(
-        "tcab run: {}@{} via {} (model {})",
+        "tcab run: {}@{} [{}] via {} (model {})",
         request.test_case_slug,
         request.test_case_version.as_deref().unwrap_or("latest"),
+        request.variant,
         request.harness.as_str(),
         request.model_id,
     );

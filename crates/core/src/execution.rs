@@ -13,7 +13,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::reference::RenderedReference;
-use crate::test_case::TestCaseVersion;
+use crate::test_case::{SpecFile, TestCaseVersion};
+
+/// The directory the seeded run repository is mounted at inside the run
+/// container, and the working directory the harness builds in. Spec `dest` paths
+/// are relative to this, so the rendered prompt can point the model at absolute
+/// in-container paths.
+pub const WORKSPACE_DIR: &str = "/work";
 
 /// A request to seed a run's repository.
 ///
@@ -24,6 +30,10 @@ use crate::test_case::TestCaseVersion;
 pub struct SeedRequest<'a> {
     /// The resolved test case version to seed from.
     pub test_case: &'a TestCaseVersion,
+    /// The specs to seed for the selected variant, each copied from its source
+    /// on the host to its `dest` in the fresh repository. Obtain these from
+    /// [`TestCaseVersion::seeded_specs`] for the chosen variant.
+    pub specs: &'a [SpecFile],
     /// Reference screenshots rendered for this run, seeded as visual targets.
     /// The reference source mockups they were rendered from are not seeded.
     pub references: &'a [RenderedReference],

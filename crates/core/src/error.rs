@@ -43,6 +43,28 @@ pub enum Error {
         detail: String,
     },
 
+    /// A requested variant did not exist for a resolved test case version.
+    #[error("variant `{variant}` of test case `{slug}@{version}` was not found")]
+    VariantNotFound {
+        /// The test case slug.
+        slug: String,
+        /// The test case version.
+        version: String,
+        /// The variant slug that could not be resolved.
+        variant: String,
+    },
+
+    /// Rendering a test case's prompt template failed.
+    #[error("failed to render prompt for `{slug}@{version}`: {detail}")]
+    PromptRender {
+        /// The test case slug.
+        slug: String,
+        /// The test case version.
+        version: String,
+        /// Detail describing the failure.
+        detail: String,
+    },
+
     /// The requested agent harness could not be located on the host.
     #[error("agent harness `{slug}` is not available: {detail}")]
     HarnessUnavailable {

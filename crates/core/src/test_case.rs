@@ -34,11 +34,23 @@ struct Manifest {
     /// runs; it exists only to describe the case on the site.
     #[serde(default)]
     description: Option<PathBuf>,
-    /// Specification path, relative to the version folder (seeded).
-    spec: PathBuf,
+    /// The prompt template handed to the harness, relative to the version folder.
+    /// Rendered through Handlebars with the run's workspace and seeded spec paths;
+    /// see [`crate::prompt`].
+    prompt: PathBuf,
+    /// Specs seeded for **every** variant. Each maps a `source` inside the
+    /// version folder to a `dest` in the run's workspace. Declared as repeated
+    /// `[[spec]]` tables.
+    #[serde(default, rename = "spec")]
+    specs: Vec<ManifestSpec>,
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
+    /// The variants this case offers. Each seeds the common `specs` plus its own
+    /// additional specs; exactly one variant runs per run. At least one variant
+    /// must be declared.
+    #[serde(default)]
+    variant: Vec<ManifestVariant>,
     /// Reference views. Each is rendered to a screenshot and seeded as a visual
     /// target; the reference source is not seeded.
     #[serde(default)]
@@ -46,6 +58,33 @@ struct Manifest {
     /// Opt-in validation checks. Only declared checks run.
     #[serde(default)]
     check: Vec<ManifestCheck>,
+}
+
+/// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
+/// array): a `source` file inside the version folder seeded to a `dest` path in
+/// the run's workspace.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestSpec {
+    /// Source path, relative to the version folder.
+    source: PathBuf,
+    /// Destination path, relative to the run's workspace root.
+    dest: PathBuf,
+}
+
+/// A single `[[variant]]` entry in the manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestVariant {
+    /// The stable slug naming this variant (recorded in run records).
+    slug: String,
+    /// Human-readable display name. Defaults to a humanized form of `slug`.
+    name: Option<String>,
+    /// Optional site-facing prose describing what the variant changes.
+    #[serde(default)]
+    description: Option<String>,
+    /// Specs this variant seeds in addition to the common `specs`. Declared as a
+    /// `spec` array of inline `{ source, dest }` tables.
+    #[serde(default, rename = "spec")]
+    specs: Vec<ManifestSpec>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -86,6 +125,42 @@ pub struct TestCase {
     pub slug: String,
     /// The versions available for this test case.
     pub versions: Vec<String>,
+}
+
+/// A spec file seeded into a run.
+///
+/// Each spec is copied from its [`Self::source_path`] on the host into the run's
+/// fresh repository at [`Self::dest`] (a path relative to the workspace root). A
+/// case's common specs are seeded for every variant; a variant may seed
+/// additional specs, and may even map a different source onto the same `dest` so
+/// the model always sees a stable path regardless of variant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecFile {
+    /// Source path on the host, inside the version folder.
+    pub source_path: PathBuf,
+    /// Destination path relative to the run's workspace root, where the spec is
+    /// seeded and where the rendered prompt points the model.
+    pub dest: PathBuf,
+}
+
+/// A named build target of a test case.
+///
+/// A variant seeds the case's common specs plus its own additional specs, so one
+/// case can define multiple builds (for example, the same game with or without an
+/// extra mode). Exactly one variant is selected per run and recorded in the run
+/// record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Variant {
+    /// The stable slug naming this variant.
+    pub slug: String,
+    /// Human-readable display name, surfaced on the site.
+    pub name: String,
+    /// Optional site-facing prose describing what the variant changes.
+    pub description: Option<String>,
+    /// Specs this variant seeds in addition to the case's common specs.
+    pub specs: Vec<SpecFile>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -188,14 +263,45 @@ pub struct TestCaseVersion {
     pub description_path: Option<PathBuf>,
     /// The version folder on the host: `test-cases/<slug>/<version>/`.
     pub root: PathBuf,
-    /// Path to the self-contained specification (seeded).
-    pub spec_path: PathBuf,
+    /// Host path to the prompt template handed to the harness. Rendered through
+    /// Handlebars with the run's workspace and seeded spec paths.
+    pub prompt_path: PathBuf,
+    /// Specs seeded for every variant (the common set).
+    pub common_specs: Vec<SpecFile>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
+    /// The variants this case offers, in declared order. At least one is always
+    /// present.
+    pub variants: Vec<Variant>,
     /// Reference views: rendered to screenshots and seeded as visual targets.
     pub reference_views: Vec<ReferenceView>,
     /// Opt-in validation checks declared by this version.
     pub checks: Vec<Check>,
+}
+
+impl TestCaseVersion {
+    /// Resolve a variant by its slug.
+    pub fn variant(&self, slug: &str) -> Result<&Variant> {
+        self.variants
+            .iter()
+            .find(|variant| variant.slug == slug)
+            .ok_or_else(|| Error::VariantNotFound {
+                slug: self.slug.clone(),
+                version: self.version.clone(),
+                variant: slug.to_string(),
+            })
+    }
+
+    /// The full set of specs seeded for a variant: the common specs followed by
+    /// the variant's own additional specs. Resolution forbids two specs sharing a
+    /// `dest`, so the order is stable and unambiguous.
+    pub fn seeded_specs(&self, variant: &Variant) -> Vec<SpecFile> {
+        self.common_specs
+            .iter()
+            .chain(variant.specs.iter())
+            .cloned()
+            .collect()
+    }
 }
 
 /// Resolves test case slugs and versions against an on-disk catalog.
@@ -284,12 +390,43 @@ impl TestCaseCatalog {
             Ok(root.join(rel))
         };
 
-        let spec_path = resolve_inside(&manifest.spec, "spec")?;
-        if !spec_path.is_file() {
+        // The prompt template is required. It is handed to the harness in
+        // rendered form rather than copied into the run, but it is validated to
+        // exist and to stay inside the version folder like every other path.
+        let prompt_path = resolve_inside(&manifest.prompt, "prompt")?;
+        if !prompt_path.is_file() {
             return Err(invalid(format!(
-                "specification `{}` does not exist",
-                manifest.spec.display()
+                "prompt `{}` does not exist",
+                manifest.prompt.display()
             )));
+        }
+
+        // Resolve one spec mapping: the source must exist inside the version
+        // folder, and the dest must be a relative path that stays inside the
+        // run's workspace.
+        let resolve_spec = |spec: &ManifestSpec| -> Result<SpecFile> {
+            let source_path = resolve_inside(&spec.source, "spec source")?;
+            if !source_path.is_file() {
+                return Err(invalid(format!(
+                    "spec source `{}` does not exist",
+                    spec.source.display()
+                )));
+            }
+            if escapes_folder(&spec.dest) {
+                return Err(invalid(format!(
+                    "spec dest `{}` escapes the run workspace",
+                    spec.dest.display()
+                )));
+            }
+            Ok(SpecFile {
+                source_path,
+                dest: spec.dest.clone(),
+            })
+        };
+
+        let mut common_specs = Vec::with_capacity(manifest.specs.len());
+        for spec in &manifest.specs {
+            common_specs.push(resolve_spec(spec)?);
         }
 
         // The site-facing description is validated to exist when declared, with
@@ -360,6 +497,54 @@ impl TestCaseCatalog {
             });
         }
 
+        // A case must offer at least one variant; a run always selects exactly
+        // one. Variant slugs must be unique so a run records an unambiguous
+        // choice.
+        if manifest.variant.is_empty() {
+            return Err(invalid(
+                "at least one [[variant]] must be declared".to_string(),
+            ));
+        }
+        let mut variants: Vec<Variant> = Vec::with_capacity(manifest.variant.len());
+        for variant in &manifest.variant {
+            if variants
+                .iter()
+                .any(|resolved| resolved.slug == variant.slug)
+            {
+                return Err(invalid(format!(
+                    "duplicate variant slug `{}`",
+                    variant.slug
+                )));
+            }
+            let mut specs = Vec::with_capacity(variant.specs.len());
+            for spec in &variant.specs {
+                specs.push(resolve_spec(spec)?);
+            }
+            // The common specs and the variant's own specs are seeded together;
+            // two specs landing on the same dest would clobber each other, so a
+            // collision is rejected rather than silently resolved.
+            let mut seen = std::collections::BTreeSet::new();
+            for spec in common_specs.iter().chain(specs.iter()) {
+                if !seen.insert(&spec.dest) {
+                    return Err(invalid(format!(
+                        "variant `{}` seeds two specs to the same dest `{}`",
+                        variant.slug,
+                        spec.dest.display()
+                    )));
+                }
+            }
+            let name = variant
+                .name
+                .clone()
+                .unwrap_or_else(|| humanize(&variant.slug));
+            variants.push(Variant {
+                slug: variant.slug.clone(),
+                name,
+                description: variant.description.clone(),
+                specs,
+            });
+        }
+
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
@@ -368,8 +553,10 @@ impl TestCaseCatalog {
             tags: manifest.tags,
             description_path,
             root,
-            spec_path,
+            prompt_path,
+            common_specs,
             asset_paths,
+            variants,
             reference_views,
             checks,
         })

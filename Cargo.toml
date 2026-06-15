@@ -35,6 +35,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 toml = "0.8"
+# Renders each test case's `prompt.hbs` template into the instruction handed to
+# the harness, interpolating the in-container workspace and seeded spec paths so
+# they are never hard-coded into a specification.
+handlebars = "6"
 tempfile = "3"
 # PNG decoding for the validator's reference-comparison similarity score. The
 # `png` crate is a small, pure-Rust decoder with no system dependencies, keeping

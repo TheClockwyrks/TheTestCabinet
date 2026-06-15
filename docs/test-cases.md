@@ -32,7 +32,10 @@ Each test case version must contain:
 - A **specification** that describes the game the model must build. This is the
   vision spec for the test case and is the primary material handed to the model.
   It may record both high and low level details, including mechanics, layouts,
-  states, and rules.
+  states, and rules. The specification may be split across multiple seeded files
+  (see [Variants](#variants)) rather than living in a single file.
+- A **prompt template** (`prompt.hbs`) that is rendered into the instruction
+  handed to the harness. See [Prompt template](#prompt-template).
 - **Reference visuals** in the form of mockups representative of the UIs that
   must be implemented. Each is rendered to a screenshot that is seeded into the
   run as a visual target for the model; the same screenshot is the baseline for
@@ -42,8 +45,9 @@ Each test case version must contain:
 - **Validation criteria** describing what can be checked automatically. See
   [Validation](./validation.md).
 
-The specification, assets, and rendered reference screenshots are what gets
-seeded into a run. See [Execution](./execution.md#seeding).
+The selected variant's specs, the assets, and the rendered reference screenshots
+are what gets seeded into a run; the prompt is rendered and handed to the harness
+rather than seeded. See [Execution](./execution.md#seeding).
 
 ## Manifest
 
@@ -59,8 +63,22 @@ name = "Carom"               # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (default medium)
 tags = ["arcade", "2d"]      # free-form classification tags (site-facing, default empty)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
-spec = "specification.md"    # the specification, seeded (relative to this folder)
+prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 assets = []                  # asset files/directories, seeded (relative paths)
+
+# Common specs, seeded for EVERY variant. Each maps a `source` inside the
+# version folder to a `dest` in the run's workspace.
+[[spec]]
+source = "specs/overview.md" # source path (relative to this folder)
+dest   = "specs/overview.md" # destination in the run workspace (relative)
+
+# Variants. A case offers one or more; exactly one runs per run. Each seeds the
+# common specs above plus its own additional specs.
+[[variant]]
+slug = "base"                # stable slug, recorded in the run record
+name = "Base"                # display name (optional; default humanizes the slug)
+description = "..."          # optional inline prose (site-facing)
+spec = []                    # ADDITIVE specs on top of the common specs
 
 # Reference views. Each `path` mockup is rendered to a screenshot that is seeded
 # as a visual target; the source is not seeded. References are not validated
@@ -81,12 +99,19 @@ actions = []                 # actions to drive the build into the view (empty =
   filter the case; they have no bearing on how a run is executed. `difficulty`
   defaults to `medium` and `tags` to an empty list.
 - `description` is an optional path to a Markdown file describing the case for
-  the site. Unlike `spec` and `assets`, it is **never seeded** into a run — it
+  the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
   is site-only prose. Like every other path it must resolve inside the version
   folder, and it is validated to exist when declared.
-- `spec`, every entry in `assets`, and the **rendered** reference screenshots are
-  what is seeded into a run. Asset entries may be files or directories; a
-  directory is seeded recursively.
+- `prompt` is **required** and points at the Handlebars template that becomes the
+  instruction handed to the harness. The template is **rendered, not seeded**;
+  see [Prompt template](#prompt-template) below.
+- Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
+  mapping a `source` file inside the version folder onto a `dest` path in the run
+  workspace. The rendered reference screenshots are seeded too. Asset entries may
+  be files or directories; a directory is seeded recursively.
+- Each `[[variant]]` declares a build the case offers. A run selects exactly one
+  variant, which seeds the common specs plus the variant's own `spec` entries;
+  see [Variants](#variants) below.
 - Each `[[reference]]` is rendered to a screenshot (seeded as a visual target);
   its `path` **source** is never seeded. All paths are relative to the version
   folder and must resolve inside it, keeping a version self-contained.
@@ -95,6 +120,66 @@ actions = []                 # actions to drive the build into the view (empty =
   drive the built implementation into the view before capture. Its optional
   `name` is a display label, defaulting to a humanized form of `view`. See
   [Validation](./validation.md#checks).
+
+## Prompt template
+
+The instruction handed to the harness is not hard-coded; each version ships a
+`prompt.hbs` Handlebars template (named by the manifest's required `prompt`
+field) that The Test Cabinet renders into the prompt for a run. Rendering lets a
+case word its own instruction while keeping run-specific details — the
+in-container paths and the selected variant — out of the authored specifications.
+The rendered prompt is handed to the harness; it is **not** seeded to disk. See
+[Execution](./execution.md#seeding).
+
+The template is rendered in **strict mode** with HTML escaping disabled (the
+output is plain text). Strict mode means referencing any variable other than the
+ones below is a render error, rather than silently producing an empty value. The
+context exposes exactly:
+
+- `{{workspace}}` — the absolute in-container path of the run workspace, where
+  the seeded repository is mounted and the harness builds. This is always `/work`
+  and comes from The Test Cabinet, never hardcoded in a spec, so specifications
+  stay free of container paths.
+- `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
+  selected variant. `description` is empty when the variant declares none.
+- `{{#each specs}} … {{/each}}` — the specs seeded for the selected variant, in
+  **seed order**: the common specs first, then the variant's own specs. Each spec
+  exposes:
+  - `{{this.dest}}` — the spec's destination relative to the workspace (for
+    example `specs/overview.md`).
+  - `{{this.path}}` — the spec's absolute in-container path (for example
+    `/work/specs/overview.md`).
+  - `{{this.name}}` — the destination file stem (for example `overview`), handy
+    for labeling.
+
+Because the absolute paths and variant come from The Test Cabinet at render
+time, a specification never needs to mention `/work` or know which variant is
+running; the prompt points the model at the seeded files for it.
+
+## Variants
+
+A test case version offers one or more **variants**, and a run selects exactly
+one. The chosen variant is recorded in the run record (see
+[Run Records](./run-records.md#subject)), so every result is attributed to a
+specific build. At least one `[[variant]]` must be declared.
+
+A variant seeds the case's common specs **plus** its own additional specs, so a
+single case can define several builds — for example the same game with or without
+an extra mode — without duplicating the shared specification. A variant's `spec`
+entries are additive: they layer on top of the common specs rather than replacing
+them.
+
+Each spec maps a `source` inside the version folder to a `dest` in the run
+workspace, and the `dest` may differ from the `source`. This **dest remapping**
+lets a variant present a stable path to the model: variant `frenzy` can seed
+`specs/modes/frenzy.md` to `specs/mode.md` while variant `classic` seeds
+`specs/modes/classic.md` to the same `specs/mode.md`, so the model always reads
+the mode at one predictable location regardless of which variant runs.
+
+Within a single variant the common specs and the variant's own specs must not
+map two entries onto the same `dest` — a collision would clobber one of them, so
+it is rejected at resolution. (Two *different* variants reusing the same `dest`,
+as in the remapping example above, is exactly the point and is allowed.)
 
 ## Self-Contained Specifications
 
@@ -106,6 +191,13 @@ self-contained.
 - It must **not** link to or reference these vision specs, the harness docs, or
   any other file outside what is seeded with the run. Anything the model needs
   must be stated inline.
+- When the specification is split across multiple seeded files, no spec may
+  reference a file that the running variant does not seed. A common spec is
+  seeded for every variant, so it must **not** reference a variant-only spec
+  (for example, a common overview cannot point at a mode spec that only one
+  variant seeds); a variant's own specs may reference the common specs, since
+  those are always present. The selected variant's seeded set — common specs plus
+  that variant's own — must be self-contained on its own.
 - It may point at the seeded reference **screenshots** (the rendered visual
   targets), but must **not** depend on the reference **source** mockups, which
   are deliberately not seeded so a model cannot copy them in place of building
@@ -113,7 +205,7 @@ self-contained.
   measurements, screen contents — must still be written into the specification
   itself; the screenshots illustrate the target, they do not replace the spec.
 - Everything required to build the game must live in the seeded files: the
-  specification and the test case's assets.
+  selected variant's specs and the test case's assets.
 
 These same constraints apply to a test case's assets, which are seeded alongside
 the specification: they must be usable without any file that is not seeded.

@@ -6,6 +6,7 @@
 pub mod catalog;
 pub mod event_printer;
 pub mod harnesses;
+pub mod prompt;
 pub mod publish;
 pub mod run;
 pub mod seed;
