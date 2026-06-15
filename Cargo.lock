@@ -3604,6 +3604,7 @@ dependencies = [
  "anstyle",
  "anyhow",
  "clap",
+ "serde_json",
  "test-cabinet-core",
  "tokio",
 ]

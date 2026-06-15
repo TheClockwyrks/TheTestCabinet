@@ -165,3 +165,46 @@ cost-free `--version` probe) with:
 ```sh
 cargo run -p test-cabinet-cli -- harnesses
 ```
+
+## Publishing runs
+
+A finished run under `runs/<id>/` is local until it is published. Publishing is
+an explicit, idempotent, batch-capable operation exposed as `tcab publish` that
+releases a run's outputs to public hosting and adds it to the gallery dataset.
+The sections below describe the canonical deployment; the benchmark itself does
+not require these specific hosts, but this is the configuration the project
+publishes to.
+
+A publish releases three things:
+
+- **Source** — each run's collected implementation is pushed to its own public
+  repository under the `TheClockwyrks` GitHub organization, named
+  `tcab-<test-case>-<harness>-<model>-<short-id>` (sanitized to `[a-z0-9-]`). The
+  readable slug keeps the organization browsable and filterable by harness and
+  model; the short run-id suffix keeps each name unique.
+- **Playable build** — the implementation is built and served from that
+  repository's GitHub Pages at `https://<slug>.testcabinet.ai/`, a per-run
+  subdomain of the project domain. Serving each build at its own subdomain root
+  lets it build with a normal absolute base and keeps every implementation fully
+  self-contained.
+- **Gallery** — the run record, with its source and build links filled in, is
+  appended to the site dataset under `apps/site/data/`, and the gallery at
+  `https://testcabinet.ai/` is rebuilt and deployed from it. Any
+  [writeup](./docs/site.md#implementation-writeups) for the run is published into
+  the dataset alongside the record.
+
+`tcab publish` shells out to the GitHub CLI (`gh`) to create and push
+repositories and to configure Pages, so `gh` must be installed and authenticated
+on the host that runs a publish — a token with `repo` and `workflow` scopes, via
+`gh auth login` or `GH_TOKEN`. In this devcontainer, install `gh` by running
+`.devcontainer/tools/gh.sh`; it is not part of the base image, so re-run it after
+a container rebuild.
+
+### DNS and GitHub configuration (one-time)
+
+- Point the apex `testcabinet.ai` at GitHub Pages and have the gallery repository
+  claim it, so the site is served from the apex.
+- Add a wildcard `*.testcabinet.ai` record pointing at GitHub Pages so every
+  per-run build subdomain resolves without a per-run DNS change.
+- Verify `testcabinet.ai` as an organization domain so the organization owns
+  `*.testcabinet.ai` and stale build subdomains cannot be taken over.

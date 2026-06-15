@@ -142,6 +142,12 @@ pub struct PublishArgs {
     /// idempotent regardless; this only forces the work to run again.
     #[arg(long)]
     pub force: bool,
+
+    /// Print what would be published — repository names, build subdomains, and
+    /// the dataset that would change — without creating, pushing, or committing
+    /// anything.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Arguments for `tcab harnesses`.

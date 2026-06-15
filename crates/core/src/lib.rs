@@ -53,7 +53,10 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use pricing::OpenRouterPrices;
-pub use publish::{NoopPublisher, PublishOutcome, PublishRequest, Publisher};
+pub use publish::{
+    GitHubPublisher, NoopPublisher, PublishConfig, PublishOutcome, PublishRequest, Publisher,
+    SystemCommandRunner,
+};
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use run_record::{HarnessSlug, RunLinks, RunRecord, RunState, RunStatus, RunSubject};
 pub use seeding::FsRepoSeeder;
