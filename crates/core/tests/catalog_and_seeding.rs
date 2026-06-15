@@ -133,6 +133,18 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         })
         .expect("seed pong");
 
+    // The run directory is named `{slug}-{version}-{timestamp}` so the newest
+    // run sorts last in a listing.
+    let dir_name = seeded
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("seeded run directory has a name");
+    assert!(
+        dir_name.starts_with("pong-v1.0.0-"),
+        "run directory is named for the test case and version: {dir_name}"
+    );
+
     // The base variant's specs are seeded at their destination paths.
     assert!(seeded.path.join("specs/overview.md").is_file());
     assert!(seeded.path.join("specs/modes/standard.md").is_file());

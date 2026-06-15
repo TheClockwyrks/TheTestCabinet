@@ -9,14 +9,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use uuid::Uuid;
+use time::OffsetDateTime;
 
 use crate::error::{Error, Result};
 use crate::execution::{RepoSeeder, SeedRequest, SeededRepo};
 
 /// Seeds runs into fresh git repositories under a base directory.
 ///
-/// Each call creates a unique sub-directory so concurrent runs never collide.
+/// Each call creates a unique sub-directory named `{slug}-{version}-{timestamp}`
+/// so the newest run sorts last in a directory listing and can be spotted at a
+/// glance. Should two runs ever land in the same second, a `-{n}` tiebreaker is
+/// appended so concurrent runs never collide.
 #[derive(Debug, Clone)]
 pub struct FsRepoSeeder {
     /// The directory new run repositories are created under.
@@ -30,18 +33,54 @@ impl FsRepoSeeder {
             base_dir: base_dir.into(),
         }
     }
+
+    /// Create a fresh, uniquely named run directory under `base_dir`.
+    ///
+    /// The directory is named `{slug}-{version}-{timestamp}` so the most recent
+    /// run sorts last and can be found just by looking at the bottom of a
+    /// listing. The stamp has one-second resolution, so in the rare case two
+    /// runs land in the same second a `-{n}` tiebreaker is appended (`-1`, `-2`,
+    /// …). Reservation uses `create_dir` rather than a check-then-create, so the
+    /// name is claimed atomically and two racing runs can never pick the same
+    /// directory.
+    fn create_run_dir(&self, slug: &str, version: &str) -> Result<PathBuf> {
+        fs::create_dir_all(&self.base_dir).map_err(seed_err)?;
+        let stem = format!("{slug}-{version}-{}", run_timestamp());
+        reserve_unique_dir(&self.base_dir, &stem)
+    }
+}
+
+/// Atomically create a fresh directory under `base_dir` named `stem`, falling
+/// back to `stem-1`, `stem-2`, … if earlier candidates already exist.
+///
+/// Reservation uses `create_dir` so the name is claimed in a single syscall:
+/// the only way two concurrent callers can pick the same name is if one of them
+/// fails with `AlreadyExists`, in which case it simply moves on to the next
+/// tiebreaker. The returned directory is therefore guaranteed to be freshly
+/// created and owned by this caller.
+fn reserve_unique_dir(base_dir: &Path, stem: &str) -> Result<PathBuf> {
+    let mut tiebreaker: u32 = 0;
+    loop {
+        let name = if tiebreaker == 0 {
+            stem.to_string()
+        } else {
+            format!("{stem}-{tiebreaker}")
+        };
+        let candidate = base_dir.join(name);
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                tiebreaker += 1;
+            }
+            Err(err) => return Err(seed_err(err)),
+        }
+    }
 }
 
 impl RepoSeeder for FsRepoSeeder {
     fn seed(&self, request: &SeedRequest<'_>) -> Result<SeededRepo> {
         let test_case = request.test_case;
-        let repo = self.base_dir.join(format!(
-            "{}-{}-{}",
-            test_case.slug,
-            test_case.version,
-            Uuid::new_v4()
-        ));
-        fs::create_dir_all(&repo).map_err(seed_err)?;
+        let repo = self.create_run_dir(&test_case.slug, &test_case.version)?;
 
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
@@ -189,7 +228,30 @@ fn reference_notice(request: &SeedRequest<'_>) -> String {
     body
 }
 
+/// A sortable UTC run timestamp, `YYYYMMDD-HHMMSS`.
+///
+/// This is the date-time portion of a run directory's name. Fixed-width, UTC,
+/// and lexicographically ordered so a plain directory listing puts the newest
+/// run last; the separators keep it readable without introducing characters
+/// (like the `:` of RFC 3339) that are awkward in path names.
+fn run_timestamp() -> String {
+    let now = OffsetDateTime::now_utc();
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second(),
+    )
+}
+
 /// Wrap an I/O error as a seeding error.
 fn seed_err(err: std::io::Error) -> Error {
     Error::Seeding(err.to_string())
 }
+
+#[cfg(test)]
+#[path = "seeding.test.rs"]
+mod tests;
