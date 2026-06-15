@@ -1,0 +1,45 @@
+@use "../../styles/tokens" as t;
+
+// Horizon glow centered on the grid's vanishing line.
+.glow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 60rem;
+  height: 30rem;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 94, 58, 0.4),
+    rgba(255, 157, 47, 0.12) 45%,
+    transparent 75%
+  );
+  filter: blur(0.5rem);
+}
+
+// Perspective grid receding to a horizon at ~58% height.
+.grid {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  top: 58%;
+  bottom: -10%;
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--ttc-grid) 0,
+      var(--ttc-grid) 1px,
+      transparent 1px,
+      transparent 4rem
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--ttc-grid) 0,
+      var(--ttc-grid) 1px,
+      transparent 1px,
+      transparent 3rem
+    );
+  transform: perspective(18rem) rotateX(62deg);
+  transform-origin: top center;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 70%);
+}

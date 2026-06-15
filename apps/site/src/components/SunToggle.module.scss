@@ -1,0 +1,39 @@
+@use "../styles/tokens" as t;
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+
+  // Lit state when the sun is enabled.
+  &[aria-pressed="true"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+    box-shadow: var(--ttc-glow);
+  }
+}
+
+.glyph {
+  font-size: t.$font-md;
+  line-height: 1;
+}
+
+.label {
+  white-space: nowrap;
+}

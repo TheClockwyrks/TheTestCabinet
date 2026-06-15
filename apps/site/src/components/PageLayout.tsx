@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { routes } from "../routes";
 import { CabinetIcon } from "./CabinetIcon";
+import { SunToggle } from "./SunToggle";
 import styles from "./PageLayout.module.scss";
 
 interface PageLayoutProps {
@@ -20,7 +21,10 @@ export function PageLayout({ children }: PageLayoutProps) {
           <CabinetIcon className={styles.mark} />
           <span className={styles.wordmark}>The Test Cabinet</span>
         </Link>
-        <span className={styles.note}>Old games. New AI.</span>
+        <div className={styles.controls}>
+          <span className={styles.note}>Old games. New AI.</span>
+          <SunToggle />
+        </div>
       </header>
       <main className={styles.main}>{children}</main>
     </div>

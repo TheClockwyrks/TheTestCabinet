@@ -45,6 +45,12 @@
   letter-spacing: 0.02em;
 }
 
+.controls {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
 .note {
   font-size: t.$font-sm;
   color: t.$color-text-muted;

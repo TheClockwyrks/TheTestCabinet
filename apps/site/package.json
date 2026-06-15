@@ -8,17 +8,21 @@
     "dev": "vite",
     "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
     "preview": "vite preview",
+    "screenshot": "node scripts/screenshot.mjs",
     "typecheck": "tsc -b tsconfig.json tsconfig.node.json"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.6.1",
     "@test-cabinet/run-record": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
-    "react-router": "^7.6.0"
+    "react-router": "^7.6.0",
+    "three": "~0.182.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "@types/three": "~0.182.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",

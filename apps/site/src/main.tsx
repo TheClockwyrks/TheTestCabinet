@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { AppRoutes } from "./pages/router";
 import { Backdrop } from "./components/Backdrop";
+import { BackdropSettingsProvider } from "./components/backdrop/BackdropSettingsContext";
 import "./styles/global.scss";
 
 // GitHub Pages serves a single static bundle with no server-side routing, so a
@@ -22,10 +23,13 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    {/* Neon grid + scanline atmosphere, painted behind the routed page content. */}
-    <Backdrop />
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    {/* The sun toggle (in the topbar) and the backdrop scene share this state. */}
+    <BackdropSettingsProvider>
+      {/* Neon grid + scanline atmosphere, painted behind the routed page content. */}
+      <Backdrop />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </BackdropSettingsProvider>
   </StrictMode>,
 );
