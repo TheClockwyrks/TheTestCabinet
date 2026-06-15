@@ -196,7 +196,8 @@ format onto the event types above. Two broad strategies are used:
 
 - **Structured mapping.** When a harness emits a documented machine readable event
   stream, the harness layer parses it and maps each event to its precise
-  normalized type. [Codex](#codex-event-mapping) is mapped this way.
+  normalized type. [Codex](#codex-event-mapping) and
+  [Claude Code](#claude-code-event-mapping) are mapped this way.
 - **Best effort mapping.** For harnesses whose event formats are not yet modeled
   in detail, the harness layer surfaces output as it streams — recognizable
   diagnostics become warning or error events and everything else becomes an
@@ -257,3 +258,58 @@ this version, so those event types have no Codex source; if a future version add
 one, the corresponding event type must be produced from it. Any line that fails to
 parse as JSON, and any item type not listed above, becomes an unknown event so the
 stream stays lossless.
+
+## Claude Code Event Mapping
+
+Claude Code is run with `claude --print --output-format stream-json --verbose`,
+which emits a line delimited JSON stream on standard output. Each non empty line
+is a complete JSON object carrying a top level `type`. The stream is stateful: an
+`assistant` event introduces a tool use, and the operation it requested is only
+turned into a normalized event once the matching tool-result arrives in a later
+`user` event. Pairing the requested operation with its observed result is what
+lets a file read report both the path the agent asked for and whether the read
+succeeded. Any event may carry a `session_id`; the first non empty one seen is
+captured as the session ID for the stream.
+
+Top level events map as follows:
+
+| Claude Code event | Handling |
+| ----------------- | -------- |
+| `system` | Session lifecycle metadata. The `init` event's `cwd` is captured to resolve relative paths; `init`, `status`, and `thinking_tokens` subtypes emit no event. Any other subtype becomes [unknown](#unknown). |
+| `assistant` | Text content becomes an [agent](#agent-message) message and tool-use content is recorded for correlation (see below). |
+| `user` | Tool-result content resolves a recorded tool use into its event; echoed prompt or injected-context text emits no event. |
+| `rate_limit_event` | Consumed as credential state, except a non `allowed` status, which becomes a [warning](#warning). |
+| `result` | The terminal result; its usage and final output are consumed for [metrics](./metrics.md#tokens), and only a reported terminal error becomes an [error](#harness-error). |
+| `stream_event` | Lower-level partial telemetry that the completed `assistant` and `user` events restate, so it is consumed. |
+| any other type | [unknown](#unknown) |
+
+Within an `assistant` message, `text` blocks are joined into one agent message,
+while `thinking` and `redacted_thinking` blocks are model reasoning and carry no
+activity. Each tool-use block is recognized by name and recorded; an unrecognized
+tool (an MCP tool, web tool, todo tool, and the like) or a malformed tool-use
+block becomes an unknown event. Recognized tools map to events when their
+tool-result arrives, whose `is_error` and interruption flags set the success
+field:
+
+| Claude Code tool | Event |
+| ---------------- | ----- |
+| `Read` | [read](#file-read), with the line range derived from the `offset` and `limit` input |
+| `Write`, `Edit`, `MultiEdit`, `NotebookEdit` | [write](#file-write) |
+| `Grep`, `Glob` | [search](#file-search) |
+| `LS` | [list](#directory-list) |
+| `Bash` | [command](#command), or a recognized file operation classified from the command exactly as a Codex command is |
+| `Skill` | [skill](#skill), with the path synthesized as `skills/<name>/SKILL.md` under the workspace |
+| `StructuredOutput` | Native delivery of `--json-schema` output; the tool use and its result emit no event |
+| any other tool | [unknown](#unknown) |
+
+A tool-result is paired with its tool use by a unique `tool_use_id`; an ambiguous
+match emits an unknown event rather than guessing the operation. A read result
+that arrives without a recorded tool use is still recovered as a read event from
+the file metadata it carries, and any other unpaired tool-result becomes an
+unknown event so the stream stays lossless. As with every harness, file
+operations report only the operation that occurred — the path, optional line
+range, and success — never the contents the operation returned.
+
+Claude Code does not emit a stable source for [orchestration](#orchestration)
+activity in this version, so that event type has no Claude Code source; if a
+future version adds one, the corresponding event type must be produced from it.

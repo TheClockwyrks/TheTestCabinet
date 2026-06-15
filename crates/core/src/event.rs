@@ -202,6 +202,9 @@ impl EventSink for NoopEventSink {
 pub enum EventFormat {
     /// Codex's `codex exec --json` JSONL stream, mapped per `docs/events.md`.
     Codex,
+    /// Claude Code's `claude --print --output-format stream-json` JSONL stream,
+    /// mapped per `docs/events.md`.
+    Claude,
     /// A best effort mapping for harnesses not yet modeled in detail: standard
     /// output lines become unknown events and diagnostics surface as warnings.
     Generic,
@@ -216,6 +219,13 @@ pub enum EventFormat {
 pub struct EventParser {
     format: EventFormat,
     session_id: Option<String>,
+    /// Claude tool uses seen in `assistant` events, awaiting the matching
+    /// tool-result in a later `user` event. Empty for other formats.
+    claude_tool_uses: Vec<ClaudeToolUse>,
+    /// The Claude session working directory, captured from the `system` init
+    /// event, used to resolve relative paths to absolute ones. Unset for other
+    /// formats and until the init event is seen.
+    claude_workspace: Option<String>,
 }
 
 impl EventParser {
@@ -224,6 +234,8 @@ impl EventParser {
         Self {
             format,
             session_id: None,
+            claude_tool_uses: Vec::new(),
+            claude_workspace: None,
         }
     }
 
@@ -247,6 +259,7 @@ impl EventParser {
             })],
             OutputStream::Stdout => match self.format {
                 EventFormat::Codex => self.parse_codex(trimmed),
+                EventFormat::Claude => self.parse_claude(trimmed),
                 EventFormat::Generic => self.parse_generic(trimmed),
             },
         }
@@ -342,6 +355,192 @@ impl EventParser {
             })],
             _ => vec![self.event(EventKind::Unknown { raw: item.clone() })],
         }
+    }
+
+    /// Map one line of Claude Code's `--output-format stream-json` JSONL stream.
+    ///
+    /// The stream is stateful: `assistant` events introduce tool uses that are
+    /// only resolved into a normalized event once the matching `user`
+    /// tool-result arrives, so the operation requested by the agent is paired
+    /// with its observed success.
+    fn parse_claude(&mut self, line: &str) -> Vec<HarnessEvent> {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            // Claude Code's stream is JSON; a non-JSON line is a diagnostic
+            // printed outside the stream, so surface it as a warning.
+            return vec![self.event(EventKind::Warning {
+                message: line.to_string(),
+                code: None,
+            })];
+        };
+        // Any event may carry the session ID; capture the first non-empty one.
+        if self.session_id.is_none()
+            && let Some(id) = value.get("session_id").and_then(Value::as_str)
+            && !id.is_empty()
+        {
+            self.session_id = Some(id.to_string());
+        }
+        match value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "system" => self.parse_claude_system(&value),
+            "assistant" => self.parse_claude_assistant(&value),
+            "user" => self.parse_claude_user(&value),
+            "rate_limit_event" => self.parse_claude_rate_limit(&value),
+            "result" => self.parse_claude_result(&value),
+            // Lower-level stream telemetry restates the completed assistant and
+            // user events with less reliable partial data, so it is consumed.
+            "stream_event" => Vec::new(),
+            _ => vec![self.event(EventKind::Unknown { raw: value })],
+        }
+    }
+
+    /// Handle a Claude `system` event: session lifecycle metadata, not activity.
+    fn parse_claude_system(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        // The init event reports the working directory; capture it so relative
+        // paths (such as a synthesized skill file) resolve to absolute ones.
+        if let Some(cwd) = value.get("cwd").and_then(Value::as_str)
+            && !cwd.is_empty()
+        {
+            self.claude_workspace = Some(cwd.to_string());
+        }
+        match value.get("subtype").and_then(Value::as_str) {
+            Some("init" | "status" | "thinking_tokens") => Vec::new(),
+            // A system subtype with no defined mapping is surfaced verbatim.
+            _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+        }
+    }
+
+    /// Handle a Claude `assistant` event: text becomes an agent message and tool
+    /// uses are recorded for correlation with their later tool-result.
+    fn parse_claude_assistant(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        let Some(content) = value
+            .get("message")
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_array)
+        else {
+            return vec![self.event(EventKind::Unknown { raw: value.clone() })];
+        };
+        let workspace = self.claude_workspace.clone();
+        let mut events = Vec::new();
+        // Text blocks within one message are one logical message; join them so a
+        // message split across blocks is reported as a single agent event.
+        let message: String = content.iter().filter_map(claude_text_block).collect();
+        if !message.is_empty() {
+            events.push(self.event(EventKind::Agent { message }));
+        }
+        for block in content {
+            match block
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+            {
+                // Already handled above, or model reasoning that is not activity.
+                "text" | "thinking" | "redacted_thinking" => {}
+                "tool_use" => match ClaudeToolUse::from_block(block, workspace.as_deref()) {
+                    // A recognized tool: record it and wait for its result.
+                    Some(tool_use) => self.claude_tool_uses.push(tool_use),
+                    // An unrecognized or malformed tool use is surfaced verbatim.
+                    None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+                },
+                _ => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+            }
+        }
+        events
+    }
+
+    /// Handle a Claude `user` event: tool results resolve a recorded tool use,
+    /// while echoed prompt text carries no activity.
+    fn parse_claude_user(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        let Some(content) = value
+            .get("message")
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_array)
+        else {
+            return vec![self.event(EventKind::Unknown { raw: value.clone() })];
+        };
+        let mut events = Vec::new();
+        for block in content {
+            match block
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+            {
+                "tool_result" => events.extend(self.parse_claude_tool_result(block)),
+                // Plain user text is the prompt, or harness-injected context such
+                // as an expanded skill, echoed back; it is not agent activity.
+                "text" => {}
+                _ => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
+            }
+        }
+        events
+    }
+
+    /// Resolve a Claude `tool_result` block into its normalized event(s) by
+    /// pairing it with the tool use it answers.
+    fn parse_claude_tool_result(&mut self, block: &Value) -> Vec<HarnessEvent> {
+        let success = claude_tool_result_success(block);
+        if let Some(id) = block.get("tool_use_id").and_then(Value::as_str) {
+            // Match on a unique id so colliding ids never pair the wrong
+            // operation; an ambiguous match is surfaced rather than guessed.
+            let matches: Vec<usize> = self
+                .claude_tool_uses
+                .iter()
+                .enumerate()
+                .filter(|(_, tool_use)| tool_use.id == id)
+                .map(|(index, _)| index)
+                .collect();
+            if matches.len() == 1 {
+                let tool_use = self.claude_tool_uses.remove(matches[0]);
+                let workspace = self.claude_workspace.clone();
+                return tool_use
+                    .operation
+                    .into_event_kinds(success, workspace.as_deref())
+                    .into_iter()
+                    .map(|kind| self.event(kind))
+                    .collect();
+            }
+            if !matches.is_empty() {
+                return vec![self.event(EventKind::Unknown { raw: block.clone() })];
+            }
+        }
+        // No matching tool use: a read result still names the file it read, so
+        // it can be recovered even when its tool use was not captured.
+        if let Some(kind) =
+            claude_read_result_fallback(block, success, self.claude_workspace.as_deref())
+        {
+            return vec![self.event(kind)];
+        }
+        vec![self.event(EventKind::Unknown { raw: block.clone() })]
+    }
+
+    /// Handle a Claude `rate_limit_event`: credential state, not activity, unless
+    /// the credential is limited in a way that warrants a warning.
+    fn parse_claude_rate_limit(&self, value: &Value) -> Vec<HarnessEvent> {
+        match value
+            .pointer("/rate_limit_info/status")
+            .and_then(Value::as_str)
+        {
+            // The credential is usable; this is just reported state.
+            Some("allowed") | None => Vec::new(),
+            Some(status) => vec![self.event(EventKind::Warning {
+                message: format!("claude code rate limit status: {status}"),
+                code: None,
+            })],
+        }
+    }
+
+    /// Handle the Claude terminal `result` event. Its usage and final output are
+    /// consumed elsewhere; only a terminal error needs to surface as an event.
+    fn parse_claude_result(&self, value: &Value) -> Vec<HarnessEvent> {
+        if claude_result_is_error(value) {
+            return vec![self.event(EventKind::Error {
+                message: claude_result_error_message(value),
+                code: None,
+            })];
+        }
+        Vec::new()
     }
 }
 
@@ -518,6 +717,315 @@ fn shell_split(input: &str) -> Vec<String> {
         tokens.push(current);
     }
     tokens
+}
+
+/// A Claude tool use recorded from an `assistant` event, awaiting the
+/// tool-result that resolves it into a normalized event.
+#[derive(Debug, Clone)]
+struct ClaudeToolUse {
+    /// The tool-use id a later tool-result references as `tool_use_id`.
+    id: String,
+    /// The operation the agent requested, recognized from the tool name+input.
+    operation: ClaudeToolOperation,
+}
+
+impl ClaudeToolUse {
+    /// Build a tool use from an `assistant` content block, returning `None` when
+    /// the block is not a recognizable tool use (not a `tool_use`, missing
+    /// id/name/input, or naming a tool with no normalized mapping). Such blocks
+    /// are surfaced as unknown events by the caller.
+    fn from_block(block: &Value, workspace: Option<&str>) -> Option<Self> {
+        if block.get("type").and_then(Value::as_str) != Some("tool_use") {
+            return None;
+        }
+        let id = block.get("id").and_then(Value::as_str)?.to_string();
+        let name = block.get("name").and_then(Value::as_str)?;
+        let input = block.get("input")?;
+        let operation = ClaudeToolOperation::from_input(name, input, workspace)?;
+        Some(Self { id, operation })
+    }
+}
+
+/// The operation a recognized Claude tool use requested. Bash is kept as its raw
+/// command and classified into a read/search/list/command at result time, when
+/// its success is known, by the same logic Codex commands use.
+#[derive(Debug, Clone)]
+enum ClaudeToolOperation {
+    Read {
+        path: String,
+        start_line: Option<u32>,
+        end_line: Option<u32>,
+    },
+    Write {
+        path: String,
+    },
+    Search {
+        query: String,
+        path: Option<String>,
+    },
+    List {
+        path: Option<String>,
+    },
+    Bash {
+        command: String,
+    },
+    Skill {
+        name: String,
+    },
+    /// Native delivery of `--json-schema` output; produces no activity event.
+    StructuredOutput,
+}
+
+impl ClaudeToolOperation {
+    /// Recognize the operation from a tool name and its input, returning `None`
+    /// for tools that have no normalized mapping (MCP tools, web tools, todo
+    /// tools, and the like) so the caller can surface them as unknown.
+    fn from_input(name: &str, input: &Value, workspace: Option<&str>) -> Option<Self> {
+        match name {
+            "Read" => {
+                let path = lookup_str(input, &["file_path", "path"])?;
+                let start_line = lookup_u32(input, &["offset", "start_line"]);
+                // Claude reports a starting offset and a line count, so the
+                // inclusive end is `offset + limit - 1` when both are present.
+                let end_line = start_line.and_then(|start| {
+                    lookup_u32(input, &["limit", "line_count"])
+                        .map(|limit| start.saturating_add(limit).saturating_sub(1))
+                });
+                Some(Self::Read {
+                    path: normalize_claude_path(path, workspace),
+                    start_line,
+                    end_line,
+                })
+            }
+            "Write" | "Edit" | "MultiEdit" => Some(Self::Write {
+                path: normalize_claude_path(
+                    lookup_str(input, &["file_path", "filePath", "path"])?,
+                    workspace,
+                ),
+            }),
+            "NotebookEdit" => Some(Self::Write {
+                path: normalize_claude_path(
+                    lookup_str(
+                        input,
+                        &[
+                            "notebook_path",
+                            "notebookPath",
+                            "file_path",
+                            "filePath",
+                            "path",
+                        ],
+                    )?,
+                    workspace,
+                ),
+            }),
+            "Grep" => Some(Self::Search {
+                query: lookup_str(input, &["pattern", "query"])?.to_string(),
+                path: input
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(|path| normalize_claude_path(path, workspace)),
+            }),
+            "Glob" => Some(Self::Search {
+                query: lookup_str(input, &["pattern", "glob"])?.to_string(),
+                path: input
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(|path| normalize_claude_path(path, workspace)),
+            }),
+            "LS" => Some(Self::List {
+                path: input
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(|path| normalize_claude_path(path, workspace)),
+            }),
+            "Bash" => Some(Self::Bash {
+                command: lookup_str(input, &["command", "cmd"])?.to_string(),
+            }),
+            "Skill" => Some(Self::Skill {
+                name: lookup_str(input, &["skill", "skill_name", "command"])?.to_string(),
+            }),
+            "StructuredOutput" => Some(Self::StructuredOutput),
+            _ => None,
+        }
+    }
+
+    /// Resolve the operation into its normalized event(s), now that the
+    /// tool-result has reported whether it succeeded.
+    fn into_event_kinds(self, success: bool, workspace: Option<&str>) -> Vec<EventKind> {
+        match self {
+            Self::Read {
+                path,
+                start_line,
+                end_line,
+            } => vec![EventKind::Read {
+                path,
+                start_line,
+                end_line,
+                is_success: Some(success),
+            }],
+            Self::Write { path } => vec![EventKind::Write {
+                path,
+                start_line: None,
+                end_line: None,
+                is_success: Some(success),
+            }],
+            Self::Search { query, path } => vec![EventKind::Search {
+                query,
+                path,
+                is_success: Some(success),
+            }],
+            Self::List { path } => vec![EventKind::List {
+                path,
+                is_success: Some(success),
+            }],
+            // A shell command is classified like Codex's: a recognized file
+            // operation becomes the matching event, anything else a command.
+            // Claude does not report a stable exit code for Bash results.
+            Self::Bash { command } => vec![classify_command(&command, None, Some(success))],
+            Self::Skill { name } => {
+                let path = normalize_claude_path(&format!("skills/{name}/SKILL.md"), workspace);
+                vec![EventKind::Skill {
+                    path,
+                    skill_name: Some(name),
+                    start_line: None,
+                    end_line: None,
+                    is_success: Some(success),
+                }]
+            }
+            // The native StructuredOutput tool is delivery plumbing; its payload
+            // surfaces through the terminal result, not as an activity event.
+            Self::StructuredOutput => Vec::new(),
+        }
+    }
+}
+
+/// The text of a Claude `text` content block, if the block is one and non-empty.
+fn claude_text_block(block: &Value) -> Option<&str> {
+    if block.get("type").and_then(Value::as_str) != Some("text") {
+        return None;
+    }
+    block
+        .get("text")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+}
+
+/// Whether a Claude tool-result reports success: a result is a failure only when
+/// it is flagged as an error or as interrupted.
+fn claude_tool_result_success(block: &Value) -> bool {
+    let is_error = block
+        .get("is_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let interrupted = ["is_interruption", "is_interrupted", "interrupted"]
+        .iter()
+        .any(|key| block.get(*key).and_then(Value::as_bool).unwrap_or(false));
+    !is_error && !interrupted
+}
+
+/// Recover a read event from a tool-result that has no matching recorded tool
+/// use, using the file metadata Claude attaches to a `Read` result.
+fn claude_read_result_fallback(
+    block: &Value,
+    success: bool,
+    workspace: Option<&str>,
+) -> Option<EventKind> {
+    let file = block
+        .get("tool_use_result")
+        .and_then(|result| result.get("file"))?;
+    let path =
+        lookup_str(file, &["file_path", "filePath", "path"]).filter(|path| !path.is_empty())?;
+    Some(EventKind::Read {
+        path: normalize_claude_path(path, workspace),
+        start_line: lookup_u32(file, &["start_line", "startLine", "offset"])
+            .filter(|line| *line > 0),
+        end_line: None,
+        is_success: Some(success),
+    })
+}
+
+/// Whether a Claude terminal `result` event reports an error: an error flag, a
+/// non-success subtype, or an API error status all indicate a harness error.
+fn claude_result_is_error(value: &Value) -> bool {
+    value
+        .get("is_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || value
+            .get("subtype")
+            .and_then(Value::as_str)
+            .is_some_and(|subtype| subtype != "success")
+        || value.get("api_error_status").is_some()
+}
+
+/// Summarize the error a Claude terminal `result` event reports.
+fn claude_result_error_message(value: &Value) -> String {
+    let mut parts = Vec::new();
+    if let Some(subtype) = value.get("subtype").and_then(Value::as_str)
+        && subtype != "success"
+    {
+        parts.push(format!("subtype={subtype}"));
+    }
+    if value
+        .get("is_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        parts.push("is_error=true".to_string());
+    }
+    if let Some(status) = value.get("api_error_status") {
+        parts.push(format!("api_error_status={status}"));
+    }
+    if parts.is_empty() {
+        "claude code reported a terminal error".to_string()
+    } else {
+        format!(
+            "claude code reported a terminal error: {}",
+            parts.join(", ")
+        )
+    }
+}
+
+/// The first present string among `keys` in a JSON object.
+fn lookup_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+}
+
+/// The first present `u32` among `keys` in a JSON object.
+fn lookup_u32(value: &Value, keys: &[&str]) -> Option<u32> {
+    keys.iter().find_map(|key| {
+        value
+            .get(*key)
+            .and_then(Value::as_u64)
+            .and_then(|number| u32::try_from(number).ok())
+    })
+}
+
+/// Resolve a Claude path to an absolute, `.`/`..`-collapsed form. An absolute
+/// path is normalized in place; a relative path is joined onto the workspace
+/// when one is known and otherwise surfaced as written.
+fn normalize_claude_path(path: &str, workspace: Option<&str>) -> String {
+    use std::path::{Component, Path, PathBuf};
+    let raw = Path::new(path);
+    let candidate = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else if let Some(workspace) = workspace {
+        Path::new(workspace).join(raw)
+    } else {
+        return path.to_string();
+    };
+    let mut normalized = PathBuf::new();
+    for component in candidate.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized.display().to_string()
 }
 
 #[cfg(test)]

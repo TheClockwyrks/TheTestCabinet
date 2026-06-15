@@ -10,6 +10,23 @@ fn codex(line: &str) -> Vec<HarnessEvent> {
     EventParser::new(EventFormat::Codex).ingest(OutputStream::Stdout, line)
 }
 
+/// Ingest a single Claude stdout line through a fresh parser.
+fn claude(line: &str) -> Vec<HarnessEvent> {
+    EventParser::new(EventFormat::Claude).ingest(OutputStream::Stdout, line)
+}
+
+/// Drive one Claude parser through `lines` in order, returning the events the
+/// final line produced. This is how a tool use (recorded silently from an
+/// `assistant` event) is paired with the `user` tool-result that resolves it.
+fn claude_seq(lines: &[&str]) -> Vec<HarnessEvent> {
+    let mut parser = EventParser::new(EventFormat::Claude);
+    let mut events = Vec::new();
+    for line in lines {
+        events = parser.ingest(OutputStream::Stdout, line);
+    }
+    events
+}
+
 /// The single event a line is expected to produce, panicking otherwise.
 fn one(mut events: Vec<HarnessEvent>) -> EventKind {
     assert_eq!(events.len(), 1, "expected exactly one event");
@@ -265,6 +282,260 @@ fn unset_optional_fields_are_omitted_when_serialized() {
             "message": "hello"
         })
     );
+}
+
+#[test]
+fn claude_assistant_text_becomes_an_agent_message() {
+    let kind = one(claude(
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Let me look at the physics."}]}}"#,
+    ));
+    assert_eq!(
+        kind,
+        EventKind::Agent {
+            message: "Let me look at the physics.".to_string(),
+        }
+    );
+}
+
+#[test]
+fn claude_split_text_blocks_join_into_one_agent_message() {
+    let kind = one(claude(
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Part one. "},{"type":"text","text":"Part two."}]}}"#,
+    ));
+    assert_eq!(
+        kind,
+        EventKind::Agent {
+            message: "Part one. Part two.".to_string(),
+        }
+    );
+}
+
+#[test]
+fn claude_thinking_blocks_are_consumed_without_an_event() {
+    assert!(
+        claude(
+            r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hmm"}]}}"#,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn claude_init_captures_the_session_id_and_is_consumed() {
+    let mut parser = EventParser::new(EventFormat::Claude);
+    assert!(
+        parser
+            .ingest(
+                OutputStream::Stdout,
+                r#"{"type":"system","subtype":"init","session_id":"sess-1","cwd":"/work"}"#,
+            )
+            .is_empty()
+    );
+    let events = parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}"#,
+    );
+    assert_eq!(events[0].session_id.as_deref(), Some("sess-1"));
+}
+
+#[test]
+fn claude_read_tool_use_resolves_on_its_result_with_a_line_range() {
+    // Mirrors a real stream: a Read with offset 130 + limit 65 reads through the
+    // inclusive line 194 (130 + 65 - 1), reported when the tool-result arrives.
+    let kind = one(claude_seq(&[
+        r#"{"type":"system","subtype":"init","session_id":"sess-1","cwd":"/work"}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/work/src/physics.ts","limit":65,"offset":130}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"130\t}"}]}}"#,
+    ]));
+    assert_eq!(
+        kind,
+        EventKind::Read {
+            path: "/work/src/physics.ts".to_string(),
+            start_line: Some(130),
+            end_line: Some(194),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn claude_tool_use_is_recorded_without_emitting_an_event() {
+    // The tool use is held until its result; the assistant line alone is silent.
+    assert!(
+        claude(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/work/a.ts"}}]}}"#,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn claude_write_like_tools_map_to_write_events() {
+    for name in ["Write", "Edit", "MultiEdit"] {
+        let assistant = format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"w","name":"{name}","input":{{"file_path":"/work/index.html","content":"<!DOCTYPE html>"}}}}]}}}}"#,
+        );
+        let kind = one(claude_seq(&[
+            &assistant,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"w","content":"ok"}]}}"#,
+        ]));
+        assert_eq!(
+            kind,
+            EventKind::Write {
+                path: "/work/index.html".to_string(),
+                start_line: None,
+                end_line: None,
+                is_success: Some(true),
+            },
+            "{name} should map to a write",
+        );
+    }
+}
+
+#[test]
+fn claude_search_and_list_tools_map_to_their_events() {
+    let grep = one(claude_seq(&[
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"g","name":"Grep","input":{"pattern":"needle","path":"/work/src"}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"g","content":"3 matches"}]}}"#,
+    ]));
+    assert_eq!(
+        grep,
+        EventKind::Search {
+            query: "needle".to_string(),
+            path: Some("/work/src".to_string()),
+            is_success: Some(true),
+        }
+    );
+
+    let ls = one(claude_seq(&[
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"l","name":"LS","input":{"path":"/work/src"}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"l","content":"a.ts"}]}}"#,
+    ]));
+    assert_eq!(
+        ls,
+        EventKind::List {
+            path: Some("/work/src".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn claude_bash_is_classified_and_carries_result_success() {
+    // A plain command stays a command and a failed result is reflected.
+    let plain = one(claude_seq(&[
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{"command":"npm test"}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"fail","is_error":true}]}}"#,
+    ]));
+    assert_eq!(
+        plain,
+        EventKind::Command {
+            command: "npm test".to_string(),
+            working_directory: None,
+            exit_code: None,
+            is_success: Some(false),
+        }
+    );
+
+    // A recognized file-operation command is reclassified, as for Codex.
+    let cat = one(claude_seq(&[
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"cat README.md"}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c","content":"readme"}]}}"#,
+    ]));
+    assert_eq!(
+        cat,
+        EventKind::Read {
+            path: "README.md".to_string(),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn claude_skill_tool_maps_to_a_skill_event() {
+    let kind = one(claude_seq(&[
+        r#"{"type":"system","subtype":"init","cwd":"/work"}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"s","name":"Skill","input":{"skill":"physics"}}]}}"#,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"s","content":"expanded"}]}}"#,
+    ]));
+    assert_eq!(
+        kind,
+        EventKind::Skill {
+            path: "/work/skills/physics/SKILL.md".to_string(),
+            skill_name: Some("physics".to_string()),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn claude_structured_output_delivery_produces_no_event() {
+    // Both the tool use and its result are plumbing for `--json-schema` output.
+    assert!(
+        claude_seq(&[
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"o","name":"StructuredOutput","input":{"value":{}}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"o","content":"ok"}]}}"#,
+        ])
+        .is_empty()
+    );
+}
+
+#[test]
+fn claude_user_prompt_text_carries_no_activity() {
+    assert!(
+        claude(r#"{"type":"user","message":{"content":[{"type":"text","text":"the prompt"}]}}"#)
+            .is_empty()
+    );
+}
+
+#[test]
+fn claude_unrecognized_tool_use_becomes_unknown() {
+    // A tool with no normalized mapping (here an MCP tool) is surfaced verbatim
+    // rather than dropped, so the stream stays lossless.
+    assert!(matches!(
+        one(claude(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"m","name":"mcp__server__do","input":{"x":1}}]}}"#,
+        )),
+        EventKind::Unknown { .. }
+    ));
+}
+
+#[test]
+fn claude_rate_limit_warns_only_when_not_allowed() {
+    assert!(
+        claude(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}"#).is_empty()
+    );
+    assert!(matches!(
+        one(claude(
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}"#,
+        )),
+        EventKind::Warning { .. }
+    ));
+}
+
+#[test]
+fn claude_result_is_consumed_unless_it_reports_an_error() {
+    assert!(
+        claude(r#"{"type":"result","subtype":"success","result":"done","usage":{}}"#).is_empty()
+    );
+    assert!(matches!(
+        one(claude(
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true}"#,
+        )),
+        EventKind::Error { .. }
+    ));
+}
+
+#[test]
+fn claude_non_json_stdout_is_a_warning() {
+    assert!(matches!(
+        one(claude("not json at all")),
+        EventKind::Warning { .. }
+    ));
 }
 
 #[test]

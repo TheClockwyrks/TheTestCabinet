@@ -325,7 +325,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
-            event_format: EventFormat::Generic,
+            event_format: EventFormat::Claude,
         },
         HarnessSlug::Codex => CliHarness {
             slug,
