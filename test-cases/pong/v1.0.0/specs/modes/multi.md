@@ -1,9 +1,9 @@
 # Carom — Multi-ball mode
 
-This file defines the **Multi-ball** mode, a mode this build includes alongside
-the standard modes. It builds on the standard modes in `specs/modes/standard.md`,
-the geometry in `specs/playfield.md`, the physics in `specs/physics.md`, and the
-match flow in `specs/flow.md`.
+This file defines the **Multi-ball** mode, which sits alongside the standard
+modes. It builds on the standard modes in `specs/modes/standard.md`, the geometry
+in `specs/playfield.md`, the physics in `specs/physics.md`, and the match flow in
+`specs/flow.md`.
 
 ## Menu entry
 

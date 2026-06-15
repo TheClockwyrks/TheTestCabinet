@@ -40,8 +40,8 @@ The ball reflects off obstacle faces like a wall (see Collision in
 
 - The ball is a circle of **radius 11** (diameter 22).
 - **Serve speed** is **520 px/s**. Each paddle hit multiplies speed by **1.04**
-  (modes may override this; see the seeded mode specs), up to a **speed cap of
-  980 px/s**. Wall and obstacle bounces do not change speed.
+  (modes may override this; see the mode specs under `specs/modes/`), up to a
+  **speed cap of 980 px/s**. Wall and obstacle bounces do not change speed.
 - At the start of the match and after each point, the ball spawns at the center
   `(640, 360)`, holds for a **1.0 s** countdown, then serves toward the player
   who is about to receive (see Scoring and match flow in `specs/flow.md`). The

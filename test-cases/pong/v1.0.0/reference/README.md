@@ -1,21 +1,21 @@
 # Carom — Reference Visuals
 
 These files are the **canonical visual reference** for the Carom test case. They
-are authored as self-contained static HTML on a fixed `1280x720` logical stage so
-the testing harness can render and screenshot them deterministically. The
+are authored as self-contained static HTML on a fixed `1280x720` logical stage
+so the testing harness can render and screenshot them deterministically. The
 rendered screenshots serve two purposes: they are seeded into a run as visual
-targets, and they are the baselines for any [validation
-check](../validation.md#checks) that names the view.
+targets, and they are the baselines for any [validation check](../validation.md#checks)
+that names the view.
 
 ## Source is rendered, not seeded
 
-The mockup **source** in this `reference/` folder is **harness-side only** and is
-never seeded into a run. What the model receives is the *rendered screenshot* of
-each view (see [Generating screenshots](#generating-screenshots)), seeded as a
-visual target alongside the seeded specs under [`../specs/`](../specs/). Handing over
-the source HTML/CSS would let a model copy the intended UI instead of building it
-from the spec; a screenshot shows the target without giving away the
-implementation.
+The mockup **source** in this `reference/` folder is **harness-side only** and
+is never seeded into a run. What the model receives is the *rendered screenshot*
+of each view (see [Generating screenshots](#generating-screenshots)), seeded as
+a visual target alongside the seeded specs under [`../specs/`](../specs/).
+Handing over the source HTML/CSS would let a model copy the intended UI instead
+of building it from the spec; a screenshot shows the target without giving away
+the implementation.
 
 ## Views
 

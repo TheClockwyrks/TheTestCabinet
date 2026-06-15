@@ -1,8 +1,8 @@
 # Carom — Standard modes (Solo and Versus)
 
-This file defines the always-present game modes and the AI opponent. It builds on
-the geometry in `specs/playfield.md`, the physics in `specs/physics.md`, and the
-match flow in `specs/flow.md`. These two modes are present in every build.
+This file defines the standard game modes and the AI opponent. It builds on the
+geometry in `specs/playfield.md`, the physics in `specs/physics.md`, and the
+match flow in `specs/flow.md`.
 
 ## Menu entries
 

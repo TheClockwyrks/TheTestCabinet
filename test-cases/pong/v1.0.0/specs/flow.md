@@ -3,7 +3,7 @@
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
 `specs/playfield.md`, the physics in `specs/physics.md`, and the modes in the
-seeded mode specs under `specs/modes/`.
+mode specs under `specs/modes/`.
 
 ## Scoring and match flow
 
@@ -23,8 +23,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `CAROM`, the tagline `NEON PADDLE
    DUEL`, and a vertical menu. The menu lists the playable modes defined by the
-   seeded mode specs — each mode spec declares its own entry and where it sits in
-   the menu — followed by `HOW TO PLAY`. The selected item is highlighted. The
+   mode specs — each mode spec declares its own entry and where it sits in the
+   menu — followed by `HOW TO PLAY`. The selected item is highlighted. The
    field furniture (paddles, ball, obstacles, net) may show dimmed behind the
    menu.
 2. **How to play.** A simple screen describing the controls and the spin and
@@ -49,8 +49,8 @@ Keyboard only.
 - **Versus:** player one uses `W`/`S`; player two uses `Up`/`Down`.
 - **In match:** `Esc` or `P` pauses.
 
-The seeded mode specs say which side(s) the human controls in each mode; the
-control bindings above apply in every mode.
+The mode specs say which side(s) the human controls in each mode; the control
+bindings above apply in every mode.
 
 ## Audio
 
