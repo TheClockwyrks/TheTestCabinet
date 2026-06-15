@@ -222,11 +222,12 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
             })
             .collect();
 
-        // Render the references and seed exactly as `tcab seed`/`tcab run` do, so
-        // the inputs mirror a real run. A host without a headless browser renders
-        // no references; that is tolerated and the screenshots are simply absent.
+        // Render the default variant's references and seed exactly as `tcab
+        // seed`/`tcab run` do, so the inputs mirror a real run. A host without a
+        // headless browser renders no references; that is tolerated and the
+        // screenshots are simply absent.
         let references = renderer
-            .render_references(&test_case)
+            .render_references(&test_case, default_variant)
             .with_context(|| format!("rendering references for {}", case.slug))?;
         let seeder = FsRepoSeeder::new(&scratch);
         let seeded = seeder
@@ -243,6 +244,7 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
                 .with_context(|| format!("collecting seeded inputs for {}", case.slug))?;
         let reference_screenshots = collect_reference_screenshots(
             &test_case,
+            default_variant,
             &references,
             &case_public,
             &case.slug,
@@ -327,16 +329,18 @@ fn collect_seeded_inputs(
 /// it by view and URL. Views that did not render (no browser) are simply absent.
 fn collect_reference_screenshots(
     test_case: &TestCaseVersion,
+    variant: &test_cabinet_core::Variant,
     references: &[test_cabinet_core::RenderedReference],
     public_dir: &Path,
     slug: &str,
     version: &str,
 ) -> anyhow::Result<Vec<ReferenceScreenshot>> {
-    // Emit in the manifest's declared view order, including only views that
-    // actually rendered, so the site shows references in a stable, intended
-    // order rather than render-completion order.
+    // Emit in the manifest's declared view order for the rendered variant — the
+    // common references followed by the variant's own — including only views that
+    // actually rendered, so the site shows references in a stable, intended order
+    // rather than render-completion order.
     let mut screenshots = Vec::new();
-    for view in &test_case.reference_views {
+    for view in &test_case.references_for(variant) {
         let Some(rendered) = references.iter().find(|r| r.view == view.view) else {
             continue;
         };

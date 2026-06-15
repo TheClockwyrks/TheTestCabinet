@@ -58,37 +58,45 @@ assets = []
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each variant seeds the common specs above plus its own additive specs. The base
-# variant is listed first, so it is the default. The three variants differ only
-# in which mode spec (if any) they add on top of the always-present standard
-# mode:
+# variant is listed first, so it is the default. The three variants differ in
+# which mode spec (if any) they add on top of the always-present standard mode,
+# and in their `title` reference — the main menu lists a different set of modes
+# per variant, so each variant declares its own menu mockup for the `title` view:
 #   - base   — standard modes only (Solo and Versus).
 #   - frenzy — adds the escalating, uncapped-speed Frenzy mode.
 #   - multi  — adds a three-ball mode with ball-to-ball collisions.
+#
+# A variant's `reference` array is additive on top of the common references
+# below, exactly like `spec`. Each variant supplies the `title` view; the
+# `gameplay` and `game-over` views are common to every variant. A view slug must
+# not appear both here and among the common references.
 [[variant]]
 slug = "base"
 name = "Base"
 description = "Standard game mode only."
+reference = [{ view = "title", path = "reference/menu-base.html" }]
 
 [[variant]]
 slug = "frenzy"
 name = "Frenzy"
 description = "Standard plus the escalating Frenzy mode."
 spec = [{ source = "specs/modes/frenzy.md", dest = "specs/modes/frenzy.md" }]
+reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
 
 [[variant]]
 slug = "multi"
 name = "Multi-ball"
 description = "Standard plus a three-ball mode with ball-to-ball collisions."
 spec = [{ source = "specs/modes/multi.md", dest = "specs/modes/multi.md" }]
+reference = [{ view = "title", path = "reference/menu-multi.html" }]
 
-# Reference views. Each `path` is a static HTML mockup; the harness renders it to
-# a screenshot that is seeded into the run as a visual target for the model. The
-# reference source is rendered, then never seeded directly. References are not
-# validated unless a `[[check]]` below names them.
-[[reference]]
-view = "title"
-path = "reference/menu.html"
-
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup; the harness renders it to a screenshot that is seeded into the run as a
+# visual target for the model. The reference source is rendered, then never
+# seeded directly. References are not validated unless a `[[check]]` below names
+# them. The `title` view is variant-specific (declared per variant above) because
+# the main menu differs by variant; `gameplay` and `game-over` look the same in
+# every variant, so they are common.
 [[reference]]
 view = "gameplay"
 path = "reference/gameplay.html"

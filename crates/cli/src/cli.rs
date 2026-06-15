@@ -141,6 +141,12 @@ pub struct ValidateArgs {
     /// Version of the test case the implementation was built for.
     #[arg(long, value_name = "VERSION")]
     pub version: String,
+
+    /// Variant the implementation was built for (for example, `base`). Selects
+    /// which reference baselines the declared checks compare against, since a
+    /// variant may declare its own variant-specific references.
+    #[arg(long, value_name = "VARIANT")]
+    pub variant: String,
 }
 
 /// Arguments for `tcab publish`.

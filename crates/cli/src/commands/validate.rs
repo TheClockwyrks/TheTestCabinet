@@ -17,20 +17,26 @@ use crate::cli::ValidateArgs;
 /// [`Validator`] owns the actual work.
 pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     println!(
-        "tcab validate: {} against {}@{}",
+        "tcab validate: {} against {}@{} [{}]",
         args.implementation.display(),
         args.test_case,
         args.version,
+        args.variant,
     );
 
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
         .resolve(&args.test_case, &args.version)
         .with_context(|| format!("resolving {}@{}", args.test_case, args.version))?;
+    let variant = test_case
+        .variant(&args.variant)
+        .with_context(|| format!("selecting variant `{}`", args.variant))?;
 
-    // Render the reference baselines the declared checks compare against.
+    // Render the selected variant's reference baselines the declared checks
+    // compare against. A check's baseline may be a common reference or one the
+    // variant declares, so the baselines are variant-specific.
     let references = BrowserRenderer::new()
-        .render_references(&test_case)
+        .render_references(&test_case, variant)
         .context("rendering reference baselines")?;
 
     let artifacts = ArtifactCollection {

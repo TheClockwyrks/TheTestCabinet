@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crate::browser;
 use crate::error::Result;
-use crate::test_case::TestCaseVersion;
+use crate::test_case::{TestCaseVersion, Variant};
 
 /// A reference view rendered to a screenshot on the host.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,11 +27,17 @@ pub struct RenderedReference {
 
 /// Renders a test case version's reference mockups to screenshots.
 pub trait ReferenceRenderer: Send + Sync {
-    /// Render every reference view to a screenshot, returning the successful
-    /// renders. A view that cannot be rendered (for example, no browser is
-    /// available) is skipped rather than failing the whole call, so seeding and
-    /// validation degrade to whatever could be produced.
-    fn render_references(&self, test_case: &TestCaseVersion) -> Result<Vec<RenderedReference>>;
+    /// Render the selected variant's reference views — the common references plus
+    /// the variant's own (see [`TestCaseVersion::references_for`]) — to
+    /// screenshots, returning the successful renders. A view that cannot be
+    /// rendered (for example, no browser is available) is skipped rather than
+    /// failing the whole call, so seeding and validation degrade to whatever could
+    /// be produced.
+    fn render_references(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+    ) -> Result<Vec<RenderedReference>>;
 }
 
 /// Renders reference mockups with the bundled headless-browser driver.
@@ -46,10 +52,22 @@ impl BrowserRenderer {
 }
 
 impl ReferenceRenderer for BrowserRenderer {
-    fn render_references(&self, test_case: &TestCaseVersion) -> Result<Vec<RenderedReference>> {
-        let cache = test_case.root.join("reference").join("screenshots");
-        let mut rendered = Vec::with_capacity(test_case.reference_views.len());
-        for view in &test_case.reference_views {
+    fn render_references(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+    ) -> Result<Vec<RenderedReference>> {
+        // Screenshots are cached per variant so a view slug shared across variants
+        // (for example a `title` menu that differs per variant) does not clobber
+        // another variant's render. The cache is a git-ignored build output.
+        let cache = test_case
+            .root
+            .join("reference")
+            .join("screenshots")
+            .join(&variant.slug);
+        let views = test_case.references_for(variant);
+        let mut rendered = Vec::with_capacity(views.len());
+        for view in &views {
             let out = cache.join(format!("{}.png", view.view));
             let url = file_url(&view.source_path);
             match browser::capture(&url, &[], &out) {

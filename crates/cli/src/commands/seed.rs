@@ -44,12 +44,12 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;
 
-    // Render the reference mockups to screenshots so the materialized folder
-    // includes the seeded visual targets exactly as a run would. A host without
-    // a browser renders nothing and seeds no reference images, which is reported
-    // below rather than treated as an error.
+    // Render the selected variant's reference mockups to screenshots so the
+    // materialized folder includes the seeded visual targets exactly as a run
+    // would. A host without a browser renders nothing and seeds no reference
+    // images, which is reported below rather than treated as an error.
     let references = BrowserRenderer::new()
-        .render_references(&test_case)
+        .render_references(&test_case, variant)
         .context("rendering reference screenshots")?;
 
     let seeder = FsRepoSeeder::new(&args.out_dir);
@@ -69,12 +69,13 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         println!("    {}", spec.dest.display());
     }
     println!("  assets:         {}", test_case.asset_paths.len());
+    let reference_count = test_case.references_for(variant).len();
     println!(
         "  reference imgs: {} of {}",
         references.len(),
-        test_case.reference_views.len()
+        reference_count
     );
-    if references.len() < test_case.reference_views.len() {
+    if references.len() < reference_count {
         println!(
             "    (some references did not render; a headless browser is required \
              to produce the seeded reference images)"

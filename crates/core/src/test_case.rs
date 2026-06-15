@@ -85,6 +85,13 @@ struct ManifestVariant {
     /// `spec` array of inline `{ source, dest }` tables.
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
+    /// Reference views this variant declares in addition to the common
+    /// references. Declared as a `reference` array of inline `{ view, path }`
+    /// tables. A variant-specific reference lets one view (for example the title
+    /// menu) differ per variant; its view slug must not collide with a common
+    /// reference or another of this variant's references.
+    #[serde(default, rename = "reference")]
+    references: Vec<ManifestReference>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -161,6 +168,10 @@ pub struct Variant {
     pub description: Option<String>,
     /// Specs this variant seeds in addition to the case's common specs.
     pub specs: Vec<SpecFile>,
+    /// Reference views this variant declares in addition to the case's common
+    /// references. Rendered and seeded only when this variant is selected, so a
+    /// view such as the title menu can differ per variant.
+    pub references: Vec<ReferenceView>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -273,8 +284,11 @@ pub struct TestCaseVersion {
     /// The variants this case offers, in declared order. At least one is always
     /// present.
     pub variants: Vec<Variant>,
-    /// Reference views: rendered to screenshots and seeded as visual targets.
-    pub reference_views: Vec<ReferenceView>,
+    /// Common reference views: rendered and seeded for **every** variant. A
+    /// variant may declare additional references of its own (see
+    /// [`Variant::references`]); the full set for a variant is
+    /// [`Self::references_for`].
+    pub common_references: Vec<ReferenceView>,
     /// Opt-in validation checks declared by this version.
     pub checks: Vec<Check>,
 }
@@ -299,6 +313,19 @@ impl TestCaseVersion {
         self.common_specs
             .iter()
             .chain(variant.specs.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The full set of reference views for a variant: the common references
+    /// followed by the variant's own additional references. These are the views
+    /// rendered to screenshots, seeded as visual targets, and used as validation
+    /// baselines when this variant runs. Resolution forbids two references sharing
+    /// a `view`, so the order is stable and each view slug is unambiguous.
+    pub fn references_for(&self, variant: &Variant) -> Vec<ReferenceView> {
+        self.common_references
+            .iter()
+            .chain(variant.references.iter())
             .cloned()
             .collect()
     }
@@ -458,8 +485,9 @@ impl TestCaseCatalog {
             asset_paths.push(path);
         }
 
-        let mut reference_views = Vec::with_capacity(manifest.reference.len());
-        for reference in &manifest.reference {
+        // Resolve one reference mapping: the source mockup must exist inside the
+        // version folder. Shared by the common references and each variant's own.
+        let resolve_reference = |reference: &ManifestReference| -> Result<ReferenceView> {
             let path = resolve_inside(&reference.path, "reference")?;
             if !path.is_file() {
                 return Err(invalid(format!(
@@ -468,33 +496,15 @@ impl TestCaseCatalog {
                     reference.view
                 )));
             }
-            reference_views.push(ReferenceView {
+            Ok(ReferenceView {
                 view: reference.view.clone(),
                 source_path: path,
-            });
-        }
+            })
+        };
 
-        // Every check must name a reference view that exists, so its baseline
-        // can be rendered. This keeps validation declarations honest.
-        let mut checks = Vec::with_capacity(manifest.check.len());
-        for check in &manifest.check {
-            let reference_view = check
-                .reference
-                .clone()
-                .unwrap_or_else(|| check.view.clone());
-            if !reference_views.iter().any(|r| r.view == reference_view) {
-                return Err(invalid(format!(
-                    "check `{}` references undeclared reference view `{}`",
-                    check.view, reference_view
-                )));
-            }
-            let name = check.name.clone().unwrap_or_else(|| humanize(&check.view));
-            checks.push(Check {
-                view: check.view.clone(),
-                name,
-                reference_view,
-                actions: check.actions.clone(),
-            });
+        let mut common_references = Vec::with_capacity(manifest.reference.len());
+        for reference in &manifest.reference {
+            common_references.push(resolve_reference(reference)?);
         }
 
         // A case must offer at least one variant; a run always selects exactly
@@ -533,6 +543,25 @@ impl TestCaseCatalog {
                     )));
                 }
             }
+
+            let mut references = Vec::with_capacity(variant.references.len());
+            for reference in &variant.references {
+                references.push(resolve_reference(reference)?);
+            }
+            // The common references and the variant's own are rendered and seeded
+            // together under one view slug each; two references sharing a view
+            // would clobber each other (a view is either common or owned by this
+            // variant, never both), so a collision is rejected.
+            let mut seen_views = std::collections::BTreeSet::new();
+            for reference in common_references.iter().chain(references.iter()) {
+                if !seen_views.insert(&reference.view) {
+                    return Err(invalid(format!(
+                        "variant `{}` declares two references for the same view `{}`",
+                        variant.slug, reference.view
+                    )));
+                }
+            }
+
             let name = variant
                 .name
                 .clone()
@@ -542,6 +571,35 @@ impl TestCaseCatalog {
                 name,
                 description: variant.description.clone(),
                 specs,
+                references,
+            });
+        }
+
+        // Every check must name a reference view that resolves for **every**
+        // variant — either a common reference or one each variant declares — so
+        // its baseline can always be rendered whichever variant runs. This keeps
+        // validation declarations honest across variant-specific references.
+        let mut checks = Vec::with_capacity(manifest.check.len());
+        for check in &manifest.check {
+            let reference_view = check
+                .reference
+                .clone()
+                .unwrap_or_else(|| check.view.clone());
+            let common = common_references.iter().any(|r| r.view == reference_view);
+            if let Some(missing) = variants.iter().find(|variant| {
+                !common && !variant.references.iter().any(|r| r.view == reference_view)
+            }) {
+                return Err(invalid(format!(
+                    "check `{}` references reference view `{}`, which variant `{}` does not declare",
+                    check.view, reference_view, missing.slug
+                )));
+            }
+            let name = check.name.clone().unwrap_or_else(|| humanize(&check.view));
+            checks.push(Check {
+                view: check.view.clone(),
+                name,
+                reference_view,
+                actions: check.actions.clone(),
             });
         }
 
@@ -557,7 +615,7 @@ impl TestCaseCatalog {
             common_specs,
             asset_paths,
             variants,
-            reference_views,
+            common_references,
             checks,
         })
     }

@@ -19,30 +19,46 @@ implementation.
 
 ## Views
 
-Each file corresponds to a canonical view slug:
+Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
+views are **common** — the same mockup is rendered and seeded for every variant.
+The `title` view is **variant-specific**: the main menu lists a different set of
+modes per variant, so each variant declares its own menu mockup (see the
+`[[variant]]` `reference` entries in `../test-case.toml`).
 
-| View slug   | File              | Description                                  |
-| ----------- | ----------------- | -------------------------------------------- |
-| `title`     | `menu.html`       | Title screen and main menu.                  |
-| `gameplay`  | `gameplay.html`   | Representative in-match frame.               |
-| `game-over` | `game-over.html`  | Match-over result panel.                     |
+| View slug   | File(s)                                          | Description                                              |
+| ----------- | ------------------------------------------------ | ------------------------------------------------------- |
+| `title`     | `menu-base.html`, `menu-frenzy.html`, `menu-multi.html` | Title screen and main menu, one mockup per variant. |
+| `gameplay`  | `gameplay.html`                                  | Representative in-match frame (common).                 |
+| `game-over` | `game-over.html`                                 | Match-over result panel (common).                       |
+
+The three `title` mockups differ only in their menu list: `menu-base.html` shows
+`SOLO` / `VERSUS` / `HOW TO PLAY`; `menu-frenzy.html` inserts `FRENZY`; and
+`menu-multi.html` inserts `MULTI` — matching each variant's seeded mode spec.
 
 `theme.css` holds the shared palette, type, and field furniture referenced by
-all three views and by the specification (the seeded specs under `../specs/`).
+every view and by the specification (the seeded specs under `../specs/`).
 
 ## Generating screenshots
 
 The mockups are the source of truth; their rendered screenshots are a build
 output and are **git-ignored** (the repository ignores
-`test-cases/**/reference/screenshots/`). The testing harness is expected to
-render each file at a `1280x720` viewport (for example with Playwright) and write
-the images under `reference/screenshots/`:
+`test-cases/**/reference/screenshots/`). The testing harness renders each file at
+a `1280x720` viewport (for example with Playwright) and writes the images under
+`reference/screenshots/<variant>/`, one folder per variant, so a view slug shared
+across variants (here, `title`) does not clobber another variant's render. Each
+variant folder holds that variant's full set — the common views plus its own
+`title` menu:
 
 ```
-reference/screenshots/title.png
-reference/screenshots/gameplay.png
-reference/screenshots/game-over.png
+reference/screenshots/base/title.png       # from menu-base.html
+reference/screenshots/base/gameplay.png
+reference/screenshots/base/game-over.png
+reference/screenshots/frenzy/title.png     # from menu-frenzy.html
+reference/screenshots/multi/title.png      # from menu-multi.html
 ```
+
+Whichever variant a run selects, its `title.png` is seeded into the run as
+`reference/title.png`, so the model always sees a single stable path.
 
 Because the files are plain static HTML with no scripts or network access, they
 can be opened directly (`file://`) or served as static files for rendering.

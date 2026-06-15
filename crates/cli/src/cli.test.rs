@@ -180,6 +180,8 @@ fn validate_parses_required_arguments() {
         "pong",
         "--version",
         "1.0.0",
+        "--variant",
+        "base",
     ])
     .expect("a fully specified validate invocation should parse");
 
@@ -188,6 +190,7 @@ fn validate_parses_required_arguments() {
             assert_eq!(args.implementation.to_str(), Some("/tmp/impl"));
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
+            assert_eq!(args.variant, "base");
         }
         other => panic!("expected a validate command, got {other:?}"),
     }

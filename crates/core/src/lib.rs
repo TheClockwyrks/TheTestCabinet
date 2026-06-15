@@ -144,10 +144,16 @@ where
         }
     }
 
-    /// Render the test case's reference mockups to screenshots, used both as
-    /// seeded visual targets and as validation baselines.
-    pub fn render_references(&self, test_case: &TestCaseVersion) -> Result<Vec<RenderedReference>> {
-        self.renderer.render_references(test_case)
+    /// Render the selected variant's reference mockups to screenshots, used both
+    /// as seeded visual targets and as validation baselines. The set rendered is
+    /// the common references plus the variant's own; see
+    /// [`TestCaseVersion::references_for`].
+    pub fn render_references(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+    ) -> Result<Vec<RenderedReference>> {
+        self.renderer.render_references(test_case, variant)
     }
 
     /// Seed a fresh git repository with the selected variant's specs, the test
@@ -368,9 +374,10 @@ where
         // slug is what the run record attributes the run to.
         let variant = test_case.variant(&request.variant)?.clone();
         let specs = test_case.seeded_specs(&variant);
-        // Render the reference mockups once: the screenshots are both seeded as
-        // visual targets and reused as validation baselines below.
-        let references = self.render_references(&test_case)?;
+        // Render the selected variant's reference mockups once: the screenshots
+        // are both seeded as visual targets and reused as validation baselines
+        // below. A variant may add references of its own on top of the common set.
+        let references = self.render_references(&test_case, &variant)?;
         let seeded = self.seed(&test_case, &specs, &references)?;
         let (handle, outcome, environment) = self
             .execute(&test_case, &variant, &seeded, request, events)

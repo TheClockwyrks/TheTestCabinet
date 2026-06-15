@@ -73,19 +73,23 @@ source = "specs/overview.md" # source path (relative to this folder)
 dest   = "specs/overview.md" # destination in the run workspace (relative)
 
 # Variants. A case offers one or more; exactly one runs per run. Each seeds the
-# common specs above plus its own additional specs.
+# common specs above plus its own additional specs, and may declare its own
+# variant-specific references on top of the common ones.
 [[variant]]
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 description = "..."          # optional inline prose (site-facing)
 spec = []                    # ADDITIVE specs on top of the common specs
+# ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
+# `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
+reference = [{ view = "title", path = "reference/menu-base.html" }]
 
-# Reference views. Each `path` mockup is rendered to a screenshot that is seeded
-# as a visual target; the source is not seeded. References are not validated
-# unless a check below names them.
+# Common reference views, rendered and seeded for EVERY variant. Each `path`
+# mockup is rendered to a screenshot that is seeded as a visual target; the source
+# is not seeded. References are not validated unless a check below names them.
 [[reference]]
-view = "title"               # view slug
-path = "reference/menu.html" # the reference source mockup (relative to this folder)
+view = "gameplay"            # view slug
+path = "reference/gameplay.html" # the reference source mockup (relative to this folder)
 
 # Validation checks (opt-in). Only declared checks run.
 [[check]]
@@ -112,14 +116,20 @@ actions = []                 # actions to drive the build into the view (empty =
 - Each `[[variant]]` declares a build the case offers. A run selects exactly one
   variant, which seeds the common specs plus the variant's own `spec` entries;
   see [Variants](#variants) below.
-- Each `[[reference]]` is rendered to a screenshot (seeded as a visual target);
-  its `path` **source** is never seeded. All paths are relative to the version
-  folder and must resolve inside it, keeping a version self-contained.
+- Each `[[reference]]` declares a **common** reference view — rendered to a
+  screenshot and seeded as a visual target for **every** variant; its `path`
+  **source** is never seeded. A variant may declare additional, variant-specific
+  references through its own `reference` array (same `{ view, path }` shape); see
+  [Variants](#variants). A view slug must not be declared both as a common
+  reference and by a variant, and a variant must not declare the same view twice.
+  All paths are relative to the version folder and must resolve inside it, keeping
+  a version self-contained.
 - Each `[[check]]` is an opt-in validation comparison. Its `reference` must name a
-  declared reference view, whose rendered screenshot is the baseline; `actions`
-  drive the built implementation into the view before capture. Its optional
-  `name` is a display label, defaulting to a humanized form of `view`. See
-  [Validation](./validation.md#checks).
+  reference view that resolves for **every** variant — a common reference, or one
+  that each variant declares — whose rendered screenshot is the baseline;
+  `actions` drive the built implementation into the view before capture. Its
+  optional `name` is a display label, defaulting to a humanized form of `view`.
+  See [Validation](./validation.md#checks).
 
 ## Prompt template
 
@@ -180,6 +190,24 @@ Within a single variant the common specs and the variant's own specs must not
 map two entries onto the same `dest` — a collision would clobber one of them, so
 it is rejected at resolution. (Two *different* variants reusing the same `dest`,
 as in the remapping example above, is exactly the point and is allowed.)
+
+### Variant-specific references
+
+A variant may also declare **variant-specific references** through a `reference`
+array of `{ view, path }` tables, additive on top of the common `[[reference]]`
+views just as `spec` is additive on top of the common specs. This lets a single
+view differ per variant — for example a main-menu `title` mockup whose listed
+modes change with the variant — while the views that look the same everywhere
+stay common. Only the selected variant's references (the common set plus that
+variant's own) are rendered and seeded for a run.
+
+A view slug identifies a reference uniquely within a variant's effective set, so
+a view declared as a common reference must not also be declared by a variant, and
+a variant must not declare the same view twice; either collision is rejected at
+resolution. (Different variants each declaring their own reference for the *same*
+view slug — the per-variant menu above — is exactly the point and is allowed.)
+Because a check's baseline must resolve whichever variant runs, a checked view
+must be supplied either commonly or by **every** variant.
 
 ## Self-Contained Specifications
 
