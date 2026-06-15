@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { Markdown } from "../../components/Markdown";
+import { ReadableSurface } from "../../components/readability/ReadableSurface";
 import { Chart } from "../../components/Chart";
 import { barChart, boxAndWhisker } from "../../components/plot/charts";
 import type { BarPoint, BoxPoint } from "../../components/plot/charts";
@@ -90,7 +91,9 @@ export function TestCaseDetailPage() {
 
       {testCase.description && (
         <section className={styles.section}>
-          <Markdown>{testCase.description}</Markdown>
+          <ReadableSurface>
+            <Markdown>{testCase.description}</Markdown>
+          </ReadableSurface>
         </section>
       )}
 

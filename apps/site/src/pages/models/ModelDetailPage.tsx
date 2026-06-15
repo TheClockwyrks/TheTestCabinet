@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { Chart } from "../../components/Chart";
 import { Markdown } from "../../components/Markdown";
+import { ReadableSurface } from "../../components/readability/ReadableSurface";
 import { PageLayout } from "../../components/PageLayout";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { boxAndWhisker } from "../../components/plot/charts";
@@ -134,11 +135,14 @@ export function ModelDetailPage() {
         )}
       </section>
 
-      {/* Model description prose, rendered through the shared Markdown component. */}
+      {/* Model description prose, rendered through the shared Markdown component
+          and wrapped so it stays legible over the backdrop. */}
       {model.description && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>About</h2>
-          <Markdown>{model.description}</Markdown>
+          <ReadableSurface>
+            <Markdown>{model.description}</Markdown>
+          </ReadableSurface>
         </section>
       )}
 
