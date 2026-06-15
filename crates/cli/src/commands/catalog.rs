@@ -8,11 +8,12 @@
 //! by URL.
 //!
 //! The test case dataset is built by reusing the production seeder and reference
-//! renderer exactly as `tcab run` does, so a test case's `seededInputs` faithfully
-//! mirror what a real run receives: the specification, seeded assets, and rendered
-//! reference screenshots. The reference *source* mockups are withheld here just as
-//! they are from a run. The command needs no API keys; OpenRouter prices are
-//! looked up when a model declares an OpenRouter slug and otherwise left null.
+//! renderer exactly as `tcab run` does, once per variant, so every variant's
+//! `seededInputs` faithfully mirror what a real run of that variant receives: the
+//! specification, seeded assets, and rendered reference screenshots. The reference
+//! *source* mockups are withheld here just as they are from a run. The command
+//! needs no API keys; OpenRouter prices are looked up when a model declares an
+//! OpenRouter slug and otherwise left null.
 
 use std::path::{Path, PathBuf};
 
@@ -46,17 +47,17 @@ struct TestCaseEntry {
     versions: Vec<String>,
     /// The newest version, used as the metadata source for this entry.
     latest_version: String,
-    /// The variants the latest version offers, in declared order. The first is
-    /// the default and the one [`Self::seeded_inputs`] are shown for.
+    /// Every variant the latest version offers, in declared order (the first is
+    /// the default). Each carries the exact inputs a run of that variant is
+    /// seeded with, so the site can browse all variants' specs — not just the
+    /// default's.
     variants: Vec<VariantEntry>,
-    /// The inputs a run of the latest version's default variant is seeded with.
-    seeded_inputs: Vec<SeededInput>,
-    /// The reference screenshots rendered as visual targets for the latest
-    /// version.
-    reference_screenshots: Vec<ReferenceScreenshot>,
 }
 
 /// A single variant entry in `test-cases.json`.
+///
+/// Carries the inputs a run of this variant receives, seeded and rendered
+/// exactly as `tcab seed --variant <slug>` materializes them.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VariantEntry {
@@ -66,6 +67,10 @@ struct VariantEntry {
     name: String,
     /// Inlined site-facing description, or `null` when none is declared.
     description: Option<String>,
+    /// The inputs a run of this variant is seeded with.
+    seeded_inputs: Vec<SeededInput>,
+    /// The reference screenshots rendered as visual targets for this variant.
+    reference_screenshots: Vec<ReferenceScreenshot>,
 }
 
 /// A single seeded input — a file a run's repository is initialized with.
@@ -182,6 +187,18 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
     let catalog = TestCaseCatalog::new(catalog_root);
     let cases = catalog.list().context("listing test cases")?;
 
+    // Start from a clean catalog asset tree so assets from cases, versions, or
+    // variants that no longer exist (or that moved when the layout changed) do
+    // not linger as orphans under `public/catalog/`.
+    match std::fs::remove_dir_all(public_dir) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("clearing catalog asset tree {}", public_dir.display()));
+        }
+    }
+
     let renderer = BrowserRenderer::new();
     // A scratch directory for the seeded repositories. Each version is seeded
     // into a fresh subfolder by the seeder; the whole tree is discarded once its
@@ -205,57 +222,18 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
         let description = read_optional_markdown(test_case.description_path.as_deref())
             .with_context(|| format!("reading description for {}", case.slug))?;
 
-        // The default (first) variant is what the seeded-inputs preview shows. A
-        // version always resolves with at least one variant, so `first` is safe.
-        let default_variant = test_case
-            .variants
-            .first()
-            .ok_or_else(|| anyhow!("test case `{}` has no variants", case.slug))?;
-        let specs = test_case.seeded_specs(default_variant);
-        let variants = test_case
-            .variants
-            .iter()
-            .map(|variant| VariantEntry {
-                slug: variant.slug.clone(),
-                name: variant.name.clone(),
-                description: variant.description.clone(),
-            })
-            .collect();
-
-        // Render the default variant's references and seed exactly as `tcab
-        // seed`/`tcab run` do, so the inputs mirror a real run. A host without a
-        // headless browser renders no references; that is tolerated and the
-        // screenshots are simply absent.
-        let references = renderer
-            .render_references(&test_case, default_variant)
-            .with_context(|| format!("rendering references for {}", case.slug))?;
-        let seeder = FsRepoSeeder::new(&scratch);
-        let seeded = seeder
-            .seed(&SeedRequest {
-                test_case: &test_case,
-                variant: default_variant,
-                specs: &specs,
-                references: &references,
-            })
-            .with_context(|| format!("seeding {}@{}", case.slug, latest_version))?;
-
-        let case_public = public_dir.join(&case.slug).join(&latest_version);
-        let seeded_inputs =
-            collect_seeded_inputs(&seeded.path, &case_public, &case.slug, &latest_version)
-                .with_context(|| format!("collecting seeded inputs for {}", case.slug))?;
-        let reference_screenshots = collect_reference_screenshots(
-            &test_case,
-            default_variant,
-            &references,
-            &case_public,
-            &case.slug,
-            &latest_version,
-        )
-        .with_context(|| format!("collecting reference screenshots for {}", case.slug))?;
-
-        // The seeded repository was only needed to read the inputs out of; drop
-        // it so the scratch tree does not accumulate across catalog runs.
-        let _ = std::fs::remove_dir_all(&seeded.path);
+        // Seed and render every variant, not just the default, so the dataset
+        // carries the precise inputs a run of any variant receives. A version
+        // always resolves with at least one variant.
+        if test_case.variants.is_empty() {
+            return Err(anyhow!("test case `{}` has no variants", case.slug));
+        }
+        let mut variants = Vec::with_capacity(test_case.variants.len());
+        for variant in &test_case.variants {
+            let entry = build_variant(&test_case, variant, &renderer, &scratch, public_dir)
+                .with_context(|| format!("building variant `{}` of {}", variant.slug, case.slug))?;
+            variants.push(entry);
+        }
 
         entries.push(TestCaseEntry {
             slug: case.slug.clone(),
@@ -266,12 +244,77 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
             versions: case.versions.clone(),
             latest_version,
             variants,
-            seeded_inputs,
-            reference_screenshots,
         });
     }
 
     Ok(entries)
+}
+
+/// Seed and render a single variant into a [`VariantEntry`].
+///
+/// The variant is seeded through the production seeder and reference renderer
+/// exactly as `tcab seed --variant <slug>` does, so the recorded inputs mirror a
+/// real run of that variant. Its public assets are namespaced by variant
+/// (`/catalog/<slug>/<version>/<variant>/…`) so variant-specific files — such as
+/// a per-variant `title` reference — never collide across variants.
+fn build_variant(
+    test_case: &TestCaseVersion,
+    variant: &test_cabinet_core::Variant,
+    renderer: &BrowserRenderer,
+    scratch: &Path,
+    public_dir: &Path,
+) -> anyhow::Result<VariantEntry> {
+    let specs = test_case.seeded_specs(variant);
+
+    // A host without a headless browser renders no references; that is tolerated
+    // and the screenshots are simply absent.
+    let references = renderer
+        .render_references(test_case, variant)
+        .context("rendering references")?;
+    let seeder = FsRepoSeeder::new(scratch);
+    let seeded = seeder
+        .seed(&SeedRequest {
+            test_case,
+            variant,
+            specs: &specs,
+            references: &references,
+        })
+        .context("seeding the variant")?;
+
+    let variant_public = public_dir
+        .join(&test_case.slug)
+        .join(&test_case.version)
+        .join(&variant.slug);
+    let seeded_inputs = collect_seeded_inputs(
+        &seeded.path,
+        &variant_public,
+        &test_case.slug,
+        &test_case.version,
+        &variant.slug,
+    )
+    .context("collecting seeded inputs")?;
+    let reference_screenshots = collect_reference_screenshots(
+        test_case,
+        variant,
+        &references,
+        &variant_public,
+        &test_case.slug,
+        &test_case.version,
+        &variant.slug,
+    )
+    .context("collecting reference screenshots")?;
+
+    // The seeded repository was only needed to read the inputs out of; drop it so
+    // the scratch tree does not accumulate across catalog runs.
+    let _ = std::fs::remove_dir_all(&seeded.path);
+
+    Ok(VariantEntry {
+        slug: variant.slug.clone(),
+        name: variant.name.clone(),
+        description: variant.description.clone(),
+        seeded_inputs,
+        reference_screenshots,
+    })
 }
 
 /// Walk a seeded repository and turn each file into a [`SeededInput`].
@@ -287,6 +330,7 @@ fn collect_seeded_inputs(
     public_dir: &Path,
     slug: &str,
     version: &str,
+    variant: &str,
 ) -> anyhow::Result<Vec<SeededInput>> {
     let mut files = Vec::new();
     walk_files(repo, repo, &mut files)?;
@@ -314,7 +358,7 @@ fn collect_seeded_inputs(
                 url: None,
             });
         } else {
-            let url = copy_to_public(&absolute, public_dir, &relative, slug, version)?;
+            let url = copy_to_public(&absolute, public_dir, &relative, slug, version, variant)?;
             inputs.push(SeededInput {
                 path: rel_str,
                 kind: InputKind::Image,
@@ -335,6 +379,7 @@ fn collect_reference_screenshots(
     public_dir: &Path,
     slug: &str,
     version: &str,
+    variant_slug: &str,
 ) -> anyhow::Result<Vec<ReferenceScreenshot>> {
     // Emit in the manifest's declared view order for the rendered variant — the
     // common references followed by the variant's own — including only views that
@@ -347,7 +392,14 @@ fn collect_reference_screenshots(
         };
         let name = format!("{}.png", rendered.view);
         let relative = Path::new("reference").join(&name);
-        let url = copy_to_public(&rendered.image_path, public_dir, &relative, slug, version)?;
+        let url = copy_to_public(
+            &rendered.image_path,
+            public_dir,
+            &relative,
+            slug,
+            version,
+            variant_slug,
+        )?;
         screenshots.push(ReferenceScreenshot {
             view: rendered.view.clone(),
             url,
@@ -357,14 +409,16 @@ fn collect_reference_screenshots(
 }
 
 /// Copy `source` to `public_dir/<relative>` and return its public URL
-/// (`/catalog/<slug>/<version>/<relative>`). Parent directories are created as
-/// needed.
+/// (`/catalog/<slug>/<version>/<variant>/<relative>`). The variant segment
+/// namespaces each variant's assets so variant-specific files never collide.
+/// Parent directories are created as needed.
 fn copy_to_public(
     source: &Path,
     public_dir: &Path,
     relative: &Path,
     slug: &str,
     version: &str,
+    variant: &str,
 ) -> anyhow::Result<String> {
     let dest = public_dir.join(relative);
     if let Some(parent) = dest.parent() {
@@ -373,7 +427,10 @@ fn copy_to_public(
     }
     std::fs::copy(source, &dest)
         .with_context(|| format!("copying catalog asset to {}", dest.display()))?;
-    Ok(format!("/catalog/{slug}/{version}/{}", unix_path(relative)))
+    Ok(format!(
+        "/catalog/{slug}/{version}/{variant}/{}",
+        unix_path(relative)
+    ))
 }
 
 /// Recursively collect every file path under `dir`, relative to `root`.
