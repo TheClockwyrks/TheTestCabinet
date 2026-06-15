@@ -148,18 +148,23 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     // The base variant's specs are seeded at their destination paths.
     assert!(seeded.path.join("specs/overview.md").is_file());
     assert!(seeded.path.join("specs/modes/standard.md").is_file());
-    // The overview is seeded from a `.hbs` template, so it lands at its `.md`
-    // dest with the selected variant rendered in: the base build names itself,
-    // and no Handlebars tags survive.
+    // The overview is seeded from a `.hbs` template, so it lands rendered at its
+    // `.md` dest with real spec content and no Handlebars tags surviving. The
+    // seeded overview deliberately carries no variant or seeding references, so
+    // it must not name the variant it was rendered for.
     let overview = std::fs::read_to_string(seeded.path.join("specs/overview.md"))
         .expect("read seeded overview");
     assert!(
-        overview.contains("the **Base** configuration"),
-        "the rendered overview should name the base configuration: {overview}"
+        overview.contains("# Carom"),
+        "the rendered overview should carry the spec body: {overview}"
     );
     assert!(
         !overview.contains("{{"),
         "no unrendered Handlebars tags should remain in the seeded overview"
+    );
+    assert!(
+        !overview.contains("**Base**"),
+        "the seeded overview must not name the variant it was rendered for: {overview}"
     );
     // The base variant does not seed the frenzy mode spec.
     assert!(!seeded.path.join("specs/modes/frenzy.md").exists());
