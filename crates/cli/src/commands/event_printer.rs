@@ -5,11 +5,36 @@
 //! of harness activity is rendered on its own line as the harness produces it,
 //! and a harness's own diagnostics and errors surface immediately rather than
 //! only as a single line once the run fails.
+//!
+//! Each event type's label is colored so the stream is easy to scan. The colors
+//! are emitted unconditionally; the [`anstream`] macros used to write the lines
+//! strip the escape sequences when the destination is not a terminal (honoring
+//! `NO_COLOR` and `CLICOLOR`), so color appears only when attached to a TTY.
 
+use anstyle::{AnsiColor, Color, Style};
 use test_cabinet_core::{EventKind, EventSink, HarnessEvent, OrchestrationAction};
 
 /// Maximum width of a rendered message before it is truncated.
 const MAX_WIDTH: usize = 200;
+
+/// Build a foreground-only style from an ANSI color.
+const fn fg(color: AnsiColor) -> Style {
+    Style::new().fg_color(Some(Color::Ansi(color)))
+}
+
+// The per-event-type label colors. Each event kind gets a distinct color so the
+// stream is easy to scan; diagnostics are bold to stand out from activity.
+const AGENT: Style = fg(AnsiColor::Cyan);
+const COMMAND: Style = fg(AnsiColor::Yellow);
+const READ: Style = fg(AnsiColor::Blue);
+const WRITE: Style = fg(AnsiColor::Green);
+const SEARCH: Style = fg(AnsiColor::Magenta);
+const LIST: Style = fg(AnsiColor::BrightBlue);
+const SKILL: Style = fg(AnsiColor::BrightMagenta);
+const SUBAGENT: Style = fg(AnsiColor::BrightCyan);
+const UNKNOWN: Style = fg(AnsiColor::BrightBlack);
+const WARNING: Style = fg(AnsiColor::Yellow).bold();
+const ERROR: Style = fg(AnsiColor::Red).bold();
 
 /// An [`EventSink`] that writes a one-line summary of every event to the
 /// terminal. Activity goes to standard output; harness warnings and errors go to
@@ -19,58 +44,73 @@ pub struct PrintingEventSink;
 
 impl EventSink for PrintingEventSink {
     fn emit(&mut self, event: &HarnessEvent) {
-        match &event.kind {
-            EventKind::Agent { message } => println!("  {}", labeled("agent", message)),
-            EventKind::Command {
-                command,
-                exit_code,
-                is_success,
-                ..
-            } => println!(
-                "  {}",
-                labeled("cmd", &command_text(command, *exit_code, *is_success))
-            ),
-            EventKind::Read {
-                path,
-                start_line,
-                end_line,
-                ..
-            } => println!(
-                "  {}",
-                labeled("read", &path_with_range(path, *start_line, *end_line))
-            ),
-            EventKind::Write { path, .. } => println!("  {}", labeled("write", path)),
-            EventKind::Search { query, .. } => println!("  {}", labeled("search", query)),
-            EventKind::List { path, .. } => {
-                println!("  {}", labeled("list", path.as_deref().unwrap_or(".")))
+        let line = render(event);
+        // Harness diagnostics belong on standard error; all other activity goes
+        // to standard output. The `anstream` macros decide per stream whether to
+        // keep or strip the color escapes, so a redirected stream stays plain
+        // even when the other is a terminal.
+        match event.kind {
+            EventKind::Warning { .. } | EventKind::Error { .. } => {
+                anstream::eprintln!("  {line}");
             }
-            EventKind::Skill {
-                path, skill_name, ..
-            } => println!(
-                "  {}",
-                labeled("skill", skill_name.as_deref().unwrap_or(path))
-            ),
-            EventKind::Orchestration {
-                action,
-                subagent_name,
-                ..
-            } => println!(
-                "  {}",
-                labeled(
-                    "subagent",
-                    &orchestration_text(*action, subagent_name.as_deref())
-                )
-            ),
-            EventKind::Unknown { raw } => println!("  {}", labeled("·", &raw.to_string())),
-            EventKind::Warning { message, .. } => eprintln!("  {}", labeled("warn", message)),
-            EventKind::Error { message, .. } => eprintln!("  {}", labeled("error", message)),
+            _ => anstream::println!("  {line}"),
         }
     }
 }
 
-/// Render a label and a message as a single aligned, width-limited line.
-fn labeled(label: &str, message: &str) -> String {
-    format!("{label:<7} {}", one_line(message))
+/// Render an event as a single colored, labeled, width-limited line.
+fn render(event: &HarnessEvent) -> String {
+    match &event.kind {
+        EventKind::Agent { message } => labeled(AGENT, "agent", message),
+        EventKind::Command {
+            command,
+            exit_code,
+            is_success,
+            ..
+        } => labeled(
+            COMMAND,
+            "cmd",
+            &command_text(command, *exit_code, *is_success),
+        ),
+        EventKind::Read {
+            path,
+            start_line,
+            end_line,
+            ..
+        } => labeled(READ, "read", &path_with_range(path, *start_line, *end_line)),
+        EventKind::Write { path, .. } => labeled(WRITE, "write", path),
+        EventKind::Search { query, .. } => labeled(SEARCH, "search", query),
+        EventKind::List { path, .. } => labeled(LIST, "list", path.as_deref().unwrap_or(".")),
+        EventKind::Skill {
+            path, skill_name, ..
+        } => labeled(SKILL, "skill", skill_name.as_deref().unwrap_or(path)),
+        EventKind::Orchestration {
+            action,
+            subagent_name,
+            ..
+        } => labeled(
+            SUBAGENT,
+            "subagent",
+            &orchestration_text(*action, subagent_name.as_deref()),
+        ),
+        EventKind::Unknown { raw } => labeled(UNKNOWN, "·", &raw.to_string()),
+        EventKind::Warning { message, .. } => labeled(WARNING, "warn", message),
+        EventKind::Error { message, .. } => labeled(ERROR, "error", message),
+    }
+}
+
+/// Render a colored label and a message as a single aligned, width-limited line.
+///
+/// The label is padded to a fixed width and wrapped in the style's escape
+/// sequences. An empty [`Style`] renders no sequences, and [`anstream`] strips
+/// them entirely when the destination is not a terminal.
+fn labeled(style: Style, label: &str, message: &str) -> String {
+    format!(
+        "{}{label:<7}{} {}",
+        style.render(),
+        style.render_reset(),
+        one_line(message)
+    )
 }
 
 /// Describe a command, noting a non-zero exit when one is known.

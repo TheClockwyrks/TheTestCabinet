@@ -52,5 +52,78 @@ fn orchestration_text_describes_the_action() {
 
 #[test]
 fn labeled_pads_short_labels() {
-    assert_eq!(labeled("cmd", "ls"), "cmd     ls");
+    // An empty style renders no escape sequences, so only the padded label shows.
+    assert_eq!(labeled(Style::new(), "cmd", "ls"), "cmd     ls");
+}
+
+#[test]
+fn labeled_wraps_the_padded_label_in_the_style_escapes() {
+    // Cyan is `\x1b[36m`; the reset is `\x1b[0m`. The escapes bracket the padded
+    // label (including its trailing spaces), and the message stays uncolored.
+    assert_eq!(
+        labeled(fg(AnsiColor::Cyan), "agent", "hi"),
+        "\u{1b}[36magent  \u{1b}[0m hi"
+    );
+}
+
+#[test]
+fn event_kinds_each_get_a_distinct_color() {
+    let styles = [
+        AGENT, COMMAND, READ, WRITE, SEARCH, LIST, SKILL, SUBAGENT, UNKNOWN, WARNING, ERROR,
+    ];
+    for (index, style) in styles.iter().enumerate() {
+        for other in &styles[index + 1..] {
+            assert_ne!(style, other, "two event kinds share a color");
+        }
+    }
+}
+
+#[test]
+fn render_applies_the_matching_label_and_style_per_event_kind() {
+    // Each kind renders identically to invoking `labeled` with its own style and
+    // label, which pins both the routing of kind to color and the wording without
+    // hard-coding the exact escape bytes of every color.
+    let cases = [
+        (
+            EventKind::Agent {
+                message: "hello".to_string(),
+            },
+            labeled(AGENT, "agent", "hello"),
+        ),
+        (
+            EventKind::Write {
+                path: "src/main.rs".to_string(),
+                start_line: None,
+                end_line: None,
+                is_success: Some(true),
+            },
+            labeled(WRITE, "write", "src/main.rs"),
+        ),
+        (
+            EventKind::Warning {
+                message: "careful".to_string(),
+                code: None,
+            },
+            labeled(WARNING, "warn", "careful"),
+        ),
+        (
+            EventKind::Error {
+                message: "boom".to_string(),
+                code: None,
+            },
+            labeled(ERROR, "error", "boom"),
+        ),
+    ];
+    for (kind, expected) in cases {
+        assert_eq!(render(&event(kind)), expected);
+    }
+}
+
+/// A bare [`HarnessEvent`] wrapping the given kind, for rendering tests.
+fn event(kind: EventKind) -> HarnessEvent {
+    HarnessEvent {
+        timestamp: String::new(),
+        session_id: None,
+        kind,
+    }
 }

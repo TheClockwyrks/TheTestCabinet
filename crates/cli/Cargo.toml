@@ -14,3 +14,5 @@ test-cabinet-core = { path = "../core" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+anstyle = { workspace = true }
+anstream = { workspace = true }

@@ -3600,6 +3600,8 @@ dependencies = [
 name = "test-cabinet-cli"
 version = "0.0.0"
 dependencies = [
+ "anstream",
+ "anstyle",
  "anyhow",
  "clap",
  "test-cabinet-core",
