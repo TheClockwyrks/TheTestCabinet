@@ -92,3 +92,10 @@ without consulting OpenRouter, as described in
 [Harness-reported cost](./metrics.md#harness-reported-cost). Harnesses that report
 no cost (for example Codex, whose output carries only token counts) leave the
 reported cost unset and fall back to OpenRouter-derived pricing.
+
+When a no-cost harness is priced through OpenRouter, the harness layer maps its
+model ID to the slug OpenRouter lists it under. Harnesses that route through
+OpenRouter already use OpenRouter model IDs and pass them through unchanged.
+Harnesses that take a provider-native model ID map it to its OpenRouter
+equivalent — for example Codex receives an OpenAI ID such as `gpt-5.5`, which
+OpenRouter lists as `openai/gpt-5.5`.

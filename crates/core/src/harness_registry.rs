@@ -74,6 +74,11 @@ impl UsageShape {
 pub struct CliHarness {
     slug: HarnessSlug,
     binary: &'static str,
+    /// Prefix prepended to the model ID to form the OpenRouter catalog ID used
+    /// for the comparable-cost lookup, when the harness takes a provider-native
+    /// model ID rather than an OpenRouter one. `None` passes the ID through
+    /// unchanged. See [`AgentHarness::pricing_model_id`].
+    pricing_model_prefix: Option<&'static str>,
     api_key_env: Option<&'static str>,
     /// Builds the session argument vector (after the binary) from model + prompt.
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
@@ -88,6 +93,14 @@ impl AgentHarness for CliHarness {
 
     fn api_key_env(&self) -> Option<&'static str> {
         self.api_key_env
+    }
+
+    fn pricing_model_id(&self, model_id: &str) -> String {
+        match self.pricing_model_prefix {
+            // Already an OpenRouter-style ID; don't double-prefix.
+            Some(prefix) if !model_id.starts_with(prefix) => format!("{prefix}{model_id}"),
+            _ => model_id.to_string(),
+        }
     }
 
     async fn check_availability(&self, runtime: &dyn ContainerRuntime) -> Result<Availability> {
@@ -196,6 +209,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Claude => CliHarness {
             slug,
             binary: "claude",
+            pricing_model_prefix: None,
             api_key_env: Some("ANTHROPIC_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -228,6 +242,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Codex => CliHarness {
             slug,
             binary: "codex",
+            pricing_model_prefix: Some("openai/"),
             api_key_env: Some("OPENAI_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -254,6 +269,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Cline => CliHarness {
             slug,
             binary: "cline",
+            pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -281,6 +297,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Antigravity => CliHarness {
             slug,
             binary: "agy",
+            pricing_model_prefix: None,
             // Antigravity only supports Google-account auth; with no API-key mode
             // it cannot participate in The Test Cabinet's API-key-only runs.
             api_key_env: None,
@@ -296,6 +313,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Goose => CliHarness {
             slug,
             binary: "goose",
+            pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -325,6 +343,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Kilo => CliHarness {
             slug,
             binary: "kilo",
+            pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -351,6 +370,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Opencode => CliHarness {
             slug,
             binary: "opencode",
+            pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             session_args: |model, prompt| {
                 vec![
@@ -377,6 +397,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         HarnessSlug::Pi => CliHarness {
             slug,
             binary: "pi",
+            pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             session_args: |model, prompt| {
                 vec![

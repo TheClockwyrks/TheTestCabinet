@@ -279,13 +279,19 @@ where
         let prices = if outcome.reported_cost.is_some() {
             TokenPrices::default()
         } else {
-            match self.prices.token_prices(&request.model_id).await {
+            // Map the model ID to the slug OpenRouter lists it under (for
+            // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`).
+            let lookup_id = self
+                .harnesses
+                .get(request.harness)
+                .map(|harness| harness.pricing_model_id(&request.model_id))
+                .unwrap_or_else(|| request.model_id.clone());
+            match self.prices.token_prices(&lookup_id).await {
                 Ok(prices) => prices,
                 Err(err) => {
                     eprintln!(
-                        "warning: could not fetch OpenRouter prices for `{}` ({err}); \
-                         recording zero comparable cost",
-                        request.model_id
+                        "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
+                         recording zero comparable cost"
                     );
                     TokenPrices::default()
                 }

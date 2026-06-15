@@ -126,6 +126,29 @@ fn registry_resolves_every_slug_and_marks_antigravity_keyless() {
 }
 
 #[test]
+fn codex_maps_model_ids_to_openrouter_slugs() {
+    let registry = DefaultHarnessRegistry::new();
+    let codex = registry
+        .get(HarnessSlug::Codex)
+        .expect("codex is registered");
+    assert_eq!(codex.pricing_model_id("gpt-5.5"), "openai/gpt-5.5");
+    // An already-prefixed ID is passed through rather than double-prefixed.
+    assert_eq!(codex.pricing_model_id("openai/gpt-5.5"), "openai/gpt-5.5");
+}
+
+#[test]
+fn openrouter_routed_harnesses_pass_model_ids_through() {
+    let registry = DefaultHarnessRegistry::new();
+    let goose = registry
+        .get(HarnessSlug::Goose)
+        .expect("goose is registered");
+    assert_eq!(
+        goose.pricing_model_id("anthropic/claude-sonnet-4.6"),
+        "anthropic/claude-sonnet-4.6"
+    );
+}
+
+#[test]
 fn parses_a_version_line() {
     assert_eq!(
         parse_version("claude 1.2.3 (build 9)"),
