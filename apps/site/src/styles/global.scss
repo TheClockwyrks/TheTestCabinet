@@ -1,7 +1,6 @@
 @use "./tokens" as t;
-// `variants.scss` declares the per-variant `--ttc-*` palettes the tokens above
-// resolve against. It must load so the baseline `:root` values exist.
-@use "./variants";
+// `theme.scss` declares the `--ttc-*` palette the tokens above resolve against.
+@use "./theme";
 
 * {
   box-sizing: border-box;
@@ -19,10 +18,6 @@ body {
   font-family: var(--ttc-font);
   font-size: t.$font-md;
   line-height: 1.5;
-  // Smoothly cross-fade between variants when the switcher changes the palette.
-  transition:
-    background-color 0.25s ease,
-    color 0.25s ease;
 }
 
 a {

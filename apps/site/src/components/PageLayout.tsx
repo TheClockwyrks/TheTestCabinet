@@ -20,7 +20,7 @@ export function PageLayout({ children }: PageLayoutProps) {
           <CabinetIcon className={styles.mark} />
           <span className={styles.wordmark}>The Test Cabinet</span>
         </Link>
-        <span className={styles.note}>A gallery, not a leaderboard</span>
+        <span className={styles.note}>Old games. New AI.</span>
       </header>
       <main className={styles.main}>{children}</main>
     </div>

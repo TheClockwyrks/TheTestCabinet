@@ -1,0 +1,25 @@
+// The site theme: a synthwave, deep-black palette with Clockwyrks orange. These
+// `--ttc-*` custom properties are the single source of color/typography truth;
+// the SCSS tokens in `tokens.scss` resolve against them, and components read
+// them directly for glow, grid, and scanline effects.
+:root {
+  --ttc-bg: #050108;
+  --ttc-bg-2: #0a0414;
+  --ttc-surface: #120a1c;
+  --ttc-surface-2: #1a0f28;
+  --ttc-border: #6a3aa0;
+  --ttc-text: #fdf3ff;
+  --ttc-muted: #b69ad0;
+  --ttc-accent: #ff9d2f;
+  --ttc-accent-2: #ff5e3a;
+  --ttc-positive: #4ade80;
+  --ttc-negative: #f87171;
+
+  --ttc-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
+    Consolas, monospace;
+  --ttc-display: var(--ttc-font);
+  --ttc-radius: 0.25rem;
+  --ttc-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
+  --ttc-grid: rgba(255, 94, 58, 0.5);
+  --ttc-scanline: rgba(0, 0, 0, 0.4);
+}

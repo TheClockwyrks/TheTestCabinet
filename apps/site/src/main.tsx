@@ -2,9 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { AppRoutes } from "./pages/router";
-import { DesignVariantProvider } from "./design/DesignVariantProvider";
-import { DesignBackground } from "./design/DesignBackground";
-import { DesignSwitcher } from "./design/DesignSwitcher";
+import { Backdrop } from "./components/Backdrop";
 import "./styles/global.scss";
 
 // GitHub Pages serves a single static bundle with no server-side routing, so a
@@ -24,14 +22,10 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <DesignVariantProvider>
-      {/* Per-variant atmosphere, painted behind the routed page content. */}
-      <DesignBackground />
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-      {/* Floating design-direction switcher; sits above the page. */}
-      <DesignSwitcher />
-    </DesignVariantProvider>
+    {/* Neon grid + scanline atmosphere, painted behind the routed page content. */}
+    <Backdrop />
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   </StrictMode>,
 );

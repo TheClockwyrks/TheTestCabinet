@@ -31,20 +31,17 @@ $border-hairline: 1px;
 
 // Color palette.
 //
-// Colors are intentionally indirected through the per-variant CSS custom
-// properties defined in `variants.scss`. Components keep referencing these SCSS
-// tokens (e.g. `t.$color-surface`); the active `[data-variant]` on <html>
-// supplies the concrete value, so a design variant re-themes the entire app
-// without touching component styles. The fallbacks are the brand defaults
-// (deep black + Clockwyrks orange) used before a variant attaches.
-$color-bg: var(--ttc-bg, #07080a);
-$color-bg-2: var(--ttc-bg-2, #0d0f13);
-$color-surface: var(--ttc-surface, #121419);
-$color-surface-2: var(--ttc-surface-2, #1a1d24);
-$color-border: var(--ttc-border, #262b35);
-$color-text: var(--ttc-text, #e8eaee);
-$color-text-muted: var(--ttc-muted, #8b93a3);
-$color-accent: var(--ttc-accent, #e48800);
-$color-accent-2: var(--ttc-accent-2, #ffb347);
-$color-positive: var(--ttc-positive, #4ade80);
-$color-negative: var(--ttc-negative, #f87171);
+// Colors are indirected through the `--ttc-*` custom properties defined in
+// `theme.scss`, which is the single source of theme truth. Components reference
+// these SCSS tokens (e.g. `t.$color-surface`) and the theme supplies the value.
+$color-bg: var(--ttc-bg);
+$color-bg-2: var(--ttc-bg-2);
+$color-surface: var(--ttc-surface);
+$color-surface-2: var(--ttc-surface-2);
+$color-border: var(--ttc-border);
+$color-text: var(--ttc-text);
+$color-text-muted: var(--ttc-muted);
+$color-accent: var(--ttc-accent);
+$color-accent-2: var(--ttc-accent-2);
+$color-positive: var(--ttc-positive);
+$color-negative: var(--ttc-negative);
