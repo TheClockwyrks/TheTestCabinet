@@ -58,10 +58,14 @@ pub struct TokenPrices {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cost {
-    /// The canonical figure, derived from token classes and OpenRouter's listed
-    /// prices. Stable across providers, so it is the value shown on the site.
+    /// The canonical figure shown on the site, stable across providers. It is
+    /// derived from token classes and OpenRouter's listed prices, except for
+    /// harnesses that drive a single provider directly and report their own
+    /// exact cost (such as Claude Code), where that reported cost — itself
+    /// provider-stable — is used instead.
     pub comparable: f64,
-    /// The amount actually charged for the run, recorded for reference.
+    /// The amount actually charged for the run, recorded for reference. Equal
+    /// to the comparable figure unless the harness reports its own exact cost.
     pub actual: f64,
 }
 

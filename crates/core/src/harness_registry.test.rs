@@ -21,6 +21,7 @@ fn shape_for(slug: HarnessSlug) -> UsageShape {
             cache_creation: &["cache_creation_input_tokens"],
             output: &["output_tokens"],
             reasoning: &[],
+            cost: &["total_cost_usd"],
             input_includes_cache: false,
             aggregation: Aggregation::Last,
         },
@@ -30,6 +31,7 @@ fn shape_for(slug: HarnessSlug) -> UsageShape {
             cache_creation: &[],
             output: &["output_tokens"],
             reasoning: &["reasoning_output_tokens"],
+            cost: &[],
             input_includes_cache: true,
             aggregation: Aggregation::Last,
         },
@@ -39,6 +41,7 @@ fn shape_for(slug: HarnessSlug) -> UsageShape {
             cache_creation: &["cache_write", "cacheWrite"],
             output: &["output"],
             reasoning: &["reasoning"],
+            cost: &[],
             input_includes_cache: false,
             aggregation: Aggregation::Sum,
         },
@@ -76,6 +79,25 @@ fn claude_takes_the_last_cumulative_event() {
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Claude));
     assert_eq!(usage.tokens.uncached_input, 100);
     assert_eq!(usage.tokens.output, 25);
+}
+
+#[test]
+fn claude_reports_its_terminal_total_cost() {
+    let stream = concat!(
+        r#"{"type":"assistant","usage":{"input_tokens":10,"output_tokens":1}}"#,
+        "\n",
+        r#"{"type":"result","total_cost_usd":0.0153196,"usage":{"input_tokens":100,"output_tokens":25}}"#,
+    );
+    let cost = parse_reported_cost(&stdout(stream), shape_for(HarnessSlug::Claude));
+    assert_eq!(cost, Some(0.0153196));
+}
+
+#[test]
+fn harnesses_without_a_cost_field_report_no_cost() {
+    let line = r#"{"type":"turn.completed","usage":{"input_tokens":1000,"output_tokens":200},"total_cost_usd":1.5}"#;
+    // Codex declares no cost key, so even a stray cost-like field is ignored.
+    let cost = parse_reported_cost(&stdout(line), shape_for(HarnessSlug::Codex));
+    assert_eq!(cost, None);
 }
 
 #[test]

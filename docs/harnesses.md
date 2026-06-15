@@ -82,3 +82,13 @@ Every invocation must return normalized usage data so that runs are comparable
 across harnesses regardless of how each harness reports its own numbers. The
 agent harness layer is responsible for translating each harness's raw output into
 the normalized token classes defined in [Metrics](./metrics.md#tokens).
+
+An invocation must also surface any **exact run cost the harness reports for
+itself**. A harness that drives a single provider directly through an API key may
+report the precise amount charged — for example, Claude Code emits a
+`total_cost_usd` figure on its terminal result. When such a figure is present the
+harness layer returns it, and the orchestrator uses it for both cost figures
+without consulting OpenRouter, as described in
+[Harness-reported cost](./metrics.md#harness-reported-cost). Harnesses that report
+no cost (for example Codex, whose output carries only token counts) leave the
+reported cost unset and fall back to OpenRouter-derived pricing.

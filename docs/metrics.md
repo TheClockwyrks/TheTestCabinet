@@ -39,9 +39,9 @@ producing these normalized values from each harness's raw reporting.
 
 Every run must record cost two ways:
 
-- The **comparable cost**, computed from the per token prices that OpenRouter
-  lists for the model used. This is the canonical figure shown on the site. It is
-  used instead of the exact charged amount because OpenRouter may route a single
+- The **comparable cost**, the canonical figure shown on the site. By default it
+  is computed from the per token prices that OpenRouter lists for the model used,
+  rather than the exact charged amount, because OpenRouter may route a single
   model to different providers that price calls differently, which would make raw
   charged costs inconsistent between otherwise identical runs.
 - The **actual cost** charged for the run, recorded alongside the comparable cost
@@ -50,3 +50,22 @@ Every run must record cost two ways:
 Comparable cost is derived from the recorded token classes and the listed prices
 for uncached input, cached input, and output tokens, with reasoning tokens priced
 at the output rate.
+
+### Harness-reported cost
+
+Some harnesses drive a single provider directly through an API key and report
+the exact cost of a run themselves — for example, Claude Code reports a
+`total_cost_usd` figure on its terminal result. When a harness reports its own
+cost, that figure is used for **both** the comparable and the actual cost, and
+the OpenRouter price lookup is skipped:
+
+- The reasoning behind the OpenRouter figure — normalizing away OpenRouter's
+  per-provider routing — does not apply to a harness that talks to one provider
+  at one price, so its reported charge is already provider-stable and serves as
+  the comparable figure directly.
+- These harnesses pass the provider's native model ID (such as
+  `claude-sonnet-4-6`), which is not guaranteed to appear in OpenRouter's
+  catalog, so an OpenRouter lookup would fail for them in any case.
+
+The [agent harness layer](./harnesses.md#usage-reporting) is responsible for
+extracting any reported cost from each harness's output.

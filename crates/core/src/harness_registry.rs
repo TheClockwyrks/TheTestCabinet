@@ -42,6 +42,14 @@ struct UsageShape {
     output: &'static [&'static str],
     /// JSON keys for reasoning tokens.
     reasoning: &'static [&'static str],
+    /// JSON keys for the exact run cost (USD) the harness reports for itself.
+    ///
+    /// Most harnesses report no cost and leave this empty; the comparable cost
+    /// is then derived from OpenRouter prices. A harness that drives one
+    /// provider directly via an API key (such as Claude Code's
+    /// `total_cost_usd`) reports the exact charge here, which the orchestrator
+    /// uses in place of an OpenRouter lookup.
+    cost: &'static [&'static str],
     /// Whether `input` already includes the cached-read tokens.
     input_includes_cache: bool,
     /// How per-event numbers combine across the stream.
@@ -56,6 +64,7 @@ impl UsageShape {
         cache_creation: &[],
         output: &[],
         reasoning: &[],
+        cost: &[],
         input_includes_cache: false,
         aggregation: Aggregation::Last,
     };
@@ -138,6 +147,7 @@ impl AgentHarness for CliHarness {
         Ok(HarnessOutcome {
             usage: parse_usage(&output, self.usage),
             harness_version: None,
+            reported_cost: parse_reported_cost(&output, self.usage),
         })
     }
 }
@@ -206,6 +216,11 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &["cache_creation_input_tokens"],
                 output: &["output_tokens"],
                 reasoning: &[],
+                // Claude Code reports the exact charge on its terminal
+                // `result` event; the orchestrator uses it instead of an
+                // OpenRouter lookup, whose catalog does not list Claude Code's
+                // native model IDs.
+                cost: &["total_cost_usd"],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
@@ -231,6 +246,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &[],
                 output: &["output_tokens"],
                 reasoning: &["reasoning_output_tokens"],
+                cost: &[],
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
             },
@@ -257,6 +273,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &["cacheWriteTokens"],
                 output: &["outputTokens"],
                 reasoning: &[],
+                cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
@@ -300,6 +317,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &[],
                 output: &["output_tokens"],
                 reasoning: &[],
+                cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
             },
@@ -325,6 +343,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &["cacheWriteTokens"],
                 output: &["outputTokens", "output"],
                 reasoning: &["reasoningTokens", "reasoning"],
+                cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
@@ -350,6 +369,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &["cache_write", "cacheWrite"],
                 output: &["output"],
                 reasoning: &["reasoning"],
+                cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
             },
@@ -376,6 +396,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
                 cache_creation: &[],
                 output: &["output_tokens", "outputTokens", "output"],
                 reasoning: &["reasoning_output_tokens", "reasoningTokens"],
+                cost: &[],
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
             },
@@ -412,6 +433,31 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
     Usage { tokens }
 }
 
+/// Parse the harness's self-reported run cost (USD) out of its command output.
+///
+/// Returns `None` when the shape declares no cost field or no event carries
+/// one. The reported cost is cumulative for the session, so the last event
+/// that reports it wins.
+fn parse_reported_cost(output: &ExecOutput, shape: UsageShape) -> Option<f64> {
+    if shape.cost.is_empty() {
+        return None;
+    }
+    let mut reported = None;
+    for line in output.stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if let Some(found) = shape.cost.iter().find_map(|key| find_f64(&value, key)) {
+            reported = Some(found);
+        }
+    }
+    reported
+}
+
 /// Extract the normalized token classes from one JSON event.
 fn extract_tokens(value: &Value, shape: UsageShape) -> TokenCounts {
     let sum = |keys: &[&str]| keys.iter().filter_map(|k| find_u64(value, k)).sum::<u64>();
@@ -443,6 +489,23 @@ fn find_u64(value: &Value, key: &str) -> Option<u64> {
             map.values().find_map(|v| find_u64(v, key))
         }
         Value::Array(items) => items.iter().find_map(|v| find_u64(v, key)),
+        _ => None,
+    }
+}
+
+/// Find the first `f64` value stored under `key` anywhere in a JSON value.
+///
+/// Used for reported costs, which harnesses report as fractional dollar
+/// amounts (for example Claude Code's `total_cost_usd`).
+fn find_f64(value: &Value, key: &str) -> Option<f64> {
+    match value {
+        Value::Object(map) => {
+            if let Some(found) = map.get(key).and_then(Value::as_f64) {
+                return Some(found);
+            }
+            map.values().find_map(|v| find_f64(v, key))
+        }
+        Value::Array(items) => items.iter().find_map(|v| find_f64(v, key)),
         _ => None,
     }
 }

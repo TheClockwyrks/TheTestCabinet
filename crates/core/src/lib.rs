@@ -194,6 +194,13 @@ where
     }
 
     /// Collect run metrics from the harness outcome and elapsed wall-clock time.
+    ///
+    /// When the harness reported its own exact cost (see
+    /// [`HarnessOutcome::reported_cost`]) that figure is used for both the
+    /// comparable and actual cost and `prices` is ignored: such a harness drives
+    /// a single provider directly, so its reported charge is already
+    /// provider-stable. Otherwise the comparable cost is derived from the
+    /// supplied OpenRouter `prices`.
     pub fn collect_metrics(
         &self,
         outcome: &HarnessOutcome,
@@ -201,16 +208,25 @@ where
         prices: &TokenPrices,
     ) -> Result<RunMetrics> {
         let tokens = outcome.usage.tokens;
-        let comparable = Cost::comparable_from(&tokens, prices);
+        let cost = match outcome.reported_cost {
+            Some(reported) => Cost {
+                comparable: reported,
+                actual: reported,
+            },
+            None => {
+                let comparable = Cost::comparable_from(&tokens, prices);
+                // No harness-reported charge to record separately yet; the
+                // comparable figure is the canonical, provider-stable value.
+                Cost {
+                    comparable,
+                    actual: comparable,
+                }
+            }
+        };
         Ok(RunMetrics {
             run_time_seconds,
             tokens,
-            // The exact charged amount is not captured uniformly across harnesses
-            // yet; the comparable figure is the canonical, provider-stable value.
-            cost: Cost {
-                comparable,
-                actual: comparable,
-            },
+            cost,
         })
     }
 
@@ -258,15 +274,21 @@ where
         let artifacts = artifacts?;
 
         let run_time_seconds = timer.elapsed().as_secs_f64();
-        let prices = match self.prices.token_prices(&request.model_id).await {
-            Ok(prices) => prices,
-            Err(err) => {
-                eprintln!(
-                    "warning: could not fetch OpenRouter prices for `{}` ({err}); \
-                     recording zero comparable cost",
-                    request.model_id
-                );
-                TokenPrices::default()
+        // A harness that reports its own exact cost needs no OpenRouter lookup;
+        // its native model ID may not even appear in OpenRouter's catalog.
+        let prices = if outcome.reported_cost.is_some() {
+            TokenPrices::default()
+        } else {
+            match self.prices.token_prices(&request.model_id).await {
+                Ok(prices) => prices,
+                Err(err) => {
+                    eprintln!(
+                        "warning: could not fetch OpenRouter prices for `{}` ({err}); \
+                         recording zero comparable cost",
+                        request.model_id
+                    );
+                    TokenPrices::default()
+                }
             }
         };
         let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
