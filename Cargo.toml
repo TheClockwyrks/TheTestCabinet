@@ -28,6 +28,11 @@ clap = { version = "4", features = ["derive"] }
 anstyle = "1"
 anstream = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
+# Loads API keys (and other configuration) from a `.env` file so the CLI can be
+# driven without exporting variables into every shell. `dotenvy` is the
+# maintained fork of `dotenv`; it does not override variables already present in
+# the environment, so an explicitly exported key still wins over the file.
+dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 toml = "0.8"
 tempfile = "3"

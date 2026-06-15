@@ -21,6 +21,8 @@ use crate::cli::{Cli, Command};
 /// Entry point. Async because orchestration in the core is async.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    load_dotenv()?;
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -29,5 +31,25 @@ async fn main() -> anyhow::Result<()> {
         Command::Publish(args) => commands::publish::execute(args).await,
         Command::Harnesses(args) => commands::harnesses::execute(args).await,
         Command::Seed(args) => commands::seed::execute(args).await,
+    }
+}
+
+/// Load environment variables from a `.env` file before any command runs.
+///
+/// Harnesses authenticate with an API key read from the host environment (for
+/// example `ANTHROPIC_API_KEY`); loading a `.env` here lets those keys live in a
+/// file alongside the project rather than being exported into every shell.
+/// `dotenvy` searches the working directory and its parents and does **not**
+/// override variables already set in the environment, so an explicitly exported
+/// key still takes precedence over the file.
+///
+/// A missing `.env` is not an error — running with keys exported the old way is
+/// fully supported. Any other failure (an unreadable or malformed file) is
+/// surfaced so a typo in the file is not silently ignored.
+fn load_dotenv() -> anyhow::Result<()> {
+    match dotenvy::dotenv() {
+        Ok(_) => Ok(()),
+        Err(err) if err.not_found() => Ok(()),
+        Err(err) => Err(anyhow::Error::new(err).context("failed to load .env file")),
     }
 }

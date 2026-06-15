@@ -128,11 +128,14 @@ A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
    cd containers && DOCKER=podman ./build.sh claude   # base + the claude image
    ```
 
-3. **An API key** for the chosen harness, exported into the environment. Each
-   harness reads a specific variable — for example `ANTHROPIC_API_KEY` for
-   `claude`, `OPENAI_API_KEY` for `codex`, and `OPENROUTER_API_KEY` for the
-   OpenRouter-backed harnesses. The key is passed into the run container as a
-   secret and is never written into the seeded repository.
+3. **An API key** for the chosen harness, either exported into the environment
+   or placed in a `.env` file. Each harness reads a specific variable — for
+   example `ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for `codex`, and
+   `OPENROUTER_API_KEY` for the OpenRouter-backed harnesses. The `tcab` CLI
+   loads a `.env` from the working directory (or any parent) on startup; copy
+   `.env.example` to `.env` and fill in the keys. Variables already exported in
+   the shell take precedence over the file. The key is passed into the run
+   container as a secret and is never written into the seeded repository.
 4. **A headless browser**, for rendering reference screenshots (seeded as visual
    targets) and running validation checks. Install the Playwright browser once
    from the repository root with `npx playwright install chromium`; the validator
