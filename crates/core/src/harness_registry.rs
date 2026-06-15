@@ -81,6 +81,9 @@ pub struct CliHarness {
     /// unchanged. See [`AgentHarness::pricing_model_id`].
     pricing_model_prefix: Option<&'static str>,
     api_key_env: Option<&'static str>,
+    /// The variable the key is injected into inside the container, when it
+    /// differs from `api_key_env`. `None` reuses `api_key_env` on both sides.
+    container_key_env: Option<&'static str>,
     /// Builds the session argument vector (after the binary) from model + prompt.
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
     usage: UsageShape,
@@ -96,6 +99,10 @@ impl AgentHarness for CliHarness {
 
     fn api_key_env(&self) -> Option<&'static str> {
         self.api_key_env
+    }
+
+    fn container_key_env(&self) -> Option<&'static str> {
+        self.container_key_env.or(self.api_key_env)
     }
 
     fn pricing_model_id(&self, model_id: &str) -> String {
@@ -290,6 +297,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "claude",
             pricing_model_prefix: None,
             api_key_env: Some("ANTHROPIC_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "--print".into(),
@@ -324,6 +332,10 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "codex",
             pricing_model_prefix: Some("openai/"),
             api_key_env: Some("OPENAI_API_KEY"),
+            // `codex exec` authenticates only from `CODEX_API_KEY`; it ignores
+            // `OPENAI_API_KEY`, so the key the user exports as `OPENAI_API_KEY`
+            // on the host is injected into the container under this name.
+            container_key_env: Some("CODEX_API_KEY"),
             session_args: |model, prompt| {
                 vec![
                     "exec".into(),
@@ -352,6 +364,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "cline",
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "--json".into(),
@@ -383,6 +396,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             // Antigravity only supports Google-account auth; with no API-key mode
             // it cannot participate in The Test Cabinet's API-key-only runs.
             api_key_env: None,
+            container_key_env: None,
             session_args: |_model, prompt| {
                 vec![
                     "--print".into(),
@@ -398,6 +412,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "goose",
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -429,6 +444,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "kilo",
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -457,6 +473,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "opencode",
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -485,6 +502,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             binary: "pi",
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
+            container_key_env: None,
             session_args: |model, prompt| {
                 vec![
                     "--mode".into(),

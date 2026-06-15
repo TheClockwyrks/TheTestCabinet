@@ -126,6 +126,35 @@ fn registry_resolves_every_slug_and_marks_antigravity_keyless() {
 }
 
 #[test]
+fn codex_injects_the_key_as_codex_api_key_in_the_container() {
+    let registry = DefaultHarnessRegistry::new();
+    let codex = registry
+        .get(HarnessSlug::Codex)
+        .expect("codex is registered");
+    // The user exports the conventional key on the host...
+    assert_eq!(codex.api_key_env(), Some("OPENAI_API_KEY"));
+    // ...but `codex exec` only reads CODEX_API_KEY, so that is what is set in
+    // the container.
+    assert_eq!(codex.container_key_env(), Some("CODEX_API_KEY"));
+}
+
+#[test]
+fn other_harnesses_use_the_same_key_var_on_host_and_in_the_container() {
+    let registry = DefaultHarnessRegistry::new();
+    for slug in HarnessSlug::ALL {
+        if slug == HarnessSlug::Codex {
+            continue;
+        }
+        let harness = registry.get(slug).expect("every slug is registered");
+        assert_eq!(
+            harness.container_key_env(),
+            harness.api_key_env(),
+            "{slug:?} should inject its host key var unchanged"
+        );
+    }
+}
+
+#[test]
 fn codex_maps_model_ids_to_openrouter_slugs() {
     let registry = DefaultHarnessRegistry::new();
     let codex = registry

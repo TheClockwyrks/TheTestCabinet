@@ -68,6 +68,13 @@ This keeps setup simple and yields an exact, attributable cost for every run.
 
 - API keys must be supplied to the run's container as secrets and must never be
   written into the seeded repository or committed anywhere.
+- The variable a user exports on the host is the conventional provider one (for
+  example `OPENAI_API_KEY`), but the variable a harness's CLI actually reads can
+  differ. The agent harness layer absorbs this: it reads the key from the host
+  variable and injects it into the container under whatever variable the harness
+  requires. Codex is the current example — its non-interactive `codex exec`
+  authenticates only from `CODEX_API_KEY`, so the key exported as
+  `OPENAI_API_KEY` is injected as `CODEX_API_KEY`.
 - Subscription based authentication is intentionally out of scope for the first
   version. It may be added later for harnesses that support it.
 

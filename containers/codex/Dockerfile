@@ -7,6 +7,8 @@ FROM ${BASE_IMAGE}
 RUN npm install -g @openai/codex \
 	&& npm cache clean --force
 
-# Auth: the API key is supplied at run time as an environment variable
-# (OPENAI_API_KEY) and must never be baked into the image. The non-interactive
-# invocation flags are confirmed when this image is validated on a Docker host.
+# Auth: the API key is supplied at run time as an environment variable and must
+# never be baked into the image. Non-interactive `codex exec` authenticates only
+# from CODEX_API_KEY (it ignores OPENAI_API_KEY), so the testing harness injects
+# the user's key under that name. The non-interactive invocation flags are
+# confirmed when this image is validated on a Docker host.

@@ -96,7 +96,20 @@ pub trait AgentHarness: Send + Sync {
     /// The environment variable carrying the provider API key, or `None` when
     /// the harness cannot use API-key authentication (the only mode The Test
     /// Cabinet supports for now). A `None` harness cannot be run.
+    ///
+    /// This is the variable read from the **host** environment, where a user
+    /// exports the conventional provider key (for example `OPENAI_API_KEY`).
     fn api_key_env(&self) -> Option<&'static str>;
+
+    /// The environment variable the API key is injected into **inside the run
+    /// container**, which is not always the variable the user exports on the
+    /// host. Defaults to [`api_key_env`](AgentHarness::api_key_env); a harness
+    /// overrides it when its CLI reads the key from a different variable — for
+    /// example Codex's non-interactive `codex exec` authenticates only from
+    /// `CODEX_API_KEY`, not `OPENAI_API_KEY`.
+    fn container_key_env(&self) -> Option<&'static str> {
+        self.api_key_env()
+    }
 
     /// Map a run's model ID to the ID OpenRouter lists it under, for the
     /// comparable-cost lookup.

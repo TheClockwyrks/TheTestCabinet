@@ -173,7 +173,11 @@ where
         }
 
         let mut secrets = BTreeMap::new();
-        secrets.insert(api_key_env.to_string(), api_key);
+        // The key is read from the host's `api_key_env` but injected into the
+        // container under the variable the harness's CLI actually reads, which
+        // can differ (Codex reads `CODEX_API_KEY`, not `OPENAI_API_KEY`).
+        let container_key_env = harness.container_key_env().unwrap_or(api_key_env);
+        secrets.insert(container_key_env.to_string(), api_key);
         let spec = ContainerSpec {
             image: harness.image(),
             repo_path: seeded.path.clone(),
