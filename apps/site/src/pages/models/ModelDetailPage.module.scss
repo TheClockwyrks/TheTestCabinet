@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
 
 .identity {
   margin-bottom: t.$space-xl;
@@ -63,7 +64,7 @@
   border: t.$border-hairline solid
     color-mix(in srgb, t.$color-accent 28%, transparent);
   border-radius: t.$radius-md;
-  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  background: s.$panel-bg;
 }
 
 .metricLabel {
@@ -93,7 +94,7 @@
 .log {
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
-  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  background: s.$panel-bg;
   box-shadow:
     0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
     inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);

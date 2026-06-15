@@ -41,8 +41,6 @@ Options:
   --selector <css>       Wait for this selector (default ${DEFAULT_SELECTOR})
   --wait <ms>            Extra settle time for WebGL frames (default ${DEFAULT_WAIT_MS})
   --sun                  Pre-enable the banded sun via localStorage
-  --readability <name>   Pre-select a readability treatment (scrim, panel,
-                         frost, halo, none) via localStorage
   --reduced-motion       Emulate prefers-reduced-motion (CSS fallback)
   --base-url <url>       Screenshot an already-running server instead
   --browser-executable <path>
@@ -70,7 +68,6 @@ function parseArgs(argv) {
     selector: DEFAULT_SELECTOR,
     waitMs: DEFAULT_WAIT_MS,
     sun: false,
-    readability: null,
     reducedMotion: false,
     baseUrl: null,
     browserExecutable: process.env.TTC_SCREENSHOT_BROWSER ?? null,
@@ -90,8 +87,6 @@ function parseArgs(argv) {
       options.waitMs = parsePositiveInteger(argv[++index], "--wait");
     } else if (arg === "--sun") {
       options.sun = true;
-    } else if (arg === "--readability") {
-      options.readability = argv[++index];
     } else if (arg === "--reduced-motion") {
       options.reducedMotion = true;
     } else if (arg === "--base-url") {
@@ -219,12 +214,6 @@ async function main() {
       await page.addInitScript(() => {
         window.localStorage.setItem("ttc:backdrop:sun", "true");
       });
-    }
-
-    if (options.readability) {
-      await page.addInitScript((variant) => {
-        window.localStorage.setItem("ttc:readability:variant", variant);
-      }, options.readability);
     }
 
     await page.goto(routeToUrl(baseUrl, options.route), {

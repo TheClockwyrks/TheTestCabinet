@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router";
 import { Chart } from "../../components/Chart";
 import { Markdown } from "../../components/Markdown";
-import { ReadableSurface } from "../../components/readability/ReadableSurface";
+import { Panel } from "../../components/Panel";
 import { PageLayout } from "../../components/PageLayout";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { boxAndWhisker } from "../../components/plot/charts";
@@ -140,9 +140,9 @@ export function ModelDetailPage() {
       {model.description && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>About</h2>
-          <ReadableSurface>
+          <Panel>
             <Markdown>{model.description}</Markdown>
-          </ReadableSurface>
+          </Panel>
         </section>
       )}
 

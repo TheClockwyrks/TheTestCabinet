@@ -1,0 +1,10 @@
+@use "tokens" as t;
+
+// Single source of truth for the translucent panel background shared by every
+// surface card on the site — the About/test-case/model prose panels, the run
+// and gallery logs, the model and test-case cards, the metric tiles, and the
+// search/filter inputs. Centralizing it keeps the backdrop reading through all
+// of them at one consistent opacity; each panel still owns its own border color
+// and glow. Functional surfaces that must stay fully opaque (the game embed, the
+// topbar, toggle buttons) deliberately keep `t.$color-surface` instead.
+$panel-bg: color-mix(in srgb, t.$color-surface 88%, transparent);

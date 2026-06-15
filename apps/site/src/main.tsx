@@ -4,8 +4,6 @@ import { BrowserRouter } from "react-router";
 import { AppRoutes } from "./pages/router";
 import { Backdrop } from "./components/Backdrop";
 import { BackdropSettingsProvider } from "./components/backdrop/BackdropSettingsContext";
-import { ReadabilityProvider } from "./components/readability/ReadabilityContext";
-import { ReadabilitySwitcher } from "./components/readability/ReadabilitySwitcher";
 import "./styles/global.scss";
 
 // GitHub Pages serves a single static bundle with no server-side routing, so a
@@ -29,14 +27,9 @@ createRoot(rootElement).render(
     <BackdropSettingsProvider>
       {/* Neon grid + scanline atmosphere, painted behind the routed page content. */}
       <Backdrop />
-      {/* The readability treatment for prose over the backdrop, shared by every
-          <ReadableSurface> and driven by the floating switcher. */}
-      <ReadabilityProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-        <ReadabilitySwitcher />
-      </ReadabilityProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </BackdropSettingsProvider>
   </StrictMode>,
 );

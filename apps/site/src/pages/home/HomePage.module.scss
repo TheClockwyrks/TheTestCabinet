@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
 
 .terminal {
   font-family: var(--ttc-font);
@@ -49,7 +50,7 @@
   padding: t.$space-md t.$space-lg t.$space-lg;
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
-  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  background: s.$panel-bg;
   box-shadow:
     0 0 1.5rem color-mix(in srgb, t.$color-accent 45%, transparent),
     inset 0 0 2rem color-mix(in srgb, t.$color-accent 12%, transparent);
@@ -168,7 +169,7 @@
 .log {
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
-  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  background: s.$panel-bg;
   box-shadow:
     0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
     inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);
