@@ -19,9 +19,21 @@ use crate::error::{Error, Result};
 /// See `docs/test-cases.md#manifest`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Manifest {
-    /// Human-readable display name.
-    #[allow(dead_code)]
+    /// Human-readable display name, surfaced on the site.
     name: String,
+    /// Relative difficulty of the case, surfaced on the site (for example
+    /// `easy`, `medium`, `hard`). Defaults to `medium`.
+    #[serde(default = "default_difficulty")]
+    difficulty: String,
+    /// Free-form classification tags surfaced on the site (for example
+    /// `arcade`, `2d`).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Optional site-facing prose, relative to the version folder, pointing at a
+    /// Markdown file (for example `description.md`). This is **not** seeded into
+    /// runs; it exists only to describe the case on the site.
+    #[serde(default)]
+    description: Option<PathBuf>,
     /// Specification path, relative to the version folder (seeded).
     spec: PathBuf,
     /// Asset files or directories, relative to the version folder (seeded).
@@ -50,6 +62,9 @@ struct ManifestReference {
 struct ManifestCheck {
     /// The view slug this check records its result under.
     view: String,
+    /// Human-readable display name for the check. Defaults to a humanized form
+    /// of `view` (for example `game-over` becomes `Game Over`) when omitted.
+    name: Option<String>,
     /// The reference view whose rendered screenshot is the comparison baseline.
     /// Defaults to `view` when omitted.
     reference: Option<String>,
@@ -135,6 +150,8 @@ pub enum CheckAction {
 pub struct Check {
     /// The view slug this check records its result under.
     pub view: String,
+    /// Human-readable display name for the check.
+    pub name: String,
     /// The reference view whose rendered screenshot is the comparison baseline.
     pub reference_view: String,
     /// The actions that drive the implementation into the view before capture.
@@ -159,6 +176,16 @@ pub struct TestCaseVersion {
     pub slug: String,
     /// The exact version string (the `<version>` directory).
     pub version: String,
+    /// Human-readable display name, surfaced on the site.
+    pub name: String,
+    /// Relative difficulty of the case, surfaced on the site.
+    pub difficulty: String,
+    /// Free-form classification tags surfaced on the site.
+    pub tags: Vec<String>,
+    /// Path to the optional site-facing description Markdown, resolved inside
+    /// the version folder. `None` when the manifest declares none. This is
+    /// **not** seeded into runs.
+    pub description_path: Option<PathBuf>,
     /// The version folder on the host: `test-cases/<slug>/<version>/`.
     pub root: PathBuf,
     /// Path to the self-contained specification (seeded).
@@ -265,6 +292,23 @@ impl TestCaseCatalog {
             )));
         }
 
+        // The site-facing description is validated to exist when declared, with
+        // the same self-containment guard as every other path, but it is never
+        // seeded into a run.
+        let description_path = match &manifest.description {
+            Some(description) => {
+                let path = resolve_inside(description, "description")?;
+                if !path.is_file() {
+                    return Err(invalid(format!(
+                        "description `{}` does not exist",
+                        description.display()
+                    )));
+                }
+                Some(path)
+            }
+            None => None,
+        };
+
         let mut asset_paths = Vec::with_capacity(manifest.assets.len());
         for asset in &manifest.assets {
             let path = resolve_inside(asset, "asset")?;
@@ -307,8 +351,10 @@ impl TestCaseCatalog {
                     check.view, reference_view
                 )));
             }
+            let name = check.name.clone().unwrap_or_else(|| humanize(&check.view));
             checks.push(Check {
                 view: check.view.clone(),
+                name,
                 reference_view,
                 actions: check.actions.clone(),
             });
@@ -317,6 +363,10 @@ impl TestCaseCatalog {
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
+            name: manifest.name,
+            difficulty: manifest.difficulty,
+            tags: manifest.tags,
+            description_path,
             root,
             spec_path,
             asset_paths,
@@ -384,6 +434,27 @@ fn version_key(version: &str) -> Vec<u64> {
             digits.parse().unwrap_or(0)
         })
         .collect()
+}
+
+/// The default difficulty applied when a manifest omits one.
+fn default_difficulty() -> String {
+    "medium".to_string()
+}
+
+/// Humanize a slug into a display name by splitting on `-`/`_` and capitalizing
+/// each word (for example `game-over` becomes `Game Over`).
+fn humanize(slug: &str) -> String {
+    slug.split(['-', '_'])
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Whether a relative path would escape the folder it is resolved against.

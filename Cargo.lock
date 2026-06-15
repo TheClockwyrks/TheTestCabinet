@@ -3611,6 +3611,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dotenvy",
+ "serde",
  "serde_json",
  "test-cabinet-core",
  "tokio",

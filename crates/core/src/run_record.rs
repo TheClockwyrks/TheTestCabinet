@@ -77,6 +77,26 @@ pub struct RunSubject {
     pub model_id: String,
 }
 
+/// The container environment a run executed in.
+///
+/// These values are captured from inside the run container — not the host — so
+/// they describe the environment the harness actually built in. The harness
+/// version is not duplicated here; it lives in [`RunSubject::harness_version`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunEnvironment {
+    /// The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for
+    /// example, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe
+    /// could not determine it.
+    pub os: String,
+    /// The per-harness container image the run executed in (for example,
+    /// `test-cabinet/codex:latest`).
+    pub container_image: String,
+    /// The Node.js version reported by `node --version` inside the container
+    /// (for example, `v22.11.0`), or `None` when it could not be determined.
+    pub node_version: Option<String>,
+}
+
 /// Links to a run's published outputs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +144,8 @@ pub struct RunRecord {
     pub finished_at: String,
     /// What was run.
     pub subject: RunSubject,
+    /// The container environment the run executed in.
+    pub environment: RunEnvironment,
     /// Resource metrics for the run.
     pub metrics: RunMetrics,
     /// Summary of the validation pass.

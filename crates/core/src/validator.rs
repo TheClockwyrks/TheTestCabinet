@@ -113,6 +113,7 @@ impl BuildValidator {
         let Some(baseline) = references.iter().find(|r| r.view == check.reference_view) else {
             return CheckResult {
                 view: check.view.clone(),
+                name: check.name.clone(),
                 reached: false,
                 similarity: 0.0,
                 detail: Some(format!(
@@ -126,6 +127,7 @@ impl BuildValidator {
         if let Err(detail) = browser::capture(url, &check.actions, &capture) {
             return CheckResult {
                 view: check.view.clone(),
+                name: check.name.clone(),
                 reached: false,
                 similarity: 0.0,
                 detail: Some(detail),
@@ -135,12 +137,14 @@ impl BuildValidator {
         match score(&baseline.image_path, &capture) {
             Ok(similarity) => CheckResult {
                 view: check.view.clone(),
+                name: check.name.clone(),
                 reached: true,
                 similarity,
                 detail: None,
             },
             Err(detail) => CheckResult {
                 view: check.view.clone(),
+                name: check.name.clone(),
                 reached: false,
                 similarity: 0.0,
                 detail: Some(detail),
@@ -165,6 +169,7 @@ fn unreached(test_case: &TestCaseVersion, detail: &str) -> Vec<CheckResult> {
         .iter()
         .map(|check| CheckResult {
             view: check.view.clone(),
+            name: check.name.clone(),
             reached: false,
             similarity: 0.0,
             detail: Some(detail.to_string()),

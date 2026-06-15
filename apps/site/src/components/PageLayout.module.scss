@@ -3,21 +3,26 @@
 .shell {
   position: relative;
   z-index: 1;
-  max-width: t.$content-max;
-  margin: 0 auto;
-  padding: 0 t.$space-md t.$space-2xl;
   min-height: 100vh;
 }
 
+// Full-width bar: spans the viewport with a hairline rule and a faint surface
+// wash, while its contents stay aligned to the page's content column via .bar.
 .topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: t.$space-md;
-  min-height: t.$topbar-height;
-  padding: t.$space-md 0;
+  width: 100%;
   margin-bottom: t.$space-xl;
   border-bottom: t.$border-hairline solid t.$color-border;
+  background: t.$color-surface;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: t.$space-lg;
+  max-width: t.$content-max;
+  margin: 0 auto;
+  min-height: t.$topbar-height;
+  padding: t.$space-md t.$space-md;
 }
 
 .brand {
@@ -45,17 +50,42 @@
   letter-spacing: 0.02em;
 }
 
+// The section nav takes the middle, pushing the controls to the far right.
+.nav {
+  display: flex;
+  align-items: center;
+  gap: t.$space-lg;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.navLink {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+
+  &:hover {
+    color: t.$color-text;
+    text-decoration: none;
+  }
+}
+
+.navActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
 .controls {
   display: inline-flex;
   align-items: center;
   gap: t.$space-md;
 }
 
-.note {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
-
+// The page body stays aligned to the content column beneath the full-width bar.
 .main {
   position: relative;
+  max-width: t.$content-max;
+  margin: 0 auto;
+  padding: 0 t.$space-md t.$space-2xl;
 }

@@ -29,13 +29,27 @@ fn resolves_pong_from_its_manifest() {
     let version = catalog.resolve_latest("pong").expect("resolve latest pong");
     assert_eq!(version.slug, "pong");
     assert!(version.spec_path.ends_with("specification.md"));
+    // Site-facing metadata is surfaced from the manifest. Carom declares all of
+    // it, including a site-facing description that is resolved but never seeded.
+    assert_eq!(version.name, "Carom");
+    assert_eq!(version.difficulty, "easy");
+    assert_eq!(version.tags, ["arcade", "2d", "paddle", "physics"]);
+    assert!(
+        version
+            .description_path
+            .as_ref()
+            .is_some_and(|p| p.ends_with("description.md")),
+        "the site-facing description should be resolved from the manifest"
+    );
     // The three reference views are rendered to screenshots and seeded as visual
     // targets.
     assert_eq!(version.reference_views.len(), 3);
     assert!(version.reference_views.iter().any(|v| v.view == "title"));
-    // Validation is opt-in: the manifest declares a single title check.
+    // Validation is opt-in: the manifest declares a single title check, with an
+    // explicit display name.
     assert_eq!(version.checks.len(), 1);
     assert_eq!(version.checks[0].view, "title");
+    assert_eq!(version.checks[0].name, "Title Screen");
     assert_eq!(version.checks[0].reference_view, "title");
 }
 

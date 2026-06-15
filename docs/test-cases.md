@@ -55,7 +55,10 @@ from file names alone would be fragile, so it is stated explicitly.
 
 ```toml
 # test-cases/<slug>/<version>/test-case.toml
-name = "Carom"               # human-readable display name
+name = "Carom"               # human-readable display name (site-facing)
+difficulty = "medium"        # relative difficulty: easy | medium | hard (default medium)
+tags = ["arcade", "2d"]      # free-form classification tags (site-facing, default empty)
+description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 spec = "specification.md"    # the specification, seeded (relative to this folder)
 assets = []                  # asset files/directories, seeded (relative paths)
 
@@ -69,10 +72,18 @@ path = "reference/menu.html" # the reference source mockup (relative to this fol
 # Validation checks (opt-in). Only declared checks run.
 [[check]]
 view = "title"               # the view this check records under
+name = "Title"               # display name (optional; default humanizes the view slug)
 reference = "title"          # baseline: the rendered screenshot of this reference
 actions = []                 # actions to drive the build into the view (empty = on load)
 ```
 
+- `name`, `difficulty`, and `tags` are site-facing metadata used to present and
+  filter the case; they have no bearing on how a run is executed. `difficulty`
+  defaults to `medium` and `tags` to an empty list.
+- `description` is an optional path to a Markdown file describing the case for
+  the site. Unlike `spec` and `assets`, it is **never seeded** into a run — it
+  is site-only prose. Like every other path it must resolve inside the version
+  folder, and it is validated to exist when declared.
 - `spec`, every entry in `assets`, and the **rendered** reference screenshots are
   what is seeded into a run. Asset entries may be files or directories; a
   directory is seeded recursively.
@@ -81,7 +92,8 @@ actions = []                 # actions to drive the build into the view (empty =
   folder and must resolve inside it, keeping a version self-contained.
 - Each `[[check]]` is an opt-in validation comparison. Its `reference` must name a
   declared reference view, whose rendered screenshot is the baseline; `actions`
-  drive the built implementation into the view before capture. See
+  drive the built implementation into the view before capture. Its optional
+  `name` is a display label, defaulting to a humanized form of `view`. See
   [Validation](./validation.md#checks).
 
 ## Self-Contained Specifications

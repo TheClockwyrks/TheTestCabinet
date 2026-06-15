@@ -41,6 +41,10 @@ pub enum Command {
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
     Seed(SeedArgs),
+
+    /// Emit the static-site catalog datasets (test cases and models) the site
+    /// reads without a backend.
+    Catalog(CatalogArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -177,6 +181,25 @@ pub struct SeedArgs {
     /// subfolder of the working directory.
     #[arg(long, value_name = "DIR", default_value = "tmp")]
     pub out_dir: std::path::PathBuf,
+}
+
+/// Arguments for `tcab catalog`.
+///
+/// The catalog command needs no API keys: it reads the test case and model
+/// catalogs from disk and writes the site's static datasets. `--models-dir` and
+/// `--site-dir` exist so the source catalogs and the output site can be relocated
+/// in tests or alternative layouts; the test case catalog honors
+/// `TCAB_TEST_CASES_DIR` like the other commands.
+#[derive(Debug, Args)]
+pub struct CatalogArgs {
+    /// Directory holding the model catalog (`<slug>.toml` declarations).
+    #[arg(long, value_name = "DIR", default_value = "models")]
+    pub models_dir: std::path::PathBuf,
+
+    /// The site directory the datasets and public catalog assets are written
+    /// under (`<site>/src/data/*.json` and `<site>/public/catalog/...`).
+    #[arg(long, value_name = "DIR", default_value = "apps/site")]
+    pub site_dir: std::path::PathBuf,
 }
 
 #[cfg(test)]

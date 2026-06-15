@@ -20,6 +20,19 @@ export type HarnessSlug =
 /** Lifecycle outcome of a run. */
 export type RunState = "completed" | "failed" | "unevaluable";
 
+/**
+ * The container environment a run executed in. Sourced from inside the run
+ * container, not the host. Probes are best-effort with sensible fallbacks.
+ */
+export interface RunEnvironment {
+  /** Container OS, from `/etc/os-release` PRETTY_NAME; `"unknown"` on failure. */
+  os: string;
+  /** The per-harness image, e.g. `"test-cabinet/codex:latest"`. */
+  containerImage: string;
+  /** Trimmed `node --version` inside the container; null if undeterminable. */
+  nodeVersion: string | null;
+}
+
 /** Identifies what was run: the test case, the harness, and the model. */
 export interface RunSubject {
   testCaseSlug: string;
@@ -56,6 +69,8 @@ export interface RunMetrics {
 /** The result of a single opt-in validation check. */
 export interface CheckResult {
   view: string;
+  /** Human-readable display name for the check (defaults derived from `view`). */
+  name: string;
   /** Whether the implementation could be driven into the view and captured. */
   reached: boolean;
   /** Similarity signal in `0..=1` against the reference baseline. */
@@ -93,6 +108,7 @@ export interface RunRecord {
   /** RFC 3339 timestamp. */
   finishedAt: string;
   subject: RunSubject;
+  environment: RunEnvironment;
   metrics: RunMetrics;
   validation: RunValidation;
   links: RunLinks;

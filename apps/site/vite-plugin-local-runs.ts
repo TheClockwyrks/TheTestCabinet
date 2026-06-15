@@ -54,8 +54,9 @@ interface LocalRunsOptions {
 }
 
 // A produced run is recognized only if its record matches the current run-record
-// contract. Older on-disk records (pre-`checks` validation schema) are skipped
-// so a stale record never crashes the gallery.
+// contract. Older on-disk records (pre-`checks` validation schema, or pre-
+// `environment` block) are skipped so a stale record never crashes a page that
+// reads a field it lacks — they reappear once the run is regenerated.
 function isCurrentRecord(value: unknown): value is { id: string; links: Record<string, unknown> } {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
@@ -64,6 +65,8 @@ function isCurrentRecord(value: unknown): value is { id: string; links: Record<s
     typeof record.id === "string" &&
     typeof record.subject === "object" &&
     typeof record.metrics === "object" &&
+    typeof record.environment === "object" &&
+    record.environment !== null &&
     typeof record.links === "object" &&
     typeof record.status === "object" &&
     !!validation &&

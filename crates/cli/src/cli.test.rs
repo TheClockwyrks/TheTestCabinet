@@ -210,6 +210,43 @@ fn seed_requires_a_test_case() {
 }
 
 #[test]
+fn catalog_parses_with_defaults() {
+    let cli = Cli::try_parse_from(["tcab", "catalog"])
+        .expect("the catalog subcommand should parse with no arguments");
+
+    match cli.command {
+        Command::Catalog(args) => {
+            // The catalog reads the model catalog from `models` and writes the
+            // datasets under `apps/site` unless told otherwise.
+            assert_eq!(args.models_dir, std::path::PathBuf::from("models"));
+            assert_eq!(args.site_dir, std::path::PathBuf::from("apps/site"));
+        }
+        other => panic!("expected a catalog command, got {other:?}"),
+    }
+}
+
+#[test]
+fn catalog_accepts_directory_overrides() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "catalog",
+        "--models-dir",
+        "/tmp/models",
+        "--site-dir",
+        "/tmp/site",
+    ])
+    .expect("explicit catalog directories should parse");
+
+    match cli.command {
+        Command::Catalog(args) => {
+            assert_eq!(args.models_dir.to_str(), Some("/tmp/models"));
+            assert_eq!(args.site_dir.to_str(), Some("/tmp/site"));
+        }
+        other => panic!("expected a catalog command, got {other:?}"),
+    }
+}
+
+#[test]
 fn harnesses_parses_with_json_flag() {
     let cli = Cli::try_parse_from(["tcab", "harnesses", "--json"])
         .expect("the harnesses subcommand should parse");

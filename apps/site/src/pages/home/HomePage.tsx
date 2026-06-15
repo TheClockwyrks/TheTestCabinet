@@ -1,0 +1,175 @@
+import type { RunRecord } from "@test-cabinet/run-record";
+import { Link } from "react-router";
+import { PageLayout } from "../../components/PageLayout";
+import { UnpublishedTag } from "../../components/UnpublishedTag";
+import { findModelByModelId } from "../../data/models";
+import { useRuns } from "../../data/useRuns";
+import { routes } from "../../routes";
+import {
+  formatCompact,
+  formatRunTime,
+  formatSlug,
+  formatUsd,
+  totalTokens,
+} from "../../format";
+import styles from "./HomePage.module.scss";
+
+// Home: the most recent runs, newest first, framed as the cabinet's "recent
+// results". A single featured run leads, the rest follow in the dense,
+// column-aligned run log carried over from the gallery. It is not a
+// leaderboard and shows no ranking — runs are ordered purely by recency.
+export function HomePage() {
+  const { runs, localIds } = useRuns();
+  const recent = [...runs].sort(byRecencyDesc);
+  const featured = recent[0];
+  const rest = recent.slice(1);
+
+  return (
+    <PageLayout>
+      <section className={styles.terminal}>
+        <header className={styles.hero}>
+          <p className={styles.prompt}>
+            <span className={styles.caret}>&gt;</span> the-test-cabinet --recent
+            <span className={styles.blink}>_</span>
+          </p>
+          <p className={styles.comment}>
+            // insert coin &middot; newest results first &middot; play the
+            result
+          </p>
+        </header>
+
+        {!featured ? (
+          <p className={styles.empty}>No runs have been published yet.</p>
+        ) : (
+          <>
+            <FeaturedRun run={featured} local={localIds.has(featured.id)} />
+            {rest.length > 0 && (
+              <div className={styles.log}>
+                <div className={`${styles.row} ${styles.head}`}>
+                  <span />
+                  <span>TEST</span>
+                  <span>HARNESS</span>
+                  <span>MODEL</span>
+                  <span className={styles.num}>TOKENS</span>
+                  <span className={styles.num}>COST</span>
+                  <span className={styles.num}>TIME</span>
+                  <span className={styles.num}>OK</span>
+                </div>
+                {rest.map((run) => (
+                  <RunRow
+                    key={run.id}
+                    run={run}
+                    local={localIds.has(run.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </PageLayout>
+  );
+}
+
+// Newest first, by finish time, falling back to start time when a run never
+// recorded a finish (e.g. it failed before completing).
+function byRecencyDesc(a: RunRecord, b: RunRecord): number {
+  return timestamp(b) - timestamp(a);
+}
+
+function timestamp(run: RunRecord): number {
+  const value = Date.parse(run.finishedAt || run.startedAt);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+// The lead run: the same vital stats as a log row but given room to breathe,
+// with cross-links into the test case and model behind it.
+function FeaturedRun({ run, local }: { run: RunRecord; local: boolean }) {
+  const { subject, metrics, validation } = run;
+  const model = findModelByModelId(subject.modelId);
+  return (
+    <article className={styles.feature}>
+      <p className={styles.featureLabel}>
+        <span className={styles.caret}>&rsaquo;</span> latest result
+      </p>
+      <h2 className={styles.featureTest}>
+        <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
+          {formatSlug(subject.testCaseSlug)}
+        </Link>
+        {local && <UnpublishedTag className={styles.tag} />}
+      </h2>
+      <p className={styles.featureSubject}>
+        <span className={styles.featureHarness}>{subject.harnessSlug}</span>
+        <span className={styles.featureSep}>&middot;</span>
+        {model ? (
+          <Link to={routes.modelDetail(model.slug)} className={styles.featureModel}>
+            {model.name}
+          </Link>
+        ) : (
+          <span className={styles.featureModel}>{subject.modelId}</span>
+        )}
+      </p>
+
+      <dl className={styles.stats}>
+        <Stat label="Tokens" value={formatCompact(totalTokens(metrics))} />
+        <Stat label="Cost" value={formatUsd(metrics.cost.comparable)} />
+        <Stat label="Time" value={formatRunTime(metrics.runTimeSeconds)} />
+        <Stat
+          label="Loaded"
+          value={validation.loaded ? "[Y]" : "[N]"}
+          tone={validation.loaded ? "ok" : "bad"}
+        />
+      </dl>
+
+      <Link to={routes.runDetail(run.id)} className={styles.featureCta}>
+        open run &rsaquo;
+      </Link>
+    </article>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "ok" | "bad";
+}) {
+  return (
+    <div className={styles.stat}>
+      <dt className={styles.statLabel}>{label}</dt>
+      <dd
+        className={`${styles.statValue}${
+          tone ? ` ${styles[tone]}` : ""
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function RunRow({ run, local }: { run: RunRecord; local: boolean }) {
+  const { subject, metrics, validation } = run;
+  return (
+    <Link to={routes.runDetail(run.id)} className={styles.row}>
+      <span className={styles.rowCaret}>&rsaquo;</span>
+      <span className={styles.test}>
+        {formatSlug(subject.testCaseSlug)}
+        {local && <UnpublishedTag className={styles.tag} />}
+      </span>
+      <span>{subject.harnessSlug}</span>
+      <span className={styles.model}>{subject.modelId}</span>
+      <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
+      <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>
+      <span className={styles.num}>{formatRunTime(metrics.runTimeSeconds)}</span>
+      <span
+        className={`${styles.num} ${validation.loaded ? styles.ok : styles.bad}`}
+      >
+        {validation.loaded ? "[Y]" : "[N]"}
+      </span>
+    </Link>
+  );
+}

@@ -20,11 +20,18 @@
   color: t.$color-text-muted;
 }
 
-.writeup {
+// The pre-launch gate: either the run's writeup or a generic caveat, plus the
+// explicit Launch control. The build never loads until this button is clicked.
+.gate {
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   background: t.$color-surface;
   padding: t.$space-lg;
+}
+
+.notice {
+  margin: 0;
+  color: t.$color-text-muted;
 }
 
 .writeupBody {
@@ -52,5 +59,78 @@
 
   &:hover {
     text-decoration: underline;
+  }
+}
+
+// The inline player after launch: the embed with a small toolbar above it for
+// expanding into the near-fullscreen viewport.
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.playerBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.expand {
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+// The near-fullscreen overlay. It covers the viewport but leaves a slim bar at
+// the top for the site-provided Back/Exit control so the visitor is never
+// trapped inside the embed.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: t.$color-bg;
+}
+
+.overlayBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: t.$topbar-height;
+  padding: 0 t.$space-lg;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg-2;
+}
+
+.overlayExit {
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.overlayStage {
+  flex: 1;
+  min-height: 0;
+  padding: t.$space-md;
+
+  .embed {
+    height: 100%;
   }
 }

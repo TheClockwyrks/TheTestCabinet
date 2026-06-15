@@ -22,7 +22,7 @@ export function RunDetailPage() {
     );
   }
 
-  const { subject, metrics, validation, links, status } = run;
+  const { subject, environment, metrics, validation, links, status } = run;
   const isLocal = localIds.has(run.id);
 
   return (
@@ -62,7 +62,7 @@ export function RunDetailPage() {
         </div>
       </section>
 
-      {/* Validation signals. */}
+      {/* Validation signals: did it boot, and how did each declared check fare. */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Validation</h3>
         <p>
@@ -70,18 +70,56 @@ export function RunDetailPage() {
           <span className={validation.loaded ? styles.loaded : styles.notLoaded}>
             {validation.loaded ? "Yes" : "No"}
           </span>
+          {validation.detail ? (
+            <span className={styles.secondary}> — {validation.detail}</span>
+          ) : null}
         </p>
-        {validation.checks.length > 0 && (
-          <ul className={styles.list}>
-            {validation.checks.map((check) => (
-              <li key={check.view}>
-                {check.reached
-                  ? `${check.view}: ${(check.similarity * 100).toFixed(1)}% similarity`
-                  : `${check.view}: not reached${check.detail ? ` (${check.detail})` : ""}`}
-              </li>
-            ))}
-          </ul>
+        {validation.checks.length > 0 ? (
+          <table className={styles.checks}>
+            <thead>
+              <tr>
+                <th scope="col">Check</th>
+                <th scope="col">Reached</th>
+                <th scope="col">Similarity</th>
+                <th scope="col">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {validation.checks.map((check) => (
+                <tr key={check.view}>
+                  <th scope="row" className={styles.checkName}>
+                    {check.name}
+                  </th>
+                  <td>
+                    <span
+                      className={check.reached ? styles.loaded : styles.notLoaded}
+                    >
+                      {check.reached ? "Yes" : "No"}
+                    </span>
+                  </td>
+                  <td>{check.reached ? `${(check.similarity * 100).toFixed(1)}%` : "—"}</td>
+                  <td className={styles.secondary}>{check.detail ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className={styles.secondary}>This test case declares no checks.</p>
         )}
+      </section>
+
+      {/* The container the run executed in (sourced from inside the container). */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Environment</h3>
+        <div className={styles.metricsGrid}>
+          <Metric label="Operating system" value={environment.os} />
+          <Metric label="Container image" value={environment.containerImage} />
+          <Metric label="Node version" value={environment.nodeVersion ?? "Unknown"} />
+          <Metric
+            label="Harness version"
+            value={subject.harnessVersion ? `v${subject.harnessVersion}` : "Unknown"}
+          />
+        </div>
       </section>
 
       {/* Clone the source for yourself. */}

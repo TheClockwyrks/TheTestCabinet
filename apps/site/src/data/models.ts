@@ -1,0 +1,42 @@
+import modelsData from "./models.json";
+
+// The published model catalog dataset. `tcab catalog` regenerates `models.json`
+// from the models/ folder, resolving OpenRouter prices when a model declares an
+// openrouter slug. The site renders whatever is present; `useModels` falls back
+// to `sampleModels` when the dataset is empty so the UI has content before the
+// command has been run.
+
+/** Per-token USD prices resolved from OpenRouter, when available. */
+export interface ModelPrices {
+  /** USD per uncached input token. */
+  uncachedInput: number;
+  /** USD per cached input token. */
+  cachedInput: number;
+  /** USD per output token. */
+  output: number;
+}
+
+/** One curated model in the catalog. */
+export interface ModelSummary {
+  slug: string;
+  name: string;
+  provider: string;
+  /** `https://openrouter.ai/<slug>` when the model declares one, else null. */
+  openrouterUrl: string | null;
+  /** Inlined site-facing Markdown from the model's description file, or null. */
+  description: string | null;
+  /** The `modelId` strings (as they appear in run records) this model covers. */
+  modelIds: string[];
+  /** Resolved OpenRouter per-token prices, or null when unavailable. */
+  prices: ModelPrices | null;
+}
+
+export const models: ModelSummary[] = modelsData as ModelSummary[];
+
+// Maps a run record's `modelId` to its catalog entry. A model may cover several
+// ids, so this scans `modelIds`. Returns undefined for ids not in the catalog.
+export function findModelByModelId(
+  modelId: string,
+): ModelSummary | undefined {
+  return models.find((model) => model.modelIds.includes(modelId));
+}

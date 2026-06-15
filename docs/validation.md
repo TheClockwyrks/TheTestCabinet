@@ -32,9 +32,11 @@ screenshots as visual targets, but those are not validated unless the test case
 declares a **check** for the view. This keeps comparison honest: a view is only
 scored when it can be reached and captured reliably.
 
-- A test case declares each check in its manifest: the view, the reference whose
-  rendered screenshot is the comparison baseline, and the actions that drive the
-  built implementation into that view (no actions means the view shown on load).
+- A test case declares each check in its manifest: the view, an optional
+  human-readable display name (defaulting to a humanized form of the view slug —
+  `game-over` becomes `Game Over`), the reference whose rendered screenshot is
+  the comparison baseline, and the actions that drive the built implementation
+  into that view (no actions means the view shown on load).
 - The harness serves the build, drives it through the check's actions, captures a
   screenshot, and scores its similarity against the baseline.
 - The result is a similarity signal recorded with the run, not a strict match
@@ -49,4 +51,5 @@ the initial screen), even though they seed more references as visual targets.
 
 Validation output is summarized into the [run record](./run-records.md) so the
 site can surface, for example, whether a run loaded and how closely each declared
-check matched its reference baseline.
+check matched its reference baseline. Each check result carries its display name
+alongside its view slug so the site can label it without re-deriving one.

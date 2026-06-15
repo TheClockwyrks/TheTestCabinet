@@ -17,6 +17,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.139.0",
       modelId: "gpt-5.4-mini",
     },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/codex:latest",
+      nodeVersion: "v22.14.0",
+    },
     metrics: {
       runTimeSeconds: 216,
       tokens: {
@@ -31,8 +36,8 @@ export const sampleRuns: RunRecord[] = [
       loaded: true,
       detail: null,
       checks: [
-        { view: "title", reached: true, similarity: 0.969, detail: null },
-        { view: "rally", reached: true, similarity: 0.882, detail: null },
+        { view: "title", name: "Title", reached: true, similarity: 0.969, detail: null },
+        { view: "rally", name: "Rally", reached: true, similarity: 0.882, detail: null },
       ],
     },
     links: {
@@ -52,6 +57,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "2.1.0",
       modelId: "claude-opus-4-8",
     },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/claude:latest",
+      nodeVersion: "v22.14.0",
+    },
     metrics: {
       runTimeSeconds: 1054,
       tokens: {
@@ -66,9 +76,9 @@ export const sampleRuns: RunRecord[] = [
       loaded: true,
       detail: null,
       checks: [
-        { view: "menu", reached: true, similarity: 0.941, detail: null },
-        { view: "match", reached: true, similarity: 0.873, detail: null },
-        { view: "spin", reached: true, similarity: 0.79, detail: null },
+        { view: "menu", name: "Menu", reached: true, similarity: 0.941, detail: null },
+        { view: "match", name: "Match", reached: true, similarity: 0.873, detail: null },
+        { view: "spin", name: "Spin", reached: true, similarity: 0.79, detail: null },
       ],
     },
     links: {
@@ -88,6 +98,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.42.1",
       modelId: "gemini-3.0-pro",
     },
+    environment: {
+      os: "Ubuntu 24.04.1 LTS",
+      containerImage: "test-cabinet/opencode:latest",
+      nodeVersion: "v20.18.1",
+    },
     metrics: {
       runTimeSeconds: 1191,
       tokens: {
@@ -102,9 +117,10 @@ export const sampleRuns: RunRecord[] = [
       loaded: true,
       detail: null,
       checks: [
-        { view: "wave", reached: true, similarity: 0.704, detail: null },
+        { view: "wave", name: "Wave", reached: true, similarity: 0.704, detail: null },
         {
           view: "game-over",
+          name: "Game Over",
           reached: false,
           similarity: 0,
           detail: "could not reach game-over screen",
@@ -128,6 +144,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "1.5.2",
       modelId: "gpt-5.4",
     },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/goose:latest",
+      nodeVersion: "v22.14.0",
+    },
     metrics: {
       runTimeSeconds: 552,
       tokens: {
@@ -141,7 +162,9 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
-      checks: [{ view: "board", reached: true, similarity: 0.915, detail: null }],
+      checks: [
+        { view: "board", name: "Board", reached: true, similarity: 0.915, detail: null },
+      ],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-serpentine-goose",
@@ -159,6 +182,11 @@ export const sampleRuns: RunRecord[] = [
       harnessSlug: "cline",
       harnessVersion: "3.2.0",
       modelId: "claude-sonnet-4-6",
+    },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/cline:latest",
+      nodeVersion: "v22.14.0",
     },
     metrics: {
       runTimeSeconds: 393,
@@ -195,6 +223,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.7.4",
       modelId: "gpt-5.4",
     },
+    environment: {
+      os: "Ubuntu 24.04.1 LTS",
+      containerImage: "test-cabinet/kilo:latest",
+      nodeVersion: "v20.18.1",
+    },
     metrics: {
       runTimeSeconds: 1928,
       tokens: {
@@ -209,8 +242,14 @@ export const sampleRuns: RunRecord[] = [
       loaded: true,
       detail: null,
       checks: [
-        { view: "well", reached: true, similarity: 0.86, detail: null },
-        { view: "line-clear", reached: true, similarity: 0.812, detail: null },
+        { view: "well", name: "Well", reached: true, similarity: 0.86, detail: null },
+        {
+          view: "line-clear",
+          name: "Line Clear",
+          reached: true,
+          similarity: 0.812,
+          detail: null,
+        },
       ],
     },
     links: {
@@ -230,6 +269,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: null,
       modelId: "gemini-3.0-flash",
     },
+    environment: {
+      os: "unknown",
+      containerImage: "test-cabinet/antigravity:latest",
+      nodeVersion: null,
+    },
     metrics: {
       runTimeSeconds: 1727,
       tokens: {
@@ -246,6 +290,7 @@ export const sampleRuns: RunRecord[] = [
       checks: [
         {
           view: "field",
+          name: "Field",
           reached: true,
           similarity: 0.58,
           detail: "ship sprite missing",
@@ -272,6 +317,11 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.3.1",
       modelId: "claude-haiku-4-5",
     },
+    environment: {
+      os: "Debian GNU/Linux 12 (bookworm)",
+      containerImage: "test-cabinet/pi:latest",
+      nodeVersion: "v22.14.0",
+    },
     metrics: {
       runTimeSeconds: 242,
       tokens: {
@@ -285,7 +335,9 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
-      checks: [{ view: "title", reached: true, similarity: 0.844, detail: null }],
+      checks: [
+        { view: "title", name: "Title", reached: true, similarity: 0.844, detail: null },
+      ],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-pong-pi",

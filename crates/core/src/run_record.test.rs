@@ -18,6 +18,11 @@ fn sample_record() -> RunRecord {
             harness_version: Some("1.2.3".to_string()),
             model_id: "anthropic/claude-opus-4".to_string(),
         },
+        environment: RunEnvironment {
+            os: "Debian GNU/Linux 12 (bookworm)".to_string(),
+            container_image: "test-cabinet/claude:latest".to_string(),
+            node_version: Some("v22.11.0".to_string()),
+        },
         metrics: RunMetrics {
             run_time_seconds: 300.0,
             tokens: TokenCounts {
@@ -36,6 +41,7 @@ fn sample_record() -> RunRecord {
             detail: None,
             checks: vec![CheckResult {
                 view: "title".to_string(),
+                name: "Title".to_string(),
                 reached: true,
                 similarity: 0.92,
                 detail: None,
@@ -67,6 +73,11 @@ fn serializes_to_camel_case_contract() {
             "harnessVersion": "1.2.3",
             "modelId": "anthropic/claude-opus-4"
         },
+        "environment": {
+            "os": "Debian GNU/Linux 12 (bookworm)",
+            "containerImage": "test-cabinet/claude:latest",
+            "nodeVersion": "v22.11.0"
+        },
         "metrics": {
             "runTimeSeconds": 300.0,
             "tokens": {
@@ -84,7 +95,7 @@ fn serializes_to_camel_case_contract() {
             "loaded": true,
             "detail": null,
             "checks": [
-                { "view": "title", "reached": true, "similarity": 0.92, "detail": null }
+                { "view": "title", "name": "Title", "reached": true, "similarity": 0.92, "detail": null }
             ]
         },
         "links": {

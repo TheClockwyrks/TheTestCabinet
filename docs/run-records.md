@@ -25,6 +25,19 @@ A run record must capture at least the following.
 - The agent harness slug and, where available, the harness version.
 - The model ID that was used.
 
+### Environment
+
+The container environment the run executed in, captured from **inside** the run
+container (not the host) so it reflects what the harness actually built in:
+
+- The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for example,
+  `Debian GNU/Linux 12 (bookworm)`), or `unknown` when it could not be probed.
+- The per-harness container image (for example, `test-cabinet/codex:latest`).
+- The Node.js version reported by `node --version`, where it could be
+  determined.
+
+The harness version is not duplicated here; it lives in the subject.
+
 ### Metrics
 
 - Run time, as defined in [Metrics](./metrics.md#run-time).

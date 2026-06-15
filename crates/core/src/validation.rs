@@ -29,6 +29,9 @@ pub struct CapturedView {
 pub struct CheckResult {
     /// The view the check records under.
     pub view: String,
+    /// Human-readable display name for the check, carried through from the
+    /// declared [`Check`](crate::test_case::Check).
+    pub name: String,
     /// Whether the check could drive the implementation into the view and
     /// capture it for comparison. When false, [`Self::similarity`] is `0.0` and
     /// [`Self::detail`] explains why.

@@ -1,0 +1,195 @@
+@use "../../styles/tokens" as t;
+
+.header {
+  margin-bottom: t.$space-lg;
+}
+
+.title {
+  font-size: t.$font-xl;
+  margin: 0 0 t.$space-xs;
+}
+
+.lede {
+  margin: 0;
+  max-width: 44rem;
+  color: t.$color-text-muted;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+.search {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.filterRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.filterLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  align-items: center;
+}
+
+// A pill-shaped facet toggle; lights up with the accent glow when active.
+.chip {
+  padding: t.$space-xs t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.chipActive {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.6rem color-mix(in srgb, t.$color-accent 45%, transparent);
+  text-shadow: var(--ttc-glow);
+}
+
+.clear {
+  padding: 0 t.$space-sm;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: t.$space-md;
+}
+
+// Translucent neon panel matching the home-page log; the grid + scanlines read
+// through behind each card.
+.card {
+  display: block;
+  position: relative;
+  height: 100%;
+  padding: t.$space-md;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, t.$color-surface 78%, transparent);
+  box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 8%, transparent);
+
+  &:hover {
+    text-decoration: none;
+    box-shadow:
+      0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+      inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+}
+
+.cardCaret {
+  position: absolute;
+  top: t.$space-md;
+  right: t.$space-md;
+  color: t.$color-accent;
+  opacity: 0;
+
+  .card:hover & {
+    opacity: 1;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
+.cardTitle {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// Difficulty badge; hue shifts from positive (easy) to accent-2 (hard).
+.difficulty {
+  display: inline-block;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: t.$border-hairline solid currentcolor;
+  border-radius: t.$radius-sm;
+  color: t.$color-text-muted;
+
+  &[data-level="easy"] {
+    color: t.$color-positive;
+  }
+
+  &[data-level="hard"] {
+    color: t.$color-accent-2;
+  }
+}
+
+.tags {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.tag {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+.empty {
+  color: t.$color-text-muted;
+}

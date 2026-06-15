@@ -8,6 +8,18 @@
 # Human-readable display name for this test case.
 name = "Carom"
 
+# Relative difficulty of this case, surfaced on the site. Carom's mechanics are
+# simple, but a polished, playable build with spin, an AI opponent, and multiple
+# states is a real front-end task — so it sits at the easy end of medium.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "paddle", "physics"]
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
 # Path, relative to this version folder, of the specification handed to the
 # model. Seeded into the run as the primary build material.
 spec = "specification.md"
@@ -40,5 +52,6 @@ path = "reference/game-over.html"
 # seeded as references but not validated.
 [[check]]
 view = "title"
+name = "Title Screen"
 reference = "title"
 actions = []

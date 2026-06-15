@@ -10,6 +10,7 @@
     "startedAt",
     "finishedAt",
     "subject",
+    "environment",
     "metrics",
     "validation",
     "links",
@@ -20,6 +21,7 @@
     "startedAt": { "type": "string", "format": "date-time" },
     "finishedAt": { "type": "string", "format": "date-time" },
     "subject": { "$ref": "#/$defs/RunSubject" },
+    "environment": { "$ref": "#/$defs/RunEnvironment" },
     "metrics": { "$ref": "#/$defs/RunMetrics" },
     "validation": { "$ref": "#/$defs/RunValidation" },
     "links": { "$ref": "#/$defs/RunLinks" },
@@ -61,6 +63,16 @@
         "modelId": { "type": "string" }
       }
     },
+    "RunEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "containerImage", "nodeVersion"],
+      "properties": {
+        "os": { "type": "string" },
+        "containerImage": { "type": "string" },
+        "nodeVersion": { "type": ["string", "null"] }
+      }
+    },
     "TokenMetrics": {
       "type": "object",
       "additionalProperties": false,
@@ -94,9 +106,10 @@
     "CheckResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["view", "reached", "similarity", "detail"],
+      "required": ["view", "name", "reached", "similarity", "detail"],
       "properties": {
         "view": { "type": "string" },
+        "name": { "type": "string" },
         "reached": { "type": "boolean" },
         "similarity": { "type": "number" },
         "detail": { "type": ["string", "null"] }

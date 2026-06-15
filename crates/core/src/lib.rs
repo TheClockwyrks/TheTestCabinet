@@ -17,6 +17,7 @@ pub mod execution;
 pub mod harness;
 pub mod harness_registry;
 pub mod metrics;
+pub mod models;
 pub mod pricing;
 pub mod publish;
 pub mod reference;
@@ -52,13 +53,16 @@ pub use harness::{
 };
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
+pub use models::{Model, ModelCatalog};
 pub use pricing::OpenRouterPrices;
 pub use publish::{
     GitHubPublisher, NoopPublisher, PublishConfig, PublishOutcome, PublishRequest, Publisher,
     SystemCommandRunner,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
-pub use run_record::{HarnessSlug, RunLinks, RunRecord, RunState, RunStatus, RunSubject};
+pub use run_record::{
+    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
+};
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
     Check, CheckAction, ReferenceView, TestCase, TestCaseCatalog, TestCaseVersion,
@@ -164,7 +168,7 @@ where
         seeded: &SeededRepo,
         request: &RunRequest,
         events: &mut dyn EventSink,
-    ) -> Result<(ContainerHandle, HarnessOutcome)> {
+    ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment)> {
         let slug = request.harness;
         let harness = self
             .harnesses
@@ -210,6 +214,13 @@ where
         };
 
         let handle = self.runtime.start(&spec).await?;
+
+        // Capture the container environment from inside the running container so
+        // it reflects what the harness actually built in, not the host. Probes
+        // are best-effort: a failure degrades to sensible defaults rather than
+        // failing the run.
+        let environment = self.probe_environment(&handle, harness.image()).await;
+
         let invocation = HarnessInvocation {
             slug,
             model_id: request.model_id.clone(),
@@ -221,12 +232,47 @@ where
         {
             Ok(mut outcome) => {
                 outcome.harness_version = availability.version;
-                Ok((handle, outcome))
+                Ok((handle, outcome, environment))
             }
             Err(err) => {
                 let _ = self.runtime.stop(&handle).await;
                 Err(err)
             }
+        }
+    }
+
+    /// Probe a running container for its OS and Node.js version.
+    ///
+    /// Both probes are best-effort. A failed OS probe falls back to `unknown`
+    /// and a failed Node.js probe to `None`; neither aborts the run. The
+    /// container image is taken from the harness rather than probed.
+    async fn probe_environment(
+        &self,
+        handle: &ContainerHandle,
+        container_image: String,
+    ) -> RunEnvironment {
+        let os = self
+            .runtime
+            .exec(handle, &as_command(["cat", "/etc/os-release"]))
+            .await
+            .ok()
+            .filter(|out| out.exit_code == 0)
+            .and_then(|out| parse_pretty_name(&out.stdout))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let node_version = self
+            .runtime
+            .exec(handle, &as_command(["node", "--version"]))
+            .await
+            .ok()
+            .filter(|out| out.exit_code == 0)
+            .map(|out| out.stdout.trim().to_string())
+            .filter(|version| !version.is_empty());
+
+        RunEnvironment {
+            os,
+            container_image,
+            node_version,
         }
     }
 
@@ -312,7 +358,8 @@ where
         // visual targets and reused as validation baselines below.
         let references = self.render_references(&test_case)?;
         let seeded = self.seed(&test_case, &references)?;
-        let (handle, outcome) = self.execute(&test_case, &seeded, request, events).await?;
+        let (handle, outcome, environment) =
+            self.execute(&test_case, &seeded, request, events).await?;
 
         // Collect the working tree, then always tear the container down.
         let artifacts = self.collector.collect(&handle).await;
@@ -358,6 +405,7 @@ where
                 harness_version: outcome.harness_version.clone(),
                 model_id: request.model_id.clone(),
             },
+            environment,
             metrics,
             validation,
             links: RunLinks::default(),
@@ -388,6 +436,22 @@ fn build_prompt(test_case: &TestCaseVersion) -> String {
          with no backend and no API keys. Follow the specification exactly, and \
          include a README explaining how to install, run, and build it."
     )
+}
+
+/// Collect a fixed list of string slices into the owned `Vec<String>` the
+/// [`ContainerRuntime`] exec methods take.
+fn as_command<const N: usize>(parts: [&str; N]) -> Vec<String> {
+    parts.iter().map(|p| p.to_string()).collect()
+}
+
+/// Extract the `PRETTY_NAME` value from the contents of an `/etc/os-release`
+/// file, stripping the surrounding quotes the field is conventionally written
+/// with. Returns `None` when no `PRETTY_NAME` line is present.
+fn parse_pretty_name(os_release: &str) -> Option<String> {
+    os_release.lines().find_map(|line| {
+        line.strip_prefix("PRETTY_NAME=")
+            .map(|value| value.trim().trim_matches('"').to_string())
+    })
 }
 
 /// Directory names that are never copied into the published implementation.

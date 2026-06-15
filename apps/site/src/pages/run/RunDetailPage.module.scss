@@ -51,9 +51,27 @@
   color: t.$color-text-muted;
 }
 
-.list {
-  margin: 0;
-  padding-left: t.$space-lg;
+// Per-check validation results: one row per declared check, named.
+.checks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+
+  th,
+  td {
+    text-align: left;
+    padding: t.$space-sm t.$space-md;
+    border-bottom: t.$border-hairline solid t.$color-border;
+  }
+
+  thead th {
+    color: t.$color-text-muted;
+    font-weight: 600;
+  }
+}
+
+.checkName {
+  font-weight: 600;
 }
 
 .notFound {

@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "claude-haiku-4-5",
+    "name": "Claude Haiku 4.5",
+    "provider": "Anthropic",
+    "openrouterUrl": "https://openrouter.ai/anthropic/claude-haiku-4.5",
+    "description": "# Claude Haiku 4.5\n\n> Placeholder copy. This is real Markdown the site renders today; the wording\n> will be refined later.\n\n**Claude Haiku 4.5** is Anthropic's fast, economical model in the Claude 4.5\nfamily — built for low latency and high throughput while remaining a genuinely\ncapable coding model. In The Test Cabinet it runs through the **Claude Code**\nharness, which drives it against a benchmark case inside a fresh, isolated\nrepository.\n\nLike the other small models in the catalog, Haiku is interesting here as a\nvalue anchor: it lets the suite show how much polish a strong harness can coax\nout of a lightweight, inexpensive model, and how its results compare against\nheavier models on the same case. The prices on its page are the comparable\nper-token figures OpenRouter reports, which The Test Cabinet uses for the\ncanonical cost of a run rather than the exact provider charge.\n",
+    "modelIds": [
+      "claude-haiku-4-5"
+    ],
+    "prices": {
+      "uncachedInput": 1e-6,
+      "cachedInput": 1e-7,
+      "output": 5e-6
+    }
+  },
+  {
+    "slug": "gpt-5.4-mini",
+    "name": "GPT-5.4 mini",
+    "provider": "OpenAI",
+    "openrouterUrl": "https://openrouter.ai/openai/gpt-5.4-mini",
+    "description": "# GPT-5.4 mini\n\n> Placeholder copy. This is real Markdown the site renders today; the wording\n> will be refined later.\n\n**GPT-5.4 mini** is OpenAI's small, fast member of the GPT-5.4 family — tuned to\nbe cheap and quick enough to run at scale while still holding up on real coding\nwork. In The Test Cabinet it is exercised through the **Codex** harness, which\ndrives the model against a benchmark case from a fresh, isolated repository.\n\nA mini-tier model is a useful data point for the suite precisely because it is\n*not* the strongest option: it shows how far a capable harness can carry a\nbudget model on a substantial front-end task, and where the model's ceiling\nstarts to bite. Pricing shown on its page is the comparable per-token cost\nreported by OpenRouter, which is what The Test Cabinet uses for the canonical,\nprovider-stable cost of a run.\n",
+    "modelIds": [
+      "gpt-5.4-mini"
+    ],
+    "prices": {
+      "uncachedInput": 7.5e-7,
+      "cachedInput": 7.5e-8,
+      "output": 4.5e-6
+    }
+  }
+]
