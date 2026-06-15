@@ -19,6 +19,9 @@ fn sample_record() -> RunRecord {
             harness_version: Some("1.2.3".to_string()),
             model_id: "anthropic/claude-opus-4".to_string(),
         },
+        tooling: RunTooling {
+            test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),
+        },
         environment: RunEnvironment {
             os: "Debian GNU/Linux 12 (bookworm)".to_string(),
             container_image: "test-cabinet/claude:latest".to_string(),
@@ -74,6 +77,9 @@ fn serializes_to_camel_case_contract() {
             "harnessSlug": "claude",
             "harnessVersion": "1.2.3",
             "modelId": "anthropic/claude-opus-4"
+        },
+        "tooling": {
+            "testCabinetCommit": "0d60bc1deadbeef"
         },
         "environment": {
             "os": "Debian GNU/Linux 12 (bookworm)",

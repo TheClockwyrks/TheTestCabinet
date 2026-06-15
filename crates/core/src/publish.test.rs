@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use super::*;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
-use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject};
+use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
 use crate::validation::ValidationSummary;
 
 fn sample_record() -> RunRecord {
@@ -23,6 +23,9 @@ fn sample_record() -> RunRecord {
             harness_version: Some("0.139.0".to_string()),
             // Dots are not DNS-label-safe; the slug must reduce them to hyphens.
             model_id: "gpt-5.4-mini".to_string(),
+        },
+        tooling: RunTooling {
+            test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),
         },
         environment: RunEnvironment {
             os: "Debian GNU/Linux 12 (bookworm)".to_string(),

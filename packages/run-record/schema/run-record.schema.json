@@ -10,6 +10,7 @@
     "startedAt",
     "finishedAt",
     "subject",
+    "tooling",
     "environment",
     "metrics",
     "validation",
@@ -21,6 +22,7 @@
     "startedAt": { "type": "string", "format": "date-time" },
     "finishedAt": { "type": "string", "format": "date-time" },
     "subject": { "$ref": "#/$defs/RunSubject" },
+    "tooling": { "$ref": "#/$defs/RunTooling" },
     "environment": { "$ref": "#/$defs/RunEnvironment" },
     "metrics": { "$ref": "#/$defs/RunMetrics" },
     "validation": { "$ref": "#/$defs/RunValidation" },
@@ -63,6 +65,14 @@
         "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
         "harnessVersion": { "type": ["string", "null"] },
         "modelId": { "type": "string" }
+      }
+    },
+    "RunTooling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testCabinetCommit"],
+      "properties": {
+        "testCabinetCommit": { "type": ["string", "null"] }
       }
     },
     "RunEnvironment": {

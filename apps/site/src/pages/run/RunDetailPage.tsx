@@ -23,7 +23,7 @@ export function RunDetailPage() {
     );
   }
 
-  const { subject, environment, metrics, validation, links, status } = run;
+  const { subject, tooling, environment, metrics, validation, links, status } = run;
   const isLocal = localIds.has(run.id);
   const review = findReview(run.id, localWriteups);
 
@@ -125,6 +125,14 @@ export function RunDetailPage() {
             label="Harness version"
             value={subject.harnessVersion ? `v${subject.harnessVersion}` : "Unknown"}
           />
+          <Metric
+            label="Test Cabinet commit"
+            value={
+              tooling.testCabinetCommit
+                ? formatCommit(tooling.testCabinetCommit)
+                : "Unknown"
+            }
+          />
         </div>
       </section>
 
@@ -151,6 +159,14 @@ export function RunDetailPage() {
       </section>
     </PageLayout>
   );
+}
+
+// Abbreviate a commit hash for display, keeping it readable while preserving a
+// trailing `-dirty` marker on builds made from a modified working tree.
+function formatCommit(commit: string): string {
+  const [hash, ...suffix] = commit.split("-");
+  const short = (hash ?? commit).slice(0, 12);
+  return suffix.length > 0 ? `${short}-${suffix.join("-")}` : short;
 }
 
 interface MetricProps {

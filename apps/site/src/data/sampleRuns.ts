@@ -18,6 +18,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.139.0",
       modelId: "gpt-5.4-mini",
     },
+    tooling: { testCabinetCommit: "a1f4c9e2b7d3068f5e1a9c4b2d7e6f0813a5c9d2" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/codex:latest",
@@ -59,6 +60,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "2.1.0",
       modelId: "claude-opus-4-8",
     },
+    tooling: { testCabinetCommit: "b2e5d0f3c8a4179061f2b0d5c3e8f7a924b6d0e3" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/claude:latest",
@@ -101,6 +103,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.42.1",
       modelId: "gemini-3.0-pro",
     },
+    tooling: { testCabinetCommit: "c3f6e1a4d9b528a172e3c1f6d4a9e8b035c7e1f4" },
     environment: {
       os: "Ubuntu 24.04.1 LTS",
       containerImage: "test-cabinet/opencode:latest",
@@ -148,6 +151,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "1.5.2",
       modelId: "gpt-5.4",
     },
+    tooling: { testCabinetCommit: "d4a7f2b5e0c639b283f4d2a7e5b0f9c146d8f2a5" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/goose:latest",
@@ -188,6 +192,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "3.2.0",
       modelId: "claude-sonnet-4-6",
     },
+    tooling: { testCabinetCommit: "e5b8a3c6f1d74ac394a5e3b8f6c1a0d257e9a3b6" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/cline:latest",
@@ -229,6 +234,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.7.4",
       modelId: "gpt-5.4",
     },
+    tooling: { testCabinetCommit: "f6c9b4d7a2e85bd4a5b6f4c9a7d2b1e368fab4c7" },
     environment: {
       os: "Ubuntu 24.04.1 LTS",
       containerImage: "test-cabinet/kilo:latest",
@@ -276,6 +282,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: null,
       modelId: "gemini-3.0-flash",
     },
+    tooling: { testCabinetCommit: "a7dac5e8b3f96ce5b6c7a5dab8e3c2f479abc5d8" },
     environment: {
       os: "unknown",
       containerImage: "test-cabinet/antigravity:latest",
@@ -325,6 +332,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.3.1",
       modelId: "claude-haiku-4-5",
     },
+    tooling: { testCabinetCommit: "b8ebd6f9c4a07df6c7d8b6ebc9f4d3a58abcd6e9" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/pi:latest",
@@ -365,6 +373,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "0.139.0",
       modelId: "gpt-5.4",
     },
+    tooling: { testCabinetCommit: "c9fce7a0d5b18ea7d8e9c7fcda05e4b69bcde7fa" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/codex:latest",
@@ -406,6 +415,7 @@ export const sampleRuns: RunRecord[] = [
       harnessVersion: "1.5.2",
       modelId: "gemini-3.0-pro",
     },
+    tooling: { testCabinetCommit: "dab0f8b1e6c29fb8e9fad80fdeb16f5c7acdef0b" },
     environment: {
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/goose:latest",

@@ -65,7 +65,7 @@ pub use publish::{
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{Rating, Writeup, parse_writeup};
 pub use run_record::{
-    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
+    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -433,6 +433,7 @@ where
                 harness_version: outcome.harness_version.clone(),
                 model_id: request.model_id.clone(),
             },
+            tooling: RunTooling::current(),
             environment,
             metrics,
             validation,

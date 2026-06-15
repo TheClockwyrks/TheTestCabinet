@@ -33,6 +33,20 @@ export interface RunEnvironment {
   nodeVersion: string | null;
 }
 
+/**
+ * Provenance for the Test Cabinet build that orchestrated a run. Distinct from
+ * {@link RunSubject.harnessVersion}, which describes the agent harness: this
+ * identifies the Test Cabinet orchestrator itself.
+ */
+export interface RunTooling {
+  /**
+   * The Test Cabinet commit the run's binary was built from, with a `-dirty`
+   * suffix when built from a modified working tree. Null when the build could
+   * not determine it.
+   */
+  testCabinetCommit: string | null;
+}
+
 /** Identifies what was run: the test case, the harness, and the model. */
 export interface RunSubject {
   testCaseSlug: string;
@@ -110,6 +124,7 @@ export interface RunRecord {
   /** RFC 3339 timestamp. */
   finishedAt: string;
   subject: RunSubject;
+  tooling: RunTooling;
   environment: RunEnvironment;
   metrics: RunMetrics;
   validation: RunValidation;

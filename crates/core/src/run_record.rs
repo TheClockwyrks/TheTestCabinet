@@ -79,6 +79,30 @@ pub struct RunSubject {
     pub model_id: String,
 }
 
+/// Provenance for the Test Cabinet build that orchestrated a run.
+///
+/// Distinct from [`RunSubject::harness_version`], which describes the agent
+/// harness: this identifies the build of the Test Cabinet orchestrator itself,
+/// so a run can be traced back to the exact code that produced it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunTooling {
+    /// The Test Cabinet commit the run's binary was built from, suffixed with
+    /// `-dirty` when built from a modified working tree. `None` when the build
+    /// could not determine it (for example, a build with no git repository).
+    pub test_cabinet_commit: Option<String>,
+}
+
+impl RunTooling {
+    /// The tooling provenance for the current build, stamped at compile time by
+    /// `build.rs` into the `TEST_CABINET_COMMIT` environment variable.
+    pub fn current() -> Self {
+        Self {
+            test_cabinet_commit: option_env!("TEST_CABINET_COMMIT").map(str::to_string),
+        }
+    }
+}
+
 /// The container environment a run executed in.
 ///
 /// These values are captured from inside the run container — not the host — so
@@ -146,6 +170,8 @@ pub struct RunRecord {
     pub finished_at: String,
     /// What was run.
     pub subject: RunSubject,
+    /// Provenance for the Test Cabinet build that orchestrated the run.
+    pub tooling: RunTooling,
     /// The container environment the run executed in.
     pub environment: RunEnvironment,
     /// Resource metrics for the run.

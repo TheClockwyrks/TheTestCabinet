@@ -28,6 +28,17 @@ A run record must capture at least the following.
 - The agent harness slug and, where available, the harness version.
 - The model ID that was used.
 
+### Tooling
+
+Provenance for the Test Cabinet build that orchestrated the run, distinct from
+the harness it drove:
+
+- The Test Cabinet commit the run's binary was built from, suffixed with `-dirty`
+  when built from a modified working tree, or `null` when the build could not
+  determine it (for example, a build with no git repository). This is stamped
+  into the binary at build time and lets a result be traced back to the exact
+  orchestrator code that produced it.
+
 ### Environment
 
 The container environment the run executed in, captured from **inside** the run
