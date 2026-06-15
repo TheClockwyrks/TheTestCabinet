@@ -139,7 +139,10 @@ A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
    locates `packages/browser-driver/driver.mjs` relative to the working directory
    (override with `TCAB_BROWSER_DRIVER`). This is optional — without it, runs
    still complete, but no reference images are seeded and checks record as not
-   reached.
+   reached. Where Playwright cannot find its own bundled browser — notably on
+   NixOS, whose `playwright-driver.browsers` layout differs from what Playwright
+   probes — point `TCAB_CHROMIUM_EXECUTABLE` at a real Chromium binary (for
+   example `${pkgs.chromium}/bin/chromium`) and the driver launches that instead.
 
 Then launch a run from the repository root (so the `test-cases/` catalog and the
 browser driver are found; override the catalog location with

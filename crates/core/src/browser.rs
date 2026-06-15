@@ -81,8 +81,18 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
 
     if !output.status.success() || !out.is_file() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("; ");
-        return Err(format!("browser driver failed: {tail}"));
+        // Surface the first meaningful lines. The driver prints the error message
+        // first, but a Playwright failure follows it with a box-drawing banner;
+        // skipping lines with no alphanumerics drops that art and keeps the
+        // actual message (e.g. "Executable doesn't exist at …").
+        let message: String = stderr
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.chars().any(|c| c.is_ascii_alphanumeric()))
+            .take(4)
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("browser driver failed: {message}"));
     }
     Ok(())
 }

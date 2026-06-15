@@ -81,7 +81,24 @@ async function main() {
     throw new Error("--actions must be a JSON array");
   }
 
-  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  // Choosing the browser binary, in order of preference:
+  //
+  //  1. `TCAB_CHROMIUM_EXECUTABLE` — an explicit Chromium binary. Managed
+  //     installs whose on-disk layout does not match what Playwright's path
+  //     resolution expects (notably Nix's `playwright-driver.browsers`) can fail
+  //     to find the bundled browser; pointing straight at a real Chromium (for
+  //     example `${pkgs.chromium}/bin/chromium`) sidesteps that entirely.
+  //  2. Otherwise `channel: "chromium"` — the full bundled Chromium in the new
+  //     headless mode, rather than Playwright's default `chromium-headless-shell`
+  //     (a separate download some installs omit).
+  const executablePath = process.env.TCAB_CHROMIUM_EXECUTABLE;
+  const launchOptions = { args: ["--no-sandbox"] };
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  } else {
+    launchOptions.channel = "chromium";
+  }
+  const browser = await chromium.launch(launchOptions);
   try {
     const page = await browser.newPage({
       viewport: { width, height },
