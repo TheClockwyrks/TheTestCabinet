@@ -1,0 +1,56 @@
+@use "../../styles/tokens" as t;
+
+.embed {
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  color: t.$color-text-muted;
+}
+
+.writeup {
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  padding: t.$space-lg;
+}
+
+.writeupBody {
+  color: t.$color-text;
+
+  // Collapse the outermost Markdown margins into the panel's own padding.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.launch {
+  margin-top: t.$space-lg;
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

@@ -19,26 +19,6 @@
   margin: 0 0 t.$space-md;
 }
 
-.embed {
-  width: 100%;
-  height: t.$embed-height;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: t.$color-surface;
-}
-
-.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: t.$embed-height;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: t.$color-surface;
-  color: t.$color-text-muted;
-}
-
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));

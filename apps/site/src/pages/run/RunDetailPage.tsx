@@ -1,7 +1,9 @@
 import { useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { findRun } from "../../data/runs";
+import { findWriteup } from "../../data/writeups";
 import { formatInteger, formatRunTime, formatUsd } from "../../format";
+import { PlayableSection } from "./PlayableSection";
 import styles from "./RunDetailPage.module.scss";
 
 export function RunDetailPage() {
@@ -24,26 +26,16 @@ export function RunDetailPage() {
         {subject.testCaseSlug} &mdash; {subject.harnessSlug}
       </h2>
       <p className={styles.subject}>
-        {subject.modelId} &middot; test case v{subject.testCaseVersion}
+        {subject.modelId} &middot; test case {subject.testCaseVersion}
         {subject.harnessVersion
           ? ` · harness v${subject.harnessVersion}`
           : ""}
       </p>
 
-      {/* Play the implementation directly via its embedded playable build. */}
+      {/* Play the implementation, gated behind its writeup when one exists. */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Play</h3>
-        {links.playableBuild ? (
-          <iframe
-            className={styles.embed}
-            src={links.playableBuild}
-            title={`Playable build for ${run.id}`}
-          />
-        ) : (
-          <div className={styles.placeholder}>
-            No playable build was published for this run.
-          </div>
-        )}
+        <PlayableSection run={run} writeup={findWriteup(run.id)} />
       </section>
 
       {/* Primary metrics: tokens and cost. Run time is secondary. */}

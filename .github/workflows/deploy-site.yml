@@ -1,0 +1,50 @@
+name: Deploy site
+
+# Builds the static gallery (apps/site) and deploys it to GitHub Pages. Runs on
+# pushes that touch the site or the run-record contract it is built from, and on
+# demand. Dormant until the repository is mirrored to GitHub with Pages enabled.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/site/**"
+      - "packages/run-record/**"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The site imports built run-record types/JS, so build that package first.
+      - run: npm run build -w @test-cabinet/run-record
+      - run: npm run build -w @test-cabinet/site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
