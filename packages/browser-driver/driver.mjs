@@ -117,7 +117,11 @@ async function main() {
     if (settle > 0) {
       await page.waitForTimeout(settle);
     }
-    await page.screenshot({ path: args.out });
+    // Encode as PNG explicitly rather than letting Playwright infer the format
+    // from the path's extension: the validator captures to a temp file (e.g.
+    // `.view.png.<uuid>.tmp`) and atomically renames it into place, so the path
+    // handed to `--out` does not necessarily end in `.png`.
+    await page.screenshot({ path: args.out, type: "png" });
   } finally {
     await browser.close();
   }
