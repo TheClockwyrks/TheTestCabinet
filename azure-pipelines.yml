@@ -6,7 +6,7 @@
 # GitHub workflows run exactly the same checks (see scripts/ci/README.md).
 #
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
-# the Microsoft-hosted Ubuntu image; Node is installed via NodeTool) and caching.
+# the Microsoft-hosted Ubuntu image; Node is installed via UseNode) and caching.
 
 trigger:
   branches:
@@ -61,10 +61,10 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
-      - task: NodeTool@0
+      - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          versionSpec: 22.x
+          version: 22.x
       - task: Cache@2
         displayName: Cache npm
         inputs:
@@ -80,10 +80,10 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
-      - task: NodeTool@0
+      - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          versionSpec: 22.x
+          version: 22.x
       - script: ./scripts/ci/catalog-check.sh
         displayName: Check catalog
 
@@ -92,9 +92,9 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
-      - task: NodeTool@0
+      - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          versionSpec: 22.x
+          version: 22.x
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
