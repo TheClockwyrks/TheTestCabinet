@@ -12,7 +12,12 @@ import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
 // link reads as active.
-export type RunDetailTab = "verdict" | "play" | "metrics" | "metadata";
+export type RunDetailTab =
+  | "verdict"
+  | "play"
+  | "metrics"
+  | "validation"
+  | "metadata";
 
 interface RunDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -54,6 +59,11 @@ export function RunDetailLayout({ tab, children }: RunDetailLayoutProps) {
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
     { key: "play", label: "Play", to: routes.runPlay(run.id) },
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
+    {
+      key: "validation",
+      label: "Validation",
+      to: routes.runValidation(run.id),
+    },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
   ];
 

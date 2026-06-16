@@ -7,20 +7,36 @@ interface MetricTileProps {
   value: string;
   /** Render the value muted, for figures that are informational rather than key. */
   secondary?: boolean;
+  /** When set, render the value as an external link to this URL. */
+  href?: string;
 }
 
 // A single labelled figure in the site's neon-outlined panel style. Used to lay
 // out a run's metrics and metadata as a responsive grid of tiles, where each
-// tile pairs a muted label with its value.
-export function MetricTile({ label, value, secondary = false }: MetricTileProps) {
+// tile pairs a muted label with its value. When `href` is given the value
+// becomes an external link, e.g. the Source tile linking to the run's repo.
+export function MetricTile({
+  label,
+  value,
+  secondary = false,
+  href,
+}: MetricTileProps) {
+  const valueClass = `${styles.value}${secondary ? ` ${styles.secondary}` : ""}`;
   return (
     <div className={styles.tile}>
       <span className={styles.label}>{label}</span>
-      <span
-        className={`${styles.value}${secondary ? ` ${styles.secondary}` : ""}`}
-      >
-        {value}
-      </span>
+      {href ? (
+        <a
+          className={`${valueClass} ${styles.link}`}
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {value}
+        </a>
+      ) : (
+        <span className={valueClass}>{value}</span>
+      )}
     </div>
   );
 }

@@ -34,6 +34,8 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metrics`,
   runMetadata: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/metadata`,
+  runValidation: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/validation`,
 } as const;
 
 // Route patterns for <Route path={...}>. Kept alongside the builders so the
@@ -57,4 +59,5 @@ export const routePatterns = {
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
+  runValidation: "/runs/:runId/validation",
 } as const;

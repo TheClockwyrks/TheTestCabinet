@@ -1,5 +1,4 @@
 @use "../../../styles/tokens" as t;
-@use "../../../styles/halo" as h;
 
 // Shared styles for the run detail tab bodies (Verdict, Play, Metrics,
 // Metadata). The page chrome — title, subject line, tabs — lives in the
@@ -9,22 +8,34 @@
   margin-bottom: t.$space-xl;
 }
 
-.sectionTitle {
-  font-size: t.$font-lg;
-  margin: 0 0 t.$space-md;
-  @include h.halo;
-}
-
-// Plain single-line statements that sit straight on the backdrop (the validation
-// summary, the run status). The halo keeps them legible over the grid.
-.line {
-  @include h.halo;
-}
-
-.metricsGrid {
+// A fixed three-column grid of tiles, used for the run's metadata.
+// `minmax(0, …)` lets long values shrink rather than blow the columns out.
+.metricsGrid3 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: t.$space-md;
+}
+
+// The Metrics tab's stacked rows: a 2-up token-totals row, a 4-up breakdown row,
+// then a 2-up cost / run-time row. Each row is its own grid so the column count
+// is fixed per row regardless of how the others wrap.
+.metricRows {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.metricRow {
+  display: grid;
+  gap: t.$space-md;
+}
+
+.cols2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cols4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 // Muted text in loose contexts (paired with `.line` or sitting inside a haloed
@@ -33,17 +44,12 @@
   color: t.$color-text-muted;
 }
 
-// The source-repo link, sitting on the backdrop rather than inside a panel.
-.source {
-  @include h.halo;
-}
-
-// Per-check validation results: one row per declared check, named.
+// Per-check validation results: one row per declared check, named. Sits inside
+// the Validation tab's panel, which supplies the surface and legibility.
 .checks {
   width: 100%;
   border-collapse: collapse;
   font-size: t.$font-sm;
-  @include h.halo;
 
   th,
   td {

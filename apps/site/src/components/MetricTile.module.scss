@@ -25,3 +25,15 @@
 .secondary {
   color: t.$color-text-muted;
 }
+
+// A value rendered as an external link (e.g. the Source tile). Picks up the
+// accent so it reads as actionable, and underlines only on hover.
+.link {
+  color: t.$color-accent;
+  text-decoration: none;
+  width: fit-content;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
