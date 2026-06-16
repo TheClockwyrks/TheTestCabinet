@@ -1,0 +1,23 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  font-size: t.$font-lg;
+  margin: 0 0 t.$space-md;
+  @include h.halo;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: t.$space-lg;
+}

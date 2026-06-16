@@ -15,6 +15,8 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}/references`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
+  testCaseMetrics: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/metrics`,
   models: (): string => "/models",
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
@@ -33,6 +35,7 @@ export const routePatterns = {
   testCaseSpecs: "/test-cases/:slug/specs",
   testCaseReferences: "/test-cases/:slug/references",
   testCaseRuns: "/test-cases/:slug/runs",
+  testCaseMetrics: "/test-cases/:slug/metrics",
   models: "/models",
   modelDetail: "/models/:modelId",
   about: "/about",

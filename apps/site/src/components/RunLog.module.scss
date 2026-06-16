@@ -1,0 +1,114 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// Translucent neon-outlined panel so the grid + scanlines read through behind
+// the table.
+.log {
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);
+  overflow-x: auto;
+}
+
+// Each line is a fixed column grid so values stay aligned like printed output.
+// The column set depends on the log's scope: cross-case logs carry the test and
+// variant columns, while variant-scoped logs drop them.
+.row {
+  display: grid;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  color: t.$color-text;
+  white-space: nowrap;
+}
+
+.log[data-scope="global"] .row {
+  // caret · test · harness · variant · model · tokens · cost · rating
+  grid-template-columns: 1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem;
+  min-width: 46rem;
+}
+
+.log[data-scope="variant"] .row {
+  // caret · harness · model · tokens · cost · rating
+  grid-template-columns: 1.2rem 7rem 1.6fr 5rem 5rem 6rem;
+  min-width: 30rem;
+}
+
+a.row {
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+
+  &:hover {
+    text-decoration: none;
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+    box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
+  }
+}
+
+.head {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  color: t.$color-text-muted;
+}
+
+.rowCaret {
+  color: t.$color-accent;
+  opacity: 0;
+
+  a.row:hover & {
+    opacity: 1;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
+.test {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.harness {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.variant {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: t.$color-text-muted;
+}
+
+.model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag {
+  font-size: 0.7rem;
+}
+
+// The rating cell: a compact chip, or a muted dash when a run has no review.
+.rating {
+  display: flex;
+  align-items: center;
+  font-size: 0.7rem;
+}
+
+.noRating {
+  color: t.$color-text-muted;
+  opacity: 0.6;
+}

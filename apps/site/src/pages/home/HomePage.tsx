@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "../../components/RatingBadge";
+import { RunLog } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";
 import type { Rating } from "../../data/ratings";
@@ -27,8 +28,9 @@ export function HomePage() {
   const recent = [...runs].sort(byRecencyDesc);
   const featured = recent[0];
   const rest = recent.slice(1);
-  const ratingOf = (run: RunRecord): Rating | null =>
-    findReview(run.id, localWriteups)?.rating ?? null;
+  const featuredRating = featured
+    ? (findReview(featured.id, localWriteups)?.rating ?? null)
+    : null;
 
   return (
     <PageLayout>
@@ -51,29 +53,14 @@ export function HomePage() {
             <FeaturedRun
               run={featured}
               local={localIds.has(featured.id)}
-              rating={ratingOf(featured)}
+              rating={featuredRating}
             />
             {rest.length > 0 && (
-              <div className={styles.log}>
-                <div className={`${styles.row} ${styles.head}`}>
-                  <span />
-                  <span>TEST</span>
-                  <span>HARNESS</span>
-                  <span>VARIANT</span>
-                  <span>MODEL</span>
-                  <span className={styles.num}>TOKENS</span>
-                  <span className={styles.num}>COST</span>
-                  <span>RATING</span>
-                </div>
-                {rest.map((run) => (
-                  <RunRow
-                    key={run.id}
-                    run={run}
-                    local={localIds.has(run.id)}
-                    rating={ratingOf(run)}
-                  />
-                ))}
-              </div>
+              <RunLog
+                runs={rest}
+                localIds={localIds}
+                localWriteups={localWriteups}
+              />
             )}
           </>
         )}
@@ -166,38 +153,5 @@ function Stat({
       <dt className={styles.statLabel}>{label}</dt>
       <dd className={styles.statValue}>{value}</dd>
     </div>
-  );
-}
-
-function RunRow({
-  run,
-  local,
-  rating,
-}: {
-  run: RunRecord;
-  local: boolean;
-  rating: Rating | null;
-}) {
-  const { subject, metrics } = run;
-  return (
-    <Link to={routes.runDetail(run.id)} className={styles.row}>
-      <span className={styles.rowCaret}>&rsaquo;</span>
-      <span className={styles.test}>
-        {formatSlug(subject.testCaseSlug)}
-        {local && <UnpublishedTag className={styles.tag} />}
-      </span>
-      <span>{subject.harnessSlug}</span>
-      <span className={styles.variant}>{subject.variant}</span>
-      <span className={styles.model}>{subject.modelId}</span>
-      <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
-      <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>
-      <span className={styles.rating}>
-        {rating ? (
-          <RatingBadge rating={rating} />
-        ) : (
-          <span className={styles.noRating}>—</span>
-        )}
-      </span>
-    </Link>
   );
 }

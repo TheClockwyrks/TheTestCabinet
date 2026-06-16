@@ -26,6 +26,12 @@ export interface BarPoint {
 interface AxisLabels {
   x?: string;
   y?: string;
+  /**
+   * d3-format specifier (or function) for the y-axis ticks. Pass a compact
+   * format like `"~s"` for large counts so labels stay short ("1M", "100k")
+   * and don't get clipped by the chart's left margin.
+   */
+  yTickFormat?: string | ((value: number) => string);
 }
 
 // A vertical box-and-whisker plot: one box per `group` summarizing the spread of
@@ -40,7 +46,7 @@ export function boxAndWhisker(
   return {
     ...basePlotOptions(palette),
     x: { label: labels.x ?? null, type: "band" },
-    y: { label: labels.y ?? null, grid: true },
+    y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     marks: [
       Plot.boxY(data as BoxPoint[], {
         x: "group",
@@ -64,7 +70,7 @@ export function barChart(
   return {
     ...basePlotOptions(palette),
     x: { label: labels.x ?? null, type: "band" },
-    y: { label: labels.y ?? null, grid: true },
+    y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     marks: [
       Plot.barY(data as BarPoint[], {
         x: "label",
