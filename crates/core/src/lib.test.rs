@@ -1,8 +1,11 @@
 //! Tests for the crate root: the working-tree copy that produces a run's
 //! published `implementation/` directory, and the per-run JSONL stream files.
 
+use std::path::PathBuf;
+
 use super::{
-    EventFormat, EventKind, EventParser, HarnessEvent, OutputStream, RawOutputLine, copy_tree,
+    Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
+    OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage, copy_tree, with_runtime_cap,
     write_run_streams,
 };
 
@@ -142,4 +145,93 @@ fn copy_tree_copies_nested_files() {
         std::fs::read_to_string(out.join("a/b/c.txt")).expect("read copied file"),
         "deep contents",
     );
+}
+
+/// A resolved version carrying `seconds` as its runtime cap; the other fields are
+/// irrelevant to the cap and left empty.
+fn version_with_cap(seconds: u64) -> TestCaseVersion {
+    TestCaseVersion {
+        slug: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        name: "Carom".to_string(),
+        difficulty: "easy".to_string(),
+        tags: Vec::new(),
+        summary: None,
+        description_path: None,
+        root: PathBuf::from("/tmp/pong"),
+        prompt_path: PathBuf::from("/tmp/pong/prompt.hbs"),
+        max_runtime_seconds: seconds,
+        common_specs: Vec::new(),
+        asset_paths: Vec::new(),
+        variants: Vec::new(),
+        common_references: Vec::new(),
+        checks: Vec::new(),
+    }
+}
+
+/// A run request for the pong case with the given runtime override.
+fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
+    RunRequest {
+        test_case_slug: "pong".to_string(),
+        test_case_version: Some("v1.0.0".to_string()),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model_id: "some-model".to_string(),
+        max_runtime_override,
+    }
+}
+
+/// The effective cap is the per-invocation override when set, and otherwise the
+/// resolved case's own default — so a run is always bounded either way.
+#[test]
+fn effective_max_runtime_prefers_the_override_then_the_case_default() {
+    let case = version_with_cap(1800);
+    assert_eq!(
+        request_with_override(None).effective_max_runtime(&case),
+        1800,
+        "with no override the case's default is in effect",
+    );
+    assert_eq!(
+        request_with_override(Some(120)).effective_max_runtime(&case),
+        120,
+        "an override replaces the default for this run",
+    );
+}
+
+/// A minimal successful outcome for exercising the cap without a real harness.
+fn ready_outcome() -> HarnessOutcome {
+    HarnessOutcome {
+        usage: Usage::default(),
+        harness_version: None,
+        reported_cost: None,
+        raw_output: Vec::new(),
+        translated_events: Vec::new(),
+    }
+}
+
+/// A session that finishes inside the cap passes its own result straight through.
+#[tokio::test]
+async fn runtime_cap_passes_a_session_that_finishes_in_time() {
+    let outcome = with_runtime_cap(async { Ok(ready_outcome()) }, 3600, HarnessSlug::Claude)
+        .await
+        .expect("a session within the cap should pass through");
+    assert_eq!(outcome, ready_outcome());
+}
+
+/// A session that runs past the cap is stopped and reported as timed out, naming
+/// the harness and the cap it exceeded. Paused time auto-advances past the cap so
+/// the test does not wait out a real wall-clock timeout.
+#[tokio::test(start_paused = true)]
+async fn runtime_cap_stops_a_session_that_runs_too_long() {
+    let never = std::future::pending::<super::Result<HarnessOutcome>>();
+    let err = with_runtime_cap(never, 30, HarnessSlug::Claude)
+        .await
+        .expect_err("a session past the cap should time out");
+    match err {
+        Error::RunTimedOut { slug, seconds } => {
+            assert_eq!(slug, "claude");
+            assert_eq!(seconds, 30);
+        }
+        other => panic!("expected RunTimedOut, got {other:?}"),
+    }
 }

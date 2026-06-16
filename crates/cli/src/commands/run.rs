@@ -26,6 +26,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         variant: args.variant,
         harness,
         model_id: args.model,
+        max_runtime_override: args.max_runtime,
     };
 
     let catalog_root = catalog_root();
@@ -49,6 +50,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         request.model_id,
     );
     println!("  runtime: {}", runtime.binary());
+    match request.max_runtime_override {
+        Some(seconds) => println!("  cap:     {seconds}s max runtime (override)"),
+        None => println!("  cap:     test case default max runtime"),
+    }
     println!("  output:  {}", output_dir.display());
 
     let orchestrator = Orchestrator {

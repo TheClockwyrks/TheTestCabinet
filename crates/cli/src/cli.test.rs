@@ -56,7 +56,36 @@ fn run_parses_required_arguments() {
             assert_eq!(args.harness, HarnessArg::Claude);
             assert_eq!(args.model, "some-model-id");
             assert!(args.out_dir.is_none());
+            // Omitting --max-runtime leaves the override unset, so the run uses
+            // the test case's own default cap.
+            assert!(args.max_runtime.is_none());
         }
+        other => panic!("expected a run command, got {other:?}"),
+    }
+}
+
+#[test]
+fn run_accepts_a_max_runtime_override() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "run",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--variant",
+        "base",
+        "--harness",
+        "claude",
+        "--model",
+        "some-model-id",
+        "--max-runtime",
+        "600",
+    ])
+    .expect("a run invocation with --max-runtime should parse");
+
+    match cli.command {
+        Command::Run(args) => assert_eq!(args.max_runtime, Some(600)),
         other => panic!("expected a run command, got {other:?}"),
     }
 }

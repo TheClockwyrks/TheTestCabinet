@@ -67,6 +67,7 @@ difficulty = "medium"        # relative difficulty: easy | medium | hard (defaul
 tags = ["arcade", "2d"]      # free-form classification tags (site-facing, default empty)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
+max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
 assets = []                  # asset files/directories, seeded (relative paths)
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the
@@ -113,6 +114,12 @@ actions = []                 # actions to drive the build into the view (empty =
 - `prompt` is **required** and points at the Handlebars template that becomes the
   instruction handed to the harness. The template is **rendered, not seeded**;
   see [Prompt template](#prompt-template) below.
+- `max_runtime_seconds` is the maximum wall-clock duration the harness session is
+  allowed before the run container is torn down and the run aborts. It exists so a
+  stuck or runaway session can never run unbounded. It defaults to `3600` (one
+  hour) when omitted and must be greater than zero. This is the per-case default;
+  a run can override it for a single invocation (for example
+  `tcab run --max-runtime <seconds>`).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the run
   workspace. A `source` ending in `.hbs` is a Handlebars template rendered into

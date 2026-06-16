@@ -96,6 +96,21 @@ pub enum Error {
         detail: String,
     },
 
+    /// The harness session ran past the run's maximum runtime and was stopped.
+    ///
+    /// Every run is bounded by a maximum wall-clock duration so a session can
+    /// never continue unbounded. The bound is the test case's
+    /// `max_runtime_seconds` manifest field, overridable per invocation (for
+    /// example by `tcab run --max-runtime`). When it elapses the run container is
+    /// torn down and the run aborts with this error.
+    #[error("agent harness `{slug}` exceeded the maximum runtime of {seconds}s and was stopped")]
+    RunTimedOut {
+        /// The harness slug whose session was stopped.
+        slug: String,
+        /// The maximum runtime, in seconds, that was exceeded.
+        seconds: u64,
+    },
+
     /// The container runtime abstraction reported a failure.
     #[error("container runtime error: {0}")]
     ContainerRuntime(String),

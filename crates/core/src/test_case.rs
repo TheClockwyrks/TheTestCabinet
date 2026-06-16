@@ -44,6 +44,12 @@ struct Manifest {
     /// Rendered through Handlebars with the run's workspace and seeded spec paths;
     /// see [`crate::prompt`].
     prompt: PathBuf,
+    /// The maximum wall-clock duration, in seconds, the harness session for this
+    /// case is allowed before it is stopped. Supplies the per-case default that a
+    /// run can override (for example `tcab run --max-runtime`). Defaults to
+    /// [`default_max_runtime_seconds`] when omitted so a run is never unbounded.
+    #[serde(default = "default_max_runtime_seconds")]
+    max_runtime_seconds: u64,
     /// Specs seeded for **every** variant. Each maps a `source` inside the
     /// version folder to a `dest` in the run's workspace. Declared as repeated
     /// `[[spec]]` tables.
@@ -287,6 +293,11 @@ pub struct TestCaseVersion {
     /// Host path to the prompt template handed to the harness. Rendered through
     /// Handlebars with the run's workspace and seeded spec paths.
     pub prompt_path: PathBuf,
+    /// The maximum wall-clock duration, in seconds, the harness session is
+    /// allowed before it is stopped. This is the per-case default; a run may
+    /// override it (see [`crate::RunRequest::max_runtime_override`]). Always
+    /// positive, so a run is never unbounded.
+    pub max_runtime_seconds: u64,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Paths to assets the model should use (seeded).
@@ -436,6 +447,15 @@ impl TestCaseCatalog {
                 "prompt `{}` does not exist",
                 manifest.prompt.display()
             )));
+        }
+
+        // The runtime cap bounds the harness session so a run can never continue
+        // unbounded. A zero cap would stop every run instantly, which is never
+        // intended, so it is rejected rather than silently accepted.
+        if manifest.max_runtime_seconds == 0 {
+            return Err(invalid(
+                "max_runtime_seconds must be greater than zero".to_string(),
+            ));
         }
 
         // Resolve one spec mapping: the source must exist inside the version
@@ -623,6 +643,7 @@ impl TestCaseCatalog {
             description_path,
             root,
             prompt_path,
+            max_runtime_seconds: manifest.max_runtime_seconds,
             common_specs,
             asset_paths,
             variants,
@@ -695,6 +716,17 @@ fn version_key(version: &str) -> Vec<u64> {
 /// The default difficulty applied when a manifest omits one.
 fn default_difficulty() -> String {
     "medium".to_string()
+}
+
+/// The default maximum harness runtime, in seconds, applied when a manifest
+/// omits `max_runtime_seconds`.
+///
+/// One hour is a generous ceiling for even the hard cases: it exists to stop a
+/// stuck or runaway session from running forever, not to pace a healthy run. A
+/// case that needs a tighter or looser bound declares its own value, and any run
+/// can override it per invocation.
+fn default_max_runtime_seconds() -> u64 {
+    3600
 }
 
 /// Humanize a slug into a display name by splitting on `-`/`_` and capitalizing

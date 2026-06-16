@@ -34,6 +34,13 @@ description = "description.md"
 # variables rather than hardcoding them.
 prompt = "prompt.hbs"
 
+# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Carom is an easy case, so 30 minutes is comfortably more than a
+# healthy build needs while still catching a session that never terminates.
+max_runtime_seconds = 1800
+
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
 # the run workspace. The monolithic specification is decomposed by concern so
 # that mode-specific material can be seeded per variant (see `[[variant]]`

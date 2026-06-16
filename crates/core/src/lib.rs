@@ -34,8 +34,9 @@ pub mod validator;
 mod tests;
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -92,6 +93,22 @@ pub struct RunRequest {
     pub harness: HarnessSlug,
     /// The opaque model ID to pass to the harness.
     pub model_id: String,
+    /// Optional override for the maximum harness runtime, in seconds. `None`
+    /// uses the resolved test case's `max_runtime_seconds` default; `Some`
+    /// replaces it for this run (for example `tcab run --max-runtime`). Either
+    /// way the run is bounded, so a session can never continue unbounded.
+    pub max_runtime_override: Option<u64>,
+}
+
+impl RunRequest {
+    /// The maximum harness runtime, in seconds, in effect for this run: the
+    /// per-invocation [`Self::max_runtime_override`] when set, otherwise the
+    /// resolved case's [`TestCaseVersion::max_runtime_seconds`] default. Always
+    /// positive, so the harness session is always bounded.
+    pub fn effective_max_runtime(&self, test_case: &TestCaseVersion) -> u64 {
+        self.max_runtime_override
+            .unwrap_or(test_case.max_runtime_seconds)
+    }
 }
 
 /// Drives a single run through its full lifecycle.
@@ -247,10 +264,14 @@ where
             model_id: request.model_id.clone(),
             prompt: render_prompt(test_case, variant)?,
         };
-        match harness
-            .invoke(&self.runtime, &handle, &invocation, events)
-            .await
-        {
+        // Bound the harness session by the run's maximum runtime so it can never
+        // continue unbounded. The cap comes from the test case manifest, possibly
+        // overridden on the request. On timeout the session future is dropped
+        // (cancelling the in-flight exec) and the same `Err` arm below tears the
+        // container down, just as it does for any other harness failure.
+        let max_runtime = request.effective_max_runtime(test_case);
+        let invoke = harness.invoke(&self.runtime, &handle, &invocation, events);
+        match with_runtime_cap(invoke, max_runtime, slug).await {
             Ok(mut outcome) => {
                 outcome.harness_version = availability.version;
                 Ok((handle, outcome, environment))
@@ -482,6 +503,26 @@ fn write_jsonl<T: serde::Serialize>(path: &std::path::Path, items: &[T]) -> Resu
     }
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+/// Drive a harness session future under a wall-clock cap.
+///
+/// Returns the session's own result if it finishes within `seconds`. Otherwise
+/// the future is dropped — cancelling the in-flight container exec — and an
+/// [`Error::RunTimedOut`] for `slug` is returned so the caller can tear the
+/// container down. This is what keeps a run from continuing unbounded; the cap
+/// is always positive, so a session is always bounded.
+async fn with_runtime_cap<F>(session: F, seconds: u64, slug: HarnessSlug) -> Result<HarnessOutcome>
+where
+    F: Future<Output = Result<HarnessOutcome>>,
+{
+    match tokio::time::timeout(Duration::from_secs(seconds), session).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(Error::RunTimedOut {
+            slug: slug.as_str().to_string(),
+            seconds,
+        }),
+    }
 }
 
 /// Collect a fixed list of string slices into the owned `Vec<String>` the

@@ -119,6 +119,11 @@ pub struct RunArgs {
     #[arg(long, value_name = "MODEL")]
     pub model: String,
 
+    /// Maximum harness runtime in seconds before the run is stopped. Overrides
+    /// the test case's `max_runtime_seconds` default; omit to use that default.
+    #[arg(long, value_name = "SECONDS")]
+    pub max_runtime: Option<u64>,
+
     /// Directory to write the run record and collected artifacts into.
     #[arg(long, value_name = "DIR")]
     pub out_dir: Option<std::path::PathBuf>,
