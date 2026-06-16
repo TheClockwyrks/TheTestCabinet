@@ -75,6 +75,10 @@ fn run_streams_persist_raw_output_and_translation_for_replay() {
 /// during the copy (writing the target's bytes as a plain file) repoints those
 /// imports at the wrong directory, which is what broke `npm run dev`. The copy
 /// must therefore recreate symlinks as symlinks.
+///
+/// Unix-only: it relies on `std::os::unix` to create the link, and the
+/// behaviour it guards (npm `.bin` symlinks) is a Unix concern.
+#[cfg(unix)]
 #[test]
 fn copy_tree_preserves_symlinks() {
     let src = tempfile::tempdir().expect("src temp dir");
