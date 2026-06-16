@@ -1,5 +1,3 @@
-# Carom
-
 ## Overview
 
 **Carom** is a neon, top-down paddle duel for the browser, and one of the
