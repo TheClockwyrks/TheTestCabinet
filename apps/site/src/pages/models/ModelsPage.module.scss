@@ -29,7 +29,16 @@
 
   &:hover {
     text-decoration: none;
-    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+    // Layer the accent tint over the panel fill (rather than replacing it) so the
+    // card keeps its opaque backing on hover, matching the run-log rows. The tint
+    // alone is mostly transparent, so without the panel underneath the grid +
+    // scanlines bleed through and readability tanks over noisier backgrounds.
+    background:
+      linear-gradient(
+        color-mix(in srgb, t.$color-accent 16%, transparent),
+        color-mix(in srgb, t.$color-accent 16%, transparent)
+      ),
+      s.$panel-bg;
     box-shadow:
       0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
       inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
