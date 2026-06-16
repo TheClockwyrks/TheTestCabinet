@@ -1,0 +1,145 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+.identity {
+  margin-bottom: t.$space-lg;
+  font-family: var(--ttc-font);
+}
+
+.crumb {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// Provider mark + model name on the left, the OpenRouter icon link pushed to
+// the right edge.
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
+// The provider mark and the name read as one unit, the mark hugging the name.
+.nameGroup {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The provider's brand mark, masked so it renders in the accent color with a
+// neon glow, matching the model cards and the OpenRouter glyph. The mask image
+// itself is set inline per provider; size/position/repeat live here.
+.logo {
+  display: block;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  background-color: t.$color-accent;
+  mask: center / contain no-repeat;
+  -webkit-mask: center / contain no-repeat;
+  filter: drop-shadow(
+    0 0 0.4rem color-mix(in srgb, t.$color-accent 60%, transparent)
+  );
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-2xl;
+  font-weight: 700;
+  color: t.$color-accent;
+  text-shadow:
+    0 0 0.5rem t.$color-accent,
+    0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
+}
+
+.provider {
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-md;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+}
+
+// OpenRouter icon link: the brand mark masked so it renders in the accent color
+// with a neon glow, matching the rest of the cabinet's glyphs.
+.openrouter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.openrouterIcon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  background-color: t.$color-accent;
+  mask: url("/openrouter.svg") center / contain no-repeat;
+  -webkit-mask: url("/openrouter.svg") center / contain no-repeat;
+  filter: drop-shadow(
+    0 0 0.4rem color-mix(in srgb, t.$color-accent 60%, transparent)
+  );
+  transition: filter 0.15s ease;
+}
+
+.openrouter:hover .openrouterIcon {
+  filter:
+    drop-shadow(0 0 0.5rem t.$color-accent)
+    drop-shadow(0 0 1.2rem color-mix(in srgb, t.$color-accent 60%, transparent));
+}
+
+// The tab navigation strip, sharing the underlined-pill treatment the test case
+// detail tabs use so the two detail pages read as one family.
+.controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The "back to all models" line on the unknown-model state — loose text on the
+// backdrop.
+.line {
+  @include h.halo;
+}

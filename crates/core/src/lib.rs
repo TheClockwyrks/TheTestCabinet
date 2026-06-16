@@ -56,7 +56,7 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
-pub use pricing::OpenRouterPrices;
+pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::render_prompt;
 pub use publish::{
     GitHubPublisher, NoopPublisher, PublishConfig, PublishOutcome, PublishRequest, Publisher,

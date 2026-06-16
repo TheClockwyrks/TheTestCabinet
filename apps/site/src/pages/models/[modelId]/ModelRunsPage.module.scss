@@ -1,0 +1,10 @@
+@use "../../../styles/tokens" as t;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}

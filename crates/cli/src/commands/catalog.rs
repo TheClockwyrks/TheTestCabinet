@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow};
 use serde::Serialize;
 use test_cabinet_core::{
-    BrowserRenderer, FsRepoSeeder, Model, ModelCatalog, OpenRouterPrices, ReferenceRenderer,
-    RepoSeeder, SeedRequest, TestCaseCatalog, TestCaseVersion, TokenPrices,
+    BrowserRenderer, FsRepoSeeder, Model, ModelCatalog, ModelDetails, OpenRouterPrices,
+    ReferenceRenderer, RepoSeeder, SeedRequest, TestCaseCatalog, TestCaseVersion, TokenPrices,
 };
 
 use crate::cli::CatalogArgs;
@@ -135,6 +135,12 @@ struct ModelEntry {
     /// Comparable per-token prices from OpenRouter, or `null` when they could not
     /// be resolved (no OpenRouter slug, or the lookup failed).
     prices: Option<ModelPrices>,
+    /// The model's maximum context window in tokens as OpenRouter reports it, or
+    /// `null` when it could not be resolved.
+    context_length: Option<u64>,
+    /// The model's release date as an RFC 3339 UTC timestamp, derived from
+    /// OpenRouter's `created` timestamp, or `null` when it could not be resolved.
+    released_at: Option<String>,
 }
 
 /// Per-token prices for a model, mirrored from OpenRouter.
@@ -471,7 +477,9 @@ async fn build_models(models_dir: &Path) -> anyhow::Result<Vec<ModelEntry>> {
     for model in &models {
         let description = read_optional_markdown(model.description_path.as_deref())
             .with_context(|| format!("reading description for model {}", model.slug))?;
-        let prices = resolve_prices(&prices_source, model).await;
+        // A single OpenRouter lookup yields prices, context window, and release
+        // date together; an absent slug or failed lookup leaves them all null.
+        let details = resolve_details(&prices_source, model).await;
         entries.push(ModelEntry {
             slug: model.slug.clone(),
             name: model.name.clone(),
@@ -482,21 +490,24 @@ async fn build_models(models_dir: &Path) -> anyhow::Result<Vec<ModelEntry>> {
                 .map(|slug| format!("https://openrouter.ai/{slug}")),
             description,
             model_ids: model.model_ids.clone(),
-            prices,
+            prices: details.as_ref().map(|details| details.prices.into()),
+            context_length: details.as_ref().and_then(|details| details.context_length),
+            released_at: details.and_then(|details| details.released_at),
         });
     }
     Ok(entries)
 }
 
-/// Resolve the comparable per-token prices for a model from OpenRouter, returning
-/// `None` when the model declares no OpenRouter slug or when the lookup fails.
-async fn resolve_prices(source: &OpenRouterPrices, model: &Model) -> Option<ModelPrices> {
+/// Resolve a model's OpenRouter facts — comparable prices, context window, and
+/// release date — returning `None` when the model declares no OpenRouter slug or
+/// when the lookup fails.
+async fn resolve_details(source: &OpenRouterPrices, model: &Model) -> Option<ModelDetails> {
     let slug = model.openrouter_slug.as_ref()?;
-    match source.token_prices(slug).await {
-        Ok(prices) => Some(prices.into()),
+    match source.model_details(slug).await {
+        Ok(details) => Some(details),
         Err(err) => {
             eprintln!(
-                "warning: could not fetch OpenRouter prices for `{slug}` ({err}); \
+                "warning: could not fetch OpenRouter details for `{slug}` ({err}); \
                  recording null prices for model `{}`",
                 model.slug
             );

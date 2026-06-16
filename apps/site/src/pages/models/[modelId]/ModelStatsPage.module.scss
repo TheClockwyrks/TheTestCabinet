@@ -1,0 +1,54 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
+}
+
+// Figures laid out as a responsive grid of labeled cells.
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: t.$space-md;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.statLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.statValue {
+  font-size: t.$font-lg;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// Cancels the value's glow on missing figures. Tile text stays panel-bound, so
+// it deliberately gets no readability halo.
+.muted {
+  color: t.$color-text-muted;
+  text-shadow: none;
+}

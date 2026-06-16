@@ -29,6 +29,10 @@ export interface ModelSummary {
   modelIds: string[];
   /** Resolved OpenRouter per-token prices, or null when unavailable. */
   prices: ModelPrices | null;
+  /** Maximum context window in tokens from OpenRouter, or null when unavailable. */
+  contextLength: number | null;
+  /** Release date as an RFC 3339 UTC timestamp from OpenRouter, or null. */
+  releasedAt: string | null;
 }
 
 export const models: ModelSummary[] = modelsData as ModelSummary[];

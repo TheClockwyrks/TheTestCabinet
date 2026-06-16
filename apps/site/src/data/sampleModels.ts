@@ -15,6 +15,8 @@ export const sampleModels: ModelSummary[] = [
       "# Claude Haiku 4.5\n\n**Claude Haiku 4.5** is Anthropic's fast, economical model in the Claude 4.5 family — built for low latency while remaining a genuinely capable coding model.\n",
     modelIds: ["claude-haiku-4-5"],
     prices: { uncachedInput: 1e-6, cachedInput: 1e-7, output: 5e-6 },
+    contextLength: 200000,
+    releasedAt: "2025-10-15T00:00:00Z",
   },
   {
     slug: "gpt-5.4-mini",
@@ -25,5 +27,7 @@ export const sampleModels: ModelSummary[] = [
       "# GPT-5.4 mini\n\n**GPT-5.4 mini** is OpenAI's small, fast member of the GPT-5.4 family — cheap and quick enough to run at scale while holding up on real coding work.\n",
     modelIds: ["gpt-5.4-mini"],
     prices: { uncachedInput: 7.5e-7, cachedInput: 7.5e-8, output: 4.5e-6 },
+    contextLength: 400000,
+    releasedAt: "2026-02-03T00:00:00Z",
   },
 ];

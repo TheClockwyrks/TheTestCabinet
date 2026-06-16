@@ -40,6 +40,18 @@ export function formatUsd(value: number): string {
   }).format(value);
 }
 
+// A release date for the model pages: an RFC 3339 timestamp rendered as a plain
+// calendar date ("Oct 15, 2025"). The time of day OpenRouter records is noise
+// here, so only the date is shown.
+export function formatReleaseDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(iso));
+}
+
 export function formatRunTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds % 60);

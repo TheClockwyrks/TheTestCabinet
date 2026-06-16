@@ -14,12 +14,15 @@ import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
 
 /**
- * Which columns the log carries. `"global"` shows the test and variant columns
- * for cross-case listings (the home page); `"variant"` drops them for pages
- * already scoped to a single test case and variant, where they would be
- * constant.
+ * Which columns the log carries.
+ *
+ * - `"global"` shows every column for cross-case listings (the home page).
+ * - `"variant"` drops the test and variant columns for pages already scoped to
+ *   a single test case and variant, where they would be constant.
+ * - `"model"` drops the model column for the model detail page, where every row
+ *   is the same model; it keeps the test and variant columns.
  */
-export type RunLogScope = "global" | "variant";
+export type RunLogScope = "global" | "variant" | "model";
 
 interface RunLogProps {
   /** The runs to list, in the order they should appear (the caller sorts). */
@@ -42,7 +45,10 @@ export function RunLog({
   localWriteups,
   scope = "global",
 }: RunLogProps) {
-  const showCase = scope === "global";
+  // The test/variant columns are constant on a variant-scoped log; the model
+  // column is constant on a model-scoped one. Each is dropped where redundant.
+  const showCase = scope !== "variant";
+  const showModel = scope !== "model";
   return (
     <div className={styles.log} data-scope={scope}>
       <div className={`${styles.row} ${styles.head}`}>
@@ -50,7 +56,7 @@ export function RunLog({
         {showCase && <span>TEST</span>}
         <span>HARNESS</span>
         {showCase && <span>VARIANT</span>}
-        <span>MODEL</span>
+        {showModel && <span>MODEL</span>}
         <span className={styles.num}>TOKENS</span>
         <span className={styles.num}>COST</span>
         <span>RATING</span>
@@ -62,6 +68,7 @@ export function RunLog({
           local={localIds.has(run.id)}
           rating={findReview(run.id, localWriteups)?.rating ?? null}
           showCase={showCase}
+          showModel={showModel}
         />
       ))}
     </div>
@@ -73,11 +80,13 @@ function RunRow({
   local,
   rating,
   showCase,
+  showModel,
 }: {
   run: RunRecord;
   local: boolean;
   rating: Rating | null;
   showCase: boolean;
+  showModel: boolean;
 }) {
   const { subject, metrics } = run;
   return (
@@ -95,7 +104,7 @@ function RunRow({
         {!showCase && local && <UnpublishedTag className={styles.tag} />}
       </span>
       {showCase && <span className={styles.variant}>{subject.variant}</span>}
-      <span className={styles.model}>{subject.modelId}</span>
+      {showModel && <span className={styles.model}>{subject.modelId}</span>}
       <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
       <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>
       <span className={styles.rating}>
