@@ -250,8 +250,10 @@ test-cases/**/reference/screenshots/
 /target/
 **/*.rs.bk
 
-# Ignore the output of test runs
-runs/
+# Ignore the output of test runs. Anchored to the repository root: `tcab` writes
+# runs to ./runs (see `--out-dir`), but an unanchored `runs/` also matches source
+# directories such as apps/site/src/pages/runs/, silently excluding real code.
+/runs/
 
 # Scratch output for inspecting seeded run inputs (`tcab seed`). This is local
 # inspection material, not something that should be committed.
