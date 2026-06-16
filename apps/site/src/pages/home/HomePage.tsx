@@ -38,7 +38,7 @@ export function HomePage() {
             <span className={styles.blink}>_</span>
           </p>
           <p className={styles.comment}>
-            // insert coin &middot; newest results first &middot; play the
+            // insert coin &middot; consume tokens &middot; play the
             result
           </p>
         </header>
