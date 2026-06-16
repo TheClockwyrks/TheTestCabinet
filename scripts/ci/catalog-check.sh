@@ -10,6 +10,7 @@
 # reproducible byte-for-byte, whereas test-cases.json is fully determined by the
 # specs.
 set -euo pipefail
+# shellcheck source=scripts/ci/lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 readonly DATASET="apps/site/src/data/test-cases.json"

@@ -4,6 +4,7 @@
 # configs (.markdownlint-cli2.yaml and cspell.json). This is non-critical
 # validation: Azure DevOps runs it, GitHub leaves it to Azure.
 set -euo pipefail
+# shellcheck source=scripts/ci/lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "npm ci"

@@ -8,6 +8,7 @@
 # (`crates/desktop`) is intentionally excluded so CI runners do not need the
 # desktop app's heavy system libraries while that app is deferred for v1.0.
 set -euo pipefail
+# shellcheck source=scripts/ci/lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "cargo fmt --check"

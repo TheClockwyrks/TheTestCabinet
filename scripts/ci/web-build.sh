@@ -7,6 +7,7 @@
 # and JS. This is the critical website validation that both Azure DevOps and
 # GitHub run.
 set -euo pipefail
+# shellcheck source=scripts/ci/lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "npm ci"

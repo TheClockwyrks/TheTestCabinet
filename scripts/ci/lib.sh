@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared helpers for the CI scripts under scripts/ci/.
 #
 # Sourced (not executed) by each script. It resolves the repository root from
@@ -10,7 +11,7 @@
 CI_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$CI_LIB_DIR/../.." && pwd)"
 readonly CI_LIB_DIR REPO_ROOT
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 # Print a labelled step header so the CI logs are easy to scan.
 log() {
