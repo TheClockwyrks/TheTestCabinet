@@ -1,14 +1,7 @@
 @use "../../../styles/tokens" as t;
-@use "../../../styles/halo" as h;
 
 .section {
   margin-bottom: t.$space-xl;
-}
-
-.sectionTitle {
-  font-size: t.$font-lg;
-  margin: 0 0 t.$space-md;
-  @include h.halo;
 }
 
 .empty {
@@ -16,8 +9,10 @@
   margin: 0;
 }
 
-.charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+// Widgets stack one per row so each chart gets the full content width — the room
+// a large model roster needs along the x axis.
+.widgets {
+  display: flex;
+  flex-direction: column;
   gap: t.$space-lg;
 }

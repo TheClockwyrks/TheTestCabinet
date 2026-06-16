@@ -1,0 +1,62 @@
+@use "../styles/tokens" as t;
+
+// Title on the left, the box/bars switch pushed to the right edge; wraps to two
+// rows on narrow widths.
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// A segmented toggle: two pills sharing one outline, the active one filled with
+// a faint accent wash matching the run-row hover.
+.switcher {
+  display: inline-flex;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.switch {
+  font: inherit;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-md;
+  color: t.$color-text-muted;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  & + & {
+    border-left: t.$border-hairline solid t.$color-border;
+  }
+
+  &:hover:not(.switchActive) {
+    color: t.$color-text;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -0.15rem;
+  }
+}
+
+.switchActive {
+  color: t.$color-accent;
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  text-shadow: var(--ttc-glow);
+}

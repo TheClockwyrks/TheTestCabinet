@@ -35,9 +35,25 @@ export function Chart({ spec, title, className }: ChartProps) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const figure = Plot.plot(spec(readChartPalette()));
-    container.append(figure);
-    return () => figure.remove();
+    // Render at the container's width so the figure fills the column (charts
+    // with many categories need the room). Re-render on width changes; ignore
+    // height-only changes to avoid a resize feedback loop.
+    let lastWidth = -1;
+    const render = () => {
+      const width = container.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      const options = spec(readChartPalette());
+      const figure = Plot.plot(width > 0 ? { ...options, width } : options);
+      container.replaceChildren(figure);
+    };
+    render();
+    const observer = new ResizeObserver(render);
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      container.replaceChildren();
+    };
   }, [spec]);
 
   const cls = className ? `${styles.chart} ${className}` : styles.chart;

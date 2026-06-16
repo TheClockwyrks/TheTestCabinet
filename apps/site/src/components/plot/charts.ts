@@ -32,7 +32,17 @@ interface AxisLabels {
    * and don't get clipped by the chart's left margin.
    */
   yTickFormat?: string | ((value: number) => string);
+  /**
+   * Degrees to rotate the x-axis tick labels (e.g. `-40`). Use it to fit many
+   * long category labels (model ids) along the axis without overlap; the chart
+   * widens its bottom margin to make room for the tilted text.
+   */
+  xTickRotate?: number;
 }
+
+// Bottom margin that fits tilted category labels (long model ids) without
+// clipping. Applied only when the x labels are rotated.
+const ROTATED_LABEL_MARGIN = 100;
 
 // A vertical box-and-whisker plot: one box per `group` summarizing the spread of
 // its `value`s, with the raw points overlaid. Use for distributions where a
@@ -45,7 +55,8 @@ export function boxAndWhisker(
 ): PlotOptions {
   return {
     ...basePlotOptions(palette),
-    x: { label: labels.x ?? null, type: "band" },
+    ...(labels.xTickRotate ? { marginBottom: ROTATED_LABEL_MARGIN } : {}),
+    x: { label: labels.x ?? null, type: "band", tickRotate: labels.xTickRotate },
     y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     marks: [
       Plot.boxY(data as BoxPoint[], {
@@ -69,7 +80,8 @@ export function barChart(
 ): PlotOptions {
   return {
     ...basePlotOptions(palette),
-    x: { label: labels.x ?? null, type: "band" },
+    ...(labels.xTickRotate ? { marginBottom: ROTATED_LABEL_MARGIN } : {}),
+    x: { label: labels.x ?? null, type: "band", tickRotate: labels.xTickRotate },
     y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     marks: [
       Plot.barY(data as BarPoint[], {
