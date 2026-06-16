@@ -66,9 +66,9 @@ fn resolves_pong_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Three variants are offered: base (standard only), frenzy, and multi.
+    // Four variants are offered: base (standard only), frenzy, multi, and gyre.
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "frenzy", "multi"]);
+    assert_eq!(variant_slugs, ["base", "frenzy", "multi", "gyre"]);
     // The frenzy variant adds the frenzy mode spec on top of the common specs.
     let frenzy = version.variant("frenzy").expect("frenzy variant");
     assert!(
