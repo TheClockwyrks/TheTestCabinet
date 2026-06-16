@@ -41,19 +41,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      # Reference rendering needs the Chromium build the bundled Playwright driver
-      # expects; without it the references would be absent and the dataset would
-      # spuriously differ from the committed one.
-      - run: npx playwright install --with-deps chromium
-      # Regenerate the datasets in place. Uses the runner's preinstalled stable
-      # toolchain via rust-toolchain.toml.
-      - run: cargo run --locked -p test-cabinet-cli -- catalog
-      - name: Verify test-cases.json is in sync
-        run: |
-          if ! git diff --quiet -- apps/site/src/data/test-cases.json; then
-            echo "::error::apps/site/src/data/test-cases.json is out of sync with test-cases/. Run 'tcab catalog' and commit the result."
-            git diff -- apps/site/src/data/test-cases.json
-            exit 1
-          fi
-          echo "test-cases.json is in sync with the specs."
+      # Regenerate the catalog and fail if the committed dataset drifted. The
+      # script (shared with the Azure DevOps pipeline) installs the Chromium build
+      # the bundled Playwright driver needs and uses the runner's preinstalled
+      # stable toolchain via rust-toolchain.toml.
+      - run: ./scripts/ci/catalog-check.sh

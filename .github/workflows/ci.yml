@@ -1,0 +1,38 @@
+name: CI
+
+# Critical validation mirrored from the Azure DevOps pipeline (the primary CI).
+# Azure runs the full suite, including linting; GitHub runs only the checks that
+# would otherwise let a genuinely broken change through — the CLI build/tests and
+# the website build — so a green GitHub run still means the v1.0 components
+# actually build and pass. Linting and spec checks are left to Azure.
+#
+# Both jobs call the same scripts/ci/ scripts the Azure pipeline uses. Dormant
+# until the repository is mirrored to GitHub (the same condition as the deploy
+# and catalog workflows).
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: CLI (build & test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - run: ./scripts/ci/rust-test.sh
+
+  web:
+    name: Website (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: ./scripts/ci/web-build.sh

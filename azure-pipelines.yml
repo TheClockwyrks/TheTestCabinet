@@ -1,0 +1,100 @@
+# Azure DevOps CI pipeline for The Test Cabinet — the primary CI system.
+#
+# Validates the two components targeted for v1.0: the `tcab` CLI (Rust) and the
+# gallery website (TypeScript). The Tauri desktop app is intentionally not built
+# here yet. Every job delegates to a shared script under scripts/ci/, so the
+# GitHub workflows run exactly the same checks (see scripts/ci/README.md).
+#
+# The YAML's only responsibilities are provisioning toolchains (Rust ships with
+# the Microsoft-hosted Ubuntu image; Node is installed via NodeTool) and caching.
+
+trigger:
+  branches:
+    include:
+      - master
+
+pr:
+  branches:
+    include:
+      - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Stable, colorized logs; disable incremental artifacts that only bloat the
+  # cache on single-shot CI builds.
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  - job: rust
+    displayName: "Rust: lint, build & test (CLI + core)"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: Cache@2
+        displayName: Cache cargo home
+        inputs:
+          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-home | "$(Agent.OS)"
+          path: $(HOME)/.cargo
+      - task: Cache@2
+        displayName: Cache cargo target
+        inputs:
+          key: 'cargo-target | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-target | "$(Agent.OS)"
+          path: target
+      # Installs the channel + components pinned by rust-toolchain.toml on first
+      # cargo use; print what resolved for easier debugging.
+      - script: rustup show
+        displayName: Show Rust toolchain
+      - script: ./scripts/ci/rust-lint.sh
+        displayName: Lint (rustfmt + clippy)
+      - script: ./scripts/ci/rust-test.sh
+        displayName: Build & test
+
+  - job: web
+    displayName: "Website: type-check & build"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: NodeTool@0
+        displayName: Use Node 22
+        inputs:
+          versionSpec: 22.x
+      - task: Cache@2
+        displayName: Cache npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | package-lock.json'
+          restoreKeys: |
+            npm | "$(Agent.OS)"
+          path: $(HOME)/.npm
+      - script: ./scripts/ci/web-build.sh
+        displayName: Build website
+
+  - job: catalog
+    displayName: "Catalog: dataset in sync with specs"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: NodeTool@0
+        displayName: Use Node 22
+        inputs:
+          versionSpec: 22.x
+      - script: ./scripts/ci/catalog-check.sh
+        displayName: Check catalog
+
+  - job: specs
+    displayName: "Specs: markdown & spelling"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: NodeTool@0
+        displayName: Use Node 22
+        inputs:
+          versionSpec: 22.x
+      - script: ./scripts/ci/specs-lint.sh
+        displayName: Lint specs
