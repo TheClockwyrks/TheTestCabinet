@@ -1,0 +1,107 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+// First row: the test case title (with its review/unpublished tags) on the left,
+// the harness slug pushed to the right edge. Second row: the subject line on the
+// left, the harness version pushed right. Both span the full content width.
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  font-size: t.$font-xl;
+  margin: 0;
+  @include h.halo;
+}
+
+.harness {
+  font-size: t.$font-lg;
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+  @include h.halo;
+}
+
+.subjectRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.subject {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.variant {
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+}
+
+.harnessVersion {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  @include h.halo;
+}
+
+// The control strip carries the tab navigation. It mirrors the test case and
+// model detail strips so the three detail pages read as one family.
+.controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}
+
+.notFound {
+  color: t.$color-text-muted;
+  @include h.halo;
+}

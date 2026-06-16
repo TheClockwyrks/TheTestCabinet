@@ -1,0 +1,27 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+}
+
+.label {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.value {
+  font-size: t.$font-lg;
+}
+
+// A muted value, for informational figures (e.g. provider-dependent run time)
+// that sit alongside the key metrics. It stays panel-bound and so carries no
+// halo of its own.
+.secondary {
+  color: t.$color-text-muted;
+}

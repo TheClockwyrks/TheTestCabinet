@@ -1,0 +1,104 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+
+// Shared styles for the run detail tab bodies (Verdict, Play, Metrics,
+// Metadata). The page chrome — title, subject line, tabs — lives in the
+// RunDetailLayout; these styles cover only what each tab renders beneath it.
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  font-size: t.$font-lg;
+  margin: 0 0 t.$space-md;
+  @include h.halo;
+}
+
+// Plain single-line statements that sit straight on the backdrop (the validation
+// summary, the run status). The halo keeps them legible over the grid.
+.line {
+  @include h.halo;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: t.$space-md;
+}
+
+// Muted text in loose contexts (paired with `.line` or sitting inside a haloed
+// parent). Panel-bound muted figures use the MetricTile's own secondary style.
+.secondary {
+  color: t.$color-text-muted;
+}
+
+// The source-repo link, sitting on the backdrop rather than inside a panel.
+.source {
+  @include h.halo;
+}
+
+// Per-check validation results: one row per declared check, named.
+.checks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+  @include h.halo;
+
+  th,
+  td {
+    text-align: left;
+    padding: t.$space-sm t.$space-md;
+    border-bottom: t.$border-hairline solid t.$color-border;
+  }
+
+  thead th {
+    color: t.$color-text-muted;
+    font-weight: 600;
+  }
+}
+
+.checkName {
+  font-weight: 600;
+}
+
+.loaded {
+  color: t.$color-positive;
+}
+
+.notLoaded {
+  color: t.$color-negative;
+}
+
+// The Verdict tab: the rating headline above the writeup body. Mirrors the
+// pre-launch gate's treatment in the Play tab so the verdict reads the same
+// either place it appears.
+.verdict {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin: 0 0 t.$space-md;
+}
+
+.verdictLabel {
+  color: t.$color-text-muted;
+}
+
+.writeupBody {
+  color: t.$color-text;
+
+  // Collapse the outermost Markdown margins into the panel's own padding.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}
