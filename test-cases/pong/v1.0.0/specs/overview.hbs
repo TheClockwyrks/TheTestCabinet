@@ -74,6 +74,11 @@ the **top-left**; `x` increases to the right and `y` increases downward.
   space. The game must remain correct and centered at any window size.
 - Gameplay logic operates in logical-pixel space, independent of the rendered
   scale.
+- **The whole field must be on screen.** At every window size the complete
+  `1280 x 720` area is visible at once — both paddles, the score, every menu
+  item, and all four edges — fitted to the window and centered, with nothing
+  clipped or pushed past the edges. The build must fit correctly on load, before
+  any input, and at any pixel density.
 
 ## Visual design
 
