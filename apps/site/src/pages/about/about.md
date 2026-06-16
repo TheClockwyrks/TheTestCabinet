@@ -1,9 +1,10 @@
 ## About The Test Cabinet
 
-The Test Cabinet is a benchmark for coding agents, built out of the arcade and
-flash games a lot of us grew up on. Each test case asks a model — driven by a
-coding harness — to rebuild a classic from a written specification alone, and
-then we put the result on the wall for anyone to play.
+The Test Cabinet is a benchmark for coding agents, created to test not only the
+models themselves but also the harnesses that drive them. We don't ask models to
+fix a bug, implement a single feature, or address a pull request. We ask models
+to implement entire games from scratch, then put the results up for anyone to
+play.
 
 These tests aren't intended to be a benchmark in the traditional sense. There's
 no automated validation that determines the final score for a model. Instead, we
