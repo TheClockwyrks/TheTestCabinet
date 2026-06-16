@@ -18,6 +18,7 @@ export function ModelsPage() {
       <section className={styles.section}>
         <PromptHeader
           command="--models"
+          blink
           comment={<>// the models we put through the cabinet</>}
         />
 

@@ -37,6 +37,7 @@ export function TestCasesPage() {
     <PageLayout>
       <PromptHeader
         command="--test-cases"
+        blink
         comment={<>// the specs harnesses build against</>}
       />
 
