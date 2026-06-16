@@ -3,9 +3,10 @@
 Shared validation scripts invoked by both CI systems:
 
 - **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and runs every
-  script.
+  script. It covers the Linux and Windows platforms.
 - **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
-  GitHub run still means the targeted v1.0 components actually build and pass.
+  GitHub run still means the targeted v1.0 components actually build and pass. It
+  also owns **macOS** validation, since Azure has no macOS agents.
 
 Keeping the real commands here — rather than inline in each pipeline's YAML —
 means both systems run exactly the same checks. The pipeline YAML is responsible
@@ -21,17 +22,27 @@ and can be run from anywhere, including locally:
 
 ## Scripts
 
-| Script             | Checks                                            | Critical |
-| ------------------ | ------------------------------------------------- | -------- |
-| `rust-lint.sh`     | `cargo fmt --check`, `cargo clippy -D warnings`   | no       |
-| `rust-test.sh`     | `cargo build` + `cargo test` (CLI + core)         | yes      |
-| `web-build.sh`     | `npm ci`, type-check + `vite build` of the site   | yes      |
-| `catalog-check.sh` | regenerate the catalog, fail if the dataset drifts| yes      |
-| `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`        | no       |
+| Script             | Checks                                             | Critical |
+| ------------------ | -------------------------------------------------- | -------- |
+| `rust-lint.sh`     | `cargo fmt --check`, `cargo clippy -D warnings`    | no       |
+| `rust-test.sh`     | `cargo build` + `cargo test` (CLI + core)          | yes      |
+| `binary-smoke.sh`  | release-build, `cargo test --release`, run binary  | yes      |
+| `web-build.sh`     | `npm ci`, type-check + `vite build` of the site    | yes      |
+| `catalog-check.sh` | regenerate the catalog, fail if the dataset drifts | yes      |
+| `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 
 "Critical" scripts are the ones that catch a genuinely broken change (the CLI or
 site failing to build or test), so they run on both CI systems. The lint scripts
 run on Azure DevOps only.
+
+`binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
+ever being published: it builds `tcab` in the shipped release profile, runs the
+suite in that profile, and smoke-runs the produced binary (`--version`,
+`--help`, and that its subcommands are wired up) with no container runtime or API
+keys required. It runs per platform — Azure on Linux and Windows, GitHub on
+macOS — so each target's binary is proven to build and start before a release.
+The forthcoming downloadable-binary pipeline should require this check green (and
+can reuse this script on its produced artifacts).
 
 ## Scope
 

@@ -5,8 +5,15 @@
 # here yet. Every job delegates to a shared script under scripts/ci/, so the
 # GitHub workflows run exactly the same checks (see scripts/ci/README.md).
 #
+# Azure is the primary CI and covers Linux and Windows; macOS validation lives in
+# the GitHub workflow because Azure has no macOS agents. The `binary` job
+# release-builds and smoke-tests the shipped `tcab` binary on Linux and Windows so
+# a release can never publish a binary that is flat-out broken; macOS gets the
+# same check on GitHub.
+#
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
-# the Microsoft-hosted Ubuntu image; Node is installed via UseNode) and caching.
+# the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode)
+# and caching.
 
 trigger:
   branches:
@@ -55,6 +62,48 @@ jobs:
         displayName: Lint (rustfmt + clippy)
       - script: ./scripts/ci/rust-test.sh
         displayName: Build & test
+
+  - job: binary
+    displayName: "Binary: release build & smoke"
+    # The shipped binary is release-mode, so it is validated on every target
+    # platform Azure can run. macOS is validated on GitHub (no macOS agents
+    # here). Each leg release-builds `tcab`, runs the suite in release mode, and
+    # smoke-runs the produced binary; see scripts/ci/binary-smoke.sh.
+    strategy:
+      matrix:
+        linux:
+          imageName: ubuntu-24.04
+        windows:
+          imageName: windows-2022
+    pool:
+      vmImage: $(imageName)
+    variables:
+      # Pin a per-agent CARGO_HOME so the cache path is identical on Linux and
+      # Windows (the predefined $(HOME) is not set on Windows agents).
+      CARGO_HOME: $(Pipeline.Workspace)/.cargo
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: Cache@2
+        displayName: Cache cargo home
+        inputs:
+          key: 'cargo-home-release | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-home-release | "$(Agent.OS)"
+          path: $(CARGO_HOME)
+      - task: Cache@2
+        displayName: Cache cargo target
+        inputs:
+          key: 'cargo-target-release | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-target-release | "$(Agent.OS)"
+          path: target
+      - script: rustup show
+        displayName: Show Rust toolchain
+      # `bash` runs Git Bash on the Windows agent, so the one script drives every
+      # platform identically.
+      - bash: ./scripts/ci/binary-smoke.sh
+        displayName: Release build & smoke
 
   - job: web
     displayName: "Website: type-check & build"

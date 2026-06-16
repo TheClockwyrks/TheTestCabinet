@@ -1,0 +1,5 @@
+# Shell scripts must keep LF endings on every platform: the CI scripts under
+# scripts/ci/ are run through Git Bash on the Windows CI agent, and a CRLF
+# shebang line (which a Windows checkout would otherwise introduce when
+# core.autocrlf is on) makes the interpreter fail to start.
+*.sh text eol=lf
