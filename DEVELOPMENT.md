@@ -138,7 +138,11 @@ A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
    container as a secret and is never written into the seeded repository.
 4. **A headless browser**, for rendering reference screenshots (seeded as visual
    targets) and running validation checks. Install the Playwright browser once
-   from the repository root with `npx playwright install chromium`; the validator
+   from the repository root with
+   `npm exec -w @test-cabinet/browser-driver -- playwright install chromium`
+   (running it through the workspace that pins Playwright installs the Chromium
+   revision the driver expects; a bare `npx playwright` is not hoisted to the root
+   and would fetch a different version); the validator
    locates `packages/browser-driver/driver.mjs` relative to the working directory
    (override with `TCAB_BROWSER_DRIVER`). This is optional — without it, runs
    still complete, but no reference images are seeded and checks record as not

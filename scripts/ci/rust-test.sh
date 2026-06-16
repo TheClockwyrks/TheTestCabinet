@@ -6,7 +6,7 @@
 # libraries while that app is deferred for v1.0 (see rust-lint.sh). This is the
 # critical Rust validation that both Azure DevOps and GitHub run.
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
+# shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "cargo build"

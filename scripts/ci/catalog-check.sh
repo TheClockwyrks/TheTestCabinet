@@ -10,7 +10,7 @@
 # reproducible byte-for-byte, whereas test-cases.json is fully determined by the
 # specs.
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
+# shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 readonly DATASET="apps/site/src/data/test-cases.json"
@@ -21,8 +21,12 @@ npm ci
 # Reference rendering shells out to the bundled Playwright driver, so install the
 # Chromium build it expects (with its OS dependencies). Without it the references
 # would be absent and the dataset would spuriously differ from the committed one.
+# Run Playwright from the browser-driver workspace that pins it: its `playwright`
+# is installed there, not hoisted to the root, so a bare `npx playwright` would
+# miss it and fetch a different version whose Chromium revision the driver can't
+# find.
 log "playwright install chromium"
-npx playwright install --with-deps chromium
+npm exec -w @test-cabinet/browser-driver -- playwright install --with-deps chromium
 
 log "tcab catalog"
 cargo run --locked -p test-cabinet-cli -- catalog

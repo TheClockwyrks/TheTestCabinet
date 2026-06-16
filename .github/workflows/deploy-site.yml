@@ -41,8 +41,11 @@ jobs:
           cache: npm
       - run: npm ci
       # The catalog renders reference screenshots through the bundled Playwright
-      # driver, so install the Chromium build it expects (with its OS deps).
-      - run: npx playwright install --with-deps chromium
+      # driver, so install the Chromium build it expects (with its OS deps). Run
+      # it from the browser-driver workspace that pins Playwright: it is installed
+      # there, not hoisted to the root, so a bare `npx playwright` would miss it
+      # and fetch a different version whose Chromium revision the driver can't find.
+      - run: npm exec -w @test-cabinet/browser-driver -- playwright install --with-deps chromium
       # Regenerate test-cases.json / models.json (and the public/catalog assets)
       # from the catalog sources so the deployed site reflects the current specs.
       # Uses the runner's preinstalled stable toolchain via rust-toolchain.toml.
