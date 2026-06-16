@@ -10,49 +10,50 @@ interface PlayableSectionProps {
 // may be incomplete or visibly broken. It must NEVER auto-load: the visitor is
 // always shown a short caveat first and has to click to launch the embed (see
 // docs/site.md). The reviewer's verdict lives on its own tab, so this gate only
-// carries the generic caveat. Once launched it can expand to a near-fullscreen
-// overlay so the game gets keyboard focus without the page scrolling underneath.
+// carries the generic caveat.
+//
+// Launching opens the build in a near-fullscreen overlay rather than inline.
+// Builds are cross-origin iframes, so once the game takes keyboard focus the
+// parent page can neither intercept its keystrokes nor reliably keep focus
+// pinned inside it. An inline embed on a page taller than the viewport therefore
+// let arrow/space keys scroll the page out from under the game whenever focus
+// slipped back to the document. The overlay locks document scroll for its
+// lifetime, so there is nothing to scroll underneath and the game keeps sole use
+// of the keyboard.
 export function PlayableSection({ run }: PlayableSectionProps) {
   const [launched, setLaunched] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playableBuild = run.links.playableBuild;
 
-  // Hand keyboard input to the game and stop the page scrolling underneath the
-  // overlay. We focus the iframe whenever it mounts or enters fullscreen, and
-  // lock the document scroll for the duration of the near-fullscreen viewport,
-  // restoring it on exit.
+  // Hand keyboard input to the game on launch and lock the document scroll for
+  // the lifetime of the overlay, restoring it on exit.
   useEffect(() => {
     if (!launched) {
       return;
     }
     iframeRef.current?.focus();
-  }, [launched, fullscreen]);
-
-  useEffect(() => {
-    if (!fullscreen) {
-      return;
-    }
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [fullscreen]);
+  }, [launched]);
 
-  // Esc exits the near-fullscreen viewport, matching the visible Back control.
+  // Esc exits the overlay, matching the visible Back control. This is
+  // best-effort: once focus is inside the cross-origin iframe the parent no
+  // longer sees keystrokes, so the Back button is the reliable exit.
   useEffect(() => {
-    if (!fullscreen) {
+    if (!launched) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setFullscreen(false);
+        setLaunched(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fullscreen]);
+  }, [launched]);
 
   if (!playableBuild) {
     return (
@@ -84,45 +85,26 @@ export function PlayableSection({ run }: PlayableSectionProps) {
 
   // The iframe is made focusable (tabIndex) and focused on launch so arrow/space
   // keystrokes reach the game rather than scrolling the page.
-  const embed = (
-    <iframe
-      ref={iframeRef}
-      className={styles.embed}
-      src={playableBuild}
-      title={`Playable build for ${run.id}`}
-      tabIndex={0}
-    />
-  );
-
-  if (fullscreen) {
-    return (
-      <div className={styles.overlay} role="dialog" aria-label="Playable build">
-        <div className={styles.overlayBar}>
-          <button
-            type="button"
-            className={styles.overlayExit}
-            onClick={() => setFullscreen(false)}
-          >
-            Back
-          </button>
-        </div>
-        <div className={styles.overlayStage}>{embed}</div>
-      </div>
-    );
-  }
-
   return (
-    <div className={styles.player}>
-      <div className={styles.playerBar}>
+    <div className={styles.overlay} role="dialog" aria-label="Playable build">
+      <div className={styles.overlayBar}>
         <button
           type="button"
-          className={styles.expand}
-          onClick={() => setFullscreen(true)}
+          className={styles.overlayExit}
+          onClick={() => setLaunched(false)}
         >
-          Expand
+          Back
         </button>
       </div>
-      {embed}
+      <div className={styles.overlayStage}>
+        <iframe
+          ref={iframeRef}
+          className={styles.embed}
+          src={playableBuild}
+          title={`Playable build for ${run.id}`}
+          tabIndex={0}
+        />
+      </div>
     </div>
   );
 }

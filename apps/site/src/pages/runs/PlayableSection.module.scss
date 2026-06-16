@@ -50,35 +50,8 @@
   }
 }
 
-// The inline player after launch: the embed with a small toolbar above it for
-// expanding into the near-fullscreen viewport.
-.player {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
-}
-
-.playerBar {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.expand {
-  padding: t.$space-xs t.$space-md;
-  font-size: t.$font-sm;
-  color: t.$color-accent;
-  background: transparent;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  cursor: pointer;
-
-  &:hover {
-    border-color: t.$color-accent;
-  }
-}
-
-// The near-fullscreen overlay. It covers the viewport but leaves a slim bar at
-// the top for the site-provided Back/Exit control so the visitor is never
+// The near-fullscreen overlay the build launches into. It covers the viewport
+// but leaves a slim bar at the top for the Back control so the visitor is never
 // trapped inside the embed.
 .overlay {
   position: fixed;
