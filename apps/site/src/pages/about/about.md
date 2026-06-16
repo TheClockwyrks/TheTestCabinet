@@ -1,7 +1,5 @@
 # About The Test Cabinet
 
-**Old games. New AI.**
-
 The Test Cabinet is a benchmark for coding agents, built out of the arcade and
 flash games a lot of us grew up on. Each test case asks a model — driven by a
 coding harness — to rebuild a classic from a written specification alone, and
