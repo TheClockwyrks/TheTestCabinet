@@ -10,9 +10,12 @@ Gyre
 # Spec and gameplay vocabulary.
 autoplay
 deadzone
+despawn
+despawns
 letterboxed
 playfield
 travelling
+WASD
 
 # Tooling.
 tcab

@@ -1,0 +1,144 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`;
+# see `docs/test-cases.md`.
+
+# Human-readable display name for this test case.
+name = "Coil"
+
+# Relative difficulty of this case, surfaced on the site. Coil's rules are
+# simple, but a polished, playable build with a correct fixed-timestep loop,
+# grid-locked turning, a decaying combo, multiple modes, and several states is a
+# real front-end task — so it sits at the easy end of the scale, alongside Carom.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "grid", "score-attack"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon grid serpent that grows with every pellet, where eating in quick \
+succession builds a decaying combo multiplier — so the real game is planning \
+the most efficient route, not just staying alive."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Coil is an easy case, so 30 minutes is comfortably more than a
+# healthy build needs while still catching a session that never terminates.
+max_runtime_seconds = 1800
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within
+# the run workspace. The specification is decomposed by concern so that
+# mode-specific material can be seeded per variant (see `[[variant]]` below).
+# These five files are always present, so the mode specs may reference them
+# freely; the common specs, in turn, must never reference a mode spec that a
+# given variant does not seed (only `modes/standard.md` is always present). All
+# common specs are plain Markdown and are seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+dest = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+dest = "specs/playfield.md"
+
+[[spec]]
+source = "specs/mechanics.md"
+dest = "specs/mechanics.md"
+
+[[spec]]
+source = "specs/flow.md"
+dest = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+dest = "specs/modes/standard.md"
+
+# Asset files or directories (relative to this folder) seeded alongside the
+# specs. Coil draws everything in code, so it needs none.
+assets = []
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each variant seeds the common specs above plus its own additive specs. The base
+# variant is listed first, so it is the default. The variants differ in which
+# mode spec (if any) they add on top of the always-present Classic mode, and in
+# their `title` reference — the main menu lists a different set of modes per
+# variant, so each variant declares its own menu mockup for the `title` view:
+#   - base  — Classic mode only.
+#   - wrap  — adds Wrap mode, where the board edges become wrapping tunnels.
+#   - maze  — adds Maze mode, with fixed fatal interior obstacles.
+#   - feast — adds Feast mode, with a periodic, time-limited bonus orb.
+#
+# A variant's `reference` array is additive on top of the common references
+# below, exactly like `spec`. Each variant supplies the `title` view; the
+# `gameplay` and `game-over` views are common to every variant. A view slug must
+# not appear both here and among the common references.
+[[variant]]
+slug = "base"
+name = "Base"
+description = "Classic mode only."
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+[[variant]]
+slug = "wrap"
+name = "Wrap"
+description = "Classic plus Wrap mode, where the board edges wrap into tunnels."
+spec = [{ source = "specs/modes/wrap.md", dest = "specs/modes/wrap.md" }]
+reference = [{ view = "title", path = "reference/menu-wrap.html" }]
+
+[[variant]]
+slug = "maze"
+name = "Maze"
+description = "Classic plus Maze mode, with fixed fatal interior obstacles."
+spec = [{ source = "specs/modes/maze.md", dest = "specs/modes/maze.md" }]
+reference = [{ view = "title", path = "reference/menu-maze.html" }]
+
+[[variant]]
+slug = "feast"
+name = "Feast"
+description = "Classic plus Feast mode, with a periodic, time-limited bonus orb."
+spec = [{ source = "specs/modes/feast.md", dest = "specs/modes/feast.md" }]
+reference = [{ view = "title", path = "reference/menu-feast.html" }]
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup; the harness renders it to a screenshot that is seeded into the run as a
+# visual target for the model. The reference source is rendered, then never
+# seeded directly. References are not validated unless a `[[check]]` below names
+# them. The `title` view is variant-specific (declared per variant above) because
+# the main menu differs by variant; `gameplay` and `game-over` look the same in
+# every variant, so they are common.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation through `actions`, screenshots it, and compares against the
+# rendered screenshot of `reference`. Only the title screen is deterministic
+# enough to validate for Coil: it is whatever the game shows on load, so it needs
+# no actions. Gameplay and game-over depend on live state and input, so they are
+# seeded as references but not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []

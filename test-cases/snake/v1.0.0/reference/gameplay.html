@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  Coil — in-game reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/playfield.md, ../specs/mechanics.md,
+  and ../specs/flow.md (HUD).
+
+  Live positions vary at runtime; this frame is a representative layout used for
+  a soft palette/layout comparison, not a strict pixel match. Cell (col,row) has
+  its top-left at stage pixel (160 + col*32, 120 + row*32).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Coil — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- HUD band (y in [0,120)). -->
+      <div class="hud-label hud-score-label">SCORE</div>
+      <div class="hud-value hud-score-value">0240</div>
+      <div class="hud-label hud-best-label">BEST</div>
+      <div class="hud-value hud-best-value">1180</div>
+      <div class="hud-combo">
+        <div class="multiplier">x3</div>
+        <div class="bar"><span style="width: 62%"></span></div>
+      </div>
+      <div class="mode-tag">CLASSIC</div>
+
+      <!-- Board: 30x18 grid incl. wall border; interior is gridded. -->
+      <div class="board">
+        <div class="field"></div>
+      </div>
+
+      <!-- Pellet at cell (22,5). -->
+      <div class="pellet" style="left: 864px; top: 280px"></div>
+
+      <!-- Snake (head to tail), a coil heading up out of cell (15,6). -->
+      <div class="seg head" style="left: 640px; top: 312px"></div>
+      <div class="seg body" style="left: 640px; top: 344px"></div>
+      <div class="seg body" style="left: 640px; top: 376px"></div>
+      <div class="seg body" style="left: 608px; top: 376px"></div>
+      <div class="seg body" style="left: 576px; top: 376px"></div>
+      <div class="seg body" style="left: 544px; top: 376px"></div>
+      <div class="seg body" style="left: 544px; top: 408px"></div>
+      <div class="seg body" style="left: 544px; top: 440px"></div>
+      <div class="seg body" style="left: 576px; top: 440px"></div>
+      <div class="seg body" style="left: 608px; top: 440px"></div>
+      <div class="seg body" style="left: 640px; top: 440px"></div>
+      <div class="seg body" style="left: 672px; top: 440px"></div>
+      <div class="seg body" style="left: 672px; top: 408px"></div>
+    </div>
+  </body>
+</html>
