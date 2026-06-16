@@ -1,0 +1,92 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.item {
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow: hidden;
+}
+
+.itemOpen {
+  border-color: color-mix(in srgb, t.$color-accent 45%, t.$color-border);
+  box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 6%, transparent);
+}
+
+// Full-width header so the whole row is the hit target. The path takes the
+// available space; the twisty and kind sit at the ends.
+.header {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-md;
+  font: inherit;
+  text-align: left;
+  color: t.$color-text;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 10%, transparent);
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -2px;
+  }
+}
+
+.twisty {
+  flex: none;
+  width: 1rem;
+  color: t.$color-text-muted;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ttc-font);
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow-wrap: anywhere;
+}
+
+.kind {
+  flex: none;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.body {
+  padding: t.$space-md;
+  overflow-x: auto;
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 22%, transparent);
+}
+
+// Image bodies (seeded image assets and reference screenshots) fill the now
+// full-width panel; the Markdown renderer styles its own prose and code blocks.
+.body img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: t.$radius-sm;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}

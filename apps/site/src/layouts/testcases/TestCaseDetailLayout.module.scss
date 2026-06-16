@@ -3,11 +3,33 @@
 @use "../../styles/halo" as h;
 
 .header {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
   margin-bottom: t.$space-lg;
 }
 
+// First row: title on the left, version pushed to the right edge. Second row:
+// the tag badges on the left, the difficulty rating on the right. Both span the
+// full content width so the header uses the available space.
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
 .title {
-  margin: 0 0 t.$space-sm;
+  margin: 0;
   font-size: t.$font-xl;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -15,7 +37,7 @@
   text-shadow: var(--ttc-glow);
 }
 
-.meta {
+.tags {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -44,6 +66,8 @@
 .version {
   font-variant-numeric: tabular-nums;
   color: t.$color-text-muted;
+  // Loose text in the title row, so it needs its own readability halo.
+  @include h.halo;
 }
 
 .tag {

@@ -1,12 +1,7 @@
 @use "../../../styles/tokens" as t;
 
-// Shared styles for the thin detail tab pages (Overview, Specifications) whose
-// bodies are little more than a Panel with a line of lead-in copy.
-
-.lead {
-  margin: 0 0 t.$space-md;
-  color: t.$color-text-muted;
-}
+// Shared styles for the thin detail tab pages (currently the Overview tab) whose
+// body is little more than a Panel with a line of copy.
 
 .empty {
   margin: 0;

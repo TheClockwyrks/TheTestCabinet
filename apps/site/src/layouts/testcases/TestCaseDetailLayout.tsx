@@ -7,9 +7,9 @@ import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
 import styles from "./TestCaseDetailLayout.module.scss";
 
-// The detail page's three tabs. Each is a distinct route; this drives which tab
-// link reads as active.
-export type DetailTab = "overview" | "specs" | "runs";
+// The detail page's tabs. Each is a distinct route; this drives which tab link
+// reads as active.
+export type DetailTab = "overview" | "specs" | "references" | "runs";
 
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -55,23 +55,30 @@ export function TestCaseDetailLayout({
   const tabs: { key: DetailTab; label: string; to: string }[] = [
     { key: "overview", label: "Overview", to: routes.testCaseDetail(testCase.slug) },
     { key: "specs", label: "Specifications", to: routes.testCaseSpecs(testCase.slug) },
+    { key: "references", label: "References", to: routes.testCaseReferences(testCase.slug) },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
   ];
 
   return (
     <PageLayout>
+      {/* Two rows spanning the content width: the title against the version,
+          then the tags against the difficulty rating. */}
       <header className={styles.header}>
-        <h1 className={styles.title}>{testCase.name}</h1>
-        <div className={styles.meta}>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>{testCase.name}</h1>
+          <span className={styles.version}>{testCase.latestVersion}</span>
+        </div>
+        <div className={styles.metaRow}>
+          <div className={styles.tags}>
+            {testCase.tags.map((entry) => (
+              <span key={entry} className={styles.tag}>
+                {entry}
+              </span>
+            ))}
+          </div>
           <span className={styles.difficulty} data-level={testCase.difficulty}>
             {testCase.difficulty}
           </span>
-          <span className={styles.version}>{testCase.latestVersion}</span>
-          {testCase.tags.map((entry) => (
-            <span key={entry} className={styles.tag}>
-              {entry}
-            </span>
-          ))}
         </div>
       </header>
 
