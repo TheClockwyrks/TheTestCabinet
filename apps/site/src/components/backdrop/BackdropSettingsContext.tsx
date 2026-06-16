@@ -12,8 +12,8 @@ import {
 // (mounted outside the router) and the topbar toggle (inside the router) both
 // read this, so it lives in a context that wraps the whole tree in `main.tsx`.
 interface BackdropSettings {
-  // Whether the banded synthwave sun is shown. Off by default to protect
-  // readability; the user opts in via the topbar toggle.
+  // Whether the banded synthwave sun is shown. On by default; the user can
+  // opt out via the topbar toggle.
   sunEnabled: boolean;
   toggleSun: () => void;
 }
@@ -23,12 +23,13 @@ const STORAGE_KEY = "ttc:backdrop:sun";
 const BackdropSettingsContext = createContext<BackdropSettings | null>(null);
 
 // Reads the persisted sun preference, tolerating environments where
-// `localStorage` is unavailable (private mode, SSR-style prerender).
+// `localStorage` is unavailable (private mode, SSR-style prerender). Defaults
+// to on when no preference is stored; only an explicit opt-out disables it.
 function readStoredSun(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "true";
+    return window.localStorage.getItem(STORAGE_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
