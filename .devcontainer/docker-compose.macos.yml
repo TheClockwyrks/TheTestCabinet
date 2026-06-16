@@ -1,0 +1,11 @@
+services:
+  dev:
+    build:
+      args:
+        BUILDARCH: arm64
+    environment:
+      - SSH_AUTH_SOCK=/tmp/devcontainer-ssh-agent.sock
+    volumes:
+      - type: bind
+        source: ${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}
+        target: /tmp/ssh-agent.sock
