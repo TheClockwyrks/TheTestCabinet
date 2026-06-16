@@ -20,7 +20,7 @@ permissions:
 jobs:
   rust:
     name: CLI (build & test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
@@ -28,7 +28,7 @@ jobs:
 
   web:
     name: Website (build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

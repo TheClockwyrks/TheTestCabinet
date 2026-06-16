@@ -19,7 +19,7 @@ pr:
       - master
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: ubuntu-24.04
 
 variables:
   # Stable, colorized logs; disable incremental artifacts that only bloat the
