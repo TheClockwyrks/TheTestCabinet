@@ -77,17 +77,19 @@ function MetricsContent({
     <section className={styles.section}>
       <div className={styles.widgets}>
         <MetricChartWidget
-          title="Total tokens"
+          title="Average tokens"
           runs={variantRuns}
           value={tokensValue}
           unit="tokens"
           yTickFormat={TOKEN_TICKS}
+          barMode="meanByModel"
         />
         <MetricChartWidget
-          title="Cost"
+          title="Average cost"
           runs={variantRuns}
           value={costValue}
           unit="USD"
+          barMode="meanByModel"
         />
       </div>
     </section>

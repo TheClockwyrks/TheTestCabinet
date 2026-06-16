@@ -19,8 +19,15 @@ const KINDS: { key: ChartKind; label: string }[] = [
 // Tilt the model labels so a large roster fits along the axis without overlap.
 const LABEL_ROTATE = -40;
 
+/**
+ * How the bar chart reduces runs to bars:
+ * - `perRun`: one bar per run, labeled by model (the raw magnitudes).
+ * - `meanByModel`: one bar per model, the mean of that model's runs.
+ */
+type BarMode = "perRun" | "meanByModel";
+
 interface MetricChartWidgetProps {
-  /** Heading naming the metric, e.g. "Total tokens". */
+  /** Heading naming the metric, e.g. "Average tokens". */
   title: string;
   /** The runs to chart, already scoped to one case + variant and sorted. */
   runs: RunRecord[];
@@ -30,6 +37,8 @@ interface MetricChartWidgetProps {
   unit: string;
   /** d3 tick format for the y axis; pass a compact format for large counts. */
   yTickFormat?: string;
+  /** How the bar chart aggregates runs. Defaults to one bar per run. */
+  barMode?: BarMode;
 }
 
 // A self-contained metric chart: a titled, full-width panel that charts one
@@ -43,6 +52,7 @@ export function MetricChartWidget({
   value,
   unit,
   yTickFormat,
+  barMode = "perRun",
 }: MetricChartWidgetProps) {
   const [kind, setKind] = useState<ChartKind>("box");
 
@@ -50,7 +60,13 @@ export function MetricChartWidget({
     () => runs.map((run) => ({ group: run.subject.modelId, value: value(run) })),
     [runs, value],
   );
-  const barPoints = useMemo<BarPoint[]>(() => runBars(runs, value), [runs, value]);
+  const barPoints = useMemo<BarPoint[]>(
+    () =>
+      barMode === "meanByModel"
+        ? meanBars(runs, value)
+        : runBars(runs, value),
+    [runs, value, barMode],
+  );
 
   // Memoized so <Chart> only re-plots when the data, unit, or chart kind change.
   const spec = useMemo(() => {
@@ -111,4 +127,30 @@ function runBars(
         : run.subject.modelId,
     value: value(run),
   }));
+}
+
+// Builds one bar per model: the mean of `value` across that model's runs, i.e.
+// the average per run. Models keep their first-seen order so the bars line up
+// with the box-and-whisker groups.
+function meanBars(
+  runs: RunRecord[],
+  value: (run: RunRecord) => number,
+): BarPoint[] {
+  const totals = new Map<string, { sum: number; count: number }>();
+  const order: string[] = [];
+  for (const run of runs) {
+    const model = run.subject.modelId;
+    const entry = totals.get(model);
+    if (entry) {
+      entry.sum += value(run);
+      entry.count += 1;
+    } else {
+      totals.set(model, { sum: value(run), count: 1 });
+      order.push(model);
+    }
+  }
+  return order.map((model) => {
+    const { sum, count } = totals.get(model)!;
+    return { label: model, value: sum / count };
+  });
 }
