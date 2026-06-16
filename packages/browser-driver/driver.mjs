@@ -22,10 +22,52 @@
 // Key names are Playwright key names (e.g. `Enter`, `ArrowUp`, `w`, `Escape`).
 
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { chromium } from "playwright";
+/**
+ * Import Playwright's `chromium`, resolving the package across the layouts our
+ * supported hosts produce:
+ *
+ *   * A walkable `node_modules/playwright` (an `npm install` in the devcontainer
+ *     or CI) — a bare `import "playwright"` already finds this.
+ *   * Playwright provided only on `NODE_PATH`, as Nix's `playwright-driver`
+ *     exposes it. ESM bare-specifier resolution does *not* consult `NODE_PATH`,
+ *     so a static `import "playwright"` throws `ERR_MODULE_NOT_FOUND` on such a
+ *     host even though the package is right there. CommonJS `require.resolve`
+ *     *does* honor `NODE_PATH`, so we resolve through `createRequire` and import
+ *     the resolved absolute path — covering the `node_modules` layout too.
+ *   * Only `playwright-core` present — it carries the browser automation and,
+ *     unlike the full `playwright` package, has no browser-download postinstall,
+ *     so it installs cleanly on hosts where that postinstall cannot.
+ *
+ * The resolved module may be CommonJS; under dynamic `import()` its exports can
+ * surface either as named exports or under `default`, so both are checked.
+ */
+async function importChromium() {
+  const require = createRequire(import.meta.url);
+  const failures = [];
+  for (const pkg of ["playwright", "playwright-core"]) {
+    try {
+      const entry = require.resolve(pkg);
+      const ns = await import(pathToFileURL(entry).href);
+      const chromium = ns.chromium ?? ns.default?.chromium;
+      if (chromium) {
+        return chromium;
+      }
+      failures.push(`${pkg}: resolved (${entry}) but exposes no \`chromium\``);
+    } catch (err) {
+      failures.push(`${pkg}: ${err?.message || err}`);
+    }
+  }
+  throw new Error(
+    `could not load Playwright (install it, or point NODE_PATH at it); tried:\n${failures
+      .map((line) => `  - ${line}`)
+      .join("\n")}`,
+  );
+}
 
 /** Parse `--flag value` pairs into a plain object. */
 function parseArgs(argv) {
@@ -111,7 +153,7 @@ function discoverCachedChromium() {
  * Earlier strategies keep working exactly as before; the cache fallback only
  * runs when they fail, so existing hosts are unaffected.
  */
-async function launchBrowser() {
+async function launchBrowser(chromium) {
   const attempts = [];
   const explicit = process.env.TCAB_CHROMIUM_EXECUTABLE;
   if (explicit) {
@@ -172,10 +214,13 @@ async function main() {
     throw new Error("--actions must be a JSON array");
   }
 
-  // Choose and launch the browser binary, falling back across strategies so the
-  // same driver works on hosts whose Chromium matches Playwright's pinned
-  // revision and in environments where it does not. See `launchBrowser`.
-  const browser = await launchBrowser();
+  // Load Playwright first (see `importChromium` for why a bare import is not
+  // enough on every host), then choose and launch the browser binary, falling
+  // back across strategies so the same driver works on hosts whose Chromium
+  // matches Playwright's pinned revision and in environments where it does not.
+  // See `launchBrowser`.
+  const chromium = await importChromium();
+  const browser = await launchBrowser(chromium);
   try {
     const page = await browser.newPage({
       viewport: { width, height },
