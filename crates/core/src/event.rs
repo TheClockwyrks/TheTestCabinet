@@ -1478,27 +1478,36 @@ fn lookup_u32(value: &Value, keys: &[&str]) -> Option<u32> {
 /// Resolve a Claude path to an absolute, `.`/`..`-collapsed form. An absolute
 /// path is normalized in place; a relative path is joined onto the workspace
 /// when one is known and otherwise surfaced as written.
+///
+/// These are container paths (e.g. `/work/src/foo.ts`) and are always
+/// forward-slash separated, so normalization runs on the string directly
+/// rather than through `std::path` — that keeps the result identical on
+/// Windows hosts, where the native separator would otherwise leak in.
 fn normalize_path(path: &str, workspace: Option<&str>) -> String {
-    use std::path::{Component, Path, PathBuf};
-    let raw = Path::new(path);
-    let candidate = if raw.is_absolute() {
-        raw.to_path_buf()
+    let is_absolute = path.starts_with('/');
+    let candidate = if is_absolute {
+        path.to_string()
     } else if let Some(workspace) = workspace {
-        Path::new(workspace).join(raw)
+        format!("{}/{}", workspace.trim_end_matches('/'), path)
     } else {
         return path.to_string();
     };
-    let mut normalized = PathBuf::new();
-    for component in candidate.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                normalized.pop();
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in candidate.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
             }
-            other => normalized.push(other.as_os_str()),
+            other => segments.push(other),
         }
     }
-    normalized.display().to_string()
+    let joined = segments.join("/");
+    if candidate.starts_with('/') {
+        format!("/{joined}")
+    } else {
+        joined
+    }
 }
 
 /// A tool call recorded from its request event, awaiting the response that
