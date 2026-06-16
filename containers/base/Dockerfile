@@ -6,6 +6,9 @@
 #     seeded on the host and mounted in.
 #   - a Node.js build toolchain, because the test cases ask the model to build
 #     web UIs and those builds (Vite/npm and friends) run inside this container.
+#   - Playwright and a headless Chromium, because the test cases are browser
+#     games and a model is expected to drive its own build in a real browser to
+#     verify it before finishing.
 #   - an unprivileged user whose home is set up so that the per-harness images
 #     can install their CLI without needing root.
 #
@@ -40,7 +43,33 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
 
+# Playwright + headless Chromium for in-container browser verification.
+#
+# The two halves of the install have to happen as two different users:
+#   - The CLI and the Chromium OS dependencies (system libraries Chromium links
+#     against) are installed as root: `playwright install-deps` runs apt-get.
+#   - The Chromium *browser* itself is downloaded below as the `node` user so it
+#     lands in that user's default cache (~/.cache/ms-playwright), the location a
+#     project-local Playwright resolves with no extra configuration.
+#
+# Pinned to the same Playwright version the harness's own browser-driver uses
+# (packages/browser-driver). Keeping them in lockstep means a model that adds
+# `playwright@1.56.1` to its project reuses this cached browser instead of
+# downloading another one at run time.
+#
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops the global install's postinstall from
+# fetching Chromium into root's cache; the only browser download is the explicit
+# one below, as `node`, into the run user's cache.
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g playwright@1.56.1 \
+	&& playwright install-deps chromium \
+	&& rm -rf /var/lib/apt/lists/*
+
 USER node
+
+# Download the Chromium build into the run user's Playwright cache so it is
+# present without network access and is reused by a project-local install of the
+# pinned version.
+RUN playwright install chromium
 
 # The seeded repository is mounted here at run time and is the harness's working
 # directory.

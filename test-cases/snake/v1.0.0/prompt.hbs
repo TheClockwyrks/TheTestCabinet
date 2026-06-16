@@ -40,3 +40,22 @@ those constraints (plain TypeScript with Canvas 2D is entirely sufficient). The
 targets for the title, gameplay, and game-over screens — match their layout,
 palette, and type, but build the screens from the specification rather than
 copying the images.
+
+## Verify before you finish
+
+Your environment has **Playwright** and a headless **Chromium** installed, and
+network access — use them to verify your build, do not just assume it works.
+Before you consider the task complete:
+
+- Produce the **static production build** and serve it locally, then open it in
+  Chromium with Playwright and confirm it **loads with no console errors** and no
+  uncaught exceptions.
+- **Drive the game** — press the keys, start a round, reach the game-over screen —
+  and **screenshot** the title, gameplay, and game-over screens. Compare each
+  against the matching image in `reference/` and against the specs, and fix what
+  does not match before finishing.
+
+Playwright is preinstalled and pinned to `playwright@1.56.1`, with its Chromium
+already cached; adding that exact version to your project reuses the cached
+browser instead of downloading one. You can also drive Chromium with the global
+`playwright` CLI that is already on `PATH`.

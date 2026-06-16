@@ -30,9 +30,16 @@ harness layer, run records, and site use.
 
 `base/` carries everything common to a run and nothing harness specific: `git`
 (each run is a fresh repository), a Node.js build toolchain (test cases produce
-web UIs that are built inside the container), and an unprivileged `node` user
-whose home is configured so each harness image can install its CLI without root.
-Every harness image is `FROM` the base via the `BASE_IMAGE` build argument.
+web UIs that are built inside the container), Playwright with a headless Chromium
+(test cases are browser games, so a model can drive and screenshot its own build
+to verify it), and an unprivileged `node` user whose home is configured so each
+harness image can install its CLI without root. Every harness image is `FROM` the
+base via the `BASE_IMAGE` build argument.
+
+Playwright is pinned to the same version as the harness's own
+`packages/browser-driver`, and the Chromium build is cached in the run user's
+`~/.cache/ms-playwright`, so a model that adds `playwright@1.56.1` to its project
+reuses the cached browser rather than downloading one at run time.
 
 ## Building
 
