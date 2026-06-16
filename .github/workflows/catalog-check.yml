@@ -1,0 +1,59 @@
+name: Check catalog
+
+# Guards against the committed catalog dataset drifting from the specs it is
+# generated from. The deploy regenerates the catalog itself, so the live site is
+# never stale — but the committed test-cases.json is what local dev and code
+# review see, so this check keeps that snapshot honest. It regenerates the
+# dataset with `tcab catalog` and fails if the committed test-cases.json differs.
+#
+# Only test-cases.json is compared: the catalog also rewrites reference PNGs
+# (whose bytes vary by Chromium build) and model prices (which change over time),
+# neither of which is reproducible byte-for-byte, whereas test-cases.json is fully
+# determined by the specs.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "test-cases/**"
+      - "crates/**"
+      - "apps/site/src/data/test-cases.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/catalog-check.yml"
+  pull_request:
+    paths:
+      - "test-cases/**"
+      - "crates/**"
+      - "apps/site/src/data/test-cases.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/catalog-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Reference rendering needs the Chromium build the bundled Playwright driver
+      # expects; without it the references would be absent and the dataset would
+      # spuriously differ from the committed one.
+      - run: npx playwright install --with-deps chromium
+      # Regenerate the datasets in place. Uses the runner's preinstalled stable
+      # toolchain via rust-toolchain.toml.
+      - run: cargo run --locked -p test-cabinet-cli -- catalog
+      - name: Verify test-cases.json is in sync
+        run: |
+          if ! git diff --quiet -- apps/site/src/data/test-cases.json; then
+            echo "::error::apps/site/src/data/test-cases.json is out of sync with test-cases/. Run 'tcab catalog' and commit the result."
+            git diff -- apps/site/src/data/test-cases.json
+            exit 1
+          fi
+          echo "test-cases.json is in sync with the specs."
