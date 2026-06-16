@@ -23,7 +23,7 @@ without the scale of the harder cases.
 | Path                   | Seeded to run? | Purpose                                            |
 | ---------------------- | -------------- | -------------------------------------------------- |
 | `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
-| `prompt.hbs`           | **Yes**        | The Handlebars prompt template, rendered per run.  |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
 | `validation.md`        | No             | What the harness checks automatically.             |
