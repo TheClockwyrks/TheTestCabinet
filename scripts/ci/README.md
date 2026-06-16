@@ -6,7 +6,10 @@ Shared validation scripts invoked by both CI systems:
   script. It covers the Linux and Windows platforms.
 - **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
   GitHub run still means the targeted v1.0 components actually build and pass. It
-  also owns **macOS** validation, since Azure has no macOS agents.
+  also owns **macOS** validation, since Azure has no macOS agents — but because
+  macOS runners are costly and only needed at release time, that check runs
+  **on demand** in the separate `binary-macos.yml` workflow (manual trigger or
+  release-invoked) rather than on every change.
 
 Keeping the real commands here — rather than inline in each pipeline's YAML —
 means both systems run exactly the same checks. The pipeline YAML is responsible
@@ -39,10 +42,11 @@ run on Azure DevOps only.
 ever being published: it builds `tcab` in the shipped release profile, runs the
 suite in that profile, and smoke-runs the produced binary (`--version`,
 `--help`, and that its subcommands are wired up) with no container runtime or API
-keys required. It runs per platform — Azure on Linux and Windows, GitHub on
-macOS — so each target's binary is proven to build and start before a release.
-The forthcoming downloadable-binary pipeline should require this check green (and
-can reuse this script on its produced artifacts).
+keys required. It runs per platform — Azure on Linux and Windows continuously,
+GitHub on macOS on demand (the `binary-macos.yml` workflow, triggered manually or
+by the release pipeline) — so each target's binary is proven to build and start
+before a release. The forthcoming downloadable-binary pipeline should require this
+check green (and can reuse this script on its produced artifacts).
 
 ## Scope
 

@@ -1,0 +1,27 @@
+name: Binary (macOS)
+
+# macOS validation of the shipped `tcab` binary. Azure (the primary CI) covers
+# Linux and Windows on every change, but has no macOS agents — and macOS runners
+# are billed at a premium — so this runs only on demand rather than on every
+# push: trigger it manually before cutting a release, or let the release pipeline
+# invoke it (`workflow_call`). It release-builds tcab, runs the suite in the
+# shipped release profile, and smoke-runs the binary so a macOS release can never
+# ship a build that is flat-out broken. See scripts/ci/binary-smoke.sh.
+#
+# Dormant until the repository is mirrored to GitHub (the same condition as the
+# other workflows).
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-binary:
+    name: CLI binary (macOS release & smoke)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - run: ./scripts/ci/binary-smoke.sh

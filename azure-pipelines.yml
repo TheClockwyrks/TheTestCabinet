@@ -6,10 +6,11 @@
 # GitHub workflows run exactly the same checks (see scripts/ci/README.md).
 #
 # Azure is the primary CI and covers Linux and Windows; macOS validation lives in
-# the GitHub workflow because Azure has no macOS agents. The `binary` job
-# release-builds and smoke-tests the shipped `tcab` binary on Linux and Windows so
-# a release can never publish a binary that is flat-out broken; macOS gets the
-# same check on GitHub.
+# GitHub because Azure has no macOS agents. The `binary` job release-builds and
+# smoke-tests the shipped `tcab` binary on Linux and Windows so a release can
+# never publish a binary that is flat-out broken; macOS gets the same check on
+# GitHub, on demand (its `binary-macos.yml` workflow), since those runners are
+# costly and only needed at release time.
 #
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
 # the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode)

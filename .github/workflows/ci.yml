@@ -10,10 +10,10 @@ name: CI
 # until the repository is mirrored to GitHub (the same condition as the deploy
 # and catalog workflows).
 #
-# GitHub also owns macOS validation: Azure has no macOS agents, so the
-# `macos-binary` job is the only place the shipped binary is release-built and
-# smoke-tested on macOS. Azure covers the Linux and Windows legs of that same
-# check (see scripts/ci/binary-smoke.sh).
+# macOS validation of the shipped binary is NOT here: it is costly and only
+# needed at release time, so it lives in the on-demand `binary-macos.yml`
+# workflow (manual or release-invoked). Azure covers the Linux and Windows legs
+# of that binary check continuously.
 on:
   push:
     branches: [master]
@@ -41,15 +41,3 @@ jobs:
           node-version: 22
           cache: npm
       - run: ./scripts/ci/web-build.sh
-
-  macos-binary:
-    name: CLI binary (macOS release & smoke)
-    # Azure has no macOS agents, so this is the sole macOS validation: it
-    # release-builds tcab, runs the suite, and smoke-runs the binary so a release
-    # can never ship a broken macOS build. Azure runs the same check on Linux and
-    # Windows.
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
-      - run: ./scripts/ci/binary-smoke.sh
