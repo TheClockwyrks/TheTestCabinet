@@ -180,11 +180,11 @@
 // Each line is a fixed column grid so values stay aligned like printed output.
 .row {
   display: grid;
-  grid-template-columns: 1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 5rem 3rem 6rem;
+  grid-template-columns: 1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem;
   align-items: center;
   gap: t.$space-md;
   padding: t.$space-sm t.$space-md;
-  min-width: 56rem;
+  min-width: 46rem;
   color: t.$color-text;
   white-space: nowrap;
 }
@@ -241,16 +241,6 @@ a.row {
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.ok {
-  color: t.$color-positive;
-  text-shadow: 0 0 0.5rem color-mix(in srgb, t.$color-positive 70%, transparent);
-}
-
-.bad {
-  color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
 }
 
 .tag {

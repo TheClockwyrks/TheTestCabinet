@@ -1,18 +1,20 @@
 @use "../styles/tokens" as t;
 
-// Neutral-but-noticeable chip. Uses the accent outline so it reads on every
-// variant without competing with the run's own styling.
+// Compact warning marker for runs previewed from local disk that have not been
+// published yet. Replaces the old full-width "Unpublished" badge so it does not
+// disturb column alignment in dense run tables; the label lives in the hover
+// tooltip instead.
 .tag {
   display: inline-flex;
   align-items: center;
-  padding: 0 t.$space-sm;
-  border: t.$border-hairline solid t.$color-accent;
-  border-radius: t.$radius-sm;
-  font-size: t.$font-sm;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: t.$color-accent;
-  background: color-mix(in srgb, t.$color-accent 12%, transparent);
-  white-space: nowrap;
+  cursor: help;
+}
+
+.icon {
+  width: 1.2em;
+  height: 1.2em;
+  filter: drop-shadow(
+    0 0 0.25rem color-mix(in srgb, t.$color-accent 60%, transparent)
+  );
 }

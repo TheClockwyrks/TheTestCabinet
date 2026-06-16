@@ -1,4 +1,5 @@
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "../../components/RatingBadge";
@@ -62,8 +63,6 @@ export function HomePage() {
                   <span>MODEL</span>
                   <span className={styles.num}>TOKENS</span>
                   <span className={styles.num}>COST</span>
-                  <span className={styles.num}>TIME</span>
-                  <span className={styles.num}>OK</span>
                   <span>RATING</span>
                 </div>
                 {rest.map((run) => (
@@ -105,7 +104,7 @@ function FeaturedRun({
   local: boolean;
   rating: Rating | null;
 }) {
-  const { subject, metrics, validation } = run;
+  const { subject, metrics } = run;
   const model = findModelByModelId(subject.modelId);
   return (
     <article className={styles.feature}>
@@ -116,7 +115,6 @@ function FeaturedRun({
         <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
           {formatSlug(subject.testCaseSlug)}
         </Link>
-        {rating && <RatingBadge rating={rating} className={styles.tag} />}
         {local && <UnpublishedTag className={styles.tag} />}
       </h2>
       <p className={styles.featureSubject}>
@@ -138,9 +136,14 @@ function FeaturedRun({
         <Stat label="Cost" value={formatUsd(metrics.cost.comparable)} />
         <Stat label="Time" value={formatRunTime(metrics.runTimeSeconds)} />
         <Stat
-          label="Loaded"
-          value={validation.loaded ? "[Y]" : "[N]"}
-          tone={validation.loaded ? "ok" : "bad"}
+          label="Rating"
+          value={
+            rating ? (
+              <RatingBadge rating={rating} />
+            ) : (
+              <span className={styles.noRating}>—</span>
+            )
+          }
         />
       </dl>
 
@@ -154,22 +157,14 @@ function FeaturedRun({
 function Stat({
   label,
   value,
-  tone,
 }: {
   label: string;
-  value: string;
-  tone?: "ok" | "bad";
+  value: ReactNode;
 }) {
   return (
     <div className={styles.stat}>
       <dt className={styles.statLabel}>{label}</dt>
-      <dd
-        className={`${styles.statValue}${
-          tone ? ` ${styles[tone]}` : ""
-        }`}
-      >
-        {value}
-      </dd>
+      <dd className={styles.statValue}>{value}</dd>
     </div>
   );
 }
@@ -183,7 +178,7 @@ function RunRow({
   local: boolean;
   rating: Rating | null;
 }) {
-  const { subject, metrics, validation } = run;
+  const { subject, metrics } = run;
   return (
     <Link to={routes.runDetail(run.id)} className={styles.row}>
       <span className={styles.rowCaret}>&rsaquo;</span>
@@ -196,12 +191,6 @@ function RunRow({
       <span className={styles.model}>{subject.modelId}</span>
       <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
       <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>
-      <span className={styles.num}>{formatRunTime(metrics.runTimeSeconds)}</span>
-      <span
-        className={`${styles.num} ${validation.loaded ? styles.ok : styles.bad}`}
-      >
-        {validation.loaded ? "[Y]" : "[N]"}
-      </span>
       <span className={styles.rating}>
         {rating ? (
           <RatingBadge rating={rating} />
