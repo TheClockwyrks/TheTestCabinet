@@ -1,0 +1,29 @@
+name: Release (promote)
+
+# Phase two of a release: promote a tested prerelease (built and published by the
+# "Release" workflow) into the latest full release. This does NOT rebuild — it
+# flips the prerelease flag on the existing release, so the exact binaries that
+# were downloaded and tested are the ones that go out.
+#
+# Dormant until the repository is mirrored to GitHub.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the prerelease to promote (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Promote to full release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Promote prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease=false --latest

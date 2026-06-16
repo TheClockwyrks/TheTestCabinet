@@ -35,25 +35,9 @@ if [[ ! -x "$bin" ]]; then
 	exit 1
 fi
 
-# A binary that cannot even print its version is broken at the most basic level
-# (a missing dynamic dependency or loader mismatch surfaces right here).
-log "smoke: $bin --version"
-version="$("$bin" --version)"
-if [[ -z "$version" ]]; then
-	echo "tcab --version produced no output" >&2
-	exit 1
-fi
-echo "$version"
+# Run the shared smoke check — the same one the release pipeline runs on each
+# shipped artifact — so CI and release validate the binary identically.
+log "smoke: $bin"
+./scripts/ci/smoke-binary.sh "$bin"
 
-# The binary is only sane if its subcommands are wired up. Check a few of the
-# less generic ones so a parser that silently lost its commands is caught.
-log "smoke: $bin --help"
-help="$("$bin" --help)"
-for subcommand in run validate harnesses publish catalog; do
-	if ! grep -q -- "$subcommand" <<<"$help"; then
-		echo "tcab --help is missing the '$subcommand' subcommand" >&2
-		exit 1
-	fi
-done
-
-log "binary smoke checks passed ($version)"
+log "binary smoke checks passed"

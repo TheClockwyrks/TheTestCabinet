@@ -93,6 +93,28 @@ Only the `tcab` CLI is built this way; the Tauri desktop shell is not portable t
 musl. A convenient workflow is to build the static binary in a mainstream-Linux
 environment (for example a container) and copy the single binary to the host.
 
+#### Releasing the `tcab` binary
+
+Public releases are cut on **GitHub** (the Azure DevOps repository is private to
+the org), driven by two manual workflows. The process is deliberately two-phase
+so binaries are tested before they reach users:
+
+1. Run the **Release** workflow (`release.yml`, `workflow_dispatch`) with the
+   version tag (for example `v0.1.0`). It builds `tcab` for Linux (static musl),
+   Windows, and macOS; smoke-tests each binary on its own platform with
+   `scripts/ci/smoke-binary.sh`; and publishes the archives — with a
+   `SHA256SUMS` — to a GitHub **prerelease** at that tag. Re-running for the same
+   tag refreshes its assets.
+2. Download the prerelease binaries and exercise them.
+3. Once satisfied, run the **Release (promote)** workflow (`release-promote.yml`)
+   with the same tag to flip the prerelease into the latest full release. It does
+   **not** rebuild, so the exact binaries you tested are the ones published.
+
+The per-platform smoke check is the same `scripts/ci/smoke-binary.sh` the CI
+binary job runs, so binaries are validated both continuously (Azure, on Linux and
+Windows) and again on the shipped artifacts (the Release workflow, on every
+platform).
+
 ### TypeScript
 
 Install all workspace dependencies from the repository root:

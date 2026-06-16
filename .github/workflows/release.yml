@@ -1,0 +1,129 @@
+name: Release
+
+# On-demand release pipeline for the `tcab` CLI. Public releases are cut on
+# GitHub (the Azure DevOps repository is private to the org), so this is where
+# downloadable binaries are built and published.
+#
+# It is deliberately manual and two-phase, matching how releases are cut: run
+# this workflow to build, smoke-test, and publish the binaries as a PRERELEASE;
+# download and exercise them; then finalize with the "Release (promote)" workflow
+# once they are trusted. Promotion does not rebuild, so the exact binaries that
+# were tested are the ones published.
+#
+# Even though Azure already smoke-tests the Linux and Windows binaries
+# continuously, this re-runs the same check (scripts/ci/smoke-binary.sh) on every
+# platform's actual shipped artifact: a green Azure run must never be the only
+# thing standing between a broken binary and users.
+#
+# Dormant until the repository is mirrored to GitHub.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version / tag (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & smoke (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Build every platform even if one fails, so a single platform's break does
+      # not hide the state of the others.
+      fail-fast: false
+      matrix:
+        include:
+          # Linux ships the static musl build (the `cargo build-portable` target):
+          # no dynamic loader, so it runs on any distro including NixOS.
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            bin: tcab
+          - name: windows-x86_64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            bin: tcab.exe
+          - name: macos-aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+            bin: tcab
+    steps:
+      - uses: actions/checkout@v4
+      # The musl target needs a musl C toolchain because the `ring` TLS backend
+      # compiles a little C.
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build release binary
+        run: cargo build --release --locked -p test-cabinet-cli --target ${{ matrix.target }}
+      # Re-run the shared smoke check on the exact artifact about to be shipped.
+      - name: Smoke-test binary
+        shell: bash
+        run: ./scripts/ci/smoke-binary.sh "target/${{ matrix.target }}/release/${{ matrix.bin }}"
+      - name: Package (tar.gz)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          tar -czf "dist/tcab-${VERSION}-${{ matrix.name }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
+      - name: Package (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.bin }}" `
+            -DestinationPath "dist/tcab-$env:VERSION-${{ matrix.name }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish prerelease
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum tcab-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        # Idempotent: re-running for the same candidate refreshes its assets rather
+        # than failing because the prerelease already exists.
+        run: |
+          notes="Candidate build of ${VERSION}. Download and test these binaries, then finalize with the \"Release (promote)\" workflow. Each binary was smoke-tested on its own platform during build."
+          if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
+          else
+            gh release create "$VERSION" \
+              --repo "$REPO" \
+              --target "$SHA" \
+              --title "$VERSION" \
+              --prerelease \
+              --notes "$notes" \
+              dist/*
+          fi
