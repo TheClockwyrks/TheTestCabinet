@@ -58,4 +58,6 @@ Before you consider the task complete:
 Playwright is preinstalled and pinned to `playwright@1.56.1`, with its Chromium
 already cached; adding that exact version to your project reuses the cached
 browser instead of downloading one. You can also drive Chromium with the global
-`playwright` CLI that is already on `PATH`.
+`playwright` CLI that is already on `PATH`. Launch Chromium with the
+`--no-sandbox` argument — this container has no Chromium sandbox, so a default
+launch will fail.

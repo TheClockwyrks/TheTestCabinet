@@ -20,11 +20,18 @@ FROM docker.io/library/node:22-bookworm-slim
 #   - git: each run is its own fresh repository.
 #   - curl, ca-certificates, unzip: used by the curl-based harness installers.
 #   - build-essential, python3: let npm build native addons during UI installs.
+#   - fonts-dejavu-core: real font files so Chromium (and Canvas text) actually
+#     render glyphs — a slim base ships none, so without this text is invisible.
+#     DejaVu Sans Mono specifically is the first family in the test cases'
+#     required monospace stack, so the run renders the same font the reference
+#     screenshots are rendered with. Playwright's `install-deps` adds the broader
+#     Liberation/Noto/CJK/emoji set below, but not DejaVu.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		build-essential \
 		ca-certificates \
 		curl \
+		fonts-dejavu-core \
 		git \
 		python3 \
 		unzip \
