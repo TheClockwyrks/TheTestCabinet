@@ -34,7 +34,9 @@ center `(640, 360)`, so neither side is favored:
 - **Obstacle B:** `x` in `[780, 800]`, `y` in `[430, 570]` (center `790, 500`).
 
 The ball reflects off obstacle faces like a wall (see Collision in
-`specs/physics.md`). Obstacles do not move in this version.
+`specs/physics.md`). The obstacles are fixed in the standard modes; a mode spec
+under `specs/modes/` may make them move or rotate, in which case that mode spec
+defines their motion and the collision against them.
 
 ## Ball
 

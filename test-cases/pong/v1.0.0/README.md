@@ -33,9 +33,10 @@ The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `physics.md`, `flow.md`, and the mode specs under `specs/modes/`.
 The common specs (overview, playfield, physics, flow, and `modes/standard.md`)
 are seeded for every variant; each variant adds at most one extra mode spec. The
-case offers three variants — `base` (standard modes only), `frenzy` (adds the
-escalating Frenzy mode), and `multi` (adds a three-ball mode with ball-to-ball
-collisions).
+case offers four variants — `base` (standard modes only), `frenzy` (adds the
+escalating Frenzy mode), `multi` (adds a three-ball mode with ball-to-ball
+collisions), and `gyre` (adds a mode whose obstacles oscillate and rotate, so the
+ball bounces off tilted, oriented faces).
 
 This version has **no assets**: Pong is simple enough to leave all visuals to the
 model, guided by the palette and measurements in the specs and by the seeded

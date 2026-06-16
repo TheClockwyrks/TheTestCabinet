@@ -20,14 +20,18 @@ Each step, for the ball:
 
 Resolve the ball against the top/bottom walls, the two paddles, and the two
 obstacles. Treat the ball as a circle and each paddle/obstacle as an
-axis-aligned rectangle.
+axis-aligned rectangle. (A mode spec under `specs/modes/` may rotate the
+obstacles; when it does, treat those obstacles as oriented rectangles and resolve
+them as that mode spec describes, replacing the axis-aligned obstacle rule below.)
 
 - **Top / bottom wall:** reflect the vertical velocity (`vy -> -vy`) and push
   the ball back inside the field. Speed is unchanged.
 - **Obstacle:** reflect the velocity component normal to the face that was hit
   (a side hit flips `vx`; a top/bottom hit flips `vy`), and push the ball out of
   the obstacle. Speed is unchanged; **spin is preserved** and keeps curving the
-  ball after the bounce.
+  ball after the bounce. (If a mode rotates the obstacles, reflect about the face
+  normal in the obstacle's current orientation instead, as that mode spec
+  defines; speed and spin are still preserved.)
 - **Paddle:** see the next section. A paddle hit is the only collision that
   changes speed and that imparts spin.
 

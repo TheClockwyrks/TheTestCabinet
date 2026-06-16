@@ -78,6 +78,8 @@ assets = []
 #   - base   — standard modes only (Solo and Versus).
 #   - frenzy — adds the escalating, uncapped-speed Frenzy mode.
 #   - multi  — adds a three-ball mode with ball-to-ball collisions.
+#   - gyre   — adds a mode whose obstacles sway and spin, so the ball bounces off
+#              tilted, oriented faces instead of axis-aligned ones.
 #
 # A variant's `reference` array is additive on top of the common references
 # below, exactly like `spec`. Each variant supplies the `title` view; the
@@ -102,6 +104,13 @@ name = "Multi-ball"
 description = "Standard plus a three-ball mode with ball-to-ball collisions."
 spec = [{ source = "specs/modes/multi.md", dest = "specs/modes/multi.md" }]
 reference = [{ view = "title", path = "reference/menu-multi.html" }]
+
+[[variant]]
+slug = "gyre"
+name = "Gyre"
+description = "Standard plus a mode whose obstacles oscillate and rotate, forcing collision against tilted, oriented faces."
+spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
+reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup; the harness renders it to a screenshot that is seeded into the run as a

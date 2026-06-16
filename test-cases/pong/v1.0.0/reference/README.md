@@ -25,15 +25,17 @@ The `title` view is **variant-specific**: the main menu lists a different set of
 modes per variant, so each variant declares its own menu mockup (see the
 `[[variant]]` `reference` entries in `../test-case.toml`).
 
-| View slug   | File(s)                                          | Description                                              |
-| ----------- | ------------------------------------------------ | ------------------------------------------------------- |
-| `title`     | `menu-base.html`, `menu-frenzy.html`, `menu-multi.html` | Title screen and main menu, one mockup per variant. |
-| `gameplay`  | `gameplay.html`                                  | Representative in-match frame (common).                 |
-| `game-over` | `game-over.html`                                 | Match-over result panel (common).                       |
+| View slug   | File(s)                                                                   | Description                                         |
+| ----------- | ------------------------------------------------------------------------- | --------------------------------------------------- |
+| `title`     | `menu-base.html`, `menu-frenzy.html`, `menu-multi.html`, `menu-gyre.html` | Title screen and main menu, one mockup per variant. |
+| `gameplay`  | `gameplay.html`                                                           | Representative in-match frame (common).             |
+| `game-over` | `game-over.html`                                                          | Match-over result panel (common).                   |
 
-The three `title` mockups differ only in their menu list: `menu-base.html` shows
-`SOLO` / `VERSUS` / `HOW TO PLAY`; `menu-frenzy.html` inserts `FRENZY`; and
-`menu-multi.html` inserts `MULTI` — matching each variant's seeded mode spec.
+The `title` mockups differ only in their menu list: `menu-base.html` shows
+`SOLO` / `VERSUS` / `HOW TO PLAY`; `menu-frenzy.html` inserts `FRENZY`;
+`menu-multi.html` inserts `MULTI`; and `menu-gyre.html` inserts `GYRE` — matching
+each variant's seeded mode spec. (The `gyre` mockup additionally tilts its dimmed
+obstacles to hint at the mode's moving, rotating obstacles.)
 
 `theme.css` holds the shared palette, type, and field furniture referenced by
 every view and by the specification (the seeded specs under `../specs/`).

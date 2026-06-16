@@ -94,5 +94,7 @@ tests:
 
 - Network or online multiplayer.
 - Touch or gamepad input (keyboard only for this version).
-- Moving or destructible obstacles (the layout is fixed in this version).
+- Destructible obstacles. (The obstacles are fixed in the standard modes; a mode
+  spec under `specs/modes/` may move or rotate them, but they are never
+  destroyed.)
 - Persistence of scores or settings between sessions.
