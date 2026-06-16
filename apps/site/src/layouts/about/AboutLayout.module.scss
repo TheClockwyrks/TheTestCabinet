@@ -3,8 +3,7 @@
 
 // The About sections share the tab-bar look from the test-case detail pages: a
 // row of underlined pills riding a hairline baseline, the active one glowing in
-// the accent. These tabs switch in-page state rather than routes, so they're
-// <button>s, but the visual treatment matches.
+// the accent.
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -17,24 +16,17 @@
 // carries a solid underline that meets the strip's baseline border.
 .tab {
   padding: t.$space-sm t.$space-md;
-  font: inherit;
   font-size: t.$font-md;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: t.$color-text-muted;
-  background: none;
-  border: none;
   border-bottom: 0.2rem solid transparent;
   margin-bottom: -1px;
-  cursor: pointer;
   @include h.halo;
 
   &:hover {
+    text-decoration: none;
     color: t.$color-text;
-  }
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
   }
 }
 

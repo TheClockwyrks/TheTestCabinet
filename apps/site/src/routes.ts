@@ -19,6 +19,8 @@ export const routes = {
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
   about: (): string => "/about",
+  aboutTesting: (): string => "/about/testing",
+  aboutMetrics: (): string => "/about/metrics",
   runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
 } as const;
 
@@ -34,5 +36,7 @@ export const routePatterns = {
   models: "/models",
   modelDetail: "/models/:modelId",
   about: "/about",
+  aboutTesting: "/about/testing",
+  aboutMetrics: "/about/metrics",
   runDetail: "/runs/:runId",
 } as const;
