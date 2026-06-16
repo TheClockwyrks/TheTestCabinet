@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .header {
   margin-bottom: t.$space-lg;
@@ -19,6 +20,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: t.$space-sm;
+  @include h.halo;
 }
 
 .difficulty {
@@ -80,6 +82,7 @@
   color: t.$color-text-muted;
   border-bottom: 0.2rem solid transparent;
   margin-bottom: -1px;
+  @include h.halo;
 
   &:hover {
     text-decoration: none;
@@ -105,6 +108,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 .variantSelect {
@@ -124,4 +128,5 @@
 
 .notFound {
   color: t.$color-text-muted;
+  @include h.halo;
 }

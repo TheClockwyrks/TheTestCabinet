@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .terminal {
   font-family: var(--ttc-font);
@@ -270,4 +271,5 @@ a.row {
 
 .empty {
   color: t.$color-text-muted;
+  @include h.halo;
 }

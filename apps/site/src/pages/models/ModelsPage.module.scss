@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .section {
   font-family: var(--ttc-font);
@@ -78,4 +79,5 @@
 
 .empty {
   color: t.$color-text-muted;
+  @include h.halo;
 }

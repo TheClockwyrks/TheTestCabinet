@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .identity {
   margin-bottom: t.$space-xl;
@@ -10,6 +11,7 @@
   margin: 0 0 t.$space-md;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 .title {
@@ -35,6 +37,7 @@
   display: inline-block;
   margin-top: t.$space-md;
   font-size: t.$font-sm;
+  @include h.halo;
 }
 
 .section {
@@ -47,6 +50,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text;
+  @include h.halo;
 }
 
 // Cost figures laid out as a responsive grid of labeled cells.
@@ -80,6 +84,8 @@
   text-shadow: var(--ttc-glow);
 }
 
+// Cancels the metric value's glow on secondary figures inside the metric tiles.
+// Tile text stays panel-bound, so it deliberately gets no readability halo.
 .secondary {
   color: t.$color-text-muted;
   text-shadow: none;
@@ -172,4 +178,11 @@ a.row {
 
 .empty {
   color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The "back to all models" line on the unknown-model state — loose text on the
+// backdrop.
+.line {
+  @include h.halo;
 }

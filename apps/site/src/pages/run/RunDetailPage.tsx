@@ -71,7 +71,7 @@ export function RunDetailPage() {
       {/* Validation signals: did it boot, and how did each declared check fare. */}
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Validation</h3>
-        <p>
+        <p className={styles.line}>
           Loaded:{" "}
           <span className={validation.loaded ? styles.loaded : styles.notLoaded}>
             {validation.loaded ? "Yes" : "No"}
@@ -110,7 +110,9 @@ export function RunDetailPage() {
             </tbody>
           </table>
         ) : (
-          <p className={styles.secondary}>This test case declares no checks.</p>
+          <p className={`${styles.secondary} ${styles.line}`}>
+            This test case declares no checks.
+          </p>
         )}
       </section>
 
@@ -140,11 +142,16 @@ export function RunDetailPage() {
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Source</h3>
         {links.sourceRepo ? (
-          <a href={links.sourceRepo} target="_blank" rel="noreferrer">
+          <a
+            className={styles.source}
+            href={links.sourceRepo}
+            target="_blank"
+            rel="noreferrer"
+          >
             {links.sourceRepo}
           </a>
         ) : (
-          <span className={styles.secondary}>
+          <span className={`${styles.secondary} ${styles.line}`}>
             No source repository was published.
           </span>
         )}
@@ -152,7 +159,7 @@ export function RunDetailPage() {
 
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Status</h3>
-        <p>
+        <p className={styles.line}>
           {status.state}
           {status.detail ? ` — ${status.detail}` : ""}
         </p>

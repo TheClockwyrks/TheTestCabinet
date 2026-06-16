@@ -49,7 +49,7 @@ export function ModelDetailPage() {
     return (
       <PageLayout>
         <p className={styles.empty}>Unknown model: {modelId}</p>
-        <p>
+        <p className={styles.line}>
           <Link to={routes.models()}>&larr; All models</Link>
         </p>
       </PageLayout>

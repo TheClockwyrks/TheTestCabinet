@@ -1,5 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
 
 .section {
   margin-bottom: t.$space-xl;
@@ -8,6 +9,7 @@
 .sectionTitle {
   font-size: t.$font-lg;
   margin: 0 0 t.$space-md;
+  @include h.halo;
 }
 
 .empty {

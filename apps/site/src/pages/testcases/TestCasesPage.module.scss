@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .header {
   margin-bottom: t.$space-lg;
@@ -8,12 +9,14 @@
 .title {
   font-size: t.$font-xl;
   margin: 0 0 t.$space-xs;
+  @include h.halo;
 }
 
 .lede {
   margin: 0;
   max-width: 44rem;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 .controls {
@@ -193,4 +196,5 @@
 
 .empty {
   color: t.$color-text-muted;
+  @include h.halo;
 }

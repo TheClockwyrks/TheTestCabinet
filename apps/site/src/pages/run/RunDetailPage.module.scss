@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
 
 .title {
   display: flex;
@@ -8,11 +9,19 @@
   gap: t.$space-md;
   font-size: t.$font-xl;
   margin: 0 0 t.$space-xs;
+  @include h.halo;
 }
 
 .subject {
   color: t.$color-text-muted;
   margin: 0 0 t.$space-xl;
+  @include h.halo;
+}
+
+// Plain single-line statements that sit straight on the backdrop (the validation
+// summary, the run status). The halo keeps them legible over the grid.
+.line {
+  @include h.halo;
 }
 
 .variant {
@@ -27,6 +36,7 @@
 .sectionTitle {
   font-size: t.$font-lg;
   margin: 0 0 t.$space-md;
+  @include h.halo;
 }
 
 .metricsGrid {
@@ -53,8 +63,16 @@
   font-size: t.$font-lg;
 }
 
+// Muted text in both loose contexts and the metric tiles. It carries no halo of
+// its own: loose uses pair it with `.line` (or sit inside a haloed parent), while
+// tile uses must stay panel-bound and unhaloed.
 .secondary {
   color: t.$color-text-muted;
+}
+
+// The source-repo link, sitting on the backdrop rather than inside a panel.
+.source {
+  @include h.halo;
 }
 
 // Per-check validation results: one row per declared check, named.
@@ -62,6 +80,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: t.$font-sm;
+  @include h.halo;
 
   th,
   td {
@@ -82,6 +101,7 @@
 
 .notFound {
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 .loaded {

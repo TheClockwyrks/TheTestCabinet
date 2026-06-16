@@ -1,0 +1,19 @@
+@use "tokens" as t;
+
+// Readability halo for loose text that sits directly over the animated backdrop
+// — section titles, breadcrumbs, muted body copy, table text, tab labels, and
+// empty states that aren't wrapped in a `<Panel>` or another surface card. Each
+// glyph gets a layered dark glow in the background color so it lifts off the neon
+// grid without a box around it.
+//
+// This was one of the switchable readability treatments (commit 102e69e3); we
+// settled on `<Panel>` for prose blocks and kept the halo as a mixin for the
+// stray text that stays out on the backdrop. Panels (`surfaces.scss`) and the
+// deliberately neon-glowing display headings keep their own treatment and do not
+// use this.
+@mixin halo {
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg;
+}
