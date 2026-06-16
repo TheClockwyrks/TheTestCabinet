@@ -2,23 +2,6 @@
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 
-.header {
-  margin-bottom: t.$space-lg;
-}
-
-.title {
-  font-size: t.$font-xl;
-  margin: 0 0 t.$space-xs;
-  @include h.halo;
-}
-
-.lede {
-  margin: 0;
-  max-width: 44rem;
-  color: t.$color-text-muted;
-  @include h.halo;
-}
-
 .controls {
   display: flex;
   flex-direction: column;
@@ -91,17 +74,22 @@
   text-shadow: var(--ttc-glow);
 }
 
+// The reset control for a facet row. It shares the chip's pill shape but is
+// given the panel background and an accent-2 outline so it stays legible over
+// the backdrop's sun rather than vanishing into it like a bare text button did.
 .clear {
-  padding: 0 t.$space-sm;
+  padding: t.$space-xs t.$space-md;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   color: t.$color-accent-2;
-  background: transparent;
-  border: none;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-accent-2;
+  border-radius: t.$radius-lg;
   cursor: pointer;
 
   &:hover {
-    text-decoration: underline;
+    box-shadow: 0 0 0.6rem color-mix(in srgb, t.$color-accent-2 45%, transparent);
+    text-shadow: var(--ttc-glow);
   }
 }
 

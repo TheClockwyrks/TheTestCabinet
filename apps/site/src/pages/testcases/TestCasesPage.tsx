@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
@@ -34,13 +35,10 @@ export function TestCasesPage() {
 
   return (
     <PageLayout>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Test Cases</h1>
-        <p className={styles.lede}>
-          The specs harnesses build against. Every case is seeded into a fresh
-          repository exactly as shown — nothing is ranked here.
-        </p>
-      </header>
+      <PromptHeader
+        command="--test-cases"
+        comment={<>// the specs harnesses build against</>}
+      />
 
       <div className={styles.controls}>
         <input

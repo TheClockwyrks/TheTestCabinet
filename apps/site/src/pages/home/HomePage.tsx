@@ -2,6 +2,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { RatingBadge } from "../../components/RatingBadge";
 import { RunLog } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
@@ -35,16 +36,13 @@ export function HomePage() {
   return (
     <PageLayout>
       <section className={styles.terminal}>
-        <header className={styles.hero}>
-          <p className={styles.prompt}>
-            <span className={styles.caret}>&gt;</span> the-test-cabinet --recent
-            <span className={styles.blink}>_</span>
-          </p>
-          <p className={styles.comment}>
-            // insert coin &middot; consume tokens &middot; play the
-            result
-          </p>
-        </header>
+        <PromptHeader
+          command="--recent"
+          blink
+          comment={
+            <>// insert coin &middot; consume tokens &middot; play the result</>
+          }
+        />
 
         {!featured ? (
           <p className={styles.empty}>No runs have been published yet.</p>

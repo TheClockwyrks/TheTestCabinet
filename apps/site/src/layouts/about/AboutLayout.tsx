@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import styles from "./AboutLayout.module.scss";
 
@@ -28,6 +29,7 @@ export function AboutLayout({ tab, children }: AboutLayoutProps) {
 
   return (
     <PageLayout>
+      <PromptHeader command="--about" comment={<>// shall we play a game?</>} />
       <nav className={styles.tabs} aria-label="About sections">
         {tabs.map((entry) => (
           <NavLink

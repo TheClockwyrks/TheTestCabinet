@@ -6,33 +6,6 @@
   font-family: var(--ttc-font);
 }
 
-.hero {
-  margin-bottom: t.$space-lg;
-}
-
-.prompt {
-  margin: 0;
-  font-size: t.$font-xl;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: t.$color-accent;
-  text-shadow:
-    0 0 0.5rem t.$color-accent,
-    0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
-}
-
-.caret {
-  margin-right: t.$space-sm;
-  opacity: 0.8;
-}
-
-.comment {
-  margin: t.$space-sm 0 0;
-  color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
-}
-
 // Responsive grid of model cards that reflows from one wide column on phones to
 // a multi-column wall on desktop.
 .grid {
@@ -61,6 +34,35 @@
       0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
       inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
   }
+}
+
+// Provider mark + model name on one row, the mark hugging the left edge.
+.identity {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The provider's brand mark, masked so it renders in the accent color with a
+// neon glow, matching the OpenRouter glyph on the detail page. The mask image
+// itself is set inline per provider; size/position/repeat live here.
+.logo {
+  display: block;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  background-color: t.$color-accent;
+  mask: center / contain no-repeat;
+  -webkit-mask: center / contain no-repeat;
+  filter: drop-shadow(
+    0 0 0.4rem color-mix(in srgb, t.$color-accent 60%, transparent)
+  );
+}
+
+.card:hover .logo {
+  filter:
+    drop-shadow(0 0 0.5rem t.$color-accent)
+    drop-shadow(0 0 1.2rem color-mix(in srgb, t.$color-accent 60%, transparent));
 }
 
 .name {
