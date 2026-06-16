@@ -19,6 +19,14 @@ export interface SeededInput {
   url?: string;
 }
 
+/** A rendered reference screenshot used as a visual target for a view. */
+export interface ReferenceScreenshot {
+  /** The view the screenshot depicts (e.g. `title`, `game-over`). */
+  view: string;
+  /** Public `/catalog/...` URL of the rendered image. */
+  url: string;
+}
+
 /** One variant of a test case, as the catalog records it. */
 export interface VariantSummary {
   /** The stable slug naming this variant (e.g. `base`). */
@@ -27,14 +35,11 @@ export interface VariantSummary {
   name: string;
   /** Inlined site-facing description, or null when none is declared. */
   description: string | null;
-}
-
-/** A rendered reference screenshot used as a visual target for a view. */
-export interface ReferenceScreenshot {
-  /** The view the screenshot depicts (e.g. `title`, `game-over`). */
-  view: string;
-  /** Public `/catalog/...` URL of the rendered image. */
-  url: string;
+  /** What a run of this variant is seeded with — identical to what
+   * `tcab seed --variant <slug>` materializes. */
+  seededInputs: SeededInput[];
+  /** Rendered reference screenshots that are visual targets for this variant. */
+  referenceScreenshots: ReferenceScreenshot[];
 }
 
 /** One test case in the catalog, across all of its published versions. */
@@ -50,12 +55,9 @@ export interface TestCaseSummary {
   versions: string[];
   /** The newest version (first of `versions`). */
   latestVersion: string;
-  /** The variants the latest version offers, in declared order (default first). */
+  /** The variants the latest version offers, in declared order (default first).
+   * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
-  /** What a run of the latest version is seeded with. */
-  seededInputs: SeededInput[];
-  /** Rendered reference screenshots for the latest version. */
-  referenceScreenshots: ReferenceScreenshot[];
 }
 
 export const testCases: TestCaseSummary[] = testCasesData as TestCaseSummary[];

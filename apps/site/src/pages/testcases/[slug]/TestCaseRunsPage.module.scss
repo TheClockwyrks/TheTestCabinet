@@ -1,0 +1,80 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  font-size: t.$font-lg;
+  margin: 0 0 t.$space-md;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}
+
+// Recent-runs list: a compact column-aligned log echoing the home-page table.
+// Runs are already scoped to one variant here, so there is no variant column.
+.runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow-x: auto;
+}
+
+.runRow {
+  display: grid;
+  grid-template-columns: 7rem 1.6fr 5rem 5rem 5rem 3rem;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  min-width: 34rem;
+  color: t.$color-text;
+  white-space: nowrap;
+
+  li + li & {
+    border-top: t.$border-hairline solid
+      color-mix(in srgb, t.$color-accent 28%, transparent);
+  }
+
+  &:hover {
+    text-decoration: none;
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+}
+
+.runHarness {
+  font-weight: 700;
+}
+
+.runModel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: t.$color-text-muted;
+}
+
+.runNum {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ok {
+  color: t.$color-positive;
+  text-shadow: 0 0 0.5rem color-mix(in srgb, t.$color-positive 70%, transparent);
+}
+
+.bad {
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: t.$space-lg;
+}
