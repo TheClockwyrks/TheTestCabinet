@@ -48,7 +48,7 @@ impl CliContainerRuntime {
             return Ok(Self::with_binary(binary));
         }
         for candidate in ["podman", "docker"] {
-            if which(candidate) {
+            if which::which(candidate).is_ok() {
                 return Ok(Self::with_binary(candidate));
             }
         }
@@ -64,8 +64,10 @@ impl CliContainerRuntime {
         &self.binary
     }
 
-    /// Whether the configured runtime is Podman, which needs uid-mapping flags so
-    /// the container's `node` user can write the bind-mounted repository.
+    /// Whether the configured runtime is Podman. On native Linux this selects the
+    /// uid-mapping flag that keeps the container's `node` user able to write the
+    /// bind-mounted repository; see [`ContainerRuntime::start`] for why that flag
+    /// is scoped to Linux.
     fn is_podman(&self) -> bool {
         Path::new(&self.binary)
             .file_name()
@@ -87,19 +89,20 @@ impl CliContainerRuntime {
 #[async_trait::async_trait]
 impl ContainerRuntime for CliContainerRuntime {
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
-        let repo = spec
-            .repo_path
-            .to_str()
-            .ok_or_else(|| Error::ContainerRuntime("repo path is not valid UTF-8".to_string()))?;
+        let mount_source = crate::host_path::mount_source(&spec.repo_path)?;
 
         let mut args = vec!["run".to_string(), "--detach".to_string()];
-        if self.is_podman() {
-            // Map the invoking host user to the container's uid so the mounted
-            // repository remains writable by the run user.
+        if self.is_podman() && cfg!(target_os = "linux") {
+            // Rootless Podman on Linux runs the container directly on the host, so
+            // map the invoking host user to the container's uid to keep the
+            // mounted repository writable by the run user. On macOS and Windows
+            // Podman runs the container inside its own Linux VM; the host user has
+            // no meaning there and `keep-id` would map to the wrong uid, so it is
+            // omitted and the VM's default mapping is used.
             args.push("--userns=keep-id".to_string());
         }
         args.push("--volume".to_string());
-        args.push(format!("{repo}:{WORK_DIR}"));
+        args.push(format!("{mount_source}:{WORK_DIR}"));
         args.push("--workdir".to_string());
         args.push(WORK_DIR.to_string());
         if !spec.network_enabled {
@@ -292,6 +295,10 @@ impl ArtifactCollector for CliArtifactCollector {
             .ok_or_else(|| Error::ArtifactCollection("dest path is not valid UTF-8".to_string()))?;
 
         // `cp <id>:/work/. <dest>` copies the contents of the working tree.
+        // Unlike a bind-mount source, the destination is not run through
+        // `host_path::mount_source`: `cp` is handled by the runtime CLI on the
+        // host, so it writes to the native host path directly (a Windows
+        // `C:\...` path, not its `/mnt/c/...` WSL form).
         let args = vec![
             "cp".to_string(),
             format!("{}:{WORK_DIR}/.", container.id),
@@ -313,12 +320,4 @@ impl ArtifactCollector for CliArtifactCollector {
 /// into a container runtime error.
 fn read_line(line: std::io::Result<Option<String>>) -> Result<Option<String>> {
     line.map_err(|err| Error::ContainerRuntime(format!("reading container output failed: {err}")))
-}
-
-/// Whether a binary resolves on `PATH`.
-fn which(binary: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| dir.join(binary).is_file())
 }

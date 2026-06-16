@@ -31,7 +31,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
 
     let catalog_root = catalog_root();
     let output_dir = args.out_dir.unwrap_or_else(|| PathBuf::from("runs"));
-    let work_dir = std::env::temp_dir().join("tcab");
+    // Stage mountable inputs where the container runtime can reach them; on macOS
+    // and Windows the OS temp directory is not shared with the runtime's VM. See
+    // `crate::work_dir`.
+    let work_dir = crate::work_dir::staging_dir(args.work_dir);
     let seed_dir = work_dir.join("seeds");
     let artifact_dir = work_dir.join("artifacts");
     let screenshot_dir = work_dir.join("screenshots");
@@ -55,6 +58,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         None => println!("  cap:     test case default max runtime"),
     }
     println!("  output:  {}", output_dir.display());
+    println!("  staging: {}", work_dir.display());
 
     let orchestrator = Orchestrator {
         catalog: TestCaseCatalog::new(catalog_root),

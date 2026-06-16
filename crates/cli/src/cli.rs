@@ -127,6 +127,14 @@ pub struct RunArgs {
     /// Directory to write the run record and collected artifacts into.
     #[arg(long, value_name = "DIR")]
     pub out_dir: Option<std::path::PathBuf>,
+
+    /// Directory to stage a run's mountable inputs under (the seeded repository,
+    /// collected artifacts, and capture scratch). The seeded repository is
+    /// bind-mounted into the container, so on macOS and Windows this must be a
+    /// location the container runtime's VM shares with the host. Defaults to
+    /// `TCAB_WORK_DIR` if set, otherwise `~/.tcab`.
+    #[arg(long, value_name = "DIR")]
+    pub work_dir: Option<std::path::PathBuf>,
 }
 
 /// Arguments for `tcab validate`.

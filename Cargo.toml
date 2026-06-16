@@ -44,6 +44,10 @@ tempfile = "3"
 # `png` crate is a small, pure-Rust decoder with no system dependencies, keeping
 # the workspace buildable on minimal hosts.
 png = "0.17"
+# Cross-platform PATH lookup for the container runtime binary. A hand-rolled
+# search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
+# that and the Unix case behind one API.
+which = "8"
 # HTTP client for fetching OpenRouter model prices. rustls avoids a system
 # OpenSSL dependency so the workspace builds cleanly on minimal hosts (NixOS).
 reqwest = { version = "0.12", default-features = false, features = [

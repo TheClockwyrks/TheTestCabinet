@@ -120,7 +120,32 @@ The Tauri CLI drives the desktop app, building the Rust shell and the
 A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
 
 1. **A container runtime** — Podman (preferred) or Docker on `PATH`. The runtime
-   is auto-detected; override it with `TCAB_CONTAINER_RUNTIME=<binary>`.
+   is auto-detected; override it with `TCAB_CONTAINER_RUNTIME=<binary>`. Runs
+   always execute Linux containers, so the platform expectations are:
+   - **Linux** — rootless Podman runs containers directly on the host. `tcab`
+     adds `--userns=keep-id` so the mounted repository stays writable by the run
+     user.
+   - **macOS** — Podman runs containers inside its managed Linux VM
+     (`podman machine init && podman machine start`). The `keep-id` mapping is
+     not used (the host user has no meaning inside the VM). The VM shares your
+     home directory by default but **not** the OS temp directory, so `tcab`
+     stages a run's mountable inputs under `~/.tcab` rather than `$TMPDIR`
+     (see below).
+   - **Windows** — Podman runs on its WSL2 backend, so **WSL must be installed**
+     (`wsl --install`) before `podman machine init`. `tcab` is detected as
+     `podman.exe`, the `keep-id` mapping is skipped, and the staged repository's
+     Windows path (for example `C:\Users\you\.tcab\...`) is rewritten to its WSL
+     mount form (`/mnt/c/Users/you/.tcab/...`) when it is bind-mounted.
+
+   On Apple Silicon, `podman machine` is `arm64`, so harness images build and run
+   `arm64` by default; build/run with `--platform linux/amd64` (emulated) only if
+   a harness CLI ships no `arm64` build.
+
+   Where a run stages its mountable inputs (the seeded repository, collected
+   artifacts, and capture scratch) is resolved as `--work-dir`, then
+   `TCAB_WORK_DIR`, then `~/.tcab`. It must be a path the runtime can mount; on
+   macOS and Windows that rules out the OS temp directory, which is why the
+   default is home-based rather than under `$TMPDIR`.
 2. **The harness images** — build the run-container images once (see
    `containers/README.md`):
 

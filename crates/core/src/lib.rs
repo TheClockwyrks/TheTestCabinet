@@ -16,6 +16,7 @@ pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
+mod host_path;
 pub mod metrics;
 pub mod models;
 pub mod pricing;

@@ -13,6 +13,7 @@
 
 mod cli;
 mod commands;
+mod work_dir;
 
 use clap::Parser;
 

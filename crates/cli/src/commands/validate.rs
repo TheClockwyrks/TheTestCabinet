@@ -42,7 +42,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     let artifacts = ArtifactCollection {
         repo_path: args.implementation,
     };
-    let validator = BuildValidator::new(std::env::temp_dir().join("tcab/screenshots"));
+    let validator = BuildValidator::new(crate::work_dir::staging_dir(None).join("screenshots"));
     let summary = validator
         .validate(&test_case, &artifacts, &references)
         .context("validation failed")?;
