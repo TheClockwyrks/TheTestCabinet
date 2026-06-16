@@ -27,6 +27,8 @@ ENV PATH="$PATH:/home/$USERNAME/.local/bin"
 
 # Copy the install scripts and shell config.
 COPY --chown=${USER_UID}:${USER_GID} \
+	./ai/claude.sh \
+	./ai/codex.sh \
 	./tools/lazygit.sh \
 	./tools/az.sh \
 	./tools/gh.sh \
@@ -51,6 +53,8 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/languages/node/install.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \
 	bash /tmp/scripts/languages/rust/tauri.sh && \
+	bash /tmp/scripts/claude.sh && \
+	bash /tmp/scripts/codex.sh && \
 	bash /tmp/scripts/post-install.sh && \
 	rm -rf /tmp/scripts && \
 	# Markdown linting for the docs.
