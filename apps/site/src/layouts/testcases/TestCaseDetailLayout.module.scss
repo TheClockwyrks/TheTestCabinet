@@ -1,8 +1,131 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 
-// The detail layout now delegates all chrome to the active design's shell; the
-// only thing it renders directly is the not-found state for an unknown slug.
+.header {
+  margin-bottom: t.$space-lg;
+}
+
+.title {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-xl;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  @include h.halo;
+}
+
+.difficulty {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: t.$border-hairline solid currentcolor;
+  border-radius: t.$radius-sm;
+  color: t.$color-text-muted;
+
+  &[data-level="easy"] {
+    color: t.$color-positive;
+  }
+
+  &[data-level="hard"] {
+    color: t.$color-accent-2;
+  }
+}
+
+.version {
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+}
+
+.tag {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+// The control strip pairs the tab navigation with the page-level variant
+// selector, wrapping to stacked rows on narrow screens.
+.controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}
+
+.variant {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-sm;
+}
+
+.variantLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.variantSelect {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
 .notFound {
   color: t.$color-text-muted;
   @include h.halo;
