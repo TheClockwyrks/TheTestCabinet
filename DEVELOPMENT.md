@@ -191,9 +191,16 @@ A run is driven by the `tcab` CLI over a container runtime. Prerequisites:
    revision the driver expects; a bare `npx playwright` is not hoisted to the root
    and would fetch a different version); the validator
    locates `packages/browser-driver/driver.mjs` relative to the working directory
-   (override with `TCAB_BROWSER_DRIVER`). This is optional — without it, runs
-   still complete, but no reference images are seeded and checks record as not
-   reached. Where Playwright cannot find its own bundled browser — notably on
+   (override with `TCAB_BROWSER_DRIVER`). A `run` will not start unless every one
+   of the selected variant's reference mockups renders, since those screenshots
+   are both the seeded visual targets and the validation baselines; a render
+   failure aborts the run before a harness session is spent. (The `seed`,
+   `validate`, and `catalog` commands still degrade per-view rather than abort.)
+   The driver resolves the `playwright` package from a walkable `node_modules`
+   (an `npm install`) or, failing that, from `NODE_PATH` — so a Nix-provided
+   `playwright`/`playwright-driver` works without an npm install, since ESM's bare
+   `import` ignores `NODE_PATH` but the driver resolves through CommonJS, which
+   honors it. Where Playwright cannot find its own bundled browser — notably on
    NixOS, whose `playwright-driver.browsers` layout differs from what Playwright
    probes — point `TCAB_CHROMIUM_EXECUTABLE` at a real Chromium binary (for
    example `${pkgs.chromium}/bin/chromium`) and the driver launches that instead.

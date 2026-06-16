@@ -405,6 +405,27 @@ where
         // are both seeded as visual targets and reused as validation baselines
         // below. A variant may add references of its own on top of the common set.
         let references = self.render_references(&test_case, &variant)?;
+        // A run is only meaningful if every declared reference rendered: those
+        // screenshots are the visual targets the harness builds against and the
+        // baselines validation scores against. Rendering degrades view-by-view
+        // (a failure is logged and skipped, not raised), so detect a short render
+        // here and refuse to start rather than seed an incomplete target set and
+        // burn a harness session on it.
+        let expected = test_case.references_for(&variant);
+        if references.len() < expected.len() {
+            let rendered: std::collections::HashSet<&str> =
+                references.iter().map(|r| r.view.as_str()).collect();
+            let missing = expected
+                .iter()
+                .map(|view| view.view.clone())
+                .filter(|view| !rendered.contains(view.as_str()))
+                .collect();
+            return Err(Error::ReferenceRenderIncomplete {
+                slug: test_case.slug.clone(),
+                version: test_case.version.clone(),
+                missing,
+            });
+        }
         let seeded = self.seed(&test_case, &variant, &specs, &references)?;
         let (handle, outcome, environment) = self
             .execute(&test_case, &variant, &seeded, request, events)

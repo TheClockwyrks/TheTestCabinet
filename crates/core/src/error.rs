@@ -78,6 +78,29 @@ pub enum Error {
         detail: String,
     },
 
+    /// One or more of a test case's reference mockups failed to render, so the
+    /// run was refused before it started.
+    ///
+    /// The reference screenshots are seeded as the visual targets the harness
+    /// builds against and are reused as the baselines validation scores against;
+    /// starting a run with any of them missing would seed an incomplete target
+    /// set and waste a harness session, so the run aborts here instead. The
+    /// per-view failures are surfaced as warnings as they happen (see
+    /// [`crate::reference`]).
+    #[error(
+        "could not render every reference view for `{slug}@{version}` \
+         (missing: {}); refusing to start the run — see the warnings above",
+        .missing.join(", ")
+    )]
+    ReferenceRenderIncomplete {
+        /// The test case slug.
+        slug: String,
+        /// The test case version.
+        version: String,
+        /// The view slugs that failed to render.
+        missing: Vec<String>,
+    },
+
     /// The requested agent harness could not be located on the host.
     #[error("agent harness `{slug}` is not available: {detail}")]
     HarnessUnavailable {
