@@ -41,6 +41,9 @@ struct TestCaseEntry {
     difficulty: String,
     /// Free-form classification tags.
     tags: Vec<String>,
+    /// Short site-facing abstract shown on the catalog cards, or `null` when none
+    /// is declared.
+    summary: Option<String>,
     /// Inlined site-facing description Markdown, or `null` when none is declared.
     description: Option<String>,
     /// Every version of this case, newest first.
@@ -240,6 +243,7 @@ fn build_test_cases(catalog_root: &Path, public_dir: &Path) -> anyhow::Result<Ve
             name: test_case.name.clone(),
             difficulty: test_case.difficulty.clone(),
             tags: test_case.tags.clone(),
+            summary: test_case.summary.clone(),
             description,
             versions: case.versions.clone(),
             latest_version,

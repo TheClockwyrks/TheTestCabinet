@@ -6,10 +6,10 @@ import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import styles from "./TestCasesPage.module.scss";
 
-// The test-case catalog: every case as a neon card showing its title,
-// difficulty, and tags, with a client-side search (title/tag) and
-// difficulty/tag filters. Cards link to the per-slug detail page. The catalog
-// is not a leaderboard — cases are listed, never ranked.
+// The test-case catalog: every case as a neon card showing its title and
+// difficulty on one row, a short summary, and its tags, with a client-side
+// search (title/tag) and difficulty/tag filters. Cards link to the per-slug
+// detail page. The catalog is not a leaderboard — cases are listed, never ranked.
 export function TestCasesPage() {
   const { testCases } = useTestCases();
   const [query, setQuery] = useState("");
@@ -80,11 +80,13 @@ export function TestCasesPage() {
           {shown.map((testCase) => (
             <li key={testCase.slug}>
               <Link to={routes.testCaseDetail(testCase.slug)} className={styles.card}>
-                <span className={styles.cardCaret}>&rsaquo;</span>
-                <h2 className={styles.cardTitle}>{testCase.name}</h2>
-                <span className={styles.difficulty} data-level={testCase.difficulty}>
-                  {testCase.difficulty}
-                </span>
+                <div className={styles.cardHeader}>
+                  <h2 className={styles.cardTitle}>{testCase.name}</h2>
+                  <span className={styles.difficulty} data-level={testCase.difficulty}>
+                    {testCase.difficulty}
+                  </span>
+                </div>
+                {testCase.summary && <p className={styles.summary}>{testCase.summary}</p>}
                 {testCase.tags.length > 0 && (
                   <ul className={styles.tags}>
                     {testCase.tags.map((value) => (

@@ -49,6 +49,8 @@ export interface TestCaseSummary {
   /** Relative difficulty, e.g. `easy` | `medium` | `hard`. */
   difficulty: string;
   tags: string[];
+  /** Short, plain-text abstract shown on the catalog card, or null. */
+  summary: string | null;
   /** Inlined site-facing Markdown from the case's `description.md`, or null. */
   description: string | null;
   /** Every published version, newest first. */

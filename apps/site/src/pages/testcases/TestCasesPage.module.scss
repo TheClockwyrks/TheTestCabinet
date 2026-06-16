@@ -135,21 +135,19 @@
   }
 }
 
-.cardCaret {
-  position: absolute;
-  top: t.$space-md;
-  right: t.$space-md;
-  color: t.$color-accent;
-  opacity: 0;
-
-  .card:hover & {
-    opacity: 1;
-    text-shadow: var(--ttc-glow);
-  }
+// Title and difficulty badge share a row: the title hugs the left and the badge
+// sits flush right. `baseline` lines the badge's label up with the title text;
+// the badge never shrinks or wraps, so a long title wraps beneath it instead.
+.cardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-sm;
 }
 
 .cardTitle {
-  margin: 0 0 t.$space-sm;
+  margin: 0;
   font-size: t.$font-lg;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -159,11 +157,12 @@
 
 // Difficulty badge; hue shifts from positive (easy) to accent-2 (hard).
 .difficulty {
-  display: inline-block;
+  flex-shrink: 0;
   padding: t.$space-xs t.$space-sm;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
   border: t.$border-hairline solid currentcolor;
   border-radius: t.$radius-sm;
   color: t.$color-text-muted;
@@ -175,6 +174,15 @@
   &[data-level="hard"] {
     color: t.$color-accent-2;
   }
+}
+
+// One- or two-sentence abstract introducing the case. Plain text, kept muted so
+// the title and tags frame it rather than compete with it.
+.summary {
+  margin: 0;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  color: t.$color-text-muted;
 }
 
 .tags {

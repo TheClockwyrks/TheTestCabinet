@@ -11,6 +11,8 @@ export const sampleTestCases: TestCaseSummary[] = [
     name: "Carom",
     difficulty: "easy",
     tags: ["arcade", "2d", "paddle", "physics"],
+    summary:
+      "A neon top-down paddle duel where the swing of a paddle puts spin on the ball, and two fixed obstacles turn the open field into a bank-shot puzzle.",
     description:
       "# Carom\n\n**Carom** is a neon, top-down paddle duel for the browser and the simplest case in the catalog. Its signature mechanic is *spin*: the motion of a paddle as it strikes the ball curves the ball's flight afterward.\n",
     versions: ["v1.0.0"],
@@ -99,6 +101,8 @@ export const sampleTestCases: TestCaseSummary[] = [
     name: "Phalanx",
     difficulty: "medium",
     tags: ["arcade", "2d", "shooter"],
+    summary:
+      "A fixed-shooter where descending ranks of invaders press toward a lone cannon, demanding wave pacing, tight collision, and an escalating difficulty curve.",
     description:
       "# Phalanx\n\n**Phalanx** is a fixed-shooter where descending ranks of invaders press toward a lone cannon. A medium-difficulty case that demands wave pacing, collision, and escalating difficulty.\n",
     versions: ["v0.9.0"],

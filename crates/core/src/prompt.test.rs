@@ -12,6 +12,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: vec![],
+        summary: None,
         description_path: None,
         root: PathBuf::from("/tmp/pong"),
         prompt_path,

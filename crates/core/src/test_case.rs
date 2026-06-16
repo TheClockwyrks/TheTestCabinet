@@ -29,6 +29,12 @@ struct Manifest {
     /// `arcade`, `2d`).
     #[serde(default)]
     tags: Vec<String>,
+    /// Optional one- or two-sentence abstract, surfaced on the site's test case
+    /// cards. Authored inline as plain text (not a file) so it renders safely
+    /// inside the card's link and stays deliberately short; the longer
+    /// [`Self::description`] is shown on the detail page. **Not** seeded into runs.
+    #[serde(default)]
+    summary: Option<String>,
     /// Optional site-facing prose, relative to the version folder, pointing at a
     /// Markdown file (for example `description.md`). This is **not** seeded into
     /// runs; it exists only to describe the case on the site.
@@ -268,6 +274,10 @@ pub struct TestCaseVersion {
     pub difficulty: String,
     /// Free-form classification tags surfaced on the site.
     pub tags: Vec<String>,
+    /// Optional short, site-facing abstract shown on the test case cards.
+    /// Authored inline as plain text in the manifest. `None` when the manifest
+    /// declares none. This is **not** seeded into runs.
+    pub summary: Option<String>,
     /// Path to the optional site-facing description Markdown, resolved inside
     /// the version folder. `None` when the manifest declares none. This is
     /// **not** seeded into runs.
@@ -609,6 +619,7 @@ impl TestCaseCatalog {
             name: manifest.name,
             difficulty: manifest.difficulty,
             tags: manifest.tags,
+            summary: manifest.summary,
             description_path,
             root,
             prompt_path,

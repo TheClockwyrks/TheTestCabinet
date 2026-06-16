@@ -57,6 +57,15 @@ fn resolves_pong_from_its_manifest() {
             .is_some_and(|p| p.ends_with("description.md")),
         "the site-facing description should be resolved from the manifest"
     );
+    // The short card summary is carried inline as plain text, distinct from the
+    // file-backed description.
+    assert!(
+        version
+            .summary
+            .as_ref()
+            .is_some_and(|s| s.contains("paddle duel")),
+        "the inline site-facing summary should be surfaced from the manifest"
+    );
     // Three variants are offered: base (standard only), frenzy, and multi.
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base", "frenzy", "multi"]);

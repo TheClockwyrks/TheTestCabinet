@@ -16,6 +16,14 @@ difficulty = "easy"
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "paddle", "physics"]
 
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon top-down paddle duel where the swing of a paddle puts spin on the ball, \
+and two fixed obstacles turn the open field into a bank-shot puzzle."""
+
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
 description = "description.md"
