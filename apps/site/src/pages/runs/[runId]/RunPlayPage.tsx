@@ -1,4 +1,4 @@
-import { RunDetailLayout } from "../../../layouts/run/RunDetailLayout";
+import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { PlayableSection } from "../PlayableSection";
 
 // The Play tab (`/runs/:runId/play`): the model's implementation exactly as it

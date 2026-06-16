@@ -35,6 +35,12 @@ numbers. The rating is shown per run as qualitative context — it is never used
 to sort, rank, or aggregate runs, which would turn the gallery into the
 leaderboard it deliberately is not.
 
+Alongside the home page, which leads with the most recent results, a dedicated
+runs index lists the cabinet's full run history one page at a time, newest
+first, with a search that narrows by test case, harness, or model name. A run's
+own detail page sits under this section. Like the rest of the gallery it is
+ordered purely by recency and presents no ranking.
+
 ## Playing and Cloning
 
 Each run has a page that links to the run's public source repository, so a

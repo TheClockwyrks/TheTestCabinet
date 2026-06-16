@@ -1,5 +1,5 @@
 import { Panel } from "../../../components/Panel";
-import { RunDetailLayout } from "../../../layouts/run/RunDetailLayout";
+import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Validation tab (`/runs/:runId/validation`): the automated signals derived

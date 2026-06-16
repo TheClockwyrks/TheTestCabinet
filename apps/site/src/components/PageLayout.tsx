@@ -14,6 +14,7 @@ interface PageLayoutProps {
 const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
   { label: "Home", to: routes.home() },
   { label: "Test Cases", to: routes.testCases() },
+  { label: "Runs", to: routes.runs() },
   { label: "Models", to: routes.models() },
   { label: "About", to: routes.about() },
 ];

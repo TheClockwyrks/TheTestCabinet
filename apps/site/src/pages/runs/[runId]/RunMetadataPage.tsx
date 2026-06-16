@@ -1,5 +1,5 @@
 import { MetricTile } from "../../../components/MetricTile";
-import { RunDetailLayout } from "../../../layouts/run/RunDetailLayout";
+import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Metadata tab (`/runs/:runId/metadata`): the run's environment (sourced from

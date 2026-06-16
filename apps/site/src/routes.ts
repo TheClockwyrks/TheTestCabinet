@@ -27,6 +27,7 @@ export const routes = {
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
   aboutMetrics: (): string => "/about/metrics",
+  runs: (): string => "/runs",
   runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
   runPlay: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/play`,
@@ -55,6 +56,7 @@ export const routePatterns = {
   about: "/about",
   aboutTesting: "/about/testing",
   aboutMetrics: "/about/metrics",
+  runs: "/runs",
   runDetail: "/runs/:runId",
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",

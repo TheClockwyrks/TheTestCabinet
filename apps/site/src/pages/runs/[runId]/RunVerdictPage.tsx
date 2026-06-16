@@ -2,7 +2,7 @@ import { Markdown } from "../../../components/Markdown";
 import { Panel } from "../../../components/Panel";
 import { RatingBadge } from "../../../components/RatingBadge";
 import { RATING_META } from "../../../data/ratings";
-import { RunDetailLayout } from "../../../layouts/run/RunDetailLayout";
+import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Verdict tab (`/runs/:runId`): the run's hand-written, post-implementation

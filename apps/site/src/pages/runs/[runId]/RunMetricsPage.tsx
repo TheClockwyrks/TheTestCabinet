@@ -1,6 +1,6 @@
 import { MetricTile } from "../../../components/MetricTile";
 import { formatInteger, formatRunTime, formatUsd } from "../../../format";
-import { RunDetailLayout } from "../../../layouts/run/RunDetailLayout";
+import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Metrics tab (`/runs/:runId/metrics`): the run's primary figures laid out
