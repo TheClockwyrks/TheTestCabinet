@@ -1,0 +1,15 @@
+# Project-specific words accepted by cspell. One word per line, case-insensitive.
+# Add a word here when it is a real domain or spec term that the default
+# dictionary does not know. See `cspell.json` and the `spell` script in
+# `package.json`.
+
+# Test case titles / mode names.
+Carom
+Gyre
+
+# Spec and gameplay vocabulary.
+autoplay
+deadzone
+letterboxed
+playfield
+travelling

@@ -1,0 +1,31 @@
+# markdownlint-cli2 configuration for The Test Cabinet.
+#
+# Scoped to the authored test-case specifications under `test-cases/**`, which is
+# the prose a test case version ships to a model. Keeping the specs lint-clean
+# keeps them readable and the rendered catalog tidy. See the `lint:md` script in
+# `package.json` and the `adding-a-variant` skill under `.claude/skills/`.
+
+config:
+  # Fenced code blocks used for plain text shouldn't need a language tag.
+  fenced-code-language: false
+  # Use dashes for unordered lists.
+  ul-style:
+    style: dash
+  # Spec tables (measurements, view listings) often exceed the prose line length.
+  line-length:
+    tables: false
+  # Specs reuse subsection names (e.g. "Mode") under different parent sections.
+  no-duplicate-heading:
+    siblings_only: true
+  # Whether descriptive link text is needed is too context-dependent to enforce.
+  descriptive-link-text: false
+  # Some specs are site-embedded fragments (e.g. a case's `description.md` is
+  # rendered under the case title on the detail page), so they intentionally open
+  # at a subsection heading rather than a top-level h1.
+  first-line-heading: false
+
+# Ignore files ignored by `.gitignore` (e.g. rendered reference screenshots).
+gitignore: true
+
+globs:
+  - test-cases/**/*.md

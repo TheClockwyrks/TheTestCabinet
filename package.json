@@ -15,7 +15,14 @@
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
+    "lint:md": "markdownlint-cli2",
+    "lint:specs": "npm run lint:md && npm run spell",
+    "spell": "cspell lint --no-progress",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "cspell": "^10.0.1",
+    "markdownlint-cli2": "^0.22.1"
   }
 }
