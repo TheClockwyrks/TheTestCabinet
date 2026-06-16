@@ -1,8 +1,3 @@
-# GPT-5.4 mini
-
-> Placeholder copy. This is real Markdown the site renders today; the wording
-> will be refined later.
-
 **GPT-5.4 mini** is OpenAI's small, fast member of the GPT-5.4 family — tuned to
 be cheap and quick enough to run at scale while still holding up on real coding
 work. In The Test Cabinet it is exercised through the **Codex** harness, which

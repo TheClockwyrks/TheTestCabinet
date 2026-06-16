@@ -21,6 +21,10 @@
 //
 // Key names are Playwright key names (e.g. `Enter`, `ArrowUp`, `w`, `Escape`).
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { chromium } from "playwright";
 
 /** Parse `--flag value` pairs into a plain object. */
@@ -40,6 +44,93 @@ function parseArgs(argv) {
     }
   }
   return args;
+}
+
+/**
+ * Discover Chromium binaries Playwright has already downloaded, newest first.
+ *
+ * Playwright resolves the browser for the *exact* revision its own version
+ * pins; when the installed build is a different revision (or uses the newer
+ * `chrome-linux64` layout), that resolution misses even though a perfectly good
+ * Chromium is sitting in the cache. This scans the cache directory for any full
+ * `chromium-<rev>` build with a real `chrome` binary so the launch can fall back
+ * to it. Both the legacy `chrome-linux` and current `chrome-linux64` layouts are
+ * checked; the highest revision wins.
+ */
+function discoverCachedChromium() {
+  const base =
+    process.env.PLAYWRIGHT_BROWSERS_PATH ||
+    path.join(os.homedir(), ".cache", "ms-playwright");
+
+  let entries;
+  try {
+    entries = fs.readdirSync(base);
+  } catch {
+    return [];
+  }
+
+  const candidates = [];
+  for (const entry of entries) {
+    // Only full Chromium builds (`chromium-<rev>`), not `chromium_headless_shell`.
+    const match = /^chromium-(\d+)$/.exec(entry);
+    if (!match) {
+      continue;
+    }
+    for (const layout of ["chrome-linux64/chrome", "chrome-linux/chrome"]) {
+      const candidate = path.join(base, entry, layout);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        candidates.push({ revision: Number(match[1]), path: candidate });
+      } catch {
+        // Not present in this layout; try the next.
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.revision - a.revision);
+  return candidates.map((candidate) => candidate.path);
+}
+
+/**
+ * Launch Chromium, trying each strategy in order of preference and falling back
+ * on failure:
+ *
+ *  1. `TCAB_CHROMIUM_EXECUTABLE` — an explicit Chromium binary. Managed installs
+ *     whose on-disk layout does not match what Playwright's path resolution
+ *     expects (notably Nix's `playwright-driver.browsers`) can fail to find the
+ *     bundled browser; pointing straight at a real Chromium (for example
+ *     `${pkgs.chromium}/bin/chromium`) sidesteps that entirely.
+ *  2. `channel: "chromium"` — the full bundled Chromium in the new headless mode,
+ *     rather than Playwright's default `chromium-headless-shell` (a separate
+ *     download some installs omit). This is what resolves on a host whose cache
+ *     matches Playwright's pinned revision.
+ *  3. Any cached `chromium-<rev>` build found on disk, newest first — covers an
+ *     environment whose installed Chromium revision differs from the one
+ *     Playwright pins (e.g. a newer `chrome-linux64` build in a container).
+ *
+ * Earlier strategies keep working exactly as before; the cache fallback only
+ * runs when they fail, so existing hosts are unaffected.
+ */
+async function launchBrowser() {
+  const attempts = [];
+  const explicit = process.env.TCAB_CHROMIUM_EXECUTABLE;
+  if (explicit) {
+    attempts.push({ label: `TCAB_CHROMIUM_EXECUTABLE (${explicit})`, options: { executablePath: explicit } });
+  }
+  attempts.push({ label: 'channel "chromium"', options: { channel: "chromium" } });
+  for (const cached of discoverCachedChromium()) {
+    attempts.push({ label: `cached Chromium (${cached})`, options: { executablePath: cached } });
+  }
+
+  const failures = [];
+  for (const attempt of attempts) {
+    try {
+      return await chromium.launch({ args: ["--no-sandbox"], ...attempt.options });
+    } catch (err) {
+      failures.push(`  - ${attempt.label}: ${err?.message || err}`);
+    }
+  }
+  throw new Error(`could not launch Chromium; tried:\n${failures.join("\n")}`);
 }
 
 /** Run one action step against the page. */
@@ -81,24 +172,10 @@ async function main() {
     throw new Error("--actions must be a JSON array");
   }
 
-  // Choosing the browser binary, in order of preference:
-  //
-  //  1. `TCAB_CHROMIUM_EXECUTABLE` — an explicit Chromium binary. Managed
-  //     installs whose on-disk layout does not match what Playwright's path
-  //     resolution expects (notably Nix's `playwright-driver.browsers`) can fail
-  //     to find the bundled browser; pointing straight at a real Chromium (for
-  //     example `${pkgs.chromium}/bin/chromium`) sidesteps that entirely.
-  //  2. Otherwise `channel: "chromium"` — the full bundled Chromium in the new
-  //     headless mode, rather than Playwright's default `chromium-headless-shell`
-  //     (a separate download some installs omit).
-  const executablePath = process.env.TCAB_CHROMIUM_EXECUTABLE;
-  const launchOptions = { args: ["--no-sandbox"] };
-  if (executablePath) {
-    launchOptions.executablePath = executablePath;
-  } else {
-    launchOptions.channel = "chromium";
-  }
-  const browser = await chromium.launch(launchOptions);
+  // Choose and launch the browser binary, falling back across strategies so the
+  // same driver works on hosts whose Chromium matches Playwright's pinned
+  // revision and in environments where it does not. See `launchBrowser`.
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage({
       viewport: { width, height },

@@ -1,8 +1,3 @@
-# Claude Haiku 4.5
-
-> Placeholder copy. This is real Markdown the site renders today; the wording
-> will be refined later.
-
 **Claude Haiku 4.5** is Anthropic's fast, economical model in the Claude 4.5
 family — built for low latency and high throughput while remaining a genuinely
 capable coding model. In The Test Cabinet it runs through the **Claude Code**

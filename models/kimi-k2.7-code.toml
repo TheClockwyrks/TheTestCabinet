@@ -6,19 +6,20 @@
 # `docs/test-cases.md` for the test case catalog it mirrors.
 
 # Human-readable display name.
-name = "GPT-5.4 mini"
+name = "Kimi K2.7 Code"
 
 # The provider that serves the model.
-provider = "OpenAI"
+provider = "MoonshotAI"
 
 # The slug OpenRouter lists the model under. Used to build the model's OpenRouter
 # page link and to look up comparable per-token pricing.
-openrouter_slug = "openai/gpt-5.4-mini"
+openrouter_slug = "moonshotai/kimi-k2.7-code"
 
 # Site-facing prose, relative to this catalog directory.
-description = "gpt-5.4-mini.md"
+description = "kimi-k2.7-code.md"
 
-# The model ID strings as they appear in run records (`subject.modelId`), used
-# to map a run back to this model. Codex reports the bare OpenAI id; the
-# OpenRouter slug (with the `openai/` prefix) is listed too for the price lookup.
-model_ids = ["gpt-5.4-mini", "openai/gpt-5.4-mini"]
+# The model ID strings as they appear in run records (`subject.modelId`), used to
+# map a run back to this model. This defaults to the OpenRouter slug, which is
+# what OpenRouter-routed harnesses report; edit it when a harness reports a bare
+# id instead (Claude Code and Codex do).
+model_ids = ["moonshotai/kimi-k2.7-code"]
