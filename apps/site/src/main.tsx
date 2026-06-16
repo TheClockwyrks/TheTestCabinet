@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router";
 import { AppRoutes } from "./pages/router";
 import { Backdrop } from "./components/Backdrop";
 import { BackdropSettingsProvider } from "./components/backdrop/BackdropSettingsContext";
+import { DesignVariantProvider } from "./pages/testcases/[slug]/design/DesignVariantContext";
 import "./styles/global.scss";
 
 // GitHub Pages serves a single static bundle with no server-side routing, so a
@@ -28,7 +29,11 @@ createRoot(rootElement).render(
       {/* Neon grid + scanline atmosphere, painted behind the routed page content. */}
       <Backdrop />
       <BrowserRouter>
-        <AppRoutes />
+        {/* Picks which test-case-detail design is active; persisted, so the
+            choice survives navigation between the detail tabs. */}
+        <DesignVariantProvider>
+          <AppRoutes />
+        </DesignVariantProvider>
       </BrowserRouter>
     </BackdropSettingsProvider>
   </StrictMode>,

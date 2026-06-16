@@ -1,0 +1,134 @@
+@use "../../../../styles/tokens" as t;
+@use "../../../../styles/surfaces" as s;
+
+// Floats in the lower-right corner above all page content. Fixed so it stays put
+// while the page scrolls; high z-index so it clears the topbar and panels.
+.switcher {
+  position: fixed;
+  right: t.$space-lg;
+  bottom: t.$space-lg;
+  z-index: 50;
+  width: min(20rem, calc(100vw - #{t.$space-xl}));
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, t.$color-surface 94%, transparent);
+  box-shadow:
+    0 0 1.5rem color-mix(in srgb, t.$color-accent 30%, transparent),
+    0 0.5rem 1.5rem color-mix(in srgb, #000 60%, transparent);
+
+  // Collapsed: shrink to just the handle chip.
+  &[data-open="false"] {
+    width: auto;
+  }
+}
+
+.handle {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-xs t.$space-sm;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  background: transparent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 12%, transparent);
+  }
+}
+
+.handleLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.handleValue {
+  margin-left: auto;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.handleChevron {
+  color: t.$color-text-muted;
+}
+
+.options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-sm;
+  font: inherit;
+  text-align: left;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: color-mix(in srgb, t.$color-accent 55%, t.$color-border);
+  }
+}
+
+.optionActive {
+  border-color: t.$color-accent;
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+}
+
+.optionIndex {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  border: t.$border-hairline solid color-mix(in srgb, t.$color-accent 45%, transparent);
+  border-radius: t.$radius-sm;
+}
+
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.optionLabel {
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+}
+
+.optionActive .optionLabel {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.optionTagline {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  line-height: 1.3;
+}

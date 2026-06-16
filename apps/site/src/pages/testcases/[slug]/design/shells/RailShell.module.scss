@@ -1,0 +1,173 @@
+@use "../../../../../styles/tokens" as t;
+@use "../../../../../styles/surfaces" as s;
+@use "../../../../../styles/halo" as h;
+
+// Rail + content. The rail is a fixed column; the body takes the rest. Stacks on
+// narrow screens so the rail sits above the content.
+.shell {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) 1fr;
+  gap: t.$space-xl;
+  align-items: start;
+
+  @media (max-width: 48rem) {
+    grid-template-columns: 1fr;
+    gap: t.$space-lg;
+  }
+}
+
+.rail {
+  position: sticky;
+  top: t.$space-lg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  padding: t.$space-lg;
+  border: t.$border-hairline solid t.$color-border;
+  border-left: 0.2rem solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 8%, transparent);
+
+  @media (max-width: 48rem) {
+    position: static;
+  }
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+.difficulty {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: t.$border-hairline solid currentcolor;
+  border-radius: t.$radius-sm;
+  color: t.$color-text-muted;
+
+  &[data-level="easy"] {
+    color: t.$color-positive;
+  }
+
+  &[data-level="hard"] {
+    color: t.$color-accent-2;
+  }
+}
+
+.version {
+  font-variant-numeric: tabular-nums;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.tag {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+// Vertical section nav: each item is a full-width row, the active one carrying an
+// accent marker and glow rather than the underline the horizontal shell uses.
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding-top: t.$space-md;
+  border-top: t.$border-hairline solid t.$color-border;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-sm;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-radius: t.$radius-sm;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+    background: color-mix(in srgb, t.$color-accent 10%, transparent);
+  }
+}
+
+.navMark {
+  width: 0.2rem;
+  height: 1.1em;
+  border-radius: t.$radius-sm;
+  background: transparent;
+}
+
+.navActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  background: color-mix(in srgb, t.$color-accent 14%, transparent);
+
+  .navMark {
+    background: t.$color-accent;
+    box-shadow: var(--ttc-glow);
+  }
+}
+
+.variant {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.variantLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.variantSelect {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
+.body {
+  min-width: 0;
+}

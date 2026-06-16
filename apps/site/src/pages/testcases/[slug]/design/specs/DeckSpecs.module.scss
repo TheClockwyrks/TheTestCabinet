@@ -1,0 +1,203 @@
+@use "../../../../../styles/tokens" as t;
+@use "../../../../../styles/surfaces" as s;
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.lead {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// The monitor: a framed screen with a chrome bar of editor tabs above the
+// content, so the specs read as files open in a piece of hardware.
+.monitor {
+  border: 0.2rem solid color-mix(in srgb, t.$color-accent 55%, t.$color-border);
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  box-shadow:
+    0 0 1.5rem color-mix(in srgb, t.$color-accent 22%, transparent),
+    inset 0 0 2rem color-mix(in srgb, #000 50%, transparent);
+  overflow: hidden;
+}
+
+.chrome {
+  display: flex;
+  align-items: stretch;
+  gap: t.$space-sm;
+  padding: t.$space-sm t.$space-sm 0;
+  background: color-mix(in srgb, t.$color-accent 12%, t.$color-bg);
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+.lights {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: 0 t.$space-xs t.$space-sm;
+}
+
+.light {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.lightA {
+  background: t.$color-negative;
+}
+
+.lightB {
+  background: t.$color-accent-2;
+}
+
+.lightC {
+  background: t.$color-positive;
+}
+
+// Editor tabs: a row of file chips whose active one connects to the screen below
+// by sharing its background and losing its bottom border.
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-xs;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.tab {
+  padding: t.$space-xs t.$space-md;
+  font: inherit;
+  font-size: t.$font-sm;
+  font-family: var(--ttc-font);
+  color: t.$color-text-muted;
+  background: transparent;
+  border: t.$border-hairline solid transparent;
+  border-bottom: none;
+  border-radius: t.$radius-sm t.$radius-sm 0 0;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+    background: color-mix(in srgb, t.$color-accent 12%, transparent);
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -2px;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  background: t.$color-surface;
+  border-color: color-mix(in srgb, t.$color-accent 40%, transparent);
+
+  &:hover {
+    background: t.$color-surface;
+  }
+}
+
+.screen {
+  padding: t.$space-lg;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+}
+
+.fileHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+  padding-bottom: t.$space-sm;
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+}
+
+.filePath {
+  font-family: var(--ttc-font);
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow-wrap: anywhere;
+}
+
+.fileKind {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.fileProse {
+  overflow-x: auto;
+}
+
+.fileImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: t.$radius-sm;
+}
+
+// Reference screenshots as a horizontal filmstrip of thumbnails beneath the
+// monitor, giving the visual targets dedicated space.
+.filmstrip {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.filmstripTitle {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+}
+
+.frames {
+  display: flex;
+  gap: t.$space-md;
+  overflow-x: auto;
+  padding-bottom: t.$space-xs;
+}
+
+.frame {
+  flex: 0 0 auto;
+  width: 16rem;
+  max-width: 70vw;
+  margin: 0;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+  background: t.$color-surface;
+}
+
+.frameImage {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.frameCaption {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-top: t.$border-hairline solid t.$color-border;
+}
+
+.empty {
+  color: t.$color-text-muted;
+}
