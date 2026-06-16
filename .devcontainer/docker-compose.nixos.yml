@@ -1,0 +1,17 @@
+# Host override for rootless Podman (for example on a NixOS host). Copy this to
+# docker-compose.local.yml (see README.md).
+x-podman:
+  in_pod: false
+
+services:
+  dev:
+    build:
+      args:
+        BUILDARCH: amd64
+    environment:
+      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+    userns_mode: keep-id:uid=1000,gid=100
+    volumes:
+      - type: bind
+        source: ${SSH_AUTH_SOCK}
+        target: /tmp/ssh-agent.sock
