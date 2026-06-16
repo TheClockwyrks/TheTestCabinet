@@ -29,6 +29,7 @@ ENV PATH="$PATH:/home/$USERNAME/.local/bin"
 COPY --chown=${USER_UID}:${USER_GID} \
 	./tools/lazygit.sh \
 	./tools/az.sh \
+	./tools/gh.sh \
 	./post-install.sh \
 	./system/.bashrc \
 	./system/.tmux.conf \
@@ -46,6 +47,7 @@ COPY --chown=${USER_UID}:${USER_GID} \
 RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/lazygit.sh && \
 	bash /tmp/scripts/az.sh && \
+	bash /tmp/scripts/gh.sh && \
 	bash /tmp/scripts/languages/node/install.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \
 	bash /tmp/scripts/languages/rust/tauri.sh && \
