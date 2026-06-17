@@ -2,7 +2,113 @@
 title: Overview
 ---
 
-The Backend component is a Rust server that serves both runners and reporters.
-Runners query the backend for container and test case definitions, then report
-test case results to the backend. Reporters can then query the backend for
-test case definitions and results to display.
+The backend is a Rust server that acts as The Test Cabinet's centralized source
+of truth. It distributes the definitions that [runners](/components/architecture/#runners-and-reporters)
+need to execute a test case and stores the results they produce, so that runs and
+published results are coordinated through one service rather than scattered across
+repositories and machines.
+
+It replaces The Test Cabinet's original "git-as-a-db" design, in which run records
+were committed directly into the public site's dataset. That approach was chosen
+for convenience rather than because it was a sound way to store results; the
+backend takes over that responsibility. See [Results](/components/core/results/).
+
+## Responsibilities
+
+The backend serves two kinds of client, as described in
+[Runners and Reporters](/components/architecture/#runners-and-reporters):
+
+- **Runners** ([CLI](/components/cli/overview/),
+  [worker](/components/worker/overview/), [Tauri app](/components/tauri/overview/))
+  resolve test case and container definitions from the backend, then push their
+  [run records](/components/core/run-records/) back to it when a run is published.
+- **Reporters** ([Tauri app](/components/tauri/overview/), and indirectly the
+  [public site](/components/site/overview/)) read those definitions and published
+  results to display them.
+
+Concretely, the backend holds:
+
+- **Test case definitions.** Test cases are authored in the repository's
+  `test-cases/` folder; a finished version is published to the backend, which then
+  holds the canonical copy a runner resolves at run time. The repository is the
+  editing source; the backend is the distribution source. The on-disk format is
+  unchanged by this — publishing caches a version, it does not transform it. See
+  [Test Cases](/components/core/test-cases/#catalog-layout).
+- **Container definitions.** The per-harness container images a run executes in,
+  so runners build or pull a consistent environment rather than each deriving
+  their own. See [Execution](/components/core/execution/#containerization).
+- **Run results.** The published [run records](/components/core/run-records/), with
+  their links to each run's public source repository and playable build. This is
+  the system of record for published runs.
+
+## Authentication
+
+The backend has no end-user accounts and no public write surface. Only the
+operator and other authorized users may push to or pull from it. Rather than
+hand-rolling an authentication mechanism, the backend is intended to sit on a
+**private network** — using something like [Tailscale](https://tailscale.com/) or
+a comparable mesh/VPN — so that reachability itself is the access control and the
+service is never exposed to the public internet.
+
+- Pushing results (publishing) and pulling definitions both require the caller to
+  be on that private network; a runner authenticates to the backend by being able
+  to reach it.
+- Keeping authentication at the network layer means the backend does not need to
+  implement and maintain its own login, token, or session handling.
+
+Because the backend is private, the [public site](/components/site/overview/) does
+**not** read from it directly.
+
+## Publishing and Synchronization
+
+[Publishing](/components/core/results/#publishing) a run is split into a half that
+operators do directly and a half the backend owns. An operator's component (the
+[CLI](/components/cli/overview/) or [Tauri app](/components/tauri/overview/))
+releases the run's generated code to its own public repository and makes the
+playable build embeddable — work that has no shared state, since each run is a
+distinct repository — and then submits the run record, the review, and the
+resulting links to the backend.
+
+The backend owns the **synchronized** half. Being a single, central entity is the
+point: it serializes publish requests so that two operators publishing at the same
+time cannot race on the shared state. On each request it:
+
+1. Ingests the run record and its [review](/components/core/results/#reviews) into
+   its store, the system of record for published runs.
+2. Regenerates the [public snapshot](#public-snapshot) from the full set of
+   published runs.
+3. Uploads the snapshot to its public bucket and triggers a rebuild of the site.
+
+Because the backend coordinates this, it can also **coalesce** a burst of
+publishes — a batch sweep, or several operators at once — into a single snapshot
+regeneration, one upload, and one site rebuild, rather than one of each per run.
+Regenerating the whole published set each time (rather than applying deltas) keeps
+the operation idempotent: re-running it converges on the same snapshot.
+
+## Public Snapshot
+
+The public site must show published runs to anonymous visitors without depending
+on the private backend. To bridge this, the backend **exports a public snapshot**
+of its published dataset — the run records, the reviews, and the case metadata the
+gallery needs — that the static site is built from.
+
+- The snapshot is uploaded to a **[Cloudflare R2](https://developers.cloudflare.com/r2/)**
+  bucket, which pairs naturally with the site's Cloudflare Pages deployment. The
+  backend holds the only credential that can write to it; the bucket is read-only
+  to everyone else.
+- The upload is **atomic** — a new snapshot is written and then swapped into place
+  — so a site build never reads a half-written dataset.
+- After uploading, the backend fires the site's **deploy hook** to trigger a
+  rebuild. The site build fetches the snapshot from R2 and produces static output;
+  it never connects to the backend.
+
+This keeps the trust boundary clean: the backend stays private and authenticated,
+the only thing that crosses into public reach is an exported, read-only dataset
+of already-published runs, and the connection always flows *outward* from the
+backend — nothing reaches in. The site has no live dependency on the backend and
+remains a fully static deployment. See [Site](/components/site/overview/).
+
+## Status
+
+The backend has **not** been implemented yet. It is the headline change for the
+next milestone; see the [Roadmap](/roadmap/).

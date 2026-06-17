@@ -5,12 +5,15 @@ title: Run Records
 ## Overview
 
 A run record is the data contract produced by every run. It is what the testing
-harness emits, what gets published, and what the [site](/architecture/site/) consumes. Every
-other part of the system is built around producing or reading this record, so its
-shape is deliberately fixed.
+harness emits, what [publishing](/components/core/results/#publishing) uploads to the
+[backend](/components/backend/overview/), and what the [site](/components/site/overview/)
+ultimately consumes. Every other part of the system is built around producing or
+reading this record, so its shape is deliberately fixed.
 
 A run record must be serialized in a machine readable format such as JSON and
-stored with the run's other artifacts.
+stored with the run's other artifacts. It is written locally beside those
+artifacts when a run finishes (see [Co-located Run Files](#co-located-run-files))
+and uploaded to the backend when the run is published.
 
 ## Contents
 
@@ -24,7 +27,7 @@ A run record must capture at least the following.
 ### Subject
 
 - The test case slug and the exact test case version that was run.
-- The slug of the [variant](/architecture/test-cases/#variants) that was run — exactly one
+- The slug of the [variant](/components/core/test-cases/#variants) that was run — exactly one
   variant runs per run, and recording it attributes the result to a specific
   build of the case.
 - The agent harness slug and, where available, the harness version.
@@ -56,13 +59,13 @@ The harness version is not duplicated here; it lives in the subject.
 
 ### Metrics
 
-- Run time, as defined in [Metrics](/architecture/metrics/#run-time).
-- The four token classes, as defined in [Metrics](/architecture/metrics/#tokens).
-- Comparable cost and actual cost, as defined in [Metrics](/architecture/metrics/#cost).
+- Run time, as defined in [Metrics](/components/core/metrics/#run-time).
+- The four token classes, as defined in [Metrics](/components/core/metrics/#tokens).
+- Comparable cost and actual cost, as defined in [Metrics](/components/core/metrics/#cost).
 
 ### Validation
 
-- A summary of the [validation](/architecture/validation/) results, including whether the
+- A summary of the [validation](/components/core/validation/) results, including whether the
   implementation loaded and the similarity signal from each declared check.
 
 ### Links
@@ -83,11 +86,11 @@ artifacts:
 - `run-record.json` — the run record described above.
 - `implementation/` — a copy of the produced working tree.
 - `raw.jsonl` — the harness's raw output, one JSON object per captured line in
-  arrival order, each tagging the [stream](/architecture/events/) the line came from and
+  arrival order, each tagging the [stream](/components/core/events/) the line came from and
   the line's verbatim text.
-- `events.jsonl` — the [normalized events](/architecture/events/) translated from that raw
+- `events.jsonl` — the [normalized events](/components/core/events/) translated from that raw
   output, one event per line, in the order they were produced.
-- `writeup.md` — the run's [review](/architecture/results/#reviews), when one has been
+- `writeup.md` — the run's [review](/components/core/results/#reviews), when one has been
   written.
 
 Recording the raw output beside its translation makes a run's event

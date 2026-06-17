@@ -5,7 +5,7 @@ title: Metrics
 ## Overview
 
 Every run records a small set of metrics describing how much it cost to produce.
-These are the numbers surfaced on the [site](/architecture/site/). The Test Cabinet does
+These are the numbers surfaced on the [site](/components/site/overview/). The Test Cabinet does
 not reduce runs to a single score; the metrics exist to let viewers understand
 the resources a run consumed, not to rank implementations.
 
@@ -34,7 +34,7 @@ following normalized token classes:
   tokens but are tracked separately because they are not useful output to a
   reader.
 
-The [agent harness layer](/architecture/harnesses/#usage-reporting) is responsible for
+The [agent harness layer](/components/core/harnesses/#usage-reporting) is responsible for
 producing these normalized values from each harness's raw reporting.
 
 ## Cost
@@ -69,5 +69,5 @@ the OpenRouter price lookup is skipped:
   `claude-sonnet-4-6`), which is not guaranteed to appear in OpenRouter's
   catalog, so an OpenRouter lookup would fail for them in any case.
 
-The [agent harness layer](/architecture/harnesses/#usage-reporting) is responsible for
+The [agent harness layer](/components/core/harnesses/#usage-reporting) is responsible for
 extracting any reported cost from each harness's output.

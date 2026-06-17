@@ -22,27 +22,34 @@ and runnable without any proprietary dependencies.
 
 ## System
 
-The Test Cabinet is made up of the following parts:
+The Test Cabinet is built as a headless [core](/components/core/overview/) with
+a set of components wrapping it. See [Architecture](/components/architecture/)
+for how they fit together; the [core](/components/core/overview/) docs define the
+domain concepts the rest of the system is built around:
 
-- The [testing harness application](/architecture/application/) is the locally run
-  application that orchestrates benchmark runs.
-- The [test case catalog](/architecture/test-cases/) defines the games that models are
-  asked to build, including their specs, assets, and validation criteria.
-- The [agent harness layer](/architecture/harnesses/) provides a unified way to invoke
-  third party coding harnesses so that the same test case can be run against any
-  of them.
-- The [execution environment](/architecture/execution/) isolates each run in its own
-  container and its own fresh git repository.
-- [Metrics](/architecture/metrics/) defines the run time, token, and cost data that every
-  run records.
-- [Validation](/architecture/validation/) describes the automated first pass that catches
-  gross failures and compares against reference UIs.
-- [Run records](/architecture/run-records/) define the data contract that a run produces
-  and the site consumes.
-- [Results](/architecture/results/) describes how a run's generated code and run record are
-  published.
-- The [public site](/architecture/site/) is the gallery where published runs can be
-  browsed and played.
+- The [test case catalog](/components/core/test-cases/) defines the games that
+  models are asked to build, including their specs, assets, and validation
+  criteria.
+- The [agent harness layer](/components/core/harnesses/) provides a unified way
+  to invoke third party coding harnesses so that the same test case can be run
+  against any of them.
+- The [execution environment](/components/core/execution/) isolates each run in
+  its own container and its own fresh git repository.
+- [Metrics](/components/core/metrics/) defines the run time, token, and cost data
+  that every run records.
+- [Validation](/components/core/validation/) describes the automated first pass
+  that catches gross failures and compares against reference UIs.
+- [Run records](/components/core/run-records/) define the data contract that a
+  run produces.
+- [Results](/components/core/results/) describes how a run's generated code and
+  run record are published.
+
+The components that wrap the core are the [CLI](/components/cli/overview/),
+[worker](/components/worker/overview/), and [Tauri app](/components/tauri/overview/)
+(the ways runs are launched), the [backend](/components/backend/overview/) that
+distributes definitions and stores results, and the
+[public site](/components/site/overview/) where published runs are browsed and
+played.
 
 ## Terminology
 

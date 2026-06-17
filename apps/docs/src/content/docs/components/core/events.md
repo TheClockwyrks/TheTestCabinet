@@ -6,7 +6,7 @@ title: Harness Events
 
 While a run is in progress its harness is doing work — running commands, reading
 and writing files, emitting assistant messages, and occasionally reporting its
-own errors. The [agent harness layer](/architecture/harnesses/) converts that activity into
+own errors. The [agent harness layer](/components/core/harnesses/) converts that activity into
 a single stream of normalized **harness events** so that callers can observe a
 run as it happens without needing to understand any harness specific output
 format.
@@ -14,8 +14,8 @@ format.
 Every supported harness reports its activity differently. The harness layer is
 responsible for translating each harness's raw output into the normalized event
 types defined here, exactly as it translates raw usage into the normalized token
-classes in [Metrics](/architecture/metrics/#tokens). Callers — the
-[testing harness application](/architecture/application/), its command line interface, and
+classes in [Metrics](/components/core/metrics/#tokens). Callers — the
+[testing harness application](/components/architecture/), its command line interface, and
 the desktop shell — consume one uniform stream regardless of which harness
 produced it.
 
@@ -217,7 +217,7 @@ A structured mapping's exact field names are confirmed against real CLI output
 rather than a published schema. Where a harness's stream has not yet been
 captured from a real run, the mapping reads each field from a small set of
 candidate locations and falls back to an unknown event rather than guessing — and
-the [`raw.jsonl` and `events.jsonl`](/architecture/run-records/#co-located-run-files) files
+the [`raw.jsonl` and `events.jsonl`](/components/core/run-records/#co-located-run-files) files
 a run records make it straightforward to confirm and refine those field names
 against an actual stream.
 
@@ -239,7 +239,7 @@ Lifecycle events are consumed for metadata rather than emitted as activity:
 | ----------- | -------- |
 | `thread.started` | Carries `thread_id`, captured as the session ID for later events. |
 | `turn.started` | Marks the start of a turn. No event is emitted. |
-| `turn.completed` | Carries `usage`, consumed for [usage](/architecture/metrics/#tokens). No event. |
+| `turn.completed` | Carries `usage`, consumed for [usage](/components/core/metrics/#tokens). No event. |
 
 Items are reported first as `item.started` and then as `item.completed`. The
 normalized event is derived from the completed state so that terminal information
@@ -295,7 +295,7 @@ Top level events map as follows:
 | `assistant` | Text content becomes an [agent](#agent-message) message and tool-use content is recorded for correlation (see below). |
 | `user` | Tool-result content resolves a recorded tool use into its event; echoed prompt or injected-context text emits no event. |
 | `rate_limit_event` | Consumed as credential state, except a non `allowed` status, which becomes a [warning](#warning). |
-| `result` | The terminal result; its usage and final output are consumed for [metrics](/architecture/metrics/#tokens), and only a reported terminal error becomes an [error](#harness-error). |
+| `result` | The terminal result; its usage and final output are consumed for [metrics](/components/core/metrics/#tokens), and only a reported terminal error becomes an [error](#harness-error). |
 | `stream_event` | Lower-level partial telemetry that the completed `assistant` and `user` events restate, so it is consumed. |
 | any other type | [unknown](#unknown) |
 

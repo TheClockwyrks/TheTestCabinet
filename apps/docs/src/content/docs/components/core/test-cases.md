@@ -27,6 +27,15 @@ benchmark runs so that contamination from training data has less impact. Each
 version must be self contained so that a run always references an exact,
 immutable version.
 
+The repository is the **authoring** source for test cases: a case is written and
+revised here. A finished version is then published to the
+[backend](/components/backend/overview/), which holds the canonical copy that
+[runners](/components/architecture/#runners-and-reporters) resolve at run time. A
+runner does not need a checkout of this repository to run a case; it resolves the
+requested version from the backend. The on-disk format described here is exactly
+what is authored in the repository and what the backend distributes — publishing a
+version caches it, it does not transform it.
+
 ## Contents
 
 Each test case version must contain:
@@ -48,11 +57,11 @@ Each test case version must contain:
 - **Assets** such as sprites that the model should use, when the case requires
   assets that should not be left to the model to generate.
 - **Validation criteria** describing what can be checked automatically. See
-  [Validation](/architecture/validation/).
+  [Validation](/components/core/validation/).
 
 The selected variant's specs, the assets, and the rendered reference screenshots
 are what gets seeded into a run; the prompt is rendered and handed to the harness
-rather than seeded. See [Execution](/architecture/execution/#seeding).
+rather than seeded. See [Execution](/components/core/execution/#seeding).
 
 ## Manifest
 
@@ -137,7 +146,7 @@ actions = []                 # actions to drive the build into the view (empty =
   installs exactly what it pins, matching the deployed build; a case may pin a
   different toolchain but must still emit a static build into `dist/`, `build/`,
   or `out/`. Neither command may be empty. See
-  [Validation](/architecture/validation/#load-check).
+  [Validation](/components/core/validation/#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the run
   workspace. A `source` ending in `.hbs` is a Handlebars template rendered into
@@ -160,7 +169,7 @@ actions = []                 # actions to drive the build into the view (empty =
   that each variant declares — whose rendered screenshot is the baseline;
   `actions` drive the built implementation into the view before capture. Its
   optional `name` is a display label, defaulting to a humanized form of `view`.
-  See [Validation](/architecture/validation/#checks).
+  See [Validation](/components/core/validation/#checks).
 
 ## Prompt template
 
@@ -170,7 +179,7 @@ field) that The Test Cabinet renders into the prompt for a run. Rendering lets a
 case word its own instruction while keeping run-specific details — the
 in-container paths and the selected variant — out of the authored specifications.
 The rendered prompt is handed to the harness; it is **not** seeded to disk. See
-[Execution](/architecture/execution/#seeding).
+[Execution](/components/core/execution/#seeding).
 
 The template is rendered in **strict mode** with HTML escaping disabled (the
 output is plain text). Strict mode means referencing any variable other than the
@@ -229,7 +238,7 @@ for whichever variant renders it.
 
 A test case version offers one or more **variants**, and a run selects exactly
 one. The chosen variant is recorded in the run record (see
-[Run Records](/architecture/run-records/#subject)), so every result is attributed to a
+[Run Records](/components/core/run-records/#subject)), so every result is attributed to a
 specific build. At least one `[[variant]]` must be declared.
 
 A variant seeds the case's common specs **plus** its own additional specs, so a
@@ -322,7 +331,11 @@ Every test case must satisfy the following:
   cost.
 - The final product must **not require backend support**. Every test case must be
   runnable in a browser with no accounts, databases, or other significant server
-  side dependencies.
+  side dependencies. This constraint is on the **produced game**, which must stay
+  a self-contained static build so it can be embedded and played from the public
+  site; it is unrelated to The Test Cabinet's own
+  [backend](/components/backend/overview/), which orchestration and publishing use
+  but a finished game never touches.
 - It must require its implementation to use the **fixed build interface** the
   harness and the per-run deploy both depend on, stated as a hard requirement in
   the spec and prompt. The build must be a Node project with a `package.json` at
@@ -334,7 +347,7 @@ Every test case must satisfy the following:
   builds and serves an implementation with the manifest's [`[build]`
   commands](#manifest) (defaulting to `npm ci` then `npm run build`) and records
   anything else as failing to load (see
-  [Validation](/architecture/validation/#load-check)); the language, framework, bundler, and
+  [Validation](/components/core/validation/#load-check)); the language, framework, bundler, and
   rendering approach behind the interface remain the model's choice.
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
@@ -346,4 +359,4 @@ A test case may provide some tests as part of its specification. These tests mus
 not be hidden from the model, and the model must not be blocked from writing
 additional tests of its own. The challenge of a test case must come from the
 case itself, not from the testing harness withholding information. See
-[Execution](/architecture/execution/#model-authored-tests).
+[Execution](/components/core/execution/#model-authored-tests).

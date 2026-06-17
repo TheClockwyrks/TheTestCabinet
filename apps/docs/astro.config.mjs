@@ -29,50 +29,49 @@ export default defineConfig({
           ],
         },
         {
-          label: "Architecture",
-          items: [
-            "architecture/application",
-            "architecture/test-cases",
-            "architecture/harnesses",
-            "architecture/execution",
-            "architecture/metrics",
-            "architecture/validation",
-            "architecture/run-records",
-            "architecture/results",
-            "architecture/site",
-            "architecture/events",
-          ],
-        },
-        {
           label: "Components",
           items: [
+            // System-wide overview, replacing the old Architecture section. The
+            // domain concepts that used to live there now sit under the component
+            // that owns them — almost all of them under Core.
+            "components/architecture",
             {
-              label: "Backend",
-              items: ["components/backend/overview"],
+              label: "Core",
+              items: [
+                "components/core/overview",
+                "components/core/test-cases",
+                "components/core/execution",
+                "components/core/harnesses",
+                "components/core/events",
+                "components/core/metrics",
+                "components/core/validation",
+                "components/core/run-records",
+                "components/core/results",
+              ],
             },
             {
               label: "CLI",
               items: ["components/cli/overview"],
             },
             {
-              label: "Core",
-              items: ["components/core/overview"],
-            },
-            {
-              label: "Documentation",
-              items: ["components/docs/overview"],
-            },
-            {
-              label: "Site",
-              items: ["components/site/overview"],
+              label: "Worker",
+              items: ["components/worker/overview"],
             },
             {
               label: "Tauri",
               items: ["components/tauri/overview"],
             },
             {
-              label: "Worker",
-              items: ["components/worker/overview"],
+              label: "Backend",
+              items: ["components/backend/overview"],
+            },
+            {
+              label: "Site",
+              items: ["components/site/overview"],
+            },
+            {
+              label: "Documentation",
+              items: ["components/docs/overview"],
             },
           ],
         },

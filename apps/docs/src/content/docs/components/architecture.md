@@ -1,0 +1,107 @@
+---
+title: Architecture
+---
+
+## Overview
+
+The Test Cabinet is built as a **headless core** with a set of components layered
+on top of it. The core owns all of the orchestration — resolving a test case
+version, seeding a run's repository, executing the run in a container, invoking
+the agent harness, collecting metrics, running validation, writing the run
+record, and publishing — and every other component is a thin wrapper that exposes
+that functionality under whatever interface it is expected to provide (a CLI, an
+HTTP API, a desktop GUI, and so on).
+
+Keeping orchestration in the core and out of the interfaces is what makes batch
+runs, automation, unattended sweeps, and remote execution possible: any component
+can drive a run because none of them re-implement what a run is.
+
+## Components
+
+The Test Cabinet is made up of the following components.
+
+| Component | What it is |
+| --------- | ---------- |
+| [Core](/components/core/overview/) | The Rust library that implements ~95% of the functionality. Everything else wraps it. |
+| [CLI](/components/cli/overview/) | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch. |
+| [Worker](/components/worker/overview/) | An Axum server that exposes the core's run functionality over an HTTP API, for running test cases on a remote machine. |
+| [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case and container definitions and stores published run results. |
+| [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
+| [Docs](/components/docs/overview/) | This documentation site. |
+
+## Runners and Reporters
+
+Two roles recur across the components:
+
+- A **runner** is any component that can execute a test case: the
+  [CLI](/components/cli/overview/), the [worker](/components/worker/overview/),
+  and the [Tauri app](/components/tauri/overview/). A runner needs a container
+  runtime on the machine it runs on, resolves the requested test case version
+  from the backend, drives the run through the core, and reports the result back
+  to the backend on publish.
+- A **reporter** is any component that displays run results: the
+  [Tauri app](/components/tauri/overview/) and the
+  [public site](/components/site/overview/). Reporters read published results;
+  only GUI reporters let a person interact with the produced implementations.
+
+The Tauri app is both, which is why it is expected to be the primary way The Test
+Cabinet is used: it launches runs, reviews them, and shows results in one place.
+
+## The Backend
+
+Earlier versions of The Test Cabinet deliberately had **no** backend. Run records
+were committed into the site's dataset — a "git-as-a-db" design that was chosen
+for convenience rather than because it was sound. That requirement has been
+dropped in favor of a single, centralized [backend](/components/backend/overview/)
+that records run results and serves as the canonical copy of the test case and
+container definitions runners need.
+
+The backend stays deliberately small. There are still no end-user accounts and no
+public write surface; instead it sits on a private network and only authorized
+users and machines can push to or pull from it (see
+[Backend](/components/backend/overview/#authentication)). The
+[public site](/components/site/overview/) remains a fully static, backend-less
+deployment: publishing exports a public snapshot of the dataset that the site
+builds from, so the gallery has no live dependency on the private backend.
+
+## Local Operation
+
+A run is driven by whichever runner launched it through a container runtime on
+that runner's own machine — the host for the CLI and the Tauri app, the worker's
+host for a worker-driven run. A runner therefore requires a supported container
+runtime (Docker or a compatible runtime such as Podman) to be available, while
+components that only report results do not. See
+[Execution](/components/core/execution/).
+
+## A Run
+
+At a high level, launching a run must:
+
+- Select a test case version, an agent harness, and a model, resolving the
+  version from the [backend](/components/backend/overview/).
+- Seed a fresh git repository with the selected
+  [variant](/components/core/test-cases/#variants)'s data.
+- Start a container and invoke the agent harness against the seeded repository.
+- Surface the harness's activity as a live stream of
+  [harness events](/components/core/events/) while the run is in progress.
+- Record [metrics](/components/core/metrics/) as the run proceeds and collect the
+  produced repository when it finishes.
+- Run [validation](/components/core/validation/) over the produced implementation.
+- Write a [run record](/components/core/run-records/), and optionally
+  [publish](/components/core/results/) the run.
+
+Publishing releases the produced code to its own public repository, makes its
+build available for embedding, and submits the run record to the backend, which
+serializes it into its store and refreshes the public snapshot the site is built
+from. See [Results](/components/core/results/).
+
+## A Note on "Harness"
+
+The word *harness* is used two ways throughout these docs:
+
+- The *testing harness* is The Test Cabinet's own application that runs
+  benchmarks.
+- An *agent harness* is a third-party coding tool (for example Claude Code or
+  Codex) that drives a model through a test case. See
+  [Agent Harnesses](/components/core/harnesses/).

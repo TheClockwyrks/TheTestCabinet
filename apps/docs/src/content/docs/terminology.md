@@ -25,8 +25,10 @@ harness takes.
 
 ## Publishing
 
-"Publishing" refers to pushing an implementation to GitHub and its result to The
-Test Cabinet's website. Test runs exist only locally until published.
+"Publishing" refers to releasing an implementation to GitHub and uploading its
+run record to The Test Cabinet's [backend](/components/backend/overview/), from
+which a public snapshot is exported for the website. Test runs exist only locally
+until published.
 
 ## Reporters
 
