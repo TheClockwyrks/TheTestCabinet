@@ -14,7 +14,7 @@
 #
 # This image installs no agent harness. See the sibling directories for the
 # per-harness images.
-FROM docker.io/library/node:22-bookworm-slim
+FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
 #   - git: each run is its own fresh repository.
@@ -67,9 +67,16 @@ ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops the global install's postinstall from
 # fetching Chromium into root's cache; the only browser download is the explicit
 # one below, as `node`, into the run user's cache.
+#
+# This install runs as root but writes into the node user's home (the global
+# prefix is /home/node/.npm-global and npm's cache lands under /home/node). That
+# leaves those trees root-owned, so a later `npm install -g` by the `node` user
+# in a per-harness image can't create directories under them (EACCES). Hand the
+# whole home back to `node` afterward so those installs work without root.
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g playwright@1.56.1 \
 	&& playwright install-deps chromium \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/* \
+	&& chown -R node:node /home/node
 
 USER node
 
