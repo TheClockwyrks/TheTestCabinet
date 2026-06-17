@@ -28,6 +28,11 @@ harness takes.
 "Publishing" refers to pushing an implementation to GitHub and its result to The
 Test Cabinet's website. Test runs exist only locally until published.
 
+## Reporters
+
+Reporters are The Test Cabinet components capable of reporting run results. Only
+GUI reporters allow users to interact with test case implementations.
+
 ## Review
 
 All test cases are manually reviewed after the implementation is complete. This
@@ -40,6 +45,11 @@ are slightly subjective since games don't map cleanly to a rigid grading scale.
 A run record is produced each time a test case runs to completion. This records
 all information from the run, such as its run time, version information, and
 token/cost data.
+
+## Runners
+
+The term "runner" is used to refer to any The Test Cabinet component that is
+capable of running test cases.
 
 ## Test Case
 

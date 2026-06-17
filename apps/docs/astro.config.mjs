@@ -43,6 +43,39 @@ export default defineConfig({
             "architecture/events",
           ],
         },
+        {
+          label: "Components",
+          items: [
+            {
+              label: "Backend",
+              items: ["components/backend/overview"],
+            },
+            {
+              label: "CLI",
+              items: ["components/cli/overview"],
+            },
+            {
+              label: "Core",
+              items: ["components/core/overview"],
+            },
+            {
+              label: "Documentation",
+              items: ["components/docs/overview"],
+            },
+            {
+              label: "Site",
+              items: ["components/site/overview"],
+            },
+            {
+              label: "Tauri",
+              items: ["components/tauri/overview"],
+            },
+            {
+              label: "Worker",
+              items: ["components/worker/overview"],
+            },
+          ],
+        },
       ],
     }),
   ],
