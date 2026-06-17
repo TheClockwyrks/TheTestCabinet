@@ -21,6 +21,12 @@ export default defineConfig({
         { label: "Overview", link: "/" },
         { label: "Terminology", link: "/terminology" },
         {
+          label: "Changelogs",
+          items: [
+            "changelogs/v0.1.0",
+          ],
+        },
+        {
           label: "Architecture",
           items: [
             "architecture/application",
