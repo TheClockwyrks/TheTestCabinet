@@ -81,9 +81,9 @@
       "deepseek/deepseek-v4-flash"
     ],
     "prices": {
-      "uncachedInput": 9.8e-8,
+      "uncachedInput": 9e-8,
       "cachedInput": 2e-8,
-      "output": 1.96e-7
+      "output": 1.8e-7
     },
     "contextLength": 1048576,
     "releasedAt": "2026-04-24T03:17:46Z"
@@ -272,8 +272,8 @@
       "moonshotai/kimi-k2.7-code"
     ],
     "prices": {
-      "uncachedInput": 7.5e-7,
-      "cachedInput": 1.6e-7,
+      "uncachedInput": 7.4e-7,
+      "cachedInput": 1.5e-7,
       "output": 3.5e-6
     },
     "contextLength": 262144,
