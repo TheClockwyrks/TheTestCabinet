@@ -2,6 +2,7 @@ import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { BandedSun } from "./BandedSun";
 import { useBackdropSettings } from "./BackdropSettingsContext";
+import { GradientBackground } from "./GradientBackground";
 import { GridFloor } from "./GridFloor";
 import { readScenePalette } from "./palette";
 import { WireframeTerrain } from "./WireframeTerrain";
@@ -29,7 +30,12 @@ export default function SynthwaveScene() {
       aria-hidden="true"
       frameloop={active ? "always" : "never"}
       dpr={[1, 1.5]}
-      gl={{ antialias: true, alpha: true }}
+      // Opaque canvas: a transparent one forces the page compositor to
+      // alpha-blend this full-viewport layer over the page every frame, which
+      // is brutal under software compositing (e.g. Firefox/Linux falling back
+      // to software WebRender). Opaque, the canvas is a cheap blit and the
+      // scene paints its own background gradient (`GradientBackground`).
+      gl={{ antialias: true, alpha: false }}
       camera={{ position: [0, 1.2, 6], fov: 60, near: 0.1, far: 200 }}
       // Tilt the view down a few degrees so the foreground grid fills all the
       // way to the bottom edge instead of fading out into a dark band.
@@ -37,6 +43,11 @@ export default function SynthwaveScene() {
       style={{ position: "absolute", inset: 0 }}
     >
       <fog attach="fog" args={[palette.fog.getHex(), 45, 130]} />
+      <GradientBackground
+        top={palette.bgTop}
+        mid={palette.bgMid}
+        bottom={palette.bgBottom}
+      />
       <GridFloor near={palette.gridNear} far={palette.gridFar} />
       <WireframeTerrain color={palette.terrain} />
       {sunEnabled && (

@@ -16,6 +16,13 @@ export interface ScenePalette {
   sunBottom: Color;
   // Distance fog, matched to the page background so terrain dissolves into it.
   fog: Color;
+  // Vertical background gradient (screen top → middle → bottom), mirroring the
+  // CSS `.backdrop` gradient. With the WebGL canvas now opaque (see
+  // `SynthwaveScene`) the scene paints this itself instead of letting the page
+  // gradient show through a translucent canvas.
+  bgTop: Color;
+  bgMid: Color;
+  bgBottom: Color;
 }
 
 function cssColor(name: string, fallback: string): Color {
@@ -40,5 +47,11 @@ export function readScenePalette(): ScenePalette {
     sunTop: cssColor("--ttc-accent", "#ff9d2f"),
     sunBottom: cssColor("--ttc-accent-2", "#ff5e3a"),
     fog: cssColor("--ttc-bg-2", "#0a0414"),
+    // Stops mirror the `.backdrop` gradient in `Backdrop.module.scss`: `--ttc-bg`
+    // at the top, `--ttc-bg-2` at the 55% mid stop, and a slightly warmer void
+    // at the bottom (a literal there, with no matching token to read).
+    bgTop: cssColor("--ttc-bg", "#050108"),
+    bgMid: cssColor("--ttc-bg-2", "#0a0414"),
+    bgBottom: new Color("#14061f"),
   };
 }
