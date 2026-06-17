@@ -31,8 +31,8 @@ and publish it without leaving the app.
   [run record](/components/core/run-records/) and review to the
   [backend](/components/backend/overview/).
 
-As a runner the app needs a supported container runtime on the machine it runs on,
-and it resolves definitions from and publishes to the
+As a runner the app needs a supported container runtime on the machine it runs
+on, and it resolves definitions from and publishes to the
 [backend](/components/backend/overview/).
 
 ## Status

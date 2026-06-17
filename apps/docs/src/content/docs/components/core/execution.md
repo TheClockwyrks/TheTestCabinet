@@ -2,8 +2,6 @@
 title: Execution
 ---
 
-## Overview
-
 Every run executes inside an isolated, containerized environment seeded with a
 fresh git repository. Isolation protects the host, keeps runs from discovering
 each other's work, and prevents models from finding solutions in places they
@@ -20,8 +18,8 @@ example by deleting files.
   runtime.
 - A container must not have access to the host filesystem beyond the seeded
   repository and the inputs the run explicitly provides.
-- A container does require outbound network access so the agent harness can reach
-  model APIs and install packages. Isolation is about protecting the host
+- A container does require outbound network access so the agent harness can
+  reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
 
 ## Seeding
@@ -30,13 +28,13 @@ Each run must be seeded into its own newly created git repository that contains
 the data a model needs to build the game: the specs of the selected variant, the
 test case's assets, and the rendered reference screenshots that serve as visual
 targets. A run selects exactly one
-[variant](/components/core/test-cases/#variants), and the variant's specs are seeded at their
-declared `dest` paths — the common specs plus that variant's own — rather than as
-a single specification at the repository root.
+[variant](/components/core/test-cases/#variants), and the variant's specs are
+seeded at their declared `dest` paths — the common specs plus that variant's own
+— rather than as a single specification at the repository root.
 
-- A new repository must be created per run so that no prior history exists. Models
-  have been observed solving tasks by reading git history to recover a deleted
-  reference implementation; starting from an empty history removes that
+- A new repository must be created per run so that no prior history exists.
+  Models have been observed solving tasks by reading git history to recover a
+  deleted reference implementation; starting from an empty history removes that
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
@@ -49,8 +47,8 @@ a single specification at the repository root.
   model can see what each screen should look like. The reference **source**
   mockups are **not** seeded: handing over the mockup HTML/CSS would let a model
   copy the intended UI instead of building it from the specification, the same
-  kind of shortcut the fresh repository is meant to prevent. A screenshot conveys
-  the target without giving away the implementation.
+  kind of shortcut the fresh repository is meant to prevent. A screenshot
+  conveys the target without giving away the implementation.
 - The seeded specs must be **self-contained**, with no links or references to
   these harness docs or to any file outside the seeded repository, because none
   of them exist inside the container. They may, however, point at the seeded
@@ -67,8 +65,8 @@ this same seeding step for a chosen variant (`--variant`) and leaves the result
 on disk (under `tmp/` by default) so the exact inputs a harness receives — the
 variant's seeded specs, the seeded assets, and the fresh git history — can be
 inspected without launching a container. Because the prompt is not seeded,
-`tcab prompt` renders and prints the instruction a run would hand the harness for
-a given variant, without seeding or launching anything.
+`tcab prompt` renders and prints the instruction a run would hand the harness
+for a given variant, without seeding or launching anything.
 
 ## Model Authored Tests
 

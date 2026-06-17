@@ -2,13 +2,12 @@
 title: Run Records
 ---
 
-## Overview
-
 A run record is the data contract produced by every run. It is what the testing
-harness emits, what [publishing](/components/core/results/#publishing) uploads to the
-[backend](/components/backend/overview/), and what the [site](/components/site/overview/)
-ultimately consumes. Every other part of the system is built around producing or
-reading this record, so its shape is deliberately fixed.
+harness emits, what [publishing](/components/core/results/#publishing) uploads
+to the [backend](/components/backend/overview/), and what the
+[site](/components/site/overview/) ultimately consumes. Every other part of the
+system is built around producing or reading this record, so its shape is
+deliberately fixed.
 
 A run record must be serialized in a machine readable format such as JSON and
 stored with the run's other artifacts. It is written locally beside those
@@ -27,9 +26,9 @@ A run record must capture at least the following.
 ### Subject
 
 - The test case slug and the exact test case version that was run.
-- The slug of the [variant](/components/core/test-cases/#variants) that was run — exactly one
-  variant runs per run, and recording it attributes the result to a specific
-  build of the case.
+- The slug of the [variant](/components/core/test-cases/#variants) that was run
+  — exactly one variant runs per run, and recording it attributes the result to
+  a specific build of the case.
 - The agent harness slug and, where available, the harness version.
 - The model ID that was used.
 
@@ -38,11 +37,11 @@ A run record must capture at least the following.
 Provenance for the Test Cabinet build that orchestrated the run, distinct from
 the harness it drove:
 
-- The Test Cabinet commit the run's binary was built from, suffixed with `-dirty`
-  when built from a modified working tree, or `null` when the build could not
-  determine it (for example, a build with no git repository). This is stamped
-  into the binary at build time and lets a result be traced back to the exact
-  orchestrator code that produced it.
+- The Test Cabinet commit the run's binary was built from, suffixed with
+  `-dirty` when built from a modified working tree, or `null` when the build
+  could not determine it (for example, a build with no git repository). This is
+  stamped into the binary at build time and lets a result be traced back to the
+  exact orchestrator code that produced it.
 
 ### Environment
 
@@ -65,8 +64,9 @@ The harness version is not duplicated here; it lives in the subject.
 
 ### Validation
 
-- A summary of the [validation](/components/core/validation/) results, including whether the
-  implementation loaded and the similarity signal from each declared check.
+- A summary of the [validation](/components/core/validation/) results, including
+  whether the implementation loaded and the similarity signal from each declared
+  check.
 
 ### Links
 
@@ -75,8 +75,8 @@ The harness version is not duplicated here; it lives in the subject.
 
 ### Status
 
-- Whether the run completed, failed, or could not be evaluated, with enough detail
-  to understand a failure.
+- Whether the run completed, failed, or could not be evaluated, with enough
+  detail to understand a failure.
 
 ## Co-located Run Files
 
@@ -86,12 +86,12 @@ artifacts:
 - `run-record.json` — the run record described above.
 - `implementation/` — a copy of the produced working tree.
 - `raw.jsonl` — the harness's raw output, one JSON object per captured line in
-  arrival order, each tagging the [stream](/components/core/events/) the line came from and
-  the line's verbatim text.
-- `events.jsonl` — the [normalized events](/components/core/events/) translated from that raw
-  output, one event per line, in the order they were produced.
-- `writeup.md` — the run's [review](/components/core/results/#reviews), when one has been
-  written.
+  arrival order, each tagging the [stream](/components/core/events/) the line
+  came from and the line's verbatim text.
+- `events.jsonl` — the [normalized events](/components/core/events/) translated
+  from that raw output, one event per line, in the order they were produced.
+- `writeup.md` — the run's [review](/components/core/results/#reviews), when one
+  has been written.
 
 Recording the raw output beside its translation makes a run's event
 classification auditable: replaying `raw.jsonl` through the harness layer's

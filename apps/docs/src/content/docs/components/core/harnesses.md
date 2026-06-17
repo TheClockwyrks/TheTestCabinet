@@ -2,11 +2,9 @@
 title: Agent Harnesses
 ---
 
-## Overview
-
 One of the goals of The Test Cabinet is to evaluate not only models but also the
-coding harnesses that drive them. If a model performs significantly better in one
-harness than another, that is a useful data point. The agent harness layer
+coding harnesses that drive them. If a model performs significantly better in
+one harness than another, that is a useful data point. The agent harness layer
 provides a single abstraction for invoking any supported third party harness so
 that the same test case can be run against any of them without the rest of the
 testing harness needing to know harness specific details.
@@ -43,15 +41,15 @@ A harness invocation must be given at least:
 - The prompt, which is the initial instruction handed to the harness. For a test
   case this directs the harness to build the game from the seeded specification.
 
-A run corresponds to a single harness session driven to completion. The harness's
-own agent loop performs the work of the run; orchestrating multiple chained
-sessions is out of scope for now.
+A run corresponds to a single harness session driven to completion. The
+harness's own agent loop performs the work of the run; orchestrating multiple
+chained sessions is out of scope for now.
 
 This reflects a deliberate scoping decision: The Test Cabinet currently measures
-what the supported harnesses can do out of the box, driving each through a single
-session with no additional orchestration layered on top. Multi-session
-orchestration is a planned future capability, but it is intentionally excluded so
-that early results reflect the harnesses' own unaided behavior.
+what the supported harnesses can do out of the box, driving each through a
+single session with no additional orchestration layered on top. Multi-session
+orchestration is a planned future capability, but it is intentionally excluded
+so that early results reflect the harnesses' own unaided behavior.
 
 ## Availability
 
@@ -100,9 +98,10 @@ report the precise amount charged — for example, Claude Code emits a
 `total_cost_usd` figure on its terminal result. When such a figure is present the
 harness layer returns it, and the orchestrator uses it for both cost figures
 without consulting OpenRouter, as described in
-[Harness-reported cost](/components/core/metrics/#harness-reported-cost). Harnesses that report
-no cost (for example Codex, whose output carries only token counts) leave the
-reported cost unset and fall back to OpenRouter-derived pricing.
+[Harness-reported cost](/components/core/metrics/#harness-reported-cost).
+Harnesses that report no cost (for example Codex, whose output carries only
+token counts) leave the reported cost unset and fall back to OpenRouter-derived
+pricing.
 
 When a no-cost harness is priced through OpenRouter, the harness layer maps its
 model ID to the slug OpenRouter lists it under. Harnesses that route through
@@ -114,8 +113,8 @@ OpenRouter lists as `openai/gpt-5.5`.
 ## Event Reporting
 
 Beyond its terminal outcome, every invocation produces a live stream of
-normalized [harness events](/components/core/events/) as the harness runs. The agent harness
-layer translates each harness's raw output into that uniform stream so callers can
-render progress while a run is in progress and, when a harness fails, see the
-harness's own diagnostic output instead of a single opaque error. The command
-line interface prints these events as they arrive.
+normalized [harness events](/components/core/events/) as the harness runs. The
+agent harness layer translates each harness's raw output into that uniform
+stream so callers can render progress while a run is in progress and, when a
+harness fails, see the harness's own diagnostic output instead of a single
+opaque error. The command line interface prints these events as they arrive.

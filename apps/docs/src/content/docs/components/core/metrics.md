@@ -2,12 +2,10 @@
 title: Metrics
 ---
 
-## Overview
-
 Every run records a small set of metrics describing how much it cost to produce.
-These are the numbers surfaced on the [site](/components/site/overview/). The Test Cabinet does
-not reduce runs to a single score; the metrics exist to let viewers understand
-the resources a run consumed, not to rank implementations.
+These are the numbers surfaced on the [site](/components/site/overview/). The
+Test Cabinet does not reduce runs to a single score; the metrics exist to let
+viewers understand the resources a run consumed, not to rank implementations.
 
 ## Run Time
 
@@ -25,33 +23,34 @@ following normalized token classes:
   provider's cache. If a harness reports input as `input + cache_read`, the
   cached reads must be subtracted so this value excludes them.
 - **Cached input tokens** — input tokens served from the provider's cache. These
-  are billed at a much lower rate than uncached input tokens, so they are tracked
-  separately.
-- **Output tokens** — non reasoning output tokens. If a harness reports output as
-  `output + reasoning`, the reasoning tokens must be subtracted so this value
+  are billed at a much lower rate than uncached input tokens, so they are
+  tracked separately.
+- **Output tokens** — non reasoning output tokens. If a harness reports output
+  as `output + reasoning`, the reasoning tokens must be subtracted so this value
   excludes them.
 - **Reasoning tokens** — internal reasoning tokens. These are billed as output
   tokens but are tracked separately because they are not useful output to a
   reader.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) is responsible for
-producing these normalized values from each harness's raw reporting.
+The [agent harness layer](/components/core/harnesses/#usage-reporting) is
+responsible for producing these normalized values from each harness's raw
+reporting.
 
 ## Cost
 
 Every run must record cost two ways:
 
 - The **comparable cost**, the canonical figure shown on the site. By default it
-  is computed from the per token prices that OpenRouter lists for the model used,
-  rather than the exact charged amount, because OpenRouter may route a single
-  model to different providers that price calls differently, which would make raw
-  charged costs inconsistent between otherwise identical runs.
-- The **actual cost** charged for the run, recorded alongside the comparable cost
-  for reference.
+  is computed from the per token prices that OpenRouter lists for the model
+  used, rather than the exact charged amount, because OpenRouter may route a
+  single model to different providers that price calls differently, which would
+  make raw charged costs inconsistent between otherwise identical runs.
+- The **actual cost** charged for the run, recorded alongside the comparable
+  cost for reference.
 
 Comparable cost is derived from the recorded token classes and the listed prices
-for uncached input, cached input, and output tokens, with reasoning tokens priced
-at the output rate.
+for uncached input, cached input, and output tokens, with reasoning tokens
+priced at the output rate.
 
 ### Harness-reported cost
 
@@ -69,5 +68,5 @@ the OpenRouter price lookup is skipped:
   `claude-sonnet-4-6`), which is not guaranteed to appear in OpenRouter's
   catalog, so an OpenRouter lookup would fail for them in any case.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) is responsible for
-extracting any reported cost from each harness's output.
+The [agent harness layer](/components/core/harnesses/#usage-reporting) is
+responsible for extracting any reported cost from each harness's output.

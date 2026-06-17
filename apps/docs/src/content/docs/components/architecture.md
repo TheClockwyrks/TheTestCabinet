@@ -2,19 +2,17 @@
 title: Architecture
 ---
 
-## Overview
-
-The Test Cabinet is built as a **headless core** with a set of components layered
-on top of it. The core owns all of the orchestration — resolving a test case
-version, seeding a run's repository, executing the run in a container, invoking
-the agent harness, collecting metrics, running validation, writing the run
-record, and publishing — and every other component is a thin wrapper that exposes
-that functionality under whatever interface it is expected to provide (a CLI, an
-HTTP API, a desktop GUI, and so on).
+The Test Cabinet is built as a **headless core** with a set of components
+layered on top of it. The core owns all of the orchestration — resolving a test
+case version, seeding a run's repository, executing the run in a container,
+invoking the agent harness, collecting metrics, running validation, writing the
+run record, and publishing — and every other component is a thin wrapper that
+exposes that functionality under whatever interface it is expected to provide (a
+CLI, an HTTP API, a desktop GUI, and so on).
 
 Keeping orchestration in the core and out of the interfaces is what makes batch
-runs, automation, unattended sweeps, and remote execution possible: any component
-can drive a run because none of them re-implement what a run is.
+runs, automation, unattended sweeps, and remote execution possible: any
+component can drive a run because none of them re-implement what a run is.
 
 ## Components
 
@@ -45,21 +43,22 @@ Two roles recur across the components:
   [public site](/components/site/overview/). Reporters read published results;
   only GUI reporters let a person interact with the produced implementations.
 
-The Tauri app is both, which is why it is expected to be the primary way The Test
-Cabinet is used: it launches runs, reviews them, and shows results in one place.
+The Tauri app is both, which is why it is expected to be the primary way The
+Test Cabinet is used: it launches runs, reviews them, and shows results in one
+place.
 
 ## The Backend
 
-Earlier versions of The Test Cabinet deliberately had **no** backend. Run records
-were committed into the site's dataset — a "git-as-a-db" design that was chosen
-for convenience rather than because it was sound. That requirement has been
-dropped in favor of a single, centralized [backend](/components/backend/overview/)
-that records run results and serves as the canonical copy of the test case and
-container definitions runners need.
+Earlier versions of The Test Cabinet deliberately had **no** backend. Run
+records were committed into the site's dataset — a "git-as-a-db" design that was
+chosen for convenience rather than because it was sound. That requirement has
+been dropped in favor of a single, centralized
+[backend](/components/backend/overview/) that records run results and serves as
+the canonical copy of the test case and container definitions runners need.
 
-The backend stays deliberately small. There are still no end-user accounts and no
-public write surface; instead it sits on a private network and only authorized
-users and machines can push to or pull from it (see
+The backend stays deliberately small. There are still no end-user accounts and
+no public write surface; instead it sits on a private network and only
+authorized users and machines can push to or pull from it (see
 [Backend](/components/backend/overview/#authentication)). The
 [public site](/components/site/overview/) remains a fully static, backend-less
 deployment: publishing exports a public snapshot of the dataset that the site

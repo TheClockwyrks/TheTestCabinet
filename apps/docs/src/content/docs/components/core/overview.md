@@ -23,14 +23,14 @@ contracts the rest of the system is built around:
   working tree.
 - **[Agent harnesses](/components/core/harnesses/)** — a single abstraction for
   invoking any supported third-party coding harness, absorbing each one's quirks.
-- **[Harness events](/components/core/events/)** — translating each harness's raw
-  output into one normalized, live event stream.
+- **[Harness events](/components/core/events/)** — translating each harness's
+  raw output into one normalized, live event stream.
 - **[Metrics](/components/core/metrics/)** — recording the run time, token, and
   cost data every run produces.
 - **[Validation](/components/core/validation/)** — the automated first pass that
   builds, loads, and optionally screenshot-compares an implementation.
-- **[Run records](/components/core/run-records/)** — the fixed data contract a run
-  emits.
+- **[Run records](/components/core/run-records/)** — the fixed data contract a
+  run emits.
 - **[Results](/components/core/results/)** — publishing a finished run: releasing
   its code, uploading its record to the [backend](/components/backend/overview/),
   and recording its review.

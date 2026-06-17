@@ -2,8 +2,6 @@
 title: Test Cases
 ---
 
-## Overview
-
 A test case is a single game that a model is asked to build. Test cases range
 from simple cases such as Pong through to highly complex cases that require
 significant assistance from a coding harness for even the best models to
@@ -14,8 +12,8 @@ harnesses improve.
 ## Catalog Layout
 
 Test cases live in the repository under a top level `test-cases/` folder. Each
-test case has its own folder named with a stable slug, and each slug contains one
-folder per version:
+test case has its own folder named with a stable slug, and each slug contains
+one folder per version:
 
 ```
 test-cases/<slug>/<version>/
@@ -30,11 +28,11 @@ immutable version.
 The repository is the **authoring** source for test cases: a case is written and
 revised here. A finished version is then published to the
 [backend](/components/backend/overview/), which holds the canonical copy that
-[runners](/components/architecture/#runners-and-reporters) resolve at run time. A
-runner does not need a checkout of this repository to run a case; it resolves the
-requested version from the backend. The on-disk format described here is exactly
-what is authored in the repository and what the backend distributes — publishing a
-version caches it, it does not transform it.
+[runners](/components/architecture/#runners-and-reporters) resolve at run time.
+A runner does not need a checkout of this repository to run a case; it resolves
+the requested version from the backend. The on-disk format described here is
+exactly what is authored in the repository and what the backend distributes —
+publishing a version caches it, it does not transform it.
 
 ## Contents
 
@@ -44,9 +42,9 @@ Each test case version must contain:
   vision spec for the test case and is the primary material handed to the model.
   It may record both high and low level details, including mechanics, layouts,
   states, and rules. The specification may be split across multiple seeded files
-  (see [Variants](#variants)) rather than living in a single file. Each spec file
-  is either plain Markdown, seeded verbatim, or a Handlebars template (`.hbs`)
-  rendered per run with the selected variant; see
+  (see [Variants](#variants)) rather than living in a single file. Each spec
+  file is either plain Markdown, seeded verbatim, or a Handlebars template
+  (`.hbs`) rendered per run with the selected variant; see
   [Spec templates](#spec-templates).
 - A **prompt template** (`prompt.hbs`) that is rendered into the instruction
   handed to the harness. See [Prompt template](#prompt-template).
@@ -60,16 +58,17 @@ Each test case version must contain:
   [Validation](/components/core/validation/).
 
 The selected variant's specs, the assets, and the rendered reference screenshots
-are what gets seeded into a run; the prompt is rendered and handed to the harness
-rather than seeded. See [Execution](/components/core/execution/#seeding).
+are what gets seeded into a run; the prompt is rendered and handed to the
+harness rather than seeded. See [Execution](/components/core/execution/#seeding).
 
 ## Manifest
 
 Each test case version declares its contents in a `test-case.toml` manifest in
 the version folder. The testing harness reads this manifest to resolve the
-version and to decide, unambiguously, what is seeded into a run, which references
-are rendered as visual targets, and which validation checks run. Inferring this
-from file names alone would be fragile, so it is stated explicitly.
+version and to decide, unambiguously, what is seeded into a run, which
+references are rendered as visual targets, and which validation checks run.
+Inferring this from file names alone would be fragile, so it is stated
+explicitly.
 
 ```toml
 # test-cases/<slug>/<version>/test-case.toml
@@ -128,14 +127,14 @@ actions = []                 # actions to drive the build into the view (empty =
   the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
   is site-only prose. Like every other path it must resolve inside the version
   folder, and it is validated to exist when declared.
-- `prompt` is **required** and points at the Handlebars template that becomes the
-  instruction handed to the harness. The template is **rendered, not seeded**;
-  see [Prompt template](#prompt-template) below.
-- `max_runtime_seconds` is the maximum wall-clock duration the harness session is
-  allowed before the run container is torn down and the run aborts. It exists so a
-  stuck or runaway session can never run unbounded. It defaults to `3600` (one
-  hour) when omitted and must be greater than zero. This is the per-case default;
-  a run can override it for a single invocation (for example
+- `prompt` is **required** and points at the Handlebars template that becomes
+  the instruction handed to the harness. The template is **rendered, not
+  seeded**; see [Prompt template](#prompt-template) below.
+- `max_runtime_seconds` is the maximum wall-clock duration the harness session
+  is allowed before the run container is torn down and the run aborts. It exists
+  so a stuck or runaway session can never run unbounded. It defaults to `3600`
+  (one hour) when omitted and must be greater than zero. This is the per-case
+  default; a run can override it for a single invocation (for example
   `tcab run --max-runtime <seconds>`).
 - The optional `[build]` table declares the commands validation runs to turn a
   produced implementation into a served static site: `install` (dependency
@@ -148,11 +147,11 @@ actions = []                 # actions to drive the build into the view (empty =
   or `out/`. Neither command may be empty. See
   [Validation](/components/core/validation/#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
-  mapping a `source` file inside the version folder onto a `dest` path in the run
-  workspace. A `source` ending in `.hbs` is a Handlebars template rendered into
-  its `dest` (see [Spec templates](#spec-templates)); any other `source` is seeded
-  verbatim. The rendered reference screenshots are seeded too. Asset entries may
-  be files or directories; a directory is seeded recursively.
+  mapping a `source` file inside the version folder onto a `dest` path in the
+  run workspace. A `source` ending in `.hbs` is a Handlebars template rendered
+  into its `dest` (see [Spec templates](#spec-templates)); any other `source` is
+  seeded verbatim. The rendered reference screenshots are seeded too. Asset
+  entries may be files or directories; a directory is seeded recursively.
 - Each `[[variant]]` declares a build the case offers. A run selects exactly one
   variant, which seeds the common specs plus the variant's own `spec` entries;
   see [Variants](#variants) below.
@@ -164,9 +163,9 @@ actions = []                 # actions to drive the build into the view (empty =
   reference and by a variant, and a variant must not declare the same view twice.
   All paths are relative to the version folder and must resolve inside it, keeping
   a version self-contained.
-- Each `[[check]]` is an opt-in validation comparison. Its `reference` must name a
-  reference view that resolves for **every** variant — a common reference, or one
-  that each variant declares — whose rendered screenshot is the baseline;
+- Each `[[check]]` is an opt-in validation comparison. Its `reference` must name
+  a reference view that resolves for **every** variant — a common reference, or
+  one that each variant declares — whose rendered screenshot is the baseline;
   `actions` drive the built implementation into the view before capture. Its
   optional `name` is a display label, defaulting to a humanized form of `view`.
   See [Validation](/components/core/validation/#checks).
@@ -193,8 +192,8 @@ context exposes exactly:
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
 - `{{#each specs}} … {{/each}}` — the specs seeded for the selected variant, in
-  **seed order**: the common specs first, then the variant's own specs. Each spec
-  exposes:
+  **seed order**: the common specs first, then the variant's own specs. Each
+  spec exposes:
   - `{{this.dest}}` — the spec's destination relative to the workspace (for
     example `specs/overview.md`).
   - `{{this.path}}` — the spec's absolute in-container path (for example
@@ -211,10 +210,10 @@ running; the prompt points the model at the seeded files for it.
 A spec is normally plain Markdown, seeded into the run verbatim. A spec whose
 `source` ends in `.hbs`, however, is a Handlebars template: The Test Cabinet
 renders it at seed time and writes the result to the spec's `dest` (typically a
-`.md` file), so the seeded specification states facts that depend on the selected
-variant directly — for example naming which configuration this build is — rather
-than hedging about what a run "may" contain. The extension on the `source`
-decides this: `.hbs` is rendered, anything else is copied as-is.
+`.md` file), so the seeded specification states facts that depend on the
+selected variant directly — for example naming which configuration this build is
+— rather than hedging about what a run "may" contain. The extension on the
+`source` decides this: `.hbs` is rendered, anything else is copied as-is.
 
 A spec template is rendered under the same rules as the prompt: **strict mode**
 (referencing any variable other than those below is a render error, not a silent
@@ -238,14 +237,14 @@ for whichever variant renders it.
 
 A test case version offers one or more **variants**, and a run selects exactly
 one. The chosen variant is recorded in the run record (see
-[Run Records](/components/core/run-records/#subject)), so every result is attributed to a
-specific build. At least one `[[variant]]` must be declared.
+[Run Records](/components/core/run-records/#subject)), so every result is
+attributed to a specific build. At least one `[[variant]]` must be declared.
 
 A variant seeds the case's common specs **plus** its own additional specs, so a
-single case can define several builds — for example the same game with or without
-an extra mode — without duplicating the shared specification. A variant's `spec`
-entries are additive: they layer on top of the common specs rather than replacing
-them.
+single case can define several builds — for example the same game with or
+without an extra mode — without duplicating the shared specification. A
+variant's `spec` entries are additive: they layer on top of the common specs
+rather than replacing them.
 
 Each spec maps a `source` inside the version folder to a `dest` in the run
 workspace, and the `dest` may differ from the `source`. This **dest remapping**
@@ -270,12 +269,12 @@ stay common. Only the selected variant's references (the common set plus that
 variant's own) are rendered and seeded for a run.
 
 A view slug identifies a reference uniquely within a variant's effective set, so
-a view declared as a common reference must not also be declared by a variant, and
-a variant must not declare the same view twice; either collision is rejected at
-resolution. (Different variants each declaring their own reference for the *same*
-view slug — the per-variant menu above — is exactly the point and is allowed.)
-Because a check's baseline must resolve whichever variant runs, a checked view
-must be supplied either commonly or by **every** variant.
+a view declared as a common reference must not also be declared by a variant,
+and a variant must not declare the same view twice; either collision is rejected
+at resolution. (Different variants each declaring their own reference for the
+*same* view slug — the per-variant menu above — is exactly the point and is
+allowed.) Because a check's baseline must resolve whichever variant runs, a
+checked view must be supplied either commonly or by **every** variant.
 
 ## Self-Contained Specifications
 
@@ -292,8 +291,8 @@ self-contained.
   seeded for every variant, so it must **not** reference a variant-only spec
   (for example, a common overview cannot point at a mode spec that only one
   variant seeds); a variant's own specs may reference the common specs, since
-  those are always present. The selected variant's seeded set — common specs plus
-  that variant's own — must be self-contained on its own.
+  those are always present. The selected variant's seeded set — common specs
+  plus that variant's own — must be self-contained on its own.
 - It may point at the seeded reference **screenshots** (the rendered visual
   targets), but must **not** depend on the reference **source** mockups, which
   are deliberately not seeded so a model cannot copy them in place of building
@@ -315,48 +314,49 @@ model should use.
 
 - Simple cases such as Pong need no assets and may leave all visuals to the
   model.
-- More involved cases must provide a set of assets so that each run does not have
-  to produce its own, which would make runs less comparable.
+- More involved cases must provide a set of assets so that each run does not
+  have to produce its own, which would make runs less comparable.
 
 ## Design Requirements
 
 Every test case must satisfy the following:
 
-- It must be **inspired by but not a clone of** the original game. Test cases may
-  reuse mechanics from the games that inspire them, but must not recreate the
-  original assets, branding, or exact designs. All specifications, reference
+- It must be **inspired by but not a clone of** the original game. Test cases
+  may reuse mechanics from the games that inspire them, but must not recreate
+  the original assets, branding, or exact designs. All specifications, reference
   visuals, and assets must be original works produced for The Test Cabinet.
-- The final product must **not require API keys**. A visitor must be able to play
-  a published implementation without supplying any credentials or incurring any
-  cost.
-- The final product must **not require backend support**. Every test case must be
-  runnable in a browser with no accounts, databases, or other significant server
-  side dependencies. This constraint is on the **produced game**, which must stay
-  a self-contained static build so it can be embedded and played from the public
-  site; it is unrelated to The Test Cabinet's own
+- The final product must **not require API keys**. A visitor must be able to
+  play a published implementation without supplying any credentials or incurring
+  any cost.
+- The final product must **not require backend support**. Every test case must
+  be runnable in a browser with no accounts, databases, or other significant
+  server side dependencies. This constraint is on the **produced game**, which
+  must stay a self-contained static build so it can be embedded and played from
+  the public site; it is unrelated to The Test Cabinet's own
   [backend](/components/backend/overview/), which orchestration and publishing use
   but a finished game never touches.
 - It must require its implementation to use the **fixed build interface** the
   harness and the per-run deploy both depend on, stated as a hard requirement in
   the spec and prompt. The build must be a Node project with a `package.json` at
-  its root, built with only Node.js and npm-installed dependencies (no separately
-  installed language toolchain) that commits a `package-lock.json` and, by running
-  `npm ci` (which requires that lockfile) then `npm run build`, produces the
-  static site into one of `dist/`, `build/`, or `out/` with an `index.html` at the
-  root of that directory, runnable served as-is at a server root. The load check
-  builds and serves an implementation with the manifest's [`[build]`
-  commands](#manifest) (defaulting to `npm ci` then `npm run build`) and records
-  anything else as failing to load (see
-  [Validation](/components/core/validation/#load-check)); the language, framework, bundler, and
-  rendering approach behind the interface remain the model's choice.
+  its root, built with only Node.js and npm-installed dependencies (no
+  separately installed language toolchain) that commits a `package-lock.json`
+  and, by running `npm ci` (which requires that lockfile) then `npm run build`,
+  produces the static site into one of `dist/`, `build/`, or `out/` with an
+  `index.html` at the root of that directory, runnable served as-is at a server
+  root. The load check builds and serves an implementation with the manifest's
+  [`[build]` commands](#manifest) (defaulting to `npm ci` then `npm run build`)
+  and records anything else as failing to load (see
+  [Validation](/components/core/validation/#load-check)); the language,
+  framework, bundler, and rendering approach behind the interface remain the
+  model's choice.
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
   visuals.
 
 ## Provided Tests
 
-A test case may provide some tests as part of its specification. These tests must
-not be hidden from the model, and the model must not be blocked from writing
-additional tests of its own. The challenge of a test case must come from the
-case itself, not from the testing harness withholding information. See
+A test case may provide some tests as part of its specification. These tests
+must not be hidden from the model, and the model must not be blocked from
+writing additional tests of its own. The challenge of a test case must come from
+the case itself, not from the testing harness withholding information. See
 [Execution](/components/core/execution/#model-authored-tests).
