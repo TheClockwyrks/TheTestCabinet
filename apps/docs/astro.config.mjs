@@ -120,6 +120,31 @@ export default defineConfig({
       sidebar: [
         { label: "Overview", link: "/" },
         { label: "Terminology", link: "/terminology" },
+        // End-user material: short task refreshers, then the detailed guides.
+        // Placed above the developer-facing Components section to match the
+        // audience split called out on the home page.
+        {
+          label: "Quickstarts",
+          items: [
+            "quickstarts/overview",
+            "quickstarts/run-a-test-case",
+            "quickstarts/author-a-test-case",
+            "quickstarts/create-a-variant",
+            "quickstarts/review-a-run",
+            "quickstarts/publish-a-run",
+          ],
+        },
+        {
+          label: "User Guides",
+          items: [
+            "guides/overview",
+            "guides/first-time-setup",
+            "guides/authoring-a-test-case",
+            "guides/creating-a-test-case-variant",
+            "guides/reviewing-test-run-results",
+            "guides/publishing-a-test-run-result",
+          ],
+        },
         { label: "Roadmap", link: "/roadmap" },
         {
           label: "Changelogs",

@@ -20,8 +20,11 @@ take it to completion autonomously?".
 
 This documentation is intended for developers working on The Test Cabinet itself
 and for any end users who would like to run The Test Cabinet locally. Developers
-will want to primarily refer to the Components section, while end users should
-focus their attention on the Quickstart page and User Guide section.
+will want to primarily refer to the [Components](/components/architecture/)
+section, while end users should focus their attention on the
+[Quickstarts](/quickstarts/overview/) and [User Guides](/guides/overview/)
+sections. New users should start with
+[First Time Setup](/guides/first-time-setup/).
 
 ## AI-Generated Documentation
 
