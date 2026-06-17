@@ -19,6 +19,7 @@ export default defineConfig({
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
+        { label: "Terminology", link: "/terminology" },
         {
           label: "Architecture",
           items: [
