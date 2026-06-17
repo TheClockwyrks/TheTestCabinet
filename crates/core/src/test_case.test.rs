@@ -6,15 +6,16 @@ use super::{BuildCommands, TestCaseCatalog};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
-/// at it. `manifest_extra` is spliced between the required `name`/`prompt` header
-/// and the single `base` variant, so a test can drop in a `[build]` table.
+/// at it. `manifest_extra` is spliced between the required
+/// `name`/`difficulty`/`tags`/`prompt` header and the single `base` variant, so a
+/// test can drop in a `[build]` table.
 fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("demo/v1.0.0");
     fs::create_dir_all(&version).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
     let manifest = format!(
-        "name = \"Demo\"\nprompt = \"prompt.hbs\"\n{manifest_extra}\n\
+        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n{manifest_extra}\n\
          [[variant]]\nslug = \"base\"\n"
     );
     fs::write(version.join("test-case.toml"), manifest).expect("write manifest");

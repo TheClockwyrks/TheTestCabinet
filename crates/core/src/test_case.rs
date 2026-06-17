@@ -22,12 +22,10 @@ struct Manifest {
     /// Human-readable display name, surfaced on the site.
     name: String,
     /// Relative difficulty of the case, surfaced on the site (for example
-    /// `easy`, `medium`, `hard`). Defaults to `medium`.
-    #[serde(default = "default_difficulty")]
+    /// `easy`, `medium`, `hard`). **Required**.
     difficulty: String,
     /// Free-form classification tags surfaced on the site (for example
-    /// `arcade`, `2d`).
-    #[serde(default)]
+    /// `arcade`, `2d`). **Required** (may be an empty list).
     tags: Vec<String>,
     /// Optional one- or two-sentence abstract, surfaced on the site's test case
     /// cards. Authored inline as plain text (not a file) so it renders safely
@@ -768,11 +766,6 @@ fn version_key(version: &str) -> Vec<u64> {
             digits.parse().unwrap_or(0)
         })
         .collect()
-}
-
-/// The default difficulty applied when a manifest omits one.
-fn default_difficulty() -> String {
-    "medium".to_string()
 }
 
 /// The default maximum harness runtime, in seconds, applied when a manifest

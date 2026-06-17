@@ -212,6 +212,8 @@ fn temp_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
 /// table, and one common spec.
 const DEMO_HEAD: &str = r#"
 name = "Demo"
+difficulty = "easy"
+tags = []
 prompt = "prompt.hbs"
 [build]
 install = "npm ci"

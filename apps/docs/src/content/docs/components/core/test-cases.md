@@ -73,8 +73,8 @@ explicitly.
 ```toml
 # test-cases/<slug>/<version>/test-case.toml
 name = "Carom"               # human-readable display name (site-facing)
-difficulty = "medium"        # relative difficulty: easy | medium | hard (default medium)
-tags = ["arcade", "2d"]      # free-form classification tags (site-facing, default empty)
+difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
+tags = ["arcade", "2d"]      # free-form classification tags (site-facing, required)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
@@ -121,8 +121,8 @@ actions = []                 # actions to drive the build into the view (empty =
 ```
 
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
-  filter the case; they have no bearing on how a run is executed. `difficulty`
-  defaults to `medium` and `tags` to an empty list.
+  filter the case; they have no bearing on how a run is executed. All three are
+  **required**, though `tags` may be an empty list.
 - `description` is an optional path to a Markdown file describing the case for
   the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
   is site-only prose. Like every other path it must resolve inside the version
