@@ -15,7 +15,7 @@ stay relevant as models improve, so aim high.
 
 The authoritative schema — every manifest field, what is seeded, how templates
 render, the rules enforced at resolution — lives in
-[`docs/test-cases.md`](../../../docs/test-cases.md). **Read it first.** This skill
+[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md). **Read it first.** This skill
 is the practical procedure and the spec-writing guidance that sit on top of it;
 it does not restate the schema.
 
@@ -67,7 +67,7 @@ building it from the spec.
 ### 1. Choose the game and confirm it qualifies
 
 Every case must (see *Design Requirements* in
-[`docs/test-cases.md`](../../../docs/test-cases.md)):
+[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md)):
 
 - be **inspired by but not a clone of** an existing game — original name, look,
   and assets;
@@ -123,7 +123,7 @@ and step 4 of [`adding-a-variant`](../adding-a-variant/SKILL.md).
 ### 6. Write the manifest and declare variants
 
 Author `test-case.toml` per the schema in
-[`docs/test-cases.md`](../../../docs/test-cases.md): metadata, the common
+[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md): metadata, the common
 `[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
 the default — usually `base`), and any opt-in `[[check]]`. For additional
 variants follow [`adding-a-variant`](../adding-a-variant/SKILL.md). A `.hbs`
@@ -160,7 +160,7 @@ source. The seeded set must be complete and consistent **on its own**:
 
 If you can read a variant's seeded set top to bottom with no dangling reference
 and no contradiction, it is well-formed. (Full statement: *Self-Contained
-Specifications* in [`docs/test-cases.md`](../../../docs/test-cases.md).)
+Specifications* in [`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md).)
 
 ### Specify *what*, not *how*
 

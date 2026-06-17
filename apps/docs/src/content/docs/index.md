@@ -1,4 +1,6 @@
-# The Test Cabinet
+---
+title: The Test Cabinet
+---
 
 ## Overview
 
@@ -22,24 +24,24 @@ and runnable without any proprietary dependencies.
 
 The Test Cabinet is made up of the following parts:
 
-- The [testing harness application](./application.md) is the locally run
+- The [testing harness application](/application/) is the locally run
   application that orchestrates benchmark runs.
-- The [test case catalog](./test-cases.md) defines the games that models are
+- The [test case catalog](/test-cases/) defines the games that models are
   asked to build, including their specs, assets, and validation criteria.
-- The [agent harness layer](./harnesses.md) provides a unified way to invoke
+- The [agent harness layer](/harnesses/) provides a unified way to invoke
   third party coding harnesses so that the same test case can be run against any
   of them.
-- The [execution environment](./execution.md) isolates each run in its own
+- The [execution environment](/execution/) isolates each run in its own
   container and its own fresh git repository.
-- [Metrics](./metrics.md) defines the run time, token, and cost data that every
+- [Metrics](/metrics/) defines the run time, token, and cost data that every
   run records.
-- [Validation](./validation.md) describes the automated first pass that catches
+- [Validation](/validation/) describes the automated first pass that catches
   gross failures and compares against reference UIs.
-- [Run records](./run-records.md) define the data contract that a run produces
+- [Run records](/run-records/) define the data contract that a run produces
   and the site consumes.
-- [Results](./results.md) describes how a run's generated code and run record are
+- [Results](/results/) describes how a run's generated code and run record are
   published.
-- The [public site](./site.md) is the gallery where published runs can be
+- The [public site](/site/) is the gallery where published runs can be
   browsed and played.
 
 ## Terminology

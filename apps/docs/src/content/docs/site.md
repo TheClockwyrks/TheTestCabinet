@@ -1,4 +1,6 @@
-# Public Site
+---
+title: Public Site
+---
 
 ## Overview
 
@@ -12,23 +14,23 @@ all, by playing them.
 The site must be a static site with no backend, no accounts, and no database.
 This mirrors the constraint placed on the test cases themselves and keeps the site
 cheap, durable, and trivially public. The site is built from the published
-[run record](./run-records.md) dataset; any interactivity such as filtering must
+[run record](/run-records/) dataset; any interactivity such as filtering must
 be handled client side.
 
 ## Gallery
 
 The site presents published runs as a gallery that can be browsed by test case,
 model, and agent harness. Each run is attributed to the
-[variant](./test-cases.md#variants) of the case it built, taken from its
-[run record](./run-records.md#subject). For each run it surfaces:
+[variant](/test-cases/#variants) of the case it built, taken from its
+[run record](/run-records/#subject). For each run it surfaces:
 
 - The token counts and cost from the run's metrics. These are the primary numbers
   shown.
 - The run time, presented as secondary information and noted as dependent on the
   provider that served the run.
-- The [validation](./validation.md) signals, such as whether the implementation
+- The [validation](/validation/) signals, such as whether the implementation
   loaded.
-- The run's [rating](./results.md#reviews), shown as a per-run quality badge.
+- The run's [rating](/results/#reviews), shown as a per-run quality badge.
 
 The site must not present a ranking or an aggregate score derived from these
 numbers. The rating is shown per run as qualitative context — it is never used
@@ -56,23 +58,23 @@ build, rather than being dropped into a broken page with no context.
 ## Implementation Writeups
 
 A run carries a short, hand-written writeup shown on its page before the playable
-build is launched, headed by the run's [rating](./results.md#reviews). The
+build is launched, headed by the run's [rating](/results/#reviews). The
 writeup is curatorial: it is where known-broken elements, caveats, or things
 worth noticing about an implementation are called out, so a visitor knows what to
 expect before playing, and the rating gives them the reviewer's one-glance
 verdict up front.
 
-The writeup and rating together form a run's [review](./results.md#reviews). A
+The writeup and rating together form a run's [review](/results/#reviews). A
 review is authored separately from the machine-generated [run
-record](./run-records.md) and is not part of that data contract. Every published
+record](/run-records/) and is not part of that data contract. Every published
 run has one — publishing refuses a run without it — so a published run is always
 framed by its review. Reviews are published alongside the run record, as
-described in [Results](./results.md#reviews).
+described in [Results](/results/#reviews).
 
 ## Hosting
 
 Each run's generated code and playable build are hosted independently of the site,
-as described in [Results](./results.md#generated-code). Because every run is its
+as described in [Results](/results/#generated-code). Because every run is its
 own repository with its own build, the gallery embeds each build rather than
 bundling every implementation into the site itself. This keeps the site
 lightweight as the number of published runs grows.

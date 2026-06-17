@@ -250,7 +250,7 @@ publishes to.
 ### Reviewing a run before publishing
 
 Every published run must carry a hand-written
-[review](./docs/results.md#reviews): a writeup and a rating, authored after
+[review](./apps/docs/src/content/docs/results.md#reviews): a writeup and a rating, authored after
 playing the build. Write it as `runs/<id>/writeup.md`, beside the run's
 `run-record.json`, with the rating in YAML frontmatter:
 
@@ -264,7 +264,7 @@ focus, but it doesn't block play.
 ```
 
 The rating must be one of `flawless`, `great`, `scuffed`, or `broken` (see
-[Results](./docs/results.md#reviews) for what each tier means), and the body must
+[Results](./apps/docs/src/content/docs/results.md#reviews) for what each tier means), and the body must
 not be empty. Preview exactly how the review will appear by running the run
 locally (see below) before publishing — the rating badge and writeup show on the
 run's page just as they will once live.
@@ -313,7 +313,7 @@ A publish releases three things:
 - **Gallery** — the run record, with its source and build links filled in, is
   appended to the site dataset under `apps/site/data/`, and the gallery at
   `https://testcabinet.ai/` is rebuilt and deployed from it. The run's
-  [review](./docs/results.md#reviews) is published alongside the record, written
+  [review](./apps/docs/src/content/docs/results.md#reviews) is published alongside the record, written
   to `apps/site/src/data/writeups/<id>.md` (carrying its rating in frontmatter)
   and committed with the dataset.
 
@@ -332,3 +332,26 @@ a container rebuild.
   per-run build subdomain resolves without a per-run DNS change.
 - Verify `testcabinet.ai` as an organization domain so the organization owns
   `*.testcabinet.ai` and stale build subdomains cannot be taken over.
+
+### Docs site (Cloudflare Pages, one-time)
+
+The developer docs (`apps/docs`) deploy to Cloudflare Pages at
+`docs.testcabinet.ai`, separately from the gallery. They are their own site
+because GitHub Pages allows only one custom domain per repository, and the
+gallery already claims the apex. The deploy is driven by
+`.github/workflows/deploy-docs.yml`.
+
+- In the Cloudflare dashboard, create a Pages project named `test-cabinet-docs`
+  (this must match `--project-name` in the deploy workflow). Use a
+  *Direct Upload* project — the build runs in GitHub Actions, not on Cloudflare —
+  and set its production branch to `master`.
+- Add `docs.testcabinet.ai` as a custom domain on that Pages project.
+- Carve the docs subdomain out of the existing wildcard. Because
+  `*.testcabinet.ai` points at GitHub Pages, add an explicit
+  `docs.testcabinet.ai` CNAME pointing at the Pages project
+  (`test-cabinet-docs.pages.dev`). A specific record takes precedence over the
+  wildcard, so only `docs` is redirected to Cloudflare while every per-run build
+  subdomain still resolves to GitHub Pages.
+- Create a Cloudflare API token with the *Cloudflare Pages: Edit* permission and
+  note the account ID. Add both to the repository as the GitHub Actions secrets
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.

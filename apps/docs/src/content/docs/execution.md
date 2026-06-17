@@ -1,4 +1,6 @@
-# Execution
+---
+title: Execution
+---
 
 ## Overview
 
@@ -28,7 +30,7 @@ Each run must be seeded into its own newly created git repository that contains
 the data a model needs to build the game: the specs of the selected variant, the
 test case's assets, and the rendered reference screenshots that serve as visual
 targets. A run selects exactly one
-[variant](./test-cases.md#variants), and the variant's specs are seeded at their
+[variant](/test-cases/#variants), and the variant's specs are seeded at their
 declared `dest` paths — the common specs plus that variant's own — rather than as
 a single specification at the repository root.
 
@@ -42,7 +44,7 @@ a single specification at the repository root.
   **rendered** with the selected variant and version while seeding, and the
   result lands at the spec's `dest`; every other spec is copied verbatim. This
   lets a spec state per-variant facts directly instead of hedging about what a run
-  might contain. See [Spec templates](./test-cases.md#spec-templates).
+  might contain. See [Spec templates](/test-cases/#spec-templates).
 - A test case's **reference screenshots are seeded** as visual targets so the
   model can see what each screen should look like. The reference **source**
   mockups are **not** seeded: handing over the mockup HTML/CSS would let a model
@@ -53,11 +55,11 @@ a single specification at the repository root.
   these harness docs or to any file outside the seeded repository, because none
   of them exist inside the container. They may, however, point at the seeded
   reference screenshots. See
-  [Test Cases](./test-cases.md#self-contained-specifications).
+  [Test Cases](/test-cases/#self-contained-specifications).
 - The prompt is **not seeded** to disk. It is rendered from the version's
   `prompt.hbs` template — with the run's in-container workspace path and the
   selected variant's seeded spec paths — and handed directly to the harness as
-  its instruction. See [Prompt template](./test-cases.md#prompt-template).
+  its instruction. See [Prompt template](/test-cases/#prompt-template).
 
 The seeded repository is normally created, mounted, and torn down as part of a
 run, so its contents are never visible on their own. The `tcab seed` command runs
@@ -81,4 +83,4 @@ own work.
 
 When a run finishes, the testing harness must collect the run's working tree as
 the run's primary artifact. This produced repository is what gets validated and,
-if published, released. See [Results](./results.md).
+if published, released. See [Results](/results/).

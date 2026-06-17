@@ -1,9 +1,11 @@
-# Run Records
+---
+title: Run Records
+---
 
 ## Overview
 
 A run record is the data contract produced by every run. It is what the testing
-harness emits, what gets published, and what the [site](./site.md) consumes. Every
+harness emits, what gets published, and what the [site](/site/) consumes. Every
 other part of the system is built around producing or reading this record, so its
 shape is deliberately fixed.
 
@@ -22,7 +24,7 @@ A run record must capture at least the following.
 ### Subject
 
 - The test case slug and the exact test case version that was run.
-- The slug of the [variant](./test-cases.md#variants) that was run — exactly one
+- The slug of the [variant](/test-cases/#variants) that was run — exactly one
   variant runs per run, and recording it attributes the result to a specific
   build of the case.
 - The agent harness slug and, where available, the harness version.
@@ -54,13 +56,13 @@ The harness version is not duplicated here; it lives in the subject.
 
 ### Metrics
 
-- Run time, as defined in [Metrics](./metrics.md#run-time).
-- The four token classes, as defined in [Metrics](./metrics.md#tokens).
-- Comparable cost and actual cost, as defined in [Metrics](./metrics.md#cost).
+- Run time, as defined in [Metrics](/metrics/#run-time).
+- The four token classes, as defined in [Metrics](/metrics/#tokens).
+- Comparable cost and actual cost, as defined in [Metrics](/metrics/#cost).
 
 ### Validation
 
-- A summary of the [validation](./validation.md) results, including whether the
+- A summary of the [validation](/validation/) results, including whether the
   implementation loaded and the similarity signal from each declared check.
 
 ### Links
@@ -81,11 +83,11 @@ artifacts:
 - `run-record.json` — the run record described above.
 - `implementation/` — a copy of the produced working tree.
 - `raw.jsonl` — the harness's raw output, one JSON object per captured line in
-  arrival order, each tagging the [stream](./events.md) the line came from and
+  arrival order, each tagging the [stream](/events/) the line came from and
   the line's verbatim text.
-- `events.jsonl` — the [normalized events](./events.md) translated from that raw
+- `events.jsonl` — the [normalized events](/events/) translated from that raw
   output, one event per line, in the order they were produced.
-- `writeup.md` — the run's [review](./results.md#reviews), when one has been
+- `writeup.md` — the run's [review](/results/#reviews), when one has been
   written.
 
 Recording the raw output beside its translation makes a run's event

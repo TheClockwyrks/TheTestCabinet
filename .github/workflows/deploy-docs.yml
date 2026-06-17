@@ -1,0 +1,49 @@
+name: Deploy docs
+
+# Builds the developer documentation site (apps/docs, an Astro Starlight site)
+# and deploys it to Cloudflare Pages at docs.testcabinet.ai. Unlike the gallery
+# (apps/site), the docs are a pure static build with no Rust/catalog step, and
+# they live on Cloudflare rather than GitHub Pages so they can have their own
+# subdomain — GitHub Pages allows only one custom domain per repository, which
+# the gallery uses for testcabinet.ai.
+#
+# Runs on pushes to master that touch the docs or this workflow, and on demand.
+# Requires two repository secrets, configured once (see DEVELOPMENT.md):
+#   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission
+#   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/docs/**"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Allow one concurrent deployment; let an in-progress run finish.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @test-cabinet/docs
+      # `wrangler pages deploy` uploads the static bundle to the Pages project.
+      # `--branch=master` marks this as a production deployment (matching the
+      # project's configured production branch); other branches become previews.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/docs/dist --project-name=test-cabinet-docs --branch=master

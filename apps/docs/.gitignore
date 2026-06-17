@@ -1,0 +1,3 @@
+# Astro build output and cache (dist is already ignored at the repo root).
+dist/
+.astro/

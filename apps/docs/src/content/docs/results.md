@@ -1,4 +1,6 @@
-# Results
+---
+title: Results
+---
 
 ## Overview
 
@@ -14,14 +16,14 @@ Each published run's generated implementation must be released as its **own**
 public git repository.
 
 - Releasing each run as a standalone repository keeps results independent and maps
-  cleanly onto per run hosting and embedding. See [Site](./site.md#hosting).
+  cleanly onto per run hosting and embedding. See [Site](/site/#hosting).
 - The generated implementation must include a README and any other documentation
   that a user needs to clone the repository and run it locally. Requiring this
   documentation is part of every test case.
 
 ## Run Record
 
-Each published run's [run record](./run-records.md) must be added to the dataset
+Each published run's [run record](/run-records/) must be added to the dataset
 the site is built from, with its links pointing at the run's source repository and
 playable build.
 
@@ -46,12 +48,12 @@ before anything is released, so a sweep is never left half published.
 ## Reviews
 
 Every published run carries a hand-written **review**: a short
-[writeup](./site.md#implementation-writeups) the site shows before the playable
+[writeup](/site/#implementation-writeups) the site shows before the playable
 build, together with a **rating** that records the reviewer's overall assessment.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the
-[run record](./run-records.md) contract. The rating travels with the writeup (in
+[run record](/run-records/) contract. The rating travels with the writeup (in
 its frontmatter), not in the record. Publishing makes the review available to the
 site alongside the run record.
 
@@ -66,4 +68,4 @@ The rating is one of four tiers, assigned by hand:
   game unplayable.
 
 The rating is a subjective, per-run signal. It is shown alongside a run but is
-never aggregated or used to rank runs (see [Site](./site.md)).
+never aggregated or used to rank runs (see [Site](/site/)).

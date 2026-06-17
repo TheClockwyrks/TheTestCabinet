@@ -15,7 +15,7 @@ without duplicating the shared specification. The chosen variant's slug is
 recorded in the run record.
 
 The authoritative schema for variants lives in
-[`docs/test-cases.md`](../../../docs/test-cases.md) (see its *Variants* and
+[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md) (see its *Variants* and
 *Self-Contained Specifications* sections). Read it before starting; this skill is
 the practical procedure that sits on top of it.
 
@@ -136,7 +136,7 @@ spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 ```
 
-Rules to respect (enforced at resolution — see `docs/test-cases.md`):
+Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/test-cases.md`):
 
 - `spec` entries are **additive** on top of the common specs. Within one variant,
   no two seeded specs (common + own) may share a `dest`.
@@ -180,7 +180,7 @@ npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
 cargo run --locked -p test-cabinet-cli -- catalog
 ```
 
-See [`docs/validation.md`](../../../docs/validation.md) for what the harness
+See [`apps/docs/src/content/docs/validation.md`](../../../apps/docs/src/content/docs/validation.md) for what the harness
 checks automatically.
 
 ### 8. Commit

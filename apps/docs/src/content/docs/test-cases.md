@@ -1,4 +1,6 @@
-# Test Cases
+---
+title: Test Cases
+---
 
 ## Overview
 
@@ -46,11 +48,11 @@ Each test case version must contain:
 - **Assets** such as sprites that the model should use, when the case requires
   assets that should not be left to the model to generate.
 - **Validation criteria** describing what can be checked automatically. See
-  [Validation](./validation.md).
+  [Validation](/validation/).
 
 The selected variant's specs, the assets, and the rendered reference screenshots
 are what gets seeded into a run; the prompt is rendered and handed to the harness
-rather than seeded. See [Execution](./execution.md#seeding).
+rather than seeded. See [Execution](/execution/#seeding).
 
 ## Manifest
 
@@ -135,7 +137,7 @@ actions = []                 # actions to drive the build into the view (empty =
   installs exactly what it pins, matching the deployed build; a case may pin a
   different toolchain but must still emit a static build into `dist/`, `build/`,
   or `out/`. Neither command may be empty. See
-  [Validation](./validation.md#load-check).
+  [Validation](/validation/#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the run
   workspace. A `source` ending in `.hbs` is a Handlebars template rendered into
@@ -158,7 +160,7 @@ actions = []                 # actions to drive the build into the view (empty =
   that each variant declares — whose rendered screenshot is the baseline;
   `actions` drive the built implementation into the view before capture. Its
   optional `name` is a display label, defaulting to a humanized form of `view`.
-  See [Validation](./validation.md#checks).
+  See [Validation](/validation/#checks).
 
 ## Prompt template
 
@@ -168,7 +170,7 @@ field) that The Test Cabinet renders into the prompt for a run. Rendering lets a
 case word its own instruction while keeping run-specific details — the
 in-container paths and the selected variant — out of the authored specifications.
 The rendered prompt is handed to the harness; it is **not** seeded to disk. See
-[Execution](./execution.md#seeding).
+[Execution](/execution/#seeding).
 
 The template is rendered in **strict mode** with HTML escaping disabled (the
 output is plain text). Strict mode means referencing any variable other than the
@@ -227,7 +229,7 @@ for whichever variant renders it.
 
 A test case version offers one or more **variants**, and a run selects exactly
 one. The chosen variant is recorded in the run record (see
-[Run Records](./run-records.md#subject)), so every result is attributed to a
+[Run Records](/run-records/#subject)), so every result is attributed to a
 specific build. At least one `[[variant]]` must be declared.
 
 A variant seeds the case's common specs **plus** its own additional specs, so a
@@ -332,7 +334,7 @@ Every test case must satisfy the following:
   builds and serves an implementation with the manifest's [`[build]`
   commands](#manifest) (defaulting to `npm ci` then `npm run build`) and records
   anything else as failing to load (see
-  [Validation](./validation.md#load-check)); the language, framework, bundler, and
+  [Validation](/validation/#load-check)); the language, framework, bundler, and
   rendering approach behind the interface remain the model's choice.
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
@@ -344,4 +346,4 @@ A test case may provide some tests as part of its specification. These tests mus
 not be hidden from the model, and the model must not be blocked from writing
 additional tests of its own. The challenge of a test case must come from the
 case itself, not from the testing harness withholding information. See
-[Execution](./execution.md#model-authored-tests).
+[Execution](/execution/#model-authored-tests).
