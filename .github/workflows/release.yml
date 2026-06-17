@@ -127,3 +127,8 @@ jobs:
               --notes "$notes" \
               dist/*
           fi
+
+# Touched to make GitHub register this dispatch-only workflow: GitHub only
+# creates a workflow record once it processes a triggering event, so a
+# workflow_dispatch-only file added in a prior push never surfaces in the
+# Actions tab until a later push re-evaluates it.

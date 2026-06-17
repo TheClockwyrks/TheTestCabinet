@@ -25,3 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - run: ./scripts/ci/binary-smoke.sh
+
+# Touched to make GitHub register this dispatch-only workflow: GitHub only
+# creates a workflow record once it processes a triggering event, so a
+# workflow_dispatch/workflow_call-only file added in a prior push never
+# surfaces in the Actions tab until a later push re-evaluates it.
