@@ -8,8 +8,8 @@ interface ChartProps {
   /**
    * Builds the Plot spec for the chart. It receives the live neon palette
    * (read from the theme on the client) so marks can be themed. Use the
-   * helpers in `plot/charts.ts` (e.g. `boxAndWhisker`, `barChart`) to build
-   * the returned options.
+   * helpers in `plot/charts.ts` (e.g. `barChart`) to build the returned
+   * options.
    */
   spec: (palette: ChartPalette) => PlotOptions;
   /** Accessible title describing what the chart shows. */
@@ -26,9 +26,9 @@ interface ChartProps {
 //
 // Usage:
 //   import { Chart } from "../../components/Chart";
-//   import { boxAndWhisker } from "../../components/plot/charts";
+//   import { barChart } from "../../components/plot/charts";
 //   <Chart title="Cost by harness"
-//          spec={(p) => boxAndWhisker(data, p, { y: "USD" })} />
+//          spec={(p) => barChart(data, p, { y: "USD" })} />
 export function Chart({ spec, title, className }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 

@@ -7,14 +7,6 @@ import { basePlotOptions, type ChartPalette } from "./theme";
 // into the document. Each builder layers the neon-themed `basePlotOptions` with
 // marks colored from the live palette.
 
-/** One observation in a box-and-whisker distribution: a labeled group + value. */
-export interface BoxPoint {
-  /** The category the value belongs to (drawn along x), e.g. a harness slug. */
-  group: string;
-  /** The numeric value whose distribution is summarized, e.g. a run's cost. */
-  value: number;
-}
-
 /** One bar in a bar chart. */
 export interface BarPoint {
   /** The category label drawn along x. */
@@ -43,32 +35,6 @@ interface AxisLabels {
 // Bottom margin that fits tilted category labels (long model ids) without
 // clipping. Applied only when the x labels are rotated.
 const ROTATED_LABEL_MARGIN = 100;
-
-// A vertical box-and-whisker plot: one box per `group` summarizing the spread of
-// its `value`s, with the raw points overlaid. Use for distributions where a
-// ranking would be inappropriate (token usage, cost) — it shows spread, not a
-// single score, honoring the no-leaderboard constraint.
-export function boxAndWhisker(
-  data: readonly BoxPoint[],
-  palette: ChartPalette,
-  labels: AxisLabels = {},
-): PlotOptions {
-  return {
-    ...basePlotOptions(palette),
-    ...(labels.xTickRotate ? { marginBottom: ROTATED_LABEL_MARGIN } : {}),
-    x: { label: labels.x ?? null, type: "band", tickRotate: labels.xTickRotate },
-    y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
-    marks: [
-      Plot.boxY(data as BoxPoint[], {
-        x: "group",
-        y: "value",
-        stroke: palette.accent,
-        fill: palette.accent2,
-        fillOpacity: 0.18,
-      }),
-    ],
-  };
-}
 
 // A simple vertical bar chart, bars colored with the accent glow. Use for direct
 // per-item magnitudes (e.g. a single run's token breakdown), not for comparing
