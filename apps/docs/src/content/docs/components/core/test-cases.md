@@ -39,12 +39,12 @@ publishing a version caches it, it does not transform it.
 Each test case version must contain:
 
 - A **specification** that describes the game the model must build. This is the
-  vision spec for the test case and is the primary material handed to the model.
-  It may record both high and low level details, including mechanics, layouts,
-  states, and rules. The specification may be split across multiple seeded files
-  (see [Variants](#variants)) rather than living in a single file. Each spec
-  file is either plain Markdown, seeded verbatim, or a Handlebars template
-  (`.hbs`) rendered per run with the selected variant; see
+  authoritative spec for the test case and is the primary material handed to the
+  model. It may record both high and low level details, including mechanics,
+  layouts, states, and rules. The specification should be split across multiple
+  seeded files (see [Variants](#variants)) rather than living in a single file.
+  Each spec file is either plain Markdown, seeded verbatim, or a Handlebars
+  template (`.hbs`) rendered per run with the selected variant; see
   [Spec templates](#spec-templates).
 - A **prompt template** (`prompt.hbs`) that is rendered into the instruction
   handed to the harness. See [Prompt template](#prompt-template).
