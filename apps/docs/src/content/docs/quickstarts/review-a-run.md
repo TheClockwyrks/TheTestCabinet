@@ -9,7 +9,7 @@ run without one. The full workflow is in
 
 ## Preview the build
 
-Run the gallery dev server; it scans `runs/` and plays each run's local build
+Run the gallery dev server; it scans `runs/` and invokes each run's local build
 where one exists:
 
 ```sh
@@ -36,8 +36,8 @@ The rating must be one of:
 
 - **flawless** — to spec, no noticeable bugs.
 - **great** — to spec; minor issues that don't impact playability.
-- **scuffed** — mostly to spec; playable but deviates or has bugs that affect
-  play.
+- **scuffed** — mostly to spec; playable but noticeably deviates from spec or
+  has bugs that affect play.
 - **broken** — doesn't follow the spec, or is unplayable.
 
 The body must not be empty. The rating is a per-run signal, never aggregated or
