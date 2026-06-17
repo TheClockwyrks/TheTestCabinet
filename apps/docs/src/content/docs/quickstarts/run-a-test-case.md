@@ -22,7 +22,7 @@ resolve):
 ```sh
 tcab run \
   --test-case pong --version v1.0.0 --variant base \
-  --harness claude --model anthropic/claude-opus-4 \
+  --harness claude --model claude-opus-4-8 \
   --out-dir runs
 ```
 
