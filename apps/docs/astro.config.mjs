@@ -1,6 +1,95 @@
 // @ts-check
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+
+// Repairs Expressive Code's external stylesheet, which is broken under this
+// project's stack (astro-expressive-code 0.43.1 + Astro 6.4.7 + the satteri
+// markdown processor). EC injects `<link href="/_astro/ec.<hash>.css">` into
+// every code block, but that asset is never served: in `astro dev` the request
+// 404s (Astro's static `/_astro/` handler answers before EC's virtual module
+// resolver), and in `astro build` Astro re-hashes the emitted CSS to a
+// different filename than the injected link. Either way code blocks render
+// completely unstyled — including a bare, icon-less copy button.
+//
+// EC's own JS asset uses the same mechanism but survives because it is loaded
+// as a module (`<script type="module">`), which does go through the resolver.
+// This integration patches the CSS side to match.
+function fixExpressiveCodeStylesheet() {
+  const EC_CSS = /^\/_astro\/ec\.[^/]+\.css$/;
+  /** @type {import("astro").AstroIntegration} */
+  const integration = {
+    name: "fix-expressive-code-stylesheet",
+    hooks: {
+      // Dev: serve the EC stylesheet by pulling it straight out of EC's Vite
+      // virtual module (its `load()` returns raw CSS) before the static
+      // middleware can 404 the request.
+      "astro:server:setup": ({ server }) => {
+        server.middlewares.use(async (req, res, next) => {
+          const url = (req.url ?? "").split("?")[0];
+          if (!EC_CSS.test(url)) return next();
+          try {
+            const resolved = await server.pluginContainer.resolveId(url);
+            const loaded = resolved && (await server.pluginContainer.load(resolved.id));
+            const css = typeof loaded === "string" ? loaded : loaded?.code;
+            if (css) {
+              res.setHeader("Content-Type", "text/css");
+              res.end(css);
+              return;
+            }
+          } catch {
+            /* fall through to the default handler */
+          }
+          next();
+        });
+      },
+      // Build: Astro re-hashes the emitted EC stylesheet to a filename that no
+      // longer matches the `<link>` EC injected, so point every dangling link
+      // at the file that actually shipped.
+      "astro:build:done": async ({ dir, logger }) => {
+        const outDir = fileURLToPath(dir);
+        let assets;
+        try {
+          assets = await readdir(path.join(outDir, "_astro"));
+        } catch {
+          return;
+        }
+        const ecCss = assets.filter((f) => /^ec\..+\.css$/.test(f));
+        if (ecCss.length !== 1) {
+          logger.warn(
+            `expected exactly one Expressive Code stylesheet, found ${ecCss.length}; skipping link repair`
+          );
+          return;
+        }
+        const realHref = `/_astro/${ecCss[0]}`;
+        const dangling = /\/_astro\/ec\.[^"']+\.css/g;
+        let patched = 0;
+        const walk = async (/** @type {string} */ current) => {
+          for (const entry of await readdir(current, { withFileTypes: true })) {
+            const entryPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              await walk(entryPath);
+            } else if (entry.name.endsWith(".html")) {
+              const html = await readFile(entryPath, "utf8");
+              const fixed = html.replace(dangling, realHref);
+              if (fixed !== html) {
+                await writeFile(entryPath, fixed);
+                patched++;
+              }
+            }
+          }
+        };
+        await walk(outDir);
+        logger.info(
+          `repaired Expressive Code stylesheet link on ${patched} page(s) -> ${realHref}`
+        );
+      },
+    },
+  };
+  return integration;
+}
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
@@ -12,6 +101,7 @@ import starlight from "@astrojs/starlight";
 export default defineConfig({
   site: "https://docs.testcabinet.ai",
   integrations: [
+    fixExpressiveCodeStylesheet(),
     starlight({
       title: "The Test Cabinet",
       description:
