@@ -22,7 +22,7 @@ use serde::Serialize;
 use test_cabinet_core::{
     BrowserRenderer, FsRepoSeeder, Model, ModelCatalog, ModelDetails, OpenRouterPrices,
     ReferenceRenderer, RepoSeeder, SeedRequest, TestCaseCatalog, TestCaseVersion, TokenPrices,
-    browser,
+    browser, render_prompt,
 };
 
 use crate::cli::CatalogArgs;
@@ -71,6 +71,10 @@ struct VariantEntry {
     name: String,
     /// Inlined site-facing description, or `null` when none is declared.
     description: Option<String>,
+    /// The instruction handed to the harness for this variant — the case's
+    /// `prompt.hbs` rendered exactly as a real run of this variant receives it.
+    /// It is the first thing the model sees, ahead of the seeded specs.
+    prompt: String,
     /// The inputs a run of this variant is seeded with.
     seeded_inputs: Vec<SeededInput>,
     /// The reference screenshots rendered as visual targets for this variant.
@@ -290,6 +294,11 @@ fn build_variant(
 ) -> anyhow::Result<VariantEntry> {
     let specs = test_case.seeded_specs(variant);
 
+    // The harness instruction, rendered exactly as a real run of this variant
+    // receives it, so the site can show the prompt the model is given alongside
+    // the specs it references.
+    let prompt = render_prompt(test_case, variant).context("rendering the prompt")?;
+
     // A host without a headless browser renders no references; that is tolerated
     // and the screenshots are simply absent.
     let references = renderer
@@ -336,6 +345,7 @@ fn build_variant(
         slug: variant.slug.clone(),
         name: variant.name.clone(),
         description: variant.description.clone(),
+        prompt,
         seeded_inputs,
         reference_screenshots,
     })

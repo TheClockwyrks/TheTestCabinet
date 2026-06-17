@@ -22,6 +22,8 @@ export const sampleTestCases: TestCaseSummary[] = [
         slug: "base",
         name: "Base",
         description: "The standard duel: capped speed ramp and the fixed obstacle layout.",
+        prompt:
+          "Build **Carom**, a neon top-down paddle duel that runs entirely in the browser with no backend. The specification is seeded under `specs/`:\n\n- `specs/overview.md`\n- `specs/modes/standard.md`\n",
         seededInputs: [
           {
             path: "specs/overview.md",
@@ -44,6 +46,8 @@ export const sampleTestCases: TestCaseSummary[] = [
         slug: "frenzy",
         name: "Frenzy",
         description: "A steeper, uncapped speed ramp so rallies escalate fast.",
+        prompt:
+          "Build **Carom**, a neon top-down paddle duel that runs entirely in the browser with no backend. This is the *Frenzy* configuration. The specification is seeded under `specs/`:\n\n- `specs/overview.md`\n- `specs/modes/standard.md`\n- `specs/modes/frenzy.md`\n",
         seededInputs: [
           {
             path: "specs/overview.md",
@@ -71,6 +75,8 @@ export const sampleTestCases: TestCaseSummary[] = [
         slug: "multi",
         name: "Multi-ball",
         description: "Two balls in play at once for a busier field.",
+        prompt:
+          "Build **Carom**, a neon top-down paddle duel that runs entirely in the browser with no backend. This is the *Multi-ball* configuration. The specification is seeded under `specs/`:\n\n- `specs/overview.md`\n- `specs/modes/standard.md`\n- `specs/modes/multi.md`\n",
         seededInputs: [
           {
             path: "specs/overview.md",
@@ -112,6 +118,8 @@ export const sampleTestCases: TestCaseSummary[] = [
         slug: "base",
         name: "Base",
         description: "The standard campaign: escalating waves toward a lone cannon.",
+        prompt:
+          "Build **Phalanx**, a wave-based fixed shooter that runs entirely in the browser with no backend. The specification is seeded under `specs/`:\n\n- `specs/overview.md`\n",
         seededInputs: [
           {
             path: "specs/overview.md",
@@ -128,6 +136,8 @@ export const sampleTestCases: TestCaseSummary[] = [
         slug: "frenzy",
         name: "Frenzy",
         description: "Denser ranks that descend faster, with no rest between waves.",
+        prompt:
+          "Build **Phalanx**, a wave-based fixed shooter that runs entirely in the browser with no backend. This is the *Frenzy* configuration. The specification is seeded under `specs/`:\n\n- `specs/overview.md`\n- `specs/modes/frenzy.md`\n",
         seededInputs: [
           {
             path: "specs/overview.md",

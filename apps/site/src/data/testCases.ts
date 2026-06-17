@@ -35,6 +35,10 @@ export interface VariantSummary {
   name: string;
   /** Inlined site-facing description, or null when none is declared. */
   description: string | null;
+  /** The instruction handed to the harness for this variant — the case's
+   * `prompt.hbs` rendered exactly as a real run receives it. It is the first
+   * thing the model sees, ahead of the seeded specs. */
+  prompt: string;
   /** What a run of this variant is seeded with — identical to what
    * `tcab seed --variant <slug>` materializes. */
   seededInputs: SeededInput[];

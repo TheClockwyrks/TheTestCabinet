@@ -6,21 +6,30 @@ import {
 import type { SeededInput } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 
-// The Specifications tab (`/test-cases/:slug/specs`): the exact files a run of
-// the selected variant is seeded with — the same set `tcab seed --variant <slug>`
-// materializes. Each file is a full-width accordion panel keyed by its path, so
-// the spec reads at the full content width instead of beside a tree. Reference
-// images live on their own tab now, so this lists only the seeded inputs. The
-// `key` collapses every panel again when the variant changes.
+// The Specifications tab (`/test-cases/:slug/specs`): the prompt the harness
+// hands the model, followed by the exact files a run of the selected variant is
+// seeded with — the same set `tcab seed --variant <slug>` materializes. The
+// prompt leads because it is the first thing the model sees and names the specs
+// that follow. Each entry is a full-width accordion panel keyed by its path, so
+// it reads at the full content width instead of beside a tree. Reference images
+// live on their own tab now, so this lists only the prompt and seeded inputs.
+// The `key` collapses every panel again when the variant changes.
 export function TestCaseSpecsPage() {
   return (
     <TestCaseDetailLayout tab="specs">
       {({ variant }) => {
-        const entries: AccordionEntry[] = variant.seededInputs.map((input) => ({
-          path: input.path,
-          kind: input.kind,
-          body: <SeededBody input={input} />,
-        }));
+        const entries: AccordionEntry[] = [
+          {
+            path: "prompt",
+            kind: "text",
+            body: <Markdown>{variant.prompt}</Markdown>,
+          },
+          ...variant.seededInputs.map((input) => ({
+            path: input.path,
+            kind: input.kind,
+            body: <SeededBody input={input} />,
+          })),
+        ];
         return (
           <SpecAccordion
             key={variant.slug}
