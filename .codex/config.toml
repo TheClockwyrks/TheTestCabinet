@@ -1,0 +1,10 @@
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[agents]
+max_threads = 16
+max_depth = 4
+job_max_runtime_seconds = 3600
+
+[projects."/workspaces/the-test-cabinet"]
+trust_level = "trusted"
