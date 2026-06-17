@@ -81,10 +81,10 @@ max_runtime_seconds = 1800   # cap on the harness session before it's stopped (d
 assets = []                  # asset files/directories, seeded (relative paths)
 
 # How validation builds the produced implementation into a served static site.
-# Both default to the values shown; the table may be omitted entirely.
+# Required: a case must state both commands explicitly; there are no defaults.
 [build]
-install = "npm ci"           # dependency install command (default "npm ci")
-build = "npm run build"      # static-build command (default "npm run build")
+install = "npm ci"           # dependency install command (required)
+build = "npm run build"      # static-build command (required)
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the
 # version folder to a `dest` in the run's workspace. A `.hbs` source is rendered
@@ -136,15 +136,16 @@ actions = []                 # actions to drive the build into the view (empty =
   (one hour) when omitted and must be greater than zero. This is the per-case
   default; a run can override it for a single invocation (for example
   `tcab run --max-runtime <seconds>`).
-- The optional `[build]` table declares the commands validation runs to turn a
-  produced implementation into a served static site: `install` (dependency
-  install) and `build` (the static build). Each runs from the implementation's
-  repository root and defaults independently — `install` to `npm ci` and `build`
-  to `npm run build` — so the table may be omitted entirely or override just one
-  command. `npm ci` is the default because it requires a committed lockfile and
-  installs exactly what it pins, matching the deployed build; a case may pin a
-  different toolchain but must still emit a static build into `dist/`, `build/`,
-  or `out/`. Neither command may be empty. See
+- The `[build]` table is **required** and declares the commands validation runs
+  to turn a produced implementation into a served static site: `install`
+  (dependency install) and `build` (the static build). Both must be stated
+  explicitly — there are no defaults, so a case always records exactly how its
+  implementation is built. Each runs from the implementation's repository root,
+  and neither may be empty. `npm ci` is the conventional `install` because it
+  requires a committed lockfile and installs exactly what it pins, matching the
+  deployed build; a case may pin a different toolchain but must still emit a
+  static build into `dist/`, `build/`, or `out/`. Both steps are reported in the
+  run's [validation results](/components/core/validation/#results). See
   [Validation](/components/core/validation/#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the
@@ -344,9 +345,9 @@ Every test case must satisfy the following:
   produces the static site into one of `dist/`, `build/`, or `out/` with an
   `index.html` at the root of that directory, runnable served as-is at a server
   root. The load check builds and serves an implementation with the manifest's
-  [`[build]` commands](#manifest) (defaulting to `npm ci` then `npm run build`)
-  and records anything else as failing to load (see
-  [Validation](/components/core/validation/#load-check)); the language,
+  required [`[build]` commands](#manifest) and records anything else as failing
+  to load (see [Validation](/components/core/validation/#load-check)); the
+  language,
   framework, bundler, and rendering approach behind the interface remain the
   model's choice.
 - It must be possible to **specify visuals precisely enough** that an initial

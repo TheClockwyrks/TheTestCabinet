@@ -192,10 +192,11 @@ spec and prompt, that the build:
   root, so root-relative and relative asset paths both work — no base-path
   handling is needed).
 
-The validator runs the install and build commands from the manifest's `[build]`
-table, which defaults to `npm ci` then `npm run build`; declare the table to pin a
-different toolchain (it must still emit a static build into `dist`/`build`/`out`),
-and state the matching commands in the spec and prompt. Only those commands and
+The validator runs the install and build commands from the manifest's required
+`[build]` table; both commands must be stated explicitly (there are no defaults).
+`npm ci` then `npm run build` is conventional, but a case may pin a different
+toolchain (it must still emit a static build into `dist`/`build`/`out`); state the
+matching commands in the spec and prompt. Only those commands and
 where the output lands are fixed; the language, framework, bundler, and rendering
 approach behind the interface stay free. Carom's and Coil's `overview`,
 `prompt.hbs`, and `[build]` table are the model wording.

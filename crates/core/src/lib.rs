@@ -74,7 +74,7 @@ pub use test_case::{
     Check, CheckAction, ReferenceView, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion,
     Variant,
 };
-pub use validation::{CapturedView, CheckResult, ValidationSummary, Validator};
+pub use validation::{CapturedView, CheckResult, StepResult, ValidationSummary, Validator};
 pub use validator::BuildValidator;
 
 /// What to run, with what, against which model.

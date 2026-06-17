@@ -23,6 +23,25 @@ pub struct CapturedView {
     pub image_path: PathBuf,
 }
 
+/// The outcome of a single **required** build step — dependency install or the
+/// static build — that every run performs before the load check.
+///
+/// Building an implementation is not a single opaque step: the install and the
+/// build each run a manifest-declared command and each can fail on its own, so
+/// each is reported in the [`ValidationSummary`] in its own right rather than
+/// being folded silently into the load signal. See `docs/validation.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepResult {
+    /// The command that was run (the manifest's `install` or `build` command).
+    pub command: String,
+    /// Whether the command exited successfully.
+    pub succeeded: bool,
+    /// Detail about a failure (a tail of the command's stderr), or `None` when
+    /// the step succeeded.
+    pub detail: Option<String>,
+}
+
 /// The result of a single opt-in validation check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +72,14 @@ pub struct ValidationSummary {
     /// Detail about a fatal load failure (build failure, uncaught runtime error,
     /// or a missing browser that prevented capture).
     pub detail: Option<String>,
+    /// Outcome of the required dependency-install step, or `None` if the build
+    /// never reached it (for example, no `package.json` was found).
+    #[serde(default)]
+    pub install: Option<StepResult>,
+    /// Outcome of the required static-build step, or `None` if it was never
+    /// reached (the install failed, or there was no `package.json`).
+    #[serde(default)]
+    pub build: Option<StepResult>,
     /// Per-check results for the validation checks the test case declares.
     pub checks: Vec<CheckResult>,
 }

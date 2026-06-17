@@ -18,10 +18,9 @@ The most important automated check is whether the implementation runs at all.
 Many failures are gross: the build fails, or the page throws an error on load
 and nothing renders. The testing harness must:
 
-- Build the implementation — running the test case's `[build]` install and build
-  commands (by default `npm ci`, then `npm run build`) from the produced
-  repository — and serve its output directory (`dist/`, `build/`, or `out/`) as
-  a static site.
+- Build the implementation — running the test case's required `[build]` install
+  and build commands from the produced repository — and serve its output
+  directory (`dist/`, `build/`, or `out/`) as a static site.
 - Load it in a headless browser.
 - Detect fatal errors, including build failures and uncaught runtime errors that
   prevent the application from rendering.
@@ -55,7 +54,11 @@ targets.
 ## Results
 
 Validation output is summarized into the [run record](/components/core/run-records/)
-so the site can surface, for example, whether a run loaded and how closely each
-declared check matched its reference baseline. Each check result carries its
-display name alongside its view slug so the site can label it without
-re-deriving one.
+so the site can surface what validation did. Building an implementation is not a
+single opaque step: installing dependencies and building the static site are
+**required steps** that every run performs, and each is reported as its own
+result with its outcome rather than being folded silently into the load signal.
+The summary therefore covers the install and the build alongside whether the
+implementation loaded and how closely each declared check matched its reference
+baseline. Each check result additionally carries its display name alongside its
+view slug so the site can label it without re-deriving one.

@@ -48,6 +48,8 @@ fn sample_record() -> RunRecord {
         validation: ValidationSummary {
             loaded: true,
             detail: None,
+            install: None,
+            build: None,
             checks: vec![],
         },
         links: RunLinks::default(),

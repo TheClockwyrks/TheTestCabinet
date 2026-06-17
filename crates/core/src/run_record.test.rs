@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::validation::{CheckResult, ValidationSummary};
+use crate::validation::{CheckResult, StepResult, ValidationSummary};
 
 fn sample_record() -> RunRecord {
     RunRecord {
@@ -43,6 +43,16 @@ fn sample_record() -> RunRecord {
         validation: ValidationSummary {
             loaded: true,
             detail: None,
+            install: Some(StepResult {
+                command: "npm ci".to_string(),
+                succeeded: true,
+                detail: None,
+            }),
+            build: Some(StepResult {
+                command: "npm run build".to_string(),
+                succeeded: true,
+                detail: None,
+            }),
             checks: vec![CheckResult {
                 view: "title".to_string(),
                 name: "Title".to_string(),
@@ -102,6 +112,8 @@ fn serializes_to_camel_case_contract() {
         "validation": {
             "loaded": true,
             "detail": null,
+            "install": { "command": "npm ci", "succeeded": true, "detail": null },
+            "build": { "command": "npm run build", "succeeded": true, "detail": null },
             "checks": [
                 { "view": "title", "name": "Title", "reached": true, "similarity": 0.92, "detail": null }
             ]

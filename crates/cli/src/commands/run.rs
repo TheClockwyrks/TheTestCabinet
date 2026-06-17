@@ -101,9 +101,22 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     );
     println!("  time:    {:.1}s", record.metrics.run_time_seconds);
     println!("  loaded:  {}", record.validation.loaded);
+    print_step("install", record.validation.install.as_ref());
+    print_step("build", record.validation.build.as_ref());
     print_checks(&record.validation);
 
     Ok(())
+}
+
+/// Print the outcome of a required build step (install or build), or that it was
+/// never reached. The label is padded so the value lines up with the rows above.
+fn print_step(label: &str, step: Option<&test_cabinet_core::StepResult>) {
+    let value = match step {
+        Some(step) if step.succeeded => "ok".to_string(),
+        Some(step) => format!("failed ({})", step.detail.as_deref().unwrap_or("failed")),
+        None => "not reached".to_string(),
+    };
+    println!("  {:<8} {value}", format!("{label}:"));
 }
 
 /// Print the per-check validation results, if the test case declared any.

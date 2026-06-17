@@ -65,8 +65,8 @@ The harness version is not duplicated here; it lives in the subject.
 ### Validation
 
 - A summary of the [validation](/components/core/validation/) results, including
-  whether the implementation loaded and the similarity signal from each declared
-  check.
+  the outcome of the required install and build steps, whether the
+  implementation loaded, and the similarity signal from each declared check.
 
 ### Links
 

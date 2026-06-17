@@ -37,6 +37,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "title", name: "Title", reached: true, similarity: 0.969, detail: null },
         { view: "rally", name: "Rally", reached: true, similarity: 0.882, detail: null },
@@ -79,6 +81,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "menu", name: "Menu", reached: true, similarity: 0.941, detail: null },
         { view: "match", name: "Match", reached: true, similarity: 0.873, detail: null },
@@ -122,6 +126,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "wave", name: "Wave", reached: true, similarity: 0.704, detail: null },
         {
@@ -170,6 +176,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "board", name: "Board", reached: true, similarity: 0.915, detail: null },
       ],
@@ -211,6 +219,12 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: false,
       detail: "build threw on startup: missing canvas context",
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: {
+        command: "npm run build",
+        succeeded: false,
+        detail: "build threw on startup: missing canvas context",
+      },
       checks: [],
     },
     links: {
@@ -253,6 +267,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "well", name: "Well", reached: true, similarity: 0.86, detail: null },
         {
@@ -301,6 +317,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         {
           view: "field",
@@ -351,6 +369,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "title", name: "Title", reached: true, similarity: 0.844, detail: null },
       ],
@@ -392,6 +412,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "menu", name: "Menu", reached: true, similarity: 0.92, detail: null },
         { view: "match", name: "Match", reached: true, similarity: 0.851, detail: null },
@@ -434,6 +456,8 @@ export const sampleRuns: RunRecord[] = [
     validation: {
       loaded: true,
       detail: null,
+      install: { command: "npm ci", succeeded: true, detail: null },
+      build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
         { view: "menu", name: "Menu", reached: true, similarity: 0.889, detail: null },
         { view: "match", name: "Match", reached: true, similarity: 0.812, detail: null },

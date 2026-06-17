@@ -51,10 +51,11 @@ struct Manifest {
     #[serde(default = "default_max_runtime_seconds")]
     max_runtime_seconds: u64,
     /// The commands the validator runs to build the produced implementation as a
-    /// static site (the `[build]` table). Defaults to an `npm ci` + `npm run
-    /// build` flow when omitted.
+    /// static site (the `[build]` table). **Required**: a case must state both
+    /// commands explicitly, so absence is rejected at resolution rather than
+    /// defaulted. Modeled as `Option` only to detect omission and report it.
     #[serde(default)]
-    build: ManifestBuild,
+    build: Option<ManifestBuild>,
     /// Specs seeded for **every** variant. Each maps a `source` inside the
     /// version folder to a `dest` in the run's workspace. Declared as repeated
     /// `[[spec]]` tables.
@@ -78,27 +79,15 @@ struct Manifest {
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
-/// a produced implementation into a served static site. Each field defaults
-/// independently, so a manifest may override just one and inherit the other, and
-/// omitting the table entirely yields the canonical npm flow.
+/// a produced implementation into a served static site. Both fields are required
+/// — there are no defaults, so a case always records exactly how it is built.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestBuild {
-    /// Command that installs dependencies (default `npm ci`, which requires a
+    /// Command that installs dependencies (for example `npm ci`, which requires a
     /// committed lockfile).
-    #[serde(default = "default_install_command")]
     install: String,
-    /// Command that produces the static build (default `npm run build`).
-    #[serde(default = "default_build_command")]
+    /// Command that produces the static build (for example `npm run build`).
     build: String,
-}
-
-impl Default for ManifestBuild {
-    fn default() -> Self {
-        Self {
-            install: default_install_command(),
-            build: default_build_command(),
-        }
-    }
 }
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
@@ -193,12 +182,13 @@ pub struct SpecFile {
 }
 
 /// The commands the validator runs to build a produced implementation into a
-/// served static site, resolved from the manifest's `[build]` table.
+/// served static site, resolved from the manifest's required `[build]` table.
 ///
-/// Each command is run from the implementation's repository root. The default is
-/// an `npm ci` install (which requires the build to commit a lockfile) followed
-/// by `npm run build`; a case may override either to use a different toolchain so
-/// long as it still emits a static build the load check can serve.
+/// Each command is run from the implementation's repository root. A case must
+/// state both explicitly — there are no defaults. `npm ci` (which requires the
+/// build to commit a lockfile) followed by `npm run build` is conventional; a
+/// case may pin a different toolchain so long as it still emits a static build
+/// the load check can serve.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildCommands {
@@ -206,15 +196,6 @@ pub struct BuildCommands {
     pub install: String,
     /// Command that produces the static build.
     pub build: String,
-}
-
-impl Default for BuildCommands {
-    fn default() -> Self {
-        Self {
-            install: default_install_command(),
-            build: default_build_command(),
-        }
-    }
 }
 
 /// A named build target of a test case.
@@ -515,13 +496,18 @@ impl TestCaseCatalog {
             ));
         }
 
-        // The validator runs the build commands verbatim; a blank one would run
-        // nothing and silently skip a build step, so reject it rather than letting
-        // a typo'd `[build]` table degrade the load check.
-        if manifest.build.install.trim().is_empty() {
+        // The `[build]` table is required: a case must state exactly how its
+        // implementation is built rather than inheriting a default, so its absence
+        // is rejected here. The validator then runs the commands verbatim; a blank
+        // one would run nothing and silently skip a build step, so reject that too
+        // rather than letting a typo'd `[build]` table degrade the load check.
+        let build = manifest
+            .build
+            .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
+        if build.install.trim().is_empty() {
             return Err(invalid("build.install must not be empty".to_string()));
         }
-        if manifest.build.build.trim().is_empty() {
+        if build.build.trim().is_empty() {
             return Err(invalid("build.build must not be empty".to_string()));
         }
 
@@ -712,8 +698,8 @@ impl TestCaseCatalog {
             prompt_path,
             max_runtime_seconds: manifest.max_runtime_seconds,
             build: BuildCommands {
-                install: manifest.build.install,
-                build: manifest.build.build,
+                install: build.install,
+                build: build.build,
             },
             common_specs,
             asset_paths,
@@ -798,18 +784,6 @@ fn default_difficulty() -> String {
 /// can override it per invocation.
 fn default_max_runtime_seconds() -> u64 {
     3600
-}
-
-/// The default dependency-install command applied when a manifest omits
-/// `build.install`. `npm ci` is deliberate: it requires a committed lockfile and
-/// installs exactly what it pins, so the validated build matches the deployed one.
-fn default_install_command() -> String {
-    "npm ci".to_string()
-}
-
-/// The default static-build command applied when a manifest omits `build.build`.
-fn default_build_command() -> String {
-    "npm run build".to_string()
 }
 
 /// Humanize a slug into a display name by splitting on `-`/`_` and capitalizing

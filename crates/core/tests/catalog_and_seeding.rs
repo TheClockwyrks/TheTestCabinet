@@ -208,10 +208,14 @@ fn temp_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     (dir, catalog)
 }
 
-/// The shared head of the demo manifests: metadata, prompt, and one common spec.
+/// The shared head of the demo manifests: metadata, prompt, the required `[build]`
+/// table, and one common spec.
 const DEMO_HEAD: &str = r#"
 name = "Demo"
 prompt = "prompt.hbs"
+[build]
+install = "npm ci"
+build = "npm run build"
 [[spec]]
 source = "overview.md"
 dest = "specs/overview.md"

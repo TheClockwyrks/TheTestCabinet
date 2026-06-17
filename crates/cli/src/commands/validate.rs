@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    ArtifactCollection, BrowserRenderer, BuildValidator, ReferenceRenderer, TestCaseCatalog,
-    Validator,
+    ArtifactCollection, BrowserRenderer, BuildValidator, ReferenceRenderer, StepResult,
+    TestCaseCatalog, Validator,
 };
 
 use crate::cli::ValidateArgs;
@@ -51,6 +51,8 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     if let Some(detail) = &summary.detail {
         println!("  detail: {detail}");
     }
+    print_step("install", summary.install.as_ref());
+    print_step("build", summary.build.as_ref());
     if summary.checks.is_empty() {
         println!("  checks: none");
     } else {
@@ -65,6 +67,19 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Print the outcome of a required build step (install or build), or that it was
+/// never reached.
+fn print_step(label: &str, step: Option<&StepResult>) {
+    match step {
+        Some(step) if step.succeeded => println!("  {label}: ok (`{}`)", step.command),
+        Some(step) => {
+            let detail = step.detail.as_deref().unwrap_or("failed");
+            println!("  {label}: failed (`{}`: {detail})", step.command);
+        }
+        None => println!("  {label}: not reached"),
+    }
 }
 
 /// Locate the test case catalog root (see `tcab run`).

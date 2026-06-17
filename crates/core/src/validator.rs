@@ -17,8 +17,8 @@ use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{BuildCommands, TestCaseVersion};
-use crate::validation::{CheckResult, ValidationSummary, Validator};
+use crate::test_case::TestCaseVersion;
+use crate::validation::{CheckResult, StepResult, ValidationSummary, Validator};
 
 /// Candidate output directories a static build may produce.
 const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
@@ -54,17 +54,35 @@ impl Validator for BuildValidator {
         if !repo.join("package.json").is_file() {
             return Ok(failed_load(
                 "no package.json found in the produced implementation",
+                None,
+                None,
             ));
         }
-        if let Err(detail) = run_build(repo, &test_case.build) {
-            return Ok(failed_load(&detail));
+
+        // The two required build steps run in order and are each reported in the
+        // summary. Install runs first; if it fails the build step is never
+        // reached, so it stays `None`.
+        let install = run_step(repo, &test_case.build.install);
+        if !install.succeeded {
+            let detail = install.detail.clone().unwrap_or_default();
+            return Ok(failed_load(&detail, Some(install), None));
         }
+        let build = run_step(repo, &test_case.build.build);
+        if !build.succeeded {
+            let detail = build.detail.clone().unwrap_or_default();
+            return Ok(failed_load(&detail, Some(install), Some(build)));
+        }
+
         let Some(output_dir) = BUILD_OUTPUTS
             .iter()
             .map(|d| repo.join(d))
             .find(|p| p.is_dir())
         else {
-            return Ok(failed_load("build produced no dist/build/out directory"));
+            return Ok(failed_load(
+                "build produced no dist/build/out directory",
+                Some(install),
+                Some(build),
+            ));
         };
 
         // The build succeeded and produced output: the load signal is positive.
@@ -73,6 +91,8 @@ impl Validator for BuildValidator {
         Ok(ValidationSummary {
             loaded: true,
             detail,
+            install: Some(install),
+            build: Some(build),
             checks,
         })
     }
@@ -168,11 +188,18 @@ impl BuildValidator {
     }
 }
 
-/// A validation summary for a build that never loaded.
-fn failed_load(detail: &str) -> ValidationSummary {
+/// A validation summary for a build that never loaded, carrying whichever build
+/// steps had run by the point it failed.
+fn failed_load(
+    detail: &str,
+    install: Option<StepResult>,
+    build: Option<StepResult>,
+) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
         detail: Some(detail.to_string()),
+        install,
+        build,
         checks: Vec::new(),
     }
 }
@@ -192,12 +219,21 @@ fn unreached(test_case: &TestCaseVersion, detail: &str) -> Vec<CheckResult> {
         .collect()
 }
 
-/// Install dependencies and run the production build for a project, using the
-/// case's declared [`BuildCommands`].
-fn run_build(repo: &Path, build: &BuildCommands) -> std::result::Result<(), String> {
-    run_command(repo, &build.install)?;
-    run_command(repo, &build.build)?;
-    Ok(())
+/// Run one required build step (the manifest's `install` or `build` command) in
+/// `repo`, capturing its outcome as a [`StepResult`] for the validation summary.
+fn run_step(repo: &Path, command: &str) -> StepResult {
+    match run_command(repo, command) {
+        Ok(()) => StepResult {
+            command: command.to_string(),
+            succeeded: true,
+            detail: None,
+        },
+        Err(detail) => StepResult {
+            command: command.to_string(),
+            succeeded: false,
+            detail: Some(detail),
+        },
+    }
 }
 
 /// Run one build command in `repo` through a shell, returning a description of

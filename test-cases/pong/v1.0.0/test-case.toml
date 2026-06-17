@@ -46,8 +46,8 @@ max_runtime_seconds = 1800
 # repository root: dependencies are installed, then the static build is produced
 # into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
 # build to commit a `package-lock.json`, so the validated build installs exactly
-# what the deploy will. Both default to these values when the table is omitted;
-# they are stated explicitly here so the contract is visible alongside the case.
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
 [build]
 install = "npm ci"
 build = "npm run build"

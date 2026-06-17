@@ -23,40 +23,51 @@ fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCa
 }
 
 #[test]
-fn build_commands_default_to_npm_ci_and_run_build() {
+fn build_table_is_required() {
+    // No `[build]` table at all: there are no defaults, so resolution fails.
     let (_dir, catalog) = catalog_with_manifest("");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a missing [build] table is rejected");
+    assert!(
+        format!("{err}").contains("the [build] table is required"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn build_table_sets_the_commands() {
+    let (_dir, catalog) = catalog_with_manifest(
+        "[build]\ninstall = \"pnpm install --frozen-lockfile\"\nbuild = \"pnpm build\"",
+    );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
         version.build,
         BuildCommands {
-            install: "npm ci".to_string(),
-            build: "npm run build".to_string(),
+            install: "pnpm install --frozen-lockfile".to_string(),
+            build: "pnpm build".to_string(),
         }
     );
 }
 
 #[test]
-fn build_table_overrides_the_commands() {
-    let (_dir, catalog) = catalog_with_manifest(
-        "[build]\ninstall = \"pnpm install --frozen-lockfile\"\nbuild = \"pnpm build\"",
-    );
-    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    assert_eq!(version.build.install, "pnpm install --frozen-lockfile");
-    assert_eq!(version.build.build, "pnpm build");
-}
-
-#[test]
-fn partial_build_table_inherits_the_other_default() {
+fn partial_build_table_is_rejected() {
+    // The table is present but omits `install`: both commands must be stated, so
+    // there is no default to fall back to and resolution fails.
     let (_dir, catalog) = catalog_with_manifest("[build]\nbuild = \"make site\"");
-    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    // `install` is omitted, so it falls back to the default while `build` wins.
-    assert_eq!(version.build.install, "npm ci");
-    assert_eq!(version.build.build, "make site");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a [build] table missing a command is rejected");
+    assert!(
+        format!("{err}").contains("install"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
 fn empty_build_command_is_rejected() {
-    let (_dir, catalog) = catalog_with_manifest("[build]\ninstall = \"  \"");
+    let (_dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"  \"\nbuild = \"npm run build\"");
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a blank build command is rejected");

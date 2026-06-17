@@ -95,11 +95,35 @@ export interface CheckResult {
   detail: string | null;
 }
 
+/**
+ * The outcome of a single required build step — dependency install or the static
+ * build — that every run performs before the load check. Each is reported in its
+ * own right rather than folded silently into the load signal.
+ */
+export interface StepResult {
+  /** The command that was run (the manifest's `install` or `build` command). */
+  command: string;
+  /** Whether the command exited successfully. */
+  succeeded: boolean;
+  /** Detail about a failure, or null when the step succeeded. */
+  detail: string | null;
+}
+
 /** Validation signals derived from running the produced artifact. */
 export interface RunValidation {
   loaded: boolean;
   /** Detail about a fatal load failure, when one occurred. */
   detail: string | null;
+  /**
+   * Outcome of the required dependency-install step, or null if the build never
+   * reached it (for example, no `package.json` was found).
+   */
+  install: StepResult | null;
+  /**
+   * Outcome of the required static-build step, or null if it was never reached
+   * (the install failed, or there was no `package.json`).
+   */
+  build: StepResult | null;
   /** Per-check results for the checks the test case declares. */
   checks: CheckResult[];
 }
