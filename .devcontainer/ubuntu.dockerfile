@@ -1,4 +1,4 @@
-FROM docker.io/library/ubuntu:24.04
+FROM docker.io/library/ubuntu:26.04
 USER root
 
 # Auto-provided by the builder: "amd64" on x64, "arm64" on ARM.
