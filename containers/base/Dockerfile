@@ -48,6 +48,7 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 # install locations on PATH, so both `npm install -g` and curl-based installers
 # work as the unprivileged user.
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
+	PLAYWRIGHT_SKIP_BROWSER_GC=1 \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
 
 # Playwright + headless Chromium for in-container browser verification.
@@ -83,7 +84,15 @@ USER node
 # Download the Chromium build into the run user's Playwright cache so it is
 # present without network access and is reused by a project-local install of the
 # pinned version.
-RUN playwright install chromium
+#
+# Playwright's downloader can hang after reaching 100% in some container build
+# environments, so use its registry metadata for the artifact URLs but fetch and
+# extract them with curl/unzip. The helper also writes Playwright's completion
+# markers so later `playwright install chromium` checks exit without redownloading.
+COPY --chown=node:node install-playwright-browsers.mjs /tmp/install-playwright-browsers.mjs
+RUN node /tmp/install-playwright-browsers.mjs \
+	&& rm /tmp/install-playwright-browsers.mjs \
+	&& playwright install chromium
 
 # The seeded repository is mounted here at run time and is the harness's working
 # directory.
