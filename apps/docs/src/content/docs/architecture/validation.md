@@ -10,7 +10,7 @@ compare an implementation against a reference baseline.
 
 Full automated validation is **not** a goal. It is not expected that an entire
 implementation can be assessed automatically. Validation produces signals that are
-surfaced on the [site](/site/); it is not a pass/fail gate and it does not
+surfaced on the [site](/architecture/site/); it is not a pass/fail gate and it does not
 produce a ranking. The real evaluation is a person playing the implementation.
 
 ## Load Check
@@ -54,7 +54,7 @@ the initial screen), even though they seed more references as visual targets.
 
 ## Results
 
-Validation output is summarized into the [run record](/run-records/) so the
+Validation output is summarized into the [run record](/architecture/run-records/) so the
 site can surface, for example, whether a run loaded and how closely each declared
 check matched its reference baseline. Each check result carries its display name
 alongside its view slug so the site can label it without re-deriving one.

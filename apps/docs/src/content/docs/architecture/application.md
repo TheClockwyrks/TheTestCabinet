@@ -5,10 +5,10 @@ title: Testing Harness Application
 ## Overview
 
 The testing harness application is the locally run program that orchestrates
-benchmark runs. It ties together the [test case catalog](/test-cases/), the
-[agent harness layer](/harnesses/), the [execution environment](/execution/),
-[metrics](/metrics/), [validation](/validation/),
-[publishing](/results/), and the live [harness event](/events/) stream that
+benchmark runs. It ties together the [test case catalog](/architecture/test-cases/), the
+[agent harness layer](/architecture/harnesses/), the [execution environment](/architecture/execution/),
+[metrics](/architecture/metrics/), [validation](/architecture/validation/),
+[publishing](/architecture/results/), and the live [harness event](/architecture/events/) stream that
 lets an interface show a run's progress as it happens.
 
 ## Local Operation
@@ -41,7 +41,7 @@ At a high level, launching a run must:
 - Select a test case version, an agent harness, and a model.
 - Seed a fresh git repository with the test case's data.
 - Start a container and invoke the agent harness against the seeded repository.
-- Surface the harness's activity as a live stream of [harness events](/events/)
+- Surface the harness's activity as a live stream of [harness events](/architecture/events/)
   while the run is in progress.
 - Record metrics as the run proceeds and collect the produced repository when it
   finishes.
