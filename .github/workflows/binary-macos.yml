@@ -22,6 +22,6 @@ jobs:
     name: CLI binary (macOS release & smoke)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - run: ./scripts/ci/binary-smoke.sh

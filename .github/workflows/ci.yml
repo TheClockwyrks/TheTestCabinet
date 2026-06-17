@@ -27,7 +27,7 @@ jobs:
     name: CLI (build & test)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - run: ./scripts/ci/rust-test.sh
 
@@ -35,8 +35,8 @@ jobs:
     name: Website (build)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm

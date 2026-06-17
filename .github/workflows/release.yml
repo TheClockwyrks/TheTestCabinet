@@ -51,7 +51,7 @@ jobs:
             target: aarch64-apple-darwin
             bin: tcab
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # The musl target needs a musl C toolchain because the `ring` TLS backend
       # compiles a little C.
       - name: Install musl toolchain
@@ -83,7 +83,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.bin }}" `
             -DestinationPath "dist/tcab-$env:VERSION-${{ matrix.name }}.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: dist-${{ matrix.name }}
           path: dist/*
@@ -96,7 +96,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
