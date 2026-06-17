@@ -23,6 +23,18 @@ agentic harnesses that The Test Cabinet uses to run the tests.
 Models are the large language models that determine the actions an agentic
 harness takes.
 
+## Publishing
+
+"Publishing" refers to pushing an implementation to GitHub and its result to The
+Test Cabinet's website. Test runs exist only locally until published.
+
+## Review
+
+All test cases are manually reviewed after the implementation is complete. This
+allows the reviewer to assess how well a model matched the spec, check for any
+bugs, and otherwise provide non-automated feedback about the run result. Reviews
+are slightly subjective since games don't map cleanly to a rigid grading scale.
+
 ## Run Records
 
 A run record is produced each time a test case runs to completion. This records
@@ -33,6 +45,12 @@ token/cost data.
 
 Test cases provide the scenarios used for testing. Each test case represents
 some project that must be implemented from scratch.
+
+## Validation
+
+The Test Cabinet makes use of a small amount of automated validation. These are
+used for basic checks like "Does this implementation even build?" or "How well
+does the implemented UI match the reference image?".
 
 ## Variant
 
