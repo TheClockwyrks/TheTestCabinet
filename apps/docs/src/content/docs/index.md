@@ -23,6 +23,25 @@ and for any end users who would like to run The Test Cabinet locally. Developers
 will want to primarily refer to the Components section, while end users should
 focus their attention on the Quickstart page and User Guide section.
 
+## AI-Generated Documentation
+
+Documentation for The Test Cabinet is typically AI-generated initially. This is
+done to establish intent and lock in design decisions before writing code, after
+which the implementation is created using the documentation as a reference.
+
+Once an implementation has been written and adjusted as needed, a second, manual
+pass is done over the documentation. This means that there will be a mix of
+developer-authored and AI-authored documentation present. Expect to see a mix of
+em dashes and regular hyphens depending on who authored the documentation and
+whether a developer has opted to rewrite part of the documentation during the
+manual pass.
+
+The documentation is also going to be significantly easier to read by hosting
+the docs as a website rather than reading the Markdown files directly. AI
+loves to **bold** or *italicize* words and add [links](#ai-generated-documentation)
+to different sections, which noticeably hurts readability of the raw Markdown
+docs.
+
 ## Status
 
 This project is currently in early development. Expect missing features, janky
