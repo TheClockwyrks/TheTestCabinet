@@ -1,0 +1,34 @@
+---
+title: Roadmap
+---
+
+This document covers the changes that are planned for The Test Cabinet and the
+(approximate) order that they'll be completed in.
+
+## v0.2.0
+
+- Introduce the dedicated backend for The Test Cabinet results
+
+## v0.3.0
+
+- Introduce The Test Cabinet's Tauri app
+
+## v0.4.0
+
+- Add new types of test cases:
+  - Adversarial
+  - Asset generation
+  - Performance
+
+## Unscheduled
+
+- Requiring models to supply proof of completion (images, video)
+- Ablation testing
+  - Test result quality with and without proof of completion
+  - Evaluate results with and without Chromium/Playwright provided
+- Use of less common languages
+  - This would check how well models are able to generalize knowledge to more
+    infrequently languages
+- Support for alternate execution modes
+  - Ralph loop
+  - Issue-based code generation
