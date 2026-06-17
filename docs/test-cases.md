@@ -70,6 +70,12 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
 assets = []                  # asset files/directories, seeded (relative paths)
 
+# How validation builds the produced implementation into a served static site.
+# Both default to the values shown; the table may be omitted entirely.
+[build]
+install = "npm ci"           # dependency install command (default "npm ci")
+build = "npm run build"      # static-build command (default "npm run build")
+
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the
 # version folder to a `dest` in the run's workspace. A `.hbs` source is rendered
 # (see Spec templates); any other source is seeded verbatim.
@@ -120,6 +126,16 @@ actions = []                 # actions to drive the build into the view (empty =
   hour) when omitted and must be greater than zero. This is the per-case default;
   a run can override it for a single invocation (for example
   `tcab run --max-runtime <seconds>`).
+- The optional `[build]` table declares the commands validation runs to turn a
+  produced implementation into a served static site: `install` (dependency
+  install) and `build` (the static build). Each runs from the implementation's
+  repository root and defaults independently — `install` to `npm ci` and `build`
+  to `npm run build` — so the table may be omitted entirely or override just one
+  command. `npm ci` is the default because it requires a committed lockfile and
+  installs exactly what it pins, matching the deployed build; a case may pin a
+  different toolchain but must still emit a static build into `dist/`, `build/`,
+  or `out/`. Neither command may be empty. See
+  [Validation](./validation.md#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the run
   workspace. A `source` ending in `.hbs` is a Handlebars template rendered into
@@ -305,6 +321,19 @@ Every test case must satisfy the following:
 - The final product must **not require backend support**. Every test case must be
   runnable in a browser with no accounts, databases, or other significant server
   side dependencies.
+- It must require its implementation to use the **fixed build interface** the
+  harness and the per-run deploy both depend on, stated as a hard requirement in
+  the spec and prompt. The build must be a Node project with a `package.json` at
+  its root, built with only Node.js and npm-installed dependencies (no separately
+  installed language toolchain) that commits a `package-lock.json` and, by running
+  `npm ci` (which requires that lockfile) then `npm run build`, produces the
+  static site into one of `dist/`, `build/`, or `out/` with an `index.html` at the
+  root of that directory, runnable served as-is at a server root. The load check
+  builds and serves an implementation with the manifest's [`[build]`
+  commands](#manifest) (defaulting to `npm ci` then `npm run build`) and records
+  anything else as failing to load (see
+  [Validation](./validation.md#load-check)); the language, framework, bundler, and
+  rendering approach behind the interface remain the model's choice.
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
   visuals.

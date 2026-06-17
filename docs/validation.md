@@ -17,7 +17,10 @@ The most important automated check is whether the implementation runs at all.
 Many failures are gross: the build fails, or the page throws an error on load and
 nothing renders. The testing harness must:
 
-- Build the implementation and serve it as a static site.
+- Build the implementation — running the test case's `[build]` install and build
+  commands (by default `npm ci`, then `npm run build`) from the produced
+  repository — and serve its output directory (`dist/`, `build/`, or `out/`) as a
+  static site.
 - Load it in a headless browser.
 - Detect fatal errors, including build failures and uncaught runtime errors that
   prevent the application from rendering.

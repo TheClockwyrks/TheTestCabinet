@@ -17,6 +17,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         root: PathBuf::from("/tmp/pong"),
         prompt_path,
         max_runtime_seconds: 1800,
+        build: Default::default(),
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),

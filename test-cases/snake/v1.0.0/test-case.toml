@@ -43,6 +43,17 @@ prompt = "prompt.hbs"
 # healthy build needs while still catching a session that never terminates.
 max_runtime_seconds = 1800
 
+# How the validator (and the per-run GitHub Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both default to these values when the table is omitted;
+# they are stated explicitly here so the contract is visible alongside the case.
+[build]
+install = "npm ci"
+build = "npm run build"
+
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
 # the run workspace. The specification is decomposed by concern so that
 # mode-specific material can be seeded per variant (see `[[variant]]` below).

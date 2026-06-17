@@ -17,7 +17,7 @@ use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::TestCaseVersion;
+use crate::test_case::{BuildCommands, TestCaseVersion};
 use crate::validation::{CheckResult, ValidationSummary, Validator};
 
 /// Candidate output directories a static build may produce.
@@ -56,7 +56,7 @@ impl Validator for BuildValidator {
                 "no package.json found in the produced implementation",
             ));
         }
-        if let Err(detail) = run_build(repo) {
+        if let Err(detail) = run_build(repo, &test_case.build) {
             return Ok(failed_load(&detail));
         }
         let Some(output_dir) = BUILD_OUTPUTS
@@ -192,31 +192,32 @@ fn unreached(test_case: &TestCaseVersion, detail: &str) -> Vec<CheckResult> {
         .collect()
 }
 
-/// Install dependencies and run the production build for a project.
-fn run_build(repo: &Path) -> std::result::Result<(), String> {
-    let install = if repo.join("package-lock.json").is_file() {
-        &["ci"][..]
-    } else {
-        &["install"][..]
-    };
-    run_npm(repo, install)?;
-    run_npm(repo, &["run", "build"])?;
+/// Install dependencies and run the production build for a project, using the
+/// case's declared [`BuildCommands`].
+fn run_build(repo: &Path, build: &BuildCommands) -> std::result::Result<(), String> {
+    run_command(repo, &build.install)?;
+    run_command(repo, &build.build)?;
     Ok(())
 }
 
-/// Run an npm command in `repo`, returning a description of any failure.
-fn run_npm(repo: &Path, args: &[&str]) -> std::result::Result<(), String> {
-    let output = Command::new("npm")
-        .args(args)
+/// Run one build command in `repo` through a shell, returning a description of
+/// any failure. The command is a manifest-declared string (for example `npm ci`
+/// or `npm run build`), so it is run via `sh -c` to honor whatever form a case
+/// chooses; only the produced implementation it operates on is untrusted, and
+/// running its build scripts is the point.
+fn run_command(repo: &Path, command: &str) -> std::result::Result<(), String> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
         .current_dir(repo)
         .output()
-        .map_err(|err| format!("failed to run `npm {}`: {err}", args.join(" ")))?;
+        .map_err(|err| format!("failed to run `{command}`: {err}"))?;
     if output.status.success() {
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("; ");
-        Err(format!("`npm {}` failed: {tail}", args.join(" ")))
+        Err(format!("`{command}` failed: {tail}"))
     }
 }
 

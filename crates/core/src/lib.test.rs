@@ -165,6 +165,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         root: PathBuf::from("/tmp/pong"),
         prompt_path: PathBuf::from("/tmp/pong/prompt.hbs"),
         max_runtime_seconds: seconds,
+        build: Default::default(),
         common_specs: Vec::new(),
         asset_paths: Vec::new(),
         variants: Vec::new(),

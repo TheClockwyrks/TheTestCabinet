@@ -26,14 +26,22 @@ Deliver a complete, polished, playable game, not a tech demo. It must:
 - **Run in the browser with no backend** — no server, accounts, database, or
   network calls at runtime; everything needed to play is self-contained.
 - Require **no API keys or credentials** of any kind to build, run, or play.
-- Produce a **static production build** that any static file server can serve,
-  and run correctly from that build.
+- Be a **Node project** (a `package.json` at `{{workspace}}`) built with only
+  Node.js and npm-installed dependencies — no separately installed language
+  toolchain. **Commit a `package-lock.json`** — the build is installed with
+  `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
+  static site, with no other manual step, into one of `dist/`, `build/`, or
+  `out/` at the project root, with an `index.html` at the root of that directory.
+  Serving that directory as-is at the root of any static file server must run the
+  game; it is deployed to static hosting exactly that way.
 - Include a `README.md` at `{{workspace}}` explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
   production build, and the controls.
 
-You choose the language, framework, build tool, and rendering approach within
-those constraints (plain TypeScript with Canvas 2D is entirely sufficient). The
+You choose the language, framework, bundler, and rendering approach within those
+constraints — only the `npm ci` / `npm run build` commands and their
+`dist`/`build`/`out` output are fixed (plain TypeScript with Canvas 2D is
+entirely sufficient). The
 `reference/` folder under `{{workspace}}` holds screenshots that are visual
 targets for the title, gameplay, and game-over screens — match their layout,
 palette, and type, but build the screens from the specification rather than

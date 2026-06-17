@@ -53,16 +53,28 @@ a tech demo.
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained.
 - **No API keys or credentials** of any kind to build, run, or play.
-- **Static production build.** The project must build to static files that can
-  be served by any static file server, and must run from that build.
+- **npm-driven static build.** The project must be a Node project with a
+  `package.json` at its root, buildable with **only Node.js and npm-installed
+  dependencies** (no separately installed language toolchain). **Commit a
+  `package-lock.json`**: the build is installed with `npm ci`, which requires that
+  lockfile. Running `npm ci` and then `npm run build` must produce the complete
+  static site, with no further manual step, into one of `dist/`, `build/`, or
+  `out/` at the project root, with an `index.html` at the root of that directory
+  as the entry point. That output directory must run correctly when served as-is
+  at the root of any static file server, since it is deployed to static hosting
+  exactly that way. You choose the language, framework, bundler, and rendering
+  approach behind this interface; only the `npm ci` and `npm run build` commands
+  and where the build output lands are fixed.
 - **Documentation.** Include a `README.md` in the produced repository explaining
   what the game is, how to install dependencies, how to run it in development,
   how to produce the static production build, and the controls.
 
 ### Free choices
 
-You choose the language, framework, build tool, and rendering approach, subject
-to the requirements above. Plain TypeScript with Canvas 2D is entirely
+You choose the language, framework, bundler, and rendering approach, subject to
+the requirements above — including the npm-driven static build, which fixes the
+`npm ci` and `npm run build` commands and where the output lands, but not how you
+implement the build behind them. Plain TypeScript with Canvas 2D is entirely
 sufficient; a framework is not required. Favor a clean, well-structured codebase
 over any particular technology.
 

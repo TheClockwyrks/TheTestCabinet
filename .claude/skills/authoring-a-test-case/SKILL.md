@@ -164,10 +164,41 @@ Specifications* in [`docs/test-cases.md`](../../../docs/test-cases.md).)
 
 ### Specify *what*, not *how*
 
-Leave the language, framework, build tool, and rendering approach to the model —
+Leave the language, framework, bundler, and rendering approach to the model —
 state them as free choices. Pin down **observable behavior and exact values**
 instead: what the build must do, look like, and measure. Describe the bounce, not
-the function that computes it.
+the function that computes it. The one exception is the build-and-serve
+interface, which is fixed for every case — see below.
+
+### Fix the build interface, not the implementation
+
+How a build is *produced and served* is **not** a free choice. The harness
+load-check and the per-run GitHub Pages deploy both build an implementation the
+same hardcoded way, so a build that doesn't match that interface is recorded as
+"failed to load" and cannot be deployed — even when it is otherwise correct and
+trivially static. Every case must therefore require, as a hard requirement in its
+spec and prompt, that the build:
+
+- is a **Node project** with a `package.json` at its root, built with **only
+  Node.js and npm-installed dependencies** (no separately installed language
+  toolchain — the deploy runner only has Node);
+- commits a `package-lock.json` and produces the complete static site by running
+  **`npm ci`** (which requires that lockfile) then **`npm run build`**, with no
+  other manual step;
+- emits that site into one of **`dist/`, `build/`, or `out/`** at the project
+  root, with an **`index.html`** at the root of that directory as the entry point;
+- runs correctly when that directory is served as-is at the **root** of any static
+  file server (it is deployed to static hosting exactly that way, at a domain
+  root, so root-relative and relative asset paths both work — no base-path
+  handling is needed).
+
+The validator runs the install and build commands from the manifest's `[build]`
+table, which defaults to `npm ci` then `npm run build`; declare the table to pin a
+different toolchain (it must still emit a static build into `dist`/`build`/`out`),
+and state the matching commands in the spec and prompt. Only those commands and
+where the output lands are fixed; the language, framework, bundler, and rendering
+approach behind the interface stay free. Carom's and Coil's `overview`,
+`prompt.hbs`, and `[build]` table are the model wording.
 
 ### Use precise, testable numbers
 
