@@ -91,5 +91,20 @@ impl ReferenceRenderer for BrowserRenderer {
 /// the browser can load it regardless of the process working directory.
 fn file_url(path: &Path) -> String {
     let absolute = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    format!("file://{}", absolute.display())
+    path_to_file_url(&absolute)
+}
+
+#[cfg(windows)]
+fn path_to_file_url(path: &Path) -> String {
+    let raw = path.to_string_lossy();
+    let without_verbatim = raw
+        .strip_prefix(r"\\?\")
+        .or_else(|| raw.strip_prefix(r"\??\"))
+        .unwrap_or(&raw);
+    format!("file:///{}", without_verbatim.replace('\\', "/"))
+}
+
+#[cfg(not(windows))]
+fn path_to_file_url(path: &Path) -> String {
+    format!("file://{}", path.display())
 }
