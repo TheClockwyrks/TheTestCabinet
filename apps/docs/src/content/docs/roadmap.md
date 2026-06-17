@@ -7,13 +7,10 @@ This document covers the changes that are planned for The Test Cabinet and the
 
 ## v0.2.0
 
-- Introduce the dedicated backend for The Test Cabinet results
+- Introduce all additional components documented for The Test Cabinet
+  - v0.1.0 only introduces the CLI, website, and documentation
 
 ## v0.3.0
-
-- Introduce The Test Cabinet's Tauri app
-
-## v0.4.0
 
 - Add new types of test cases:
   - Adversarial
