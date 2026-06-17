@@ -88,15 +88,11 @@ finished build, rather than emitted by a run — and it is **not** part of the
 the writeup (in its frontmatter), not in the record. Publishing makes the review
 available to the site alongside the run record.
 
-The rating is one of four tiers, assigned by hand:
-
-- **Flawless** — implemented according to spec with no noticeable bugs.
-- **Great** — implemented according to spec; may have minor issues so long as
-  they don't impact playability.
-- **Scuffed** — mostly implemented according to spec. Playable, but may deviate
-  from the spec or have bugs that impact playability.
-- **Broken** — doesn't follow the spec, or has bugs severe enough to render the
-  game unplayable.
+The rating is one of four hand-assigned tiers — **flawless**, **great**,
+**scuffed**, or **broken**, in descending order of fidelity to the spec. What
+each tier means is reviewer judgment rather than anything a run emits, so the
+criteria for choosing one live with the review workflow; see
+[Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).
 
 The rating is a subjective, per-run signal. It is shown alongside a run but is
 never aggregated or used to rank runs (see [Site](/components/site/overview/)).
