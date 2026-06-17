@@ -32,8 +32,8 @@ run.
 ## What it releases
 
 - **Source** — each run's implementation as its own public repository.
-- **Playable build** — the built implementation served at its own per-run
-  subdomain.
+- **Playable build** — the built implementation deployed to Cloudflare Pages and
+  served at its own per-run `pages.dev` subdomain root.
 - **Gallery** — the run record and review submitted to the
   [backend](/components/backend/overview/), which refreshes the public snapshot.
 

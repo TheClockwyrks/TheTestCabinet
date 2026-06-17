@@ -17,8 +17,7 @@ use crate::cli::PublishArgs;
 /// Publishing is idempotent and batch-capable, so a sweep's runs can be
 /// published in a single invocation. Nothing is made public by this command:
 /// the repositories are private, their builds deploy only when triggered by
-/// hand, and the dataset commit is not pushed. See
-/// `DEVELOPMENT.md#publishing-runs`.
+/// hand, and the dataset commit is not pushed.
 pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
     // Load every run record, locate the implementation collected beside it, and
     // load the hand-written review. A run cannot be published without a writeup

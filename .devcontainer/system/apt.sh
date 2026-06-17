@@ -15,7 +15,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # Developer tools and build dependencies.
 #   - build-essential / cmake: native build deps for some Rust crates.
 #   - musl-tools: provides musl-gcc for the portable static `tcab` build
-#     (the `ring` TLS backend compiles a little C). See DEVELOPMENT.md.
+#     (the `ring` TLS backend compiles a little C). See
+#     https://docs.testcabinet.ai/development/building/#portable-static-tcab-build.
 #   - git / ssh: source control, including the fresh per-run repositories.
 #   - xz-utils: extracting the Node.js .tar.xz tarball.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \

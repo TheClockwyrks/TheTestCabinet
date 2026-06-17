@@ -3,5 +3,6 @@
 set -euo pipefail
 
 # The musl target backs the portable, fully static `tcab` build
-# (`cargo build-portable`); see DEVELOPMENT.md.
+# (`cargo build-portable`); see
+# https://docs.testcabinet.ai/development/building/#portable-static-tcab-build.
 "$HOME/.cargo/bin/rustup" target add x86_64-unknown-linux-musl

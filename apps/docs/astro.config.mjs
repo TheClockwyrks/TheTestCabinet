@@ -199,6 +199,16 @@ export default defineConfig({
             },
           ],
         },
+        // Developer-facing build, release, and deployment reference. Migrated
+        // from the former top-level DEVELOPMENT.md so the docs are the single
+        // authoritative source.
+        {
+          label: "Development",
+          items: [
+            "development/building",
+            "development/releasing",
+          ],
+        },
       ],
     }),
   ],

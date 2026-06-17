@@ -106,10 +106,12 @@ impl Publisher for NoopPublisher {
 
 /// Where and how published artifacts are hosted.
 ///
-/// The defaults describe The Test Cabinet's canonical deployment (see
-/// `DEVELOPMENT.md#publishing-runs`): per-run repositories under the
-/// `TheClockwyrks` org, builds served from `<slug>.testcabinet.ai`, and the
-/// gallery dataset at `apps/site/src/data/runs.json`.
+/// The defaults describe this publisher's current deployment: per-run
+/// repositories under the `TheClockwyrks` org, builds served from
+/// `<slug>.testcabinet.ai`, and the gallery dataset at
+/// `apps/site/src/data/runs.json`. (The documented target deployment serves
+/// builds from Cloudflare Pages instead; see
+/// <https://docs.testcabinet.ai/components/core/results/#publishing>.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishConfig {
     /// GitHub organization that owns the per-run repositories.
@@ -363,8 +365,7 @@ impl CommandRunner for SystemCommandRunner {
 ///
 /// Publishing stages everything without making anything public: the repository
 /// is private, its build deploys only when the workflow is triggered by hand,
-/// and the dataset change is committed but not pushed. See
-/// `DEVELOPMENT.md#publishing-runs`.
+/// and the dataset change is committed but not pushed.
 pub struct GitHubPublisher<R: CommandRunner> {
     config: PublishConfig,
     runner: R,

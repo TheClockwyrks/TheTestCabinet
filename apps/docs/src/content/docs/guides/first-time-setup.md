@@ -8,7 +8,7 @@ the headless browser, and credentials — the four things a
 [run](/components/cli/overview/) needs that the repository alone does not provide.
 
 The project is in early development, so setup assumes some familiarity with Rust,
-Node, and containers. The repository's `DEVELOPMENT.md` holds the authoritative
+Node, and containers. [Building](/development/building/) holds the authoritative
 build details; this guide is the task-oriented version that sits on top of it.
 
 ## The `tcab` command
@@ -40,8 +40,9 @@ with `cargo fmt --all` and `cargo clippy --workspace`.
 
 If you are on a distribution without the generic FHS dynamic loader (notably
 NixOS), build the fully static `tcab` instead with `cargo build-portable` (an
-alias that targets `x86_64-unknown-linux-musl`); see `DEVELOPMENT.md` for the
-musl prerequisites.
+alias that targets `x86_64-unknown-linux-musl`); see
+[Portable build](/development/building/#portable-static-tcab-build) for the musl
+prerequisites.
 
 ## 2. A container runtime
 

@@ -8,7 +8,8 @@ name: Deploy docs
 # the gallery uses for testcabinet.ai.
 #
 # Runs on pushes to master that touch the docs or this workflow, and on demand.
-# Requires two repository secrets, configured once (see DEVELOPMENT.md):
+# Requires two repository secrets, configured once (see the one-time docs setup
+# at https://docs.testcabinet.ai/development/releasing/#docs-cloudflare-pages-one-time):
 #   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission
 #   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
 on:

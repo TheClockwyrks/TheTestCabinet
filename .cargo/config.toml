@@ -8,7 +8,7 @@
 # runs on distributions that do not ship the generic FHS loader — notably NixOS —
 # as well as on mainstream distributions.
 #
-# Prerequisites (see DEVELOPMENT.md):
+# Prerequisites (see https://docs.testcabinet.ai/development/building/#portable-static-tcab-build):
 #   rustup target add x86_64-unknown-linux-musl
 #   a musl C toolchain on PATH (musl-gcc), e.g. Debian/Ubuntu `musl-tools`,
 #   needed because the `ring` TLS backend compiles a little C.

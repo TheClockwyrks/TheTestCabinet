@@ -64,10 +64,11 @@ releases three things (see [Results](/components/core/results/#publishing) and
   public repository, keeping results independent and mapping onto per-run hosting.
   The implementation must include a README and whatever documentation a user needs
   to clone and run it locally; requiring that is part of every test case.
-- **Playable build** — the built implementation is deployed and served at its own
-  per-run subdomain root, which is what keeps it playable exactly as the test
-  case's [build interface](/components/core/test-cases/#design-requirements) and
-  the [load check](/components/core/validation/#load-check) already require.
+- **Playable build** — the built implementation is deployed to Cloudflare Pages
+  under a per-run branch alias and served at its own `<run-id>.<project>.pages.dev`
+  root, which is what keeps it playable exactly as the test case's
+  [build interface](/components/core/test-cases/#design-requirements) and the
+  [load check](/components/core/validation/#load-check) already require.
 - **Gallery** — the run record, with its source and build links filled in, plus
   the run's review, is submitted to the [backend](/components/backend/overview/),
   which records it and regenerates the public snapshot the
