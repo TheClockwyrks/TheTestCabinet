@@ -20,6 +20,13 @@ The Test Cabinet's harness, test case specs, and published results are intended
 to be released publicly. Everything described here must therefore be buildable
 and runnable without any proprietary dependencies.
 
+## Status
+
+This project is currently in early development. Expect missing features, janky
+implementations, and UI/UX built around knowing the project ahead of time. The
+project is not at a state where a user could pick up the project without any
+knowledge about it and be able to use it to its full extent.
+
 ## System
 
 The Test Cabinet is built as a headless [core](/components/core/overview/) with

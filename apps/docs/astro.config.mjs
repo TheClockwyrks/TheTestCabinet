@@ -16,10 +16,19 @@ export default defineConfig({
       title: "The Test Cabinet",
       description:
         "Developer documentation for The Test Cabinet, a benchmark for AI models and the coding harnesses that drive them.",
+      // Brand the docs to match the public gallery (apps/site): the same arcade
+      // cabinet mark, favicon, synthwave palette, and monospace type. The palette
+      // remap lives in `src/styles/theme.css`; the gallery stays a separate
+      // deployment with its own animated backdrop that the docs deliberately omit.
+      logo: { src: "./src/assets/cabinet.svg", alt: "The Test Cabinet" },
+      favicon: "/cabinet.svg",
+      customCss: ["./src/styles/theme.css"],
+      // Synthwave code blocks, in keeping with the palette. The theme ships with
+      // the Expressive Code integration Starlight already bundles.
+      expressiveCode: { themes: ["synthwave-84"] },
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
-        { label: "Status", link: "/status" },
         { label: "Roadmap", link: "/roadmap" },
         { label: "Terminology", link: "/terminology" },
         {

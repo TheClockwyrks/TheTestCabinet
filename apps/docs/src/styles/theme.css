@@ -1,0 +1,107 @@
+/*
+ * The Test Cabinet documentation theme.
+ *
+ * Starlight ships its own design tokens; this file remaps them onto the
+ * synthwave, deep-black palette and Clockwyrks orange accent used by the public
+ * gallery (apps/site, see its styles/theme.scss). The two sites are separate
+ * deployments but share one visual language, so the palette here is a deliberate
+ * mirror of the site's `--ttc-*` custom properties.
+ *
+ * Unlike the gallery, the docs keep the eye candy minimal: there is no animated
+ * synthwave backdrop, no scanlines, and no neon grid. The brand comes through in
+ * the palette, the monospace type, the cabinet mark, and a single soft glow on
+ * the logo — nothing that competes with the prose.
+ */
+
+:root {
+  /* Brand palette, mirrored from apps/site/src/styles/theme.scss. */
+  --ttc-bg: #050108;
+  --ttc-bg-2: #0a0414;
+  --ttc-surface: #120a1c;
+  --ttc-surface-2: #1a0f28;
+  --ttc-border: #6a3aa0;
+  --ttc-text: #fdf3ff;
+  --ttc-muted: #b69ad0;
+  --ttc-accent: #ff9d2f;
+  --ttc-accent-2: #ff5e3a;
+  --ttc-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
+
+  /* Full monospace type, matching the gallery's single-font treatment. */
+  --sl-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
+    monospace;
+  --sl-font-mono: var(--sl-font);
+}
+
+/*
+ * Dark theme (the default, and the one that matches the gallery). Starlight
+ * derives most surfaces and text from this gray ramp plus the accent triad, so
+ * tinting the ramp purple and pointing the accent at brand orange carries the
+ * look across the whole UI. A few background/hairline tokens are pinned to the
+ * exact site colors on top of that.
+ */
+:root,
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #4a2600;
+  --sl-color-accent: #ff9d2f;
+  --sl-color-accent-high: #ffc78a;
+
+  --sl-color-white: #fdf3ff;
+  --sl-color-gray-1: #ece1f5;
+  --sl-color-gray-2: #d6c5e6;
+  --sl-color-gray-3: #b69ad0;
+  --sl-color-gray-4: #8a6aae;
+  --sl-color-gray-5: #3a2456;
+  --sl-color-gray-6: #160d22;
+  --sl-color-black: #050108;
+
+  --sl-color-bg: #050108;
+  --sl-color-bg-nav: #0a0414;
+  --sl-color-bg-sidebar: #0a0414;
+  --sl-color-hairline-shade: #050108;
+  --sl-color-hairline: #1f1430;
+  --sl-color-hairline-light: #3a2456;
+  --sl-color-bg-inline-code: #1a0f28;
+}
+
+/*
+ * Light theme. The gallery is dark-only, so there is no source to mirror here;
+ * instead this keeps the brand legible on a warm off-white — orange darkened for
+ * contrast, the purples carried into the grays and hairlines so the family still
+ * reads as The Test Cabinet rather than stock Starlight.
+ */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #ffe1bf;
+  --sl-color-accent: #c2570a;
+  --sl-color-accent-high: #5c2a00;
+
+  --sl-color-white: #1a0f28;
+  --sl-color-gray-1: #241634;
+  --sl-color-gray-2: #3d2b52;
+  --sl-color-gray-3: #5f4a78;
+  --sl-color-gray-4: #8a72a8;
+  --sl-color-gray-5: #d8cce6;
+  --sl-color-gray-6: #f1eaf8;
+  --sl-color-black: #fbf8fe;
+
+  --sl-color-bg: #fbf8fe;
+  --sl-color-bg-nav: #f1eaf8;
+  --sl-color-bg-sidebar: #f6f1fb;
+  --sl-color-hairline-shade: #ece3f6;
+  --sl-color-hairline: #e2d6f0;
+  --sl-color-hairline-light: #d8cce6;
+  --sl-color-bg-inline-code: #efe7f8;
+}
+
+/*
+ * The single piece of brand "eye candy" we keep: a soft orange glow on the
+ * cabinet mark in the header, echoing the topbar logo on the gallery. The
+ * wordmark picks up the gallery's bold, slightly tracked display treatment.
+ */
+.site-title img {
+  filter: drop-shadow(var(--ttc-glow));
+}
+
+.site-title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
