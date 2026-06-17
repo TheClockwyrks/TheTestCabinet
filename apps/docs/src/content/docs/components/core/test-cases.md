@@ -280,11 +280,11 @@ checked view must be supplied either commonly or by **every** variant.
 ## Self-Contained Specifications
 
 A test case's specification is seeded into an isolated run container that does
-**not** have access to these vision specs, the harness, or any part of the test
+**not** have access to this documentation, the harness, or any part of the test
 case other than what is seeded. The specification must therefore be completely
 self-contained.
 
-- It must **not** link to or reference these vision specs, the harness docs, or
+- It must **not** link to or reference this documentation, the harness docs, or
   any other file outside what is seeded with the run. Anything the model needs
   must be stated inline.
 - When the specification is split across multiple seeded files, no spec may
