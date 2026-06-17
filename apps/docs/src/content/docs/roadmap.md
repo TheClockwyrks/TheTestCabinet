@@ -32,3 +32,9 @@ This document covers the changes that are planned for The Test Cabinet and the
 - Support for alternate execution modes
   - Ralph loop
   - Issue-based code generation
+- Allow community contributions
+  - Community-provided reviews+ratings
+  - Community-provided run results (clearly labeled as unofficial)
+    - Any community-provided implementation cannot be verified as having been
+      autonomously implemented without user assistance and/or intervention, and
+      is therefore not considered an official result
