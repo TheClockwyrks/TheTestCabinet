@@ -22,6 +22,7 @@ use serde::Serialize;
 use test_cabinet_core::{
     BrowserRenderer, FsRepoSeeder, Model, ModelCatalog, ModelDetails, OpenRouterPrices,
     ReferenceRenderer, RepoSeeder, SeedRequest, TestCaseCatalog, TestCaseVersion, TokenPrices,
+    browser,
 };
 
 use crate::cli::CatalogArgs;
@@ -168,6 +169,19 @@ impl From<TokenPrices> for ModelPrices {
 /// Emit `test-cases.json` and `models.json` into the site, copying any binary
 /// assets they reference under the site's `public/catalog/` tree.
 pub async fn execute(args: CatalogArgs) -> anyhow::Result<()> {
+    // Building the dataset wipes the catalog asset tree and regenerates every
+    // reference screenshot from scratch, so a host without a working headless
+    // browser would clear the screenshots and then fail to recreate them. Verify
+    // the browser up front and bail before touching anything, leaving the
+    // existing catalog intact, rather than degrading to absent screenshots.
+    if let Err(detail) = browser::preflight() {
+        return Err(anyhow!(
+            "no usable browser for rendering reference screenshots: {detail}\n\
+             `tcab catalog` regenerates every reference screenshot and will not run \
+             without one. Install Node, Playwright, and a Chromium build, then retry."
+        ));
+    }
+
     let data_dir = args.site_dir.join("src").join("data");
     let public_dir = args.site_dir.join("public").join("catalog");
     std::fs::create_dir_all(&data_dir)

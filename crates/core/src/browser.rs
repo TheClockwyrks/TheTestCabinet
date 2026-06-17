@@ -47,6 +47,28 @@ pub fn driver_path() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Verify a usable headless browser is available, returning a human-readable
+/// error if any link in the chain — the driver script, Node, the Playwright
+/// package, or a launchable Chromium — is missing.
+///
+/// Most callers ([`crate::reference`], the load-check validator) deliberately
+/// degrade when the browser is absent. A caller that takes destructive action
+/// *before* rendering — notably `tcab catalog`, which wipes the screenshot cache
+/// and regenerates it — uses this to fail fast up front instead, so a host that
+/// cannot render is caught with nothing yet changed rather than after the wipe.
+///
+/// It performs a throwaway capture of `about:blank`, exercising the real launch
+/// path (the same failures a render would hit) without depending on any mockup.
+pub fn preflight() -> std::result::Result<(), String> {
+    let scratch = std::env::temp_dir().join(format!("tcab-browser-preflight-{}", Uuid::new_v4()));
+    let out = scratch.join("preflight.png");
+    let result = capture("about:blank", &[], &out);
+    // Best-effort cleanup; the throwaway capture and its directory must not
+    // linger regardless of the outcome.
+    let _ = std::fs::remove_dir_all(&scratch);
+    result
+}
+
 /// Open `url` in the headless browser, run `actions`, and screenshot to `out`.
 ///
 /// `url` may be a `file://` mockup or an `http://` served build. Returns a
