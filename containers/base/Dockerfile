@@ -62,7 +62,7 @@ ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 #
 # Pinned to the same Playwright version the harness's own browser-driver uses
 # (packages/browser-driver). Keeping them in lockstep means a model that adds
-# `playwright@1.56.1` to its project reuses this cached browser instead of
+# `playwright@1.61.0` to its project reuses this cached browser instead of
 # downloading another one at run time.
 #
 # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops the global install's postinstall from
@@ -74,7 +74,7 @@ ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 # leaves those trees root-owned, so a later `npm install -g` by the `node` user
 # in a per-harness image can't create directories under them (EACCES). Hand the
 # whole home back to `node` afterward so those installs work without root.
-RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g playwright@1.56.1 \
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g playwright@1.61.0 \
 	&& playwright install-deps chromium \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& chown -R node:node /home/node
@@ -84,15 +84,7 @@ USER node
 # Download the Chromium build into the run user's Playwright cache so it is
 # present without network access and is reused by a project-local install of the
 # pinned version.
-#
-# Playwright's downloader can hang after reaching 100% in some container build
-# environments, so use its registry metadata for the artifact URLs but fetch and
-# extract them with curl/unzip. The helper also writes Playwright's completion
-# markers so later `playwright install chromium` checks exit without redownloading.
-COPY --chown=node:node install-playwright-browsers.mjs /tmp/install-playwright-browsers.mjs
-RUN node /tmp/install-playwright-browsers.mjs \
-	&& rm /tmp/install-playwright-browsers.mjs \
-	&& playwright install chromium
+RUN playwright install chromium
 
 # The seeded repository is mounted here at run time and is the harness's working
 # directory.

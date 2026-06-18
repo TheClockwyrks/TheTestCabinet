@@ -41,7 +41,7 @@ via the `BASE_IMAGE` build argument.
 
 Playwright is pinned to the same version as the harness's own
 `packages/browser-driver`, and the Chromium build is cached in the run user's
-`~/.cache/ms-playwright`, so a model that adds `playwright@1.56.1` to its project
+`~/.cache/ms-playwright`, so a model that adds `playwright@1.61.0` to its project
 reuses the cached browser rather than downloading one at run time.
 
 ## Building
