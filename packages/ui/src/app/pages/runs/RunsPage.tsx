@@ -52,19 +52,18 @@ export function RunsPage() {
 
   return (
     <PageLayout>
-      <PromptHeader
-        command="--runs"
-        blink
-        comment={<>// every result the cabinet has produced</>}
-      />
-
-      {canExecute && (
-        <div className={exec.newRunBar}>
+      <div className={exec.runsHeader}>
+        <PromptHeader
+          command="--runs"
+          blink
+          comment={<>// every result the cabinet has produced</>}
+        />
+        {canExecute && (
           <Link className={exec.primary} to={routes.runNew()}>
             + New run
           </Link>
-        </div>
-      )}
+        )}
+      </div>
 
       {canExecute && inProgress.length > 0 && (
         <div className={exec.inProgress}>

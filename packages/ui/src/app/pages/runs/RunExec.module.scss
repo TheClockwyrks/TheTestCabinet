@@ -355,8 +355,14 @@
   }
 }
 
-.newRunBar {
+// The Runs page header row: the prompt header on the left, the "+ New run"
+// action pinned to the right on the same row. Aligns to the prompt line at the
+// top (the header carries a second comment line below) and wraps the action
+// under the header on narrow viewports.
+.runsHeader {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: t.$space-md;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
 }
