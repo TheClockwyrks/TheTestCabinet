@@ -1,36 +1,41 @@
 ## Overview
 
-**Coil** is a neon, grid-locked serpent game for the browser, and one of the
-simplest cases in The Test Cabinet's catalog. A snake threads a single
-continuous path across a bordered grid, eating pellets that make it grow one
-cell longer each time. The more it eats the less room it has, until a single
-wrong turn runs it into a wall or its own body and the round ends.
+**Coil** is a neon, grid-locked serpent game for the browser, and another of the
+simpler cases in The Test Cabinet's catalog. The snake never stops: it traces a
+single unbroken path across a bordered grid, and every pellet it swallows adds a
+cell to its tail. Growth is the whole problem — the longer the snake, the less
+free board there is to thread, so the game slowly fills the space it has to move
+through until one misjudged turn buries the head in a wall or its own coils.
 
-Although the rules read like the oldest phone game there is, Coil is its own
-game. Its defining mechanic is the **combo**: pellets eaten in quick succession
-build a scoring multiplier that decays the instant you dawdle, so the real game
-is planning the most efficient route from one pellet to the next rather than
-merely surviving. Three further modes layer on top of the classic board —
-wrapping tunnel edges, a course of fixed obstacles, and a timed high-value bonus
-orb.
+What keeps Coil from being pure survival is the **combo**. Pellets eaten in
+close succession stack a scoring multiplier, but the window decays in a couple
+of seconds, so points go to the player who reads the board and takes the
+tightest route from one pellet to the next, not the one who simply stays alive
+longest. Three modes bend the base game around that idea: **Wrap** opens the
+four edges into tunnels so the snake loops off one side and back the other,
+**Maze** plants a fixed course of fatal obstacles to thread, and **Feast** drops
+a high-value bonus orb that lingers only a few seconds before it's gone.
 
 ## Why it is a benchmark
 
-Coil looks trivial and is deliberately so on the surface — but building a
-version a person would actually *enjoy* is not. A strong implementation needs a
-correct fixed-timestep loop decoupled from rendering, grid-locked turning that
-never lets a fast double-press fold the snake onto itself, the subtle
-self-collision rule that lets the snake chase its own retreating tail, food
-placement that stays correct as the board fills, a decaying combo, persistent
-high scores, and the menus and state transitions that tie a title screen, live
-play, and a game-over screen together. That makes it a clean low-end anchor for
-the suite: the kind of task a capable model and harness should largely nail,
-against which the harder cases can be measured.
+The rules fit in a sentence, which is exactly the trap: a faithful Coil is
+mostly in the details that are easy to get *almost* right. The simulation has to
+run on a fixed timestep cleanly separated from rendering, so the snake steps at
+the same rate on any machine. Turning has to buffer presses without ever letting
+a fast double-tap reverse the head into its own neck. Self-collision turns on
+one subtlety — the snake may safely chase the cell its tail is vacating, but not
+on a tick where it just ate and the tail holds. Pellets have to keep landing on
+valid cells as the board crowds, the combo has to decay on simulation time, and
+a title screen, live play, and game-over screen have to hand off to one another
+with the high score carried across. None of it is deep, but all of it has to be
+right, which makes Coil a dependable low-end anchor: alongside Pong, the floor
+the harder cases are measured against.
 
 ## What a model is given
 
-A run receives the self-contained specification and the rendered reference
-screenshots that act as visual targets — the title screen, gameplay, and the
-game-over screen. The reference *source* mockups are withheld, so the look has
-to be rebuilt from the specification rather than copied. There are no assets to
-provide: Coil's visuals are simple enough to draw entirely in code.
+The model gets the specification in full, split across files by concern, and the
+rendered reference screenshots of the title, gameplay, and game-over screens to
+aim at. The mockup *source* behind those screenshots is held back, so the look
+has to be reconstructed from the spec and the targets rather than lifted. Coil
+ships no assets — its board, snake, pellets, and glow are plain enough to draw
+entirely in code.
