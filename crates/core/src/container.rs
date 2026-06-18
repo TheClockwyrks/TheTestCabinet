@@ -84,6 +84,24 @@ impl CliContainerRuntime {
             .await
             .map_err(|err| Error::ContainerRuntime(format!("failed to run {}: {err}", self.binary)))
     }
+
+    /// Whether `image` is present in local storage. Keeps [`pull`] idempotent and
+    /// avoids contacting a registry for an image already pulled or built locally.
+    /// `image inspect` succeeds for a present image and exits non-zero otherwise,
+    /// on both Podman and Docker.
+    ///
+    /// [`pull`]: ContainerRuntime::pull
+    async fn image_present(&self, image: &str) -> bool {
+        let args = vec![
+            "image".to_string(),
+            "inspect".to_string(),
+            image.to_string(),
+        ];
+        self.run(&args)
+            .await
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
 }
 
 #[async_trait::async_trait]
@@ -241,6 +259,26 @@ impl ContainerRuntime for CliContainerRuntime {
             return Err(Error::ContainerRuntime(format!(
                 "removing container `{}` failed: {}",
                 container.id,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(())
+    }
+
+    async fn pull(&self, image: &str) -> Result<()> {
+        // Already present (a prior run pulled it, or it is a local build with no
+        // registry behind it): nothing to do. This keeps the pull idempotent and
+        // matches the `--pull missing` policy `start` uses, so a local image is
+        // never needlessly resolved against a registry.
+        if self.image_present(image).await {
+            return Ok(());
+        }
+        let args = vec!["pull".to_string(), image.to_string()];
+        let output = self.run(&args).await?;
+        if !output.status.success() {
+            return Err(Error::ContainerRuntime(format!(
+                "pulling image `{}` failed: {}",
+                image,
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }

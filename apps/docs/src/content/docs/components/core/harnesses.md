@@ -60,11 +60,20 @@ fail with a clear error.
 
 Availability checks must **never** start a session or take any other action that
 could incur cost. Any stronger check must be triggered explicitly by the user.
-Because each run-container image is a registry image pulled by digest, an
-availability check probes only an image already present locally and **never
-pulls one** — fetching a registry image is a stronger, cost-bearing action
-reserved for an actual run, so a harness whose image has not yet been pulled is
-reported unavailable rather than fetched.
+Because each run-container image is a registry image pulled by digest, the
+availability probe itself inspects only an image already present locally and
+**never pulls one** — fetching a registry image is a stronger, cost-bearing
+action, so a bare availability check (such as a status listing) reports a
+harness whose image has not yet been pulled as unavailable rather than fetching
+it.
+
+Starting an actual run, however, is that stronger action: the run pulls the
+resolved image first (`--pull missing` semantics — an image already present,
+including a local build, is left untouched) and only then runs the probe against
+it. This is what lets the very first run of a freshly published, not-yet-pulled
+image succeed without a manual pull step. Without it, the probe would report the
+harness unavailable and gate the run that would have pulled the image, so no run
+could ever bootstrap a new registry image.
 
 ## Authentication
 

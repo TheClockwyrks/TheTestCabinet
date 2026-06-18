@@ -251,6 +251,22 @@ where
             .clone()
             .unwrap_or_else(|| harness.image());
 
+        // Ensure the harness image is present before probing it. The availability
+        // probe runs with `--pull never` so a status listing stays cheap and
+        // offline; on a registry-backed setup that means a freshly published,
+        // not-yet-pulled image would otherwise always report the harness as
+        // unavailable — and the run that would have pulled it (via `--pull
+        // missing`) never starts, because the probe gates it. Pulling here closes
+        // that gap so the UI works without a manual `pull` step. It is idempotent:
+        // an image already present, including a local build, is left untouched.
+        self.runtime
+            .pull(&image)
+            .await
+            .map_err(|err| Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: err.to_string(),
+            })?;
+
         let availability = harness.check_availability(&self.runtime, &image).await?;
         if !availability.available {
             return Err(Error::HarnessUnavailable {
