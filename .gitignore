@@ -258,3 +258,6 @@ test-cases/**/reference/screenshots/
 # Scratch output for inspecting seeded run inputs (`tcab seed`). This is local
 # inspection material, not something that should be committed.
 tmp/
+
+# Ignore generated workflows
+.claude/workflows/

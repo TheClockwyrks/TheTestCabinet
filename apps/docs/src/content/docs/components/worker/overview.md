@@ -37,4 +37,30 @@ live on the private network rather than be exposed publicly.
 
 ## Status
 
-The worker has **not** been implemented yet.
+The worker is implemented as the `test-cabinet-worker` crate (`crates/worker`),
+an [Axum](https://github.com/tokio-rs/axum) server that drives runs through the
+core and streams their live events back.
+
+Because a run can last up to an hour, the worker uses an **async job model**
+rather than holding one request open for the whole run:
+
+- `POST /runs` — submit a run (`testCase`, `version`, `variant`, `harness`,
+  `model`, optional `maxRuntimeSeconds`). Returns a **job id** immediately
+  (`202 Accepted`) along with the status and events URLs.
+- `GET /runs/{job}` — the job's current status, and the produced
+  [run record](/components/core/run-records/) once it has finished.
+- `GET /runs/{job}/events` — the live [harness events](/components/core/events/)
+  as NDJSON, one normalized event per line. A subscriber that connects after
+  submit is first replayed every event so far, then receives new events as the
+  harness produces them; the stream closes when the run reaches a terminal state.
+- `POST /publish` — [publish](/components/core/results/) a finished run on the
+  same terms a local `tcab publish` does (release the source repo, deploy the
+  build, submit the record + review + links to the
+  [backend](/components/backend/overview/)).
+
+It resolves test-case and container definitions from, and publishes results to,
+the backend (`TCAB_BACKEND_URL`); it has no local checkout. Configuration is by
+environment variable (`TCAB_WORKER_BIND`, `TCAB_BACKEND_URL`,
+`TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`). Like the backend, there is **no
+app-level auth** — bind it to a private-network interface and let reachability be
+the access control.

@@ -37,5 +37,9 @@ on, and it resolves definitions from and publishes to the
 
 ## Status
 
-This app has **not** been implemented yet. It is planned to follow the
-[backend](/components/backend/overview/); see the [Roadmap](/roadmap/).
+A **minimal functional shell** is implemented: every capability above is
+reachable and works end to end over Tauri commands that delegate to the
+[core](/components/core/overview/) — configuring and launching a run with a live
+event stream, reading the seeded specs, writing a review (writeup + rating), and
+publishing a reviewed run. The UI is plain; polish follows. See the
+[Roadmap](/roadmap/).
