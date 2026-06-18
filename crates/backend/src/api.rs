@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::{get, post};
+use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::db::Db;
@@ -58,6 +59,13 @@ pub fn router(state: AppState) -> Router {
         .route("/runs", post(runs::publish).get(runs::list))
         .route("/runs/{id}", get(runs::get))
         .route("/snapshot/refresh", post(runs::refresh))
+        // The browser UIs (gallery web app, Tauri dev server) run on a different
+        // localhost origin than this backend, so every request is cross-origin.
+        // The backend already trusts every caller that can reach it (the
+        // private-network, no-auth model in this module's docs); a permissive CORS
+        // policy keeps the browser from blocking those callers without narrowing
+        // that model. No credentials are sent, so a wildcard origin is valid.
+        .layer(CorsLayer::permissive())
         .with_state(state)
 }
 

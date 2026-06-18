@@ -62,11 +62,12 @@ tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
-# the request-tracing/limit middleware. The backend is the only crate that binds
-# a socket, so these stay out of the leaner runner crates.
+# the request-tracing/limit middleware and the CORS layer the browser UIs need to
+# reach a backend/worker on a different localhost port. The backend and worker are
+# the only crates that bind a socket, so these stay out of the leaner crates.
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "limit"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Embedded SQLite (the backend's system of record). `bundled` compiles SQLite

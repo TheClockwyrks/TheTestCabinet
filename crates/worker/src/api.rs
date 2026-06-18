@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::{get, post};
+use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::jobs::JobRegistry;
@@ -46,6 +47,12 @@ pub fn router(state: AppState) -> Router {
         // Publish a finished run: release code, deploy the build, submit to the
         // backend — the same terms a local `tcab publish` uses.
         .route("/publish", post(publish_api::publish))
+        // The browser UIs reach the worker from a different localhost origin, so
+        // requests — including the best-effort `/healthz` identity probe — are
+        // cross-origin. The worker shares the backend's no-auth, reachability-is-
+        // the-boundary model, so mirror its permissive CORS policy. No credentials
+        // are sent, so a wildcard origin is valid.
+        .layer(CorsLayer::permissive())
         .with_state(state)
 }
 
