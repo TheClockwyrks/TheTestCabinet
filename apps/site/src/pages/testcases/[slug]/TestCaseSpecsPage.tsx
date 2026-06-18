@@ -19,11 +19,17 @@ export function TestCaseSpecsPage() {
     <TestCaseDetailLayout tab="specs">
       {({ variant }) => {
         const entries: AccordionEntry[] = [
-          {
-            path: "prompt",
-            kind: "text",
-            body: <Markdown>{variant.prompt}</Markdown>,
-          },
+          // The prompt is only carried for locally-previewed cases; the public
+          // snapshot omits it (and seeded inputs), so skip the panel when empty.
+          ...(variant.prompt
+            ? [
+                {
+                  path: "prompt",
+                  kind: "text" as const,
+                  body: <Markdown>{variant.prompt}</Markdown>,
+                },
+              ]
+            : []),
           ...variant.seededInputs.map((input) => ({
             path: input.path,
             kind: input.kind,

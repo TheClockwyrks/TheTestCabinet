@@ -1,10 +1,10 @@
 import type { TestCaseSummary } from "./testCases";
 
 // Design-preview seed data for the test-case catalog. Fabricated entries used
-// ONLY so the Test Cases section renders realistic content while
-// `test-cases.json` is still sample-quality / empty. They match the shape
-// `tcab catalog` emits. `useTestCases` falls back to these only when the real
-// dataset is empty; remove this module once the catalog is populated.
+// ONLY so the Test Cases section renders realistic content while the published
+// catalog (the backend's R2 snapshot) is still empty. `useTestCases` falls back
+// to these only when the real dataset is empty; remove this module once the
+// catalog is populated.
 export const sampleTestCases: TestCaseSummary[] = [
   {
     slug: "carom",

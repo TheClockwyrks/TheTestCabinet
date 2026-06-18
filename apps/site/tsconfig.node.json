@@ -5,5 +5,9 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vite-plugin-local-runs.ts"]
+  "include": [
+    "vite.config.ts",
+    "vite-plugin-local-runs.ts",
+    "vite-plugin-snapshot.ts"
+  ]
 }

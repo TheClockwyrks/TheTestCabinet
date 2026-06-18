@@ -1,11 +1,14 @@
-import testCasesData from "./test-cases.json";
+import { testCases as snapshotTestCases } from "virtual:tcab-snapshot";
 
-// The published test-case catalog dataset. `tcab catalog` regenerates
-// `test-cases.json` from the test-cases/ folder, faithfully mirroring what a
-// run is seeded with (the spec, assets, and rendered reference screenshots).
-// The site renders whatever is present. `useTestCases` falls back to
-// `sampleTestCases` when this dataset is empty so the UI has content before the
-// command has been run.
+// The published test-case catalog dataset. It is the site-facing slice of each
+// test-case version carried in the backend's public R2 snapshot (see
+// design/v0.2.0-contracts.md §3), fetched at build time by `vite-plugin-snapshot`
+// and inlined into the bundle. The public snapshot deliberately omits spec
+// bodies, prompts, and seeded inputs — those resolve from the backend at run
+// time, not on the public site — so `prompt`/`seededInputs` come through empty
+// and the Specifications tab shows only what the snapshot carries. `useTestCases`
+// falls back to `sampleTestCases` when this dataset is empty so the UI has
+// content before any run is published.
 
 /** A single input seeded into a run's fresh repository, as the catalog records it. */
 export interface SeededInput {
@@ -66,4 +69,4 @@ export interface TestCaseSummary {
   variants: VariantSummary[];
 }
 
-export const testCases: TestCaseSummary[] = testCasesData as TestCaseSummary[];
+export const testCases: TestCaseSummary[] = snapshotTestCases;

@@ -10,9 +10,9 @@ export interface TestCasesState {
 }
 
 // Assembles the Test Cases section's data. Mirrors `useRuns`: it shows the
-// published catalog dataset (`test-cases.json`) when it has entries, and falls
-// back to the design-preview samples only when the catalog is empty so the UI
-// always has content. Unlike runs, the catalog is fully static (no dev-only
+// published catalog dataset (the backend's R2 snapshot) when it has entries, and
+// falls back to the design-preview samples only when the catalog is empty so the
+// UI always has content. Unlike runs, the catalog is fully static (no dev-only
 // on-disk merge), so this is a plain selector rather than an effect.
 export function useTestCases(): TestCasesState {
   const usingSamples = catalogTestCases.length === 0;

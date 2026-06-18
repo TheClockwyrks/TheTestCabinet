@@ -2,9 +2,10 @@ import type { RunRecord } from "@test-cabinet/run-record";
 
 // Design-preview seed data. These are fabricated run records used ONLY to give
 // the gallery designs realistic content to render while the published dataset
-// (`runs.json`) is still empty. They are not real results and are never mixed
-// with published runs: `data/runs.ts` falls back to these only when no runs have
-// been published yet. Remove this module once real runs populate the gallery.
+// (the backend's R2 snapshot) is still empty. They are not real results and are
+// never mixed with published runs: `data/runs.ts` falls back to these only when
+// no runs have been published yet. Remove this module once real runs populate
+// the gallery.
 export const sampleRuns: RunRecord[] = [
   {
     id: "sample-pong-codex",
