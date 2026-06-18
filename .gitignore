@@ -126,6 +126,10 @@ web_modules/
 
 # dotenv environment variable files
 .env
+.env.runner
+.env.backend
+.env.worker
+.env.site
 .env.development.local
 .env.test.local
 .env.production.local

@@ -37,22 +37,31 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-/// Load environment variables from a `.env` file before any command runs.
+/// Load environment variables from the runner env file before any command runs.
 ///
 /// Harnesses authenticate with an API key read from the host environment (for
-/// example `ANTHROPIC_API_KEY`); loading a `.env` here lets those keys live in a
-/// file alongside the project rather than being exported into every shell.
+/// example `ANTHROPIC_API_KEY`); loading `.env.runner` here lets those keys live
+/// in a file alongside the project rather than being exported into every shell.
 /// `dotenvy` searches the working directory and its parents and does **not**
 /// override variables already set in the environment, so an explicitly exported
 /// key still takes precedence over the file.
 ///
-/// A missing `.env` is not an error — running with keys exported the old way is
+/// `.env.runner` is loaded first; a legacy `.env` is then loaded as a
+/// back-compat fallback (it cannot override anything `.env.runner` already set).
+/// A missing file is not an error — running with keys exported the old way is
 /// fully supported. Any other failure (an unreadable or malformed file) is
 /// surfaced so a typo in the file is not silently ignored.
 fn load_dotenv() -> anyhow::Result<()> {
-    match dotenvy::dotenv() {
+    load_env_file(dotenvy::from_filename(".env.runner"))?;
+    load_env_file(dotenvy::dotenv())?;
+    Ok(())
+}
+
+/// Treat a missing file as fine; surface any other dotenvy error.
+fn load_env_file(result: dotenvy::Result<std::path::PathBuf>) -> anyhow::Result<()> {
+    match result {
         Ok(_) => Ok(()),
         Err(err) if err.not_found() => Ok(()),
-        Err(err) => Err(anyhow::Error::new(err).context("failed to load .env file")),
+        Err(err) => Err(anyhow::Error::new(err).context("failed to load env file")),
     }
 }

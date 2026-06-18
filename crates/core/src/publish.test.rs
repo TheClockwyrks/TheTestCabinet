@@ -106,6 +106,49 @@ fn config_derives_repo_addresses() {
     );
 }
 
+/// Serializes the env-mutating test below so it cannot race other tests that
+/// read `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` from the process environment.
+static ENV_GUARD: Mutex<()> = Mutex::new(());
+
+#[test]
+fn from_env_honors_overrides_and_falls_back_to_defaults() {
+    let _guard = ENV_GUARD
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+
+    // Unset (or empty) variables fall back to the compiled-in defaults.
+    unsafe {
+        std::env::remove_var("TCAB_GITHUB_ORG");
+        std::env::remove_var("TCAB_PAGES_PROJECT");
+    }
+    let defaulted = PublishConfig::from_env();
+    assert_eq!(defaulted, PublishConfig::default());
+
+    // Set variables override the org and Pages project; the prefix is fixed.
+    unsafe {
+        std::env::set_var("TCAB_GITHUB_ORG", "Acme");
+        std::env::set_var("TCAB_PAGES_PROJECT", "acme-runs");
+    }
+    let overridden = PublishConfig::from_env();
+    assert_eq!(overridden.github_org, "Acme");
+    assert_eq!(overridden.pages_project, "acme-runs");
+    assert_eq!(overridden.repo_prefix, PublishConfig::default().repo_prefix);
+
+    // An empty value is treated as unset and falls back to the default.
+    unsafe {
+        std::env::set_var("TCAB_GITHUB_ORG", "");
+        std::env::remove_var("TCAB_PAGES_PROJECT");
+    }
+    let blank = PublishConfig::from_env();
+    assert_eq!(blank, PublishConfig::default());
+
+    // Restore a clean environment for any test ordering.
+    unsafe {
+        std::env::remove_var("TCAB_GITHUB_ORG");
+        std::env::remove_var("TCAB_PAGES_PROJECT");
+    }
+}
+
 #[test]
 fn wrangler_url_is_captured_not_constructed() {
     // The deployment URL is whatever wrangler reports — a sanitized/truncated

@@ -570,7 +570,7 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
     };
 
     let publisher = BackendPublisher::new(
-        PublishConfig::default(),
+        PublishConfig::from_env(),
         SystemCommandRunner,
         HttpBackendClient::new(backend),
     );

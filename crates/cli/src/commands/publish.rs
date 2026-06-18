@@ -59,7 +59,7 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
         );
     }
 
-    let config = PublishConfig::default();
+    let config = PublishConfig::from_env();
 
     if args.dry_run {
         println!("tcab publish --dry-run: {} run(s)", records.len());

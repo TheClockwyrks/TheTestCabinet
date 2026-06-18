@@ -13,6 +13,11 @@ use test_cabinet_worker::config::Config;
 async fn main() -> ExitCode {
     init_tracing();
 
+    // Load `.env.worker` beside the project before resolving config. A missing
+    // file is fine (variables can be exported instead); `dotenvy` never
+    // overrides already-set variables.
+    let _ = dotenvy::from_filename(".env.worker");
+
     let config = match Config::from_env() {
         Ok(config) => config,
         Err(err) => {

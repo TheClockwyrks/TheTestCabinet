@@ -36,9 +36,11 @@ fn backend_configured() -> bool {
 /// `mobile_entry_point` attribute).
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load harness API keys and TCAB_* configuration from a `.env` beside the
-    // project, matching the CLI. A missing file is fine (variables can be
-    // exported instead); `dotenvy` never overrides already-set variables.
+    // Load harness API keys and TCAB_* configuration from `.env.runner` beside
+    // the project, matching the CLI (with a legacy `.env` as a fallback). A
+    // missing file is fine (variables can be exported instead); `dotenvy` never
+    // overrides already-set variables.
+    let _ = dotenvy::from_filename(".env.runner");
     let _ = dotenvy::dotenv();
 
     tauri::Builder::default()

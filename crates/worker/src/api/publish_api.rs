@@ -108,7 +108,7 @@ pub async fn publish(
     };
 
     let publisher = BackendPublisher::new(
-        PublishConfig::default(),
+        PublishConfig::from_env(),
         SystemCommandRunner,
         HttpBackendClient::new(state.config.backend_url.clone()),
     );

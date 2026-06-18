@@ -157,6 +157,27 @@ impl Default for PublishConfig {
 }
 
 impl PublishConfig {
+    /// Resolve the publish configuration from the environment.
+    ///
+    /// `TCAB_GITHUB_ORG` overrides the GitHub org the per-run source repos are
+    /// created under, and `TCAB_PAGES_PROJECT` the Cloudflare Pages project the
+    /// per-run builds deploy to. Each falls back to the [`Default`] value when
+    /// the variable is unset or empty; the repo prefix is not env-configurable.
+    pub fn from_env() -> Self {
+        let defaults = Self::default();
+        let env_or = |key: &str, fallback: String| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or(fallback)
+        };
+        Self {
+            github_org: env_or("TCAB_GITHUB_ORG", defaults.github_org),
+            repo_prefix: defaults.repo_prefix,
+            pages_project: env_or("TCAB_PAGES_PROJECT", defaults.pages_project),
+        }
+    }
+
     /// The per-run repository name, for example `tcab-pong-codex-gpt-5-4-mini-d483a2f9`.
     pub fn repo_name(&self, record: &RunRecord) -> String {
         format!("{}{}", self.repo_prefix, run_slug(record))

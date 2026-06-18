@@ -114,8 +114,9 @@ you only need the harness key.
 
 Each harness reads a specific variable — `ANTHROPIC_API_KEY` for `claude`,
 `OPENAI_API_KEY` for `codex`, `OPENROUTER_API_KEY` for the OpenRouter-backed
-harnesses. The CLI loads a `.env` from the working directory (or any parent) on
-startup; copy `.env.example` to `.env` and fill in the keys. Variables already
+harnesses. The CLI loads a `.env.runner` from the working directory (or any
+parent) on startup; copy `.env.runner.example` to `.env.runner` and fill in the
+keys (a legacy `.env` is still read as a fallback). Variables already
 exported in the shell take precedence over the file. The key is passed into the
 run container as a secret and is **never** written into the seeded repository.
 
