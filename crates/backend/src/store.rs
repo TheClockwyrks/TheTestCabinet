@@ -15,20 +15,23 @@
 //! <store>/test-cases/<slug>/<version>/          verbatim copy of the version folder
 //! <store>/test-cases/<slug>/<version>/.tcab/manifest.json   resolved, store-relative manifest
 //! <store>/test-cases/<slug>/<version>/.tcab/references/<scope>/<view>.png   rendered baselines
-//! <store>/containers/<harness>/<hash>/          verbatim build context, keyed by content hash
-//! <store>/containers/<harness>/<hash>/.tcab/meta.json       harness, hash, buildsFrom, files
+//! <store>/containers/<harness>.json             latest pullable image reference
 //! ```
 //!
-//! The `.tcab/` sidecar holds backend-generated metadata; it is kept inside the
-//! keyed directory (not seeded, not part of the hashed context) so a definition
-//! and its derived artifacts move and expire as a unit.
+//! Container images are distributed via a registry and pulled by digest: the
+//! store keeps only the latest pullable image **reference** per harness (a small
+//! JSON row), posted by the image build/push step (`containers/build.sh`). There
+//! is no build context to copy and no content hash to compute.
+//!
+//! The `.tcab/` sidecar holds backend-generated metadata for a test-case version;
+//! it is kept inside the keyed directory (not seeded) so a definition and its
+//! derived artifacts move and expire as a unit.
 
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{BackendError, Result};
-use crate::hash::HashedFile;
 
 /// The sidecar directory holding backend-generated metadata inside a keyed
 /// definition directory.
@@ -149,17 +152,15 @@ pub struct StoredCheck {
     pub actions: Vec<test_cabinet_core::test_case::CheckAction>,
 }
 
-/// Metadata persisted alongside a copied container build context.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The latest pullable image reference for a harness, distributed via a registry
+/// and pulled by the runner by digest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredContainer {
     /// Harness slug.
     pub harness: String,
-    /// Aggregate content hash (`sha256:...`).
-    pub content_hash: String,
-    /// The harness this Dockerfile builds `FROM` within the cabinet, or `None`.
-    pub builds_from: Option<String>,
-    /// Every file of the build context.
-    pub files: Vec<HashedFile>,
+    /// The full, pullable image reference (a registry-qualified digest ref, e.g.
+    /// `ghcr.io/<org>/test-cabinet-claude@sha256:…`).
+    pub reference: String,
 }
 
 impl DefinitionStore {
@@ -295,108 +296,64 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{view}` not rendered")))
     }
 
-    // --- Container definitions ----------------------------------------------
+    // --- Container images ---------------------------------------------------
 
-    /// The directory a `(harness, contentHash)` build context is stored under.
-    /// `content_hash` is the full `sha256:...` value with the prefix stripped for
-    /// a filesystem-safe directory name.
-    pub fn container_dir(&self, harness: &str, content_hash: &str) -> PathBuf {
-        self.root
-            .join("containers")
-            .join(harness)
-            .join(hash_dir_name(content_hash))
+    /// The JSON file a harness's latest image reference is stored in.
+    fn container_path(&self, harness: &str) -> PathBuf {
+        self.root.join("containers").join(format!("{harness}.json"))
     }
 
-    /// The latest ingested content hash for a harness, by directory mtime. A
-    /// harness keeps every hash it has ever ingested (immutable); the most recent
-    /// is what the catalog and resolution serve.
-    pub fn latest_container_hash(&self, harness: &str) -> Result<Option<String>> {
-        let harness_dir = self.root.join("containers").join(harness);
-        if !harness_dir.is_dir() {
-            return Ok(None);
-        }
-        let mut best: Option<(std::time::SystemTime, String)> = None;
-        for name in raw_dir_names(&harness_dir)? {
-            let meta_path = harness_dir.join(&name).join(SIDECAR).join("meta.json");
-            if !meta_path.is_file() {
-                continue;
-            }
-            let mtime = harness_dir
-                .join(&name)
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-            let stored: StoredContainer = serde_json::from_slice(&std::fs::read(&meta_path)?)?;
-            match &best {
-                Some((best_mtime, _)) if *best_mtime >= mtime => {}
-                _ => best = Some((mtime, stored.content_hash)),
-            }
-        }
-        Ok(best.map(|(_, hash)| hash))
-    }
-
-    /// List every harness that has at least one ingested definition, with its
-    /// latest stored metadata.
+    /// List every harness that has a stored image reference, harness-sorted.
     pub fn list_containers(&self) -> Result<Vec<StoredContainer>> {
         let containers_root = self.root.join("containers");
+        let mut harnesses = Vec::new();
+        let read = match std::fs::read_dir(&containers_root) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        for entry in read {
+            let entry = entry?;
+            if let Some(harness) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.strip_suffix(".json"))
+                .filter(|name| !name.starts_with('.'))
+            {
+                harnesses.push(harness.to_string());
+            }
+        }
+        harnesses.sort();
         let mut out = Vec::new();
-        for harness in sorted_dir_names(&containers_root)? {
-            if let Some(stored) = self.read_latest_container(&harness)? {
+        for harness in harnesses {
+            if let Some(stored) = self.read_container(&harness)? {
                 out.push(stored);
             }
         }
         Ok(out)
     }
 
-    /// Read the latest ingested container metadata for a harness.
-    pub fn read_latest_container(&self, harness: &str) -> Result<Option<StoredContainer>> {
-        let Some(hash) = self.latest_container_hash(harness)? else {
-            return Ok(None);
+    /// Read the stored image reference for a harness, or `None` when none was
+    /// posted yet.
+    pub fn read_container(&self, harness: &str) -> Result<Option<StoredContainer>> {
+        let path = self.container_path(harness);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
         };
-        let meta_path = self
-            .container_dir(harness, &hash)
-            .join(SIDECAR)
-            .join("meta.json");
-        let bytes = std::fs::read(&meta_path)?;
         Ok(Some(serde_json::from_slice(&bytes)?))
     }
 
-    /// Whether a `(harness, contentHash)` is already ingested.
-    pub fn has_container(&self, harness: &str, content_hash: &str) -> bool {
-        self.container_dir(harness, content_hash)
-            .join(SIDECAR)
-            .join("meta.json")
-            .is_file()
-    }
-
-    /// Persist a container's metadata sidecar.
-    pub fn write_container_meta(&self, stored: &StoredContainer) -> Result<()> {
-        let dir = self
-            .container_dir(&stored.harness, &stored.content_hash)
-            .join(SIDECAR);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join("meta.json"), serde_json::to_vec_pretty(stored)?)?;
+    /// Persist (overwriting) the latest image reference for a harness.
+    pub fn write_container(&self, stored: &StoredContainer) -> Result<()> {
+        let path = self.container_path(&stored.harness);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, serde_json::to_vec_pretty(stored)?)?;
         Ok(())
     }
-
-    /// Read one file of a harness's latest build context by its store-relative
-    /// path, traversal-guarded. The `.tcab` sidecar is off-limits.
-    pub fn read_container_file(&self, harness: &str, key: &str) -> Result<Vec<u8>> {
-        let hash = self
-            .latest_container_hash(harness)?
-            .ok_or_else(|| BackendError::NotFound(format!("container `{harness}` not ingested")))?;
-        let base = self.container_dir(harness, &hash);
-        if first_component_is_sidecar(key) {
-            return Err(BackendError::NotFound(format!("unknown file `{key}`")));
-        }
-        let path = safe_join(&base, key)?;
-        std::fs::read(&path).map_err(|_| BackendError::NotFound(format!("unknown file `{key}`")))
-    }
-}
-
-/// Strip the `sha256:` prefix to make a filesystem-safe directory name.
-fn hash_dir_name(content_hash: &str) -> String {
-    content_hash.replace(':', "-")
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.

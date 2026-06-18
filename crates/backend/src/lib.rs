@@ -3,10 +3,11 @@
 //! See `design/v0.2.0-contracts.md` (authoritative) and the backend overview at
 //! `apps/docs/src/content/docs/components/backend/overview.md`. The backend:
 //!
-//! - serves per-harness container **definitions** and test-case version
-//!   definitions resolved from a repo checkout it is pointed at, copied into an
-//!   immutable on-disk store on ingest (with reference screenshots rendered on
-//!   the backend so every runner shares one baseline);
+//! - serves test-case version definitions resolved from a repo checkout it is
+//!   pointed at, copied into an immutable on-disk store on ingest (with reference
+//!   screenshots rendered on the backend so every runner shares one baseline);
+//! - tracks the latest pullable **image reference** per harness (posted by the
+//!   image build/push step), which runners pull by digest from a registry;
 //! - is the **system of record** for published runs + reviews in an embedded
 //!   SQLite file; and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then
@@ -20,7 +21,6 @@ pub mod api;
 pub mod config;
 pub mod db;
 pub mod error;
-pub mod hash;
 pub mod ingest;
 pub mod publisher;
 pub mod r2;

@@ -88,12 +88,14 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
         .zip(&artifacts)
         .zip(&build_dirs)
         .zip(&writeups)
-        .map(|(((record, artifacts), build_dir), writeup)| PublishRequest {
-            record,
-            artifacts,
-            build_dir: build_dir.as_deref(),
-            writeup,
-        })
+        .map(
+            |(((record, artifacts), build_dir), writeup)| PublishRequest {
+                record,
+                artifacts,
+                build_dir: build_dir.as_deref(),
+                writeup,
+            },
+        )
         .collect();
 
     let outcomes = publisher
@@ -171,7 +173,9 @@ fn print_plan(
             config.pages_project,
             record.id
         ),
-        None => println!("    build:  (no static build output found; will publish without a build)"),
+        None => {
+            println!("    build:  (no static build output found; will publish without a build)")
+        }
     }
 }
 

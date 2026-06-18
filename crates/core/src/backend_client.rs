@@ -18,40 +18,29 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 use crate::reference::RenderedReference;
-use crate::run_record::{RunLinks, RunRecord};
 use crate::review::Writeup;
+use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
     BuildCommands, Check, CheckAction, ReferenceView, SpecFile, TestCase, TestCaseVersion, Variant,
 };
 
-/// A resolved container definition the runner builds locally.
+/// A resolved harness container image: a full, pullable image reference the
+/// runner pulls by digest from a registry.
+///
+/// The runner is registry-agnostic: it never composes a registry, org, or tag.
+/// It pulls exactly the [`reference`](Self::reference) the backend returns, which
+/// is a fully-qualified digest ref such as
+/// `ghcr.io/<org>/test-cabinet-claude@sha256:…`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContainerDefinition {
-    /// Harness slug this definition builds the image for.
+pub struct ContainerImage {
+    /// Harness slug this image provides the CLI for.
     pub harness: String,
-    /// Aggregate content hash over the whole build context. The runner tags the
-    /// built image with this and reuses it until the hash changes. Format:
-    /// `sha256:<hex>`.
-    pub content_hash: String,
-    /// The harness this Dockerfile builds `FROM` within the cabinet, if any
-    /// (e.g. a per-harness image `FROM` the shared `base`). `None` for `base`.
-    pub builds_from: Option<String>,
-    /// Every file of the build context, store-relative path -> bytes.
-    pub files: Vec<ContainerFile>,
-}
-
-/// One file of a container build context, with its build-context-relative path
-/// and raw bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContainerFile {
-    /// Path relative to the build-context root (e.g. `Dockerfile`).
-    pub path: PathBuf,
-    /// Raw file bytes.
-    pub bytes: Vec<u8>,
+    /// The full, pullable image reference (a registry-qualified digest ref). This
+    /// is what the runner pulls and records as `RunEnvironment.containerImage`.
+    pub reference: String,
 }
 
 /// A reference view resolved to its backend-rendered screenshot bytes. The runner
@@ -106,12 +95,7 @@ pub trait BackendClient: Send + Sync {
 
     /// Fetch one seeded artifact (spec source or asset) by its `source` key.
     /// (`GET …/artifacts/{path}`)
-    async fn artifact(
-        &self,
-        slug: &str,
-        version: &str,
-        source: &Path,
-    ) -> Result<ResolvedArtifact>;
+    async fn artifact(&self, slug: &str, version: &str, source: &Path) -> Result<ResolvedArtifact>;
 
     /// Fetch the backend-rendered reference screenshots for a variant: the common
     /// references plus that variant's own.
@@ -127,9 +111,9 @@ pub trait BackendClient: Send + Sync {
     /// [`Self::resolve_version`]; this is the explicit fetch).
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String>;
 
-    /// Resolve a harness container definition. (`GET /containers/{harness}`, plus
-    /// `…/files/{path}` for each file.)
-    async fn resolve_container(&self, harness: &str) -> Result<ContainerDefinition>;
+    /// Resolve a harness container image: the full, pullable digest reference the
+    /// runner pulls. (`GET /containers/{harness}`)
+    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage>;
 
     /// Submit a published run: record + review + resolved links. (`POST /runs`)
     /// Idempotent on `record.id`.
@@ -139,45 +123,6 @@ pub trait BackendClient: Send + Sync {
         review: &Writeup,
         links: &RunLinks,
     ) -> Result<PublishAck>;
-}
-
-/// Compute the aggregate content hash for a container build context.
-///
-/// This MUST match the backend's recipe (`crates/backend/src/hash.rs`) so a
-/// runner's image tag agrees with the served `content_hash`:
-///
-///   1. For each file, compute `sha256(bytes)`.
-///   2. Sort the `(path, sha256)` pairs by path (byte order, forward-slash
-///      separators).
-///   3. Feed each pair into a running SHA-256 as `"{path}\n{sha256hex}\n"`.
-///   4. The aggregate is `"sha256:" + hex(digest)`.
-pub fn container_content_hash(def: &ContainerDefinition) -> String {
-    let mut hashed: Vec<(String, String)> = def
-        .files
-        .iter()
-        .map(|file| (forward_slash(&file.path), sha256_hex(&file.bytes)))
-        .collect();
-    hashed.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
-
-    let mut hasher = Sha256::new();
-    for (path, sha) in &hashed {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\n");
-        hasher.update(sha.as_bytes());
-        hasher.update(b"\n");
-    }
-    format!("sha256:{}", hex_encode(&hasher.finalize()))
-}
-
-/// The local image tag a runner builds and caches a harness container under: the
-/// content-hashed tag recorded as `RunEnvironment.containerImage`.
-///
-/// `test-cabinet/<harness>:<hash-without-prefix>` — for example
-/// `test-cabinet/claude:1a7b…`. Stripping the `sha256:` prefix keeps the tag a
-/// valid Docker reference (a tag may not contain a colon).
-pub fn image_tag(def: &ContainerDefinition) -> String {
-    let short = def.content_hash.strip_prefix("sha256:").unwrap_or(&def.content_hash);
-    format!("test-cabinet/{}:{short}", def.harness)
 }
 
 /// Materialize a backend-resolved version onto disk so the existing seeder,
@@ -232,10 +177,12 @@ pub async fn materialize_version(
     // Reference screenshots: the backend renders them at ingest. Write each PNG
     // under `references/<scope>/<view>.png` and point the version's reference
     // views at those files so seeding and validation use them as host paths.
-    let common: std::collections::HashSet<&str> =
-        resolved.common_references.iter().map(|r| r.view.as_str()).collect();
-    let common: std::collections::HashSet<String> =
-        common.iter().map(|s| s.to_string()).collect();
+    let common: std::collections::HashSet<&str> = resolved
+        .common_references
+        .iter()
+        .map(|r| r.view.as_str())
+        .collect();
+    let common: std::collections::HashSet<String> = common.iter().map(|s| s.to_string()).collect();
     let pngs = client.references(slug, version, variant).await?;
     let mut rendered = Vec::with_capacity(pngs.len());
     for png in &pngs {
@@ -430,12 +377,7 @@ impl BackendClient for HttpBackendClient {
         Ok(body.into_version())
     }
 
-    async fn artifact(
-        &self,
-        slug: &str,
-        version: &str,
-        source: &Path,
-    ) -> Result<ResolvedArtifact> {
+    async fn artifact(&self, slug: &str, version: &str, source: &Path) -> Result<ResolvedArtifact> {
         let key = forward_slash(source);
         let bytes = self
             .get_bytes(&format!(
@@ -463,10 +405,16 @@ impl BackendClient for HttpBackendClient {
         let variant_def = resolved.variant(variant)?;
         let mut out = Vec::new();
         for reference in &resolved.common_references {
-            out.push(self.fetch_reference(slug, version, "_common", &reference.view).await?);
+            out.push(
+                self.fetch_reference(slug, version, "_common", &reference.view)
+                    .await?,
+            );
         }
         for reference in &variant_def.references {
-            out.push(self.fetch_reference(slug, version, variant, &reference.view).await?);
+            out.push(
+                self.fetch_reference(slug, version, variant, &reference.view)
+                    .await?,
+            );
         }
         Ok(out)
     }
@@ -483,29 +431,13 @@ impl BackendClient for HttpBackendClient {
         Ok(body.prompt_template)
     }
 
-    async fn resolve_container(&self, harness: &str) -> Result<ContainerDefinition> {
+    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage> {
         let body: ContainerBody = self
             .get_json(&format!("/containers/{}", encode(harness)))
             .await?;
-        let mut files = Vec::with_capacity(body.files.len());
-        for file in &body.files {
-            let bytes = self
-                .get_bytes(&format!(
-                    "/containers/{}/files/{}",
-                    encode(harness),
-                    encode_path(&file.path),
-                ))
-                .await?;
-            files.push(ContainerFile {
-                path: PathBuf::from(&file.path),
-                bytes,
-            });
-        }
-        Ok(ContainerDefinition {
+        Ok(ContainerImage {
             harness: body.harness,
-            content_hash: body.content_hash,
-            builds_from: body.builds_from,
-            files,
+            reference: body.reference,
         })
     }
 
@@ -535,7 +467,10 @@ impl BackendClient for HttpBackendClient {
             .await
             .map_err(|err| backend_err(&url, err))?;
         let response = error_for_status(&url, response).await?;
-        let ack: PublishAckBody = response.json().await.map_err(|err| backend_err(&url, err))?;
+        let ack: PublishAckBody = response
+            .json()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
         Ok(PublishAck {
             id: ack.id,
             newly_published: ack.newly_published,
@@ -613,7 +548,10 @@ impl VersionBody {
     /// Reference views carry the rendered screenshot path key in `source_path`;
     /// [`materialize_version`] rewrites these to host paths.
     fn into_version(self) -> TestCaseVersion {
-        let description_path = self.description.as_ref().map(|_| PathBuf::from("description.md"));
+        let description_path = self
+            .description
+            .as_ref()
+            .map(|_| PathBuf::from("description.md"));
         TestCaseVersion {
             slug: self.slug,
             version: self.version,
@@ -632,7 +570,11 @@ impl VersionBody {
                 build: self.build.build,
             },
             common_specs: self.common_specs.iter().map(spec_from).collect(),
-            asset_paths: self.assets.iter().map(|a| PathBuf::from(&a.source)).collect(),
+            asset_paths: self
+                .assets
+                .iter()
+                .map(|a| PathBuf::from(&a.source))
+                .collect(),
             variants: self
                 .variants
                 .into_iter()
@@ -641,11 +583,7 @@ impl VersionBody {
                     name: variant.name,
                     description: variant.description,
                     specs: variant.specs.iter().map(spec_from).collect(),
-                    references: variant
-                        .references
-                        .iter()
-                        .map(reference_from)
-                        .collect(),
+                    references: variant.references.iter().map(reference_from).collect(),
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -734,14 +672,7 @@ struct CheckBody {
 #[serde(rename_all = "camelCase")]
 struct ContainerBody {
     harness: String,
-    content_hash: String,
-    builds_from: Option<String>,
-    files: Vec<ContainerFileBody>,
-}
-
-#[derive(Deserialize)]
-struct ContainerFileBody {
-    path: String,
+    reference: String,
 }
 
 #[derive(serde::Serialize)]
@@ -790,22 +721,6 @@ fn write_at(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// The hex SHA-256 of a byte slice (lowercase, no prefix).
-fn sha256_hex(bytes: &[u8]) -> String {
-    hex_encode(&Sha256::digest(bytes))
-}
-
-/// Lowercase hex encoding of a byte slice. A tiny local encoder avoids pulling a
-/// `hex` dependency into core (the backend uses the crate; the recipe agrees).
-fn hex_encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(char::from_digit((byte >> 4) as u32, 16).unwrap());
-        out.push(char::from_digit((byte & 0xf) as u32, 16).unwrap());
-    }
-    out
-}
-
 /// Percent-encode a single path segment (slug, version, view, scope) for use in
 /// a URL, escaping every character that is not URL-path-safe.
 fn encode(segment: &str) -> String {
@@ -815,8 +730,16 @@ fn encode(segment: &str) -> String {
             out.push(byte as char);
         } else {
             out.push('%');
-            out.push(char::from_digit((byte >> 4) as u32, 16).unwrap().to_ascii_uppercase());
-            out.push(char::from_digit((byte & 0xf) as u32, 16).unwrap().to_ascii_uppercase());
+            out.push(
+                char::from_digit((byte >> 4) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase(),
+            );
+            out.push(
+                char::from_digit((byte & 0xf) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase(),
+            );
         }
     }
     out

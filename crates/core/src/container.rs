@@ -91,7 +91,16 @@ impl ContainerRuntime for CliContainerRuntime {
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
         let mount_source = crate::host_path::mount_source(&spec.repo_path)?;
 
-        let mut args = vec!["run".to_string(), "--detach".to_string()];
+        // Pull the image if it is not already present locally: the harness image
+        // comes from a registry (resolved by digest), not a prior local build, so
+        // a missing image must be fetched rather than failing the run. An image
+        // already pulled by an earlier run is reused (digest refs are immutable).
+        let mut args = vec![
+            "run".to_string(),
+            "--detach".to_string(),
+            "--pull".to_string(),
+            "missing".to_string(),
+        ];
         if self.is_podman() && cfg!(target_os = "linux") {
             // Rootless Podman on Linux runs the container directly on the host, so
             // map the invoking host user to the container's uid to keep the
@@ -244,8 +253,12 @@ impl ContainerRuntime for CliContainerRuntime {
                 "run_once requires a command".to_string(),
             ));
         };
-        // `--pull never` keeps the probe cost-free and fast: a missing image
-        // fails immediately rather than reaching out to a registry.
+        // `--pull never`: this one-shot is the harness availability probe, which
+        // must stay cost-free and must never fetch anything (see
+        // `Harness::check_availability` and `docs/harnesses.md`). A registry image
+        // that has not been pulled yet is therefore reported unavailable — pulling
+        // it is a stronger action reserved for an actual run (which uses
+        // `--pull missing` in `start`), not for a cheap availability check.
         let mut args = vec![
             "run".to_string(),
             "--rm".to_string(),

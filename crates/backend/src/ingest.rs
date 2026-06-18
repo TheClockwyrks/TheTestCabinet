@@ -1,27 +1,28 @@
 //! Ingest: scanning the configured checkout and copying definitions into the
 //! store (§0/§1.1 of `design/v0.2.0-contracts.md`).
 //!
-//! On `POST /ingest` the backend reads `test-cases/` and `containers/` from the
-//! checkout it is pointed at and **copies** each version and container build
-//! context into the immutable definition store, served verbatim afterward
-//! (publishing caches, it does not transform). For a test-case version it also
+//! On `POST /ingest` the backend reads `test-cases/` from the checkout it is
+//! pointed at and **copies** each version into the immutable definition store,
+//! served verbatim afterward (publishing caches, it does not transform). It also
 //! renders the reference mockups to screenshots at this point, so every runner
 //! shares the same baseline.
 //!
-//! Ingest is idempotent: an already-present, unchanged `(slug, version)` or
-//! `(harness, contentHash)` is a no-op. `force` re-ingests and re-renders even
-//! when unchanged.
+//! Container images are **not** ingested from the checkout: they are distributed
+//! via a registry and pulled by digest, their references posted to the backend by
+//! the image build/push step (`POST /containers`).
+//!
+//! Ingest is idempotent: an already-present, unchanged `(slug, version)` is a
+//! no-op. `force` re-ingests and re-renders even when unchanged.
 
 use std::path::Path;
 
 use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 
 use crate::error::{BackendError, Result};
-use crate::hash::{HashedFile, aggregate_content_hash, sha256_hex};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredContainer, StoredManifest,
-    StoredReference, StoredSpec, StoredVariant,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredReference,
+    StoredSpec, StoredVariant,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -29,8 +30,6 @@ use crate::store::{
 pub struct IngestRequest {
     /// Restrict to these case slugs (a full scan when empty).
     pub test_cases: Option<Vec<String>>,
-    /// Restrict to these harness slugs (a full scan when empty).
-    pub containers: Option<Vec<String>>,
     /// Re-ingest and re-render even when unchanged.
     pub force: bool,
 }
@@ -48,24 +47,11 @@ pub struct IngestedVersion {
     pub rendered_references: usize,
 }
 
-/// The outcome of ingesting one container definition.
-#[derive(Debug, Clone, PartialEq)]
-pub struct IngestedContainer {
-    /// Harness slug.
-    pub harness: String,
-    /// Whether this call ingested it, vs. skipped as unchanged.
-    pub ingested: bool,
-    /// The aggregate content hash of the build context.
-    pub content_hash: String,
-}
-
 /// The full result of an ingest scan.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct IngestReport {
     /// One entry per scanned test-case version.
     pub test_case_versions: Vec<IngestedVersion>,
-    /// One entry per scanned container definition.
-    pub container_definitions: Vec<IngestedContainer>,
 }
 
 /// Ingests definitions from a checkout into a definition store.
@@ -83,14 +69,6 @@ impl<'a> Ingestor<'a> {
     /// Run a scan, honoring the request's restrictions and `force` flag.
     pub fn scan(&self, request: &IngestRequest) -> Result<IngestReport> {
         let mut report = IngestReport::default();
-
-        // Containers first, so a per-harness definition's `base` dependency is
-        // ingested before it (mirrors the build order a runner follows).
-        for harness in self.container_targets(request)? {
-            report
-                .container_definitions
-                .push(self.ingest_container(&harness, request.force)?);
-        }
 
         for (slug, version) in self.version_targets(request)? {
             report
@@ -121,33 +99,6 @@ impl<'a> Ingestor<'a> {
             }
         }
         Ok(targets)
-    }
-
-    /// Resolve the set of harness slugs to scan from the checkout's `containers/`.
-    fn container_targets(&self, request: &IngestRequest) -> Result<Vec<String>> {
-        if let Some(harnesses) = &request.containers {
-            return Ok(harnesses.clone());
-        }
-        let containers_dir = self.checkout.join("containers");
-        let mut harnesses = Vec::new();
-        let read = match std::fs::read_dir(&containers_dir) {
-            Ok(read) => read,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(harnesses),
-            Err(err) => return Err(err.into()),
-        };
-        for entry in read {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            if let Some(name) = entry.file_name().to_str()
-                && !name.starts_with('.')
-            {
-                harnesses.push(name.to_string());
-            }
-        }
-        harnesses.sort();
-        Ok(harnesses)
     }
 
     // --- Test-case versions -------------------------------------------------
@@ -229,54 +180,6 @@ impl<'a> Ingestor<'a> {
         }
         render::render_reference(source, out).map_err(|detail| {
             BackendError::Snapshot(format!("could not render reference `{view}`: {detail}"))
-        })
-    }
-
-    // --- Container definitions ----------------------------------------------
-
-    /// Ingest one container definition: hash its build context, and if that hash
-    /// is not already stored, copy the build context verbatim and write its
-    /// metadata. Idempotent: an unchanged definition (same content hash) is a
-    /// no-op unless `force`.
-    fn ingest_container(&self, harness: &str, force: bool) -> Result<IngestedContainer> {
-        let context_dir = self.checkout.join("containers").join(harness);
-        if !context_dir.is_dir() {
-            return Err(BackendError::NotFound(format!(
-                "container `{harness}` is not present in the checkout"
-            )));
-        }
-
-        let files = hash_build_context(&context_dir)?;
-        let content_hash = aggregate_content_hash(&files);
-        let builds_from = parse_builds_from(&context_dir)?;
-
-        let already = self.store.has_container(harness, &content_hash);
-        if already && !force {
-            return Ok(IngestedContainer {
-                harness: harness.to_string(),
-                ingested: false,
-                content_hash,
-            });
-        }
-
-        let dest = self.store.container_dir(harness, &content_hash);
-        if dest.exists() {
-            std::fs::remove_dir_all(&dest)?;
-        }
-        std::fs::create_dir_all(&dest)?;
-        copy_tree(&context_dir, &dest)?;
-
-        self.store.write_container_meta(&StoredContainer {
-            harness: harness.to_string(),
-            content_hash: content_hash.clone(),
-            builds_from,
-            files,
-        })?;
-
-        Ok(IngestedContainer {
-            harness: harness.to_string(),
-            ingested: true,
-            content_hash,
         })
     }
 }
@@ -423,81 +326,6 @@ fn to_forward_slash(path: &Path) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
-}
-
-/// Hash every file of a build context (recursively), returning the per-file
-/// `(path, sha256)` pairs the aggregate hash is computed from.
-fn hash_build_context(dir: &Path) -> Result<Vec<HashedFile>> {
-    let mut files = Vec::new();
-    collect_hashed(dir, dir, &mut files)?;
-    Ok(files)
-}
-
-/// Recursively collect hashed files under `dir`, keying each by its path relative
-/// to `base` (forward-slash). Hidden entries are skipped so an editor's dotfiles
-/// never enter the hash and change the image tag.
-fn collect_hashed(base: &Path, dir: &Path, out: &mut Vec<HashedFile>) -> Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with('.') {
-            continue;
-        }
-        let path = entry.path();
-        if entry.file_type()?.is_dir() {
-            collect_hashed(base, &path, out)?;
-        } else {
-            let bytes = std::fs::read(&path)?;
-            out.push(HashedFile {
-                path: relative_key(base, &path)?,
-                sha256: sha256_hex(&bytes),
-                size: bytes.len() as u64,
-            });
-        }
-    }
-    Ok(())
-}
-
-/// Parse the in-cabinet `FROM` base of a container's Dockerfile, if any.
-///
-/// A per-harness Dockerfile builds `FROM` a `test-cabinet/<harness>:...` image
-/// (possibly via an `ARG BASE_IMAGE=test-cabinet/base:...` default). This returns
-/// the harness slug it depends on within the cabinet (`base` in practice), or
-/// `None` when it `FROM`s an external image — letting a runner build that base
-/// first. The parse is deliberately tolerant: it scans `FROM`/`ARG` lines for a
-/// `test-cabinet/<slug>` reference.
-fn parse_builds_from(context_dir: &Path) -> Result<Option<String>> {
-    let dockerfile = context_dir.join("Dockerfile");
-    let contents = match std::fs::read_to_string(&dockerfile) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
-    Ok(find_cabinet_base(&contents))
-}
-
-/// Scan Dockerfile text for the first `test-cabinet/<slug>` reference on a `FROM`
-/// or `ARG ...=` line, returning the `<slug>`.
-fn find_cabinet_base(contents: &str) -> Option<String> {
-    const MARKER: &str = "test-cabinet/";
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        let upper = trimmed.to_ascii_uppercase();
-        if !(upper.starts_with("FROM ") || upper.starts_with("ARG ")) {
-            continue;
-        }
-        if let Some(idx) = trimmed.find(MARKER) {
-            let after = &trimmed[idx + MARKER.len()..];
-            let slug: String = after
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-                .collect();
-            if !slug.is_empty() {
-                return Some(slug);
-            }
-        }
-    }
-    None
 }
 
 /// Recursively copy a directory tree, skipping hidden entries (so the checkout's

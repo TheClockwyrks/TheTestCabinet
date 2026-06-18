@@ -346,16 +346,13 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         Ok(self.config.repo_url(record))
     }
 
-    async fn release_playable_build(
-        &self,
-        request: &PublishRequest<'_>,
-    ) -> Result<Option<String>> {
+    async fn release_playable_build(&self, request: &PublishRequest<'_>) -> Result<Option<String>> {
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
-        let dir = build_dir.to_str().ok_or_else(|| {
-            Error::Publish("build directory path is not valid UTF-8".to_string())
-        })?;
+        let dir = build_dir
+            .to_str()
+            .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
         // Deploy the already-built static output to Cloudflare Pages under a
         // per-run branch alias. Do NOT construct `https://<run-id>.<project>.pages.dev`:
         // Cloudflare sanitizes/truncates long branch-alias subdomains, so a 36-char

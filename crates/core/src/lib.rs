@@ -44,9 +44,8 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 pub use backend_client::{
-    BackendClient, ContainerDefinition, ContainerFile, HttpBackendClient, PrerenderedReferenceRenderer,
-    PublishAck, ResolvedArtifact, ResolvedReference, container_content_hash, image_tag,
-    materialize_version,
+    BackendClient, ContainerImage, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck,
+    ResolvedArtifact, ResolvedReference, materialize_version,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
@@ -106,6 +105,12 @@ pub struct RunRequest {
     /// replaces it for this run (for example `tcab run --max-runtime`). Either
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
+    /// The harness container image to run in: a full, pullable reference resolved
+    /// from the backend (`GET /containers/{harness}` → `reference`), pulled by
+    /// digest. `None` falls back to the harness's local-build image
+    /// ([`AgentHarness::image`]) for offline development with a locally-built
+    /// image. Recorded verbatim as [`RunEnvironment::container_image`].
+    pub container_image: Option<String>,
 }
 
 impl RunRequest {
@@ -236,7 +241,15 @@ where
             detail: format!("environment variable {api_key_env} is not set"),
         })?;
 
-        let availability = harness.check_availability(&self.runtime).await?;
+        // The image is the backend-resolved digest reference when the run carries
+        // one, else the harness's local-build fallback. The runtime pulls it, so
+        // both the availability probe and the session run in the same image.
+        let image = request
+            .container_image
+            .clone()
+            .unwrap_or_else(|| harness.image());
+
+        let availability = harness.check_availability(&self.runtime, &image).await?;
         if !availability.available {
             return Err(Error::HarnessUnavailable {
                 slug: slug.as_str().to_string(),
@@ -253,7 +266,7 @@ where
         let container_key_env = harness.container_key_env().unwrap_or(api_key_env);
         secrets.insert(container_key_env.to_string(), api_key);
         let spec = ContainerSpec {
-            image: harness.image(),
+            image: image.clone(),
             repo_path: seeded.path.clone(),
             secrets,
             network_enabled: true,
@@ -264,8 +277,9 @@ where
         // Capture the container environment from inside the running container so
         // it reflects what the harness actually built in, not the host. Probes
         // are best-effort: a failure degrades to sensible defaults rather than
-        // failing the run.
-        let environment = self.probe_environment(&handle, harness.image()).await;
+        // failing the run. The image is recorded verbatim as the run's
+        // `containerImage` (the pulled digest reference).
+        let environment = self.probe_environment(&handle, image).await;
 
         let invocation = HarnessInvocation {
             slug,

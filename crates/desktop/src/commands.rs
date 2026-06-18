@@ -328,13 +328,16 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
     // Resolve the version + renderer before spawning so a configuration error is
     // reported synchronously (the command returns an error) rather than only over
     // the event channel.
-    let request = RunRequest {
+    let mut request = RunRequest {
         test_case_slug: config.test_case.clone(),
         test_case_version: Some(config.version.clone()),
         variant: config.variant.clone(),
         harness,
         model_id: config.model_id.clone(),
         max_runtime_override: config.max_runtime_override,
+        // Filled in from the backend below when one is configured; a local run
+        // falls back to the harness's locally-built image.
+        container_image: None,
     };
 
     let runtime =
@@ -365,6 +368,13 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                 )
                 .await
                 .map_err(|e| err("resolving the run's definition from the backend", e))?;
+                // Resolve the harness image to the backend's pullable digest
+                // reference; the runner pulls it by digest rather than building it.
+                let image = client
+                    .resolve_container(harness.as_str())
+                    .await
+                    .map_err(|e| err("resolving the run's container image from the backend", e))?;
+                request.container_image = Some(image.reference);
                 (
                     version,
                     Box::new(PrerenderedReferenceRenderer::new(references)),

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
+    BackendClient, BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
     DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
     OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, ReferenceRenderer, RunRequest,
     TestCaseCatalog, materialize_version,
@@ -24,13 +24,16 @@ use crate::commands::event_printer::PrintingEventSink;
 /// from concrete seams and drives the run to completion, then reports the record.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
-    let request = RunRequest {
+    let mut request = RunRequest {
         test_case_slug: args.test_case,
         test_case_version: Some(args.version),
         variant: args.variant,
         harness,
         model_id: args.model,
         max_runtime_override: args.max_runtime,
+        // Filled in from the backend below when one is configured; a local run
+        // falls back to the harness's locally-built image.
+        container_image: None,
     };
 
     let output_dir = args.out_dir.unwrap_or_else(|| PathBuf::from("runs"));
@@ -73,9 +76,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         Some(url) => {
             println!("  source:  backend {url}");
             let client = HttpBackendClient::new(url);
-            let store = store_dir
-                .join(&request.test_case_slug)
-                .join(&version_str);
+            let store = store_dir.join(&request.test_case_slug).join(&version_str);
             let (version, references) = materialize_version(
                 &client,
                 &request.test_case_slug,
@@ -90,7 +91,23 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
                     request.test_case_slug, version_str, request.variant
                 )
             })?;
-            (version, Box::new(PrerenderedReferenceRenderer::new(references)))
+            // Resolve the harness image to the backend's pullable digest
+            // reference; the runner pulls it by digest rather than building it.
+            let image = client
+                .resolve_container(request.harness.as_str())
+                .await
+                .with_context(|| {
+                    format!(
+                        "resolving the `{}` container image from the backend",
+                        request.harness.as_str()
+                    )
+                })?;
+            println!("  image:   {}", image.reference);
+            request.container_image = Some(image.reference);
+            (
+                version,
+                Box::new(PrerenderedReferenceRenderer::new(references)),
+            )
         }
         None => {
             let catalog_root = catalog_root();
@@ -98,9 +115,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
             let catalog = TestCaseCatalog::new(&catalog_root);
             let version = catalog
                 .resolve(&request.test_case_slug, &version_str)
-                .with_context(|| {
-                    format!("resolving {}@{}", request.test_case_slug, version_str)
-                })?;
+                .with_context(|| format!("resolving {}@{}", request.test_case_slug, version_str))?;
             (version, Box::new(BrowserRenderer::new()))
         }
     };

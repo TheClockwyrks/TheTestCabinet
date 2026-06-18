@@ -86,6 +86,8 @@ pub async fn submit(
         harness: body.harness,
         model_id: body.model,
         max_runtime_override: body.max_runtime_seconds,
+        // The worker resolves the harness image from the backend in `drive_run`.
+        container_image: None,
     };
 
     let job = state.jobs.create();

@@ -94,7 +94,13 @@ pub trait AgentHarness: Send + Sync {
     /// The slug this implementation handles.
     fn slug(&self) -> HarnessSlug;
 
-    /// The container image that provides this harness's CLI.
+    /// The fallback container image that provides this harness's CLI for offline
+    /// development, when no backend-resolved image reference is supplied.
+    ///
+    /// A backend-driven run pulls the image by digest from a registry (the
+    /// reference comes from `GET /containers/{harness}`); this local-build tag is
+    /// only used when a run is driven against a locally-built image with no
+    /// backend configured.
     fn image(&self) -> String {
         format!("test-cabinet/{}:latest", self.slug().as_str())
     }
@@ -129,11 +135,17 @@ pub trait AgentHarness: Send + Sync {
         model_id.to_string()
     }
 
-    /// Resolve the harness binary in its image and confirm it can be invoked,
-    /// for example via `--version`.
+    /// Resolve the harness binary in `image` and confirm it can be invoked, for
+    /// example via `--version`. `image` is the run's resolved container image (a
+    /// backend-pulled digest reference, or the local-build fallback), so the
+    /// probe checks the exact image the session will run in.
     ///
     /// This must be cost-free: it must **never** start a session.
-    async fn check_availability(&self, runtime: &dyn ContainerRuntime) -> Result<Availability>;
+    async fn check_availability(
+        &self,
+        runtime: &dyn ContainerRuntime,
+        image: &str,
+    ) -> Result<Availability>;
 
     /// Drive a single harness session to completion inside an already-started
     /// run container, returning normalized usage. The container's working

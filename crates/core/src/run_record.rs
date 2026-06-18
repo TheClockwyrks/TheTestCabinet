@@ -115,8 +115,10 @@ pub struct RunEnvironment {
     /// example, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe
     /// could not determine it.
     pub os: String,
-    /// The per-harness container image the run executed in (for example,
-    /// `test-cabinet/codex:latest`).
+    /// The per-harness container image the run executed in: the full, pullable
+    /// image reference pulled by digest from the registry (for example,
+    /// `ghcr.io/theclockwyrks/test-cabinet-codex@sha256:…`), or the local-build
+    /// fallback tag for an offline run.
     pub container_image: String,
     /// The Node.js version reported by `node --version` inside the container
     /// (for example, `v22.11.0`), or `None` when it could not be determined.

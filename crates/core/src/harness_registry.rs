@@ -115,7 +115,11 @@ impl AgentHarness for CliHarness {
         }
     }
 
-    async fn check_availability(&self, runtime: &dyn ContainerRuntime) -> Result<Availability> {
+    async fn check_availability(
+        &self,
+        runtime: &dyn ContainerRuntime,
+        image: &str,
+    ) -> Result<Availability> {
         if self.api_key_env.is_none() {
             return Ok(Availability {
                 available: false,
@@ -124,7 +128,7 @@ impl AgentHarness for CliHarness {
             });
         }
         let probe = vec![self.binary.to_string(), "--version".to_string()];
-        match runtime.run_once(&self.image(), &probe).await {
+        match runtime.run_once(image, &probe).await {
             Ok(output) if output.exit_code == 0 => Ok(Availability {
                 available: true,
                 version: parse_version(&output.stdout),

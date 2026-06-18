@@ -53,9 +53,8 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
-        .route("/containers", get(containers::list))
+        .route("/containers", get(containers::list).post(containers::post))
         .route("/containers/{harness}", get(containers::resolve))
-        .route("/containers/{harness}/files/{*path}", get(containers::file))
         .route("/runs", post(runs::publish).get(runs::list))
         .route("/runs/{id}", get(runs::get))
         .route("/snapshot/refresh", post(runs::refresh))

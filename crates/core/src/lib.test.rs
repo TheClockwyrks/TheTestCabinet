@@ -186,6 +186,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         harness: HarnessSlug::Claude,
         model_id: "some-model".to_string(),
         max_runtime_override,
+        container_image: None,
     }
 }
 

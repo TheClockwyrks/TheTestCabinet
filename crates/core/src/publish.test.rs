@@ -6,7 +6,9 @@
 use std::sync::Mutex;
 
 use super::*;
-use crate::backend_client::{BackendClient, ContainerDefinition, PublishAck, ResolvedArtifact, ResolvedReference};
+use crate::backend_client::{
+    BackendClient, ContainerImage, PublishAck, ResolvedArtifact, ResolvedReference,
+};
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
@@ -222,7 +224,7 @@ impl BackendClient for MockBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok(String::new())
     }
-    async fn resolve_container(&self, _harness: &str) -> Result<ContainerDefinition> {
+    async fn resolve_container(&self, _harness: &str) -> Result<ContainerImage> {
         unimplemented!("not exercised by publish tests")
     }
     async fn publish_run(
@@ -319,7 +321,10 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
         Some("https://abc123.test-cabinet-runs.pages.dev")
     );
     // The links are also written onto the submitted record blob.
-    assert_eq!(stored.links.source_repo.as_deref(), Some(outcome.source_repo.as_str()));
+    assert_eq!(
+        stored.links.source_repo.as_deref(),
+        Some(outcome.source_repo.as_str())
+    );
 }
 
 #[tokio::test]

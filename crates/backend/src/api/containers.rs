@@ -1,115 +1,103 @@
-//! Container definition resolution handlers (§1.3 of
-//! `design/v0.2.0-contracts.md`).
+//! Container image resolution handlers (§1.3 of `design/v0.2.0-contracts.md`).
+//!
+//! Harness images are distributed via a registry and pulled by digest. The
+//! backend tracks the latest pullable image **reference** per harness: the image
+//! build/push step posts it (`POST /containers`), and runners resolve it
+//! (`GET /containers/{harness}`) and pull it. There is no build context served.
 
 use axum::Json;
-use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
-use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 use crate::store::StoredContainer;
 
 use super::AppState;
 
-/// `GET /containers` — the ingested container definitions and their hashes.
+/// `GET /containers` — the tracked harness image references.
 pub async fn list(State(state): State<AppState>) -> Result<Json<ContainersResponse>, ApiError> {
     let containers = state
         .store
         .list_containers()
         .map_err(ApiError::from)?
         .into_iter()
-        .map(|c| ContainerSummary {
-            harness: c.harness,
-            content_hash: c.content_hash,
-            builds_from: c.builds_from,
-        })
+        .map(ContainerOut::from)
         .collect();
     Ok(Json(ContainersResponse { containers }))
 }
 
-/// `GET /containers/{harness}` — resolve a harness definition: its file manifest
-/// and aggregate content hash (the tag the runner uses).
+/// `GET /containers/{harness}` — resolve a harness to its pullable image
+/// reference (the digest ref the runner pulls).
 pub async fn resolve(
     State(state): State<AppState>,
     Path(harness): Path<String>,
-) -> Result<Json<ContainerResponse>, ApiError> {
+) -> Result<Json<ContainerOut>, ApiError> {
     let stored = state
         .store
-        .read_latest_container(&harness)
+        .read_container(&harness)
         .map_err(ApiError::from)?
-        .ok_or_else(|| ApiError::not_found(format!("container `{harness}` not ingested")))?;
-    Ok(Json(container_response(&stored)))
+        .ok_or_else(|| {
+            ApiError::not_found(format!("container `{harness}` has no image reference"))
+        })?;
+    Ok(Json(ContainerOut::from(stored)))
 }
 
-/// `GET /containers/{harness}/files/{path...}` — one build-context file, raw
-/// bytes, traversal-guarded.
-pub async fn file(
+/// `POST /containers` — record the latest pullable image reference for a harness
+/// (posted by the image build/push step). Overwrites any previous reference for
+/// that harness. Network-auth only, like every other endpoint.
+pub async fn post(
     State(state): State<AppState>,
-    Path((harness, path)): Path<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_container_file(&harness, &path)
-        .map_err(ApiError::from)?;
-    let len = bytes.len();
-    Ok((
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
-            (header::CONTENT_LENGTH, len.to_string()),
-        ],
-        Body::from(bytes),
-    )
-        .into_response())
-}
-
-/// Map stored container metadata to the §1.3 resolution response.
-fn container_response(stored: &StoredContainer) -> ContainerResponse {
-    ContainerResponse {
-        harness: stored.harness.clone(),
-        content_hash: stored.content_hash.clone(),
-        builds_from: stored.builds_from.clone(),
-        files: stored
-            .files
-            .iter()
-            .map(|f| FileOut {
-                path: f.path.clone(),
-                size: f.size,
-                sha256: f.sha256.clone(),
-            })
-            .collect(),
+    Json(body): Json<ContainerIn>,
+) -> Result<Json<ContainerOut>, ApiError> {
+    if body.harness.trim().is_empty() {
+        return Err(ApiError::bad_request("`harness` must not be empty"));
     }
+    if body.reference.trim().is_empty() {
+        return Err(ApiError::bad_request("`reference` must not be empty"));
+    }
+    let stored = StoredContainer {
+        harness: body.harness,
+        reference: body.reference,
+    };
+    state
+        .store
+        .write_container(&stored)
+        .map_err(ApiError::from)?;
+    Ok(Json(ContainerOut::from(stored)))
 }
 
 // --- Wire shapes (§1.3) -----------------------------------------------------
 
 #[derive(Serialize)]
 pub struct ContainersResponse {
-    containers: Vec<ContainerSummary>,
+    containers: Vec<ContainerOut>,
 }
 
-#[derive(Serialize)]
+/// A harness and its pullable image reference (`{ harness, reference }`).
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ContainerSummary {
+pub struct ContainerOut {
     harness: String,
-    content_hash: String,
-    builds_from: Option<String>,
+    reference: String,
 }
 
-#[derive(Serialize)]
+impl From<StoredContainer> for ContainerOut {
+    fn from(stored: StoredContainer) -> Self {
+        Self {
+            harness: stored.harness,
+            reference: stored.reference,
+        }
+    }
+}
+
+/// The `POST /containers` request body (`{ harness, reference }`).
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ContainerResponse {
+pub struct ContainerIn {
     harness: String,
-    content_hash: String,
-    builds_from: Option<String>,
-    files: Vec<FileOut>,
+    reference: String,
 }
 
-#[derive(Serialize)]
-struct FileOut {
-    path: String,
-    size: u64,
-    sha256: String,
-}
+#[cfg(test)]
+#[path = "containers.test.rs"]
+mod tests;

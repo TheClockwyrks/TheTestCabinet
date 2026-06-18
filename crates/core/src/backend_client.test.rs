@@ -1,69 +1,10 @@
-//! Tests for the backend client: the content-hash recipe (which must agree with
-//! the backend's), the image tag derivation, and materializing a remote
-//! resolution onto disk through a mock client.
+//! Tests for the backend client: parsing a resolved container image reference
+//! and materializing a remote test-case resolution onto disk through a mock
+//! client.
 
 use super::*;
 use crate::reference::ReferenceRenderer;
 use crate::test_case::{BuildCommands, ReferenceView, SpecFile, TestCaseVersion, Variant};
-
-/// The §4 recipe, recomputed independently here so a regression in
-/// `container_content_hash` is caught without importing the backend.
-fn expected_hash(files: &[(&str, &[u8])]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut pairs: Vec<(String, String)> = files
-        .iter()
-        .map(|(path, bytes)| (path.to_string(), hex::encode(Sha256::digest(bytes))))
-        .collect();
-    pairs.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
-    let mut hasher = Sha256::new();
-    for (path, sha) in &pairs {
-        hasher.update(path.as_bytes());
-        hasher.update(b"\n");
-        hasher.update(sha.as_bytes());
-        hasher.update(b"\n");
-    }
-    format!("sha256:{}", hex::encode(hasher.finalize()))
-}
-
-#[test]
-fn content_hash_matches_the_recipe_and_is_order_independent() {
-    let def_a = ContainerDefinition {
-        harness: "claude".to_string(),
-        content_hash: String::new(),
-        builds_from: Some("base".to_string()),
-        files: vec![
-            ContainerFile {
-                path: std::path::PathBuf::from("Dockerfile"),
-                bytes: b"FROM test-cabinet/base\n".to_vec(),
-            },
-            ContainerFile {
-                path: std::path::PathBuf::from("entrypoint.sh"),
-                bytes: b"#!/bin/sh\n".to_vec(),
-            },
-        ],
-    };
-    // Same files, different traversal order — the hash must agree.
-    let mut def_b = def_a.clone();
-    def_b.files.reverse();
-
-    let expected = expected_hash(&[
-        ("Dockerfile", b"FROM test-cabinet/base\n"),
-        ("entrypoint.sh", b"#!/bin/sh\n"),
-    ]);
-    assert_eq!(container_content_hash(&def_a), expected);
-    assert_eq!(container_content_hash(&def_b), expected);
-}
-
-#[test]
-fn image_tag_strips_the_sha256_prefix() {
-    let def = ContainerDefinition {
-        harness: "claude".to_string(),
-        content_hash: "sha256:1a7bdeadbeef".to_string(),
-        builds_from: Some("base".to_string()),
-        files: vec![],
-    };
-    assert_eq!(image_tag(&def), "test-cabinet/claude:1a7bdeadbeef");
-}
 
 /// A minimal in-memory [`BackendClient`] returning a one-spec, one-asset,
 /// one-common-reference version so materialization can be exercised end to end.
@@ -139,8 +80,11 @@ impl BackendClient for StubBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok("Build {{variant.name}} at {{workspace}}".to_string())
     }
-    async fn resolve_container(&self, _harness: &str) -> Result<ContainerDefinition> {
-        unimplemented!()
+    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage> {
+        Ok(ContainerImage {
+            harness: harness.to_string(),
+            reference: format!("ghcr.io/example/test-cabinet-{harness}@sha256:deadbeef"),
+        })
     }
     async fn publish_run(
         &self,
@@ -199,4 +143,44 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         .expect("render");
     assert_eq!(rendered.len(), 1);
     assert_eq!(rendered[0].view, "title");
+}
+
+/// Serve a single fixed `200` JSON response on a fresh local port, returning the
+/// bound base URL. The one-shot server answers exactly one request, which is all
+/// a single `resolve_container` call makes.
+async fn serve_once(json: &'static str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        // Drain the request headers (we don't route on them — one endpoint).
+        let mut buf = [0u8; 1024];
+        let _ = socket.read(&mut buf).await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            json.len(),
+            json
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn resolve_container_parses_harness_and_reference() {
+    let base = serve_once(
+        r#"{"harness":"claude","reference":"ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b"}"#,
+    )
+    .await;
+    let client = HttpBackendClient::new(base);
+    let image = client.resolve_container("claude").await.expect("resolve");
+    assert_eq!(image.harness, "claude");
+    assert_eq!(
+        image.reference,
+        "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b"
+    );
 }

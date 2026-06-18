@@ -137,36 +137,46 @@ fn versions_are_listed_oldest_to_newest_by_mtime() {
 }
 
 #[test]
-fn container_metadata_round_trips_and_latest_wins() {
+fn container_reference_round_trips_and_latest_overwrites() {
     let (_dir, store) = temp_store();
+    assert!(store.read_container("claude").unwrap().is_none());
+
     let first = StoredContainer {
         harness: "claude".to_string(),
-        content_hash: "sha256:aaaa".to_string(),
-        builds_from: Some("base".to_string()),
-        files: vec![HashedFile {
-            path: "Dockerfile".to_string(),
-            sha256: "aaaa".to_string(),
-            size: 10,
-        }],
+        reference: "ghcr.io/org/test-cabinet-claude@sha256:aaaa".to_string(),
     };
-    store.write_container_meta(&first).unwrap();
-    assert!(store.has_container("claude", "sha256:aaaa"));
+    store.write_container(&first).unwrap();
+    assert_eq!(store.read_container("claude").unwrap().unwrap(), first);
 
-    std::thread::sleep(std::time::Duration::from_millis(20));
+    // A re-post overwrites with the latest reference.
     let second = StoredContainer {
-        content_hash: "sha256:bbbb".to_string(),
-        files: vec![HashedFile {
-            path: "Dockerfile".to_string(),
-            sha256: "bbbb".to_string(),
-            size: 11,
-        }],
-        ..first.clone()
+        harness: "claude".to_string(),
+        reference: "ghcr.io/org/test-cabinet-claude@sha256:bbbb".to_string(),
     };
-    store.write_container_meta(&second).unwrap();
+    store.write_container(&second).unwrap();
+    assert_eq!(store.read_container("claude").unwrap().unwrap(), second);
+}
 
-    // The newer hash is the one resolution serves.
-    let latest = store.read_latest_container("claude").unwrap().unwrap();
-    assert_eq!(latest.content_hash, "sha256:bbbb");
-    // But the old key is still present (immutable history).
-    assert!(store.has_container("claude", "sha256:aaaa"));
+#[test]
+fn list_containers_is_harness_sorted() {
+    let (_dir, store) = temp_store();
+    store
+        .write_container(&StoredContainer {
+            harness: "codex".to_string(),
+            reference: "ghcr.io/org/test-cabinet-codex@sha256:c".to_string(),
+        })
+        .unwrap();
+    store
+        .write_container(&StoredContainer {
+            harness: "claude".to_string(),
+            reference: "ghcr.io/org/test-cabinet-claude@sha256:a".to_string(),
+        })
+        .unwrap();
+    let listed: Vec<String> = store
+        .list_containers()
+        .unwrap()
+        .into_iter()
+        .map(|c| c.harness)
+        .collect();
+    assert_eq!(listed, vec!["claude".to_string(), "codex".to_string()]);
 }

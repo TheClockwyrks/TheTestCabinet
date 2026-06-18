@@ -10,8 +10,10 @@ use crate::ingest::{IngestRequest, Ingestor};
 use super::AppState;
 
 /// `POST /ingest` — scan the configured checkout, copying any new/changed
-/// test-case versions and container definitions into the store and rendering
-/// reference screenshots. Synchronous; returns what changed.
+/// test-case versions into the store and rendering reference screenshots.
+/// Synchronous; returns what changed. Container images are distributed via a
+/// registry and posted separately (`POST /containers`); ingest does not touch
+/// them.
 ///
 /// The scan touches the filesystem and renders references (CPU/process-bound), so
 /// it runs on a blocking thread to keep the async runtime responsive.
@@ -22,7 +24,6 @@ pub async fn ingest(
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let request = IngestRequest {
         test_cases: body.test_cases,
-        containers: body.containers,
         force: body.force,
     };
 
@@ -45,15 +46,6 @@ pub async fn ingest(
                 rendered_references: v.rendered_references,
             })
             .collect(),
-        container_definitions: report
-            .container_definitions
-            .into_iter()
-            .map(|c| ContainerOut {
-                harness: c.harness,
-                ingested: c.ingested,
-                content_hash: c.content_hash,
-            })
-            .collect(),
     }))
 }
 
@@ -65,8 +57,6 @@ pub struct IngestBody {
     #[serde(default)]
     test_cases: Option<Vec<String>>,
     #[serde(default)]
-    containers: Option<Vec<String>>,
-    #[serde(default)]
     force: bool,
 }
 
@@ -74,7 +64,6 @@ pub struct IngestBody {
 #[serde(rename_all = "camelCase")]
 pub struct IngestResponse {
     test_case_versions: Vec<VersionOut>,
-    container_definitions: Vec<ContainerOut>,
 }
 
 #[derive(Serialize)]
@@ -84,12 +73,4 @@ struct VersionOut {
     version: String,
     ingested: bool,
     rendered_references: usize,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ContainerOut {
-    harness: String,
-    ingested: bool,
-    content_hash: String,
 }

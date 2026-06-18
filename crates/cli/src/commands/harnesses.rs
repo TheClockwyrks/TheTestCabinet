@@ -20,8 +20,10 @@ pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     for slug in HarnessSlug::ALL {
         let availability = match &runtime {
             Ok(runtime) => match registry.get(slug) {
+                // `tcab harnesses` is a local availability probe with no backend,
+                // so it checks the harness's local-build image.
                 Some(harness) => harness
-                    .check_availability(runtime)
+                    .check_availability(runtime, &harness.image())
                     .await
                     .unwrap_or_else(|err| Availability {
                         available: false,
