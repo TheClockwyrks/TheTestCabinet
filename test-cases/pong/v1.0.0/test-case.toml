@@ -59,12 +59,11 @@ build = "npm run build"
 # them freely; the common specs, in turn, must never reference a mode spec that a
 # given variant does not seed (only `modes/standard.md` is always present).
 #
-# The overview is a Handlebars template (`.hbs`): it is rendered with the
-# selected variant before it lands at its `.md` dest, so it can name the build's
-# configuration directly instead of hedging about what the run might contain. The
-# remaining common specs are plain Markdown and are seeded verbatim.
+# Every common spec is plain Markdown, seeded verbatim. (A `.hbs` source would be
+# rendered with the selected variant before landing at its `dest`; no common spec
+# needs that here, since none of their text varies by variant or version.)
 [[spec]]
-source = "specs/overview.hbs"
+source = "specs/overview.md"
 dest = "specs/overview.md"
 
 [[spec]]

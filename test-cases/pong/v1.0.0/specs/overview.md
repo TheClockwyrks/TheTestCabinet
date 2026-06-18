@@ -113,6 +113,18 @@ match them.
   required so the game renders identically offline.
 - Paddles, the ball, and obstacles have a soft neon glow. The center net is a
   dashed vertical line at `x = 640`.
+- **The ball leaves a motion trail (required).** Behind the moving ball, draw a
+  fading tail that traces its **recent path**, so it visibly curves whenever
+  spin curves the flight (see the spin mechanic in `specs/physics.md`). It must
+  read as one **continuous** streak — a smooth comet, not a row of discrete dots
+  — that **tapers** from the ball: widest and brightest where it meets the ball,
+  then narrowing and fading smoothly to nothing at its oldest end. The trail
+  represents a **fixed slice of recent travel time** (on the order of `0.1`–`0.15
+  s` of motion), so its length is proportional to the ball's current speed: it
+  stretches as the ball speeds up and shortens as it slows, collapsing to almost
+  nothing during the pre-serve hold while the ball is still. Use the ball color;
+  the trail is what makes the ball's speed and spin legible in motion. Match
+  `reference/gameplay.png`.
 - The three canonical screens — the title screen, the in-match view, and the
   match-over screen — are described in full under Game States in `specs/flow.md`.
   Implement each as described, in this palette and type.

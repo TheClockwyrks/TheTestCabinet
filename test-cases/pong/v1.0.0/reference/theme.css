@@ -105,13 +105,17 @@ body {
   box-shadow: 0 0 16px rgba(242, 245, 247, 0.8);
 }
 
-/* Faint curving trail that communicates the spin mechanic. */
+/* The ball's motion trail: a continuous comet that communicates speed and the
+ * spin mechanic. It is one filled SVG ribbon laid over the field, tracing the
+ * ball's recent (curving) path — tapering to a point at the oldest end and
+ * fading out through a gradient, so it reads as a single smooth streak rather
+ * than discrete dots. The SVG spans the whole logical stage; its path is in
+ * stage coordinates. */
 .trail {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(242, 245, 247, 0.18);
+  left: 0;
+  top: 0;
+  pointer-events: none;
 }
 
 .obstacle {
