@@ -30,6 +30,7 @@ export function RunVerdictPage() {
         canExecute && localIds.has(run.id) ? (
           <RunReviewEditor
             runId={run.id}
+            subject={run.subject}
             review={review}
             onChanged={() => runtime.requestRefresh()}
           />

@@ -64,6 +64,18 @@ export interface BackendClient {
 
   /** One published run by id (`GET /runs/{id}`): record + review + links. */
   readRun(id: string): Promise<StoredRun>;
+
+  /**
+   * The reviewer checklist items a case declares for a variant (`commonReviewItems`
+   * plus the variant's own), resolved from the version manifest. These are
+   * definitional catalog data — keyed by the case identity a run record carries,
+   * not by run id — so the reviewer works through every item the author called out.
+   */
+  readReviewItems(
+    slug: string,
+    version: string,
+    variant: string,
+  ): Promise<ReviewItem[]>;
 }
 
 // Handlers for a live run subscription.
@@ -106,12 +118,6 @@ export interface WorkerClient {
 
   /** One produced run by id. */
   readRun(id: string): Promise<StoredRun>;
-
-  /** The case-declared reviewer checklist items for a produced run. */
-  readReviewItems(id: string): Promise<ReviewItem[]>;
-
-  /** Save a review (writeup + rating + checklist verdicts) for a produced run. */
-  saveReview(id: string, review: ReviewDocumentInput): Promise<void>;
 
   /**
    * Publish a run together with its review (`POST /publish`). The review is

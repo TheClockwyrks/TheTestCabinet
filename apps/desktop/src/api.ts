@@ -171,8 +171,8 @@ export const listPublishedRuns = (opts?: { before?: string; limit?: number }) =>
   });
 export const readPublishedRun = (id: string) =>
   invoke<StoredRun>("read_published_run", { id });
-export const readReviewItems = (id: string) =>
-  invoke<ReviewItem[]>("read_review_items", { id });
+export const readReviewItems = (slug: string, version: string, variant: string) =>
+  invoke<ReviewItem[]>("read_review_items", { slug, version, variant });
 export const saveReview = (
   id: string,
   rating: Rating,

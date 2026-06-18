@@ -12,6 +12,7 @@ import type {
   BackendIdentity,
   Model,
   ReviewDocument,
+  ReviewItem,
   RunPage,
   Specification,
   SpecDocument,
@@ -69,11 +70,13 @@ interface ResolvedVersion {
   description: string | null;
   maxRuntimeSeconds: number;
   commonSpecs?: SpecDescriptor[];
+  commonReviewItems?: ReviewItem[];
   variants: {
     slug: string;
     name: string;
     description: string | null;
     specs?: SpecDescriptor[];
+    reviewItems?: ReviewItem[];
   }[];
 }
 
@@ -181,6 +184,21 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         description: r.description,
         specs,
       };
+    },
+
+    async readReviewItems(
+      slug: string,
+      version: string,
+      variant: string,
+    ): Promise<ReviewItem[]> {
+      // The checklist items are declared in the version manifest: the common
+      // items every variant shares, plus the selected variant's own additions.
+      const r = await getJson<ResolvedVersion>(
+        baseUrl,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+      );
+      const chosen = r.variants.find((v) => v.slug === variant);
+      return [...(r.commonReviewItems ?? []), ...(chosen?.reviewItems ?? [])];
     },
 
     async listModels(): Promise<Model[]> {

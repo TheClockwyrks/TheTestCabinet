@@ -1,7 +1,9 @@
 // The WorkerClient over HTTP, against a worker's REST API
 // (components/worker/overview.md). A worker only executes runs and publishes
-// them — it never serves the catalog. Operations the worker API does not define
-// (enumerating produced runs, reading checklist items, saving a review) throw
+// them — it never serves the catalog. The review carried with a publish travels
+// inline (the worker keeps no review store); the case-declared checklist items a
+// reviewer works through are catalog data, read from the backend instead. The one
+// operation the worker API still can't define (enumerating produced runs) throws
 // NotSupportedError so the console renders a clear "not available here" state.
 import { NotSupportedError } from "@test-cabinet/ui/client";
 import type {
@@ -13,7 +15,6 @@ import type {
   LaunchConfig,
   PublishResult,
   ReviewDocumentInput,
-  ReviewItem,
   RunJob,
   StoredRun,
   WorkerIdentity,
@@ -123,14 +124,6 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       );
       if (!job.record) throw new Error(`Run ${id} has no record yet.`);
       return { id, record: job.record, review: null };
-    },
-
-    async readReviewItems(_id: string): Promise<ReviewItem[]> {
-      throw new NotSupportedError("read review checklist items");
-    },
-
-    async saveReview(_id: string, _review: ReviewDocumentInput): Promise<void> {
-      throw new NotSupportedError("save a review");
     },
 
     async publish(

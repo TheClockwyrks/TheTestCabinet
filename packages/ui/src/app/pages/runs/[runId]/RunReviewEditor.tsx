@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
-import { NotSupportedError } from "../../../../client/clients";
-import { useWorkers } from "../../../../client/context";
+import { useBackend, useWorkers } from "../../../../client/context";
 import type {
   ReviewItem,
   ReviewVerdict,
   VerdictStatus,
 } from "../../../../client/types";
+import type { RunSubject } from "@test-cabinet/run-record";
 import {
   RATINGS,
   VERDICT_META,
@@ -24,21 +24,27 @@ interface VerdictDraft {
 const STATUSES: VerdictStatus[] = ["pass", "fail", "na"];
 
 // The editable Verdict mode for a produced, not-yet-published run that the active
-// worker owns: rate it, work the case's declared checklist, write the review,
-// save, and publish. Read-only published runs keep the plain verdict rendering;
-// this is shown only when the run is worker-owned and unpublished. Ported from
-// the old console Review screen's run detail.
+// worker owns: rate it, work the case's declared checklist, write the review, and
+// publish (the review is submitted with the publish). Read-only published runs
+// keep the plain verdict rendering; this is shown only when the run is
+// worker-owned and unpublished. Ported from the old console Review screen's run
+// detail.
 export function RunReviewEditor({
   runId,
+  subject,
   review,
   onChanged,
 }: {
   runId: string;
+  subject: RunSubject;
   review: ParsedWriteup | undefined;
   onChanged: () => void;
 }) {
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
+  // The checklist items are catalog data: read them from the backend, keyed by
+  // the run's case identity — the worker doesn't serve the catalog.
+  const { client: backend } = useBackend();
   const [rating, setRating] = useState<Rating>(review?.rating ?? "great");
   const [writeup, setWriteup] = useState(review?.body ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -47,14 +53,19 @@ export function RunReviewEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the case's declared checklist items, seeding verdicts from any prior
-  // review so re-reviewing keeps earlier answers.
+  // Load the case's declared checklist items from the backend (common + this
+  // variant's own), seeding verdicts from any prior review so re-reviewing keeps
+  // earlier answers.
   useEffect(() => {
-    if (!client) return;
+    if (!backend) return;
     let cancelled = false;
     const prior = new Map((review?.checklist ?? []).map((v) => [v.id, v]));
-    client
-      .readReviewItems(runId)
+    backend
+      .readReviewItems(
+        subject.testCaseSlug,
+        subject.testCaseVersion,
+        subject.variant,
+      )
       .then((loaded) => {
         if (cancelled) return;
         const drafts: Record<string, VerdictDraft> = {};
@@ -69,16 +80,19 @@ export function RunReviewEditor({
         setVerdicts(drafts);
       })
       .catch((e) => {
-        // A transport that can't supply checklist items just yields none; the
-        // writeup + rating can still be saved.
-        if (!cancelled && !(e instanceof NotSupportedError)) setError(String(e));
+        if (!cancelled) setError(String(e));
       });
     return () => {
       cancelled = true;
     };
-    // Seed only on run/client change; `review` is the initial value.
+    // Seed only on run/backend change; `review` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, client]);
+  }, [
+    backend,
+    subject.testCaseSlug,
+    subject.testCaseVersion,
+    subject.variant,
+  ]);
 
   const allAddressed = items.every((item) => verdicts[item.id]?.status);
 
@@ -105,26 +119,6 @@ export function RunReviewEditor({
         ...(note ? { note } : {}),
       };
     });
-  }
-
-  async function onSave() {
-    if (!client) return;
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      await client.saveReview(runId, {
-        rating,
-        writeup,
-        checklist: buildChecklist(),
-      });
-      setMessage("Review saved.");
-      onChanged();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function onPublish() {
@@ -234,18 +228,6 @@ export function RunReviewEditor({
       <div className={styles.actions}>
         <button
           className={styles.primary}
-          onClick={onSave}
-          disabled={busy || !writeup.trim() || !allAddressed}
-          title={
-            !allAddressed
-              ? "Give every checklist item a verdict before saving"
-              : undefined
-          }
-        >
-          Save review
-        </button>
-        <button
-          className={styles.secondary}
           onClick={onPublish}
           disabled={busy || !writeup.trim() || !allAddressed}
           title={

@@ -8,6 +8,7 @@
 import {
   type BackendClient,
   type BackendIdentity,
+  type ReviewItem,
   type RunPage,
   type StoredRun,
 } from "@test-cabinet/ui/client";
@@ -33,6 +34,8 @@ export function createTauriBackend(): BackendClient {
     resolveVersion: (slug, version) => api.resolveVersion(slug, version),
     readSpecs: (slug, version, variant) =>
       api.readSpecs(slug, version, variant),
+    readReviewItems: (slug, version, variant): Promise<ReviewItem[]> =>
+      api.readReviewItems(slug, version, variant),
     listRuns(opts): Promise<RunPage> {
       return api.listPublishedRuns(opts);
     },

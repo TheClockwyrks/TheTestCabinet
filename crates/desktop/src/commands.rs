@@ -533,12 +533,21 @@ fn published_to_stored(run: PublishedRun) -> StoredRun {
 }
 
 /// The reviewer checklist items a run must be judged against, as the webview
-/// reads them: the declared items for the run's selected variant.
+/// reads them: a variant's declared items (common + variant-specific). These are
+/// definitional catalog data, keyed by the case identity the run record carries —
+/// the desktop core serves them through its backend facade, mirroring the HTTP
+/// backend's resolved-version endpoint.
 #[tauri::command]
-pub async fn read_review_items(id: String) -> CmdResult<Vec<ReviewItem>> {
-    let record_path = config::output_dir().join(&id).join("run-record.json");
-    let record = load_record(&record_path)?;
-    review_items_for_record(&record).await
+pub async fn read_review_items(
+    slug: String,
+    version: String,
+    variant: String,
+) -> CmdResult<Vec<ReviewItem>> {
+    let resolved = resolve_version_inner(&slug, &version).await?;
+    let variant_ref = resolved
+        .variant(&variant)
+        .map_err(|e| err("selecting variant", e))?;
+    Ok(resolved.review_items_for(variant_ref))
 }
 
 /// Write (or overwrite) the review for a finished run: validate the rating, gate
