@@ -18,7 +18,8 @@
     "assets",
     "variants",
     "commonReferences",
-    "checks"
+    "checks",
+    "commonReviewItems"
   ],
   "properties": {
     "slug": { "type": "string" },
@@ -62,6 +63,11 @@
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/Check" }
+    },
+    "commonReviewItems": {
+      "type": "array",
+      "description": "Reviewer checklist items shared by every variant. Reporter-side material (not seeded): the reviewer must record a verdict for each before a run can be published.",
+      "items": { "$ref": "#/$defs/ReviewItem" }
     }
   },
   "$defs": {
@@ -125,7 +131,7 @@
     "Variant": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["slug", "name", "specs", "references"],
+      "required": ["slug", "name", "specs", "references", "reviewItems"],
       "properties": {
         "slug": { "type": "string" },
         "name": { "type": "string" },
@@ -139,6 +145,27 @@
           "type": "array",
           "description": "References additive to the common references, resolved to rendered screenshots.",
           "items": { "$ref": "#/$defs/ResolvedReference" }
+        },
+        "reviewItems": {
+          "type": "array",
+          "description": "Reviewer checklist items additive to the common items, surfaced only when this variant is selected.",
+          "items": { "$ref": "#/$defs/ReviewItem" }
+        }
+      }
+    },
+    "ReviewItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text"],
+      "description": "A reviewer checklist item a test case declares: something a reviewer must explicitly check after playing the build. Not seeded into the run.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable slug identifying the item; recorded with the reviewer's verdict."
+        },
+        "text": {
+          "type": "string",
+          "description": "The prose a reviewer reads — what to check."
         }
       }
     },

@@ -14,8 +14,37 @@
     },
     "writeup": {
       "type": "string",
-      "description": "The markdown writeup body, with any rating frontmatter stripped. Must be non-empty.",
+      "description": "The markdown writeup body, with any rating and checklist frontmatter stripped. Must be non-empty.",
       "minLength": 1
+    },
+    "checklist": {
+      "type": "array",
+      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; publishing refuses a run whose review leaves any declared item without a verdict. Empty for a case that declares no items.",
+      "items": { "$ref": "#/$defs/ReviewVerdict" }
+    }
+  },
+  "$defs": {
+    "ReviewVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "description": "A reviewer's recorded verdict on one declared checklist item.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The declared checklist item's stable id.",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "The verdict: pass (satisfied), fail (not satisfied), or na (does not apply to this build).",
+          "enum": ["pass", "fail", "na"]
+        },
+        "note": {
+          "type": "string",
+          "description": "An optional one-line note recording what the reviewer observed."
+        }
+      }
     }
   }
 }

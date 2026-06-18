@@ -28,11 +28,10 @@ new variant should look like them.
 
 ```text
 test-cases/pong/v1.0.0/
-  test-case.toml         # manifest: declares specs, variants, references, checks
+  test-case.toml         # manifest: specs, variants, references, checks, review items
   prompt.hbs             # rendered per run into the model's instruction
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
-  validation.md          # what the harness checks (NOT seeded)
   specs/
     overview.hbs         # common specs, seeded for EVERY variant
     playfield.md
@@ -134,6 +133,9 @@ name = "Gyre"
 description = "Standard plus a mode whose obstacles oscillate and rotate."
 spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+review_item = [
+  { id = "gyre-oriented-bounce", text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles." },
+]
 ```
 
 Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/test-cases.md`):
@@ -142,6 +144,11 @@ Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/tes
   no two seeded specs (common + own) may share a `dest`.
 - `reference` entries are additive on top of the common `[[reference]]` views. A
   view slug must not be declared both commonly and by a variant.
+- `review_item` entries are additive on top of the common `[[review_item]]`s. Add
+  one for the mode this variant introduces — the observable thing a reviewer must
+  check that the standard modes don't have (Gyre's oriented bounce, Frenzy's
+  uncapped speed ramp). An item `id` must be unique within the variant's effective
+  set (common + own). Review items are reporter-side, never seeded.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
   variant — for `pong`, every variant provides its own `title`, which is what the
   `title` check baselines against.
@@ -180,8 +187,8 @@ npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
 cargo run --locked -p test-cabinet-cli -- catalog
 ```
 
-See [`apps/docs/src/content/docs/validation.md`](../../../apps/docs/src/content/docs/validation.md) for what the harness
-checks automatically.
+See [`apps/docs/src/content/docs/components/core/validation.md`](../../../apps/docs/src/content/docs/components/core/validation.md)
+for what the harness checks automatically.
 
 ### 8. Commit
 

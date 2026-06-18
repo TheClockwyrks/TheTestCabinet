@@ -26,7 +26,7 @@ without the scale of the harder cases.
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `validation.md`        | No             | What the harness checks automatically.             |
+| `test-case.toml`       | No             | Manifest: specs, variants, checks, review items.   |
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,

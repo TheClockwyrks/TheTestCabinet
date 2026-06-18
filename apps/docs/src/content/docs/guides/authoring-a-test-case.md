@@ -25,11 +25,10 @@ contamination matters less.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: declares specs, variants, references, checks
+  test-case.toml         # manifest: specs, variants, references, checks, review items
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
-  validation.md          # what the harness checks (NOT seeded)
   specs/                 # the specification, decomposed by concern — SEEDED
   reference/             # mockup SOURCE — rendered to screenshots, NOT seeded
   assets/                # sprites etc. the model must use — SEEDED (omit if none)
@@ -130,12 +129,16 @@ Author `test-case.toml` per the [schema](/components/core/test-cases/#manifest):
   [Creating a Test Case Variant](/guides/creating-a-test-case-variant/).
 - Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
   view's baseline must resolve for **every** variant.
+- A common **`[[review_item]]`** list — the major, observable requirements a
+  reviewer must check by playing the build (a variant adds its own for the mode it
+  introduces). These are reporter-side and **not seeded**; the reviewer records a
+  verdict for each before a run can be published. See
+  [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 
 ### 7. Write the non-seeded docs
 
-`description.md` (site blurb), `README.md` (human overview, slug-vs-title note),
-and `validation.md` (what the harness checks). These never reach a run; keep them
-honest about what is seeded.
+`description.md` (site blurb) and `README.md` (human overview, slug-vs-title
+note). These never reach a run; keep them honest about what is seeded.
 
 ## Validate your work
 

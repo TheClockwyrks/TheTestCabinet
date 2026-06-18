@@ -36,11 +36,10 @@ case should look like it.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: declares specs, variants, references, checks
+  test-case.toml         # manifest: specs, variants, references, checks, review items
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
-  validation.md          # what the harness checks (NOT seeded)
   specs/                 # the specification, decomposed by concern — SEEDED
     overview.hbs         #   goals, hard requirements, coordinate system, palette
     playfield.md         #   geometry of the field and its objects
@@ -125,17 +124,30 @@ and step 4 of [`adding-a-variant`](../adding-a-variant/SKILL.md).
 Author `test-case.toml` per the schema in
 [`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md): metadata, the common
 `[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
-the default — usually `base`), and any opt-in `[[check]]`. For additional
-variants follow [`adding-a-variant`](../adding-a-variant/SKILL.md). A `.hbs`
-source is rendered; anything else is seeded verbatim.
+the default — usually `base`), any opt-in `[[check]]`, and the common
+`[[review_item]]` list (see step 7). For additional variants follow
+[`adding-a-variant`](../adding-a-variant/SKILL.md). A `.hbs` source is rendered;
+anything else is seeded verbatim.
 
-### 7. Write the non-seeded docs
+### 7. Declare the reviewer checklist
+
+In the manifest, declare `[[review_item]]`s: the major, observable requirements a
+reviewer must explicitly check by playing the build — the signature mechanics and
+the easy-to-miss correctness behaviors that validation cannot judge. Each item is
+a stable `id` plus the `text` a reviewer reads; a variant adds its own for the
+mode it introduces (see [`adding-a-variant`](../adding-a-variant/SKILL.md)). These
+are **not seeded** — they restate requirements the seeded specs already state, so
+the model never receives the checklist. The reviewer records a verdict for each
+before a run can be published. Pong's items are the model; aim for a handful that
+capture what a person must verify, not an exhaustive restatement of the spec.
+
+### 8. Write the non-seeded docs
 
 `description.md` (site blurb), `README.md` (human overview, slug-vs-title note),
-`validation.md` (what the harness checks), and `reference/README.md` (the view
-table). These never reach a run; keep them honest about what is seeded.
+and `reference/README.md` (the view table). These never reach a run; keep them
+honest about what is seeded.
 
-### 8. Validate and commit
+### 9. Validate and commit
 
 See *Validating* below.
 

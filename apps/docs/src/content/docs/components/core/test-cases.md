@@ -104,6 +104,10 @@ spec = []                    # ADDITIVE specs on top of the common specs
 # ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
 # `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
 reference = [{ view = "title", path = "reference/menu-base.html" }]
+# ADDITIVE reviewer checklist items on top of the common ones (see below); same
+# `{ id, text }` shape as a `[[review_item]]`. Lets a mode-only item be checked
+# only when this variant runs.
+review_item = []
 
 # Common reference views, rendered and seeded for EVERY variant. Each `path`
 # mockup is rendered to a screenshot that is seeded as a visual target; the source
@@ -118,6 +122,13 @@ view = "title"               # the view this check records under
 name = "Title"               # display name (optional; default humanizes the view slug)
 reference = "title"          # baseline: the rendered screenshot of this reference
 actions = []                 # actions to drive the build into the view (empty = on load)
+
+# Reviewer checklist items, common to every variant. Reporter-side material (NOT
+# seeded): each names something a reviewer must explicitly check after playing
+# the build. A variant may add its own (see the variant's `review_item` above).
+[[review_item]]
+id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
+text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
 ```
 
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
@@ -170,6 +181,18 @@ actions = []                 # actions to drive the build into the view (empty =
   `actions` drive the built implementation into the view before capture. Its
   optional `name` is a display label, defaulting to a humanized form of `view`.
   See [Validation](/components/core/validation/#checks).
+- Each `[[review_item]]` declares a **common** reviewer checklist item — one a
+  person must explicitly check when reviewing any variant — by a stable `id`
+  (recorded with the verdict) and the `text` a reviewer reads. A variant may
+  declare **additive** items through its own `review_item` array (same
+  `{ id, text }` shape); see [Variants](#variants). Review items are
+  reporter-side material: like the reference *source* and a case's
+  `description`, they are **never seeded** into a run, so the model never
+  receives the checklist. They restate observable requirements the seeded
+  specification already states, so withholding them hides nothing. An item id
+  must be unique within a variant's effective set (common plus that variant's
+  own); a collision is rejected at resolution. See
+  [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 
 ## Prompt template
 
@@ -276,6 +299,17 @@ at resolution. (Different variants each declaring their own reference for the
 *same* view slug — the per-variant menu above — is exactly the point and is
 allowed.) Because a check's baseline must resolve whichever variant runs, a
 checked view must be supplied either commonly or by **every** variant.
+
+### Variant-specific reviewer checklist items
+
+A variant may likewise declare **variant-specific reviewer checklist items**
+through a `review_item` array of `{ id, text }` tables, additive on top of the
+common `[[review_item]]` list just as `spec` and `reference` are additive. This
+lets a mode-only requirement be checked only when the variant that adds the mode
+runs — for example an item about an extra mode's escalating speed rides along
+with that variant alone. An item `id` must be unique within a variant's
+effective set (the common items plus that variant's own); a collision is
+rejected at resolution.
 
 ## Self-Contained Specifications
 

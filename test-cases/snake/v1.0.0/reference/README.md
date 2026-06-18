@@ -4,8 +4,8 @@ These files are the **canonical visual reference** for the Coil test case. They
 are authored as self-contained static HTML on a fixed `1280x720` logical stage
 so the testing harness can render and screenshot them deterministically. The
 rendered screenshots serve two purposes: they are seeded into a run as visual
-targets, and they are the baselines for any [validation check](../validation.md#checks)
-that names the view.
+targets, and they are the baselines for any validation check (declared in
+`../test-case.toml`) that names the view.
 
 ## Source is rendered, not seeded
 

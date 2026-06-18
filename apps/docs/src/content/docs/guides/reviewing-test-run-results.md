@@ -49,19 +49,46 @@ Play the build the way a visitor would and check it against the spec: do the
 mechanics match, are the screens present, are there bugs, and do any of them
 affect playability.
 
+## Work the checklist
+
+A test case version may declare a **reviewer checklist** — a list of items the
+case author marked as things every reviewer must explicitly check (see the
+manifest's [`review_item`s](/components/core/test-cases/#manifest)). The checklist
+is the case's guarantee that the major requirements are verified by hand rather
+than left to whatever a reviewer happens to notice; it is **not** seeded into the
+run, so it never reaches the model.
+
+In the desktop app the items for the run's variant appear in the review editor,
+and each must be given a verdict before the review can be saved or the run
+published:
+
+- **pass** — checked, and the build satisfies it.
+- **fail** — checked, and the build does not satisfy it.
+- **na** — the item does not apply to this build.
+
+Add a short note alongside a verdict to record what you observed. The checklist
+guarantees coverage, not a score — the rating below remains your own call.
+
 ## Write the review
 
 Create `runs/<id>/writeup.md`, beside the run's `run-record.json`, with the
-rating in YAML frontmatter and a non-empty body:
+rating in YAML frontmatter and a non-empty body. Checklist verdicts, when the
+case declares items, follow the rating as `review.<id>: <status> [note]` lines:
 
 ```markdown
 ---
 rating: great
+review.ball-spin: pass
+review.obstacle-bank: fail ball clips the top obstacle corner
 ---
 
 Movement and collision feel right. The pause menu doesn't restore keyboard
 focus, but it doesn't block play.
 ```
+
+The desktop app writes this file for you, including the checklist lines; the
+format is documented here because the file is also hand-editable. A run cannot be
+published while any declared checklist item is missing its verdict.
 
 The **writeup** is the short prose the site shows before the playable build. The
 **rating** travels with it in the frontmatter (not in the run record) and must be

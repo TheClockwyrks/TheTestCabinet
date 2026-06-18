@@ -80,13 +80,24 @@ checked before any code is pushed, and a sweep is never left half published.
 Every published run carries a hand-written **review**: a short
 [writeup](/components/site/overview/#implementation-writeups) the site shows
 before the playable build, together with a **rating** that records the
-reviewer's overall assessment.
+reviewer's overall assessment and a **checklist** of verdicts on the items the
+test case asked the reviewer to check.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the
-[run record](/components/core/run-records/) contract. The rating travels with
-the writeup (in its frontmatter), not in the record. Publishing makes the review
-available to the site alongside the run record.
+[run record](/components/core/run-records/) contract. The rating and the
+checklist verdicts travel with the writeup (in its frontmatter), not in the
+record. Publishing makes the review available to the site alongside the run
+record.
+
+The **checklist** records a verdict — **pass**, **fail**, or **na** (not
+applicable), with an optional note — for each reviewer checklist item the test
+case version declares (see the version manifest's
+[`review_item`s](/components/core/test-cases/#manifest)). It guarantees coverage,
+not a score: every declared item must carry a verdict before a run can be
+published, so a reviewer cannot silently skip a requirement the case author
+called out. The verdicts are recorded faithfully but the rating stays the
+reviewer's own call — the checklist informs it, it does not compute it.
 
 The rating is one of four hand-assigned tiers — **flawless**, **great**,
 **scuffed**, or **broken**, in descending order of fidelity to the spec. What
