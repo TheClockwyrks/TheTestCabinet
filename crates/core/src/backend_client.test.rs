@@ -45,6 +45,7 @@ impl BackendClient for StubBackend {
                 description: None,
                 specs: vec![],
                 references: vec![],
+                review_items: vec![],
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
@@ -53,6 +54,7 @@ impl BackendClient for StubBackend {
                 ),
             }],
             checks: vec![],
+            common_review_items: vec![],
         })
     }
     async fn artifact(

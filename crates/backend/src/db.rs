@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::review::Rating;
+use test_cabinet_core::review::{Rating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 
 use crate::error::{BackendError, Result};
@@ -44,6 +44,11 @@ pub struct StoredReview {
     pub rating: Rating,
     /// The markdown writeup body.
     pub writeup: String,
+    /// The reviewer's verdicts on the case's declared checklist items. Stored as
+    /// a JSON array in the `review.checklist` column. Empty for a case with no
+    /// items, or a run published before the field existed.
+    #[serde(default)]
+    pub checklist: Vec<ReviewVerdict>,
 }
 
 /// The outcome of publishing a run into the store.
@@ -174,11 +179,18 @@ impl Db {
             ],
         )?;
 
+        let checklist_json = serde_json::to_string(&review.checklist)?;
         tx.execute(
-            "INSERT INTO review (run_id, rating, writeup) VALUES (?1,?2,?3)
+            "INSERT INTO review (run_id, rating, writeup, checklist) VALUES (?1,?2,?3,?4)
              ON CONFLICT(run_id) DO UPDATE SET
-                rating = excluded.rating, writeup = excluded.writeup",
-            params![record.id, review.rating.as_str(), review.writeup],
+                rating = excluded.rating, writeup = excluded.writeup,
+                checklist = excluded.checklist",
+            params![
+                record.id,
+                review.rating.as_str(),
+                review.writeup,
+                checklist_json
+            ],
         )?;
 
         tx.execute(
@@ -330,9 +342,9 @@ impl Db {
     }
 }
 
-/// Decode a joined row into a [`StoredRun`]. Every query selects the same six
+/// Decode a joined row into a [`StoredRun`]. Every query selects the same seven
 /// columns in this order: `record_json, rating, writeup, source_repo,
-/// playable_build, published_at`.
+/// playable_build, published_at, checklist`.
 fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     let record_json: String = row.get(0)?;
     let rating_str: String = row.get(1)?;
@@ -340,6 +352,7 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     let source_repo: Option<String> = row.get(3)?;
     let playable_build: Option<String> = row.get(4)?;
     let published_at: String = row.get(5)?;
+    let checklist_json: String = row.get(6)?;
 
     let record: RunRecord = serde_json::from_str(&record_json).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
@@ -347,10 +360,17 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     let rating = Rating::parse(&rating_str).ok_or_else(|| {
         rusqlite::Error::InvalidColumnType(1, "rating".to_string(), rusqlite::types::Type::Text)
     })?;
+    let checklist: Vec<ReviewVerdict> = serde_json::from_str(&checklist_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(e))
+    })?;
 
     Ok(StoredRun {
         record,
-        review: StoredReview { rating, writeup },
+        review: StoredReview {
+            rating,
+            writeup,
+            checklist,
+        },
         links: RunLinks {
             source_repo,
             playable_build,
@@ -359,9 +379,9 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     })
 }
 
-/// The shared six-column projection every `StoredRun` query selects.
-const STORED_RUN_COLUMNS: &str =
-    "r.record_json, rv.rating, rv.writeup, l.source_repo, l.playable_build, r.published_at";
+/// The shared seven-column projection every `StoredRun` query selects.
+const STORED_RUN_COLUMNS: &str = "r.record_json, rv.rating, rv.writeup, l.source_repo, \
+     l.playable_build, r.published_at, rv.checklist";
 
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
@@ -396,9 +416,10 @@ CREATE INDEX IF NOT EXISTS idx_run_harness     ON run (harness_slug);
 CREATE INDEX IF NOT EXISTS idx_run_model       ON run (model_id);
 
 CREATE TABLE IF NOT EXISTS review (
-    run_id   TEXT PRIMARY KEY REFERENCES run (id) ON DELETE CASCADE,
-    rating   TEXT NOT NULL,
-    writeup  TEXT NOT NULL
+    run_id    TEXT PRIMARY KEY REFERENCES run (id) ON DELETE CASCADE,
+    rating    TEXT NOT NULL,
+    writeup   TEXT NOT NULL,
+    checklist TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS run_link (

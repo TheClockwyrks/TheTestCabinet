@@ -128,6 +128,7 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
                         screenshot_url: reference_url(&v.slug, &r.view),
                     })
                     .collect(),
+                review_items: v.review_items.iter().map(review_item_out).collect(),
             })
             .collect(),
         common_references: manifest
@@ -148,6 +149,19 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
                 actions: c.actions.clone(),
             })
             .collect(),
+        common_review_items: manifest
+            .common_review_items
+            .iter()
+            .map(review_item_out)
+            .collect(),
+    }
+}
+
+/// Map a stored reviewer checklist item to its wire `{id, text}` shape.
+fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
+    ReviewItemOut {
+        id: item.id.clone(),
+        text: item.text.clone(),
     }
 }
 
@@ -234,6 +248,7 @@ pub struct VersionResponse {
     variants: Vec<VariantOut>,
     common_references: Vec<ReferenceOut>,
     checks: Vec<CheckOut>,
+    common_review_items: Vec<ReviewItemOut>,
 }
 
 #[derive(Serialize)]
@@ -256,12 +271,20 @@ struct AssetOut {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct VariantOut {
     slug: String,
     name: String,
     description: Option<String>,
     specs: Vec<SpecOut>,
     references: Vec<ReferenceOut>,
+    review_items: Vec<ReviewItemOut>,
+}
+
+#[derive(Serialize)]
+struct ReviewItemOut {
+    id: String,
+    text: String,
 }
 
 #[derive(Serialize)]

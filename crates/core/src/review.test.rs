@@ -70,6 +70,7 @@ fn renders_a_canonical_file_that_reparses() {
     let writeup = Writeup {
         rating: Rating::Scuffed,
         body: "Plays, but the score resets on pause.".to_string(),
+        checklist: vec![],
     };
     let file = writeup.to_file_string();
     assert_eq!(
@@ -77,4 +78,136 @@ fn renders_a_canonical_file_that_reparses() {
         "---\nrating: scuffed\n---\n\nPlays, but the score resets on pause.\n"
     );
     assert_eq!(parse_writeup(&file).expect("reparse"), writeup);
+}
+
+#[test]
+fn parses_checklist_verdicts_with_and_without_notes() {
+    let raw = "---\nrating: great\n\
+               review.ball-spin: pass\n\
+               review.bank-shot: fail ball clips the top obstacle\n\
+               review.frenzy: na\n\
+               ---\n\nPlays well.\n";
+    let writeup = parse_writeup(raw).expect("parse");
+    assert_eq!(
+        writeup.checklist,
+        vec![
+            ReviewVerdict {
+                id: "ball-spin".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "bank-shot".to_string(),
+                status: VerdictStatus::Fail,
+                note: Some("ball clips the top obstacle".to_string()),
+            },
+            ReviewVerdict {
+                id: "frenzy".to_string(),
+                status: VerdictStatus::NotApplicable,
+                note: None,
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_writeup_with_verdicts_round_trips() {
+    let writeup = Writeup {
+        rating: Rating::Scuffed,
+        body: "Bank shots are off.".to_string(),
+        checklist: vec![
+            ReviewVerdict {
+                id: "ball-spin".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "bank-shot".to_string(),
+                status: VerdictStatus::Fail,
+                note: Some("clips the corner".to_string()),
+            },
+        ],
+    };
+    let file = writeup.to_file_string();
+    assert_eq!(parse_writeup(&file).expect("reparse"), writeup);
+}
+
+#[test]
+fn a_note_with_a_stray_newline_is_normalized_to_one_line() {
+    // A note must never break the frontmatter block: newlines collapse to spaces.
+    let writeup = Writeup {
+        rating: Rating::Broken,
+        body: "Unplayable.".to_string(),
+        checklist: vec![ReviewVerdict {
+            id: "load".to_string(),
+            status: VerdictStatus::Fail,
+            note: Some("throws\non load".to_string()),
+        }],
+    };
+    let file = writeup.to_file_string();
+    assert!(file.contains("review.load: fail throws on load\n"));
+    let reparsed = parse_writeup(&file).expect("reparse");
+    assert_eq!(
+        reparsed.checklist[0].note.as_deref(),
+        Some("throws on load")
+    );
+}
+
+#[test]
+fn an_unrecognized_verdict_status_is_rejected() {
+    let raw = "---\nrating: great\nreview.x: maybe\n---\n\nBody.\n";
+    let err = parse_writeup(raw).expect_err("bad status");
+    assert!(err.to_string().contains("pass, fail, or na"));
+}
+
+#[test]
+fn missing_verdicts_reports_unaddressed_items() {
+    use crate::test_case::ReviewItem;
+    let items = vec![
+        ReviewItem {
+            id: "ball-spin".to_string(),
+            text: "Spin curves the ball.".to_string(),
+        },
+        ReviewItem {
+            id: "bank-shot".to_string(),
+            text: "Obstacles enable bank shots.".to_string(),
+        },
+    ];
+    let writeup = Writeup {
+        rating: Rating::Great,
+        body: "Body.".to_string(),
+        checklist: vec![ReviewVerdict {
+            id: "ball-spin".to_string(),
+            status: VerdictStatus::Pass,
+            note: None,
+        }],
+    };
+    assert_eq!(
+        missing_verdicts(&items, &writeup),
+        vec!["bank-shot".to_string()]
+    );
+
+    // Once every item has a verdict, nothing is missing — a stale extra verdict
+    // for an unknown id does not change that.
+    let complete = Writeup {
+        checklist: vec![
+            ReviewVerdict {
+                id: "ball-spin".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "bank-shot".to_string(),
+                status: VerdictStatus::Fail,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "stale".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+        ],
+        ..writeup
+    };
+    assert!(missing_verdicts(&items, &complete).is_empty());
 }

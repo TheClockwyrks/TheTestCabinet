@@ -39,9 +39,15 @@ fn record(id: &str) -> RunRecord {
 }
 
 fn review() -> StoredReview {
+    use test_cabinet_core::review::VerdictStatus;
     StoredReview {
         rating: Rating::Great,
         writeup: "Plays well.".to_string(),
+        checklist: vec![ReviewVerdict {
+            id: "ball-spin".to_string(),
+            status: VerdictStatus::Pass,
+            note: Some("spin curves the ball".to_string()),
+        }],
     }
 }
 
@@ -62,6 +68,8 @@ fn publish_then_get_round_trips_with_links_populated() {
 
     let stored = db.get_run("r1").unwrap().unwrap();
     assert_eq!(stored.review.rating, Rating::Great);
+    // The checklist verdicts round-trip through the JSON column.
+    assert_eq!(stored.review.checklist, review().checklist);
     // The stored record carries the resolved links, even though the submitted
     // record's links were empty.
     assert_eq!(
@@ -80,6 +88,7 @@ fn republish_is_idempotent_and_keeps_first_published_at() {
     let updated_review = StoredReview {
         rating: Rating::Flawless,
         writeup: "Even better on a second look.".to_string(),
+        checklist: vec![],
     };
     let outcome = db
         .publish(

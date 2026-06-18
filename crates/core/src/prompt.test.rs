@@ -29,6 +29,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         variants: vec![],
         common_references: vec![],
         checks: vec![],
+        common_review_items: vec![],
     }
 }
 
@@ -42,6 +43,7 @@ fn frenzy() -> Variant {
             dest: PathBuf::from("specs/modes/frenzy.md"),
         }],
         references: vec![],
+        review_items: vec![],
     }
 }
 
@@ -80,6 +82,7 @@ fn strict_mode_rejects_unknown_variables() {
         description: None,
         specs: vec![],
         references: vec![],
+        review_items: vec![],
     };
     assert!(
         render_prompt(&version, &variant).is_err(),

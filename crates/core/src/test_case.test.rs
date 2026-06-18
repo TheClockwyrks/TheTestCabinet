@@ -77,3 +77,67 @@ fn empty_build_command_is_rejected() {
         "unexpected error: {err}"
     );
 }
+
+/// A `[build]` table plus the given trailing TOML, for review-item tests that
+/// also declare their own `[[variant]]` (the helper still appends a `base`).
+fn build_and(extra: &str) -> String {
+    format!("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n{extra}")
+}
+
+#[test]
+fn resolves_common_and_variant_review_items() {
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\n\
+         id = \"ball-spin\"\n\
+         text = \"Swinging a paddle imparts spin on the ball.\"\n\n\
+         [[variant]]\n\
+         slug = \"frenzy\"\n\
+         review_item = [{ id = \"frenzy-escalation\", text = \"Ball speed escalates uncapped.\" }]",
+    ));
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    // The common item ships to every variant; the variant's own is additive.
+    assert_eq!(version.common_review_items.len(), 1);
+    assert_eq!(version.common_review_items[0].id, "ball-spin");
+
+    let frenzy = version.variant("frenzy").expect("frenzy variant");
+    let frenzy_items = version.review_items_for(frenzy);
+    let ids: Vec<&str> = frenzy_items.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, ["ball-spin", "frenzy-escalation"]);
+
+    // The appended `base` variant sees only the common item.
+    let base = version.variant("base").expect("base variant");
+    assert_eq!(version.review_items_for(base).len(), 1);
+}
+
+#[test]
+fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\n\
+         id = \"dup\"\n\
+         text = \"A common item.\"\n\n\
+         [[variant]]\n\
+         slug = \"frenzy\"\n\
+         review_item = [{ id = \"dup\", text = \"Collides with the common id.\" }]",
+    ));
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a colliding review-item id is rejected");
+    assert!(
+        format!("{err}").contains("two review items with the same id `dup`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_review_item_with_empty_text_is_rejected() {
+    let (_dir, catalog) =
+        catalog_with_manifest(&build_and("[[review_item]]\nid = \"x\"\ntext = \"\""));
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an empty review-item text is rejected");
+    assert!(
+        format!("{err}").contains("has empty `text`"),
+        "unexpected error: {err}"
+    );
+}

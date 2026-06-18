@@ -85,6 +85,12 @@ pub struct StoredManifest {
     pub common_references: Vec<StoredReference>,
     /// Declared validation checks.
     pub checks: Vec<StoredCheck>,
+    /// Reviewer checklist items declared for every variant. Reporter-side
+    /// material (not seeded): served to the reporter so a reviewer is presented
+    /// the items to work through. Defaulted for manifests stored before the field
+    /// existed.
+    #[serde(default)]
+    pub common_review_items: Vec<StoredReviewItem>,
 }
 
 /// Build commands persisted in a [`StoredManifest`].
@@ -129,6 +135,10 @@ pub struct StoredVariant {
     pub specs: Vec<StoredSpec>,
     /// Additive references.
     pub references: Vec<StoredReference>,
+    /// Additive reviewer checklist items. Defaulted for manifests stored before
+    /// the field existed.
+    #[serde(default)]
+    pub review_items: Vec<StoredReviewItem>,
 }
 
 /// A reference persisted in a [`StoredManifest`]. The rendered screenshot lives
@@ -137,6 +147,17 @@ pub struct StoredVariant {
 pub struct StoredReference {
     /// The view slug.
     pub view: String,
+}
+
+/// A reviewer checklist item persisted in a [`StoredManifest`]. Reporter-side
+/// material (not seeded); served to the reporter so a reviewer is presented the
+/// items to work through.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredReviewItem {
+    /// Stable slug identifying the item; recorded with the reviewer's verdict.
+    pub id: String,
+    /// The prose a reviewer reads — what to check.
+    pub text: String,
 }
 
 /// A check persisted in a [`StoredManifest`].

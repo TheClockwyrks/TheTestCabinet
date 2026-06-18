@@ -22,7 +22,7 @@ use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredReference,
-    StoredSpec, StoredVariant,
+    StoredReviewItem, StoredSpec, StoredVariant,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -231,6 +231,11 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                         view: r.view.clone(),
                     })
                     .collect(),
+                review_items: variant
+                    .review_items
+                    .iter()
+                    .map(stored_review_item)
+                    .collect(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -269,7 +274,20 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 actions: c.actions.clone(),
             })
             .collect(),
+        common_review_items: resolved
+            .common_review_items
+            .iter()
+            .map(stored_review_item)
+            .collect(),
     })
+}
+
+/// Build a [`StoredReviewItem`] from a resolved reviewer checklist item.
+fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem {
+    StoredReviewItem {
+        id: item.id.clone(),
+        text: item.text.clone(),
+    }
 }
 
 /// Build a `StoredSpec` from a host source path and a workspace dest, deriving

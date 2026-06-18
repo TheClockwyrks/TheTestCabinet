@@ -174,6 +174,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         variants: Vec::new(),
         common_references: Vec::new(),
         checks: Vec::new(),
+        common_review_items: Vec::new(),
     }
 }
 

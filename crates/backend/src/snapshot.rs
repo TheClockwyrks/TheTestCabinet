@@ -98,6 +98,7 @@ impl SnapshotBuilder {
                     review: ReviewOut {
                         rating: run.review.rating.as_str(),
                         writeup: &run.review.writeup,
+                        checklist: &run.review.checklist,
                     },
                     links: LinksOut {
                         source_repo: run.links.source_repo.as_deref(),
@@ -363,6 +364,7 @@ struct PerRun<'a> {
 struct ReviewOut<'a> {
     rating: &'static str,
     writeup: &'a str,
+    checklist: &'a [test_cabinet_core::review::ReviewVerdict],
 }
 
 #[derive(Serialize)]

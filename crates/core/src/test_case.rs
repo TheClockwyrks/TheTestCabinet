@@ -74,6 +74,12 @@ struct Manifest {
     /// Opt-in validation checks. Only declared checks run.
     #[serde(default)]
     check: Vec<ManifestCheck>,
+    /// Reviewer checklist items declared for **every** variant. Reviewer-facing
+    /// and **not seeded**: they enumerate what a person must explicitly check
+    /// after playing a build, so a case's major requirements are guaranteed to be
+    /// verified by hand. Declared as repeated `[[review_item]]` tables.
+    #[serde(default, rename = "review_item")]
+    review_items: Vec<ManifestReviewItem>,
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -120,6 +126,13 @@ struct ManifestVariant {
     /// reference or another of this variant's references.
     #[serde(default, rename = "reference")]
     references: Vec<ManifestReference>,
+    /// Reviewer checklist items this variant declares in addition to the common
+    /// items. Declared as a `review_item` array of inline `{ id, text }` tables.
+    /// A variant-specific item lets a mode-only requirement be checked only when
+    /// that variant runs; its id must not collide with a common item or another
+    /// of this variant's items.
+    #[serde(default, rename = "review_item")]
+    review_items: Vec<ManifestReviewItem>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -146,6 +159,16 @@ struct ManifestCheck {
     /// Empty means the view is whatever the implementation shows on load.
     #[serde(default)]
     actions: Vec<CheckAction>,
+}
+
+/// A single `[[review_item]]` entry in the manifest (or a variant's
+/// `review_item` array): one item a reviewer must explicitly check.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReviewItem {
+    /// Stable slug identifying this item; recorded with the reviewer's verdict.
+    id: String,
+    /// The prose a reviewer reads — what to check.
+    text: String,
 }
 
 /// The manifest file name expected in every version folder.
@@ -217,6 +240,10 @@ pub struct Variant {
     /// references. Rendered and seeded only when this variant is selected, so a
     /// view such as the title menu can differ per variant.
     pub references: Vec<ReferenceView>,
+    /// Reviewer checklist items this variant declares in addition to the case's
+    /// common items. Surfaced to a reviewer only when this variant is selected, so
+    /// a mode-specific check rides along only with the variant that adds the mode.
+    pub review_items: Vec<ReviewItem>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -289,6 +316,25 @@ pub struct Check {
     pub actions: Vec<CheckAction>,
 }
 
+/// A reviewer checklist item a test case declares.
+///
+/// Reviewer checklist items are **not seeded** into a run; they are reporter-side
+/// material that enumerates what a person must explicitly check after playing a
+/// build, so a case's major requirements are guaranteed to be verified by hand
+/// rather than left to whatever a reviewer happens to notice. Each item is
+/// recorded against the run's review by [`Self::id`] together with the reviewer's
+/// verdict (see [`crate::review`]). Items restate observable requirements the
+/// seeded specification already states, so keeping them out of the run hides
+/// nothing from the model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewItem {
+    /// Stable slug identifying this item; recorded with the reviewer's verdict.
+    pub id: String,
+    /// The prose a reviewer reads — what to check.
+    pub text: String,
+}
+
 // `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
 // only floats. They originate as exact TOML literals and are only ever compared,
 // never arithmetic'd, so treating them as `Eq` is sound here.
@@ -348,6 +394,12 @@ pub struct TestCaseVersion {
     pub common_references: Vec<ReferenceView>,
     /// Opt-in validation checks declared by this version.
     pub checks: Vec<Check>,
+    /// Reviewer checklist items declared for **every** variant (the common set). A
+    /// variant may declare additional items of its own (see
+    /// [`Variant::review_items`]); the full set for a variant is
+    /// [`Self::review_items_for`]. **Not** seeded — reporter-side material a
+    /// reviewer works through after playing a build.
+    pub common_review_items: Vec<ReviewItem>,
 }
 
 impl TestCaseVersion {
@@ -383,6 +435,18 @@ impl TestCaseVersion {
         self.common_references
             .iter()
             .chain(variant.references.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The full set of reviewer checklist items for a variant: the common items
+    /// followed by the variant's own additional items. These are what a reviewer
+    /// must work through for a run on this variant. Resolution forbids two items
+    /// sharing an `id`, so the order is stable and each id is unambiguous.
+    pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
+        self.common_review_items
+            .iter()
+            .chain(variant.review_items.iter())
             .cloned()
             .collect()
     }
@@ -588,6 +652,30 @@ impl TestCaseCatalog {
             common_references.push(resolve_reference(reference)?);
         }
 
+        // Resolve one reviewer checklist item: its id and text must both be
+        // non-empty, since the id keys a recorded verdict and the text is what the
+        // reviewer reads. Shared by the common items and each variant's own.
+        let resolve_review_item = |item: &ManifestReviewItem| -> Result<ReviewItem> {
+            if item.id.trim().is_empty() {
+                return Err(invalid("review_item `id` must not be empty".to_string()));
+            }
+            if item.text.trim().is_empty() {
+                return Err(invalid(format!(
+                    "review_item `{}` has empty `text`",
+                    item.id
+                )));
+            }
+            Ok(ReviewItem {
+                id: item.id.clone(),
+                text: item.text.clone(),
+            })
+        };
+
+        let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
+        for item in &manifest.review_items {
+            common_review_items.push(resolve_review_item(item)?);
+        }
+
         // A case must offer at least one variant; a run always selects exactly
         // one. Variant slugs must be unique so a run records an unambiguous
         // choice.
@@ -643,6 +731,23 @@ impl TestCaseCatalog {
                 }
             }
 
+            let mut review_items = Vec::with_capacity(variant.review_items.len());
+            for item in &variant.review_items {
+                review_items.push(resolve_review_item(item)?);
+            }
+            // The common items and the variant's own are recorded under one id
+            // each; two items sharing an id would make a recorded verdict
+            // ambiguous, so a collision is rejected.
+            let mut seen_ids = std::collections::BTreeSet::new();
+            for item in common_review_items.iter().chain(review_items.iter()) {
+                if !seen_ids.insert(&item.id) {
+                    return Err(invalid(format!(
+                        "variant `{}` declares two review items with the same id `{}`",
+                        variant.slug, item.id
+                    )));
+                }
+            }
+
             let name = variant
                 .name
                 .clone()
@@ -653,6 +758,7 @@ impl TestCaseCatalog {
                 description: variant.description.clone(),
                 specs,
                 references,
+                review_items,
             });
         }
 
@@ -704,6 +810,7 @@ impl TestCaseCatalog {
             variants,
             common_references,
             checks,
+            common_review_items,
         })
     }
 

@@ -24,7 +24,8 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, Check, CheckAction, ReferenceView, SpecFile, TestCase, TestCaseVersion, Variant,
+    BuildCommands, Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase,
+    TestCaseVersion, Variant,
 };
 
 /// A resolved harness container image: a full, pullable image reference the
@@ -453,6 +454,7 @@ impl BackendClient for HttpBackendClient {
             review: ReviewBody {
                 rating: review.rating.as_str(),
                 writeup: &review.body,
+                checklist: &review.checklist,
             },
             links: LinksBody {
                 source_repo: links.source_repo.clone(),
@@ -541,6 +543,8 @@ struct VersionBody {
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
     checks: Vec<CheckBody>,
+    #[serde(default)]
+    common_review_items: Vec<ReviewItemBody>,
 }
 
 impl VersionBody {
@@ -584,6 +588,11 @@ impl VersionBody {
                     description: variant.description,
                     specs: variant.specs.iter().map(spec_from).collect(),
                     references: variant.references.iter().map(reference_from).collect(),
+                    review_items: variant
+                        .review_items
+                        .into_iter()
+                        .map(review_item_from)
+                        .collect(),
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -596,6 +605,11 @@ impl VersionBody {
                     reference_view: check.reference_view,
                     actions: check.actions,
                 })
+                .collect(),
+            common_review_items: self
+                .common_review_items
+                .into_iter()
+                .map(review_item_from)
                 .collect(),
         }
     }
@@ -614,6 +628,15 @@ fn spec_from(spec: &SpecBody) -> SpecFile {
 /// Build a [`ReferenceView`] from a wire reference, keying `source_path` by the
 /// rendered screenshot URL path (rewritten to a host path by
 /// [`materialize_version`]).
+/// Build a [`ReviewItem`] from a wire review item. Reviewer checklist items are
+/// reporter-side material, so they carry no path to rewrite.
+fn review_item_from(item: ReviewItemBody) -> ReviewItem {
+    ReviewItem {
+        id: item.id,
+        text: item.text,
+    }
+}
+
 fn reference_from(reference: &ReferenceBody) -> ReferenceView {
     ReferenceView {
         view: reference.view.clone(),
@@ -644,12 +667,21 @@ struct AssetBody {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct VariantBody {
     slug: String,
     name: String,
     description: Option<String>,
     specs: Vec<SpecBody>,
     references: Vec<ReferenceBody>,
+    #[serde(default)]
+    review_items: Vec<ReviewItemBody>,
+}
+
+#[derive(Deserialize)]
+struct ReviewItemBody {
+    id: String,
+    text: String,
 }
 
 #[derive(Deserialize)]
@@ -686,6 +718,8 @@ struct PublishBody<'a> {
 struct ReviewBody<'a> {
     rating: &'a str,
     writeup: &'a str,
+    /// The reviewer's verdicts on the case's declared checklist items.
+    checklist: &'a [crate::review::ReviewVerdict],
 }
 
 #[derive(serde::Serialize)]

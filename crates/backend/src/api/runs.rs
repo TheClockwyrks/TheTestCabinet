@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::review::Rating;
+use test_cabinet_core::review::{Rating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 
 use crate::db::{StoredReview, StoredRun};
@@ -60,6 +60,7 @@ pub async fn publish(
     let review = StoredReview {
         rating,
         writeup: request.review.writeup.trim().to_string(),
+        checklist: request.review.checklist,
     };
     let links = RunLinks {
         source_repo: request.links.source_repo,
@@ -142,6 +143,7 @@ fn stored_run_out(run: &StoredRun) -> StoredRunOut {
         review: ReviewOut {
             rating: run.review.rating.as_str(),
             writeup: run.review.writeup.clone(),
+            checklist: run.review.checklist.clone(),
         },
         links: LinksOut {
             source_repo: run.links.source_repo.clone(),
@@ -164,6 +166,8 @@ pub struct PublishRequest {
 struct ReviewIn {
     rating: String,
     writeup: String,
+    #[serde(default)]
+    checklist: Vec<ReviewVerdict>,
 }
 
 #[derive(Deserialize, Default)]
@@ -207,6 +211,7 @@ pub struct StoredRunOut {
 struct ReviewOut {
     rating: &'static str,
     writeup: String,
+    checklist: Vec<ReviewVerdict>,
 }
 
 #[derive(Serialize)]

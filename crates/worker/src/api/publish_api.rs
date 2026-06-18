@@ -40,6 +40,9 @@ pub struct PublishBody {
     pub rating: String,
     /// The writeup prose shown before the playable build (markdown body).
     pub writeup: String,
+    /// The reviewer's verdicts on the case's declared checklist items.
+    #[serde(default)]
+    pub checklist: Vec<test_cabinet_core::ReviewVerdict>,
 }
 
 /// The response to a successful publish: the resolved links and whether anything
@@ -82,6 +85,7 @@ pub async fn publish(
     let writeup = Writeup {
         rating,
         body: body.writeup.trim().to_string(),
+        checklist: body.checklist,
     };
 
     // Locate the record and its sibling implementation that a prior run wrote.

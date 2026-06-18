@@ -71,14 +71,14 @@ pub use publish::{
     run_slug,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
-pub use review::{Rating, Writeup, parse_writeup};
+pub use review::{Rating, ReviewVerdict, VerdictStatus, Writeup, missing_verdicts, parse_writeup};
 pub use run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    Check, CheckAction, ReferenceView, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion,
-    Variant,
+    Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseCatalog,
+    TestCaseVersion, Variant,
 };
 pub use validation::{CapturedView, CheckResult, StepResult, ValidationSummary, Validator};
 pub use validator::BuildValidator;

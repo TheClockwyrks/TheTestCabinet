@@ -55,6 +55,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
         review: StoredReview {
             rating: Rating::Great,
             writeup: "Plays well.".to_string(),
+            checklist: vec![],
         },
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
@@ -87,6 +88,7 @@ fn manifest() -> StoredManifest {
             description: Some("Standard".to_string()),
             specs: vec![],
             references: vec![],
+            review_items: vec![],
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -97,6 +99,7 @@ fn manifest() -> StoredManifest {
             reference_view: "title".to_string(),
             actions: vec![],
         }],
+        common_review_items: vec![],
     }
 }
 

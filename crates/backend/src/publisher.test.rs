@@ -62,6 +62,7 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
         &StoredReview {
             rating: Rating::Great,
             writeup: "ok".to_string(),
+            checklist: vec![],
         },
         &RunLinks::default(),
         "2026-06-17T21:40:00Z",
@@ -91,6 +92,7 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
             &StoredReview {
                 rating: Rating::Great,
                 writeup: "ok".to_string(),
+                checklist: vec![],
             },
             &RunLinks::default(),
             &format!("2026-06-17T21:4{i}:00Z"),

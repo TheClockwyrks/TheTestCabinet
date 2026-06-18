@@ -15,8 +15,9 @@ use test_cabinet_core::{
     CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug,
     HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices, Orchestrator,
     PrerenderedReferenceRenderer, PublishConfig, PublishRequest, Publisher, Rating,
-    ReferenceRenderer, RunRecord, RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog,
-    TestCaseVersion, Writeup, implementation_dir, materialize_version, parse_writeup,
+    ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord, RunRequest, SystemCommandRunner,
+    TestCase, TestCaseCatalog, TestCaseVersion, Writeup, implementation_dir, materialize_version,
+    missing_verdicts, parse_writeup,
 };
 
 use crate::config;
@@ -443,13 +444,18 @@ pub struct StoredRun {
     pub review: Option<ReviewDocument>,
 }
 
-/// A review as the webview reads/writes it: the rating token and the prose body.
+/// A review as the webview reads/writes it: the rating token, the prose body, and
+/// the reviewer's verdicts on the case's declared checklist items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewDocument {
     /// One of `flawless | great | scuffed | broken`.
     pub rating: String,
     pub writeup: String,
+    /// The reviewer's verdicts on the declared checklist items. Empty for a case
+    /// that declares none.
+    #[serde(default)]
+    pub checklist: Vec<ReviewVerdict>,
 }
 
 /// List the finished runs written under the output directory, each with its
@@ -499,11 +505,30 @@ pub fn read_run(id: String) -> CmdResult<StoredRun> {
     })
 }
 
-/// Write (or overwrite) the review for a finished run: validate the rating, then
-/// write the canonical `writeup.md` beside the record. Required before the run
-/// can be published.
+/// The reviewer checklist items a run must be judged against, as the webview
+/// reads them: the declared items for the run's selected variant.
 #[tauri::command]
-pub fn save_review(id: String, rating: String, writeup: String) -> CmdResult<()> {
+pub async fn read_review_items(id: String) -> CmdResult<Vec<ReviewItem>> {
+    let record_path = config::output_dir().join(&id).join("run-record.json");
+    let record = load_record(&record_path)?;
+    review_items_for_record(&record).await
+}
+
+/// Write (or overwrite) the review for a finished run: validate the rating, gate
+/// on a complete checklist, then write the canonical `writeup.md` beside the
+/// record. Required before the run can be published.
+///
+/// The checklist gate enforces the case's contract: every reviewer checklist item
+/// the run's variant declares must carry a verdict, so a reviewer cannot skip a
+/// requirement the case author marked as something to check. The rating itself
+/// stays entirely the reviewer's call.
+#[tauri::command]
+pub async fn save_review(
+    id: String,
+    rating: String,
+    writeup: String,
+    checklist: Vec<ReviewVerdict>,
+) -> CmdResult<()> {
     let rating = Rating::parse(&rating).ok_or_else(|| {
         format!("rating must be one of flawless, great, scuffed, broken (got `{rating}`)")
     })?;
@@ -514,11 +539,28 @@ pub fn save_review(id: String, rating: String, writeup: String) -> CmdResult<()>
     let review = Writeup {
         rating,
         body: body.to_string(),
+        checklist,
     };
     let run_dir = config::output_dir().join(&id);
-    if !run_dir.join("run-record.json").is_file() {
+    let record_path = run_dir.join("run-record.json");
+    if !record_path.is_file() {
         return Err(format!("no run `{id}` found to review"));
     }
+
+    // Gate: every declared checklist item must have a verdict before the review
+    // is saved. This is what guarantees a reviewer addresses each major item the
+    // case author called out.
+    let record = load_record(&record_path)?;
+    let items = review_items_for_record(&record).await?;
+    let missing = missing_verdicts(&items, &review);
+    if !missing.is_empty() {
+        return Err(format!(
+            "the review is missing a verdict for {} checklist item(s): {}",
+            missing.len(),
+            missing.join(", ")
+        ));
+    }
+
     std::fs::write(run_dir.join("writeup.md"), review.to_file_string())
         .map_err(|e| err("writing the review", e))
 }
@@ -561,7 +603,22 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
         rating: Rating::parse(&writeup.rating)
             .ok_or_else(|| format!("stored review has an invalid rating `{}`", writeup.rating))?,
         body: writeup.writeup,
+        checklist: writeup.checklist,
     };
+
+    // Re-gate at publish: the checklist must be complete even if the stored
+    // `writeup.md` was hand-edited after the in-app save gate. A run is not
+    // releasable until every declared item has a verdict.
+    let items = review_items_for_record(&record).await?;
+    let missing = missing_verdicts(&items, &writeup);
+    if !missing.is_empty() {
+        return Err(format!(
+            "run `{id}` cannot be published: its review is missing a verdict for {} checklist \
+             item(s): {}",
+            missing.len(),
+            missing.join(", ")
+        ));
+    }
 
     let impl_dir = implementation_dir(&record_path);
     let build_dir = find_build_output(&impl_dir);
@@ -616,7 +673,24 @@ fn read_review_beside(record_path: &Path) -> Option<ReviewDocument> {
     Some(ReviewDocument {
         rating: parsed.rating.as_str().to_string(),
         writeup: parsed.body,
+        checklist: parsed.checklist,
     })
+}
+
+/// Resolve the reviewer checklist items a run must be judged against: the items
+/// the run's selected variant declares (common + variant-specific). Resolves the
+/// run's exact version (from the backend when configured, else the local
+/// checkout) so the reporter shows the same items the case authored.
+async fn review_items_for_record(record: &RunRecord) -> CmdResult<Vec<ReviewItem>> {
+    let resolved = resolve_version_inner(
+        &record.subject.test_case_slug,
+        &record.subject.test_case_version,
+    )
+    .await?;
+    let variant = resolved
+        .variant(&record.subject.variant)
+        .map_err(|e| err("selecting variant", e))?;
+    Ok(resolved.review_items_for(variant))
 }
 
 /// Find a deployable static build output beside a run's implementation, if one

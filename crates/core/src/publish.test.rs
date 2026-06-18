@@ -69,6 +69,7 @@ fn sample_writeup() -> Writeup {
     Writeup {
         rating: Rating::Great,
         body: "Plays well; the pause menu doesn't restore focus.".to_string(),
+        checklist: vec![],
     }
 }
 
