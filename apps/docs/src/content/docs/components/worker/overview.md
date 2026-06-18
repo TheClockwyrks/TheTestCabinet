@@ -50,6 +50,13 @@ rather than holding one request open for the whole run:
   [`worker-api/submit-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/submit-run-request.schema.json);
   response schema:
   [`worker-api/submit-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/submit-run-ack.schema.json).
+- `GET /runs` — list the runs this worker has **produced**: every
+  [run record](/components/core/run-records/) it has written to its output
+  directory, newest first by finish time, each paired with a null review (a
+  worker keeps no review store — a run gains one only when published). The
+  consoles read this to surface produced-but-unpublished runs in the gallery.
+  Response schema:
+  [`worker-api/produced-runs.schema.json`](https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json).
 - `GET /runs/{job}` — the job's current status (`running` | `succeeded` |
   `failed`), and the produced [run record](/components/core/run-records/) once it
   has finished (or the failure `detail`). `404` for an unknown job id. Schema:

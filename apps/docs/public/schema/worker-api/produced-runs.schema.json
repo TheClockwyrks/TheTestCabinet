@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json",
+  "title": "ProducedRuns",
+  "description": "The runs a worker has produced, returned by GET /runs: every run record written to its output directory, newest first by finish time. Each carries a null review — a worker keeps no review store, so a run gains a review only when it is published.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "record", "review"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "The run record's id (its output-directory name).",
+        "minLength": 1
+      },
+      "record": {
+        "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
+        "description": "The produced run record, exactly as the run wrote it."
+      },
+      "review": {
+        "type": "null",
+        "description": "Always null: a produced-but-unpublished run carries no review yet."
+      }
+    }
+  }
+}

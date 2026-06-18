@@ -2,14 +2,10 @@
 // (components/worker/overview.md). A worker only executes runs and publishes
 // them — it never serves the catalog. The review carried with a publish travels
 // inline (the worker keeps no review store); the case-declared checklist items a
-// reviewer works through are catalog data, read from the backend instead. The one
-// operation the worker API still can't define (enumerating produced runs) throws
-// NotSupportedError so the console renders a clear "not available here" state.
-import { NotSupportedError } from "@test-cabinet/ui/client";
-import type {
-  WorkerClient,
-  RunSubscription,
-} from "@test-cabinet/ui/client";
+// reviewer works through are catalog data, read from the backend instead.
+// Enumerating produced runs reads the worker's `GET /runs`, which lists the run
+// records it has written to its output directory.
+import type { WorkerClient, RunSubscription } from "@test-cabinet/ui/client";
 import type {
   HarnessEvent,
   LaunchConfig,
@@ -114,7 +110,9 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
     },
 
     async listRuns(): Promise<StoredRun[]> {
-      throw new NotSupportedError("list produced runs");
+      // The worker lists the run records under its output directory as produced
+      // (unpublished) runs — record plus a null review.
+      return getJson<StoredRun[]>(baseUrl, "/runs");
     },
 
     async readRun(id: string): Promise<StoredRun> {

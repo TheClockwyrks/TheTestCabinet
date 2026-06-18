@@ -40,8 +40,8 @@ const CONTRACT_VERSION: &str = "0.2.0";
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
-        // Submit a run (returns a job id) and look one up by id.
-        .route("/runs", post(runs::submit))
+        // Submit a run (returns a job id), list produced runs, look one up by id.
+        .route("/runs", post(runs::submit).get(runs::list_produced))
         .route("/runs/{job}", get(runs::status))
         // The live harness-event stream for a job, as NDJSON.
         .route("/runs/{job}/events", get(runs::events))

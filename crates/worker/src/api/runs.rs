@@ -13,7 +13,7 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::{HarnessSlug, RunRequest};
+use test_cabinet_core::{HarnessSlug, RunRecord, RunRequest};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::api::AppState;
@@ -110,6 +110,80 @@ pub async fn submit(
         events_url: format!("/runs/{job_id}/events"),
     };
     Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
+}
+
+/// A run this worker has produced, in the shape the consoles' gallery reads:
+/// the produced [`RunRecord`] and a null review. A worker keeps no review store,
+/// so `review` is always absent here — a run only gains one when it is published.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProducedRun {
+    /// The run record's id (its output-directory name).
+    pub id: String,
+    /// The produced run record, exactly as the run wrote it.
+    pub record: RunRecord,
+    /// Always `null`: a produced-but-unpublished run carries no review yet.
+    pub review: Option<serde_json::Value>,
+}
+
+/// `GET /runs` — list the runs this worker has produced.
+///
+/// Enumerates the worker's output directory, where each finished run wrote a
+/// `{run_id}/run-record.json` (see `Orchestrator::write_record`), and returns
+/// them as produced runs, newest first by finish time. The consoles read this to
+/// surface produced-but-unpublished runs in the gallery; without it a freshly
+/// finished run can't be found by id on its detail page (and the runs index shows
+/// nothing until a run is published to the backend).
+pub async fn list_produced(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ProducedRun>>, ApiError> {
+    let mut produced = read_produced(&state.config.out_dir)
+        .map_err(|err| ApiError::internal(format!("listing produced runs: {err}")))?;
+    // Newest first, matching the backend's published-run ordering. Run timestamps
+    // are RFC 3339 in UTC, so a lexical compare orders them chronologically.
+    produced.sort_by(|a, b| recency(&b.record).cmp(recency(&a.record)));
+    Ok(Json(produced))
+}
+
+/// The timestamp a produced run is ordered by: its finish time, falling back to
+/// its start time when it never recorded a finish (e.g. it failed late).
+fn recency(record: &RunRecord) -> &str {
+    if record.finished_at.is_empty() {
+        &record.started_at
+    } else {
+        &record.finished_at
+    }
+}
+
+/// Read every produced run record under `out_dir`. Each completed run owns a
+/// `{run_id}/` subdirectory holding its `run-record.json`. A missing output
+/// directory means none have been produced yet; a subdirectory without a parsable
+/// record (still running, or a stray) is skipped rather than failing the list.
+fn read_produced(out_dir: &std::path::Path) -> std::io::Result<Vec<ProducedRun>> {
+    let mut runs = Vec::new();
+    let entries = match std::fs::read_dir(out_dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(runs),
+        Err(err) => return Err(err),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path().join("run-record.json")) else {
+            continue;
+        };
+        let Ok(record) = serde_json::from_str::<RunRecord>(&text) else {
+            continue;
+        };
+        runs.push(ProducedRun {
+            id: record.id.clone(),
+            record,
+            review: None,
+        });
+    }
+    Ok(runs)
 }
 
 /// `GET /runs/{job}` — the current status of a submitted run.
