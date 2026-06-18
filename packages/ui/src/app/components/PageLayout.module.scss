@@ -8,6 +8,15 @@
   min-height: 100vh;
 }
 
+// A filling page (PageLayout's `fill`) pins the shell to exactly the viewport
+// height rather than just a floor, so the column has a *definite* height to hand
+// down. Without it, a filling child (the event feed) would grow to fit its
+// content and push the whole page taller; with it, the child is bounded and
+// scrolls internally instead. Paired with `.mainFill` below.
+.shellFill {
+  height: 100vh;
+}
+
 // Full-width bar: spans the viewport with a hairline rule and a faint surface
 // wash, while its contents stay aligned to the page's content column via .bar.
 .topbar {

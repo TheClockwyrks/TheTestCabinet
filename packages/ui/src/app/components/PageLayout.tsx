@@ -51,7 +51,7 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
     ? NAV_LINKS
     : [...NAV_LINKS, { label: "About", to: routes.about() }];
   return (
-    <div className={styles.shell}>
+    <div className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.bar}>
           <Link to={routes.home()} className={styles.brand}>
