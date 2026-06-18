@@ -8,6 +8,9 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   padding: t.$space-md;
+  // Allow the tile to shrink inside a grid column so long values wrap within it
+  // rather than forcing the column (and the whole grid) wider.
+  min-width: 0;
 }
 
 .label {
@@ -17,6 +20,9 @@
 
 .value {
   font-size: t.$font-lg;
+  // Long, unbroken values (e.g. a container image digest) wrap inside the tile
+  // instead of overflowing its bounds.
+  overflow-wrap: anywhere;
 }
 
 // A muted value, for informational figures (e.g. provider-dependent run time)

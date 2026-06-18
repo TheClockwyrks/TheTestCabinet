@@ -17,6 +17,18 @@
     },
     "links": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunLinks"
+    },
+    "events": {
+      "type": "array",
+      "description": "Optional: the run's recorded normalized event stream, present when the run captured one. The site emits it as a per-run static asset its Events tab fetches. Raw harness output is never published. Each item is a normalized harness event (see /components/core/events/).",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "type"],
+        "properties": {
+          "timestamp": { "type": "string" },
+          "type": { "type": "string" }
+        }
+      }
     }
   }
 }

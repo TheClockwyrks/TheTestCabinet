@@ -14,9 +14,22 @@
     "review": {
       "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
     },
-    "links": { "$ref": "#/$defs/RunLinks" }
+    "links": { "$ref": "#/$defs/RunLinks" },
+    "events": { "$ref": "#/$defs/HarnessEvents" }
   },
   "$defs": {
+    "HarnessEvents": {
+      "type": "array",
+      "description": "The run's recorded normalized event stream. Optional; the backend stores it verbatim and re-emits it to the public snapshot for the run's Events tab. Raw harness output is never published. Each item is a normalized harness event (see /components/core/events/); its `type` discriminator selects the inlined fields.",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "type"],
+        "properties": {
+          "timestamp": { "type": "string" },
+          "type": { "type": "string" }
+        }
+      }
+    },
     "RunLinks": {
       "type": "object",
       "additionalProperties": false,

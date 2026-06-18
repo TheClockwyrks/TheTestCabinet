@@ -77,7 +77,10 @@ Schema: [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapsho
 The full [run record](/components/core/run-records/) blob, verbatim, with its
 links populated, plus the [review](/components/core/results/#reviews) and links
 the site needs for the detail page — where the writeup is gated ahead of the
-embedded build and the rating is shown up front.
+embedded build and the rating is shown up front. When the run captured a
+normalized [event stream](/components/core/events/), it is included as `events`
+(omitted otherwise); the site emits it as a per-run static asset its Events tab
+fetches. Raw harness output is never published.
 
 ```jsonc
 {
@@ -87,7 +90,9 @@ embedded build and the rating is shown up front.
   "links": {
     "sourceRepo": "https://github.com/…",
     "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
-  }
+  },
+  // Optional: the normalized event stream, a JSON array of HarnessEvents.
+  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
 }
 ```
 

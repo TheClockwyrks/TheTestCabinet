@@ -8,6 +8,13 @@
   margin-bottom: t.$space-xl;
 }
 
+// A heading that introduces a group of widgets within a tab body (e.g. the
+// "Run info" and "Validation" groups on the Metadata tab).
+.sectionLabel {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-md;
+}
+
 // A fixed three-column grid of tiles, used for the run's metadata.
 // `minmax(0, …)` lets long values shrink rather than blow the columns out.
 .metricsGrid3 {

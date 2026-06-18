@@ -62,6 +62,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             playable_build: Some("https://abc.pages.dev".to_string()),
         },
         published_at: published_at.to_string(),
+        events_json: None,
     }
 }
 
@@ -195,6 +196,42 @@ fn per_run_file_embeds_full_record_review_and_links() {
     );
     assert_eq!(parsed["review"]["rating"], "great");
     assert_eq!(parsed["review"]["writeup"], "Plays well.");
+}
+
+#[test]
+fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
+    let (_tmp, store) = empty_store();
+    let mut with_events = stored_run("r1", "2026-06-17T21:40:00Z");
+    with_events.events_json = Some(
+        r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#.to_string(),
+    );
+    let without_events = stored_run("r2", "2026-06-17T21:41:00Z");
+    let snapshot = SnapshotBuilder::new(
+        vec![with_events, without_events],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let find = |id: &str| -> serde_json::Value {
+        let object = snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs/{id}.json"))
+            .unwrap();
+        serde_json::from_slice(&object.bytes).unwrap()
+    };
+
+    // The recorded event stream is re-emitted verbatim into the per-run file.
+    let r1 = find("r1");
+    assert_eq!(r1["events"][0]["type"], "agent");
+    assert_eq!(r1["events"][0]["message"], "hi");
+
+    // A run that captured no events omits the field entirely.
+    let r2 = find("r2");
+    assert!(r2.get("events").is_none());
 }
 
 #[test]

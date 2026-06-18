@@ -35,6 +35,12 @@ pub struct StoredRun {
     /// RFC 3339 of when this run was first published (the snapshot card's
     /// `publishedAt`). Not part of the run record itself.
     pub published_at: String,
+    /// The run's recorded normalized event stream, stored verbatim as a JSON
+    /// array string (the `run.events_json` column). `None` for a run published
+    /// before events were captured, or one that recorded none. Re-emitted into
+    /// the snapshot and served by `GET /runs/{id}/events`.
+    #[serde(default)]
+    pub events_json: Option<String>,
 }
 
 /// A run's review as stored.
@@ -103,11 +109,12 @@ impl Db {
         })
     }
 
-    /// Apply the schema and pragmas (§2).
+    /// Apply the schema and pragmas (§2), then run additive migrations.
     fn init(conn: &Connection) -> Result<()> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA)?;
+        migrate(conn)?;
         Ok(())
     }
 
@@ -121,6 +128,7 @@ impl Db {
         review: &StoredReview,
         links: &RunLinks,
         published_at: &str,
+        events_json: Option<&str>,
     ) -> Result<PublishOutcome> {
         // The stored record always carries the resolved links, so the snapshot's
         // record blob and its `links` sibling never disagree.
@@ -148,8 +156,8 @@ impl Db {
                 id, started_at, finished_at, published_at,
                 test_case_slug, test_case_version, variant,
                 harness_slug, harness_version, model_id,
-                run_state, loaded, record_json
-             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+                run_state, loaded, record_json, events_json
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
              ON CONFLICT(id) DO UPDATE SET
                 started_at = excluded.started_at,
                 finished_at = excluded.finished_at,
@@ -161,7 +169,8 @@ impl Db {
                 model_id = excluded.model_id,
                 run_state = excluded.run_state,
                 loaded = excluded.loaded,
-                record_json = excluded.record_json",
+                record_json = excluded.record_json,
+                events_json = excluded.events_json",
             params![
                 record.id,
                 record.started_at,
@@ -176,6 +185,7 @@ impl Db {
                 run_state_str(record.status.state),
                 record.validation.loaded as i64,
                 record_json,
+                events_json,
             ],
         )?;
 
@@ -342,9 +352,9 @@ impl Db {
     }
 }
 
-/// Decode a joined row into a [`StoredRun`]. Every query selects the same seven
+/// Decode a joined row into a [`StoredRun`]. Every query selects the same eight
 /// columns in this order: `record_json, rating, writeup, source_repo,
-/// playable_build, published_at, checklist`.
+/// playable_build, published_at, checklist, events_json`.
 fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     let record_json: String = row.get(0)?;
     let rating_str: String = row.get(1)?;
@@ -353,6 +363,7 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
     let playable_build: Option<String> = row.get(4)?;
     let published_at: String = row.get(5)?;
     let checklist_json: String = row.get(6)?;
+    let events_json: Option<String> = row.get(7)?;
 
     let record: RunRecord = serde_json::from_str(&record_json).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
@@ -376,12 +387,47 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
             playable_build,
         },
         published_at,
+        events_json,
     })
 }
 
-/// The shared seven-column projection every `StoredRun` query selects.
+/// The shared eight-column projection every `StoredRun` query selects.
 const STORED_RUN_COLUMNS: &str = "r.record_json, rv.rating, rv.writeup, l.source_repo, \
-     l.playable_build, r.published_at, rv.checklist";
+     l.playable_build, r.published_at, rv.checklist, r.events_json";
+
+/// Apply additive schema migrations to an existing database.
+///
+/// The base [`SCHEMA`] uses `CREATE TABLE IF NOT EXISTS`, which never alters an
+/// existing table, so columns added after a database was first created are filled
+/// in here. Each step is a guarded `ALTER TABLE ADD COLUMN`, skipped when the
+/// column is already present, so `init` stays idempotent across restarts.
+fn migrate(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "run", "events_json", "TEXT")?;
+    Ok(())
+}
+
+/// Add `column` (`name type`) to `table` unless it already exists. Reads the
+/// table's columns via `PRAGMA table_info` so a fresh database (where the column
+/// is part of [`SCHEMA`]) and an upgraded one converge to the same shape.
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_type: &str,
+) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let existing: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if existing.iter().any(|name| name == column) {
+        return Ok(());
+    }
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
+        [],
+    )?;
+    Ok(())
+}
 
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
@@ -408,7 +454,8 @@ CREATE TABLE IF NOT EXISTS run (
     model_id            TEXT NOT NULL,
     run_state           TEXT NOT NULL,
     loaded              INTEGER NOT NULL,
-    record_json         TEXT NOT NULL
+    record_json         TEXT NOT NULL,
+    events_json         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_run_published_at ON run (published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_run_case        ON run (test_case_slug, test_case_version);

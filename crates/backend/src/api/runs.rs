@@ -3,12 +3,13 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::review::{Rating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 
@@ -70,9 +71,27 @@ pub async fn publish(
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting published_at: {e}")))?;
 
+    // Persist the run's recorded event stream verbatim as a JSON array (omitted
+    // when empty), so the published Events tab can replay it. Raw harness output
+    // is never published.
+    let events_json = if request.events.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::to_string(&request.events)
+                .map_err(|e| ApiError::internal(format!("serializing events: {e}")))?,
+        )
+    };
+
     let outcome = state
         .db
-        .publish(&request.record, &review, &links, &published_at)
+        .publish(
+            &request.record,
+            &review,
+            &links,
+            &published_at,
+            events_json.as_deref(),
+        )
         .map_err(ApiError::from)?;
 
     // Coalesced: the dirty flag was set in the publish transaction; this only
@@ -121,6 +140,32 @@ pub async fn get(
     Ok(Json(stored_run_out(&run)))
 }
 
+/// `GET /runs/{id}/events` — the published run's recorded normalized event
+/// stream, as a JSON array (an empty array when the run recorded none, or was
+/// published before events were captured). Raw harness output is never published,
+/// so it is not served here. `404` for an unknown run.
+pub async fn events(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let run = state
+        .db
+        .get_run(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
+    // Stored verbatim as a JSON array; pass it through unparsed, defaulting to an
+    // empty array when the run carries no events.
+    let body = run.events_json.unwrap_or_else(|| "[]".to_string());
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        body,
+    )
+        .into_response())
+}
+
 /// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire.
 pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshResponse>, ApiError> {
     let outcome = state
@@ -160,6 +205,10 @@ pub struct PublishRequest {
     review: ReviewIn,
     #[serde(default)]
     links: LinksIn,
+    /// The run's recorded normalized event stream. Optional for back-compat with
+    /// publishers that predate it; stored verbatim and re-emitted to the snapshot.
+    #[serde(default)]
+    events: Vec<HarnessEvent>,
 }
 
 #[derive(Deserialize)]

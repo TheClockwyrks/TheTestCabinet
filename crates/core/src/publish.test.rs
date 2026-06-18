@@ -10,6 +10,7 @@ use crate::backend_client::{
     BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
+use crate::event::{EventKind, HarnessEvent};
 use crate::review::Rating;
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
 use crate::test_case::{TestCase, TestCaseVersion};
@@ -222,7 +223,7 @@ impl CommandRunner for MockRunner {
 /// newly recorded, so the submit half can be asserted without a real backend.
 struct MockBackend {
     already_published: bool,
-    submitted: Mutex<Vec<(RunRecord, Writeup, RunLinks)>>,
+    submitted: Mutex<Vec<(RunRecord, Writeup, RunLinks, Vec<HarnessEvent>)>>,
 }
 
 impl MockBackend {
@@ -233,7 +234,7 @@ impl MockBackend {
         }
     }
 
-    fn submitted(&self) -> Vec<(RunRecord, Writeup, RunLinks)> {
+    fn submitted(&self) -> Vec<(RunRecord, Writeup, RunLinks, Vec<HarnessEvent>)> {
         self.submitted.lock().expect("lock").clone()
     }
 }
@@ -273,11 +274,14 @@ impl BackendClient for MockBackend {
         record: &RunRecord,
         review: &Writeup,
         links: &RunLinks,
+        events: &[HarnessEvent],
     ) -> Result<PublishAck> {
-        self.submitted
-            .lock()
-            .expect("lock")
-            .push((record.clone(), review.clone(), links.clone()));
+        self.submitted.lock().expect("lock").push((
+            record.clone(),
+            review.clone(),
+            links.clone(),
+            events.to_vec(),
+        ));
         Ok(PublishAck {
             id: record.id.clone(),
             newly_published: !self.already_published,
@@ -317,11 +321,19 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
     };
     let record = sample_record();
     let writeup = sample_writeup();
+    let events = vec![HarnessEvent {
+        timestamp: "2026-06-17T20:41:00Z".to_string(),
+        session_id: None,
+        kind: EventKind::Agent {
+            message: "thinking".to_string(),
+        },
+    }];
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: Some(&build_dir),
         writeup: &writeup,
+        events: &events,
     };
 
     let outcome = publisher.publish(&request).await.expect("publish");
@@ -356,9 +368,11 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
     // review traveled with it.
     let submitted = publisher.backend().submitted();
     assert_eq!(submitted.len(), 1);
-    let (stored, review, links) = &submitted[0];
+    let (stored, review, links, submitted_events) = &submitted[0];
     assert_eq!(stored.id, record.id);
     assert_eq!(review, &writeup);
+    // The recorded event stream travels with the publish.
+    assert_eq!(submitted_events, &events);
     assert_eq!(
         links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
@@ -390,6 +404,7 @@ async fn publish_is_idempotent_when_already_released() {
         artifacts: &artifacts,
         build_dir: Some(&build_dir),
         writeup: &writeup,
+        events: &[],
     };
     let outcome = publisher.publish(&request).await.expect("publish");
 
@@ -414,6 +429,7 @@ async fn publish_without_a_build_dir_skips_the_deploy() {
         artifacts: &artifacts,
         build_dir: None,
         writeup: &writeup,
+        events: &[],
     };
     let outcome = publisher.publish(&request).await.expect("publish");
 

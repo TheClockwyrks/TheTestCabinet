@@ -56,12 +56,17 @@ interface SnapshotReview {
   checklist?: SnapshotReviewVerdict[];
 }
 
-// `runs/<run-id>.json`: the full run record plus its review and links.
+// `runs/<run-id>.json`: the full run record plus its review and links, and the
+// recorded normalized event stream when the run captured one (raw harness output
+// is never published). The events are emitted as a separate per-run static asset
+// rather than inlined into the bundle, so the gallery JS doesn't carry every
+// run's full event log.
 interface SnapshotRunFile {
   schemaVersion: number;
   record: unknown; // a full RunRecord (camelCase, links populated)
   review: SnapshotReview;
   links?: { sourceRepo: string | null; playableBuild: string | null };
+  events?: unknown; // a JSON array of normalized HarnessEvents, when present
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -228,7 +233,12 @@ function collapseCases(
 
 // Fetch and assemble the published snapshot. Follows the atomic pointer
 // `index.json` -> versioned prefix -> `runs.json` -> per-run + per-case files.
-async function loadSnapshot(base: string): Promise<AssembledSnapshot> {
+// `emitEvents` is called for each run that carries an event stream, so the build
+// can write it out as a per-run static asset the Events tab fetches at runtime.
+async function loadSnapshot(
+  base: string,
+  emitEvents: (runId: string, json: string) => void,
+): Promise<AssembledSnapshot> {
   const index = await fetchJson<SnapshotIndex>(joinUrl(base, "index.json"));
   const runsFile = await fetchJson<SnapshotRunsFile>(
     joinUrl(base, index.runsKey),
@@ -247,6 +257,12 @@ async function loadSnapshot(base: string): Promise<AssembledSnapshot> {
     runs.push(runFile.record);
     if (runFile.review) {
       writeups[summary.id] = frameWriteup(runFile.review);
+    }
+    // Emit the run's recorded events as a standalone asset (only when present),
+    // so the Events tab can fetch `run-events/<id>.json` without the bundle
+    // carrying every run's log.
+    if (runFile.events != null) {
+      emitEvents(summary.id, JSON.stringify(runFile.events));
     }
     const { testCaseSlug, testCaseVersion } = summary.subject;
     caseKeys.add(
@@ -303,9 +319,19 @@ export function snapshot(): Plugin {
         return;
       }
       try {
-        const data = await loadSnapshot(base);
+        let eventAssets = 0;
+        const data = await loadSnapshot(base, (runId, json) => {
+          // Write each run's events as a stable, predictable asset path the
+          // static site fetches at runtime (`run-events/<id>.json`).
+          this.emitFile({
+            type: "asset",
+            fileName: `run-events/${runId}.json`,
+            source: json,
+          });
+          eventAssets += 1;
+        });
         this.info(
-          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s).`,
+          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s).`,
         );
         module = serialize(data);
       } catch (error) {

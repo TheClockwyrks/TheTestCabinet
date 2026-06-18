@@ -138,6 +138,19 @@ export interface LiveEvent {
   event: HarnessEvent;
 }
 
+// One line of recorded raw harness output (the `read_run_events` command's
+// `raw` entries), matching the core `RawOutputLine` serde shape.
+export interface RawOutputLine {
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+// A finished run's recorded event streams, returned by `read_run_events`.
+export interface RunEventStreams {
+  events: HarnessEvent[];
+  raw: RawOutputLine[];
+}
+
 export type RunOutcome =
   | { kind: "completed"; record: RunRecord }
   | { kind: "failed"; message: string };
@@ -158,6 +171,8 @@ export const launchRun = (config: LaunchConfig) =>
   invoke<string>("launch_run", { config });
 export const listRuns = () => invoke<StoredRun[]>("list_runs");
 export const readRun = (id: string) => invoke<StoredRun>("read_run", { id });
+export const readRunEvents = (id: string) =>
+  invoke<RunEventStreams>("read_run_events", { id });
 
 // One page of published runs served by the backend (the read side), as the
 // `BackendClient` consumes it.

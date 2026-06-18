@@ -44,6 +44,10 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metrics`,
   runMetadata: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/metadata`,
+  runEvents: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/events`,
+  // Retained only so the legacy `/validation` deep link can redirect to the
+  // Metadata tab, which now hosts the validation widget. No tab links here.
   runValidation: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/validation`,
 } as const;
@@ -75,5 +79,6 @@ export const routePatterns = {
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
+  runEvents: "/runs/:runId/events",
   runValidation: "/runs/:runId/validation",
 } as const;

@@ -70,7 +70,7 @@ pub use prompt::render_prompt;
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, PublishOutcome,
     PublishRequest, Publisher, SystemCommandRunner, implementation_dir, parse_wrangler_url,
-    run_slug,
+    read_event_log, run_slug,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{Rating, ReviewVerdict, VerdictStatus, Writeup, missing_verdicts, parse_writeup};

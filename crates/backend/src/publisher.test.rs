@@ -66,6 +66,7 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
         },
         &RunLinks::default(),
         "2026-06-17T21:40:00Z",
+        None,
     )
     .unwrap();
     assert!(db.snapshot_state().unwrap().dirty);
@@ -96,6 +97,7 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
             },
             &RunLinks::default(),
             &format!("2026-06-17T21:4{i}:00Z"),
+            None,
         )
         .unwrap();
         publisher.queue_refresh();

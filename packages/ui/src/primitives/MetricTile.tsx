@@ -9,6 +9,11 @@ interface MetricTileProps {
   secondary?: boolean;
   /** When set, render the value as an external link to this URL. */
   href?: string;
+  /**
+   * Native tooltip for the value. Use when the displayed value is abbreviated
+   * (e.g. a container image digest) so the full text is still reachable on hover.
+   */
+  title?: string;
 }
 
 // A single labelled figure in the neon-outlined panel style. Used to lay out a
@@ -20,6 +25,7 @@ export function MetricTile({
   value,
   secondary = false,
   href,
+  title,
 }: MetricTileProps) {
   const valueClass = `${styles.value}${secondary ? ` ${styles.secondary}` : ""}`;
   return (
@@ -31,11 +37,14 @@ export function MetricTile({
           href={href}
           target="_blank"
           rel="noreferrer"
+          title={title}
         >
           {value}
         </a>
       ) : (
-        <span className={valueClass}>{value}</span>
+        <span className={valueClass} title={title}>
+          {value}
+        </span>
       )}
     </div>
   );

@@ -92,6 +92,7 @@ impl BackendClient for StubBackend {
         record: &crate::run_record::RunRecord,
         _review: &crate::review::Writeup,
         _links: &crate::run_record::RunLinks,
+        _events: &[crate::event::HarnessEvent],
     ) -> Result<PublishAck> {
         Ok(PublishAck {
             id: record.id.clone(),

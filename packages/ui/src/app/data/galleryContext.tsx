@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunEventStreams } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import type { TestCaseSummary } from "./testCases";
 
@@ -50,6 +51,15 @@ export interface GalleryDataInput {
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * Fetch a finished run's recorded event streams for the run-detail Events tab.
+   * Each host sources these its own way (the static site from a published asset,
+   * the consoles from their worker/backend clients). Resolves `null` when the
+   * host cannot provide events for the run at all (vs. an empty `events` array,
+   * which means the run recorded none). Omitted by a host that supports no
+   * events at all.
+   */
+  fetchRunEvents?: (runId: string) => Promise<RunEventStreams | null>;
 }
 
 export interface GalleryData extends GalleryDataInput {

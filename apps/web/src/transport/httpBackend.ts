@@ -10,9 +10,11 @@ import type {
 } from "@test-cabinet/ui/client";
 import type {
   BackendIdentity,
+  HarnessEvent,
   Model,
   ReviewDocument,
   ReviewItem,
+  RunEventStreams,
   RunPage,
   Specification,
   SpecDocument,
@@ -229,6 +231,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/runs/${encodeURIComponent(id)}`,
       );
       return toStoredRun(body);
+    },
+
+    async readRunEvents(id: string): Promise<RunEventStreams> {
+      // The backend serves the published run's normalized event stream as a JSON
+      // array (empty when the run recorded none). Raw harness output is never
+      // published, so it is unavailable here.
+      const events = await getJson<HarnessEvent[]>(
+        baseUrl,
+        `/runs/${encodeURIComponent(id)}/events`,
+      );
+      return { events, raw: null };
     },
   };
 }

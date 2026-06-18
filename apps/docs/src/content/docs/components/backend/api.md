@@ -194,7 +194,11 @@ record blob without changing when it was first published.
   "links": {
     "sourceRepo": "https://github.com/TheClockwyrks/tcab-pong-claude-…",
     "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
-  }
+  },
+  // The run's recorded normalized event stream, stored and re-emitted to the
+  // snapshot for the run's Events tab. Optional; an array of HarnessEvents. Raw
+  // harness output is never published.
+  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
 }
 ```
 
@@ -219,6 +223,14 @@ when there are no more). Used by reporters.
 
 One stored run: its record (with links populated), its review, and its links.
 `404` if unknown.
+
+### `GET /runs/{id}/events`
+
+The published run's recorded normalized [event stream](/components/core/events/)
+as a JSON array — an empty array when the run recorded none (or was published
+before events were captured). Raw harness output is never published, so it is not
+served here. Backs the run-detail Events tab for reporters reading published
+runs. `404` for an unknown run.
 
 ### `POST /snapshot/refresh`
 

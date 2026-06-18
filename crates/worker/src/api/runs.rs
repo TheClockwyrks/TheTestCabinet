@@ -232,6 +232,61 @@ fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, A
     Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
 }
 
+/// `GET /runs/{id}/events.jsonl` — a finished run's recorded, normalized event
+/// stream, served verbatim from disk as NDJSON.
+///
+/// Unlike `/runs/{job}/events` (the *live* stream keyed by job id, which only
+/// exists while the job is resident in memory), this reads the persisted
+/// `{out_dir}/{id}/events.jsonl` keyed by the run-record id, so it works for any
+/// finished run the worker still has on disk — long after the job is gone. Each
+/// line is one [`HarnessEvent`](test_cabinet_core::HarnessEvent) as JSON. `404`
+/// when the run or its event log is absent.
+pub async fn events_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    serve_run_stream(&state, &id, "events.jsonl")
+}
+
+/// `GET /runs/{id}/raw.jsonl` — a finished run's recorded raw harness output
+/// (one [`RawOutputLine`](test_cabinet_core::RawOutputLine) per line), served
+/// verbatim from disk as NDJSON. `404` when the run or its raw log is absent.
+pub async fn raw_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    serve_run_stream(&state, &id, "raw.jsonl")
+}
+
+/// Serve a recorded run stream file (`events.jsonl` or `raw.jsonl`) from a
+/// finished run's output directory as immutable NDJSON. A finished run's logs
+/// never change, so they are safe to cache aggressively. A missing file maps to a
+/// `404`; any other read error is a `500`.
+fn serve_run_stream(state: &AppState, id: &str, file_name: &str) -> Result<Response, ApiError> {
+    let path = state.config.out_dir.join(id).join(file_name);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(ApiError::not_found(format!(
+                "run `{id}` has no recorded `{file_name}`"
+            )));
+        }
+        Err(err) => {
+            return Err(ApiError::internal(format!(
+                "reading `{file_name}` for run `{id}`: {err}"
+            )));
+        }
+    };
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-ndjson"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
 /// `GET /runs/{job}` — the current status of a submitted run.
 ///
 /// Returns the job's state and, once finished, the produced run record (or the

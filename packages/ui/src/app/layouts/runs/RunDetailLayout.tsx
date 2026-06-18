@@ -16,7 +16,7 @@ export type RunDetailTab =
   | "verdict"
   | "play"
   | "metrics"
-  | "validation"
+  | "events"
   | "metadata";
 
 interface RunDetailLayoutProps {
@@ -60,11 +60,7 @@ export function RunDetailLayout({ tab, children }: RunDetailLayoutProps) {
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
     { key: "play", label: "Play", to: routes.runPlay(run.id) },
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
-    {
-      key: "validation",
-      label: "Validation",
-      to: routes.runValidation(run.id),
-    },
+    { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
   ];
 

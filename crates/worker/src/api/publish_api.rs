@@ -19,7 +19,7 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
     ArtifactCollection, BackendPublisher, HttpBackendClient, PublishConfig, PublishRequest,
-    Publisher, Rating, RunRecord, SystemCommandRunner, Writeup, find_build_output,
+    Publisher, Rating, RunRecord, SystemCommandRunner, Writeup, find_build_output, read_event_log,
 };
 
 use crate::api::AppState;
@@ -106,6 +106,9 @@ pub async fn publish(
     let artifacts = ArtifactCollection {
         repo_path: impl_dir,
     };
+    // Publish the recorded event log alongside the run so its Events tab works on
+    // the public site (best-effort: an absent log publishes as no events).
+    let events = read_event_log(&run_dir);
 
     let publisher = BackendPublisher::new(
         PublishConfig::from_env(),
@@ -117,6 +120,7 @@ pub async fn publish(
         artifacts: &artifacts,
         build_dir: build_dir.as_deref(),
         writeup: &writeup,
+        events: &events,
     };
     let outcome = publisher
         .publish(&request)

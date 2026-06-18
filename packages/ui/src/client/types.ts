@@ -132,6 +132,24 @@ export interface HarnessEvent {
   [key: string]: unknown;
 }
 
+// One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
+// the Rust `RawOutputLine` (crates/core/src/execution.rs). This is UI-only — it
+// is not part of the run-record contract — and feeds the Events tab's raw view.
+export interface RawOutputLine {
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+// A finished run's recorded event streams, for the run-detail Events tab. `events`
+// is the normalized (TTC) stream the live feed renders. `raw` is the raw harness
+// output it was mapped from, present only where a host can supply it (the runner
+// hosts) and `null` where it isn't (the public site, which publishes TTC events
+// only) — the tab hides the raw toggle whenever it is null.
+export interface RunEventStreams {
+  events: HarnessEvent[];
+  raw: RawOutputLine[] | null;
+}
+
 export type RunOutcome =
   | { kind: "completed"; record: RunRecord }
   | { kind: "failed"; message: string };

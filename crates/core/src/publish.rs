@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::backend_client::BackendClient;
 use crate::error::{Error, Result};
+use crate::event::HarnessEvent;
 use crate::execution::ArtifactCollection;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -38,6 +39,29 @@ pub struct PublishRequest<'a> {
     /// by value here rather than left optional — a run without a writeup and
     /// rating is refused before a request is ever built (see `tcab publish`).
     pub writeup: &'a Writeup,
+    /// The run's recorded normalized event stream (`events.jsonl`), submitted to
+    /// the backend so it can be shown on the published run's Events tab. Empty
+    /// when the run recorded no events or its log is unavailable; the raw harness
+    /// output is deliberately NOT published (it stays on the producing host).
+    /// Build one with [`read_event_log`].
+    pub events: &'a [HarnessEvent],
+}
+
+/// Read a finished run's recorded normalized event log (`events.jsonl`) from its
+/// run directory, for inclusion in a publish.
+///
+/// Best-effort: a missing log yields an empty vec, and individual unparsable
+/// lines are skipped — a run with no (or a partial) event log still publishes.
+/// The run directory is the one holding `run-record.json`, `events.jsonl`, and
+/// the `implementation/` tree.
+pub fn read_event_log(run_dir: &Path) -> Vec<HarnessEvent> {
+    let Ok(text) = std::fs::read_to_string(run_dir.join("events.jsonl")) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str::<HarnessEvent>(line).ok())
+        .collect()
 }
 
 /// The result of publishing a run, with the links produced.
@@ -68,14 +92,15 @@ pub trait Publisher: Send + Sync {
     /// `None` when the request carried no build directory.
     async fn release_playable_build(&self, request: &PublishRequest<'_>) -> Result<Option<String>>;
 
-    /// Submit the run record, review, and resolved links to the backend (the
-    /// system of record). Idempotent on `record.id`; returns whether the run was
-    /// newly recorded.
+    /// Submit the run record, review, resolved links, and recorded event stream to
+    /// the backend (the system of record). Idempotent on `record.id`; returns
+    /// whether the run was newly recorded.
     async fn submit_run(
         &self,
         record: &RunRecord,
         writeup: &Writeup,
         links: &RunLinks,
+        events: &[HarnessEvent],
     ) -> Result<bool>;
 
     /// Publish a single run end to end. Idempotent.
@@ -118,6 +143,7 @@ impl Publisher for NoopPublisher {
         _record: &RunRecord,
         _writeup: &Writeup,
         _links: &RunLinks,
+        _events: &[HarnessEvent],
     ) -> Result<bool> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
@@ -409,8 +435,12 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         record: &RunRecord,
         writeup: &Writeup,
         links: &RunLinks,
+        events: &[HarnessEvent],
     ) -> Result<bool> {
-        let ack = self.backend.publish_run(record, writeup, links).await?;
+        let ack = self
+            .backend
+            .publish_run(record, writeup, links, events)
+            .await?;
         Ok(ack.newly_published)
     }
 
@@ -428,7 +458,9 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         let mut record = request.record.clone();
         record.links = links.clone();
 
-        let newly_published = self.submit_run(&record, request.writeup, &links).await?;
+        let newly_published = self
+            .submit_run(&record, request.writeup, &links, request.events)
+            .await?;
 
         Ok(PublishOutcome {
             source_repo,

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
+use crate::event::HarnessEvent;
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -133,13 +134,15 @@ pub trait BackendClient: Send + Sync {
     /// [`Self::resolve_version`]; this is the explicit fetch).
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String>;
 
-    /// Submit a published run: record + review + resolved links. (`POST /runs`)
-    /// Idempotent on `record.id`.
+    /// Submit a published run: record + review + resolved links + recorded event
+    /// stream. (`POST /runs`) Idempotent on `record.id`. `events` is the run's
+    /// normalized event log; pass an empty slice when none is available.
     async fn publish_run(
         &self,
         record: &RunRecord,
         review: &Writeup,
         links: &RunLinks,
+        events: &[HarnessEvent],
     ) -> Result<PublishAck>;
 
     /// List published runs, newest first, paginated. (`GET /runs?before=&limit=`)
@@ -465,6 +468,7 @@ impl BackendClient for HttpBackendClient {
         record: &RunRecord,
         review: &Writeup,
         links: &RunLinks,
+        events: &[HarnessEvent],
     ) -> Result<PublishAck> {
         let url = self.url("/runs");
         let body = PublishBody {
@@ -478,6 +482,7 @@ impl BackendClient for HttpBackendClient {
                 source_repo: links.source_repo.clone(),
                 playable_build: links.playable_build.clone(),
             },
+            events,
         };
         let response = self
             .http
@@ -750,6 +755,9 @@ struct PublishBody<'a> {
     record: &'a RunRecord,
     review: ReviewBody<'a>,
     links: LinksBody,
+    /// The run's normalized event stream. Always sent (an empty array when the
+    /// run has none); the backend stores it for the published Events tab.
+    events: &'a [HarnessEvent],
 }
 
 #[derive(serde::Serialize)]

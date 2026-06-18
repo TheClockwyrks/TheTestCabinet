@@ -88,8 +88,21 @@ impl SnapshotBuilder {
             },
         )?);
 
-        // runs/<id>.json — per-run record + review + links.
+        // runs/<id>.json — per-run record + review + links, plus the recorded
+        // normalized event stream (when captured) so the site can serve the run's
+        // Events tab. Raw harness output is never published.
         for run in &self.runs {
+            let events = run
+                .events_json
+                .as_deref()
+                .map(serde_json::from_str::<serde_json::Value>)
+                .transpose()
+                .map_err(|e| {
+                    BackendError::Snapshot(format!(
+                        "parsing stored events for run {}: {e}",
+                        run.record.id
+                    ))
+                })?;
             objects.push(json_object(
                 format!("{prefix}/runs/{}.json", run.record.id),
                 &PerRun {
@@ -104,6 +117,7 @@ impl SnapshotBuilder {
                         source_repo: run.links.source_repo.as_deref(),
                         playable_build: run.links.playable_build.as_deref(),
                     },
+                    events,
                 },
             )?);
         }
@@ -358,6 +372,11 @@ struct PerRun<'a> {
     record: &'a RunRecord,
     review: ReviewOut<'a>,
     links: LinksOut<'a>,
+    /// The run's recorded normalized event stream (a JSON array), omitted when the
+    /// run captured none. The site emits this as a per-run static asset its Events
+    /// tab fetches; raw harness output is never included.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    events: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]

@@ -1,0 +1,24 @@
+@use "../../../styles/tokens" as t;
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+// The stream toggle (Events / Raw) sits above the feed, pushed to the right so it
+// reads as a control over the content below.
+.controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.notice {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+.error {
+  color: t.$color-negative;
+}

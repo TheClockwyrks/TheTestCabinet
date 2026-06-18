@@ -63,6 +63,9 @@ export function createTauriWorker(): WorkerClient {
 
     listRuns: () => api.listRuns(),
     readRun: (id) => api.readRun(id),
+    // A produced run's recorded streams come straight off the local core's run
+    // directory (events.jsonl + raw.jsonl) via the `read_run_events` command.
+    readRunEvents: (id) => api.readRunEvents(id),
     // The worker contract carries the review with the publish. The local core
     // keeps a run-store, so persist the review there first, then publish by id —
     // the store is the core's system of record for a produced run's review.

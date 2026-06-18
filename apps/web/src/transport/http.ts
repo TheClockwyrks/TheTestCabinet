@@ -32,6 +32,24 @@ export async function getText(base: string, path: string): Promise<string> {
   return res.text();
 }
 
+// Fetch an NDJSON document and parse each non-empty line as JSON. Used for the
+// recorded run streams (`events.jsonl` / `raw.jsonl`) the worker serves verbatim
+// from disk. A malformed line is skipped rather than failing the whole read.
+export async function getNdjson<T>(base: string, path: string): Promise<T[]> {
+  const text = await getText(base, path);
+  const items: T[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      items.push(JSON.parse(trimmed) as T);
+    } catch {
+      /* skip a malformed line */
+    }
+  }
+  return items;
+}
+
 // Turns a non-2xx response into an Error, preferring the backend's error
 // envelope (`{ error: { code, message } }`) when present.
 async function httpError(res: Response): Promise<Error> {

@@ -6,9 +6,11 @@
 // commands; with no backend configured they fail gracefully (an empty published
 // gallery), leaving the local catalog and the worker's produced runs.
 import {
+  NotSupportedError,
   type BackendClient,
   type BackendIdentity,
   type ReviewItem,
+  type RunEventStreams,
   type RunPage,
   type StoredRun,
 } from "@test-cabinet/ui/client";
@@ -41,6 +43,13 @@ export function createTauriBackend(): BackendClient {
     },
     readRun(id): Promise<StoredRun> {
       return api.readPublishedRun(id);
+    },
+    readRunEvents(): Promise<RunEventStreams> {
+      // The desktop core proxies published runs but exposes no events endpoint for
+      // them; a published run's events come from the worker copy on disk when it
+      // is still produced locally. For a purely-published run viewed here, report
+      // unsupported so the Events tab shows a clear "not available here" state.
+      throw new NotSupportedError("readRunEvents");
     },
   };
 }

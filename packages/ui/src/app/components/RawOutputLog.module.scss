@@ -1,0 +1,33 @@
+@use "../styles/tokens" as t;
+
+// The raw harness output log: a terminal-style transcript of the recorded
+// stdout/stderr lines. Mirrors the EventFeed container so the two views of the
+// Events tab sit consistently; the global monospace font (`--ttc-font`) applies.
+.log {
+  max-height: 28rem;
+  overflow-y: auto;
+  padding: t.$space-sm t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  font-size: t.$font-sm;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
+// One output line. Preserve interior whitespace and wrap long lines rather than
+// scrolling horizontally. stdout reads in the body color; stderr is tinted so it
+// stands out the way it would in a terminal.
+.line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text;
+
+  &[data-stream="stderr"] {
+    color: var(--ttc-event-error);
+  }
+}

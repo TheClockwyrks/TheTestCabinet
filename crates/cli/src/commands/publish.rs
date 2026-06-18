@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use test_cabinet_core::{
-    ArtifactCollection, BackendPublisher, HttpBackendClient, PublishConfig, PublishRequest,
-    Publisher, RunRecord, SystemCommandRunner, Writeup, implementation_dir, parse_writeup,
+    ArtifactCollection, BackendPublisher, HarnessEvent, HttpBackendClient, PublishConfig,
+    PublishRequest, Publisher, RunRecord, SystemCommandRunner, Writeup, implementation_dir,
+    parse_writeup, read_event_log,
 };
 
 use crate::cli::PublishArgs;
@@ -29,6 +30,7 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
     let mut artifacts = Vec::with_capacity(args.run_records.len());
     let mut build_dirs: Vec<Option<PathBuf>> = Vec::with_capacity(args.run_records.len());
     let mut writeups = Vec::with_capacity(args.run_records.len());
+    let mut event_logs: Vec<Vec<HarnessEvent>> = Vec::with_capacity(args.run_records.len());
     let mut missing = Vec::new();
     for path in &args.run_records {
         let record =
@@ -42,6 +44,10 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
         artifacts.push(ArtifactCollection {
             repo_path: impl_dir,
         });
+        // The recorded event log sits beside the record; publish it so the run's
+        // Events tab works on the public site. Best-effort (absent => empty).
+        let run_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        event_logs.push(read_event_log(run_dir));
         records.push(record);
     }
 
@@ -88,12 +94,14 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
         .zip(&artifacts)
         .zip(&build_dirs)
         .zip(&writeups)
+        .zip(&event_logs)
         .map(
-            |(((record, artifacts), build_dir), writeup)| PublishRequest {
+            |((((record, artifacts), build_dir), writeup), events)| PublishRequest {
                 record,
                 artifacts,
                 build_dir: build_dir.as_deref(),
                 writeup,
+                events,
             },
         )
         .collect();

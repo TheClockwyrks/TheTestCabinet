@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { HarnessEvent } from "@test-cabinet/ui/client";
 import {
   sampleRuns,
   sampleTestCases,
@@ -72,6 +73,26 @@ export function useStaticGallery(): GalleryDataInput {
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
 
+  // The Events tab's data source on the static site: a published run's normalized
+  // event stream, emitted at build time as a per-run static asset by
+  // vite-plugin-snapshot (raw harness output is never published). A run without
+  // events (or one published before they were captured) resolves to an empty
+  // stream rather than failing. Stable identity so the Events tab doesn't refetch
+  // on every render.
+  const fetchRunEvents = useCallback(async (runId: string) => {
+    const url = `${import.meta.env.BASE_URL}run-events/${encodeURIComponent(
+      runId,
+    )}.json`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return { events: [], raw: null };
+      const events = (await response.json()) as HarnessEvent[];
+      return { events, raw: null };
+    } catch {
+      return { events: [], raw: null };
+    }
+  }, []);
+
   return {
     runs,
     localIds,
@@ -80,5 +101,6 @@ export function useStaticGallery(): GalleryDataInput {
     testCases,
     testCasesUsingSamples,
     canExecute: false,
+    fetchRunEvents,
   };
 }

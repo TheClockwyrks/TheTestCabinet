@@ -67,6 +67,13 @@ rather than holding one request open for the whole run:
   harness produces them; the stream closes when the run reaches a terminal state.
   Each line is a [`HarnessEvent`](/components/core/events/); the event taxonomy is
   documented there rather than as a published JSON schema.
+- `GET /runs/{id}/events.jsonl` and `GET /runs/{id}/raw.jsonl` — a **finished**
+  run's recorded streams, served verbatim from its output directory as NDJSON and
+  keyed by run-record id (unlike the live `/{job}/events` stream above, which is
+  keyed by job id and only exists while the job is in memory). The first is the
+  normalized event log, the second the raw harness output it was mapped from;
+  together they back the run-detail Events tab after a run finishes. `404` when
+  the run or that stream is absent.
 - `POST /publish` — [publish](/components/core/results/) a finished run on the
   same terms a local `tcab publish` does (release the source repo, deploy the
   build, submit the record + review + links to the

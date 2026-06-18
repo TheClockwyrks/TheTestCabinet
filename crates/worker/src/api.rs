@@ -45,6 +45,11 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{job}", get(runs::status))
         // The live harness-event stream for a job, as NDJSON.
         .route("/runs/{job}/events", get(runs::events))
+        // A finished run's recorded streams, served from disk as NDJSON: the
+        // normalized event log and the raw harness output. Keyed by run-record
+        // id, these back the run-detail Events tab after the live job is gone.
+        .route("/runs/{id}/events.jsonl", get(runs::events_file))
+        .route("/runs/{id}/raw.jsonl", get(runs::raw_file))
         // Serve a produced run's playable build (the static output collected
         // beside its implementation) so a reviewer can play it before it is
         // published. `{id}` is the run-record id the produced-run list reports.

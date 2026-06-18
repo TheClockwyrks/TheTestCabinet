@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import {
   NotSupportedError,
@@ -166,6 +166,28 @@ export function useLiveGallery(): GalleryDataInput {
 
   const testCasesUsingSamples = testCases.length === 0;
 
+  // Resolve a run's recorded events by origin: a produced (local) run's streams
+  // come from the worker (events + raw, off its output directory); any other run
+  // is a published one read from the backend (TTC events only). A transport that
+  // can't reach them (`NotSupportedError`) resolves to null so the Events tab
+  // shows a clear "not available here" state rather than erroring.
+  const fetchRunEvents = useCallback(
+    async (runId: string) => {
+      try {
+        if (localIds.has(runId) && workerClient) {
+          return await workerClient.readRunEvents(runId);
+        }
+        if (backend) return await backend.readRunEvents(runId);
+        if (workerClient) return await workerClient.readRunEvents(runId);
+        return null;
+      } catch (e) {
+        if (e instanceof NotSupportedError) return null;
+        throw e;
+      }
+    },
+    [backend, workerClient, localIds],
+  );
+
   return {
     runs,
     localIds,
@@ -174,5 +196,6 @@ export function useLiveGallery(): GalleryDataInput {
     testCases: testCasesUsingSamples ? sampleTestCases : testCases,
     testCasesUsingSamples,
     canExecute: true,
+    fetchRunEvents,
   };
 }

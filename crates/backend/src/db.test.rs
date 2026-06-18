@@ -62,7 +62,7 @@ fn links() -> RunLinks {
 fn publish_then_get_round_trips_with_links_populated() {
     let db = Db::open_in_memory().unwrap();
     let outcome = db
-        .publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z")
+        .publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z", None)
         .unwrap();
     assert!(outcome.newly_published);
 
@@ -80,9 +80,37 @@ fn publish_then_get_round_trips_with_links_populated() {
 }
 
 #[test]
+fn publish_stores_events_json_and_get_run_returns_it() {
+    let db = Db::open_in_memory().unwrap();
+    let events =
+        r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#;
+    db.publish(
+        &record("r1"),
+        &review(),
+        &links(),
+        "2026-06-17T21:40:00Z",
+        Some(events),
+    )
+    .unwrap();
+    let stored = db.get_run("r1").unwrap().unwrap();
+    assert_eq!(stored.events_json.as_deref(), Some(events));
+
+    // A run published without an event log stores NULL and reads back as None.
+    db.publish(
+        &record("r2"),
+        &review(),
+        &links(),
+        "2026-06-17T21:41:00Z",
+        None,
+    )
+    .unwrap();
+    assert_eq!(db.get_run("r2").unwrap().unwrap().events_json, None);
+}
+
+#[test]
 fn republish_is_idempotent_and_keeps_first_published_at() {
     let db = Db::open_in_memory().unwrap();
-    db.publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z")
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z", None)
         .unwrap();
 
     let updated_review = StoredReview {
@@ -96,6 +124,7 @@ fn republish_is_idempotent_and_keeps_first_published_at() {
             &updated_review,
             &links(),
             "2026-06-18T09:00:00Z",
+            None,
         )
         .unwrap();
     assert!(!outcome.newly_published);
@@ -110,11 +139,11 @@ fn republish_is_idempotent_and_keeps_first_published_at() {
 #[test]
 fn list_runs_orders_newest_first_and_paginates() {
     let db = Db::open_in_memory().unwrap();
-    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z", None)
         .unwrap();
-    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z")
+    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z", None)
         .unwrap();
-    db.publish(&record("r3"), &review(), &links(), "2026-06-17T12:00:00Z")
+    db.publish(&record("r3"), &review(), &links(), "2026-06-17T12:00:00Z", None)
         .unwrap();
 
     let (page, next) = db.list_runs(2, None).unwrap();
@@ -133,7 +162,7 @@ fn list_runs_orders_newest_first_and_paginates() {
 fn publish_marks_snapshot_dirty() {
     let db = Db::open_in_memory().unwrap();
     assert!(!db.snapshot_state().unwrap().dirty);
-    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z", None)
         .unwrap();
     assert!(db.snapshot_state().unwrap().dirty);
 
@@ -147,9 +176,9 @@ fn publish_marks_snapshot_dirty() {
 #[test]
 fn all_runs_returns_everything_newest_first() {
     let db = Db::open_in_memory().unwrap();
-    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z", None)
         .unwrap();
-    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z")
+    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z", None)
         .unwrap();
     let all = db.all_runs().unwrap();
     assert_eq!(all.len(), 2);

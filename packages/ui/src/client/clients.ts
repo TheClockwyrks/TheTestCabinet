@@ -13,6 +13,7 @@ import type {
   Rating,
   ReviewItem,
   ReviewVerdict,
+  RunEventStreams,
   RunJob,
   RunOutcome,
   RunPage,
@@ -64,6 +65,14 @@ export interface BackendClient {
 
   /** One published run by id (`GET /runs/{id}`): record + review + links. */
   readRun(id: string): Promise<StoredRun>;
+
+  /**
+   * A published run's recorded normalized event stream (`GET /runs/{id}/events`),
+   * for the run-detail Events tab. Raw harness output is never published, so
+   * {@link RunEventStreams.raw} is always `null` here. May throw
+   * {@link NotSupportedError} where the transport cannot reach published events.
+   */
+  readRunEvents(id: string): Promise<RunEventStreams>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`
@@ -118,6 +127,14 @@ export interface WorkerClient {
 
   /** One produced run by id. */
   readRun(id: string): Promise<StoredRun>;
+
+  /**
+   * A produced run's recorded event streams from the worker's output directory:
+   * the normalized stream (`GET /runs/{id}/events.jsonl`) and the raw harness
+   * output (`GET /runs/{id}/raw.jsonl`). Both back the run-detail Events tab for
+   * a finished run; `raw` is null only when the worker has no raw log on disk.
+   */
+  readRunEvents(id: string): Promise<RunEventStreams>;
 
   /**
    * Publish a run together with its review (`POST /publish`). The review is

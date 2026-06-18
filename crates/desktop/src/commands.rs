@@ -12,12 +12,13 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use test_cabinet_core::{
     ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, BuildValidator,
-    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug,
-    HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices, Orchestrator,
-    PrerenderedReferenceRenderer, PublishConfig, PublishRequest, PublishedRun, Publisher, Rating,
-    ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord, RunRequest, SystemCommandRunner,
-    TestCase, TestCaseCatalog, TestCaseVersion, Writeup, find_build_output, implementation_dir,
-    materialize_version, missing_verdicts, parse_writeup,
+    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessEvent,
+    HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices,
+    Orchestrator, PrerenderedReferenceRenderer, PublishConfig, PublishRequest, PublishedRun,
+    Publisher, Rating, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord,
+    RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog, TestCaseVersion, Writeup,
+    find_build_output, implementation_dir, materialize_version, missing_verdicts, parse_writeup,
+    read_event_log,
 };
 
 use crate::config;
@@ -471,6 +472,43 @@ pub fn read_run(id: String) -> CmdResult<StoredRun> {
     })
 }
 
+/// A finished run's recorded event streams, read from disk for the Events tab:
+/// the normalized event stream the live feed renders, and the raw harness output
+/// it was mapped from (which the runner hosts expose behind a toggle).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunEventStreams {
+    /// The normalized event stream (`events.jsonl`).
+    pub events: Vec<HarnessEvent>,
+    /// The raw harness output lines (`raw.jsonl`).
+    pub raw: Vec<RawOutputLine>,
+}
+
+/// Read a finished run's recorded event streams from its output directory: the
+/// normalized events (`events.jsonl`) and the raw harness output (`raw.jsonl`).
+/// Best-effort per stream — a missing file yields an empty list — so a run that
+/// recorded only one (or neither) still resolves rather than erroring.
+#[tauri::command]
+pub fn read_run_events(id: String) -> CmdResult<RunEventStreams> {
+    let run_dir = config::output_dir().join(&id);
+    Ok(RunEventStreams {
+        events: read_event_log(&run_dir),
+        raw: read_raw_output(&run_dir),
+    })
+}
+
+/// Read a run's raw harness output (`raw.jsonl`), one [`RawOutputLine`] per line.
+/// Best-effort: an absent file or an unparsable line yields what did parse.
+fn read_raw_output(run_dir: &Path) -> Vec<RawOutputLine> {
+    let Ok(text) = std::fs::read_to_string(run_dir.join("raw.jsonl")) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str::<RawOutputLine>(line).ok())
+        .collect()
+}
+
 /// Point an unpublished run's `playableBuild` link at the desktop's
 /// build-serving scheme when its static build is on disk, so a reviewer can play
 /// it before publishing. A run that produced no build is left with a null link;
@@ -681,11 +719,13 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
         SystemCommandRunner,
         HttpBackendClient::new(backend),
     );
+    let events = read_event_log(&run_dir);
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: build_dir.as_deref(),
         writeup: &writeup,
+        events: &events,
     };
     let outcome = publisher
         .publish(&request)

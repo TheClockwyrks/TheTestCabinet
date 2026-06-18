@@ -55,6 +55,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/runs", post(runs::publish).get(runs::list))
         .route("/runs/{id}", get(runs::get))
+        // The published run's recorded, normalized event stream (TTC events only;
+        // raw harness output is never published). Backs the run-detail Events tab
+        // for the web console reading published runs.
+        .route("/runs/{id}/events", get(runs::events))
         .route("/snapshot/refresh", post(runs::refresh))
         // The browser UIs (gallery web app, Tauri dev server) run on a different
         // localhost origin than this backend, so every request is cross-origin.
