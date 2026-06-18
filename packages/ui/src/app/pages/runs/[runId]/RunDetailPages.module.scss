@@ -1,4 +1,5 @@
 @use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
 
 // Shared styles for the run detail tab bodies (Verdict, Play, Metrics,
 // Metadata). The page chrome — title, subject line, tabs — lives in the
@@ -11,8 +12,12 @@
 // A heading that introduces a group of widgets within a tab body (e.g. the
 // "Run info" and "Validation" groups on the Metadata tab).
 .sectionLabel {
-  font-size: t.$font-md;
   margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
 }
 
 // A fixed three-column grid of tiles, used for the run's metadata.
