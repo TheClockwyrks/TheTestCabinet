@@ -165,6 +165,13 @@
   flex-direction: column;
   gap: t.$space-md;
   margin-bottom: t.$space-md;
+
+  // The label is the first thing in the panel, so the panel's own padding
+  // already provides the top spacing — drop the extra top margin so the
+  // gap matches the Play tab and test case overview panels.
+  .sectionLabel {
+    margin-top: 0;
+  }
 }
 
 .checklistItem {
