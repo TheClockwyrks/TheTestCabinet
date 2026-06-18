@@ -22,6 +22,11 @@ export type RunDetailTab =
 interface RunDetailLayoutProps {
   /** Which tab the rendering page represents. */
   tab: RunDetailTab;
+  /**
+   * Lay the page body out as a full-height column so a filling tab body (the
+   * Events tab's feed) can grow into the space below the tabs.
+   */
+  fill?: boolean;
   /** The tab body, given the resolved run and its review (if any). */
   children: (ctx: {
     run: RunRecord;
@@ -34,7 +39,11 @@ interface RunDetailLayoutProps {
 // navigation. It resolves the run from the URL id and its hand-written review,
 // then hands both to the active tab's body. Resolving (and the not-found state)
 // lives here so the tab pages stay thin and never duplicate it.
-export function RunDetailLayout({ tab, children }: RunDetailLayoutProps) {
+export function RunDetailLayout({
+  tab,
+  fill = false,
+  children,
+}: RunDetailLayoutProps) {
   const { runId } = useParams<{ runId: string }>();
   const { runs, localIds, localWriteups, loading } = useRuns();
   const findReview = useFindReview();
@@ -65,7 +74,7 @@ export function RunDetailLayout({ tab, children }: RunDetailLayoutProps) {
   ];
 
   return (
-    <PageLayout>
+    <PageLayout fill={fill}>
       {/* Two rows spanning the content width: the test case title against the
           harness slug, then the subject line against the harness version. */}
       <header className={styles.header}>

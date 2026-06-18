@@ -11,6 +11,14 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   font-size: t.$font-sm;
+
+  // In a full-height host (the Events tab) the log grows to fill the column
+  // rather than capping at a fixed height, scrolling internally on overflow.
+  &[data-fill] {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
 }
 
 .empty {

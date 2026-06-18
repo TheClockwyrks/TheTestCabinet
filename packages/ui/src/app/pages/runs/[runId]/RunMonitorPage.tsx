@@ -71,7 +71,7 @@ export function RunMonitorPage() {
   }, [events]);
 
   return (
-    <PageLayout>
+    <PageLayout fill>
       <PromptHeader command="--monitor" comment={<>// live run activity</>} />
 
       {!worker && (
@@ -106,6 +106,7 @@ export function RunMonitorPage() {
         events={events}
         feedStyle={feedStyle}
         scrollRef={feedRef}
+        fill
         emptyLabel={
           status.kind === "running"
             ? "Waiting for events…"

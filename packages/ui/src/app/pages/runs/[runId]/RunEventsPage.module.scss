@@ -7,6 +7,15 @@
   margin-bottom: t.$space-xl;
 }
 
+// Grow the section to fill the column the run-detail layout hands it, so the feed
+// (or raw log) inside expands to the bottom of the page rather than capping short.
+// Drop the bottom margin: `.main`'s own bottom padding is the gap to the edge.
+.sectionFill {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
 // The stream toggle (Events / Raw) sits above the feed, pushed to the right so it
 // reads as a control over the content below.
 .controls {

@@ -3,6 +3,8 @@
 .shell {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
@@ -83,9 +85,22 @@
 }
 
 // The page body stays aligned to the content column beneath the full-width bar.
+// It grows to fill the viewport below the topbar (the shell is a column flex), so
+// a `.mainFill` page can hand the leftover height to a child.
 .main {
   position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   max-width: t.$content-max;
   margin: 0 auto;
   padding: 0 t.$space-md t.$space-2xl;
+}
+
+// Opt-in (via PageLayout's `fill` prop): lay the body out as a column so a child
+// flagged to fill — the live run monitor's event feed — grows into the space
+// below the header instead of leaving it empty. `.main`'s bottom padding keeps a
+// gap to the viewport edge.
+.mainFill {
+  display: flex;
+  flex-direction: column;
 }

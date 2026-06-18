@@ -20,6 +20,16 @@
   &[data-preview] {
     max-height: none;
   }
+
+  // In a full-height host (the live run monitor) the feed grows to fill the
+  // column rather than capping at a fixed height, scrolling internally once it
+  // overflows. `min-height: 0` lets it shrink below its content so the scroll
+  // engages instead of pushing the page taller.
+  &[data-fill] {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
 }
 
 .empty {

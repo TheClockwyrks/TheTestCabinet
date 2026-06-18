@@ -9,6 +9,11 @@ interface RawOutputLogProps {
   emptyLabel?: ReactNode;
   /** Scroll container ref, mirroring `EventFeed` for consistent hosting. */
   scrollRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Grow to fill the available column height (scrolling internally) instead of
+   * capping at the fixed max-height, mirroring `EventFeed`'s `fill`.
+   */
+  fill?: boolean;
 }
 
 // The raw harness output view for the run-detail Events tab: the unprocessed
@@ -17,9 +22,14 @@ interface RawOutputLogProps {
 // type, so there is no per-type color — only `stderr` is tinted to set it apart.
 // Surfaced only on the runner hosts (web/Tauri); the public site shows the TTC
 // stream alone.
-export function RawOutputLog({ lines, emptyLabel, scrollRef }: RawOutputLogProps) {
+export function RawOutputLog({
+  lines,
+  emptyLabel,
+  scrollRef,
+  fill = false,
+}: RawOutputLogProps) {
   return (
-    <div className={styles.log} ref={scrollRef}>
+    <div className={styles.log} data-fill={fill ? "" : undefined} ref={scrollRef}>
       {lines.length === 0 && emptyLabel && (
         <p className={styles.empty}>{emptyLabel}</p>
       )}

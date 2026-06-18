@@ -15,7 +15,7 @@ import styles from "./RunEventsPage.module.scss";
 // the TTC stream only, so the toggle is absent there.
 export function RunEventsPage() {
   return (
-    <RunDetailLayout tab="events">
+    <RunDetailLayout tab="events" fill>
       {({ run }) => <RunEventsBody runId={run.id} />}
     </RunDetailLayout>
   );
@@ -51,7 +51,7 @@ function RunEventsBody({ runId }: { runId: string }) {
   const showRaw = hasRaw && view === "raw";
 
   return (
-    <section className={styles.section}>
+    <section className={`${styles.section} ${styles.sectionFill}`}>
       {hasRaw && (
         <div className={styles.controls}>
           <SegmentedControl
@@ -68,12 +68,14 @@ function RunEventsBody({ runId }: { runId: string }) {
       {showRaw ? (
         <RawOutputLog
           lines={raw ?? []}
+          fill
           emptyLabel="No raw harness output was recorded for this run."
         />
       ) : (
         <EventFeed
           events={events}
           feedStyle={feedStyle}
+          fill
           emptyLabel="No events were recorded for this run."
         />
       )}

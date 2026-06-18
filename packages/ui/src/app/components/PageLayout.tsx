@@ -8,6 +8,11 @@ import exec from "../pages/runs/RunExec.module.scss";
 
 interface PageLayoutProps {
   children: ReactNode;
+  /**
+   * Lay the page body out as a full-height column so a child marked to fill (the
+   * live run monitor's event feed) expands into the space below the header.
+   */
+  fill?: boolean;
 }
 
 // A small gear glyph for the connections/settings drawer trigger.
@@ -36,7 +41,7 @@ const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
 // over the routed page body. The bar spans the viewport while its contents stay
 // aligned to the page's content column. All colors flow from the active design
 // variant's palette.
-export function PageLayout({ children }: PageLayoutProps) {
+export function PageLayout({ children, fill = false }: PageLayoutProps) {
   const { canExecute } = useGalleryData();
   // The consoles reach run configuration through the Settings gear; the static
   // site keeps the About link in the nav. Both surface the Settings gear — on
@@ -79,7 +84,9 @@ export function PageLayout({ children }: PageLayoutProps) {
           </div>
         </div>
       </header>
-      <main className={styles.main}>{children}</main>
+      <main className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}>
+        {children}
+      </main>
     </div>
   );
 }

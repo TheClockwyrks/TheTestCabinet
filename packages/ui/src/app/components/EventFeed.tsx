@@ -17,6 +17,11 @@ interface EventFeedProps {
    * Render at preview scale (shorter, non-scrolling) for the settings picker.
    */
   preview?: boolean;
+  /**
+   * Grow to fill the available column height (scrolling internally) instead of
+   * capping at the fixed max-height. For full-height hosts like the live monitor.
+   */
+  fill?: boolean;
 }
 
 // The live harness event feed: a dense, monospace activity stream rendered in one
@@ -32,12 +37,14 @@ export function EventFeed({
   emptyLabel,
   scrollRef,
   preview = false,
+  fill = false,
 }: EventFeedProps) {
   return (
     <div
       className={styles.feed}
       data-feed-style={feedStyle}
       data-preview={preview ? "" : undefined}
+      data-fill={fill ? "" : undefined}
       ref={scrollRef}
     >
       {events.length === 0 && emptyLabel && (
