@@ -9,6 +9,7 @@ import type {
 import type { RunSubject } from "@test-cabinet/run-record";
 import {
   RATINGS,
+  RATING_META,
   VERDICT_META,
   isRating,
   type ParsedWriteup,
@@ -22,6 +23,13 @@ interface VerdictDraft {
 }
 
 const STATUSES: VerdictStatus[] = ["pass", "fail", "na"];
+
+// The rating criteria, surfaced in a hover tooltip beside the Rating label so a
+// reviewer is reminded what each tier means without leaving the form. Built from
+// the shared RATING_META so it stays in lockstep with the tiers themselves.
+const RATING_CRITERIA = RATINGS.map(
+  (rt) => `${RATING_META[rt].label} — ${RATING_META[rt].description}`,
+).join("\n\n");
 
 // The editable Verdict mode for a produced, not-yet-published run that the active
 // worker owns: rate it, work the case's declared checklist, write the review, and
@@ -157,30 +165,19 @@ export function RunReviewEditor({
 
   return (
     <Panel>
-      <label className={styles.field}>
-        <span className={styles.fieldLabel}>Rating</span>
-        <select
-          className={styles.select}
-          value={rating}
-          onChange={(e) => isRating(e.target.value) && setRating(e.target.value)}
-        >
-          {RATINGS.map((rt) => (
-            <option key={rt} value={rt}>
-              {rt}
-            </option>
-          ))}
-        </select>
-      </label>
-
       {items.length > 0 && (
         <div className={styles.checklist}>
           <p className={styles.sectionLabel}>
             Checklist — every item must be addressed
           </p>
-          {items.map((item) => {
+          {items.map((item, index) => {
             const draft = verdicts[item.id] ?? { status: "", note: "" };
             return (
               <div key={item.id} className={styles.checklistItem}>
+                <span className={styles.checklistTitle}>
+                  <span className={styles.checklistNumber}>{index + 1}.</span>{" "}
+                  {item.title}
+                </span>
                 <span className={styles.checklistText}>{item.text}</span>
                 <div className={styles.checklistControls}>
                   <select
@@ -223,6 +220,31 @@ export function RunReviewEditor({
           onChange={(e) => setWriteup(e.target.value)}
           placeholder="How did the build play? What worked, what was broken?"
         />
+      </label>
+
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>
+          Rating
+          <span
+            className={styles.help}
+            role="img"
+            aria-label="Rating criteria"
+            title={RATING_CRITERIA}
+          >
+            ?
+          </span>
+        </span>
+        <select
+          className={styles.select}
+          value={rating}
+          onChange={(e) => isRating(e.target.value) && setRating(e.target.value)}
+        >
+          {RATINGS.map((rt) => (
+            <option key={rt} value={rt}>
+              {rt}
+            </option>
+          ))}
+        </select>
       </label>
 
       <div className={styles.actions}>

@@ -105,8 +105,8 @@ spec = []                    # ADDITIVE specs on top of the common specs
 # `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
 reference = [{ view = "title", path = "reference/menu-base.html" }]
 # ADDITIVE reviewer checklist items on top of the common ones (see below); same
-# `{ id, text }` shape as a `[[review_item]]`. Lets a mode-only item be checked
-# only when this variant runs.
+# `{ id, title, text }` shape as a `[[review_item]]`. Lets a mode-only item be
+# checked only when this variant runs.
 review_item = []
 
 # Common reference views, rendered and seeded for EVERY variant. Each `path`
@@ -128,6 +128,7 @@ actions = []                 # actions to drive the build into the view (empty =
 # the build. A variant may add its own (see the variant's `review_item` above).
 [[review_item]]
 id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
+title = "Paddle spin"        # short heading shown above the item (numbered) in the reviewer UI
 text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
 ```
 

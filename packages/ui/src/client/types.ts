@@ -68,10 +68,12 @@ export interface Specification {
 
 // --- Reviews ---
 
-// A reviewer checklist item a test case declares (its stable id and the prose a
-// reviewer reads). Surfaced so the reviewer works through every major item.
+// A reviewer checklist item a test case declares (its stable id, a short title,
+// and the prose a reviewer reads). Surfaced so the reviewer works through every
+// major item. The UI prefixes a synthesized number to the title at display time.
 export interface ReviewItem {
   id: string;
+  title: string;
   text: string;
 }
 

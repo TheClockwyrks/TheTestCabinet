@@ -134,8 +134,10 @@ anything else is seeded verbatim.
 In the manifest, declare `[[review_item]]`s: the major, observable requirements a
 reviewer must explicitly check by playing the build — the signature mechanics and
 the easy-to-miss correctness behaviors that validation cannot judge. Each item is
-a stable `id` plus the `text` a reviewer reads; a variant adds its own for the
-mode it introduces (see [`adding-a-variant`](../adding-a-variant/SKILL.md)). These
+a stable `id`, a short `title` (a few words — the reviewer UI heads the item with
+it and a synthesized number), plus the `text` a reviewer reads; a variant adds its
+own for the mode it introduces (see
+[`adding-a-variant`](../adding-a-variant/SKILL.md)). These
 are **not seeded** — they restate requirements the seeded specs already state, so
 the model never receives the checklist. The reviewer records a verdict for each
 before a run can be published. Pong's items are the model; aim for a handful that

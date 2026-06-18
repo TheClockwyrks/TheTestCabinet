@@ -155,6 +155,8 @@ pub struct StoredReference {
 pub struct StoredReviewItem {
     /// Stable slug identifying the item; recorded with the reviewer's verdict.
     pub id: String,
+    /// A short heading shown above the item in the reviewer UI.
+    pub title: String,
     /// The prose a reviewer reads — what to check.
     pub text: String,
 }

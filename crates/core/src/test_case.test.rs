@@ -89,10 +89,11 @@ fn resolves_common_and_variant_review_items() {
     let (_dir, catalog) = catalog_with_manifest(&build_and(
         "[[review_item]]\n\
          id = \"ball-spin\"\n\
+         title = \"Paddle spin\"\n\
          text = \"Swinging a paddle imparts spin on the ball.\"\n\n\
          [[variant]]\n\
          slug = \"frenzy\"\n\
-         review_item = [{ id = \"frenzy-escalation\", text = \"Ball speed escalates uncapped.\" }]",
+         review_item = [{ id = \"frenzy-escalation\", title = \"Frenzy escalation\", text = \"Ball speed escalates uncapped.\" }]",
     ));
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
 
@@ -115,10 +116,11 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
     let (_dir, catalog) = catalog_with_manifest(&build_and(
         "[[review_item]]\n\
          id = \"dup\"\n\
+         title = \"A common item\"\n\
          text = \"A common item.\"\n\n\
          [[variant]]\n\
          slug = \"frenzy\"\n\
-         review_item = [{ id = \"dup\", text = \"Collides with the common id.\" }]",
+         review_item = [{ id = \"dup\", title = \"Collides\", text = \"Collides with the common id.\" }]",
     ));
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -131,13 +133,28 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
 
 #[test]
 fn a_review_item_with_empty_text_is_rejected() {
-    let (_dir, catalog) =
-        catalog_with_manifest(&build_and("[[review_item]]\nid = \"x\"\ntext = \"\""));
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"\"",
+    ));
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("an empty review-item text is rejected");
     assert!(
         format!("{err}").contains("has empty `text`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_review_item_with_empty_title_is_rejected() {
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\nid = \"x\"\ntitle = \"\"\ntext = \"Some prose.\"",
+    ));
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an empty review-item title is rejected");
+    assert!(
+        format!("{err}").contains("has empty `title`"),
         "unexpected error: {err}"
     );
 }

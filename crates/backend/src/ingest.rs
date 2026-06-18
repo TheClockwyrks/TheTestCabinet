@@ -286,6 +286,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
 fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem {
     StoredReviewItem {
         id: item.id.clone(),
+        title: item.title.clone(),
         text: item.text.clone(),
     }
 }

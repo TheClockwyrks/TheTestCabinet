@@ -676,6 +676,7 @@ fn spec_from(spec: &SpecBody) -> SpecFile {
 fn review_item_from(item: ReviewItemBody) -> ReviewItem {
     ReviewItem {
         id: item.id,
+        title: item.title,
         text: item.text,
     }
 }
@@ -724,6 +725,7 @@ struct VariantBody {
 #[derive(Deserialize)]
 struct ReviewItemBody {
     id: String,
+    title: String,
     text: String,
 }
 

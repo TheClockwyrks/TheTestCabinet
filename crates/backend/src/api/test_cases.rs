@@ -161,6 +161,7 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
 fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
     ReviewItemOut {
         id: item.id.clone(),
+        title: item.title.clone(),
         text: item.text.clone(),
     }
 }
@@ -284,6 +285,7 @@ struct VariantOut {
 #[derive(Serialize)]
 struct ReviewItemOut {
     id: String,
+    title: String,
     text: String,
 }
 

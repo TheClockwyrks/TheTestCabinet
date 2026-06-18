@@ -156,12 +156,16 @@
     "ReviewItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "text"],
+      "required": ["id", "title", "text"],
       "description": "A reviewer checklist item a test case declares: something a reviewer must explicitly check after playing the build. Not seeded into the run.",
       "properties": {
         "id": {
           "type": "string",
           "description": "Stable slug identifying the item; recorded with the reviewer's verdict."
+        },
+        "title": {
+          "type": "string",
+          "description": "A short heading shown above the item in the reviewer UI, prefixed with a synthesized number at display time."
         },
         "text": {
           "type": "string",

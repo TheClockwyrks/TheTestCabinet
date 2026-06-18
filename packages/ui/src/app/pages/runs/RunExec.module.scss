@@ -30,6 +30,29 @@
   color: t.$color-text-muted;
 }
 
+// The "?" affordance beside a field label: a small circular badge whose native
+// `title` carries the help text (matching the rest of the app's tooltip pattern).
+.help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-left: t.$space-xs;
+  border-radius: 50%;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
 .select,
 .input,
 .textarea {
@@ -233,6 +256,17 @@
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+}
+
+// The item heading: a synthesized number plus the manifest title, in the accent
+// color, so the checklist reads as discrete items rather than a wall of text.
+.checklistTitle {
+  color: t.$color-accent;
+  font-weight: 600;
+}
+
+.checklistNumber {
+  font-variant-numeric: tabular-nums;
 }
 
 .checklistText {

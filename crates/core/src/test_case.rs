@@ -167,6 +167,9 @@ struct ManifestCheck {
 struct ManifestReviewItem {
     /// Stable slug identifying this item; recorded with the reviewer's verdict.
     id: String,
+    /// A short heading shown above the item in the reviewer UI (a synthesized
+    /// number is prefixed at display time).
+    title: String,
     /// The prose a reviewer reads — what to check.
     text: String,
 }
@@ -331,6 +334,9 @@ pub struct Check {
 pub struct ReviewItem {
     /// Stable slug identifying this item; recorded with the reviewer's verdict.
     pub id: String,
+    /// A short heading shown above the item in the reviewer UI (a synthesized
+    /// number is prefixed at display time).
+    pub title: String,
     /// The prose a reviewer reads — what to check.
     pub text: String,
 }
@@ -652,12 +658,19 @@ impl TestCaseCatalog {
             common_references.push(resolve_reference(reference)?);
         }
 
-        // Resolve one reviewer checklist item: its id and text must both be
-        // non-empty, since the id keys a recorded verdict and the text is what the
-        // reviewer reads. Shared by the common items and each variant's own.
+        // Resolve one reviewer checklist item: its id, title, and text must all be
+        // non-empty, since the id keys a recorded verdict, the title heads the item
+        // in the reviewer UI, and the text is what the reviewer reads. Shared by the
+        // common items and each variant's own.
         let resolve_review_item = |item: &ManifestReviewItem| -> Result<ReviewItem> {
             if item.id.trim().is_empty() {
                 return Err(invalid("review_item `id` must not be empty".to_string()));
+            }
+            if item.title.trim().is_empty() {
+                return Err(invalid(format!(
+                    "review_item `{}` has empty `title`",
+                    item.id
+                )));
             }
             if item.text.trim().is_empty() {
                 return Err(invalid(format!(
@@ -667,6 +680,7 @@ impl TestCaseCatalog {
             }
             Ok(ReviewItem {
                 id: item.id.clone(),
+                title: item.title.clone(),
                 text: item.text.clone(),
             })
         };

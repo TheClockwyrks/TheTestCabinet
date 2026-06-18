@@ -134,7 +134,7 @@ description = "Standard plus a mode whose obstacles oscillate and rotate."
 spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 review_item = [
-  { id = "gyre-oriented-bounce", text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles." },
+  { id = "gyre-oriented-bounce", title = "Oriented bounces", text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles." },
 ]
 ```
 
