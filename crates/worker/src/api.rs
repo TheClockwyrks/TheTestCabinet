@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::State;
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
 
@@ -57,10 +58,16 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// `GET /healthz` — liveness/readiness probe.
-async fn health() -> axum::Json<serde_json::Value> {
+///
+/// Reports `backendUrl`: the backend this worker resolves definitions from and
+/// publishes to. The UI compares it against the backend it is itself pointed at
+/// to confirm a worker shares its backend; without it the worker reads as
+/// "unverified" because there is nothing to check against.
+async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "ok",
         "version": CONTRACT_VERSION,
         "role": "worker",
+        "backendUrl": state.config.backend_url,
     }))
 }
