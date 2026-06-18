@@ -125,6 +125,7 @@ export default defineConfig({
         // audience split called out on the home page.
         {
           label: "Quickstarts",
+          collapsed: true,
           items: [
             "quickstarts/overview",
             "quickstarts/run-a-test-case",
@@ -136,6 +137,7 @@ export default defineConfig({
         },
         {
           label: "User Guides",
+          collapsed: true,
           items: [
             "guides/overview",
             "guides/first-time-setup",
@@ -148,12 +150,14 @@ export default defineConfig({
         { label: "Roadmap", link: "/roadmap" },
         {
           label: "Changelogs",
+          collapsed: true,
           items: [
             "changelogs/v0.1.0",
           ],
         },
         {
           label: "Components",
+          collapsed: true,
           items: [
             // System-wide overview, replacing the old Architecture section. The
             // domain concepts that used to live there now sit under the component
@@ -161,6 +165,7 @@ export default defineConfig({
             "components/architecture",
             {
               label: "Core",
+              collapsed: true,
               items: [
                 "components/core/overview",
                 "components/core/test-cases",
@@ -175,26 +180,32 @@ export default defineConfig({
             },
             {
               label: "CLI",
+              collapsed: true,
               items: ["components/cli/overview"],
             },
             {
               label: "Worker",
+              collapsed: true,
               items: ["components/worker/overview"],
             },
             {
               label: "Tauri",
+              collapsed: true,
               items: ["components/tauri/overview"],
             },
             {
               label: "Backend",
+              collapsed: true,
               items: ["components/backend/overview"],
             },
             {
               label: "Site",
+              collapsed: true,
               items: ["components/site/overview"],
             },
             {
               label: "Documentation",
+              collapsed: true,
               items: ["components/docs/overview"],
             },
           ],
@@ -204,6 +215,7 @@ export default defineConfig({
         // authoritative source.
         {
           label: "Development",
+          collapsed: true,
           items: [
             "development/building",
             "development/releasing",
