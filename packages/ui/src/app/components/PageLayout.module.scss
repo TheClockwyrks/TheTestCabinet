@@ -87,10 +87,18 @@
 // The page body stays aligned to the content column beneath the full-width bar.
 // It grows to fill the viewport below the topbar (the shell is a column flex), so
 // a `.mainFill` page can hand the leftover height to a child.
+//
+// `width: 100%` is load-bearing: as a flex item of the column `.shell`, the
+// `margin: 0 auto` centering counts as auto cross-axis margins, which disable
+// `align-items: stretch`. Without an explicit width the body would then shrink to
+// fit its content — narrower than `content-max` on sparse pages, so tabs of the
+// same run would no longer share a width. Pinning the width keeps every page at
+// the content column regardless of its content.
 .main {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
   max-width: t.$content-max;
   margin: 0 auto;
   padding: 0 t.$space-md t.$space-2xl;
