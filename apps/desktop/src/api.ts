@@ -26,11 +26,6 @@ export async function listen<T>(
   return listen<T>(event, (e) => handler(e.payload));
 }
 
-export interface HarnessInfo {
-  slug: string;
-  displayName: string;
-}
-
 export interface Model {
   slug: string;
   name: string;
@@ -149,7 +144,6 @@ export type RunOutcome =
 
 export const appVersion = () => invoke<string>("app_version");
 export const backendConfigured = () => invoke<boolean>("backend_configured");
-export const listHarnesses = () => invoke<HarnessInfo[]>("list_harnesses");
 export const listModels = () => invoke<Model[]>("list_models");
 export const listTestCases = () => invoke<TestCase[]>("list_test_cases");
 export const listVersions = (slug: string) =>

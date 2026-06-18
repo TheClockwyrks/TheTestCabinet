@@ -31,7 +31,7 @@ translates HTTP requests into core calls and streams the results back:
 
 Because it is a [runner](/components/architecture/#runners-and-reporters), the
 worker's host needs a supported container runtime, and it resolves test case
-definitions and container image references from, and publishes results to, the
+definitions from, and publishes results to, the
 [backend](/components/backend/overview/). Like the backend, it is intended to
 live on the private network rather than be exposed publicly.
 
@@ -58,8 +58,8 @@ rather than holding one request open for the whole run:
   build, submit the record + review + links to the
   [backend](/components/backend/overview/)).
 
-It resolves test-case definitions and container image references from, and
-publishes results to, the backend (`TCAB_BACKEND_URL`); it has no local
+It resolves test-case definitions from, and publishes results to, the backend
+(`TCAB_BACKEND_URL`); it has no local
 checkout. Configuration is by environment variable (`TCAB_WORKER_BIND`,
 `TCAB_BACKEND_URL`, `TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`). Like the backend,
 there is **no

@@ -7,8 +7,7 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::backend_client::{
-    BackendClient, ContainerImage, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference,
-    RunPage,
+    BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
@@ -268,9 +267,6 @@ impl BackendClient for MockBackend {
     }
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok(String::new())
-    }
-    async fn resolve_container(&self, _harness: &str) -> Result<ContainerImage> {
-        unimplemented!("not exercised by publish tests")
     }
     async fn publish_run(
         &self,

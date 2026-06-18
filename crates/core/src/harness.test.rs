@@ -75,3 +75,65 @@ fn usage_carries_normalized_token_classes() {
         })
     );
 }
+
+#[test]
+fn image_defaults_to_published_namespace_on_latest() {
+    // Nothing set: the published GHCR image on the latest tag.
+    assert_eq!(
+        compose_harness_image(HarnessSlug::Claude, None, None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-claude:latest"
+    );
+}
+
+#[test]
+fn image_applies_registry_and_tag_overrides() {
+    assert_eq!(
+        compose_harness_image(
+            HarnessSlug::Codex,
+            None,
+            Some("registry.example.com/team".to_string()),
+            Some("v2".to_string()),
+        ),
+        "registry.example.com/team/test-cabinet-codex:v2"
+    );
+    // A trailing slash on the registry is normalized away.
+    assert_eq!(
+        compose_harness_image(
+            HarnessSlug::Codex,
+            None,
+            Some("registry.example.com/team/".to_string()),
+            None,
+        ),
+        "registry.example.com/team/test-cabinet-codex:latest"
+    );
+}
+
+#[test]
+fn image_empty_registry_names_a_local_image() {
+    // An explicitly empty registry (distinct from unset) drops the prefix, naming
+    // a local image for offline development.
+    assert_eq!(
+        compose_harness_image(HarnessSlug::Goose, None, Some(String::new()), None),
+        "test-cabinet-goose:latest"
+    );
+}
+
+#[test]
+fn image_per_harness_override_wins_verbatim() {
+    // The per-harness override takes precedence over registry/tag and is used
+    // verbatim (e.g. a pinned digest), trimmed of surrounding whitespace.
+    assert_eq!(
+        compose_harness_image(
+            HarnessSlug::Pi,
+            Some("  ghcr.io/me/custom-pi@sha256:abc  ".to_string()),
+            Some("registry.example.com".to_string()),
+            Some("v9".to_string()),
+        ),
+        "ghcr.io/me/custom-pi@sha256:abc"
+    );
+    // A blank per-harness value is ignored, falling through to the defaults.
+    assert_eq!(
+        compose_harness_image(HarnessSlug::Pi, Some("   ".to_string()), None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-pi:latest"
+    );
+}

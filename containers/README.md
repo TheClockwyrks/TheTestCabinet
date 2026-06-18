@@ -54,8 +54,17 @@ Run on a machine with Docker (or Podman) available:
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
-Images are tagged `test-cabinet/base:latest` and `test-cabinet/<harness>:latest`.
-Override `IMAGE_PREFIX` / `IMAGE_TAG` to change the namespace or tag.
+Build-only mode tags `test-cabinet-base:latest` and `test-cabinet-<harness>:latest`
+locally. These are exactly the names a runner resolves when its
+`TCAB_CONTAINER_REGISTRY` is set to an empty string, so a locally-built image is
+used for offline development without pulling anything. Override `IMAGE_TAG` /
+`IMAGE_NAME_PREFIX` to change the tag or name prefix.
+
+With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
+is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve published
+images directly from their own registry configuration; the script does **not**
+register anything with the backend, which plays no part in container
+distribution (see `docs/components/core/execution.md`).
 
 ## Runtime contract
 

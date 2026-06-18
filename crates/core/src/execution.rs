@@ -170,6 +170,15 @@ pub trait ContainerRuntime: Send + Sync {
     /// its output. Used for cost-free probes such as a harness `--version`
     /// check; it must not require pulling the image from a remote registry.
     async fn run_once(&self, image: &str, command: &[String]) -> Result<ExecOutput>;
+
+    /// The registry digest reference (`repo@sha256:…`) of a locally-present image,
+    /// if it has one. An image pulled from a registry carries a digest; a purely
+    /// local build does not. Lets a run record the exact image bytes it ran even
+    /// when the image was launched by a mutable tag. The default returns `None`
+    /// (no digest known); CLI-backed runtimes resolve it from the image metadata.
+    async fn image_digest(&self, _image: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 /// Output of a command executed inside a container.

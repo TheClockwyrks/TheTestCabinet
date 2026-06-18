@@ -55,9 +55,11 @@ container (not the host) so it reflects what the harness actually built in:
 
 - The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for example,
   `Debian GNU/Linux 12 (bookworm)`), or `unknown` when it could not be probed.
-- The per-harness container image the run executed in, as the registry digest
-  reference it was pulled by (for example,
-  `ghcr.io/<org>/test-cabinet-codex@sha256:…`).
+- The per-harness container image the run executed in, resolved to its registry
+  digest reference where it has one (for example,
+  `ghcr.io/<org>/test-cabinet-codex@sha256:…`) so the record pins the exact image
+  bytes even when the image was launched by a mutable tag; a purely local image
+  with no registry digest records the reference it was launched by.
 - The Node.js version reported by `node --version`, where it could be
   determined.
 

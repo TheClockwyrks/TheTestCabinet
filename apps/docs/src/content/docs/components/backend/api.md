@@ -17,12 +17,11 @@ serves (its database, its on-disk layout) is an internal concern covered in the
   matching the [run record](/components/core/run-records/) contract.
 - **Collections are returned as a wrapped object**, never a bare top-level JSON
   array — each list endpoint nests its items under a named key (e.g.
-  `{ "testCases": [...] }`, `{ "containers": [...] }`). This keeps every response
-  an object that can grow new fields without breaking clients.
+  `{ "testCases": [...] }`). This keeps every response an object that can grow new
+  fields without breaking clients.
 - Timestamps are **RFC 3339** strings.
 - Harness slugs are the eight defined in
-  [Harnesses](/components/core/harnesses/); `base` additionally names the shared
-  base container image.
+  [Harnesses](/components/core/harnesses/).
 - Ratings are the four tiers defined in
   [Reviews](/components/core/results/#reviews):
   `flawless`, `great`, `scuffed`, `broken`.
@@ -55,8 +54,10 @@ synchronous and reports what changed; an already-ingested, unchanged version is
 a no-op unless re-ingestion is forced. The request may restrict the scan to
 specific case slugs.
 
-Container images are **not** ingested here — they are distributed through a
-registry and posted separately via [`POST /containers`](#post-containers).
+Container images are **not** part of this API at all — they are distributed
+through a container registry and resolved by each runner directly from its own
+registry configuration (see [Execution](/components/core/execution/#containerization)).
+The backend neither stores nor serves image references.
 
 ## Test case resolution
 
@@ -163,49 +164,16 @@ Fetch a rendered reference screenshot as `image/png`. `scope` is `_common` for a
 common reference or a variant slug for a variant-specific one. The `screenshotUrl`
 fields in the resolved version point here.
 
-## Container image resolution
+## Container images
 
-Harness images are distributed through a container registry and pulled by
-digest. The backend tracks the latest pullable **reference** per harness; runners
-resolve it and pull it verbatim. There is no build context, file manifest, or
-content hash in this contract — see
-[Execution](/components/core/execution/#containerization).
-
-### `GET /containers`
-
-List the tracked harness image references, under `containers`.
-
-```jsonc
-{
-  "containers": [
-    { "harness": "claude", "reference": "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b…" }
-  ]
-}
-```
-
-Schema:
-[`backend-api/container-image-list.schema.json`](https://docs.testcabinet.ai/schema/backend-api/container-image-list.schema.json).
-
-### `GET /containers/{harness}`
-
-Resolve a harness to its pullable image reference — the registry-qualified digest
-ref the runner pulls (`--pull missing`) and records as the run record's
-`environment.containerImage`. The runner never composes a registry, org, or tag
-of its own. `404` if the harness has no posted reference.
-
-```jsonc
-{ "harness": "claude", "reference": "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b…" }
-```
-
-### `POST /containers`
-
-Record the latest pullable image reference for a harness. Posted by the image
-build/push step after it pushes an image and pins it by digest; it overwrites any
-previous reference for that harness (latest wins). `400` if `harness` or
-`reference` is empty.
-
-Both the request and the resolved response share one schema:
-[`backend-api/container-image.schema.json`](https://docs.testcabinet.ai/schema/backend-api/container-image.schema.json).
+Container images are **not** part of this API. Harness run-container images are
+distributed through a container registry, and each runner resolves the image for
+a harness directly from its own registry configuration — defaulting to the
+published images on the `latest` tag — without consulting the backend. This keeps
+image resolution working against any backend (staging, production, or a
+self-hosted one) and with no backend at all. See
+[Execution](/components/core/execution/#containerization) for how a runner
+resolves and records the image it ran.
 
 ## Publishing and reading runs
 

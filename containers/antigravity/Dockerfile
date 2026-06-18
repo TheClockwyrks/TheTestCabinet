@@ -1,5 +1,5 @@
 # Run container for the Google Antigravity harness (slug: antigravity).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Antigravity CLI. The installer is a curl-piped script; its install location and

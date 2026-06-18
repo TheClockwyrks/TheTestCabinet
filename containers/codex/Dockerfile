@@ -1,5 +1,5 @@
 # Run container for the OpenAI Codex harness (slug: codex).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Codex CLI, installed globally into the user-writable npm prefix.

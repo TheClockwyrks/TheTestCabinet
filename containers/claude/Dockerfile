@@ -1,5 +1,5 @@
 # Run container for the Anthropic Claude Code harness (slug: claude).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Claude Code CLI. The installer drops the binary into ~/.local/bin, which the

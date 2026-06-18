@@ -1,5 +1,5 @@
 # Run container for the OpenCode harness (slug: opencode).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # OpenCode CLI, installed globally into the user-writable npm prefix.

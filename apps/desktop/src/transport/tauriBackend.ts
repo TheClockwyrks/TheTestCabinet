@@ -27,7 +27,6 @@ export function createTauriBackend(): BackendClient {
         storeReady: configured,
       };
     },
-    listHarnesses: () => api.listHarnesses(),
     listModels: () => api.listModels(),
     listTestCases: () => api.listTestCases(),
     listVersions: (slug) => api.listVersions(slug),

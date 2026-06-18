@@ -25,7 +25,7 @@ The Test Cabinet is made up of the following components.
 | [Worker](/components/worker/overview/) | An Axum server that exposes the core's run functionality over an HTTP API, for running test cases on a remote machine. |
 | [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. |
 | [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by remote workers rather than a built-in local one. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and container image references and stores published run results. |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and stores published run results. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
 | [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the presentational primitives all three GUIs use, plus the console and the backend/worker client interfaces the Tauri and web apps share. |
 | [Docs](/components/docs/overview/) | This documentation site. |
@@ -61,8 +61,7 @@ records were committed into the site's dataset — a "git-as-a-db" design that w
 chosen for convenience rather than because it was sound. That requirement has
 been dropped in favor of a single, centralized
 [backend](/components/backend/overview/) that records run results and serves as
-the canonical copy of the test case definitions and container image references
-runners need.
+the canonical copy of the test case definitions runners need.
 
 The backend stays deliberately small. There are still no end-user accounts and
 no public write surface; instead it sits on a private network and only

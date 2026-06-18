@@ -9,11 +9,6 @@ export type { Rating, ReviewVerdict, VerdictStatus };
 
 // --- Catalog (served by the backend) ---
 
-export interface HarnessInfo {
-  slug: string;
-  displayName: string;
-}
-
 export interface Model {
   slug: string;
   name: string;

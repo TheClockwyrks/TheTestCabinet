@@ -17,7 +17,6 @@ use crate::db::Db;
 use crate::publisher::Publisher;
 use crate::store::DefinitionStore;
 
-mod containers;
 mod ingest_api;
 mod runs;
 mod test_cases;
@@ -54,8 +53,6 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
-        .route("/containers", get(containers::list).post(containers::post))
-        .route("/containers/{harness}", get(containers::resolve))
         .route("/runs", post(runs::publish).get(runs::list))
         .route("/runs/{id}", get(runs::get))
         .route("/snapshot/refresh", post(runs::refresh))

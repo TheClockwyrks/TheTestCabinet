@@ -14,10 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
-    BackendClient, BuildValidator, CliArtifactCollector, CliContainerRuntime,
-    DefaultHarnessRegistry, FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices,
-    Orchestrator, PrerenderedReferenceRenderer, RunRecord, RunRequest, TestCaseCatalog,
-    materialize_version,
+    BuildValidator, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
+    FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, Orchestrator,
+    PrerenderedReferenceRenderer, RunRecord, RunRequest, TestCaseCatalog, materialize_version,
 };
 
 use crate::jobs::{Job, JobEventSink};
@@ -92,21 +91,9 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
         )
     })?;
 
-    // Resolve the harness image to the backend's pullable digest reference; the
-    // runner pulls it by digest rather than building it. The request is cloned so
-    // the resolved image rides along into `run_resolved`.
-    let image = client
-        .resolve_container(request.harness.as_str())
-        .await
-        .map_err(|err| {
-            format!(
-                "resolving the `{}` container image from the backend: {err}",
-                request.harness.as_str()
-            )
-        })?;
-    let mut request = request.clone();
-    request.container_image = Some(image.reference);
-
+    // The harness image resolves from the environment inside the orchestrator (a
+    // registry reference, no backend involved); the request carries no explicit
+    // per-run override.
     let orchestrator = Orchestrator {
         // `run_resolved` does not consult the catalog (the version is resolved
         // above), but the struct still carries one; a worker has no checkout, so
@@ -127,7 +114,7 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
 
     let mut events = JobEventSink::new(job.clone());
     orchestrator
-        .run_resolved(&request, &test_case, &mut events)
+        .run_resolved(request, &test_case, &mut events)
         .await
         .map_err(|err| format!("run failed: {err}"))
 }

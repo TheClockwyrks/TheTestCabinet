@@ -1,10 +1,10 @@
 //! The on-disk definition store (§4/§5 of `design/v0.2.0-contracts.md`).
 //!
 //! This is where the backend keeps the **copies** of every ingested test-case
-//! version and container build context, plus the reference screenshots it renders
-//! at ingest. It is keyed by `(slug, version)` and `(harness, contentHash)` and
-//! is **immutable once written**: a key is never overwritten, which is what makes
-//! a resolved definition stable for the lifetime of a run that referenced it.
+//! version, plus the reference screenshots it renders at ingest. It is keyed by
+//! `(slug, version)` and is **immutable once written**: a key is never
+//! overwritten, which is what makes a resolved definition stable for the lifetime
+//! of a run that referenced it.
 //!
 //! Definitions are **not** in SQLite (which holds only published runs); they live
 //! here and are referenced by key. The store is content-addressed enough that a
@@ -15,13 +15,12 @@
 //! <store>/test-cases/<slug>/<version>/          verbatim copy of the version folder
 //! <store>/test-cases/<slug>/<version>/.tcab/manifest.json   resolved, store-relative manifest
 //! <store>/test-cases/<slug>/<version>/.tcab/references/<scope>/<view>.png   rendered baselines
-//! <store>/containers/<harness>.json             latest pullable image reference
 //! ```
 //!
-//! Container images are distributed via a registry and pulled by digest: the
-//! store keeps only the latest pullable image **reference** per harness (a small
-//! JSON row), posted by the image build/push step (`containers/build.sh`). There
-//! is no build context to copy and no content hash to compute.
+//! Container images are not stored here: they are distributed via a registry and
+//! resolved by the runner directly from its configured registry, so the backend
+//! plays no part in container distribution (see
+//! `docs/components/core/execution.md`).
 //!
 //! The `.tcab/` sidecar holds backend-generated metadata for a test-case version;
 //! it is kept inside the keyed directory (not seeded) so a definition and its
@@ -173,17 +172,6 @@ pub struct StoredCheck {
     pub actions: Vec<test_cabinet_core::test_case::CheckAction>,
 }
 
-/// The latest pullable image reference for a harness, distributed via a registry
-/// and pulled by the runner by digest.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StoredContainer {
-    /// Harness slug.
-    pub harness: String,
-    /// The full, pullable image reference (a registry-qualified digest ref, e.g.
-    /// `ghcr.io/<org>/test-cabinet-claude@sha256:…`).
-    pub reference: String,
-}
-
 impl DefinitionStore {
     /// Open (creating the root if necessary) a store at the given directory.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
@@ -317,64 +305,6 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{view}` not rendered")))
     }
 
-    // --- Container images ---------------------------------------------------
-
-    /// The JSON file a harness's latest image reference is stored in.
-    fn container_path(&self, harness: &str) -> PathBuf {
-        self.root.join("containers").join(format!("{harness}.json"))
-    }
-
-    /// List every harness that has a stored image reference, harness-sorted.
-    pub fn list_containers(&self) -> Result<Vec<StoredContainer>> {
-        let containers_root = self.root.join("containers");
-        let mut harnesses = Vec::new();
-        let read = match std::fs::read_dir(&containers_root) {
-            Ok(read) => read,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(err.into()),
-        };
-        for entry in read {
-            let entry = entry?;
-            if let Some(harness) = entry
-                .file_name()
-                .to_str()
-                .and_then(|name| name.strip_suffix(".json"))
-                .filter(|name| !name.starts_with('.'))
-            {
-                harnesses.push(harness.to_string());
-            }
-        }
-        harnesses.sort();
-        let mut out = Vec::new();
-        for harness in harnesses {
-            if let Some(stored) = self.read_container(&harness)? {
-                out.push(stored);
-            }
-        }
-        Ok(out)
-    }
-
-    /// Read the stored image reference for a harness, or `None` when none was
-    /// posted yet.
-    pub fn read_container(&self, harness: &str) -> Result<Option<StoredContainer>> {
-        let path = self.container_path(harness);
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err.into()),
-        };
-        Ok(Some(serde_json::from_slice(&bytes)?))
-    }
-
-    /// Persist (overwriting) the latest image reference for a harness.
-    pub fn write_container(&self, stored: &StoredContainer) -> Result<()> {
-        let path = self.container_path(&stored.harness);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, serde_json::to_vec_pretty(stored)?)?;
-        Ok(())
-    }
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.

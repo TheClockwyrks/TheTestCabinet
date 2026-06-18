@@ -35,40 +35,6 @@ fn err<E: std::fmt::Display>(context: &str, e: E) -> String {
 // Catalogs: harnesses, models, test cases.
 // ---------------------------------------------------------------------------
 
-/// A supported agent harness, as surfaced to the UI.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HarnessInfo {
-    pub slug: String,
-    pub display_name: String,
-}
-
-fn display_name_for(slug: HarnessSlug) -> &'static str {
-    match slug {
-        HarnessSlug::Claude => "Anthropic Claude Code",
-        HarnessSlug::Codex => "OpenAI Codex",
-        HarnessSlug::Cline => "Cline",
-        HarnessSlug::Antigravity => "Google Antigravity",
-        HarnessSlug::Goose => "Goose",
-        HarnessSlug::Kilo => "Kilo Code",
-        HarnessSlug::Opencode => "OpenCode",
-        HarnessSlug::Pi => "Pi",
-    }
-}
-
-/// The catalog of agent harnesses the application can drive, sourced from the
-/// core's canonical [`HarnessSlug::ALL`] so the shell never drifts from it.
-#[tauri::command]
-pub fn list_harnesses() -> Vec<HarnessInfo> {
-    HarnessSlug::ALL
-        .into_iter()
-        .map(|slug| HarnessInfo {
-            slug: slug.as_str().to_string(),
-            display_name: display_name_for(slug).to_string(),
-        })
-        .collect()
-}
-
 /// The curated model catalog: each model the benchmark evaluates against, read
 /// from `models/<slug>.toml`. Used to populate the run-configuration model
 /// picker (with the model ids that identify each in run records).
@@ -369,13 +335,9 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                 )
                 .await
                 .map_err(|e| err("resolving the run's definition from the backend", e))?;
-                // Resolve the harness image to the backend's pullable digest
-                // reference; the runner pulls it by digest rather than building it.
-                let image = client
-                    .resolve_container(harness.as_str())
-                    .await
-                    .map_err(|e| err("resolving the run's container image from the backend", e))?;
-                request.container_image = Some(image.reference);
+                // The harness image resolves from the environment in the
+                // orchestrator (a registry reference, no backend involved); no
+                // explicit per-run override is set.
                 (
                     version,
                     Box::new(PrerenderedReferenceRenderer::new(references)),

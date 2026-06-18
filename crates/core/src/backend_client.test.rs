@@ -87,12 +87,6 @@ impl BackendClient for StubBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok("Build {{variant.name}} at {{workspace}}".to_string())
     }
-    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage> {
-        Ok(ContainerImage {
-            harness: harness.to_string(),
-            reference: format!("ghcr.io/example/test-cabinet-{harness}@sha256:deadbeef"),
-        })
-    }
     async fn publish_run(
         &self,
         record: &crate::run_record::RunRecord,
@@ -163,7 +157,7 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
 
 /// Serve a single fixed `200` JSON response on a fresh local port, returning the
 /// bound base URL. The one-shot server answers exactly one request, which is all
-/// a single `resolve_container` / `list_runs` / `read_run` call makes.
+/// a single `list_runs` / `read_run` call makes.
 async fn serve_once(json: impl Into<String>) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let json = json.into();
@@ -187,20 +181,6 @@ async fn serve_once(json: impl Into<String>) -> String {
     format!("http://{addr}")
 }
 
-#[tokio::test]
-async fn resolve_container_parses_harness_and_reference() {
-    let base = serve_once(
-        r#"{"harness":"claude","reference":"ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b"}"#,
-    )
-    .await;
-    let client = HttpBackendClient::new(base);
-    let image = client.resolve_container("claude").await.expect("resolve");
-    assert_eq!(image.harness, "claude");
-    assert_eq!(
-        image.reference,
-        "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b"
-    );
-}
 
 /// A minimal valid run record whose `links` are empty, so a test can prove the
 /// backend's separately-served links are what end up on the resolved run.

@@ -13,6 +13,76 @@ use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 
+/// The default registry/namespace harness images are published under, used when
+/// `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace `containers/build.sh`
+/// pushes to, so the resolve side and the publish side default to the same place.
+const DEFAULT_CONTAINER_REGISTRY: &str = "ghcr.io/theclockwyrks";
+/// The default image tag, used when `TCAB_CONTAINER_TAG` is unset.
+const DEFAULT_CONTAINER_TAG: &str = "latest";
+
+/// Resolve the container image reference to run a harness in, from the
+/// environment. The runner pulls this directly from a registry — it does **not**
+/// ask any backend, so a runner pointed at any backend (or none) resolves images
+/// the same way (see `docs/components/core/execution.md`).
+///
+/// Precedence:
+/// 1. `TCAB_CONTAINER_IMAGE_<HARNESS>` (e.g. `TCAB_CONTAINER_IMAGE_CLAUDE`) — a
+///    full, verbatim reference for that one harness. Set it to a `@sha256:…`
+///    digest to pin an exact image, or to point a harness at a private build.
+/// 2. `{registry}/test-cabinet-{slug}:{tag}`, where `registry` is
+///    `TCAB_CONTAINER_REGISTRY` (default [`DEFAULT_CONTAINER_REGISTRY`]) and `tag`
+///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). An explicitly
+///    empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local
+///    image (`test-cabinet-{slug}:{tag}`) for offline development.
+///
+/// The default with nothing set is the published image on the latest tag:
+/// `ghcr.io/theclockwyrks/test-cabinet-{slug}:latest`.
+pub fn resolve_harness_image(slug: HarnessSlug) -> String {
+    let per_harness_var = format!("TCAB_CONTAINER_IMAGE_{}", slug.as_str().to_uppercase());
+    compose_harness_image(
+        slug,
+        std::env::var(per_harness_var).ok(),
+        std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
+        std::env::var("TCAB_CONTAINER_TAG").ok(),
+    )
+}
+
+/// The pure core of [`resolve_harness_image`], taking the three environment
+/// values directly so the precedence and composition can be tested without
+/// touching process-global state. `None` is an unset variable; `Some("")` is an
+/// explicitly empty one — for the registry those differ (unset → default
+/// namespace; empty → no registry prefix at all).
+fn compose_harness_image(
+    slug: HarnessSlug,
+    per_harness: Option<String>,
+    registry: Option<String>,
+    tag: Option<String>,
+) -> String {
+    if let Some(reference) = per_harness
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return reference.to_string();
+    }
+
+    let registry = match registry {
+        Some(value) => value.trim().trim_end_matches('/').to_string(),
+        None => DEFAULT_CONTAINER_REGISTRY.to_string(),
+    };
+    let tag = tag
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_CONTAINER_TAG.to_string());
+
+    let name = format!("test-cabinet-{}", slug.as_str());
+    if registry.is_empty() {
+        format!("{name}:{tag}")
+    } else {
+        format!("{registry}/{name}:{tag}")
+    }
+}
+
 /// Normalized usage returned by every invocation.
 ///
 /// Each harness reports usage differently; the harness layer translates raw
@@ -94,15 +164,12 @@ pub trait AgentHarness: Send + Sync {
     /// The slug this implementation handles.
     fn slug(&self) -> HarnessSlug;
 
-    /// The fallback container image that provides this harness's CLI for offline
-    /// development, when no backend-resolved image reference is supplied.
-    ///
-    /// A backend-driven run pulls the image by digest from a registry (the
-    /// reference comes from `GET /containers/{harness}`); this local-build tag is
-    /// only used when a run is driven against a locally-built image with no
-    /// backend configured.
+    /// The container image that provides this harness's CLI, resolved from the
+    /// environment by [`resolve_harness_image`]. Used when a run carries no
+    /// explicit per-run image override; the runner pulls it from a registry
+    /// without consulting any backend.
     fn image(&self) -> String {
-        format!("test-cabinet/{}:latest", self.slug().as_str())
+        resolve_harness_image(self.slug())
     }
 
     /// The environment variable carrying the provider API key, or `None` when

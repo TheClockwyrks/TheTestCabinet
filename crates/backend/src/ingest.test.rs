@@ -28,8 +28,6 @@ fn scan_ignores_containers_in_the_checkout() {
         .unwrap();
 
     assert!(report.test_case_versions.is_empty());
-    // No container was recorded from the checkout.
-    assert!(store.list_containers().unwrap().is_empty());
 }
 
 #[test]

@@ -28,22 +28,6 @@ use crate::test_case::{
     TestCaseVersion, Variant,
 };
 
-/// A resolved harness container image: a full, pullable image reference the
-/// runner pulls by digest from a registry.
-///
-/// The runner is registry-agnostic: it never composes a registry, org, or tag.
-/// It pulls exactly the [`reference`](Self::reference) the backend returns, which
-/// is a fully-qualified digest ref such as
-/// `ghcr.io/<org>/test-cabinet-claude@sha256:…`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContainerImage {
-    /// Harness slug this image provides the CLI for.
-    pub harness: String,
-    /// The full, pullable image reference (a registry-qualified digest ref). This
-    /// is what the runner pulls and records as `RunEnvironment.containerImage`.
-    pub reference: String,
-}
-
 /// A reference view resolved to its backend-rendered screenshot bytes. The runner
 /// seeds these as visual targets and uses them as validation baselines; it never
 /// receives the mockup HTML (rendering happens on backend ingest).
@@ -148,10 +132,6 @@ pub trait BackendClient: Send + Sync {
     /// The prompt template source for a version (also returned inline by
     /// [`Self::resolve_version`]; this is the explicit fetch).
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String>;
-
-    /// Resolve a harness container image: the full, pullable digest reference the
-    /// runner pulls. (`GET /containers/{harness}`)
-    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage>;
 
     /// Submit a published run: record + review + resolved links. (`POST /runs`)
     /// Idempotent on `record.id`.
@@ -480,16 +460,6 @@ impl BackendClient for HttpBackendClient {
         Ok(body.prompt_template)
     }
 
-    async fn resolve_container(&self, harness: &str) -> Result<ContainerImage> {
-        let body: ContainerBody = self
-            .get_json(&format!("/containers/{}", encode(harness)))
-            .await?;
-        Ok(ContainerImage {
-            harness: body.harness,
-            reference: body.reference,
-        })
-    }
-
     async fn publish_run(
         &self,
         record: &RunRecord,
@@ -771,13 +741,6 @@ struct CheckBody {
     name: String,
     reference_view: String,
     actions: Vec<CheckAction>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ContainerBody {
-    harness: String,
-    reference: String,
 }
 
 #[derive(serde::Serialize)]

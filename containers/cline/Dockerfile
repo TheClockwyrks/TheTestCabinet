@@ -1,5 +1,5 @@
 # Run container for the Cline harness (slug: cline).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Cline CLI, installed globally into the user-writable npm prefix.

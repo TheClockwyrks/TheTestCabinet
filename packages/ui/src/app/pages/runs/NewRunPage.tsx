@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useBackend, useWorkers } from "../../../client/context";
-import type { HarnessInfo, Model } from "../../../client/types";
+import type { Model } from "../../../client/types";
+import { harnesses } from "../../data/harnesses";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -20,9 +21,10 @@ export function NewRunPage() {
   const runtime = useRunsRuntime();
   const sel = useCatalog();
 
-  const [harnesses, setHarnesses] = useState<HarnessInfo[]>([]);
   const [models, setModels] = useState<Model[]>([]);
-  const [harness, setHarness] = useState("");
+  // Harnesses are a fixed, code-defined catalog (not backend-served): default to
+  // the first and let the picker choose among them.
+  const [harness, setHarness] = useState(harnesses[0]?.slug ?? "");
   const [modelId, setModelId] = useState("");
   const [maxRuntime, setMaxRuntime] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -30,13 +32,6 @@ export function NewRunPage() {
 
   useEffect(() => {
     if (!backend) return;
-    backend
-      .listHarnesses()
-      .then((hs) => {
-        setHarnesses(hs);
-        if (hs[0]) setHarness(hs[0].slug);
-      })
-      .catch((e) => setLaunchError(String(e)));
     backend
       .listModels()
       .then((ms) => {

@@ -10,7 +10,6 @@ import type {
 } from "@test-cabinet/ui/client";
 import type {
   BackendIdentity,
-  HarnessInfo,
   Model,
   ReviewDocument,
   RunPage,
@@ -76,17 +75,6 @@ interface ResolvedVersion {
     description: string | null;
     specs?: SpecDescriptor[];
   }[];
-}
-
-// `GET /containers` — the tracked image references, wrapped in `{ containers }`.
-interface ContainersResponse {
-  containers: ContainerRef[];
-}
-
-// One entry of `GET /containers`.
-interface ContainerRef {
-  harness: string;
-  reference: string;
 }
 
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
@@ -193,14 +181,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         description: r.description,
         specs,
       };
-    },
-
-    async listHarnesses(): Promise<HarnessInfo[]> {
-      const { containers } = await getJson<ContainersResponse>(
-        baseUrl,
-        "/containers",
-      );
-      return containers.map((c) => ({ slug: c.harness, displayName: c.harness }));
     },
 
     async listModels(): Promise<Model[]> {

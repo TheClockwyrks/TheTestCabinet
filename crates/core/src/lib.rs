@@ -44,9 +44,8 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 pub use backend_client::{
-    BackendClient, ContainerImage, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck,
-    PublishedReview, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
-    materialize_version,
+    BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
+    PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
@@ -106,11 +105,12 @@ pub struct RunRequest {
     /// replaces it for this run (for example `tcab run --max-runtime`). Either
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
-    /// The harness container image to run in: a full, pullable reference resolved
-    /// from the backend (`GET /containers/{harness}` → `reference`), pulled by
-    /// digest. `None` falls back to the harness's local-build image
-    /// ([`AgentHarness::image`]) for offline development with a locally-built
-    /// image. Recorded verbatim as [`RunEnvironment::container_image`].
+    /// An explicit per-run override for the harness container image: a full,
+    /// pullable reference the runtime pulls. `None` — the usual case — resolves
+    /// the image from the environment via [`AgentHarness::image`]
+    /// ([`resolve_harness_image`](crate::harness::resolve_harness_image)), which
+    /// consults no backend. Whatever image actually runs is recorded (resolved to
+    /// its registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
 }
 
@@ -242,9 +242,10 @@ where
             detail: format!("environment variable {api_key_env} is not set"),
         })?;
 
-        // The image is the backend-resolved digest reference when the run carries
-        // one, else the harness's local-build fallback. The runtime pulls it, so
-        // both the availability probe and the session run in the same image.
+        // The image is the run's explicit per-run override when it carries one,
+        // else the image resolved from the environment by the harness layer (a
+        // registry reference, resolved without any backend). The runtime pulls it,
+        // so both the availability probe and the session run in the same image.
         let image = request
             .container_image
             .clone()
@@ -275,12 +276,24 @@ where
 
         let handle = self.runtime.start(&spec).await?;
 
+        // Record the exact image bytes the run used. When the image was launched
+        // by a mutable tag, resolve it to the registry digest now that it is
+        // pulled, so the run record pins what actually ran; fall back to the
+        // launch reference for a local build that has no registry digest.
+        let recorded_image = self
+            .runtime
+            .image_digest(&image)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(image);
+
         // Capture the container environment from inside the running container so
         // it reflects what the harness actually built in, not the host. Probes
         // are best-effort: a failure degrades to sensible defaults rather than
-        // failing the run. The image is recorded verbatim as the run's
-        // `containerImage` (the pulled digest reference).
-        let environment = self.probe_environment(&handle, image).await;
+        // failing the run. The resolved image is recorded as the run's
+        // `containerImage`.
+        let environment = self.probe_environment(&handle, recorded_image).await;
 
         let invocation = HarnessInvocation {
             slug,

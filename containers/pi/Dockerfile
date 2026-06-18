@@ -1,5 +1,5 @@
 # Run container for the Pi coding agent harness (slug: pi).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Pi coding agent CLI, installed globally into the user-writable npm prefix.

@@ -7,7 +7,6 @@
 import type {
   BackendIdentity,
   HarnessEvent,
-  HarnessInfo,
   LaunchConfig,
   Model,
   PublishResult,
@@ -43,8 +42,8 @@ export interface BackendClient {
   /** Identify and health-check the backend (`GET /healthz`). */
   identity(): Promise<BackendIdentity>;
 
-  // Catalog.
-  listHarnesses(): Promise<HarnessInfo[]>;
+  // Catalog. (Harnesses are a fixed, code-defined catalog in the UI — see
+  // `app/data/harnesses.ts` — not served by the backend.)
   listModels(): Promise<Model[]>;
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;

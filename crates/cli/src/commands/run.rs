@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    BackendClient, BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
+    BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
     DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
     OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, ReferenceRenderer, RunRequest,
     TestCaseCatalog, materialize_version,
@@ -31,8 +31,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         harness,
         model_id: args.model,
         max_runtime_override: args.max_runtime,
-        // Filled in from the backend below when one is configured; a local run
-        // falls back to the harness's locally-built image.
+        // No explicit per-run image override: the orchestrator resolves the
+        // harness image from the environment (a registry reference).
         container_image: None,
     };
 
@@ -91,19 +91,9 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
                     request.test_case_slug, version_str, request.variant
                 )
             })?;
-            // Resolve the harness image to the backend's pullable digest
-            // reference; the runner pulls it by digest rather than building it.
-            let image = client
-                .resolve_container(request.harness.as_str())
-                .await
-                .with_context(|| {
-                    format!(
-                        "resolving the `{}` container image from the backend",
-                        request.harness.as_str()
-                    )
-                })?;
-            println!("  image:   {}", image.reference);
-            request.container_image = Some(image.reference);
+            // The harness image resolves from the environment in the orchestrator
+            // (a registry reference, no backend involved); `container_image` stays
+            // `None` unless a caller sets an explicit per-run override.
             (
                 version,
                 Box::new(PrerenderedReferenceRenderer::new(references)),

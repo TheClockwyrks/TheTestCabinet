@@ -277,6 +277,27 @@ impl ContainerRuntime for CliContainerRuntime {
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         })
     }
+
+    async fn image_digest(&self, image: &str) -> Result<Option<String>> {
+        // Read the image's first repo digest. An image pulled from a registry has
+        // one (`repo@sha256:…`); a local build has an empty `RepoDigests`, so the
+        // template yields an empty string and we report no digest. A failed
+        // inspect (image absent) is likewise reported as no digest rather than an
+        // error — recording falls back to the launch reference.
+        let args = vec![
+            "image".to_string(),
+            "inspect".to_string(),
+            "--format".to_string(),
+            "{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}".to_string(),
+            image.to_string(),
+        ];
+        let output = self.run(&args).await?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        let digest = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok((!digest.is_empty()).then_some(digest))
+    }
 }
 
 /// Collects a finished run's working tree by copying it out of the container.

@@ -19,9 +19,9 @@ The console talks to two distinct services, mirroring
 [Runners and Reporters](/components/architecture/#runners-and-reporters):
 
 - A single **backend** — the source of truth for the test case catalog,
-  definitions, container image references, and published results. The console
-  resolves the catalog and reads published data from here, over the
-  [backend HTTP API](/components/backend/api/). It is **never** asked to a worker.
+  definitions, and published results. The console resolves the catalog and reads
+  published data from here, over the [backend HTTP API](/components/backend/api/).
+  It is **never** asked to a worker.
 - A set of **workers** — the [runners](/components/worker/overview/) that actually
   execute a run. A launched run is submitted to the selected worker over the
   [worker API](/components/worker/overview/), and its live events stream back

@@ -1,5 +1,5 @@
 # Run container for the Block goose harness (slug: goose).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # goose CLI. CONFIGURE=false skips the interactive configuration the installer

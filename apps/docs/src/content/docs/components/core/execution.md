@@ -21,12 +21,15 @@ example by deleting files.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
-- The per-harness run-container image is a registry image pinned by digest. A
-  runner resolves the image reference for the selected harness from the
-  [backend](/components/backend/overview/) and pulls it by digest at run start,
-  so every runner executes the identical, immutable image rather than building
-  one of its own. The reference is recorded in the
-  [run record](/components/core/run-records/#environment).
+- The per-harness run-container image is a registry image. A runner resolves the
+  image for the selected harness from its **own registry configuration** —
+  `TCAB_CONTAINER_REGISTRY` (default `ghcr.io/theclockwyrks`), `TCAB_CONTAINER_TAG`
+  (default `latest`), or a per-harness `TCAB_CONTAINER_IMAGE_<HARNESS>` override —
+  and pulls it at run start (`--pull missing`). No backend is consulted, so a
+  runner resolves images the same way against any backend or none. Whatever image
+  actually runs is resolved to its registry digest where it has one and recorded
+  in the [run record](/components/core/run-records/#environment), so a run still
+  pins the exact image bytes it used even when launched by a mutable tag.
 
 ## Seeding
 

@@ -47,7 +47,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_version,
             backend_configured,
-            commands::list_harnesses,
             commands::list_models,
             commands::list_test_cases,
             commands::list_versions,

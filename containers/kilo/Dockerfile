@@ -1,5 +1,5 @@
 # Run container for the Kilo Code harness (slug: kilo).
-ARG BASE_IMAGE=test-cabinet/base:latest
+ARG BASE_IMAGE=test-cabinet-base:latest
 FROM ${BASE_IMAGE}
 
 # Kilo Code CLI, installed globally into the user-writable npm prefix.

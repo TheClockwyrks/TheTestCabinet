@@ -6,24 +6,25 @@
 #   ./build.sh                # build the base and every harness image
 #   ./build.sh claude codex   # build the base and only the named harness images
 #
-# Container images are distributed via a registry and pulled by digest. With
-# PUSH=1 the script pushes each built image and pins it by its pushed digest,
-# prints the resulting reference, and (when TCAB_BACKEND_URL is set) POSTs
-# { harness, reference } to the backend's /containers endpoint so runners can
-# resolve and pull it. Without PUSH the script just builds locally (the offline
-# development path), tagging under the local IMAGE_PREFIX.
+# Container images are distributed via a registry and pulled by the runner, which
+# resolves them from its own registry configuration (TCAB_CONTAINER_REGISTRY /
+# TCAB_CONTAINER_TAG / TCAB_CONTAINER_IMAGE_<HARNESS>; see
+# docs/components/core/execution.md). The backend plays no part in container
+# distribution, so this script never talks to it.
+#
+# With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints the
+# pushed digest reference. Without PUSH it just builds locally (the offline
+# development path): images are named `test-cabinet-<name>:<tag>`, which is what a
+# runner resolves when TCAB_CONTAINER_REGISTRY is set to an empty string.
 #
 # Configuration via environment variables:
 #   PUSH          set to 1 to push images and pin them by digest (default: unset)
 #   IMAGE_REGISTRY  registry/namespace pushed images live under, e.g.
-#                 ghcr.io/theclockwyrks (required when PUSH=1)
-#   IMAGE_PREFIX  local image namespace for build-only mode (default: test-cabinet)
+#                 ghcr.io/theclockwyrks (required when PUSH=1). Matches the
+#                 runner's default TCAB_CONTAINER_REGISTRY.
 #   IMAGE_TAG     tag applied to every image (default: latest)
-#   IMAGE_NAME_PREFIX  per-image name prefix in the registry
-#                 (default: test-cabinet-); the base is IMAGE_NAME_PREFIXbase,
-#                 a harness is IMAGE_NAME_PREFIX<harness>
-#   TCAB_BACKEND_URL  when set under PUSH=1, the backend each pushed reference is
-#                 POSTed to (its /containers endpoint)
+#   IMAGE_NAME_PREFIX  per-image name prefix (default: test-cabinet-); the base is
+#                 IMAGE_NAME_PREFIXbase, a harness is IMAGE_NAME_PREFIX<harness>
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
 set -euo pipefail
@@ -33,7 +34,6 @@ readonly SCRIPT_DIR
 
 readonly PUSH="${PUSH:-}"
 readonly IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"
-readonly IMAGE_PREFIX="${IMAGE_PREFIX:-test-cabinet}"
 readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
@@ -45,7 +45,7 @@ readonly ALL_HARNESSES=(claude codex cline antigravity goose kilo opencode pi)
 # The local base tag every harness builds FROM (passed as a build arg). In
 # build-only mode this is also the image left in the local store; in push mode it
 # is an intermediate the registry image is then tagged from and pushed.
-readonly BASE_IMAGE="${IMAGE_PREFIX}/base:${IMAGE_TAG}"
+readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 
 # In push mode IMAGE_REGISTRY is required: a digest reference must be
 # registry-qualified to be pullable by a runner.
@@ -84,29 +84,12 @@ push_and_pin() {
 	echo "${digest}"
 }
 
-# POST { harness, reference } to the backend's /containers endpoint, when a
-# backend URL is configured. The backend trusts every caller that can reach it
-# (private-network model), so no auth header is attached.
-post_reference() {
-	local harness="$1"
-	local reference="$2"
-	if [[ -z "${TCAB_BACKEND_URL:-}" ]]; then
-		return 0
-	fi
-	echo "==> POST ${harness} -> ${TCAB_BACKEND_URL%/}/containers" >&2
-	curl -fsS -X POST "${TCAB_BACKEND_URL%/}/containers" \
-		-H "Content-Type: application/json" \
-		-d "{\"harness\":\"${harness}\",\"reference\":\"${reference}\"}" >&2
-}
-
-# Build (and in push mode push + register) one image. `name` is the registry
-# image name component (e.g. `base` or a harness slug); `harness` is the slug
-# registered with the backend, or empty for the shared base (which is not a
-# harness and is never registered).
-build_image() {
+# In push mode, push one built image and print its pinned digest reference. In
+# build-only mode this is a no-op (the local image is left in place). `name` is
+# the registry image name component (e.g. `base` or a harness slug).
+publish_image() {
 	local local_image="$1"
 	local name="$2"
-	local harness="$3"
 
 	if [[ -z "${PUSH}" ]]; then
 		return 0
@@ -114,18 +97,12 @@ build_image() {
 	local reference
 	reference="$(push_and_pin "${local_image}" "${name}")"
 	echo "==> ${name} reference: ${reference}"
-	if [[ -n "${harness}" ]]; then
-		post_reference "${harness}" "${reference}"
-	fi
 }
 
 build_base() {
 	echo "==> building ${BASE_IMAGE}"
 	"$DOCKER" build -t "${BASE_IMAGE}" "${SCRIPT_DIR}/base"
-	# The base is the shared FROM image, not a harness; it is pushed (so harness
-	# images can build FROM the registry copy if desired) but not registered as a
-	# pullable harness reference.
-	build_image "${BASE_IMAGE}" "base" ""
+	publish_image "${BASE_IMAGE}" "base"
 }
 
 build_harness() {
@@ -137,13 +114,13 @@ build_harness() {
 		exit 1
 	fi
 
-	local image="${IMAGE_PREFIX}/${harness}:${IMAGE_TAG}"
+	local image="${IMAGE_NAME_PREFIX}${harness}:${IMAGE_TAG}"
 	echo "==> building ${image}"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
 		-t "${image}" \
 		"${dir}"
-	build_image "${image}" "${harness}" "${harness}"
+	publish_image "${image}" "${harness}"
 }
 
 main() {
