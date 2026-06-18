@@ -77,9 +77,27 @@ export interface Specification {
 
 export type Rating = "flawless" | "great" | "scuffed" | "broken";
 
+export type VerdictStatus = "pass" | "fail" | "na";
+
+// A reviewer checklist item a test case declares (its stable id and the prose a
+// reviewer reads). Surfaced so the reviewer works through every major item.
+export interface ReviewItem {
+  id: string;
+  text: string;
+}
+
+// A reviewer's verdict on one declared checklist item. `note` is omitted when
+// the reviewer left none.
+export interface ReviewVerdict {
+  id: string;
+  status: VerdictStatus;
+  note?: string;
+}
+
 export interface ReviewDocument {
   rating: Rating;
   writeup: string;
+  checklist: ReviewVerdict[];
 }
 
 export interface StoredRun {
@@ -144,8 +162,14 @@ export const launchRun = (config: LaunchConfig) =>
   invoke<string>("launch_run", { config });
 export const listRuns = () => invoke<StoredRun[]>("list_runs");
 export const readRun = (id: string) => invoke<StoredRun>("read_run", { id });
-export const saveReview = (id: string, rating: Rating, writeup: string) =>
-  invoke<void>("save_review", { id, rating, writeup });
+export const readReviewItems = (id: string) =>
+  invoke<ReviewItem[]>("read_review_items", { id });
+export const saveReview = (
+  id: string,
+  rating: Rating,
+  writeup: string,
+  checklist: ReviewVerdict[],
+) => invoke<void>("save_review", { id, rating, writeup, checklist });
 export const publishRun = (id: string) =>
   invoke<PublishResult>("publish_run", { id });
 

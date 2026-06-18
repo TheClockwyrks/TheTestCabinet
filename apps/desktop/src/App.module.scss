@@ -169,6 +169,38 @@
   color: t.$color-text;
 }
 
+// --- Review checklist (runs view) ---
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.checklistItem {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+}
+
+.checklistText {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.checklistControls {
+  display: flex;
+  gap: t.$space-sm;
+
+  .input {
+    flex: 1;
+  }
+}
+
 // --- Live event feed (run view) ---
 
 .feedWrap {
