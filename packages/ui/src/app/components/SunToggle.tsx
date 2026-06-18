@@ -1,10 +1,13 @@
-import { useBackdropSettings } from "./backdrop/BackdropSettingsContext";
+import { useAppSettings } from "../store/appSettings";
 import styles from "./SunToggle.module.scss";
 
-// Topbar control that shows or hides the backdrop's banded sun. Off by default;
-// the choice persists across visits (see `BackdropSettingsContext`).
+// Topbar control that shows or hides the backdrop's banded sun. On by default;
+// the choice persists across visits (see `appSettings`). Used on the static site,
+// where the topbar carries it directly; the consoles surface the same preference
+// through the Appearance settings instead.
 export function SunToggle() {
-  const { sunEnabled, toggleSun } = useBackdropSettings();
+  const sunEnabled = useAppSettings((s) => s.sunEnabled);
+  const toggleSun = useAppSettings((s) => s.toggleSun);
 
   return (
     <button

@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
+import { EventFeed } from "../../../components/EventFeed";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
-import { eventDetail, formatEventTime } from "../../../eventFeed";
 import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { useAppSettings } from "../../../store/appSettings";
 import styles from "../RunExec.module.scss";
 
 type MonitorStatus =
@@ -27,6 +28,7 @@ export function RunMonitorPage() {
   const [status, setStatus] = useState<MonitorStatus>({ kind: "running" });
   const [error, setError] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  const feedStyle = useAppSettings((s) => s.eventFeedStyle);
 
   // Hold the latest runtime in a ref so the subscription effect can reach its
   // callbacks without depending on it. The runtime object is recreated whenever
@@ -100,26 +102,16 @@ export function RunMonitorPage() {
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
 
       <p className={styles.sectionLabel}>Live harness events</p>
-      <div className={styles.feed} ref={feedRef}>
-        {events.length === 0 && (
-          <p className={styles.muted}>
-            {status.kind === "running"
-              ? "Waiting for events…"
-              : "No events were recorded."}
-          </p>
-        )}
-        {events.map((e, i) => (
-          <div key={i} className={styles.feedLine} data-event-type={e.type}>
-            <div className={styles.feedGutter}>
-              <span className={styles.feedType}>{e.type.toUpperCase()}</span>
-              <span className={styles.feedTime}>
-                {formatEventTime(e.timestamp)}
-              </span>
-            </div>
-            <span className={styles.feedBody}>{eventDetail(e)}</span>
-          </div>
-        ))}
-      </div>
+      <EventFeed
+        events={events}
+        feedStyle={feedStyle}
+        scrollRef={feedRef}
+        emptyLabel={
+          status.kind === "running"
+            ? "Waiting for events…"
+            : "No events were recorded."
+        }
+      />
     </PageLayout>
   );
 }

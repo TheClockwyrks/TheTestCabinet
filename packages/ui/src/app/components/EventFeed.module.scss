@@ -1,0 +1,159 @@
+@use "../styles/tokens" as t;
+
+// The live harness event feed. The container is style-agnostic; the chosen
+// layout is selected by `data-feed-style` below. Each line resolves its accent
+// from the shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed
+// matches the CLI's terminal palette in every layout.
+.feed {
+  max-height: 28rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: t.$space-sm;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  font-size: t.$font-sm;
+
+  // In the settings preview the feed is decorative and never streams, so it
+  // sits at a fixed, modest height with no inner scrollbar.
+  &[data-preview] {
+    max-height: none;
+  }
+}
+
+.empty {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+}
+
+// Each line carries its type color in `--event-color`; the label and whichever
+// accent the active layout draws both read from it. Unknown types fall back to
+// the muted default.
+.line {
+  --event-color: var(--ttc-event-unknown);
+
+  &[data-event-type="agent"] {
+    --event-color: var(--ttc-event-agent);
+  }
+  &[data-event-type="command"] {
+    --event-color: var(--ttc-event-command);
+  }
+  &[data-event-type="read"] {
+    --event-color: var(--ttc-event-read);
+  }
+  &[data-event-type="write"] {
+    --event-color: var(--ttc-event-write);
+  }
+  &[data-event-type="search"] {
+    --event-color: var(--ttc-event-search);
+  }
+  &[data-event-type="list"] {
+    --event-color: var(--ttc-event-list);
+  }
+  &[data-event-type="skill"] {
+    --event-color: var(--ttc-event-skill);
+  }
+  &[data-event-type="orchestration"] {
+    --event-color: var(--ttc-event-orchestration);
+  }
+  &[data-event-type="warning"] {
+    --event-color: var(--ttc-event-warning);
+  }
+  &[data-event-type="error"] {
+    --event-color: var(--ttc-event-error);
+  }
+}
+
+.gutter {
+  display: flex;
+  min-width: 0;
+}
+
+.type {
+  color: var(--event-color);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  word-break: break-word;
+}
+
+.time {
+  color: t.$color-text-muted;
+}
+
+.body {
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+}
+
+// --- Layout: "gutter" (the original) -----------------------------------------
+// A left accent bar; the label stacked over its time in a fixed left column,
+// the detail to its right, with a hairline rule between events.
+.feed[data-feed-style="gutter"] {
+  .line {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--event-color);
+  }
+
+  // A hairline rule between consecutive events — gutter only. (Written as a
+  // sibling selector rather than `& + &`, which would expand the nested
+  // descendant `&` and misplace the combinator.)
+  .line + .line {
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .gutter {
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+}
+
+// --- Layout: "divider" -------------------------------------------------------
+// As "gutter", but the colored accent moves to a rule *between* the label and
+// the detail, and the inter-event rules are dropped.
+.feed[data-feed-style="divider"] {
+  .line {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+  }
+
+  .gutter {
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding-right: t.$space-md;
+    border-right: 2px solid var(--event-color);
+  }
+}
+
+// --- Layout: "stacked" -------------------------------------------------------
+// The label and time ride a single header row above the detail, one event per
+// block, each carrying a left accent bar.
+.feed[data-feed-style="stacked"] {
+  .line {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--event-color);
+  }
+
+  // Separate consecutive blocks (sibling selector, not `& + &` — see "gutter").
+  .line + .line {
+    margin-top: t.$space-sm;
+  }
+
+  .gutter {
+    flex-direction: row;
+    align-items: baseline;
+    gap: t.$space-sm;
+  }
+}

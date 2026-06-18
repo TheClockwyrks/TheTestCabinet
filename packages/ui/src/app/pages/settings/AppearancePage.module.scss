@@ -1,0 +1,115 @@
+@use "../../styles/tokens" as t;
+
+// The Appearance settings surface. The panel stacks its settings with even
+// spacing and no dead space above the first one (the title sits flush with the
+// panel's own padding).
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// A setting's label block: a heading over a muted one-liner.
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.description {
+  margin: 0;
+  max-width: 52ch;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A hairline rule separating settings within the one panel.
+.divider {
+  height: t.$border-hairline;
+  background: t.$color-border;
+}
+
+// The event-feed setting splits into a 1/3 options column and a 2/3 preview.
+// On narrow viewports the two stack.
+.split .splitBody {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: t.$space-lg;
+  align-items: start;
+
+  @media (max-width: 40rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// A radio-style choice: a name over a hint. Selecting one deselects the rest;
+// the active one glows in the accent.
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  text-align: left;
+  padding: t.$space-sm t.$space-md;
+  font: inherit;
+  color: t.$color-text;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+.optionActive {
+  border-color: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+}
+
+.optionName {
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.optionActive .optionName {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.optionHint {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// Holds the live preview of the selected feed style.
+.preview {
+  min-width: 0;
+}

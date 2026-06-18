@@ -62,3 +62,11 @@ export { sampleModels } from "./data/sampleModels";
 // Route builders/patterns, for hosts that link into the app (e.g. after a run
 // launches).
 export { routes, routePatterns } from "./routes";
+
+// Shared, persisted console preferences (the decorative sun, the live event-feed
+// style). A global store, so a host can read or set a preference too.
+export {
+  useAppSettings,
+  EVENT_FEED_STYLES,
+  type EventFeedStyle,
+} from "./store/appSettings";

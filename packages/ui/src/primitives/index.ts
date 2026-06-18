@@ -4,6 +4,10 @@ export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
 export { Panel } from "./Panel";
 export { Pagination } from "./Pagination";
+export {
+  SegmentedControl,
+  type SegmentedOption,
+} from "./SegmentedControl";
 export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";

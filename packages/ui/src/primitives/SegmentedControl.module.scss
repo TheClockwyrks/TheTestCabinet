@@ -1,0 +1,62 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// A single bordered track of equal-width segments. `--seg-count` / `--seg-index`
+// are set inline by the component and drive the sliding highlight below.
+.control {
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 0.2rem;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The highlight that slides behind the selected segment. One segment wide,
+// offset by the selected index; the transition gives the slide.
+.thumb {
+  position: absolute;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0.2rem;
+  width: calc((100% - 0.4rem) / var(--seg-count));
+  transform: translateX(calc(var(--seg-index) * 100%));
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent 22%, transparent);
+  border: t.$border-hairline solid t.$color-accent;
+  box-shadow: var(--tcab-glow);
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.segment {
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-lg;
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: t.$color-text;
+  }
+
+  // The selected segment reads in the accent over its highlight.
+  &[aria-checked="true"] {
+    color: t.$color-accent;
+    text-shadow: var(--tcab-glow);
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}

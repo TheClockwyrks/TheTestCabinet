@@ -1,7 +1,7 @@
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
+import { useAppSettings } from "../../store/appSettings";
 import { BandedSun } from "./BandedSun";
-import { useBackdropSettings } from "./BackdropSettingsContext";
 import { GradientBackground } from "./GradientBackground";
 import { GridFloor } from "./GridFloor";
 import { readScenePalette } from "./palette";
@@ -14,7 +14,7 @@ import { WireframeTerrain } from "./WireframeTerrain";
 // user hasn't requested reduced motion (see `Backdrop`).
 export default function SynthwaveScene() {
   const palette = useMemo(() => readScenePalette(), []);
-  const { sunEnabled } = useBackdropSettings();
+  const sunEnabled = useAppSettings((s) => s.sunEnabled);
 
   // Pause rendering while the tab is hidden to avoid burning GPU/battery in the
   // background.
