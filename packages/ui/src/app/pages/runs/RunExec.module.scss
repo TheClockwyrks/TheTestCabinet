@@ -132,14 +132,16 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
-// Live event feed.
+// Live event feed: a dense, monospace activity stream. Each line carries a
+// colored type label over a muted timestamp in a left gutter, a type-colored
+// accent bar, and the event's detail. The type colors come from the shared
+// `--ttc-event-*` tokens, so the feed matches the CLI's terminal palette.
 .feed {
-  max-height: 24rem;
+  max-height: 28rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: t.$space-xs;
-  padding: t.$space-md;
+  padding: t.$space-sm;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
@@ -147,19 +149,76 @@
 }
 
 .feedLine {
+  // The event's color, resolved per type below. The label and the accent bar
+  // both read from it; unrecognized types fall back to the muted default.
+  --event-color: var(--ttc-event-unknown);
+
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid var(--event-color);
+
+  & + & {
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  &[data-event-type="agent"] {
+    --event-color: var(--ttc-event-agent);
+  }
+  &[data-event-type="command"] {
+    --event-color: var(--ttc-event-command);
+  }
+  &[data-event-type="read"] {
+    --event-color: var(--ttc-event-read);
+  }
+  &[data-event-type="write"] {
+    --event-color: var(--ttc-event-write);
+  }
+  &[data-event-type="search"] {
+    --event-color: var(--ttc-event-search);
+  }
+  &[data-event-type="list"] {
+    --event-color: var(--ttc-event-list);
+  }
+  &[data-event-type="skill"] {
+    --event-color: var(--ttc-event-skill);
+  }
+  &[data-event-type="orchestration"] {
+    --event-color: var(--ttc-event-orchestration);
+  }
+  &[data-event-type="warning"] {
+    --event-color: var(--ttc-event-warning);
+  }
+  &[data-event-type="error"] {
+    --event-color: var(--ttc-event-error);
+  }
+}
+
+// The left gutter: a colored type label above a muted timestamp.
+.feedGutter {
   display: flex;
-  gap: t.$space-sm;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
 }
 
 .feedType {
-  flex: 0 0 6rem;
-  color: t.$color-accent;
+  color: var(--event-color);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  word-break: break-word;
+}
+
+.feedTime {
+  color: t.$color-text-muted;
 }
 
 .feedBody {
   color: t.$color-text;
   white-space: pre-wrap;
   word-break: break-word;
+  min-width: 0;
 }
 
 // Checklist in the review editor.

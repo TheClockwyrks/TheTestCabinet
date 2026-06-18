@@ -22,6 +22,24 @@
   --ttc-rating-scuffed: #fbbf24;
   --ttc-rating-broken: #f87171;
 
+  // Per-event-type colors for the live harness feed. These mirror the CLI's
+  // terminal palette (crates/cli/src/commands/event_printer.rs) so a given event
+  // type reads as the same hue in the CLI stream and in the web feed — the one
+  // thing to avoid is an event type wearing one color in one component and a
+  // different one elsewhere. The hues track the CLI's ANSI colors, tuned for
+  // legibility on the deep-black background.
+  --ttc-event-agent: #22d3ee; // cyan
+  --ttc-event-command: #fbbf24; // yellow
+  --ttc-event-read: #60a5fa; // blue
+  --ttc-event-write: #4ade80; // green
+  --ttc-event-search: #e879f9; // magenta
+  --ttc-event-list: #93c5fd; // bright blue
+  --ttc-event-skill: #f0abfc; // bright magenta
+  --ttc-event-orchestration: #67e8f9; // bright cyan (subagent)
+  --ttc-event-warning: #fbbf24; // yellow
+  --ttc-event-error: #f87171; // red
+  --ttc-event-unknown: #b69ad0; // muted (bright black)
+
   --ttc-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
     Consolas, monospace;
   --ttc-display: var(--ttc-font);
