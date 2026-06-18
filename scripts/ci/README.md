@@ -34,7 +34,6 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`  | release-build, `cargo test --release`, run binary  | yes      |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the site    | yes      |
-| `catalog-check.sh` | regenerate the catalog, fail if the dataset drifts | yes      |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 
 "Critical" scripts are the ones that catch a genuinely broken change (the CLI or

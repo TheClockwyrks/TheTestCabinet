@@ -180,14 +180,11 @@ npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
 - Confirm the manifest parses and the variant resolves: every variant (including
   the new one) must supply each checked view, the new `spec`/`reference` paths
   must exist on disk, and no `dest` collides.
-- Regenerate the catalog so the committed dataset stays in sync (the
-  `catalog-check` workflow guards this):
 
-```sh
-cargo run --locked -p test-cabinet-cli -- catalog
-```
-
-See [`apps/docs/src/content/docs/components/core/validation.md`](../../../apps/docs/src/content/docs/components/core/validation.md)
+There is no committed catalog dataset to regenerate: a case's published data is
+exported to the public snapshot by the backend at ingest, and `tcab catalog` only
+rebuilds the model catalog. See
+[`apps/docs/src/content/docs/components/core/validation.md`](../../../apps/docs/src/content/docs/components/core/validation.md)
 for what the harness checks automatically.
 
 ### 8. Commit

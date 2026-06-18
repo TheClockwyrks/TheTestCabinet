@@ -36,8 +36,11 @@ including:
   in batch: release its code and build to a public repository, then submit its
   record and review to the [backend](/components/backend/overview/), which
   records it and refreshes the public snapshot.
-- **`catalog`** / **`harnesses`** — inspect the available test cases and the
-  supported agent harnesses.
+- **`catalog`** — regenerate the bundled model dataset (`models.json`) every host
+  ships, refreshing each model's OpenRouter prices, context window, and release
+  date. (Test-case data is served from the backend's public snapshot, not emitted
+  here.)
+- **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication
 

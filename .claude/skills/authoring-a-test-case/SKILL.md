@@ -255,8 +255,7 @@ from writing its own — the challenge is the case, never withheld information.
 From the repository root:
 
 ```sh
-npm run lint:specs                          # markdownlint-cli2 + cspell over test-cases/**
-cargo run --locked -p test-cabinet-cli -- catalog   # regenerate the catalog
+npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
 ```
 
 - If `cspell` flags a legitimate domain term, add it to
@@ -265,8 +264,11 @@ cargo run --locked -p test-cabinet-cli -- catalog   # regenerate the catalog
 - Confirm the manifest resolves: every checked view is supplied by **every**
   variant, all `spec`/`reference` paths exist, and no two seeded specs in one
   variant share a `dest`.
-- The catalog regeneration keeps the committed dataset in sync (the
-  `catalog-check` workflow guards it); commit the regenerated output.
+
+The case's published catalog data (its specs, prompt, and rendered references) is
+exported to the public snapshot by the **backend** when a run is ingested — there
+is no committed dataset to regenerate and `tcab catalog` only rebuilds the model
+catalog, so nothing extra to commit here.
 
 Commit on the repository's default branch with a conventional-commit message
 scoped to the case (e.g. `feat(<slug>): add <version> …`). Do not commit rendered

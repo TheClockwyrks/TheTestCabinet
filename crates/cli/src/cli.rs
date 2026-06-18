@@ -238,21 +238,21 @@ pub struct PromptArgs {
 
 /// Arguments for `tcab catalog`.
 ///
-/// The catalog command needs no API keys: it reads the test case and model
-/// catalogs from disk and writes the site's static datasets. `--models-dir` and
-/// `--site-dir` exist so the source catalogs and the output site can be relocated
-/// in tests or alternative layouts; the test case catalog honors
-/// `TCAB_TEST_CASES_DIR` like the other commands.
+/// The catalog command needs no API keys: it reads the model catalog from disk
+/// and regenerates the bundled model dataset (`models.json`) the consoles and
+/// site ship, refreshing each model's OpenRouter prices. `--models-dir` and
+/// `--data-dir` exist so the source catalog and the output location can be
+/// relocated in tests or alternative layouts.
 #[derive(Debug, Args)]
 pub struct CatalogArgs {
     /// Directory holding the model catalog (`<slug>.toml` declarations).
     #[arg(long, value_name = "DIR", default_value = "models")]
     pub models_dir: std::path::PathBuf,
 
-    /// The site directory the datasets and public catalog assets are written
-    /// under (`<site>/src/data/*.json` and `<site>/public/catalog/...`).
-    #[arg(long, value_name = "DIR", default_value = "apps/site")]
-    pub site_dir: std::path::PathBuf,
+    /// Directory the regenerated model dataset (`models.json`) is written into.
+    /// Defaults to the shared UI package every host bundles it from.
+    #[arg(long, value_name = "DIR", default_value = "packages/ui/src/app/data")]
+    pub data_dir: std::path::PathBuf,
 }
 
 #[cfg(test)]

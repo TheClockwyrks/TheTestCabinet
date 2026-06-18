@@ -311,10 +311,13 @@ fn catalog_parses_with_defaults() {
 
     match cli.command {
         Command::Catalog(args) => {
-            // The catalog reads the model catalog from `models` and writes the
-            // datasets under `apps/site` unless told otherwise.
+            // The catalog reads the model catalog from `models` and writes
+            // `models.json` into the shared UI package unless told otherwise.
             assert_eq!(args.models_dir, std::path::PathBuf::from("models"));
-            assert_eq!(args.site_dir, std::path::PathBuf::from("apps/site"));
+            assert_eq!(
+                args.data_dir,
+                std::path::PathBuf::from("packages/ui/src/app/data")
+            );
         }
         other => panic!("expected a catalog command, got {other:?}"),
     }
@@ -327,15 +330,15 @@ fn catalog_accepts_directory_overrides() {
         "catalog",
         "--models-dir",
         "/tmp/models",
-        "--site-dir",
-        "/tmp/site",
+        "--data-dir",
+        "/tmp/data",
     ])
     .expect("explicit catalog directories should parse");
 
     match cli.command {
         Command::Catalog(args) => {
             assert_eq!(args.models_dir.to_str(), Some("/tmp/models"));
-            assert_eq!(args.site_dir.to_str(), Some("/tmp/site"));
+            assert_eq!(args.data_dir.to_str(), Some("/tmp/data"));
         }
         other => panic!("expected a catalog command, got {other:?}"),
     }

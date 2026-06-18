@@ -1,18 +1,21 @@
 name: Deploy site
 
 # Builds the static gallery (apps/site) and deploys it to GitHub Pages. The
-# catalog datasets are regenerated from test-cases/ and models/ as part of the
-# build, so the deployed site always reflects the current specs rather than a
-# committed snapshot. Runs on pushes that touch the site, the run-record contract
-# it is built from, the catalog sources, or the catalog command itself, and on
-# demand. Dormant until the repository is mirrored to GitHub with Pages enabled.
+# bundled model dataset (models.json) is regenerated from models/ as part of the
+# build so model prices stay current; the test-case and run data the gallery
+# shows come from the backend's public R2 snapshot, fetched at build time by the
+# snapshot plugin (a backend deploy hook rebuilds the site when that changes).
+# Runs on pushes that touch the site, the shared UI it renders, the run-record
+# contract it is built from, the model catalog, or the catalog command itself,
+# and on demand. Dormant until the repository is mirrored to GitHub with Pages
+# enabled.
 on:
   push:
     branches: [master]
     paths:
       - "apps/site/**"
+      - "packages/ui/**"
       - "packages/run-record/**"
-      - "test-cases/**"
       - "models/**"
       - "crates/**"
       - "Cargo.toml"
@@ -40,15 +43,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # The catalog renders reference screenshots through the bundled Playwright
-      # driver, so install the Chromium build it expects (with its OS deps). Run
-      # it from the browser-driver workspace that pins Playwright: it is installed
-      # there, not hoisted to the root, so a bare `npx playwright` would miss it
-      # and fetch a different version whose Chromium revision the driver can't find.
-      - run: npm exec -w @test-cabinet/browser-driver -- playwright install --with-deps chromium
-      # Regenerate test-cases.json / models.json (and the public/catalog assets)
-      # from the catalog sources so the deployed site reflects the current specs.
-      # Uses the runner's preinstalled stable toolchain via rust-toolchain.toml.
+      # Regenerate the bundled model dataset (models.json) from models/ so the
+      # deployed gallery shows current model prices. No browser is needed — the
+      # command only reads the model catalog and OpenRouter. Uses the runner's
+      # preinstalled stable toolchain via rust-toolchain.toml.
       - run: cargo run --locked -p test-cabinet-cli -- catalog
       # The site imports built run-record types/JS, so build that package first.
       - run: npm run build -w @test-cabinet/run-record
