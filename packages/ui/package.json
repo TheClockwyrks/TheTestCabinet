@@ -12,6 +12,8 @@
     "./app": "./src/app/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -28,12 +30,18 @@
     "react-dom": "^19"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "~0.182.0",
+    "@vitejs/plugin-react": "^4",
+    "jsdom": "^26",
     "react": "^19",
     "react-dom": "^19",
     "sass": "^1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3"
   }
 }

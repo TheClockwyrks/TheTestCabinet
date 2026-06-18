@@ -55,6 +55,16 @@ export function RunMonitorPage() {
   const [error, setError] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
+  // Hold the latest runtime in a ref so the subscription effect can reach its
+  // callbacks without depending on it. The runtime object is recreated whenever
+  // its own state (inProgress/refreshToken) changes — and `onDone` changes that
+  // state (update/remove/requestRefresh). Depending on `runtime` directly would
+  // re-run the effect on completion, resetting state and re-subscribing, which
+  // replays the stream and fires `onDone` again — an infinite loop that flickers
+  // the UI between "running" and "done".
+  const runtimeRef = useRef(runtime);
+  runtimeRef.current = runtime;
+
   useEffect(() => {
     if (!worker || !runId) return;
     setEvents([]);
@@ -63,6 +73,7 @@ export function RunMonitorPage() {
     const unsubscribe = worker.client.subscribeToRun(runId, {
       onEvent: (event) => setEvents((prev) => [...prev, event]),
       onDone: (outcome) => {
+        const runtime = runtimeRef.current;
         setStatus({ kind: "done", outcome });
         runtime.update(runId, {
           state: outcome.kind === "failed" ? "failed" : "running",
@@ -77,7 +88,7 @@ export function RunMonitorPage() {
       onError: (e) => setError(String(e)),
     });
     return unsubscribe;
-  }, [worker, runId, runtime]);
+  }, [worker, runId]);
 
   // Auto-scroll the feed as events arrive.
   useEffect(() => {
