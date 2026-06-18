@@ -4,6 +4,7 @@ import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
+import { eventDetail, formatEventTime } from "../../../eventFeed";
 import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import styles from "../RunExec.module.scss";
@@ -11,34 +12,6 @@ import styles from "../RunExec.module.scss";
 type MonitorStatus =
   | { kind: "running" }
   | { kind: "done"; outcome: RunOutcome };
-
-// A one-line summary of a normalized harness event for the live feed.
-function describeEvent(e: HarnessEvent): string {
-  switch (e.type) {
-    case "agent":
-      return `agent: ${e.message ?? ""}`;
-    case "command":
-      return `command: ${e.command ?? ""}`;
-    case "read":
-      return `read: ${e.path ?? ""}`;
-    case "write":
-      return `write: ${e.path ?? ""}`;
-    case "search":
-      return `search: ${e.query ?? ""}`;
-    case "list":
-      return `list: ${e.path ?? ""}`;
-    case "skill":
-      return `skill: ${e.path ?? ""}`;
-    case "orchestration":
-      return `orchestration: ${String(e.action ?? "")}`;
-    case "error":
-      return `error: ${e.message ?? ""}`;
-    case "warning":
-      return `warning: ${e.message ?? ""}`;
-    default:
-      return `${e.type}: ${JSON.stringify(e.raw ?? e)}`;
-  }
-}
 
 // The live monitor for an active run (`/runs/:runId/live`). It subscribes to the
 // active worker's event stream (which replays events so far, then streams new
@@ -136,9 +109,14 @@ export function RunMonitorPage() {
           </p>
         )}
         {events.map((e, i) => (
-          <div key={i} className={styles.feedLine}>
-            <span className={styles.feedType}>{e.type}</span>
-            <span className={styles.feedBody}>{describeEvent(e)}</span>
+          <div key={i} className={styles.feedLine} data-event-type={e.type}>
+            <div className={styles.feedGutter}>
+              <span className={styles.feedType}>{e.type.toUpperCase()}</span>
+              <span className={styles.feedTime}>
+                {formatEventTime(e.timestamp)}
+              </span>
+            </div>
+            <span className={styles.feedBody}>{eventDetail(e)}</span>
           </div>
         ))}
       </div>

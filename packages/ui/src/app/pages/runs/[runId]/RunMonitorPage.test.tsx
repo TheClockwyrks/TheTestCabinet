@@ -105,8 +105,12 @@ describe("RunMonitorPage", () => {
     expect(subscribeToRun).toHaveBeenCalledTimes(1);
     // The completion notice is stable and the streamed events remain in the feed.
     expect(screen.getByText(/Run complete/i)).toBeInTheDocument();
-    expect(screen.getByText(/command: ls/)).toBeInTheDocument();
-    expect(screen.getByText(/write: out\.txt/)).toBeInTheDocument();
+    // The type shows once, in its own column; the detail no longer repeats it.
+    expect(screen.getByText("COMMAND")).toBeInTheDocument();
+    expect(screen.getByText("ls")).toBeInTheDocument();
+    expect(screen.getByText("WRITE")).toBeInTheDocument();
+    expect(screen.getByText("out.txt")).toBeInTheDocument();
+    expect(screen.queryByText(/command: ls/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Waiting for events/i)).not.toBeInTheDocument();
   });
 
