@@ -1,0 +1,31 @@
+// Web console global styles. The palette comes from the `--tcab-*` token
+// contract (imported from @test-cabinet/ui/tokens.css in main.tsx); override
+// any of those properties here to re-theme. The console itself is themed
+// entirely through those tokens.
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--tcab-bg);
+  color: var(--tcab-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--tcab-accent);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

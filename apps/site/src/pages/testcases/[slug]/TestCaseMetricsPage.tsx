@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { MetricChartWidget } from "../../../components/MetricChartWidget";
-import { Panel } from "../../../components/Panel";
+import { MetricChartWidget, Panel } from "@test-cabinet/ui";
 import { useRuns } from "../../../data/useRuns";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { totalTokens } from "../../../format";

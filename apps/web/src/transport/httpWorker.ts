@@ -1,0 +1,189 @@
+// The WorkerClient over HTTP, against a worker's REST API
+// (components/worker/overview.md). A worker only executes runs and publishes
+// them — it never serves the catalog. Operations the worker API does not define
+// (enumerating produced runs, reading checklist items, saving a review) throw
+// NotSupportedError so the console renders a clear "not available here" state.
+import { NotSupportedError } from "@test-cabinet/ui/client";
+import type {
+  WorkerClient,
+  RunSubscription,
+} from "@test-cabinet/ui/client";
+import type {
+  HarnessEvent,
+  LaunchConfig,
+  PublishResult,
+  ReviewDocumentInput,
+  ReviewItem,
+  RunJob,
+  StoredRun,
+  WorkerIdentity,
+} from "@test-cabinet/ui/client";
+import type { RunRecord } from "@test-cabinet/run-record";
+import { getJson, joinUrl, postJson } from "./http";
+
+interface SubmitResponse {
+  job: string;
+}
+
+interface JobResponse {
+  status: string;
+  record?: RunRecord | null;
+  error?: string | null;
+}
+
+// `GET /healthz` on a worker, if it offers one. Best-effort: used only to learn
+// which backend the worker is bound to for the consistency check.
+interface WorkerHealth {
+  version?: string | null;
+  backendId?: string | null;
+  backendUrl?: string | null;
+}
+
+function mapState(status: string): RunJob["state"] {
+  if (status === "completed" || status === "succeeded") return "completed";
+  if (status === "failed" || status === "error") return "failed";
+  return "running";
+}
+
+export function createHttpWorker(baseUrl: string): WorkerClient {
+  return {
+    async identity(): Promise<WorkerIdentity> {
+      // The worker has no defined info endpoint yet; probe /healthz and fall back
+      // to an unverified identity when it isn't there.
+      try {
+        const h = await getJson<WorkerHealth>(baseUrl, "/healthz");
+        return {
+          url: baseUrl,
+          version: h.version ?? null,
+          backendId: h.backendId ?? h.backendUrl ?? null,
+        };
+      } catch {
+        return { url: baseUrl, version: null, backendId: null };
+      }
+    },
+
+    async launchRun(config: LaunchConfig): Promise<string> {
+      const body = {
+        testCase: config.testCase,
+        version: config.version,
+        variant: config.variant,
+        harness: config.harness,
+        model: config.modelId,
+        ...(config.maxRuntimeOverride != null
+          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+          : {}),
+      };
+      const res = await postJson<SubmitResponse>(baseUrl, "/runs", body);
+      return res.job;
+    },
+
+    async getRun(runId: string): Promise<RunJob> {
+      const r = await getJson<JobResponse>(
+        baseUrl,
+        `/runs/${encodeURIComponent(runId)}`,
+      );
+      return {
+        runId,
+        state: mapState(r.status),
+        record: r.record ?? null,
+        message: r.error ?? null,
+      };
+    },
+
+    subscribeToRun(runId: string, handlers: RunSubscription): () => void {
+      const controller = new AbortController();
+      void streamEvents(baseUrl, runId, handlers, controller);
+      return () => controller.abort();
+    },
+
+    async listRuns(): Promise<StoredRun[]> {
+      throw new NotSupportedError("list produced runs");
+    },
+
+    async readRun(id: string): Promise<StoredRun> {
+      const job = await getJson<JobResponse>(
+        baseUrl,
+        `/runs/${encodeURIComponent(id)}`,
+      );
+      if (!job.record) throw new Error(`Run ${id} has no record yet.`);
+      return { id, record: job.record, review: null };
+    },
+
+    async readReviewItems(_id: string): Promise<ReviewItem[]> {
+      throw new NotSupportedError("read review checklist items");
+    },
+
+    async saveReview(_id: string, _review: ReviewDocumentInput): Promise<void> {
+      throw new NotSupportedError("save a review");
+    },
+
+    async publish(id: string): Promise<PublishResult> {
+      return postJson<PublishResult>(baseUrl, "/publish", { job: id });
+    },
+  };
+}
+
+// Reads the worker's NDJSON event stream, forwarding one normalized event per
+// line, then resolves the run's outcome from its final job state.
+async function streamEvents(
+  baseUrl: string,
+  runId: string,
+  handlers: RunSubscription,
+  controller: AbortController,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      joinUrl(baseUrl, `/runs/${encodeURIComponent(runId)}/events`),
+      { headers: { accept: "application/x-ndjson" }, signal: controller.signal },
+    );
+    if (!res.ok || !res.body) {
+      throw new Error(`event stream failed: ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) emit(line, handlers);
+      }
+    }
+    const tail = buffer.trim();
+    if (tail) emit(tail, handlers);
+
+    // The stream closes when the run reaches a terminal state; read it back.
+    const job = await getJson<JobResponse>(
+      baseUrl,
+      `/runs/${encodeURIComponent(runId)}`,
+    );
+    if (mapState(job.status) === "completed" && job.record) {
+      handlers.onDone({ kind: "completed", record: job.record });
+    } else {
+      handlers.onDone({
+        kind: "failed",
+        message: job.error ?? "Run did not complete.",
+      });
+    }
+  } catch (e) {
+    if (controller.signal.aborted) return;
+    handlers.onError?.(e);
+  }
+}
+
+function emit(line: string, handlers: RunSubscription): void {
+  try {
+    handlers.onEvent(JSON.parse(line) as HarnessEvent);
+  } catch {
+    // A malformed line shouldn't tear down the stream; surface it as a raw event.
+    handlers.onEvent({
+      timestamp: "",
+      type: "raw",
+      raw: line,
+    } as HarnessEvent);
+  }
+}

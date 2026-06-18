@@ -1,5 +1,4 @@
-import { Markdown } from "../../../components/Markdown";
-import { Panel } from "../../../components/Panel";
+import { Markdown, Panel } from "@test-cabinet/ui";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import styles from "./TestCaseDetailPages.module.scss";
 

@@ -1,7 +1,7 @@
 import {
   SpecAccordion,
   type AccordionEntry,
-} from "../../../components/SpecAccordion";
+} from "@test-cabinet/ui";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 
 // The References tab (`/test-cases/:slug/references`): the rendered reference

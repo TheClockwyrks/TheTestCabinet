@@ -1,0 +1,28 @@
+{
+  "name": "@test-cabinet/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the console UI with the Tauri app via @test-cabinet/ui; talks to a backend (catalog + published data) and a set of worker servers (execution) over HTTP.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@test-cabinet/run-record": "*",
+    "@test-cabinet/ui": "*",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "sass": "^1",
+    "typescript": "^5",
+    "vite": "^6"
+  }
+}

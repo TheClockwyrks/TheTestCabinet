@@ -1,0 +1,431 @@
+@use "../styles/tokens" as t;
+
+// The shared runner/reporter console: an app shell (header + tabs) over the
+// Run / Specs / Review / Connections screens. Styling is themed through the
+// `--tcab-*` tokens so web and tauri can each supply their own palette.
+
+.app {
+  min-height: 100vh;
+  background: t.$color-bg;
+  color: t.$color-text;
+  font-family: inherit;
+  padding: t.$space-xl;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.title {
+  font-size: t.$font-xl;
+  margin: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: t.$space-2xs;
+}
+
+.tab {
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  color: t.$color-text-muted;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-text;
+  border-color: t.$color-accent;
+}
+
+.content {
+  margin-top: t.$space-md;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.viewTitle {
+  font-size: t.$font-lg;
+  margin: 0;
+}
+
+.sectionLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: t.$space-sm 0 0;
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 12rem;
+  flex: 1;
+}
+
+.fieldLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.select,
+.input,
+.textarea {
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  font-family: inherit;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.primary,
+.secondary {
+  border-radius: t.$radius-md;
+  padding: t.$space-xs t.$space-lg;
+  font-size: t.$font-sm;
+  font-family: inherit;
+  cursor: pointer;
+  border: t.$border-hairline solid t.$color-border;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+  font-weight: 600;
+}
+
+.secondary {
+  background: t.$color-surface;
+  color: t.$color-text;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.notice {
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+
+  code {
+    color: t.$color-text;
+  }
+}
+
+.error {
+  border-color: t.$color-negative;
+  color: t.$color-text;
+}
+
+.ok {
+  border-color: t.$color-positive;
+  color: t.$color-text;
+}
+
+.warn {
+  border-color: var(--tcab-rating-scuffed);
+  color: t.$color-text;
+}
+
+// --- Review checklist (review screen) ---
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.checklistItem {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+}
+
+.checklistText {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.checklistControls {
+  display: flex;
+  gap: t.$space-sm;
+
+  .input {
+    flex: 1;
+  }
+}
+
+// --- Live event feed (run screen) ---
+
+.feedWrap {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.feed {
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm;
+  height: 22rem;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: t.$font-sm;
+}
+
+.feedLine {
+  display: flex;
+  gap: t.$space-sm;
+  padding: 0.1rem 0;
+  border-bottom: t.$border-hairline solid rgba(255, 255, 255, 0.04);
+}
+
+.feedType {
+  color: t.$color-accent;
+  min-width: 7rem;
+  flex-shrink: 0;
+}
+
+.feedBody {
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// --- Specs screen ---
+
+.specs {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// --- Review screen ---
+
+.runsLayout {
+  display: grid;
+  grid-template-columns: 18rem 1fr;
+  gap: t.$space-md;
+  align-items: start;
+}
+
+.runList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.runItem {
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-text-muted;
+  }
+}
+
+.runItemActive {
+  border-color: t.$color-accent;
+}
+
+.runItemTitle {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.runItemMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.runDetail {
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+}
+
+.detailTitle {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-sm;
+  word-break: break-all;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-2xs t.$space-md;
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+
+  dt {
+    color: t.$color-text-muted;
+  }
+
+  dd {
+    margin: 0;
+    color: t.$color-text;
+  }
+}
+
+// --- Connections screen (backend + workers) ---
+
+.connList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.connItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-text-muted;
+  }
+}
+
+.connItemActive {
+  border-color: t.$color-accent;
+}
+
+.connMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.connLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.connUrl {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-all;
+}
+
+.matchBadge {
+  flex: none;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid var(--badge-color);
+  color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
+  white-space: nowrap;
+
+  &[data-match="match"] {
+    --badge-color: var(--tcab-positive);
+  }
+  &[data-match="mismatch"] {
+    --badge-color: var(--tcab-negative);
+  }
+  &[data-match="unverified"] {
+    --badge-color: var(--tcab-muted);
+  }
+}
+
+.addForm {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  margin-bottom: t.$space-md;
+}
+
+.barDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--dot-color, var(--tcab-muted));
+  flex: none;
+}

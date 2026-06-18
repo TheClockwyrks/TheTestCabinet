@@ -29,4 +29,28 @@
   --ttc-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
   --ttc-grid: rgba(255, 94, 58, 0.5);
   --ttc-scanline: rgba(0, 0, 0, 0.4);
+
+  // Map the shared `@test-cabinet/ui` token contract (`--tcab-*`) onto this
+  // site's synthwave palette, so the primitives moved into that library render
+  // exactly as they did when they lived here. The library ships its own defaults
+  // (ui/src/styles/tokens.css); the site overrides them rather than importing
+  // them, keeping `--ttc-*` the single source of truth.
+  --tcab-bg: var(--ttc-bg);
+  --tcab-bg-2: var(--ttc-bg-2);
+  --tcab-surface: var(--ttc-surface);
+  --tcab-surface-2: var(--ttc-surface-2);
+  --tcab-border: var(--ttc-border);
+  --tcab-text: var(--ttc-text);
+  --tcab-muted: var(--ttc-muted);
+  --tcab-accent: var(--ttc-accent);
+  --tcab-accent-2: var(--ttc-accent-2);
+  --tcab-positive: var(--ttc-positive);
+  --tcab-negative: var(--ttc-negative);
+  --tcab-rating-flawless: var(--ttc-rating-flawless);
+  --tcab-rating-great: var(--ttc-rating-great);
+  --tcab-rating-scuffed: var(--ttc-rating-scuffed);
+  --tcab-rating-broken: var(--ttc-rating-broken);
+  --tcab-font: var(--ttc-font);
+  --tcab-display: var(--ttc-display);
+  --tcab-glow: var(--ttc-glow);
 }

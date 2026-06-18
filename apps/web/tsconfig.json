@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"],
+  "references": [{ "path": "../../packages/run-record" }]
+}

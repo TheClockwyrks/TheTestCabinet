@@ -1,0 +1,103 @@
+@use "../styles/tokens" as t;
+
+// Themed prose. Markdown blocks are spaced and colored to the palette; links
+// glow with the accent, code/tables sit on the surface tones, and the outermost
+// margins collapse so the block fits flush inside a padded panel.
+.prose {
+  color: t.$color-text;
+  line-height: 1.6;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--tcab-display);
+    line-height: 1.25;
+    margin: t.$space-xl 0 t.$space-md;
+  }
+
+  h1 {
+    font-size: t.$font-xl;
+  }
+
+  h2 {
+    font-size: t.$font-lg;
+  }
+
+  h3 {
+    font-size: t.$font-md;
+  }
+
+  p,
+  ul,
+  ol,
+  blockquote,
+  table {
+    margin: 0 0 t.$space-md;
+  }
+
+  ul,
+  ol {
+    padding-left: t.$space-lg;
+  }
+
+  a {
+    color: t.$color-accent;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  blockquote {
+    margin-left: 0;
+    padding: t.$space-sm t.$space-md;
+    border-left: t.$border-hairline solid t.$color-accent-2;
+    color: t.$color-text-muted;
+  }
+
+  code {
+    font-family: var(--tcab-font);
+    font-size: t.$font-sm;
+    background: t.$color-surface-2;
+    border-radius: t.$radius-sm;
+    padding: 0 t.$space-xs;
+  }
+
+  pre {
+    background: t.$color-surface-2;
+    border: t.$border-hairline solid t.$color-border;
+    border-radius: t.$radius-md;
+    padding: t.$space-md;
+    overflow-x: auto;
+
+    code {
+      background: none;
+      padding: 0;
+    }
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: t.$space-xs t.$space-sm;
+    border: t.$border-hairline solid t.$color-border;
+  }
+
+  th {
+    background: t.$color-surface-2;
+  }
+}

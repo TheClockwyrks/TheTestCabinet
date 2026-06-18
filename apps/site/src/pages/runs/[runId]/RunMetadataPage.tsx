@@ -1,4 +1,4 @@
-import { MetricTile } from "../../../components/MetricTile";
+import { MetricTile } from "@test-cabinet/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 

@@ -1,0 +1,38 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+}
+
+.label {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.value {
+  font-size: t.$font-lg;
+}
+
+// A muted value, for informational figures (e.g. provider-dependent run time)
+// that sit alongside the key metrics.
+.secondary {
+  color: t.$color-text-muted;
+}
+
+// A value rendered as an external link (e.g. the Source tile). Picks up the
+// accent so it reads as actionable, and underlines only on hover.
+.link {
+  color: t.$color-accent;
+  text-decoration: none;
+  width: fit-content;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

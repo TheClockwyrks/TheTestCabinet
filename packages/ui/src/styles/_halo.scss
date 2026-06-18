@@ -1,0 +1,11 @@
+@use "tokens" as t;
+
+// Readability halo for loose text that sits directly over a busy background:
+// each glyph gets a layered dark glow in the background color so it lifts off
+// without a box around it.
+@mixin halo {
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg;
+}

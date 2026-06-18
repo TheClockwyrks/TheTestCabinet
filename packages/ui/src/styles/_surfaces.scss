@@ -1,0 +1,6 @@
+@use "tokens" as t;
+
+// The translucent panel background shared by every surface card, so a backdrop
+// (where one exists, as on the public site) reads through at one consistent
+// opacity. Each panel still owns its own border color and glow.
+$panel-bg: color-mix(in srgb, t.$color-surface 88%, transparent);

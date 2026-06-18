@@ -1,0 +1,32 @@
+/*
+ * The `--tcab-*` custom-property contract that every shared UI component reads.
+ * These defaults give the library a working synthwave theme out of the box, so
+ * an app can simply `@import "@test-cabinet/ui/tokens.css"`. Any app may override
+ * individual properties in its own global styles — the public site, for example,
+ * maps these onto its existing `--ttc-*` palette so the moved components render
+ * exactly as before.
+ */
+:root {
+  --tcab-bg: #050108;
+  --tcab-bg-2: #0a0414;
+  --tcab-surface: #120a1c;
+  --tcab-surface-2: #1a0f28;
+  --tcab-border: #6a3aa0;
+  --tcab-text: #fdf3ff;
+  --tcab-muted: #b69ad0;
+  --tcab-accent: #ff9d2f;
+  --tcab-accent-2: #ff5e3a;
+  --tcab-positive: #4ade80;
+  --tcab-negative: #f87171;
+
+  /* Per-tier rating colors, best to worst. */
+  --tcab-rating-flawless: #22d3ee;
+  --tcab-rating-great: #4ade80;
+  --tcab-rating-scuffed: #fbbf24;
+  --tcab-rating-broken: #f87171;
+
+  --tcab-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo,
+    Consolas, monospace;
+  --tcab-display: var(--tcab-font);
+  --tcab-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
+}

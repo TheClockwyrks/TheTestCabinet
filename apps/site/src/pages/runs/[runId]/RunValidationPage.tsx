@@ -1,4 +1,4 @@
-import { Panel } from "../../../components/Panel";
+import { Panel } from "@test-cabinet/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import type { StepResult } from "@test-cabinet/run-record";
 import styles from "./RunDetailPages.module.scss";

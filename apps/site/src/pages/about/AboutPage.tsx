@@ -1,5 +1,4 @@
-import { Markdown } from "../../components/Markdown";
-import { Panel } from "../../components/Panel";
+import { Markdown, Panel } from "@test-cabinet/ui";
 import { AboutLayout } from "../../layouts/about/AboutLayout";
 // The About tab (`/about`): the section's top-level description. We pull the
 // Markdown in raw (same approach as data/writeups.ts) and hand it to the shared

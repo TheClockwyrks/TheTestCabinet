@@ -24,8 +24,10 @@ The Test Cabinet is made up of the following components.
 | [CLI](/components/cli/overview/) | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch. |
 | [Worker](/components/worker/overview/) | An Axum server that exposes the core's run functionality over an HTTP API, for running test cases on a remote machine. |
 | [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. |
+| [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by remote workers rather than a built-in local one. |
 | [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and container image references and stores published run results. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
+| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the presentational primitives all three GUIs use, plus the console and the backend/worker client interfaces the Tauri and web apps share. |
 | [Docs](/components/docs/overview/) | This documentation site. |
 
 ## Runners and Reporters
@@ -39,13 +41,18 @@ Two roles recur across the components:
   from the backend, drives the run through the core, and reports the result back
   to the backend on publish.
 - A **reporter** is any component that displays run results: the
-  [Tauri app](/components/tauri/overview/) and the
+  [Tauri app](/components/tauri/overview/), the
+  [web console](/components/web/overview/), and the
   [public site](/components/site/overview/). Reporters read published results;
   only GUI reporters let a person interact with the produced implementations.
 
 The Tauri app is both, which is why it is expected to be the primary way The
 Test Cabinet is used: it launches runs, reviews them, and shows results in one
-place.
+place. The [web console](/components/web/overview/) is the same console in a
+browser — it reviews and reports like the Tauri app and launches runs too, but
+drives them on remote [workers](/components/worker/overview/) instead of a
+built-in local runner. The two share their UI through the
+[UI library](/components/ui/overview/).
 
 ## The Backend
 

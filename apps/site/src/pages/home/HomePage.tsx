@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { RatingBadge } from "../../components/RatingBadge";
+import { RatingBadge } from "@test-cabinet/ui";
 import { RunLog } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";

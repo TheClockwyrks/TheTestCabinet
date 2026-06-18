@@ -1,5 +1,4 @@
-import { Markdown } from "../../components/Markdown";
-import { Panel } from "../../components/Panel";
+import { Markdown, Panel } from "@test-cabinet/ui";
 import { AboutLayout } from "../../layouts/about/AboutLayout";
 // The Testing tab (`/about/testing`): how a run works — test cases, models, and
 // runs. Pulled in raw and handed to the shared <Markdown> renderer.

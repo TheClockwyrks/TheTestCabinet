@@ -1,0 +1,15 @@
+// The chart figure fills its column; Plot injects its own <svg>/<figure>, we
+// only frame it.
+.chart {
+  width: 100%;
+  overflow-x: auto;
+
+  :global(figure) {
+    margin: 0;
+  }
+
+  :global(svg) {
+    max-width: 100%;
+    height: auto;
+  }
+}

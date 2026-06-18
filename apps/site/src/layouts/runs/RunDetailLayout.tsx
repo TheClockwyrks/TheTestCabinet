@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
-import { RatingBadge } from "../../components/RatingBadge";
+import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import type { ParsedWriteup } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";

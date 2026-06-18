@@ -1,6 +1,6 @@
 import type { RunRecord } from "@test-cabinet/run-record";
 import { Link } from "react-router";
-import { RatingBadge } from "./RatingBadge";
+import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "./UnpublishedTag";
 import type { Rating } from "../data/ratings";
 import { findReview } from "../data/writeups";

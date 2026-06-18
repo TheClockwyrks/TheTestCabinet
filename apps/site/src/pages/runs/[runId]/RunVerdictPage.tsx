@@ -1,6 +1,4 @@
-import { Markdown } from "../../../components/Markdown";
-import { Panel } from "../../../components/Panel";
-import { RatingBadge } from "../../../components/RatingBadge";
+import { Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
 import { RATING_META, VERDICT_META } from "../../../data/ratings";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";

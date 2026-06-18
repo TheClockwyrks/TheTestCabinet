@@ -194,6 +194,11 @@ export default defineConfig({
               items: ["components/tauri/overview"],
             },
             {
+              label: "Web",
+              collapsed: true,
+              items: ["components/web/overview"],
+            },
+            {
               label: "Backend",
               collapsed: true,
               items: [
@@ -206,6 +211,11 @@ export default defineConfig({
               label: "Site",
               collapsed: true,
               items: ["components/site/overview"],
+            },
+            {
+              label: "UI",
+              collapsed: true,
+              items: ["components/ui/overview"],
             },
             {
               label: "Documentation",

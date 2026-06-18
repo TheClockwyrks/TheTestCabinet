@@ -1,7 +1,7 @@
 import type { RunRecord } from "@test-cabinet/run-record";
 import { useEffect, useMemo, useState } from "react";
 import { PageLayout } from "../../components/PageLayout";
-import { Pagination } from "../../components/Pagination";
+import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog } from "../../components/RunLog";
 import { findModelByModelId } from "../../data/models";

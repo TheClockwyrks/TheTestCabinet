@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pagination } from "../../../components/Pagination";
-import { Panel } from "../../../components/Panel";
+import { Pagination, Panel } from "@test-cabinet/ui";
 import { RunLog } from "../../../components/RunLog";
 import type { ModelSummary } from "../../../data/models";
 import { useRuns } from "../../../data/useRuns";

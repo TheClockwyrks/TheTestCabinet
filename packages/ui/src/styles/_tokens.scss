@@ -1,0 +1,41 @@
+// Spacing, size, and color tokens for the shared UI components. The scale mirrors
+// what the apps use; colors indirect through the `--tcab-*` custom properties
+// (see tokens.css) so each app — site, web, tauri — can supply its own palette
+// while the components stay theme-agnostic.
+
+// Spacing scale.
+$space-2xs: 0.125rem;
+$space-xs: 0.25rem;
+$space-sm: 0.5rem;
+$space-md: 1rem;
+$space-lg: 1.5rem;
+$space-xl: 2.5rem;
+$space-2xl: 4rem;
+
+// Radius scale.
+$radius-sm: 0.25rem;
+$radius-md: 0.5rem;
+$radius-lg: 1rem;
+
+// Font size scale.
+$font-sm: 0.85rem;
+$font-md: 1rem;
+$font-lg: 1.25rem;
+$font-xl: 1.75rem;
+$font-2xl: 2.5rem;
+
+// Border width (only place px is allowed).
+$border-hairline: 1px;
+
+// Color palette, indirected through the `--tcab-*` custom properties.
+$color-bg: var(--tcab-bg);
+$color-bg-2: var(--tcab-bg-2);
+$color-surface: var(--tcab-surface);
+$color-surface-2: var(--tcab-surface-2);
+$color-border: var(--tcab-border);
+$color-text: var(--tcab-text);
+$color-text-muted: var(--tcab-muted);
+$color-accent: var(--tcab-accent);
+$color-accent-2: var(--tcab-accent-2);
+$color-positive: var(--tcab-positive);
+$color-negative: var(--tcab-negative);

@@ -1,8 +1,4 @@
-import { Markdown } from "../../../components/Markdown";
-import {
-  SpecAccordion,
-  type AccordionEntry,
-} from "../../../components/SpecAccordion";
+import { Markdown, SpecAccordion, type AccordionEntry } from "@test-cabinet/ui";
 import type { SeededInput } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 
