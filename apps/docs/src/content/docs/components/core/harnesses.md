@@ -60,6 +60,11 @@ fail with a clear error.
 
 Availability checks must **never** start a session or take any other action that
 could incur cost. Any stronger check must be triggered explicitly by the user.
+Because each run-container image is a registry image pulled by digest, an
+availability check probes only an image already present locally and **never
+pulls one** — fetching a registry image is a stronger, cost-bearing action
+reserved for an actual run, so a harness whose image has not yet been pulled is
+reported unavailable rather than fetched.
 
 ## Authentication
 

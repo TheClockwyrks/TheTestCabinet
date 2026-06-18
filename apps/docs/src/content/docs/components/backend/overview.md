@@ -20,8 +20,9 @@ The backend serves two kinds of client, as described in
 
 - **Runners** ([CLI](/components/cli/overview/),
   [worker](/components/worker/overview/), [Tauri app](/components/tauri/overview/))
-  resolve test case and container definitions from the backend, then push their
-  [run records](/components/core/run-records/) back to it when a run is published.
+  resolve test case definitions and container image references from the backend,
+  then push their [run records](/components/core/run-records/) back to it when a
+  run is published.
 - **Reporters** ([Tauri app](/components/tauri/overview/), and indirectly the
   [public site](/components/site/overview/)) read those definitions and
   published results to display them.
@@ -34,9 +35,12 @@ Concretely, the backend holds:
   the editing source; the backend is the distribution source. The on-disk format
   is unchanged by this — publishing caches a version, it does not transform it.
   See [Test Cases](/components/core/test-cases/#catalog-layout).
-- **Container definitions.** The per-harness container images a run executes in,
-  so runners build or pull a consistent environment rather than each deriving
-  their own. See [Execution](/components/core/execution/#containerization).
+- **Container image references.** The per-harness run-container images live in a
+  container registry, built and pushed from the repository's `containers/`
+  Dockerfiles. The backend records the current image reference — a registry
+  digest — for each harness; a runner resolves that reference and pulls the image
+  by digest, so every runner executes the identical, pinned environment rather
+  than building its own. See [Execution](/components/core/execution/#containerization).
 - **Run results.** The published [run records](/components/core/run-records/),
   with their links to each run's public source repository and playable build.
   This is the system of record for published runs.

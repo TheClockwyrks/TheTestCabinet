@@ -50,7 +50,9 @@ container (not the host) so it reflects what the harness actually built in:
 
 - The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for example,
   `Debian GNU/Linux 12 (bookworm)`), or `unknown` when it could not be probed.
-- The per-harness container image (for example, `test-cabinet/codex:latest`).
+- The per-harness container image the run executed in, as the registry digest
+  reference it was pulled by (for example,
+  `ghcr.io/<org>/test-cabinet-codex@sha256:…`).
 - The Node.js version reported by `node --version`, where it could be
   determined.
 

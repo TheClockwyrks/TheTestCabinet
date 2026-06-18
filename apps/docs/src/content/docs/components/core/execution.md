@@ -21,6 +21,12 @@ example by deleting files.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
+- The per-harness run-container image is a registry image pinned by digest. A
+  runner resolves the image reference for the selected harness from the
+  [backend](/components/backend/overview/) and pulls it by digest at run start,
+  so every runner executes the identical, immutable image rather than building
+  one of its own. The reference is recorded in the
+  [run record](/components/core/run-records/#environment).
 
 ## Seeding
 
