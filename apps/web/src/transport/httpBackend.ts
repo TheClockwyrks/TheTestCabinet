@@ -12,11 +12,15 @@ import type {
   BackendIdentity,
   HarnessInfo,
   Model,
+  ReviewDocument,
+  RunPage,
   Specification,
   SpecDocument,
+  StoredRun,
   TestCase,
   VersionInfo,
 } from "@test-cabinet/ui/client";
+import type { RunRecord } from "@test-cabinet/run-record";
 import { getJson, getText } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -68,6 +72,29 @@ interface ContainerRef {
   reference: string;
 }
 
+// `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
+// record (links populated), its review, and the resolved links.
+interface StoredRunResponse {
+  record: RunRecord;
+  review: ReviewDocument | null;
+  links?: { sourceRepo: string | null; playableBuild: string | null };
+}
+
+// `GET /runs`: a page of stored runs plus the cursor for the next page.
+interface RunPageResponse {
+  runs: StoredRunResponse[];
+  nextCursor?: string | null;
+}
+
+// The backend serves the record with its links already populated, so the run's
+// id and links are taken from the record itself.
+function toStoredRun(r: StoredRunResponse): StoredRun {
+  const record = r.links
+    ? { ...r.record, links: { ...r.record.links, ...r.links } }
+    : r.record;
+  return { id: record.id, record, review: r.review ?? null };
+}
+
 export function createHttpBackend(baseUrl: string): BackendClient {
   return {
     async identity(): Promise<BackendIdentity> {
@@ -106,6 +133,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         difficulty: r.difficulty,
         tags: r.tags,
         summary: r.summary,
+        description: r.description,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         variants: r.variants.map((v) => ({
           slug: v.slug,
@@ -153,8 +181,32 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async listModels(): Promise<Model[]> {
       // The backend HTTP contract defines no model catalog endpoint; the run
-      // screen treats the model id as free text, so report none.
+      // screen treats the model id as free text, so report none. The gallery's
+      // rich model metadata comes from the bundled curated catalog instead.
       return [];
+    },
+
+    async listRuns(opts): Promise<RunPage> {
+      const params = new URLSearchParams();
+      if (opts?.before) params.set("before", opts.before);
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      const query = params.toString();
+      const body = await getJson<RunPageResponse>(
+        baseUrl,
+        `/runs${query ? `?${query}` : ""}`,
+      );
+      return {
+        runs: body.runs.map(toStoredRun),
+        nextCursor: body.nextCursor ?? null,
+      };
+    },
+
+    async readRun(id: string): Promise<StoredRun> {
+      const body = await getJson<StoredRunResponse>(
+        baseUrl,
+        `/runs/${encodeURIComponent(id)}`,
+      );
+      return toStoredRun(body);
     },
   };
 }

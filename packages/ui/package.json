@@ -4,21 +4,24 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Shared frontend library for The Test Cabinet's GUIs: brand-neutral presentational primitives plus the transport-agnostic runner/reporter console and its backend/worker client interfaces.",
+  "description": "Shared frontend library for The Test Cabinet's GUIs: the full routed gallery application, brand-neutral presentational primitives, and the transport-agnostic backend/worker client interfaces.",
   "exports": {
     ".": "./src/index.ts",
     "./tokens.css": "./src/styles/tokens.css",
     "./client": "./src/client/index.ts",
-    "./console": "./src/console/index.ts"
+    "./app": "./src/app/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@observablehq/plot": "^0.6.16",
+    "@react-three/fiber": "^9.6.1",
     "@test-cabinet/run-record": "*",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "react-router": "^7.6.0",
+    "remark-gfm": "^4.0.1",
+    "three": "~0.182.0"
   },
   "peerDependencies": {
     "react": "^19",
@@ -27,6 +30,7 @@
   "devDependencies": {
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "~0.182.0",
     "react": "^19",
     "react-dom": "^19",
     "sass": "^1",

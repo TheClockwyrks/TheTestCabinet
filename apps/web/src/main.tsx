@@ -1,9 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-// The shared UI token contract (synthwave defaults); override in global.scss to
-// re-theme the console.
-import "@test-cabinet/ui/tokens.css";
-import "./styles/global.scss";
+// The shared app (imported via App) brings its own global styles and full
+// synthwave theme as a side effect, so the web console matches the site exactly.
 import { App } from "./App";
 
 const rootElement = document.getElementById("root");

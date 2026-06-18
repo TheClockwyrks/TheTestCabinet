@@ -5,7 +5,7 @@
 // dev and when no snapshot URL is configured.
 declare module "virtual:tcab-snapshot" {
   import type { RunRecord } from "@test-cabinet/run-record";
-  import type { TestCaseSummary } from "./data/testCases";
+  import type { TestCaseSummary } from "@test-cabinet/ui/app";
 
   /** Published run records, newest first (verbatim snapshot blobs). */
   export const runs: RunRecord[];

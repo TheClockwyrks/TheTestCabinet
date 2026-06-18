@@ -16,6 +16,7 @@ import type {
   ReviewVerdict,
   RunJob,
   RunOutcome,
+  RunPage,
   Specification,
   StoredRun,
   TestCase,
@@ -53,6 +54,17 @@ export interface BackendClient {
     version: string,
     variant: string,
   ): Promise<Specification>;
+
+  // Published runs (the read side a reporter/gallery consumes).
+  /**
+   * List published runs, newest first (`GET /runs`), paginated by a `before`
+   * cursor and a `limit`. Resolves the page's runs and the cursor for the next
+   * page (`null` when there are no more).
+   */
+  listRuns(opts?: { before?: string; limit?: number }): Promise<RunPage>;
+
+  /** One published run by id (`GET /runs/{id}`): record + review + links. */
+  readRun(id: string): Promise<StoredRun>;
 }
 
 // Handlers for a live run subscription.

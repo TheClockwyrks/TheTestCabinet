@@ -1,0 +1,178 @@
+import { useEffect, useState } from "react";
+import type { RunRecord } from "@test-cabinet/run-record";
+import {
+  NotSupportedError,
+  type BackendClient,
+  type WorkerClient,
+} from "../../client/clients";
+import { useBackend, useWorkers } from "../../client/context";
+import type { StoredRun, TestCase, VersionInfo } from "../../client/types";
+import { frameReview } from "../data/frameReview";
+import { sampleTestCases } from "../data/sampleTestCases";
+import type { GalleryDataInput } from "../data/galleryContext";
+import type { TestCaseSummary } from "../data/testCases";
+import { useRunsRuntime } from "./runsRuntime";
+
+// The shared live gallery data source for the consoles (web and desktop). It is
+// written against the BackendClient/WorkerClient interfaces alone, so the two
+// apps differ only in the transports behind those contexts. The published
+// gallery (runs, test cases) comes from the active backend; produced-but-
+// unpublished runs come from the active worker and are flagged local so they
+// read as unpublished and become editable on the Verdict tab. It re-reads
+// produced runs whenever the runs runtime bumps its refresh token (e.g. a
+// launched run finishes). Operations a transport doesn't support are treated as
+// "none" so the rest of the gallery still renders.
+
+// Cap the published-run pagination so a misbehaving backend can't loop forever.
+const MAX_PAGES = 100;
+
+interface AssembledRuns {
+  runs: RunRecord[];
+  localIds: Set<string>;
+  writeups: Record<string, string>;
+}
+
+function emptyRuns(): AssembledRuns {
+  return { runs: [], localIds: new Set(), writeups: {} };
+}
+
+// Map a backend StoredRun (published or produced) into the gallery's run +
+// writeup shapes. The record already carries populated links.
+function ingest(stored: StoredRun, into: AssembledRuns, local: boolean): void {
+  into.runs.push(stored.record);
+  if (local) into.localIds.add(stored.id);
+  if (stored.review) into.writeups[stored.id] = frameReview(stored.review);
+}
+
+async function fetchPublishedRuns(
+  backend: BackendClient,
+): Promise<AssembledRuns> {
+  const acc = emptyRuns();
+  let before: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const { runs, nextCursor } = await backend.listRuns({ before });
+    for (const run of runs) ingest(run, acc, false);
+    if (!nextCursor || runs.length === 0) break;
+    before = nextCursor;
+  }
+  return acc;
+}
+
+async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
+  const acc = emptyRuns();
+  try {
+    for (const run of await worker.listRuns()) ingest(run, acc, true);
+  } catch (e) {
+    // A worker that can't enumerate produced runs simply contributes none.
+    if (!(e instanceof NotSupportedError)) throw e;
+  }
+  return acc;
+}
+
+function toTestCaseSummary(tc: TestCase, info: VersionInfo): TestCaseSummary {
+  return {
+    slug: info.slug,
+    name: info.name,
+    difficulty: info.difficulty,
+    tags: info.tags,
+    summary: info.summary,
+    description: info.description ?? null,
+    versions: tc.versions,
+    latestVersion: tc.versions[0] ?? info.version,
+    variants: info.variants.map((v) => ({
+      slug: v.slug,
+      name: v.name,
+      description: v.description,
+      // Prompts and seeded inputs aren't part of the catalog read; references
+      // come through when the backend serves them.
+      prompt: v.prompt ?? "",
+      seededInputs: [],
+      referenceScreenshots: (v.references ?? []).map((r) => ({
+        view: r.view,
+        url: r.url,
+      })),
+    })),
+  };
+}
+
+async function fetchTestCases(
+  backend: BackendClient,
+): Promise<TestCaseSummary[]> {
+  const cases = await backend.listTestCases();
+  // Resolve each case's latest version for its display metadata and variants.
+  return Promise.all(
+    cases
+      .filter((tc) => tc.versions[0])
+      .map(async (tc) => {
+        const info = await backend.resolveVersion(tc.slug, tc.versions[0]!);
+        return toTestCaseSummary(tc, info);
+      }),
+  );
+}
+
+export function useLiveGallery(): GalleryDataInput {
+  const { client: backend } = useBackend();
+  const { active: worker } = useWorkers();
+  const { refreshToken } = useRunsRuntime();
+
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
+  const [writeups, setWriteups] = useState<Record<string, string>>({});
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [testCases, setTestCases] = useState<TestCaseSummary[]>([]);
+
+  const workerClient = worker?.client ?? null;
+
+  useEffect(() => {
+    let active = true;
+    setRunsLoading(true);
+    (async () => {
+      const published = backend
+        ? await fetchPublishedRuns(backend).catch(() => emptyRuns())
+        : emptyRuns();
+      const produced = workerClient
+        ? await fetchProducedRuns(workerClient).catch(() => emptyRuns())
+        : emptyRuns();
+      if (!active) return;
+      // Produced (local) runs lead; published runs follow, minus any the worker
+      // also holds locally (the local copy wins on id collision).
+      const merged = [
+        ...produced.runs,
+        ...published.runs.filter((r) => !produced.localIds.has(r.id)),
+      ];
+      setRuns(merged);
+      setLocalIds(produced.localIds);
+      setWriteups({ ...published.writeups, ...produced.writeups });
+      setRunsLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [backend, workerClient, refreshToken]);
+
+  useEffect(() => {
+    if (!backend) {
+      setTestCases([]);
+      return;
+    }
+    let active = true;
+    fetchTestCases(backend)
+      .then((cs) => active && setTestCases(cs))
+      .catch(() => active && setTestCases([]));
+    return () => {
+      active = false;
+    };
+  }, [backend]);
+
+  const testCasesUsingSamples = testCases.length === 0;
+
+  return {
+    runs,
+    localIds,
+    writeups,
+    runsLoading,
+    testCases: testCasesUsingSamples ? sampleTestCases : testCases,
+    testCasesUsingSamples,
+    canExecute: true,
+  };
+}

@@ -8,3 +8,12 @@ declare module "*.module.scss" {
 }
 
 declare module "*.css";
+
+// Side-effect stylesheet imports (e.g. the app's global.scss).
+declare module "*.scss";
+
+// Vite `?raw` imports (e.g. the About pages' bundled Markdown).
+declare module "*?raw" {
+  const src: string;
+  export default src;
+}

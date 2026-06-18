@@ -15,7 +15,8 @@
     "@test-cabinet/run-record": "*",
     "@test-cabinet/ui": "*",
     "react": "^19",
-    "react-dom": "^19"
+    "react-dom": "^19",
+    "react-router": "^7.6.0"
   },
   "devDependencies": {
     "@types/react": "^19",

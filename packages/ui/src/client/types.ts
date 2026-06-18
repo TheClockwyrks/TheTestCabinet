@@ -28,10 +28,21 @@ export interface TestCase {
   versions: string[];
 }
 
+// A rendered reference mockup screenshot for a view, resolved to an absolute URL.
+export interface ReferenceShot {
+  view: string;
+  url: string;
+}
+
 export interface VariantInfo {
   slug: string;
   name: string;
   description: string | null;
+  // The instruction handed to the harness (prompt.hbs rendered). Optional: the
+  // public snapshot omits prompts, so it is absent on the static site.
+  prompt?: string | null;
+  // Rendered reference screenshots for this variant, when the source serves them.
+  references?: ReferenceShot[];
 }
 
 export interface VersionInfo {
@@ -41,6 +52,8 @@ export interface VersionInfo {
   difficulty: string;
   tags: string[];
   summary: string | null;
+  // The site-facing Markdown description, when the source carries it.
+  description?: string | null;
   variants: VariantInfo[];
   maxRuntimeSeconds: number;
 }
@@ -74,11 +87,20 @@ export interface ReviewDocument {
 }
 
 // A finished run held by a runner (a worker, or the local core in Tauri),
-// awaiting review and/or publishing.
+// awaiting review and/or publishing. Also the shape the backend serves for a
+// *published* run (`GET /runs/{id}`): its record (links populated) and review.
 export interface StoredRun {
   id: string;
   record: RunRecord;
   review: ReviewDocument | null;
+}
+
+// One page of published runs from the backend (`GET /runs`), newest first.
+// `nextCursor` is the `before` value to pass for the following page, or null
+// when there are no more.
+export interface RunPage {
+  runs: StoredRun[];
+  nextCursor: string | null;
 }
 
 // --- Run execution (driven against a worker) ---

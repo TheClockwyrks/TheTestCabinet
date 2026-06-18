@@ -1,0 +1,259 @@
+import { useEffect, useState } from "react";
+import { Panel } from "@test-cabinet/ui";
+import { NotSupportedError } from "../../../../client/clients";
+import { useWorkers } from "../../../../client/context";
+import type {
+  ReviewItem,
+  ReviewVerdict,
+  VerdictStatus,
+} from "../../../../client/types";
+import {
+  RATINGS,
+  VERDICT_META,
+  isRating,
+  type ParsedWriteup,
+  type Rating,
+} from "../../../data/ratings";
+import styles from "../RunExec.module.scss";
+
+interface VerdictDraft {
+  status: VerdictStatus | "";
+  note: string;
+}
+
+const STATUSES: VerdictStatus[] = ["pass", "fail", "na"];
+
+// The editable Verdict mode for a produced, not-yet-published run that the active
+// worker owns: rate it, work the case's declared checklist, write the review,
+// save, and publish. Read-only published runs keep the plain verdict rendering;
+// this is shown only when the run is worker-owned and unpublished. Ported from
+// the old console Review screen's run detail.
+export function RunReviewEditor({
+  runId,
+  review,
+  onChanged,
+}: {
+  runId: string;
+  review: ParsedWriteup | undefined;
+  onChanged: () => void;
+}) {
+  const { active: worker } = useWorkers();
+  const client = worker?.client ?? null;
+  const [rating, setRating] = useState<Rating>(review?.rating ?? "great");
+  const [writeup, setWriteup] = useState(review?.body ?? "");
+  const [items, setItems] = useState<ReviewItem[]>([]);
+  const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
+  const [hasSavedReview, setHasSavedReview] = useState(Boolean(review?.rating));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load the case's declared checklist items, seeding verdicts from any prior
+  // review so re-reviewing keeps earlier answers.
+  useEffect(() => {
+    if (!client) return;
+    let cancelled = false;
+    const prior = new Map((review?.checklist ?? []).map((v) => [v.id, v]));
+    client
+      .readReviewItems(runId)
+      .then((loaded) => {
+        if (cancelled) return;
+        const drafts: Record<string, VerdictDraft> = {};
+        for (const item of loaded) {
+          const existing = prior.get(item.id);
+          drafts[item.id] = {
+            status: existing?.status ?? "",
+            note: existing?.note ?? "",
+          };
+        }
+        setItems(loaded);
+        setVerdicts(drafts);
+      })
+      .catch((e) => {
+        // A transport that can't supply checklist items just yields none; the
+        // writeup + rating can still be saved.
+        if (!cancelled && !(e instanceof NotSupportedError)) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Seed only on run/client change; `review` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, client]);
+
+  const allAddressed = items.every((item) => verdicts[item.id]?.status);
+
+  function setVerdict(id: string, patch: Partial<VerdictDraft>) {
+    setVerdicts((prev) => {
+      const base = prev[id] ?? { status: "", note: "" };
+      return {
+        ...prev,
+        [id]: {
+          status: patch.status ?? base.status,
+          note: patch.note ?? base.note,
+        },
+      };
+    });
+  }
+
+  function buildChecklist(): ReviewVerdict[] {
+    return items.map((item) => {
+      const draft = verdicts[item.id] ?? { status: "", note: "" };
+      const note = draft.note.trim();
+      return {
+        id: item.id,
+        status: draft.status as VerdictStatus,
+        ...(note ? { note } : {}),
+      };
+    });
+  }
+
+  async function onSave() {
+    if (!client) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await client.saveReview(runId, {
+        rating,
+        writeup,
+        checklist: buildChecklist(),
+      });
+      setHasSavedReview(true);
+      setMessage("Review saved.");
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPublish() {
+    if (!client) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await client.publish(runId);
+      setMessage(
+        `${result.newlyPublished ? "Published" : "Already published"} — source ${result.sourceRepo}` +
+          (result.playableBuild ? `, build ${result.playableBuild}` : ""),
+      );
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!client) {
+    return (
+      <Panel>
+        <p className={`${styles.notice} ${styles.warn}`}>
+          No worker connected — connect the worker that produced this run (the
+          gear in the top bar) to review and publish it.
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel>
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>Rating</span>
+        <select
+          className={styles.select}
+          value={rating}
+          onChange={(e) => isRating(e.target.value) && setRating(e.target.value)}
+        >
+          {RATINGS.map((rt) => (
+            <option key={rt} value={rt}>
+              {rt}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {items.length > 0 && (
+        <div className={styles.checklist}>
+          <p className={styles.sectionLabel}>
+            Checklist — every item must be addressed
+          </p>
+          {items.map((item) => {
+            const draft = verdicts[item.id] ?? { status: "", note: "" };
+            return (
+              <div key={item.id} className={styles.checklistItem}>
+                <span className={styles.checklistText}>{item.text}</span>
+                <div className={styles.checklistControls}>
+                  <select
+                    className={styles.select}
+                    value={draft.status}
+                    onChange={(e) =>
+                      setVerdict(item.id, {
+                        status: e.target.value as VerdictStatus | "",
+                      })
+                    }
+                  >
+                    <option value="">— pick —</option>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {VERDICT_META[s].label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={styles.input}
+                    value={draft.note}
+                    onChange={(e) =>
+                      setVerdict(item.id, { note: e.target.value })
+                    }
+                    placeholder="note (optional)"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>Writeup</span>
+        <textarea
+          className={styles.textarea}
+          rows={8}
+          value={writeup}
+          onChange={(e) => setWriteup(e.target.value)}
+          placeholder="How did the build play? What worked, what was broken?"
+        />
+      </label>
+
+      <div className={styles.actions}>
+        <button
+          className={styles.primary}
+          onClick={onSave}
+          disabled={busy || !writeup.trim() || !allAddressed}
+          title={
+            !allAddressed
+              ? "Give every checklist item a verdict before saving"
+              : undefined
+          }
+        >
+          Save review
+        </button>
+        <button
+          className={styles.secondary}
+          onClick={onPublish}
+          disabled={busy || !hasSavedReview}
+          title={!hasSavedReview ? "Write and save a review first" : undefined}
+        >
+          Publish run
+        </button>
+      </div>
+
+      {message && <p className={`${styles.notice} ${styles.ok}`}>{message}</p>}
+      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
+    </Panel>
+  );
+}

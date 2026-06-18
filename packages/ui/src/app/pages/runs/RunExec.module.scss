@@ -1,0 +1,362 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+// Shared styling for the run-execution surfaces (new run, live monitor, the
+// review editor, the connections drawer). These extend the gallery with the
+// runner/reporter controls, so they use the same tokens as the rest of the app.
+
+.intro {
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-lg;
+  @include h.halo;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fieldLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.select,
+.input,
+.textarea {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 9rem;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  margin: t.$space-md 0;
+  flex-wrap: wrap;
+}
+
+.primary,
+.secondary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  border: t.$border-hairline solid t.$color-border;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+}
+
+.secondary {
+  background: s.$panel-bg;
+  color: t.$color-text;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+}
+
+.muted {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.notice {
+  margin: t.$space-md 0;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+.warn {
+  border-color: t.$color-accent-2;
+}
+
+.error {
+  border-color: t.$color-negative;
+  color: t.$color-negative;
+}
+
+.ok {
+  border-color: t.$color-positive;
+}
+
+.sectionLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  margin: t.$space-lg 0 t.$space-sm;
+}
+
+// Live event feed.
+.feed {
+  max-height: 24rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  font-size: t.$font-sm;
+}
+
+.feedLine {
+  display: flex;
+  gap: t.$space-sm;
+}
+
+.feedType {
+  flex: 0 0 6rem;
+  color: t.$color-accent;
+}
+
+.feedBody {
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// Checklist in the review editor.
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+.checklistItem {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.checklistText {
+  color: t.$color-text;
+}
+
+.checklistControls {
+  display: flex;
+  gap: t.$space-sm;
+
+  .select {
+    flex: 0 0 10rem;
+  }
+}
+
+// Connections drawer.
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: min(28rem, 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: t.$space-xl t.$space-lg;
+  background: t.$color-surface;
+  border-left: t.$border-hairline solid t.$color-border;
+  box-shadow: -0.5rem 0 2rem color-mix(in srgb, t.$color-bg 80%, transparent);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: t.$space-lg;
+}
+
+.drawerTitle {
+  margin: 0;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.drawerClose {
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-lg;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.connList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.connItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+}
+
+.connItemActive {
+  border-color: t.$color-accent;
+}
+
+.connMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.connLabel {
+  color: t.$color-text;
+}
+
+.connUrl {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matchBadge {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+// The topbar gear button (settings) sits beside the sun toggle.
+.gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: none;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-md;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-border;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+// In-progress run rows on the Runs page.
+.inProgress {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+.inProgressRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+.spinner {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  border: 2px solid t.$color-accent;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+.inProgressFailed {
+  border-color: t.$color-negative;
+
+  .spinner {
+    animation: none;
+    border-color: t.$color-negative;
+    border-top-color: t.$color-negative;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.newRunBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: t.$space-md;
+}
