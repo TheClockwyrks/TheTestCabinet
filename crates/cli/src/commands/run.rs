@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use anyhow::Context;
 use test_cabinet_core::{
     BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
-    DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, NoopPublisher, OpenRouterPrices,
-    Orchestrator, RunRequest, TestCaseCatalog,
+    DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
+    OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, ReferenceRenderer, RunRequest,
+    TestCaseCatalog, materialize_version,
 };
 
 use crate::cli::RunArgs;
@@ -14,10 +15,13 @@ use crate::commands::event_printer::PrintingEventSink;
 
 /// Launch a run for the selected test case version, harness, and model.
 ///
-/// This assembles the core [`Orchestrator`] from concrete seams — the on-disk
-/// test case catalog, a git repo seeder, the detected container runtime, the
-/// harness registry, the load-check validator, and OpenRouter pricing — and
-/// drives `run`, then reports the resulting record.
+/// The test-case version and its reference screenshots are resolved from the
+/// backend (`TCAB_BACKEND_URL`) when one is configured: the served definition is
+/// materialized to disk and the backend's rendered references are reused as the
+/// seeded visual targets and validation baselines. With no backend configured the
+/// command falls back to the local `test-cases/` checkout, preserving the
+/// offline development path. Either way it assembles the core [`Orchestrator`]
+/// from concrete seams and drives the run to completion, then reports the record.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
     let request = RunRequest {
@@ -29,7 +33,6 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         max_runtime_override: args.max_runtime,
     };
 
-    let catalog_root = catalog_root();
     let output_dir = args.out_dir.unwrap_or_else(|| PathBuf::from("runs"));
     // Stage mountable inputs where the container runtime can reach them; on macOS
     // and Windows the OS temp directory is not shared with the runtime's VM. See
@@ -38,6 +41,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let seed_dir = work_dir.join("seeds");
     let artifact_dir = work_dir.join("artifacts");
     let screenshot_dir = work_dir.join("screenshots");
+    let store_dir = work_dir.join("definitions");
     for dir in [&output_dir, &seed_dir, &artifact_dir, &screenshot_dir] {
         std::fs::create_dir_all(dir)
             .with_context(|| format!("creating directory {}", dir.display()))?;
@@ -60,13 +64,56 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     println!("  output:  {}", output_dir.display());
     println!("  staging: {}", work_dir.display());
 
+    // Resolve the version and the renderer either from the backend (preferred)
+    // or the local checkout. The renderer differs: a backend-resolved run reuses
+    // the backend's pre-rendered references; a local run renders the mockups with
+    // the bundled browser.
+    let version_str = request.test_case_version.clone().unwrap_or_default();
+    let (test_case, renderer): (_, Box<dyn ReferenceRenderer>) = match backend_url() {
+        Some(url) => {
+            println!("  source:  backend {url}");
+            let client = HttpBackendClient::new(url);
+            let store = store_dir
+                .join(&request.test_case_slug)
+                .join(&version_str);
+            let (version, references) = materialize_version(
+                &client,
+                &request.test_case_slug,
+                &version_str,
+                &request.variant,
+                &store,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "resolving {}@{} [{}] from the backend",
+                    request.test_case_slug, version_str, request.variant
+                )
+            })?;
+            (version, Box::new(PrerenderedReferenceRenderer::new(references)))
+        }
+        None => {
+            let catalog_root = catalog_root();
+            println!("  source:  local {}", catalog_root.display());
+            let catalog = TestCaseCatalog::new(&catalog_root);
+            let version = catalog
+                .resolve(&request.test_case_slug, &version_str)
+                .with_context(|| {
+                    format!("resolving {}@{}", request.test_case_slug, version_str)
+                })?;
+            (version, Box::new(BrowserRenderer::new()))
+        }
+    };
+
     let orchestrator = Orchestrator {
-        catalog: TestCaseCatalog::new(catalog_root),
+        // The catalog is unused by `run_resolved` (the version is resolved above)
+        // but the struct still carries one; point it at the local checkout.
+        catalog: TestCaseCatalog::new(catalog_root()),
         seeder: FsRepoSeeder::new(seed_dir),
         collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
-        renderer: Box::new(BrowserRenderer::new()),
+        renderer,
         validator: BuildValidator::new(screenshot_dir),
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
@@ -78,7 +125,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     println!("\nharness activity:");
     let mut events = PrintingEventSink;
     let record = orchestrator
-        .run(&request, &mut events)
+        .run_resolved(&request, &test_case, &mut events)
         .await
         .context("run failed")?;
 
@@ -143,6 +190,15 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
         Failed => "failed",
         Unevaluable => "unevaluable",
     }
+}
+
+/// The backend base URL the runner resolves definitions from, from
+/// `TCAB_BACKEND_URL`. `None` (or blank) selects the local `test-cases/` checkout.
+fn backend_url() -> Option<String> {
+    std::env::var("TCAB_BACKEND_URL")
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
 }
 
 /// Locate the test case catalog root.

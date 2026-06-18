@@ -4,27 +4,30 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use test_cabinet_core::{
-    ArtifactCollection, GitHubPublisher, PublishConfig, PublishRequest, Publisher, RunRecord,
-    SystemCommandRunner, Writeup, parse_writeup,
+    ArtifactCollection, BackendPublisher, HttpBackendClient, PublishConfig, PublishRequest,
+    Publisher, RunRecord, SystemCommandRunner, Writeup, implementation_dir, parse_writeup,
 };
 
 use crate::cli::PublishArgs;
 
-/// Publish finished runs: create each run's private repository with a
-/// manual-trigger Pages deploy, append its record to the gallery dataset, and
-/// commit that change locally.
+/// Candidate static build output directories a run's implementation may produce.
+const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+
+/// Publish finished runs: release each run's source to its own public GitHub
+/// repository, deploy its playable build to Cloudflare Pages, and submit the
+/// record + review + links to the backend (the system of record).
 ///
-/// Publishing is idempotent and batch-capable, so a sweep's runs can be
-/// published in a single invocation. Nothing is made public by this command:
-/// the repositories are private, their builds deploy only when triggered by
-/// hand, and the dataset commit is not pushed.
+/// Publishing is idempotent and batch-capable, so a sweep's runs can be published
+/// in a single invocation. A run cannot be published without a review: the whole
+/// batch is gated up front so a sweep is never left half-published when a missing
+/// writeup is discovered.
 pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
-    // Load every run record, locate the implementation collected beside it, and
-    // load the hand-written review. A run cannot be published without a writeup
-    // and a rating: gate the whole batch up front so a sweep is never half
-    // published before a missing review is discovered.
+    // Load every run record, locate the implementation collected beside it and any
+    // built static output to deploy, and load the hand-written review. The review
+    // gate runs over the whole batch before anything is released.
     let mut records = Vec::with_capacity(args.run_records.len());
     let mut artifacts = Vec::with_capacity(args.run_records.len());
+    let mut build_dirs: Vec<Option<PathBuf>> = Vec::with_capacity(args.run_records.len());
     let mut writeups = Vec::with_capacity(args.run_records.len());
     let mut missing = Vec::new();
     for path in &args.run_records {
@@ -34,8 +37,10 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
             Ok(writeup) => writeups.push(writeup),
             Err(reason) => missing.push((record.id.clone(), reason)),
         }
+        let impl_dir = implementation_dir(path);
+        build_dirs.push(find_build_output(&impl_dir));
         artifacts.push(ArtifactCollection {
-            repo_path: implementation_dir(path),
+            repo_path: impl_dir,
         });
         records.push(record);
     }
@@ -58,27 +63,35 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
 
     if args.dry_run {
         println!("tcab publish --dry-run: {} run(s)", records.len());
-        for (record, writeup) in records.iter().zip(&writeups) {
-            print_plan(&config, record, writeup);
+        for ((record, writeup), build_dir) in records.iter().zip(&writeups).zip(&build_dirs) {
+            print_plan(&config, record, writeup, build_dir.as_deref());
         }
-        println!("\nNothing was created, pushed, or committed.");
+        println!("\nNothing was created, pushed, deployed, or submitted.");
         return Ok(());
     }
 
+    let backend = backend_url().context(
+        "publishing submits the run to the backend, but TCAB_BACKEND_URL is not set; \
+         set it to the backend's address (for example http://127.0.0.1:8787)",
+    )?;
+
     println!(
-        "tcab publish: {} run(s){}",
+        "tcab publish: {} run(s){} -> backend {backend}",
         records.len(),
         if args.force { " (forced)" } else { "" },
     );
 
-    let publisher = GitHubPublisher::new(config, SystemCommandRunner);
+    let publisher =
+        BackendPublisher::new(config, SystemCommandRunner, HttpBackendClient::new(backend));
     let requests: Vec<PublishRequest> = records
         .iter()
         .zip(&artifacts)
+        .zip(&build_dirs)
         .zip(&writeups)
-        .map(|((record, artifacts), writeup)| PublishRequest {
+        .map(|(((record, artifacts), build_dir), writeup)| PublishRequest {
             record,
             artifacts,
+            build_dir: build_dir.as_deref(),
             writeup,
         })
         .collect();
@@ -96,10 +109,12 @@ pub async fn execute(args: PublishArgs) -> anyhow::Result<()> {
         };
         println!("  {} — {state}", record.id);
         println!("    source: {}", outcome.source_repo);
-        println!("    build:  {}", outcome.playable_build);
+        match &outcome.playable_build {
+            Some(url) => println!("    build:  {url}"),
+            None => println!("    build:  (no static build deployed)"),
+        }
     }
 
-    print_go_live(publisher.config(), &records);
     Ok(())
 }
 
@@ -108,13 +123,14 @@ fn load_record(path: &Path) -> anyhow::Result<RunRecord> {
     Ok(serde_json::from_str(&text)?)
 }
 
-/// A run record lives at `<run>/run-record.json`; its implementation is the
-/// sibling `implementation/` directory the run collected.
-fn implementation_dir(record_path: &Path) -> PathBuf {
-    record_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("implementation")
+/// Find a deployable static build output beside a run's implementation, if one
+/// was already produced (the validator builds into `dist`/`build`/`out`). Returns
+/// the first that exists, or `None` so the run is published without a build.
+fn find_build_output(impl_dir: &Path) -> Option<PathBuf> {
+    BUILD_OUTPUTS
+        .iter()
+        .map(|name| impl_dir.join(name))
+        .find(|candidate| candidate.is_dir())
 }
 
 /// Load and validate a run's review from the `writeup.md` beside its record.
@@ -139,25 +155,31 @@ fn load_writeup(record_path: &Path) -> Result<Writeup, String> {
     parse_writeup(&text).map_err(|err| err.to_string())
 }
 
-fn print_plan(config: &PublishConfig, record: &RunRecord, writeup: &Writeup) {
+fn print_plan(
+    config: &PublishConfig,
+    record: &RunRecord,
+    writeup: &Writeup,
+    build_dir: Option<&Path>,
+) {
     println!("  {}", record.id);
     println!("    rating: {}", writeup.rating.as_str());
     println!("    repo:   {}", config.repo_url(record));
-    println!("    build:  {}", config.build_url(record));
+    match build_dir {
+        Some(dir) => println!(
+            "    build:  deploy {} to Cloudflare Pages project `{}` (branch {})",
+            dir.display(),
+            config.pages_project,
+            record.id
+        ),
+        None => println!("    build:  (no static build output found; will publish without a build)"),
+    }
 }
 
-/// Print the manual steps that actually make staged runs public: triggering each
-/// per-run deploy workflow, then pushing the gallery dataset.
-fn print_go_live(config: &PublishConfig, records: &[RunRecord]) {
-    println!("\nStaged privately — nothing is public yet. To go live:");
-    for record in records {
-        println!(
-            "  gh workflow run deploy.yml -R {}",
-            config.repo_qualified(record)
-        );
-    }
-    println!(
-        "  git -C {} push   # publish the gallery dataset update",
-        config.site_repo_root.display()
-    );
+/// The backend base URL `publish` submits runs to, from `TCAB_BACKEND_URL`.
+/// `None` (or blank) means the backend is not configured.
+fn backend_url() -> Option<String> {
+    std::env::var("TCAB_BACKEND_URL")
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
 }

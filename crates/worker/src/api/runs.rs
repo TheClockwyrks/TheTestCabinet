@@ -1,0 +1,211 @@
+//! Run endpoints: submit a run, poll its status, stream its live events.
+//!
+//! These implement the async job model (`design` resolved decisions): submit
+//! returns a job id immediately, and the status and event stream are separate
+//! endpoints — the worker never holds one request open for the whole (up to an
+//! hour) run.
+
+use axum::Json;
+use axum::body::Body;
+use axum::extract::{Path, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
+use futures_util::stream::{self, Stream, StreamExt};
+use serde::{Deserialize, Serialize};
+use test_cabinet_core::{HarnessSlug, RunRequest};
+use tokio::sync::broadcast::error::RecvError;
+
+use crate::api::AppState;
+use crate::error::ApiError;
+use crate::jobs::{Job, JobStatus, StreamItem};
+use crate::runner::{RunContext, drive_run};
+
+/// The body of `POST /runs`: what to run, with what, against which model.
+///
+/// This is the HTTP shape of [`RunRequest`]. `version` and `variant` are
+/// required (a worker resolves an exact, immutable version from the backend);
+/// `maxRuntimeSeconds` optionally overrides the case's default cap.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitBody {
+    /// Test-case slug to run (e.g. `pong`).
+    pub test_case: String,
+    /// Exact, immutable test-case version (e.g. `v1.0.0`).
+    pub version: String,
+    /// Variant to run (e.g. `base`).
+    pub variant: String,
+    /// Agent harness to drive.
+    pub harness: HarnessSlug,
+    /// Opaque model id passed to the harness.
+    pub model: String,
+    /// Optional override for the maximum harness runtime, in seconds.
+    #[serde(default)]
+    pub max_runtime_seconds: Option<u64>,
+}
+
+/// The response to a successful `POST /runs`: the accepted job's id and the URLs
+/// to observe it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitAck {
+    /// The id of the accepted run job.
+    pub job_id: String,
+    /// Where to poll the job's status.
+    pub status_url: String,
+    /// Where to stream the job's live harness events (NDJSON).
+    pub events_url: String,
+}
+
+/// `POST /runs` — submit a run.
+///
+/// Validates the request, registers a job, spawns the background run task, and
+/// returns the job id immediately (`202 Accepted`). The run itself proceeds out
+/// of band; observe it via the status and events endpoints.
+pub async fn submit(
+    State(state): State<AppState>,
+    Json(body): Json<SubmitBody>,
+) -> Result<Response, ApiError> {
+    if body.test_case.trim().is_empty() {
+        return Err(ApiError::bad_request("`testCase` must not be empty"));
+    }
+    if body.version.trim().is_empty() {
+        return Err(ApiError::bad_request("`version` must not be empty"));
+    }
+    if body.variant.trim().is_empty() {
+        return Err(ApiError::bad_request("`variant` must not be empty"));
+    }
+    if body.model.trim().is_empty() {
+        return Err(ApiError::bad_request("`model` must not be empty"));
+    }
+
+    let request = RunRequest {
+        test_case_slug: body.test_case,
+        test_case_version: Some(body.version),
+        variant: body.variant,
+        harness: body.harness,
+        model_id: body.model,
+        max_runtime_override: body.max_runtime_seconds,
+    };
+
+    let job = state.jobs.create();
+    let job_id = job.id().to_string();
+
+    let ctx = RunContext {
+        backend_url: state.config.backend_url.clone(),
+        out_dir: state.config.out_dir.clone(),
+        work_dir: state.config.work_dir.clone(),
+    };
+
+    // The run can last up to an hour; drive it on a detached task so submit can
+    // return now. The task records its outcome on the job, which the status and
+    // event endpoints surface.
+    tokio::spawn(drive_run(ctx, request, job));
+
+    let ack = SubmitAck {
+        job_id: job_id.clone(),
+        status_url: format!("/runs/{job_id}"),
+        events_url: format!("/runs/{job_id}/events"),
+    };
+    Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
+}
+
+/// `GET /runs/{job}` — the current status of a submitted run.
+///
+/// Returns the job's state and, once finished, the produced run record (or the
+/// failure reason). `404` for an unknown job id.
+pub async fn status(
+    State(state): State<AppState>,
+    Path(job): Path<String>,
+) -> Result<Json<JobStatus>, ApiError> {
+    let job = lookup(&state, &job)?;
+    Ok(Json(job.status()))
+}
+
+/// `GET /runs/{job}/events` — the live harness-event stream as NDJSON.
+///
+/// Each line is one normalized [`HarnessEvent`](test_cabinet_core::HarnessEvent)
+/// serialized as JSON. A subscriber connecting after submit is first replayed
+/// every event so far, then receives new events as the harness produces them; the
+/// stream closes when the run reaches a terminal state. A late connection to an
+/// already-finished job replays the full backlog and then closes. `404` for an
+/// unknown job id.
+pub async fn events(
+    State(state): State<AppState>,
+    Path(job): Path<String>,
+) -> Result<Response, ApiError> {
+    let job = lookup(&state, &job)?;
+    let body = Body::from_stream(event_stream(job));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-ndjson"),
+            // Disable proxy buffering so events are delivered as they arrive
+            // rather than withheld until the connection closes.
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// Build the NDJSON byte stream for a job: the replayed backlog followed by the
+/// live tail, each event one `\n`-terminated JSON line, ending when the run does.
+fn event_stream(job: Job) -> impl Stream<Item = Result<Bytes, std::convert::Infallible>> {
+    let sub = job.subscribe();
+    // Replay the backlog first so a subscriber never misses an event produced
+    // between submit and connect.
+    let backlog = stream::iter(sub.backlog.into_iter().map(|event| Ok(encode_line(&event))));
+
+    // Then the live tail: drive the broadcast receiver until the terminal marker.
+    // A job that was already terminal at subscribe time emits no live items (the
+    // initial `done` short-circuits). A lagged slow reader skips ahead rather than
+    // blocking the run; the full history is always recoverable from the final
+    // status.
+    let live = stream::unfold(
+        (sub.terminated, sub.receiver),
+        |(done, mut receiver)| async move {
+            if done {
+                return None;
+            }
+            loop {
+                match receiver.recv().await {
+                    Ok(StreamItem::Event(event)) => {
+                        return Some((Ok(encode_line(&event)), (false, receiver)));
+                    }
+                    Ok(StreamItem::Done) => return None,
+                    Err(RecvError::Closed) => return None,
+                    // Skip the lagged window and keep streaming live events.
+                    Err(RecvError::Lagged(_)) => continue,
+                }
+            }
+        },
+    );
+
+    backlog.chain(live)
+}
+
+/// Encode one event as a `\n`-terminated NDJSON line. Serialization of a
+/// `HarnessEvent` cannot fail (its fields are plain JSON-safe scalars), so a
+/// defensive empty line is used in the impossible error case rather than aborting
+/// the stream.
+fn encode_line(event: &test_cabinet_core::HarnessEvent) -> Bytes {
+    match serde_json::to_string(event) {
+        Ok(mut line) => {
+            line.push('\n');
+            Bytes::from(line)
+        }
+        Err(_) => Bytes::from_static(b"\n"),
+    }
+}
+
+/// Look up a job by id, mapping a miss to a `404`.
+fn lookup(state: &AppState, id: &str) -> Result<Job, ApiError> {
+    state
+        .jobs
+        .get(id)
+        .ok_or_else(|| ApiError::not_found(format!("no run job with id `{id}`")))
+}
+
+#[cfg(test)]
+#[path = "runs.test.rs"]
+mod tests;

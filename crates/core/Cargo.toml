@@ -23,9 +23,15 @@ tempfile = { workspace = true }
 reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
+# Content hashing for served container build contexts. The recipe must match the
+# backend's (`crates/backend/src/hash.rs`), so both depend on the same `sha2`.
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Used only by tests to recompute the container content-hash recipe independently.
+hex = { workspace = true }
+sha2 = { workspace = true }
 # `test-util` enables paused/auto-advancing time so the runtime cap can be tested
 # without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["test-util"] }

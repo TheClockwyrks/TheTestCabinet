@@ -9,15 +9,57 @@
   box-sizing: border-box;
 }
 
-.title {
-  font-size: t.$font-xl;
-  margin: 0 0 t.$space-2xs;
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
 }
 
-.subtitle {
-  font-size: t.$font-sm;
+.title {
+  font-size: t.$font-xl;
+  margin: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: t.$space-2xs;
+}
+
+.tab {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
   color: t.$color-text-muted;
-  margin: 0 0 t.$space-xl;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.tabActive {
+  color: t.$color-text;
+  border-color: t.$color-accent;
+}
+
+.content {
+  margin-top: t.$space-md;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.viewTitle {
+  font-size: t.$font-lg;
+  margin: 0;
 }
 
 .sectionLabel {
@@ -25,24 +67,82 @@
   color: t.$color-text-muted;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin: 0 0 t.$space-sm;
+  margin: t.$space-sm 0 0;
 }
 
-.harnessList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.fields {
   display: flex;
   flex-wrap: wrap;
-  gap: t.$space-xs;
+  gap: t.$space-md;
 }
 
-.harness {
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 12rem;
+  flex: 1;
+}
+
+.fieldLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.select,
+.input,
+.textarea {
   background: t.$color-surface;
   border: 1px solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  font-family: inherit;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.primary,
+.secondary {
   border-radius: t.$radius-md;
-  padding: t.$space-xs t.$space-md;
-  font-size: t.$font-md;
+  padding: t.$space-xs t.$space-lg;
+  font-size: t.$font-sm;
+  cursor: pointer;
+  border: 1px solid t.$color-border;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: #0a0c10;
+  font-weight: 600;
+}
+
+.secondary {
+  background: t.$color-surface;
+  color: t.$color-text;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
 }
 
 .notice {
@@ -52,9 +152,161 @@
   padding: t.$space-md;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
+  margin: 0;
+
+  code {
+    color: t.$color-text;
+  }
 }
 
 .error {
-  border-color: t.$color-accent;
+  border-color: #d9534f;
   color: t.$color-text;
+}
+
+.ok {
+  border-color: #4caf7d;
+  color: t.$color-text;
+}
+
+// --- Live event feed (run view) ---
+
+.feedWrap {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.feed {
+  background: #0a0c10;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm;
+  height: 22rem;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: t.$font-sm;
+}
+
+.feedLine {
+  display: flex;
+  gap: t.$space-sm;
+  padding: 0.1rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.feedType {
+  color: t.$color-accent;
+  min-width: 7rem;
+  flex-shrink: 0;
+}
+
+.feedBody {
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// --- Specs view ---
+
+.specs {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.spec {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+}
+
+.specSummary {
+  cursor: pointer;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.specBody {
+  margin: t.$space-sm 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+// --- Runs & review view ---
+
+.runsLayout {
+  display: grid;
+  grid-template-columns: 18rem 1fr;
+  gap: t.$space-md;
+  align-items: start;
+}
+
+.runList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.runItem {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-text-muted;
+  }
+}
+
+.runItemActive {
+  border-color: t.$color-accent;
+}
+
+.runItemTitle {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.runItemMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.runDetail {
+  background: t.$color-surface;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+}
+
+.detailTitle {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-sm;
+  word-break: break-all;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-2xs t.$space-md;
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+
+  dt {
+    color: t.$color-text-muted;
+  }
+
+  dd {
+    margin: 0;
+    color: t.$color-text;
+  }
 }

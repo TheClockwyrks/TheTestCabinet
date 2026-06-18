@@ -1,13 +1,16 @@
-//! Tests for run publishing: slug derivation, hosting URLs, the deploy
-//! workflow, dataset appends, and the GitHub publish orchestration (driven
-//! through a mock command runner so no real `gh`/`git`/network is touched).
+//! Tests for run publishing: slug derivation, repository URLs, wrangler URL
+//! capture, and the publish orchestration (driven through a mock command runner
+//! and a mock backend client so no real `gh`/`git`/`wrangler`/network is
+//! touched).
 
 use std::sync::Mutex;
 
 use super::*;
+use crate::backend_client::{BackendClient, ContainerDefinition, PublishAck, ResolvedArtifact, ResolvedReference};
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
+use crate::test_case::{TestCase, TestCaseVersion};
 use crate::validation::ValidationSummary;
 
 fn sample_record() -> RunRecord {
@@ -21,7 +24,7 @@ fn sample_record() -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
-            // Dots are not DNS-label-safe; the slug must reduce them to hyphens.
+            // Dots are not repo-name-safe; the slug must reduce them to hyphens.
             model_id: "gpt-5.4-mini".to_string(),
         },
         tooling: RunTooling {
@@ -29,7 +32,7 @@ fn sample_record() -> RunRecord {
         },
         environment: RunEnvironment {
             os: "Debian GNU/Linux 12 (bookworm)".to_string(),
-            container_image: "test-cabinet/codex:latest".to_string(),
+            container_image: "test-cabinet/codex:1a7b".to_string(),
             node_version: Some("v22.11.0".to_string()),
         },
         metrics: RunMetrics {
@@ -83,17 +86,7 @@ fn sanitize_label_collapses_and_trims_non_alphanumerics() {
 }
 
 #[test]
-fn subdomain_label_respects_the_dns_limit_without_a_trailing_hyphen() {
-    // A slug whose 63rd character is a hyphen must not leave one dangling.
-    let slug = format!("{}-{}", "a".repeat(62), "bcd");
-    let label = subdomain_label(&slug);
-    assert!(label.len() <= 63);
-    assert!(!label.ends_with('-'));
-    assert_eq!(label, "a".repeat(62));
-}
-
-#[test]
-fn config_derives_repo_and_build_addresses() {
+fn config_derives_repo_addresses() {
     let config = PublishConfig::default();
     let record = sample_record();
 
@@ -102,42 +95,36 @@ fn config_derives_repo_and_build_addresses() {
         "tcab-pong-codex-gpt-5-4-mini-d483a2f9"
     );
     assert_eq!(
+        config.repo_qualified(&record),
+        "TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
+    );
+    assert_eq!(
         config.repo_url(&record),
         "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
     );
+}
+
+#[test]
+fn wrangler_url_is_captured_not_constructed() {
+    // The deployment URL is whatever wrangler reports — a sanitized/truncated
+    // branch-alias host, not `https://<run-id>.<project>.pages.dev`.
+    let stdout = "Uploading... (3/3)\n\
+         ✨ Deployment complete! Take a peek over at https://abc123.test-cabinet-runs.pages.dev\n";
     assert_eq!(
-        config.build_url(&record),
-        "https://pong-codex-gpt-5-4-mini-d483a2f9.testcabinet.ai/"
+        parse_wrangler_url(stdout).as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
     );
-}
-
-#[test]
-fn deploy_workflow_is_manual_and_pins_the_custom_domain() {
-    let yaml = deploy_workflow_yaml("pong-codex-d483a2f9.testcabinet.ai");
-    assert!(yaml.contains("workflow_dispatch:"));
-    assert!(!yaml.contains("push:"));
-    assert!(yaml.contains("echo \"pong-codex-d483a2f9.testcabinet.ai\""));
-    assert!(!yaml.contains("__FQDN__"));
-}
-
-#[test]
-fn dataset_append_is_idempotent() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("runs.json");
-    let record = sample_record();
-
-    assert!(append_record_to_dataset(&path, &record).expect("first append"));
-    // A second append of the same id is a no-op.
-    assert!(!append_record_to_dataset(&path, &record).expect("second append"));
-
-    let stored: Vec<RunRecord> =
-        serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("parse");
-    assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].id, record.id);
+    // Trailing sentence punctuation is trimmed.
+    assert_eq!(
+        parse_wrangler_url("Deployed to https://x.pages.dev.").as_deref(),
+        Some("https://x.pages.dev")
+    );
+    // A line without a pages.dev URL yields nothing.
+    assert_eq!(parse_wrangler_url("nothing here"), None);
 }
 
 /// A [`CommandRunner`] that records every invocation and returns canned results,
-/// so publish orchestration can be asserted without a real `gh`/`git`.
+/// so publish orchestration can be asserted without a real `gh`/`git`/`wrangler`.
 struct MockRunner {
     repo_exists: bool,
     calls: Mutex<Vec<String>>,
@@ -168,41 +155,123 @@ impl CommandRunner for MockRunner {
             .lock()
             .expect("lock")
             .push(format!("{program} {}", args.join(" ")));
-        // `gh repo view` is the existence probe; everything else "succeeds".
+        // `gh repo view` is the existence probe; `wrangler pages deploy` prints a
+        // deployment URL; everything else simply "succeeds".
         let is_repo_view =
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
+        let is_wrangler = program == "wrangler";
         Ok(CommandOutput {
             success: if is_repo_view { self.repo_exists } else { true },
-            stdout: String::new(),
+            stdout: if is_wrangler {
+                "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
+            } else {
+                String::new()
+            },
             stderr: String::new(),
         })
     }
 }
 
-fn publisher_for(dir: &Path, runner: MockRunner) -> (GitHubPublisher<MockRunner>, PathBuf) {
+/// A [`BackendClient`] that records each published run and reports whether it was
+/// newly recorded, so the submit half can be asserted without a real backend.
+struct MockBackend {
+    already_published: bool,
+    submitted: Mutex<Vec<(RunRecord, Writeup, RunLinks)>>,
+}
+
+impl MockBackend {
+    fn new(already_published: bool) -> Self {
+        Self {
+            already_published,
+            submitted: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn submitted(&self) -> Vec<(RunRecord, Writeup, RunLinks)> {
+        self.submitted.lock().expect("lock").clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl BackendClient for MockBackend {
+    async fn catalog(&self) -> Result<Vec<TestCase>> {
+        Ok(vec![])
+    }
+    async fn versions(&self, _slug: &str) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+    async fn resolve_version(&self, _slug: &str, _version: &str) -> Result<TestCaseVersion> {
+        unimplemented!("not exercised by publish tests")
+    }
+    async fn artifact(
+        &self,
+        _slug: &str,
+        _version: &str,
+        _source: &Path,
+    ) -> Result<ResolvedArtifact> {
+        unimplemented!("not exercised by publish tests")
+    }
+    async fn references(
+        &self,
+        _slug: &str,
+        _version: &str,
+        _variant: &str,
+    ) -> Result<Vec<ResolvedReference>> {
+        Ok(vec![])
+    }
+    async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
+        Ok(String::new())
+    }
+    async fn resolve_container(&self, _harness: &str) -> Result<ContainerDefinition> {
+        unimplemented!("not exercised by publish tests")
+    }
+    async fn publish_run(
+        &self,
+        record: &RunRecord,
+        review: &Writeup,
+        links: &RunLinks,
+    ) -> Result<PublishAck> {
+        self.submitted
+            .lock()
+            .expect("lock")
+            .push((record.clone(), review.clone(), links.clone()));
+        Ok(PublishAck {
+            id: record.id.clone(),
+            newly_published: !self.already_published,
+        })
+    }
+}
+
+fn publisher_for(
+    dir: &Path,
+    runner: MockRunner,
+    backend: MockBackend,
+) -> (BackendPublisher<MockRunner, MockBackend>, PathBuf, PathBuf) {
     let impl_dir = dir.join("implementation");
+    let build_dir = dir.join("dist");
     std::fs::create_dir_all(&impl_dir).expect("impl dir");
-    let config = PublishConfig {
-        dataset_path: dir.join("runs.json"),
-        writeups_dir: dir.join("writeups"),
-        site_repo_root: dir.to_path_buf(),
-        ..PublishConfig::default()
-    };
-    (GitHubPublisher::new(config, runner), impl_dir)
+    std::fs::create_dir_all(&build_dir).expect("build dir");
+    (
+        BackendPublisher::new(PublishConfig::default(), runner, backend),
+        impl_dir,
+        build_dir,
+    )
 }
 
 #[tokio::test]
-async fn publish_creates_private_repo_fills_links_and_records_dataset() {
+async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let (publisher, impl_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
     let artifacts = ArtifactCollection {
-        repo_path: impl_dir.clone(),
+        repo_path: impl_dir,
     };
     let record = sample_record();
     let writeup = sample_writeup();
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
+        build_dir: Some(&build_dir),
         writeup: &writeup,
     };
 
@@ -213,89 +282,94 @@ async fn publish_creates_private_repo_fills_links_and_records_dataset() {
         outcome.source_repo,
         "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
     );
+    // The playable build URL is the one wrangler reported, not a constructed host.
     assert_eq!(
-        outcome.playable_build,
-        "https://pong-codex-gpt-5-4-mini-d483a2f9.testcabinet.ai/"
+        outcome.playable_build.as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
     );
 
-    // The manual deploy workflow was seeded into the implementation.
-    let workflow = impl_dir.join(".github/workflows/deploy.yml");
-    let yaml = std::fs::read_to_string(&workflow).expect("workflow written");
-    assert!(yaml.contains("pong-codex-gpt-5-4-mini-d483a2f9.testcabinet.ai"));
-
-    // The repo was created private and pushed; the dataset commit was staged
-    // locally but never pushed.
     let calls = publisher.runner().calls();
+    // The repo was created public and pushed.
     assert!(
         calls.iter().any(|c| c.contains("gh repo create")
-            && c.contains("--private")
+            && c.contains("--public")
             && c.contains("--push"))
     );
+    // The build was deployed to Cloudflare Pages under the run-id branch alias.
     assert!(
-        !calls
-            .iter()
-            .any(|c| c.starts_with("git push") || c.contains("gh repo edit"))
+        calls.iter().any(|c| c.contains("wrangler pages deploy")
+            && c.contains(&format!("--branch={}", record.id)))
     );
-    assert!(
-        calls
-            .iter()
-            .any(|c| c.starts_with("git commit") && c.contains("Publish run"))
-    );
+    // No GitHub Pages workflow / no dataset commit anymore.
+    assert!(!calls.iter().any(|c| c.contains("git commit")));
 
-    // The writeup was published to the site in canonical form, carrying its
-    // rating, and staged in the publish commit.
-    let writeup_file = dir
-        .path()
-        .join("writeups")
-        .join(format!("{}.md", record.id));
-    let written = std::fs::read_to_string(&writeup_file).expect("writeup written");
-    assert_eq!(written, writeup.to_file_string());
-    assert!(written.contains("rating: great"));
-    assert!(
-        calls
-            .iter()
-            .any(|c| c.starts_with("git add") && c.contains(".md"))
-    );
-
-    // The record landed in the dataset with its links filled in.
-    let stored: Vec<RunRecord> =
-        serde_json::from_str(&std::fs::read_to_string(dir.path().join("runs.json")).expect("read"))
-            .expect("parse");
-    assert_eq!(stored.len(), 1);
+    // The record was submitted to the backend with its links filled in, and the
+    // review traveled with it.
+    let submitted = publisher.backend().submitted();
+    assert_eq!(submitted.len(), 1);
+    let (stored, review, links) = &submitted[0];
+    assert_eq!(stored.id, record.id);
+    assert_eq!(review, &writeup);
     assert_eq!(
-        stored[0].links.source_repo.as_deref(),
+        links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
     );
     assert_eq!(
-        stored[0].links.playable_build.as_deref(),
-        Some(outcome.playable_build.as_str())
+        links.playable_build.as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
     );
+    // The links are also written onto the submitted record blob.
+    assert_eq!(stored.links.source_repo.as_deref(), Some(outcome.source_repo.as_str()));
 }
 
 #[tokio::test]
 async fn publish_is_idempotent_when_already_released() {
     let dir = tempfile::tempdir().expect("tempdir");
-    // Repo already exists and the dataset already holds the record.
-    let (publisher, impl_dir) = publisher_for(dir.path(), MockRunner::new(true));
+    // Repo already exists; backend reports the run as already published.
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(true), MockBackend::new(true));
     let artifacts = ArtifactCollection {
         repo_path: impl_dir,
     };
-    let mut record = sample_record();
-    record.links = RunLinks {
-        source_repo: Some(publisher.config().repo_url(&record)),
-        playable_build: Some(publisher.config().build_url(&record)),
-    };
-    append_record_to_dataset(&publisher.config().dataset_path, &record).expect("seed dataset");
-
+    let record = sample_record();
     let writeup = sample_writeup();
     let request = PublishRequest {
         record: &record,
         artifacts: &artifacts,
+        build_dir: Some(&build_dir),
         writeup: &writeup,
     };
     let outcome = publisher.publish(&request).await.expect("publish");
 
     assert!(!outcome.newly_published);
     let calls = publisher.runner().calls();
+    // The existing repo is left in place — no create.
     assert!(!calls.iter().any(|c| c.contains("gh repo create")));
+}
+
+#[tokio::test]
+async fn publish_without_a_build_dir_skips_the_deploy() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let record = sample_record();
+    let writeup = sample_writeup();
+    let request = PublishRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+        writeup: &writeup,
+    };
+    let outcome = publisher.publish(&request).await.expect("publish");
+
+    assert!(outcome.playable_build.is_none());
+    let calls = publisher.runner().calls();
+    assert!(!calls.iter().any(|c| c.contains("wrangler")));
+    // The run is still submitted, with no playable-build link.
+    let submitted = publisher.backend().submitted();
+    assert_eq!(submitted.len(), 1);
+    assert!(submitted[0].2.playable_build.is_none());
 }

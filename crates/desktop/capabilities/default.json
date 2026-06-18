@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core capabilities the desktop shell's webview needs: invoking the app's Tauri commands and listening to the live harness-event stream emitted during a run.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default"]
+}

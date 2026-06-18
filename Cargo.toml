@@ -4,6 +4,8 @@ members = [
 	"crates/core",
 	"crates/cli",
 	"crates/desktop",
+	"crates/backend",
+	"crates/worker",
 ]
 
 [workspace.package]
@@ -33,7 +35,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # maintained fork of `dotenv`; it does not override variables already present in
 # the environment, so an explicitly exported key still wins over the file.
 dotenvy = "0.15"
-time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
 # Renders each test case's `prompt.hbs` template into the instruction handed to
 # the harness, interpolating the in-container workspace and seeded spec paths so
@@ -58,3 +60,30 @@ reqwest = { version = "0.12", default-features = false, features = [
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+
+# Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
+# the request-tracing/limit middleware. The backend is the only crate that binds
+# a socket, so these stay out of the leaner runner crates.
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Embedded SQLite (the backend's system of record). `bundled` compiles SQLite
+# from source so the backend builds on a host without a system libsqlite.
+rusqlite = { version = "0.32", features = ["bundled"] }
+# SigV4 signing for R2's S3-compatible API (the backend holds the only write
+# credential). Implemented directly over `hmac`/`sha2` rather than pulling the
+# full AWS SDK, since R2 only needs PutObject.
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+percent-encoding = "2"
+
+# Worker HTTP server. The worker streams a run's live harness events back to the
+# caller as the run proceeds; `futures-util` adapts an mpsc receiver into the
+# `Stream` axum's `Body::from_stream` consumes, and `bytes` frames each NDJSON
+# line. Both are already in the dependency graph (transitively, via axum/tokio),
+# so naming them here adds no new fetch.
+futures-util = "0.3"
+bytes = "1"

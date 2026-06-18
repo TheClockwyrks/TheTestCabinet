@@ -9,6 +9,7 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod backend_client;
 pub mod browser;
 pub mod container;
 pub mod error;
@@ -42,6 +43,11 @@ use std::time::{Duration, Instant};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+pub use backend_client::{
+    BackendClient, ContainerDefinition, ContainerFile, HttpBackendClient, PrerenderedReferenceRenderer,
+    PublishAck, ResolvedArtifact, ResolvedReference, container_content_hash, image_tag,
+    materialize_version,
+};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
 pub use event::{
@@ -61,8 +67,9 @@ pub use models::{Model, ModelCatalog};
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::render_prompt;
 pub use publish::{
-    GitHubPublisher, NoopPublisher, PublishConfig, PublishOutcome, PublishRequest, Publisher,
-    SystemCommandRunner,
+    BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, PublishOutcome,
+    PublishRequest, Publisher, SystemCommandRunner, implementation_dir, parse_wrangler_url,
+    run_slug,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{Rating, Writeup, parse_writeup};
@@ -393,10 +400,30 @@ where
     /// emitted to `events` so callers can observe the run live. Pass
     /// [`NoopEventSink`] to ignore them.
     pub async fn run(&self, request: &RunRequest, events: &mut dyn EventSink) -> Result<RunRecord> {
+        let test_case = self.resolve(request)?;
+        self.run_resolved(request, &test_case, events).await
+    }
+
+    /// Drive a run end to end against an already-resolved [`TestCaseVersion`],
+    /// skipping the catalog lookup [`Self::run`] performs.
+    ///
+    /// This is the entry point a backend-driven runner uses: it resolves the
+    /// version through [`crate::BackendClient`] (materializing the served
+    /// definition to disk via [`crate::materialize_version`]) and supplies the
+    /// result here, rather than reading a local `test-cases/` checkout. The
+    /// orchestrator's `renderer` should be a
+    /// [`crate::PrerenderedReferenceRenderer`] over the backend's screenshots in
+    /// that case, so this method reuses them instead of re-rendering mockup HTML
+    /// the runner never receives.
+    pub async fn run_resolved(
+        &self,
+        request: &RunRequest,
+        test_case: &TestCaseVersion,
+        events: &mut dyn EventSink,
+    ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
-        let test_case = self.resolve(request)?;
         // Select the variant up front so its specs are what gets seeded and its
         // slug is what the run record attributes the run to.
         let variant = test_case.variant(&request.variant)?.clone();
@@ -404,7 +431,7 @@ where
         // Render the selected variant's reference mockups once: the screenshots
         // are both seeded as visual targets and reused as validation baselines
         // below. A variant may add references of its own on top of the common set.
-        let references = self.render_references(&test_case, &variant)?;
+        let references = self.render_references(test_case, &variant)?;
         // A run is only meaningful if every declared reference rendered: those
         // screenshots are the visual targets the harness builds against and the
         // baselines validation scores against. Rendering degrades view-by-view
@@ -426,9 +453,9 @@ where
                 missing,
             });
         }
-        let seeded = self.seed(&test_case, &variant, &specs, &references)?;
+        let seeded = self.seed(test_case, &variant, &specs, &references)?;
         let (handle, outcome, environment) = self
-            .execute(&test_case, &variant, &seeded, request, events)
+            .execute(test_case, &variant, &seeded, request, events)
             .await?;
 
         // Collect the working tree, then always tear the container down.
@@ -461,7 +488,7 @@ where
             }
         };
         let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
-        let validation = self.validate(&test_case, &artifacts, &references)?;
+        let validation = self.validate(test_case, &artifacts, &references)?;
         let finished_at = OffsetDateTime::now_utc();
 
         let record = RunRecord {

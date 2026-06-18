@@ -1,0 +1,148 @@
+use super::*;
+use test_cabinet_core::metrics::RunMetrics;
+use test_cabinet_core::run_record::{
+    HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
+};
+use test_cabinet_core::validation::ValidationSummary;
+
+/// Build a minimal valid run record with the given id.
+fn record(id: &str) -> RunRecord {
+    RunRecord {
+        id: id.to_string(),
+        started_at: "2026-06-17T20:40:00Z".to_string(),
+        finished_at: "2026-06-17T21:30:00Z".to_string(),
+        subject: RunSubject {
+            test_case_slug: "pong".to_string(),
+            test_case_version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
+            harness_slug: HarnessSlug::Claude,
+            harness_version: Some("1.2.3".to_string()),
+            model_id: "claude-sonnet-4-5".to_string(),
+        },
+        tooling: RunTooling::default(),
+        environment: RunEnvironment {
+            os: "Debian".to_string(),
+            container_image: "test-cabinet/claude:abcd".to_string(),
+            node_version: Some("v22.11.0".to_string()),
+        },
+        metrics: RunMetrics::default(),
+        validation: ValidationSummary {
+            loaded: true,
+            ..ValidationSummary::default()
+        },
+        links: RunLinks::default(),
+        status: RunStatus {
+            state: RunState::Completed,
+            detail: None,
+        },
+    }
+}
+
+fn review() -> StoredReview {
+    StoredReview {
+        rating: Rating::Great,
+        writeup: "Plays well.".to_string(),
+    }
+}
+
+fn links() -> RunLinks {
+    RunLinks {
+        source_repo: Some("https://github.com/x/y".to_string()),
+        playable_build: Some("https://abc.pages.dev".to_string()),
+    }
+}
+
+#[test]
+fn publish_then_get_round_trips_with_links_populated() {
+    let db = Db::open_in_memory().unwrap();
+    let outcome = db
+        .publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z")
+        .unwrap();
+    assert!(outcome.newly_published);
+
+    let stored = db.get_run("r1").unwrap().unwrap();
+    assert_eq!(stored.review.rating, Rating::Great);
+    // The stored record carries the resolved links, even though the submitted
+    // record's links were empty.
+    assert_eq!(
+        stored.record.links.playable_build.as_deref(),
+        Some("https://abc.pages.dev")
+    );
+    assert_eq!(stored.published_at, "2026-06-17T21:40:00Z");
+}
+
+#[test]
+fn republish_is_idempotent_and_keeps_first_published_at() {
+    let db = Db::open_in_memory().unwrap();
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T21:40:00Z")
+        .unwrap();
+
+    let updated_review = StoredReview {
+        rating: Rating::Flawless,
+        writeup: "Even better on a second look.".to_string(),
+    };
+    let outcome = db
+        .publish(
+            &record("r1"),
+            &updated_review,
+            &links(),
+            "2026-06-18T09:00:00Z",
+        )
+        .unwrap();
+    assert!(!outcome.newly_published);
+
+    let stored = db.get_run("r1").unwrap().unwrap();
+    assert_eq!(stored.review.rating, Rating::Flawless);
+    // published_at is preserved from the first publish.
+    assert_eq!(stored.published_at, "2026-06-17T21:40:00Z");
+    assert_eq!(db.run_count().unwrap(), 1);
+}
+
+#[test]
+fn list_runs_orders_newest_first_and_paginates() {
+    let db = Db::open_in_memory().unwrap();
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+        .unwrap();
+    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z")
+        .unwrap();
+    db.publish(&record("r3"), &review(), &links(), "2026-06-17T12:00:00Z")
+        .unwrap();
+
+    let (page, next) = db.list_runs(2, None).unwrap();
+    assert_eq!(page.len(), 2);
+    assert_eq!(page[0].record.id, "r3");
+    assert_eq!(page[1].record.id, "r2");
+    let next = next.expect("a next cursor");
+
+    let (page2, next2) = db.list_runs(2, Some(&next)).unwrap();
+    assert_eq!(page2.len(), 1);
+    assert_eq!(page2[0].record.id, "r1");
+    assert!(next2.is_none());
+}
+
+#[test]
+fn publish_marks_snapshot_dirty() {
+    let db = Db::open_in_memory().unwrap();
+    assert!(!db.snapshot_state().unwrap().dirty);
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+        .unwrap();
+    assert!(db.snapshot_state().unwrap().dirty);
+
+    db.mark_uploaded("2026-06-17T10:05:00Z", 1).unwrap();
+    let state = db.snapshot_state().unwrap();
+    assert!(!state.dirty);
+    assert_eq!(state.last_run_count, Some(1));
+    assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
+}
+
+#[test]
+fn all_runs_returns_everything_newest_first() {
+    let db = Db::open_in_memory().unwrap();
+    db.publish(&record("r1"), &review(), &links(), "2026-06-17T10:00:00Z")
+        .unwrap();
+    db.publish(&record("r2"), &review(), &links(), "2026-06-17T11:00:00Z")
+        .unwrap();
+    let all = db.all_runs().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].record.id, "r2");
+}
