@@ -27,6 +27,11 @@ export const routes = {
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
   aboutMetrics: (): string => "/about/metrics",
+  // Settings routes (consoles only; the static site never links to them). The
+  // base path redirects to Appearance, the section's first tab.
+  settings: (): string => "/settings",
+  settingsAppearance: (): string => "/settings/appearance",
+  settingsConnections: (): string => "/settings/connections",
   runs: (): string => "/runs",
   // Run-execution routes (consoles only; the static site never links to them).
   runNew: (): string => "/runs/new",
@@ -60,6 +65,9 @@ export const routePatterns = {
   about: "/about",
   aboutTesting: "/about/testing",
   aboutMetrics: "/about/metrics",
+  settings: "/settings",
+  settingsAppearance: "/settings/appearance",
+  settingsConnections: "/settings/connections",
   runs: "/runs",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",

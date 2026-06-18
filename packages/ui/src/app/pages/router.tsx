@@ -4,6 +4,7 @@ import { aboutRoutes } from "./about/router";
 import { homeRoutes } from "./home/router";
 import { modelsRoutes } from "./models/router";
 import { runsRoutes } from "./runs/router";
+import { settingsRoutes } from "./settings/router";
 import { testCasesRoutes } from "./testcases/router";
 
 // Single place that assembles every page's routes. Each page subtree owns its
@@ -18,6 +19,7 @@ export function AppRoutes() {
       {modelsRoutes()}
       {runsRoutes(canExecute)}
       {aboutRoutes()}
+      {settingsRoutes(canExecute)}
     </Routes>
   );
 }

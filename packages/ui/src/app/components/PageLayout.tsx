@@ -1,9 +1,8 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { CabinetIcon } from "./CabinetIcon";
-import { ConnectionsDrawer } from "./ConnectionsDrawer";
 import { SunToggle } from "./SunToggle";
 import styles from "./PageLayout.module.scss";
 import exec from "../pages/runs/RunExec.module.scss";
@@ -23,13 +22,14 @@ function GearIcon() {
 }
 
 // The section nav. Defined once, in route order, so every page shares the same
-// links and they all flow through `routes.ts` (never inline path literals).
+// links and they all flow through `routes.ts` (never inline path literals). The
+// About link is appended only on the static site (see below): the consoles
+// surface configuration through the Settings gear instead.
 const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
   { label: "Home", to: routes.home() },
   { label: "Test Cases", to: routes.testCases() },
   { label: "Runs", to: routes.runs() },
   { label: "Models", to: routes.models() },
-  { label: "About", to: routes.about() },
 ];
 
 // Shared app chrome: a full-width topbar with the cabinet mark and wordmark on
@@ -39,7 +39,11 @@ const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
 // variant's palette.
 export function PageLayout({ children }: PageLayoutProps) {
   const { canExecute } = useGalleryData();
-  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  // Consoles (canExecute) reach configuration through the Settings gear; the
+  // static site keeps the About link and the standalone sun toggle instead.
+  const navLinks = canExecute
+    ? NAV_LINKS
+    : [...NAV_LINKS, { label: "About", to: routes.about() }];
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
@@ -49,7 +53,7 @@ export function PageLayout({ children }: PageLayoutProps) {
             <span className={styles.wordmark}>The Test Cabinet</span>
           </Link>
           <nav className={styles.nav}>
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -63,25 +67,22 @@ export function PageLayout({ children }: PageLayoutProps) {
             ))}
           </nav>
           <div className={styles.controls}>
-            {canExecute && (
-              <button
-                type="button"
+            {canExecute ? (
+              <NavLink
+                to={routes.settingsAppearance()}
                 className={exec.gear}
-                onClick={() => setConnectionsOpen(true)}
-                aria-label="Connections"
-                title="Connections"
+                aria-label="Settings"
+                title="Settings"
               >
                 <GearIcon />
-              </button>
+              </NavLink>
+            ) : (
+              <SunToggle />
             )}
-            <SunToggle />
           </div>
         </div>
       </header>
       <main className={styles.main}>{children}</main>
-      {canExecute && connectionsOpen && (
-        <ConnectionsDrawer onClose={() => setConnectionsOpen(false)} />
-      )}
     </div>
   );
 }

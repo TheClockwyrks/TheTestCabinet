@@ -282,51 +282,6 @@
   }
 }
 
-// Connections drawer.
-.drawerOverlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, t.$color-bg 70%, transparent);
-  z-index: 50;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.drawer {
-  width: min(28rem, 100%);
-  height: 100%;
-  overflow-y: auto;
-  padding: t.$space-xl t.$space-lg;
-  background: t.$color-surface;
-  border-left: t.$border-hairline solid t.$color-border;
-  box-shadow: -0.5rem 0 2rem color-mix(in srgb, t.$color-bg 80%, transparent);
-}
-
-.drawerHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: t.$space-lg;
-}
-
-.drawerTitle {
-  margin: 0;
-  font-size: t.$font-lg;
-  color: t.$color-text;
-}
-
-.drawerClose {
-  background: none;
-  border: none;
-  color: t.$color-text-muted;
-  font-size: t.$font-lg;
-  cursor: pointer;
-
-  &:hover {
-    color: t.$color-accent;
-  }
-}
-
 .connList {
   list-style: none;
   margin: 0 0 t.$space-md;
@@ -379,7 +334,7 @@
   margin-bottom: t.$space-lg;
 }
 
-// The topbar gear button (settings) sits beside the sun toggle.
+// The topbar gear: a link to the Settings section (consoles only).
 .gear {
   display: inline-flex;
   align-items: center;

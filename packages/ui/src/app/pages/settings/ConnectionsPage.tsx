@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useBackend, useWorkers } from "../../client/context";
-import type { BackendMatch } from "../../client/types";
-import styles from "../pages/runs/RunExec.module.scss";
+import { Panel } from "@test-cabinet/ui";
+import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
+import { useBackend, useWorkers } from "../../../client/context";
+import type { BackendMatch } from "../../../client/types";
+import styles from "../runs/RunExec.module.scss";
 
 const MATCH_LABEL: Record<BackendMatch, string> = {
   match: "backend ✓",
@@ -9,12 +11,12 @@ const MATCH_LABEL: Record<BackendMatch, string> = {
   unverified: "unverified",
 };
 
-// The connections settings drawer, opened from the topbar gear (web/desktop
-// only). Manages the single active backend (catalog + published data) and the
-// set of workers (execution). Each worker is checked against the active backend
-// so the UI never asks a worker for a test case it can't resolve. Ported from the
-// old console Connections screen.
-export function ConnectionsDrawer({ onClose }: { onClose: () => void }) {
+// The Connections tab (`/settings/connections`, web/desktop only). Manages the
+// single active backend (catalog + published data) and the set of workers
+// (execution). Each worker is checked against the active backend so the UI never
+// asks a worker for a test case it can't resolve. Ported from the old topbar
+// Connections drawer.
+export function ConnectionsPage() {
   const backend = useBackend();
   const workers = useWorkers();
   const [backendUrl, setBackendUrl] = useState(backend.url ?? "");
@@ -22,27 +24,8 @@ export function ConnectionsDrawer({ onClose }: { onClose: () => void }) {
   const [workerLabel, setWorkerLabel] = useState("");
 
   return (
-    <div
-      className={styles.drawerOverlay}
-      onClick={onClose}
-      role="presentation"
-    >
-      <aside
-        className={styles.drawer}
-        onClick={(e) => e.stopPropagation()}
-        aria-label="Connections"
-      >
-        <div className={styles.drawerHead}>
-          <h2 className={styles.drawerTitle}>Connections</h2>
-          <button
-            className={styles.drawerClose}
-            onClick={onClose}
-            aria-label="Close connections"
-          >
-            ×
-          </button>
-        </div>
-
+    <SettingsLayout tab="connections">
+      <Panel>
         <p className={styles.sectionLabel}>Backend</p>
         <p className={styles.muted}>
           The backend is the source of truth for test cases, definitions, and
@@ -149,8 +132,8 @@ export function ConnectionsDrawer({ onClose }: { onClose: () => void }) {
             Add worker
           </button>
         </form>
-      </aside>
-    </div>
+      </Panel>
+    </SettingsLayout>
   );
 }
 
