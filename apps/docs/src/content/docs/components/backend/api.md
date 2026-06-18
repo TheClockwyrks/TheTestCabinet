@@ -15,6 +15,10 @@ serves (its database, its on-disk layout) is an internal concern covered in the
 
 - The API is JSON over HTTP. Request and response bodies are **camelCase**,
   matching the [run record](/components/core/run-records/) contract.
+- **Collections are returned as a wrapped object**, never a bare top-level JSON
+  array — each list endpoint nests its items under a named key (e.g.
+  `{ "testCases": [...] }`, `{ "containers": [...] }`). This keeps every response
+  an object that can grow new fields without breaking clients.
 - Timestamps are **RFC 3339** strings.
 - Harness slugs are the eight defined in
   [Harnesses](/components/core/harnesses/); `base` additionally names the shared
@@ -63,11 +67,30 @@ rather than a local checkout.
 
 ### `GET /test-cases`
 
-The catalog: every ingested case and its available versions.
+The catalog: every ingested case and its available versions, under `testCases`.
+
+```jsonc
+{
+  "testCases": [
+    { "slug": "pong", "versions": ["v1.0.0", "v1.1.0"] }
+  ]
+}
+```
+
+Schema:
+[`backend-api/test-case-catalog.schema.json`](https://docs.testcabinet.ai/schema/backend-api/test-case-catalog.schema.json).
 
 ### `GET /test-cases/{slug}/versions`
 
-The available versions for one case. `404` if the slug is unknown.
+The available versions for one case, echoing the requested `slug`. `404` if the
+slug is unknown.
+
+```jsonc
+{ "slug": "pong", "versions": ["v1.0.0", "v1.1.0"] }
+```
+
+Schema:
+[`backend-api/test-case-versions.schema.json`](https://docs.testcabinet.ai/schema/backend-api/test-case-versions.schema.json).
 
 ### `GET /test-cases/{slug}/versions/{version}`
 
@@ -150,7 +173,18 @@ content hash in this contract — see
 
 ### `GET /containers`
 
-List the tracked harness image references.
+List the tracked harness image references, under `containers`.
+
+```jsonc
+{
+  "containers": [
+    { "harness": "claude", "reference": "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b…" }
+  ]
+}
+```
+
+Schema:
+[`backend-api/container-image-list.schema.json`](https://docs.testcabinet.ai/schema/backend-api/container-image-list.schema.json).
 
 ### `GET /containers/{harness}`
 

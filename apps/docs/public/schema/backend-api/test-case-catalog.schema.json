@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/test-case-catalog.schema.json",
+  "title": "TestCaseCatalog",
+  "description": "The GET /test-cases response: the catalog of every ingested test case and the versions available for each. A wrapped object (not a bare array) so the response can grow new fields without breaking clients.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["testCases"],
+  "properties": {
+    "testCases": {
+      "type": "array",
+      "description": "Every ingested case, each with its available versions.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "versions"],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The test case slug.",
+            "examples": ["pong"]
+          },
+          "versions": {
+            "type": "array",
+            "description": "The versions ingested for this case.",
+            "items": { "type": "string" },
+            "examples": [["v1.0.0", "v1.1.0"]]
+          }
+        }
+      }
+    }
+  }
+}

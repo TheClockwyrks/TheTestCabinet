@@ -33,8 +33,20 @@ interface HealthzResponse {
   id?: string | null;
 }
 
+// `GET /test-cases` — the catalog, wrapped in `{ testCases }`.
+interface CatalogResponse {
+  testCases: CatalogEntry[];
+}
+
 // One entry of `GET /test-cases`.
 interface CatalogEntry {
+  slug: string;
+  versions: string[];
+}
+
+// `GET /test-cases/{slug}/versions` — the versions for one case, wrapped in
+// `{ slug, versions }`.
+interface VersionsResponse {
   slug: string;
   versions: string[];
 }
@@ -64,6 +76,11 @@ interface ResolvedVersion {
     description: string | null;
     specs?: SpecDescriptor[];
   }[];
+}
+
+// `GET /containers` — the tracked image references, wrapped in `{ containers }`.
+interface ContainersResponse {
+  containers: ContainerRef[];
 }
 
 // One entry of `GET /containers`.
@@ -110,17 +127,19 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listTestCases(): Promise<TestCase[]> {
-      const entries = await getJson<CatalogEntry[]>(baseUrl, "/test-cases");
-      return entries.map((e) => ({ slug: e.slug, versions: e.versions }));
+      const { testCases } = await getJson<CatalogResponse>(
+        baseUrl,
+        "/test-cases",
+      );
+      return testCases.map((e) => ({ slug: e.slug, versions: e.versions }));
     },
 
     async listVersions(slug: string): Promise<string[]> {
-      // The endpoint may return a bare array or an object with `versions`.
-      const body = await getJson<string[] | { versions: string[] }>(
+      const { versions } = await getJson<VersionsResponse>(
         baseUrl,
         `/test-cases/${encodeURIComponent(slug)}/versions`,
       );
-      return Array.isArray(body) ? body : body.versions;
+      return versions;
     },
 
     async resolveVersion(slug: string, version: string): Promise<VersionInfo> {
@@ -177,8 +196,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listHarnesses(): Promise<HarnessInfo[]> {
-      const refs = await getJson<ContainerRef[]>(baseUrl, "/containers");
-      return refs.map((c) => ({ slug: c.harness, displayName: c.harness }));
+      const { containers } = await getJson<ContainersResponse>(
+        baseUrl,
+        "/containers",
+      );
+      return containers.map((c) => ({ slug: c.harness, displayName: c.harness }));
     },
 
     async listModels(): Promise<Model[]> {

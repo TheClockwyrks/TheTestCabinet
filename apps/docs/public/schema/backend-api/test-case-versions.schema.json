@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/test-case-versions.schema.json",
+  "title": "TestCaseVersions",
+  "description": "The GET /test-cases/{slug}/versions response: the versions available for one test case, echoing the requested slug. A wrapped object (not a bare array) so the response can grow new fields without breaking clients.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["slug", "versions"],
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "The test case slug the versions belong to (the path parameter, echoed back).",
+      "examples": ["pong"]
+    },
+    "versions": {
+      "type": "array",
+      "description": "The versions ingested for this case.",
+      "items": { "type": "string" },
+      "examples": [["v1.0.0", "v1.1.0"]]
+    }
+  }
+}
