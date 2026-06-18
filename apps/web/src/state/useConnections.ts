@@ -78,7 +78,7 @@ export function useBackendConnection(): BackendContextValue {
 
   const setUrl = useCallback((next: string) => {
     const trimmed = next.trim();
-    localStorage.setItem(BACKEND_KEY, trimmed);
+    localStorage.setItem(BACKEND_KEY, JSON.stringify(trimmed));
     setUrlState(trimmed || null);
   }, []);
 
