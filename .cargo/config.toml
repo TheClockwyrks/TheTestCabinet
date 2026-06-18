@@ -8,21 +8,25 @@
 # so it runs on distributions that do not ship the generic FHS loader — notably
 # NixOS — as well as on mainstream distributions.
 #
-# Two binaries can be built this way:
-#   - `tcab`        — the CLI (`build-portable`)
-#   - `tcab-worker` — the run/publish worker server (`build-portable-worker`)
-# Both share the same `test-cabinet-core` and so the same prerequisites. The
+# Three binaries can be built this way:
+#   - `tcab`         — the CLI (`build-portable`)
+#   - `tcab-worker`  — the run/publish worker server (`build-portable-worker`)
+#   - `tcab-backend` — the definition/run store + API (`build-portable-backend`)
+# All share `test-cabinet-core` and so the same prerequisites. The backend also
+# pulls in `rusqlite` with its `bundled` feature, which compiles SQLite from
+# vendored C source via the same musl toolchain — so it links statically too. The
 # Tauri desktop shell is NOT portable to musl: its Linux backend links system
 # WebKitGTK/GTK shared libraries that have no musl-static build (see building.md).
 #
 # Prerequisites (see https://docs.testcabinet.ai/development/building/#portable-static-builds):
 #   rustup target add x86_64-unknown-linux-musl
 #   a musl C toolchain on PATH (musl-gcc), e.g. Debian/Ubuntu `musl-tools`,
-#   needed because the `ring` TLS backend compiles a little C.
+#   needed because the `ring` TLS backend (and bundled SQLite) compile a little C.
 #
 # Build with:
-#   cargo build-portable          # -> target/x86_64-unknown-linux-musl/release/tcab
-#   cargo build-portable-worker   # -> target/x86_64-unknown-linux-musl/release/tcab-worker
+#   cargo build-portable           # -> target/x86_64-unknown-linux-musl/release/tcab
+#   cargo build-portable-worker    # -> target/x86_64-unknown-linux-musl/release/tcab-worker
+#   cargo build-portable-backend   # -> target/x86_64-unknown-linux-musl/release/tcab-backend
 #
 # NOTE: `tcab-worker` drives runs by shelling out to a container runtime, so the
 # host it runs on still needs Podman or Docker on PATH (the static binary removes
@@ -31,3 +35,4 @@
 [alias]
 build-portable = "build -p test-cabinet-cli --release --target x86_64-unknown-linux-musl"
 build-portable-worker = "build -p test-cabinet-worker --release --target x86_64-unknown-linux-musl"
+build-portable-backend = "build -p test-cabinet-backend --release --target x86_64-unknown-linux-musl"

@@ -70,23 +70,29 @@ run such a binary directly.
 
 For those, build a fully static binary via the musl target. A static binary has
 no dynamic linker, so it runs anywhere, including NixOS. This is opt-in and does
-not change the default build. Two headless binaries can be built this way — the
-`tcab` CLI and the `tcab-worker` server. Prerequisites:
+not change the default build. Three headless binaries can be built this way — the
+`tcab` CLI, the `tcab-worker` server, and the `tcab-backend` store/API. (The
+backend's `rusqlite` dependency compiles SQLite from vendored C source with the
+same musl toolchain, so it links statically too.) Prerequisites:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
 # plus a musl C toolchain on PATH (provides `musl-gcc`), because the `ring` TLS
-# backend compiles a little C. On Debian/Ubuntu: `apt-get install musl-tools`.
+# backend and bundled SQLite compile a little C. On Debian/Ubuntu:
+# `apt-get install musl-tools`.
 ```
 
 Then build with the aliases defined in `.cargo/config.toml`:
 
 ```sh
 cargo build-portable
-# -> target/x86_64-unknown-linux-musl/release/tcab         (statically linked)
+# -> target/x86_64-unknown-linux-musl/release/tcab          (statically linked)
 
 cargo build-portable-worker
-# -> target/x86_64-unknown-linux-musl/release/tcab-worker  (statically linked)
+# -> target/x86_64-unknown-linux-musl/release/tcab-worker   (statically linked)
+
+cargo build-portable-backend
+# -> target/x86_64-unknown-linux-musl/release/tcab-backend  (statically linked)
 ```
 
 The `tcab-worker` server lets you drive runs from the web UI against a worker
