@@ -3,7 +3,6 @@ import { Link, NavLink } from "react-router";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { CabinetIcon } from "./CabinetIcon";
-import { SunToggle } from "./SunToggle";
 import styles from "./PageLayout.module.scss";
 import exec from "../pages/runs/RunExec.module.scss";
 
@@ -39,8 +38,10 @@ const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
 // variant's palette.
 export function PageLayout({ children }: PageLayoutProps) {
   const { canExecute } = useGalleryData();
-  // Consoles (canExecute) reach configuration through the Settings gear; the
-  // static site keeps the About link and the standalone sun toggle instead.
+  // The consoles reach run configuration through the Settings gear; the static
+  // site keeps the About link in the nav. Both surface the Settings gear — on
+  // the site it opens the Appearance-only settings (the sun and feed-style
+  // choices that used to live in the topbar toggle).
   const navLinks = canExecute
     ? NAV_LINKS
     : [...NAV_LINKS, { label: "About", to: routes.about() }];
@@ -67,18 +68,14 @@ export function PageLayout({ children }: PageLayoutProps) {
             ))}
           </nav>
           <div className={styles.controls}>
-            {canExecute ? (
-              <NavLink
-                to={routes.settingsAppearance()}
-                className={exec.gear}
-                aria-label="Settings"
-                title="Settings"
-              >
-                <GearIcon />
-              </NavLink>
-            ) : (
-              <SunToggle />
-            )}
+            <NavLink
+              to={routes.settingsAppearance()}
+              className={exec.gear}
+              aria-label="Settings"
+              title="Settings"
+            >
+              <GearIcon />
+            </NavLink>
           </div>
         </div>
       </header>

@@ -5,12 +5,13 @@ import { ConnectionsPage } from "./ConnectionsPage";
 
 // Routes owned by the settings section: the Appearance and Connections tabs,
 // each its own URL so a tab is linkable, plus a bare `/settings` that redirects
-// to Appearance (the first tab). Settings is console-only — the pages call the
-// backend/worker contexts the static site does not provide — so the routes are
-// included only when the host can execute runs. Returned as a fragment so the
-// app's single <Routes> stitches every section's routes together.
+// to Appearance (the first tab). Appearance is purely visual (sun + event-feed
+// style) and works everywhere, so it — and the `/settings` redirect — mount on
+// every host, including the static site. Connections drives the backend/worker
+// contexts the static site does not provide, so it mounts only when the host can
+// execute runs. Returned as a fragment so the app's single <Routes> stitches
+// every section's routes together.
 export function settingsRoutes(canExecute: boolean) {
-  if (!canExecute) return null;
   return (
     <>
       <Route
@@ -21,10 +22,12 @@ export function settingsRoutes(canExecute: boolean) {
         path={routePatterns.settingsAppearance}
         element={<AppearancePage />}
       />
-      <Route
-        path={routePatterns.settingsConnections}
-        element={<ConnectionsPage />}
-      />
+      {canExecute && (
+        <Route
+          path={routePatterns.settingsConnections}
+          element={<ConnectionsPage />}
+        />
+      )}
     </>
   );
 }
