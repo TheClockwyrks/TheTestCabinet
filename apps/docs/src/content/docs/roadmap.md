@@ -35,3 +35,6 @@ This document covers the changes that are planned for The Test Cabinet and the
     - Any community-provided implementation cannot be verified as having been
       autonomously implemented without user assistance and/or intervention, and
       is therefore not considered an official result
+- Revise the website to better support mobile
+  - Implementations won't be playable on mobile since they'll expect KB&M for
+    input, but the rest of the site needs to use responsive design
