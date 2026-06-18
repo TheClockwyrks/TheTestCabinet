@@ -182,7 +182,6 @@ async fn serve_once(json: impl Into<String>) -> String {
     format!("http://{addr}")
 }
 
-
 /// A minimal valid run record whose `links` are empty, so a test can prove the
 /// backend's separately-served links are what end up on the resolved run.
 fn sample_record(id: &str) -> RunRecord {

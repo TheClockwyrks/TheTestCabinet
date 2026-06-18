@@ -308,7 +308,6 @@ impl DefinitionStore {
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{view}` not rendered")))
     }
-
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.

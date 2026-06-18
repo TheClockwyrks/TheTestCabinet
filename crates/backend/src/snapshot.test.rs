@@ -202,17 +202,12 @@ fn per_run_file_embeds_full_record_review_and_links() {
 fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     let (_tmp, store) = empty_store();
     let mut with_events = stored_run("r1", "2026-06-17T21:40:00Z");
-    with_events.events_json = Some(
-        r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#.to_string(),
-    );
+    with_events.events_json =
+        Some(r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#.to_string());
     let without_events = stored_run("r2", "2026-06-17T21:41:00Z");
-    let snapshot = SnapshotBuilder::new(
-        vec![with_events, without_events],
-        vec![manifest()],
-        store,
-    )
-    .build(now())
-    .unwrap();
+    let snapshot = SnapshotBuilder::new(vec![with_events, without_events], vec![manifest()], store)
+        .build(now())
+        .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     let find = |id: &str| -> serde_json::Value {

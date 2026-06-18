@@ -13,9 +13,7 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::{
-    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file,
-};
+use test_cabinet_core::{HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::api::AppState;
@@ -223,9 +221,8 @@ pub async fn build_path(
 /// a path that does not resolve to a file inside the build.
 fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, ApiError> {
     let impl_dir = state.config.out_dir.join(id).join("implementation");
-    let build_dir = find_build_output(&impl_dir).ok_or_else(|| {
-        ApiError::not_found(format!("run `{id}` has no playable build to serve"))
-    })?;
+    let build_dir = find_build_output(&impl_dir)
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no playable build to serve")))?;
     let base_href = format!("/runs/{id}/build/");
     let file = serve_build_file(&build_dir, rel_path, &base_href)
         .ok_or_else(|| ApiError::not_found(format!("no build file `{rel_path}` for run `{id}`")))?;

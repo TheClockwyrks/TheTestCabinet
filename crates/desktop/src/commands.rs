@@ -22,8 +22,8 @@ use test_cabinet_core::{
 };
 
 use crate::config;
-use crate::playable::build_base_url;
 use crate::events::{WebviewEventSink, done_channel};
+use crate::playable::build_base_url;
 
 /// A command result whose error is a plain string the webview can render.
 type CmdResult<T> = Result<T, String>;
@@ -782,4 +782,3 @@ async fn review_items_for_record(record: &RunRecord) -> CmdResult<Vec<ReviewItem
         .map_err(|e| err("selecting variant", e))?;
     Ok(resolved.review_items_for(variant))
 }
-

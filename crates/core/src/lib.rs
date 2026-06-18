@@ -20,8 +20,8 @@ pub mod harness_registry;
 mod host_path;
 pub mod metrics;
 pub mod models;
-pub mod pricing;
 pub mod playable;
+pub mod pricing;
 pub mod prompt;
 pub mod publish;
 pub mod reference;
@@ -64,8 +64,8 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
-pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use playable::{BUILD_OUTPUTS, ServedBuildFile, find_build_output, serve_build_file};
+pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::render_prompt;
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, PublishOutcome,

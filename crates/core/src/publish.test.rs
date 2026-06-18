@@ -9,8 +9,8 @@ use super::*;
 use crate::backend_client::{
     BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
 };
-use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::event::{EventKind, HarnessEvent};
+use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
 use crate::test_case::{TestCase, TestCaseVersion};

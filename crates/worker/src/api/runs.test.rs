@@ -248,11 +248,7 @@ async fn build_root_serves_relocated_index_and_unknown_run_is_404() {
 async fn build_path_serves_assets_and_refuses_traversal() {
     let out_dir = std::env::temp_dir().join("tcab-worker-build-asset");
     let _ = std::fs::remove_dir_all(&out_dir);
-    write_build(
-        &out_dir,
-        "run1",
-        &[("assets/x.js", "console.log('hi')")],
-    );
+    write_build(&out_dir, "run1", &[("assets/x.js", "console.log('hi')")]);
     // A secret beside the build that a traversal must not reach.
     std::fs::write(
         out_dir.join("run1").join("implementation").join("secret"),
