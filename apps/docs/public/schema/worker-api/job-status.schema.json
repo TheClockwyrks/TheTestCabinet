@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/job-status.schema.json",
+  "title": "JobStatus",
+  "description": "A point-in-time view of a submitted run job, returned by GET /runs/{job}. `404` for an unknown job id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "state"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The job id (the same id POST /runs returned).",
+      "minLength": 1
+    },
+    "state": {
+      "type": "string",
+      "description": "Where the job is in its lifecycle. `running` covers the whole up-to-an-hour run (seeding, the harness session, validation). `succeeded` means the run produced a record — the record's own `status.state` distinguishes a completed run from one classified as failed/unevaluable. `failed` means the run could not be driven to a record at all (the definition would not resolve, the container would not start, the harness was unavailable, the runtime cap fired).",
+      "enum": ["running", "succeeded", "failed"]
+    },
+    "record": {
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
+      "description": "The produced run record. Present only once `state` is `succeeded`; omitted otherwise."
+    },
+    "detail": {
+      "type": "string",
+      "description": "A human-readable failure reason. Present only when `state` is `failed`; omitted otherwise."
+    }
+  }
+}

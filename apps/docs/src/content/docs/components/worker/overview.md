@@ -46,17 +46,36 @@ rather than holding one request open for the whole run:
 
 - `POST /runs` — submit a run (`testCase`, `version`, `variant`, `harness`,
   `model`, optional `maxRuntimeSeconds`). Returns a **job id** immediately
-  (`202 Accepted`) along with the status and events URLs.
-- `GET /runs/{job}` — the job's current status, and the produced
-  [run record](/components/core/run-records/) once it has finished.
+  (`202 Accepted`) along with the status and events URLs. Request schema:
+  [`worker-api/submit-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/submit-run-request.schema.json);
+  response schema:
+  [`worker-api/submit-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/submit-run-ack.schema.json).
+- `GET /runs/{job}` — the job's current status (`running` | `succeeded` |
+  `failed`), and the produced [run record](/components/core/run-records/) once it
+  has finished (or the failure `detail`). `404` for an unknown job id. Schema:
+  [`worker-api/job-status.schema.json`](https://docs.testcabinet.ai/schema/worker-api/job-status.schema.json).
 - `GET /runs/{job}/events` — the live [harness events](/components/core/events/)
   as NDJSON, one normalized event per line. A subscriber that connects after
   submit is first replayed every event so far, then receives new events as the
   harness produces them; the stream closes when the run reaches a terminal state.
+  Each line is a [`HarnessEvent`](/components/core/events/); the event taxonomy is
+  documented there rather than as a published JSON schema.
 - `POST /publish` — [publish](/components/core/results/) a finished run on the
   same terms a local `tcab publish` does (release the source repo, deploy the
   build, submit the record + review + links to the
-  [backend](/components/backend/overview/)).
+  [backend](/components/backend/overview/)). A worker keeps no review store, so
+  the review (`rating`, `writeup`, `checklist`) is sent inline with the run id.
+  Request schema:
+  [`worker-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json);
+  response schema:
+  [`worker-api/publish-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-ack.schema.json).
+- `GET /healthz` — liveness/readiness and identity (the backend this worker is
+  bound to, for the UI's backend-consistency check). Schema:
+  [`worker-api/health.schema.json`](https://docs.testcabinet.ai/schema/worker-api/health.schema.json).
+
+On failure every endpoint returns the same `{ "error": { "code", "message" } }`
+envelope the backend uses, paired with an appropriate status. Schema:
+[`backend-api/error.schema.json`](https://docs.testcabinet.ai/schema/backend-api/error.schema.json).
 
 It resolves test-case definitions from, and publishes results to, the backend
 (`TCAB_BACKEND_URL`); it has no local

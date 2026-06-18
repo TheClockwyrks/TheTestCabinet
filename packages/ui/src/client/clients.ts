@@ -113,8 +113,13 @@ export interface WorkerClient {
   /** Save a review (writeup + rating + checklist verdicts) for a produced run. */
   saveReview(id: string, review: ReviewDocumentInput): Promise<void>;
 
-  /** Publish a reviewed run (`POST /publish`). */
-  publish(id: string): Promise<PublishResult>;
+  /**
+   * Publish a run together with its review (`POST /publish`). The review is
+   * supplied inline — a worker keeps no review store, so the rating, writeup and
+   * checklist are sent with the run id. Idempotent on the run; resolves the
+   * resulting public links.
+   */
+  publish(id: string, review: ReviewDocumentInput): Promise<PublishResult>;
 }
 
 // The reviewer's input when saving a review.

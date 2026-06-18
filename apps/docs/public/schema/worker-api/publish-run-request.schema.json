@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json",
+  "title": "WorkerPublishRunRequest",
+  "description": "The body of the worker's POST /publish: which finished run to publish, and its hand-written review. A worker keeps no review store, so the review is sent inline. The worker loads the run's record and collected implementation from its output directory, then runs the full publish — release the source repo, deploy the build, and submit the record + review + resolved links to the backend — exactly as a local `tcab publish` does. Idempotent on the run id. A missing or invalid rating is a `422`; an unknown run is a `404`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "rating", "writeup"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "description": "The id of a run this worker previously produced. Its record and collected implementation are loaded from the worker's output directory.",
+      "minLength": 1
+    },
+    "rating": {
+      "type": "string",
+      "description": "The reviewer's one-glance quality verdict. Never aggregated or used to rank.",
+      "enum": ["flawless", "great", "scuffed", "broken"]
+    },
+    "writeup": {
+      "type": "string",
+      "description": "The markdown writeup body shown before the playable build, with any rating and checklist frontmatter stripped. Must be non-empty — a run cannot be published without a review.",
+      "minLength": 1
+    },
+    "checklist": {
+      "type": "array",
+      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; publishing refuses a run whose review leaves any declared item without a verdict. Empty or omitted for a case that declares no items.",
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/ReviewVerdict"
+      }
+    }
+  }
+}

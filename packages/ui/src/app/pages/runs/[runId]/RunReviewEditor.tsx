@@ -43,7 +43,6 @@ export function RunReviewEditor({
   const [writeup, setWriteup] = useState(review?.body ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
-  const [hasSavedReview, setHasSavedReview] = useState(Boolean(review?.rating));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +118,6 @@ export function RunReviewEditor({
         writeup,
         checklist: buildChecklist(),
       });
-      setHasSavedReview(true);
       setMessage("Review saved.");
       onChanged();
     } catch (e) {
@@ -135,7 +133,11 @@ export function RunReviewEditor({
     setError(null);
     setMessage(null);
     try {
-      const result = await client.publish(runId);
+      const result = await client.publish(runId, {
+        rating,
+        writeup,
+        checklist: buildChecklist(),
+      });
       setMessage(
         `${result.newlyPublished ? "Published" : "Already published"} — source ${result.sourceRepo}` +
           (result.playableBuild ? `, build ${result.playableBuild}` : ""),
@@ -245,8 +247,12 @@ export function RunReviewEditor({
         <button
           className={styles.secondary}
           onClick={onPublish}
-          disabled={busy || !hasSavedReview}
-          title={!hasSavedReview ? "Write and save a review first" : undefined}
+          disabled={busy || !writeup.trim() || !allAddressed}
+          title={
+            !writeup.trim() || !allAddressed
+              ? "Write a review and give every checklist item a verdict before publishing"
+              : undefined
+          }
         >
           Publish run
         </button>

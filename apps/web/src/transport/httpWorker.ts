@@ -21,14 +21,30 @@ import type {
 import type { RunRecord } from "@test-cabinet/run-record";
 import { getJson, joinUrl, postJson } from "./http";
 
+// The worker's `202 Accepted` ack for `POST /runs`: the job id plus the URLs to
+// observe it (`components/worker/overview.md`). Only the id is needed here; the
+// status/events URLs are reconstructed from it.
 interface SubmitResponse {
-  job: string;
+  jobId: string;
+  statusUrl?: string;
+  eventsUrl?: string;
 }
 
+// The worker's `GET /runs/{job}` status (`components/worker/overview.md`):
+// `state` is the job lifecycle (`running` | `succeeded` | `failed`), `record` is
+// present once it succeeded, and `detail` carries the reason when it failed.
 interface JobResponse {
-  status: string;
+  state: string;
   record?: RunRecord | null;
-  error?: string | null;
+  detail?: string | null;
+}
+
+// The worker's `POST /publish` ack. `PublishResult` drops the echoed `runId`.
+interface PublishAck {
+  runId: string;
+  sourceRepo: string;
+  playableBuild?: string | null;
+  newlyPublished: boolean;
 }
 
 // `GET /healthz` on a worker, if it offers one. Best-effort: used only to learn
@@ -74,7 +90,7 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
           : {}),
       };
       const res = await postJson<SubmitResponse>(baseUrl, "/runs", body);
-      return res.job;
+      return res.jobId;
     },
 
     async getRun(runId: string): Promise<RunJob> {
@@ -84,9 +100,9 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       );
       return {
         runId,
-        state: mapState(r.status),
+        state: mapState(r.state),
         record: r.record ?? null,
-        message: r.error ?? null,
+        message: r.detail ?? null,
       };
     },
 
@@ -117,8 +133,23 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       throw new NotSupportedError("save a review");
     },
 
-    async publish(id: string): Promise<PublishResult> {
-      return postJson<PublishResult>(baseUrl, "/publish", { job: id });
+    async publish(
+      id: string,
+      review: ReviewDocumentInput,
+    ): Promise<PublishResult> {
+      // The worker holds no review store, so `POST /publish` carries the review
+      // inline alongside the run id (`components/worker/overview.md`).
+      const ack = await postJson<PublishAck>(baseUrl, "/publish", {
+        runId: id,
+        rating: review.rating,
+        writeup: review.writeup,
+        checklist: review.checklist,
+      });
+      return {
+        sourceRepo: ack.sourceRepo,
+        playableBuild: ack.playableBuild ?? null,
+        newlyPublished: ack.newlyPublished,
+      };
     },
   };
 }
@@ -161,12 +192,12 @@ async function streamEvents(
       baseUrl,
       `/runs/${encodeURIComponent(runId)}`,
     );
-    if (mapState(job.status) === "completed" && job.record) {
+    if (mapState(job.state) === "completed" && job.record) {
       handlers.onDone({ kind: "completed", record: job.record });
     } else {
       handlers.onDone({
         kind: "failed",
-        message: job.error ?? "Run did not complete.",
+        message: job.detail ?? "Run did not complete.",
       });
     }
   } catch (e) {

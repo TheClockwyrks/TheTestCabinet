@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/health.schema.json",
+  "title": "WorkerHealth",
+  "description": "The body of GET /healthz: a worker's liveness/readiness probe and identity. A UI uses `backendUrl` to confirm a worker resolves definitions from, and publishes to, the same backend the UI itself is pointed at; without a match the worker reads as `unverified`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "version", "role", "backendUrl"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Liveness marker; `ok` when the worker is serving.",
+      "enum": ["ok"]
+    },
+    "version": {
+      "type": "string",
+      "description": "The contract version the worker reports (the v0.2.0 milestone), independent of the crate's build version."
+    },
+    "role": {
+      "type": "string",
+      "description": "Identifies the service as a worker, distinguishing it from a backend on the same probe shape.",
+      "enum": ["worker"]
+    },
+    "backendUrl": {
+      "type": "string",
+      "description": "The backend this worker resolves definitions from and publishes to (`TCAB_BACKEND_URL`). Always present — a worker requires a configured backend to start."
+    }
+  }
+}
