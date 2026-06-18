@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -105,6 +105,11 @@ describe("RunMonitorPage", () => {
     expect(subscribeToRun).toHaveBeenCalledTimes(1);
     // The completion notice is stable and the streamed events remain in the feed.
     expect(screen.getByText(/Run complete/i)).toBeInTheDocument();
+    // The feed is labelled, with the run id beneath it and a Follow toggle that
+    // defaults to active (auto-following).
+    expect(screen.getByText("Live Event Feed")).toBeInTheDocument();
+    const follow = screen.getByRole("button", { name: "Follow" });
+    expect(follow).toHaveAttribute("aria-pressed", "true");
     // The type shows once, in its own column; the detail no longer repeats it.
     expect(screen.getByText("COMMAND")).toBeInTheDocument();
     expect(screen.getByText("ls")).toBeInTheDocument();
@@ -112,6 +117,22 @@ describe("RunMonitorPage", () => {
     expect(screen.getByText("out.txt")).toBeInTheDocument();
     expect(screen.queryByText(/command: ls/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Waiting for events/i)).not.toBeInTheDocument();
+  });
+
+  it("toggles auto-follow when the Follow button is clicked", async () => {
+    const { value } = makeWorkers((handlers) => {
+      handlers.onEvent(event({ type: "command", command: "ls" }));
+    });
+
+    renderMonitor(value);
+    const follow = await screen.findByRole("button", { name: "Follow" });
+
+    // Defaults to following; each click flips the state.
+    expect(follow).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(follow);
+    expect(follow).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(follow);
+    expect(follow).toHaveAttribute("aria-pressed", "true");
   });
 
   it("shows the waiting message before any events arrive", () => {

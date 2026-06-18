@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import type { HarnessEvent } from "@test-cabinet/ui/client";
+import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
+import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
   sampleRuns,
   sampleTestCases,
@@ -79,19 +80,25 @@ export function useStaticGallery(): GalleryDataInput {
   // events (or one published before they were captured) resolves to an empty
   // stream rather than failing. Stable identity so the Events tab doesn't refetch
   // on every render.
-  const fetchRunEvents = useCallback(async (runId: string) => {
-    const url = `${import.meta.env.BASE_URL}run-events/${encodeURIComponent(
-      runId,
-    )}.json`;
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return { events: [], raw: null };
-      const events = (await response.json()) as HarnessEvent[];
-      return { events, raw: null };
-    } catch {
-      return { events: [], raw: null };
-    }
-  }, []);
+  const fetchRunEvents = useCallback(
+    async (runId: string, onProgress?: ProgressCallback) => {
+      const url = `${import.meta.env.BASE_URL}run-events/${encodeURIComponent(
+        runId,
+      )}.json`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return { events: [], raw: null };
+        // The published event asset can be large, so stream it with transfer
+        // progress for the Events tab's progress bar.
+        const text = await readTextWithProgress(response, onProgress);
+        const events = JSON.parse(text) as HarnessEvent[];
+        return { events, raw: null };
+      } catch {
+        return { events: [], raw: null };
+      }
+    },
+    [],
+  );
 
   return {
     runs,

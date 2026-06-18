@@ -1,0 +1,40 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// A thin progress track. The fill reads in the accent; in determinate mode the
+// component sets its width inline, and the transition smooths each step.
+.track {
+  position: relative;
+  width: 100%;
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+}
+
+.fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: t.$color-accent;
+  box-shadow: var(--tcab-glow);
+  transition: width 0.15s ease;
+}
+
+// With no known total, animate a sliver back and forth so the user still sees
+// the transfer is alive.
+.track[data-indeterminate] .fill {
+  width: 35%;
+  transition: none;
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}

@@ -9,6 +9,7 @@ import type { WorkerClient, RunSubscription } from "@test-cabinet/ui/client";
 import type {
   HarnessEvent,
   LaunchConfig,
+  ProgressCallback,
   PublishResult,
   RawOutputLine,
   ReviewDocumentInput,
@@ -18,7 +19,13 @@ import type {
   WorkerIdentity,
 } from "@test-cabinet/ui/client";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { getJson, getNdjson, joinUrl, postJson } from "./http";
+import {
+  getJson,
+  getNdjson,
+  getNdjsonStreamed,
+  joinUrl,
+  postJson,
+} from "./http";
 
 // The worker's `202 Accepted` ack for `POST /runs`: the job id plus the URLs to
 // observe it (`components/worker/overview.md`). Only the id is needed here; the
@@ -144,14 +151,23 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       return { id, record: resolveBuildLink(job.record, baseUrl), review: null };
     },
 
-    async readRunEvents(id: string): Promise<RunEventStreams> {
+    async readRunEvents(
+      id: string,
+      onProgress?: ProgressCallback,
+    ): Promise<RunEventStreams> {
       // The worker serves a finished run's recorded streams from disk as NDJSON,
       // keyed by run-record id. The raw log can be absent (older runs) — treat a
       // failed raw read as "no raw available" so the tab just hides the toggle,
-      // while a failed events read is a real error worth surfacing.
+      // while a failed events read is a real error worth surfacing. Progress
+      // tracks the normalized stream — the payload the tab renders by default;
+      // the raw log loads alongside it without its own progress.
       const enc = encodeURIComponent(id);
       const [events, raw] = await Promise.all([
-        getNdjson<HarnessEvent>(baseUrl, `/runs/${enc}/events.jsonl`),
+        getNdjsonStreamed<HarnessEvent>(
+          baseUrl,
+          `/runs/${enc}/events.jsonl`,
+          onProgress,
+        ),
         getNdjson<RawOutputLine>(baseUrl, `/runs/${enc}/raw.jsonl`).catch(
           () => null,
         ),

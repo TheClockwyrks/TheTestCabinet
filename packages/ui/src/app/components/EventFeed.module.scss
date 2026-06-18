@@ -1,42 +1,41 @@
 @use "../styles/tokens" as t;
 
-// The live harness event feed. The container is style-agnostic; the chosen
-// layout is selected by `data-feed-style` below. Each line resolves its accent
-// from the shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed
-// matches the CLI's terminal palette in every layout.
+// The harness event feed. The container is style-agnostic; the chosen layout is
+// selected by `data-feed-style` below. Each line resolves its accent from the
+// shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed matches
+// the CLI's terminal palette in every layout.
+//
+// In the streaming feeds the container is a fixed- or fill-height box that clips
+// to its radius while react-virtuoso scrolls the rows inside it; in the settings
+// preview (`data-preview`) it is a plain, content-height list instead.
 .feed {
-  max-height: 28rem;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: t.$space-sm;
+  height: 28rem;
+  overflow: hidden;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   font-size: t.$font-sm;
 
-  // In the settings preview the feed is decorative and never streams, so it
-  // sits at a fixed, modest height with no inner scrollbar.
+  // In the settings preview the feed is decorative and never streams, so it sits
+  // at its content height as a plain list (no virtualized scroller).
   &[data-preview] {
-    max-height: none;
+    height: auto;
+    overflow: visible;
+    padding: t.$space-sm;
   }
 
-  // In a full-height host (the live run monitor) the feed grows to fill the
-  // column rather than capping at a fixed height, scrolling internally once it
-  // overflows. `min-height: 0` lets it shrink below its content so the scroll
-  // engages instead of pushing the page taller.
+  // In a full-height host (the live run monitor, the Events tab) the feed grows
+  // to fill the column rather than sitting at a fixed height. `min-height: 0`
+  // lets it shrink below its content so the inner scroller engages instead of
+  // pushing the page taller; the virtualized scroller resolves its 100% height
+  // against the flex item's used size.
   &[data-fill] {
     flex: 1 1 auto;
     min-height: 0;
-    max-height: none;
+    height: auto;
   }
-}
-
-.empty {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-  margin: 0;
-  padding: t.$space-sm t.$space-md;
 }
 
 // Each line carries its type color in `--event-color`; the label and whichever
@@ -101,8 +100,11 @@
 }
 
 // --- Layout: "gutter" (the original) -----------------------------------------
-// A left accent bar; the label stacked over its time in a fixed left column,
-// the detail to its right, with a hairline rule between events.
+// A left accent bar; the label stacked over its time in a fixed left column, the
+// detail to its right, with a hairline rule separating events. The rule is drawn
+// on every row (not via a `+ &` sibling selector) so it survives virtualization,
+// where each row is wrapped on its own; the preview drops the leading row's rule
+// so the short sample reads cleanly.
 .feed[data-feed-style="gutter"] {
   .line {
     display: grid;
@@ -110,13 +112,11 @@
     gap: t.$space-md;
     padding: t.$space-sm t.$space-md;
     border-left: 2px solid var(--event-color);
+    border-top: t.$border-hairline solid t.$color-border;
   }
 
-  // A hairline rule between consecutive events — gutter only. (Written as a
-  // sibling selector rather than `& + &`, which would expand the nested
-  // descendant `&` and misplace the combinator.)
-  .line + .line {
-    border-top: t.$border-hairline solid t.$color-border;
+  &[data-preview] .line:first-child {
+    border-top: none;
   }
 
   .gutter {
@@ -146,7 +146,8 @@
 
 // --- Layout: "stacked" -------------------------------------------------------
 // The label and time ride a single header row above the detail, one event per
-// block, each carrying a left accent bar.
+// block, each carrying a left accent bar and a hairline rule separating it from
+// the previous block (drawn per row, as in "gutter", so virtualization is safe).
 .feed[data-feed-style="stacked"] {
   .line {
     display: flex;
@@ -154,11 +155,11 @@
     gap: t.$space-xs;
     padding: t.$space-sm t.$space-md;
     border-left: 2px solid var(--event-color);
+    border-top: t.$border-hairline solid t.$color-border;
   }
 
-  // Separate consecutive blocks (sibling selector, not `& + &` — see "gutter").
-  .line + .line {
-    margin-top: t.$space-sm;
+  &[data-preview] .line:first-child {
+    border-top: none;
   }
 
   .gutter {

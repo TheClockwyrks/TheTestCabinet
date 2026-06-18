@@ -28,6 +28,22 @@
   color: t.$color-text-muted;
 }
 
+// The loading state: the "Loading events…" notice over a transfer progress bar
+// and an optional byte count, stacked at a comfortable reading width.
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  max-width: 28rem;
+}
+
+.progressDetail {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
 .error {
   color: t.$color-negative;
 }

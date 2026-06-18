@@ -159,6 +159,73 @@
 // (`components/EventFeed.module.scss`), which owns its own styling so the run
 // monitor and the Appearance settings preview render it identically.
 
+// The header row above the live feed: the "Live Event Feed" label stacked over
+// the run id on the left, and the Follow toggle pinned to the right. Aligns to
+// the bottom so the button sits on the run-id line, and wraps the button under
+// the heading on a narrow viewport.
+.feedHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin: t.$space-lg 0 t.$space-sm;
+}
+
+.feedHeading {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// Matches the section-label treatment elsewhere on the page.
+.feedTitle {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.feedRunId {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The Follow toggle. Reads as an outlined control when off; when auto-follow is
+// active (`data-active`) it fills with the accent and glows, so its state is
+// legible at a glance (and conveyed to AT via `aria-pressed`).
+.followButton {
+  flex: 0 0 auto;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-lg;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not([data-active]) {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+
+  &[data-active] {
+    background: t.$color-accent;
+    border-color: t.$color-accent;
+    color: t.$color-bg;
+    box-shadow: var(--ttc-glow);
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
 // Checklist in the review editor.
 .checklist {
   display: flex;

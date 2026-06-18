@@ -2,35 +2,34 @@
 
 // The raw harness output log: a terminal-style transcript of the recorded
 // stdout/stderr lines. Mirrors the EventFeed container so the two views of the
-// Events tab sit consistently; the global monospace font (`--ttc-font`) applies.
+// Events tab sit consistently — a fixed- or fill-height box that clips to its
+// radius while react-virtuoso scrolls the rows inside it. The global monospace
+// font (`--ttc-font`) applies.
 .log {
-  max-height: 28rem;
-  overflow-y: auto;
-  padding: t.$space-sm t.$space-md;
+  display: flex;
+  flex-direction: column;
+  height: 28rem;
+  overflow: hidden;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   font-size: t.$font-sm;
 
   // In a full-height host (the Events tab) the log grows to fill the column
-  // rather than capping at a fixed height, scrolling internally on overflow.
+  // rather than sitting at a fixed height; the virtualized scroller resolves its
+  // 100% height against the flex item's used size.
   &[data-fill] {
     flex: 1 1 auto;
     min-height: 0;
-    max-height: none;
+    height: auto;
   }
-}
-
-.empty {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-  margin: 0;
 }
 
 // One output line. Preserve interior whitespace and wrap long lines rather than
 // scrolling horizontally. stdout reads in the body color; stderr is tinted so it
 // stands out the way it would in a terminal.
 .line {
+  padding: 0 t.$space-md;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: t.$color-text;

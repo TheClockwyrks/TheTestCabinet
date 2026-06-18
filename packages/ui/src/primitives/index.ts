@@ -4,6 +4,7 @@ export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
 export { Panel } from "./Panel";
 export { Pagination } from "./Pagination";
+export { ProgressBar } from "./ProgressBar";
 export {
   SegmentedControl,
   type SegmentedOption,

@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import type { RunEventStreams } from "../../client/types";
+import type { ProgressCallback, RunEventStreams } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import type { TestCaseSummary } from "./testCases";
 
@@ -57,9 +57,14 @@ export interface GalleryDataInput {
    * the consoles from their worker/backend clients). Resolves `null` when the
    * host cannot provide events for the run at all (vs. an empty `events` array,
    * which means the run recorded none). Omitted by a host that supports no
-   * events at all.
+   * events at all. `onProgress`, when supplied, reports transfer progress as a
+   * (possibly large) stream downloads, for the tab's progress bar; a host that
+   * can't observe the transfer simply never calls it.
    */
-  fetchRunEvents?: (runId: string) => Promise<RunEventStreams | null>;
+  fetchRunEvents?: (
+    runId: string,
+    onProgress?: ProgressCallback,
+  ) => Promise<RunEventStreams | null>;
 }
 
 export interface GalleryData extends GalleryDataInput {

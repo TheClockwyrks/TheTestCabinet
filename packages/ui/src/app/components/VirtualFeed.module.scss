@@ -1,0 +1,17 @@
+@use "../styles/tokens" as t;
+
+// The react-virtuoso scroller inside a feed container. The container (the
+// caller's class) owns the border, background, and height; this is just the
+// scroll surface that fills it. A small inset keeps the first and last rows off
+// the container's edges without using container padding (which a scroll viewport
+// handles inconsistently at the bottom).
+.scroller {
+  padding: t.$space-xs 0;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+}

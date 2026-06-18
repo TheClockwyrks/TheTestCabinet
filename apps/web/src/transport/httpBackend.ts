@@ -12,6 +12,7 @@ import type {
   BackendIdentity,
   HarnessEvent,
   Model,
+  ProgressCallback,
   ReviewDocument,
   ReviewItem,
   RunEventStreams,
@@ -23,7 +24,7 @@ import type {
   VersionInfo,
 } from "@test-cabinet/ui/client";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { getJson, getText } from "./http";
+import { getJson, getJsonStreamed, getText } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -233,13 +234,18 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return toStoredRun(body);
     },
 
-    async readRunEvents(id: string): Promise<RunEventStreams> {
+    async readRunEvents(
+      id: string,
+      onProgress?: ProgressCallback,
+    ): Promise<RunEventStreams> {
       // The backend serves the published run's normalized event stream as a JSON
-      // array (empty when the run recorded none). Raw harness output is never
-      // published, so it is unavailable here.
-      const events = await getJson<HarnessEvent[]>(
+      // array (empty when the run recorded none). It can be large, so stream it
+      // with transfer progress. Raw harness output is never published, so it is
+      // unavailable here.
+      const events = await getJsonStreamed<HarnessEvent[]>(
         baseUrl,
         `/runs/${encodeURIComponent(id)}/events`,
+        onProgress,
       );
       return { events, raw: null };
     },

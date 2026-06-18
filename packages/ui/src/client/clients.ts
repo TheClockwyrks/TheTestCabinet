@@ -9,6 +9,7 @@ import type {
   HarnessEvent,
   LaunchConfig,
   Model,
+  ProgressCallback,
   PublishResult,
   Rating,
   ReviewItem,
@@ -71,8 +72,13 @@ export interface BackendClient {
    * for the run-detail Events tab. Raw harness output is never published, so
    * {@link RunEventStreams.raw} is always `null` here. May throw
    * {@link NotSupportedError} where the transport cannot reach published events.
+   * `onProgress`, when given, is called with transfer progress as the (possibly
+   * large) stream downloads.
    */
-  readRunEvents(id: string): Promise<RunEventStreams>;
+  readRunEvents(
+    id: string,
+    onProgress?: ProgressCallback,
+  ): Promise<RunEventStreams>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`
@@ -133,8 +139,13 @@ export interface WorkerClient {
    * the normalized stream (`GET /runs/{id}/events.jsonl`) and the raw harness
    * output (`GET /runs/{id}/raw.jsonl`). Both back the run-detail Events tab for
    * a finished run; `raw` is null only when the worker has no raw log on disk.
+   * `onProgress`, when given, reports the transfer of the (primary) normalized
+   * stream as it downloads.
    */
-  readRunEvents(id: string): Promise<RunEventStreams>;
+  readRunEvents(
+    id: string,
+    onProgress?: ProgressCallback,
+  ): Promise<RunEventStreams>;
 
   /**
    * Publish a run together with its review (`POST /publish`). The review is

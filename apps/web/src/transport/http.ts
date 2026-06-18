@@ -1,4 +1,6 @@
 // Small fetch helpers shared by the backend and worker HTTP transports.
+import { readTextWithProgress } from "@test-cabinet/ui/client";
+import type { ProgressCallback } from "@test-cabinet/ui/client";
 
 export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
@@ -32,11 +34,31 @@ export async function getText(base: string, path: string): Promise<string> {
   return res.text();
 }
 
-// Fetch an NDJSON document and parse each non-empty line as JSON. Used for the
-// recorded run streams (`events.jsonl` / `raw.jsonl`) the worker serves verbatim
-// from disk. A malformed line is skipped rather than failing the whole read.
-export async function getNdjson<T>(base: string, path: string): Promise<T[]> {
-  const text = await getText(base, path);
+// Fetch a document as text, reporting transfer progress as it streams. Backs the
+// recorded-events reads, whose payloads can be large; `onProgress` drives the
+// Events tab's progress bar.
+export async function getTextStreamed(
+  base: string,
+  path: string,
+  onProgress?: ProgressCallback,
+): Promise<string> {
+  const res = await fetch(joinUrl(base, path));
+  if (!res.ok) throw await httpError(res);
+  return readTextWithProgress(res, onProgress);
+}
+
+// Fetch a JSON document, reporting transfer progress as it streams.
+export async function getJsonStreamed<T>(
+  base: string,
+  path: string,
+  onProgress?: ProgressCallback,
+): Promise<T> {
+  return JSON.parse(await getTextStreamed(base, path, onProgress)) as T;
+}
+
+// Parse an NDJSON body (one JSON value per non-empty line), skipping malformed
+// lines. Shared by the streamed and non-streamed NDJSON reads.
+function parseNdjson<T>(text: string): T[] {
   const items: T[] = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -48,6 +70,22 @@ export async function getNdjson<T>(base: string, path: string): Promise<T[]> {
     }
   }
   return items;
+}
+
+// Fetch an NDJSON document and parse each non-empty line as JSON. Used for the
+// recorded run streams (`events.jsonl` / `raw.jsonl`) the worker serves verbatim
+// from disk. A malformed line is skipped rather than failing the whole read.
+export async function getNdjson<T>(base: string, path: string): Promise<T[]> {
+  return parseNdjson<T>(await getText(base, path));
+}
+
+// As {@link getNdjson}, but reporting transfer progress as the body streams.
+export async function getNdjsonStreamed<T>(
+  base: string,
+  path: string,
+  onProgress?: ProgressCallback,
+): Promise<T[]> {
+  return parseNdjson<T>(await getTextStreamed(base, path, onProgress));
 }
 
 // Turns a non-2xx response into an Error, preferring the backend's error

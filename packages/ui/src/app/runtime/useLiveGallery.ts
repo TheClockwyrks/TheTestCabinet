@@ -6,7 +6,12 @@ import {
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
-import type { StoredRun, TestCase, VersionInfo } from "../../client/types";
+import type {
+  ProgressCallback,
+  StoredRun,
+  TestCase,
+  VersionInfo,
+} from "../../client/types";
 import { frameReview } from "../data/frameReview";
 import { sampleTestCases } from "../data/sampleTestCases";
 import type { GalleryDataInput } from "../data/galleryContext";
@@ -172,13 +177,15 @@ export function useLiveGallery(): GalleryDataInput {
   // can't reach them (`NotSupportedError`) resolves to null so the Events tab
   // shows a clear "not available here" state rather than erroring.
   const fetchRunEvents = useCallback(
-    async (runId: string) => {
+    async (runId: string, onProgress?: ProgressCallback) => {
       try {
         if (localIds.has(runId) && workerClient) {
-          return await workerClient.readRunEvents(runId);
+          return await workerClient.readRunEvents(runId, onProgress);
         }
-        if (backend) return await backend.readRunEvents(runId);
-        if (workerClient) return await workerClient.readRunEvents(runId);
+        if (backend) return await backend.readRunEvents(runId, onProgress);
+        if (workerClient) {
+          return await workerClient.readRunEvents(runId, onProgress);
+        }
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;

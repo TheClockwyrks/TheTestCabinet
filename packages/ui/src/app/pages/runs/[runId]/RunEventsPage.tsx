@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SegmentedControl } from "@test-cabinet/ui";
+import { ProgressBar, SegmentedControl } from "@test-cabinet/ui";
 import { EventFeed } from "../../../components/EventFeed";
 import { RawOutputLog } from "../../../components/RawOutputLog";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -29,7 +29,25 @@ function RunEventsBody({ runId }: { runId: string }) {
   const [view, setView] = useState<EventsView>("ttc");
 
   if (state.status === "loading") {
-    return <p className={styles.notice}>Loading events…</p>;
+    // Recorded event files can be large, so stream them and show the actual
+    // transfer progress (determinate when the server reports a size, an
+    // indeterminate bar otherwise). The partially loaded data isn't rendered —
+    // only its progress — until the read completes.
+    const { progress } = state;
+    const value =
+      progress && progress.total ? progress.received / progress.total : null;
+    return (
+      <div className={styles.loading}>
+        <p className={styles.notice}>Loading events…</p>
+        <ProgressBar value={value} ariaLabel="Loading recorded events" />
+        {progress && progress.received > 0 && (
+          <p className={styles.progressDetail}>
+            {formatBytes(progress.received)}
+            {progress.total ? ` / ${formatBytes(progress.total)}` : ""}
+          </p>
+        )}
+      </div>
+    );
   }
   if (state.status === "unsupported") {
     return (
@@ -81,4 +99,17 @@ function RunEventsBody({ runId }: { runId: string }) {
       )}
     </section>
   );
+}
+
+// Render a byte count as a compact, human-readable size for the transfer detail.
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(1)} ${units[unit]}`;
 }

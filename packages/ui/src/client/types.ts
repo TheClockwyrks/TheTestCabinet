@@ -150,6 +150,20 @@ export interface RunEventStreams {
   raw: RawOutputLine[] | null;
 }
 
+// Transfer progress for a streamed download, reported as a recorded run's events
+// load. `received` is the number of bytes read so far; `total` is the expected
+// size from the response's `Content-Length`, or `null` when the server sends
+// none (so the bar shows indeterminate progress rather than a false percentage).
+export interface LoadProgress {
+  received: number;
+  total: number | null;
+}
+
+// A sink for {@link LoadProgress} ticks, passed into a streamed read so the
+// caller can drive a progress bar. A transport that can't observe the transfer
+// (e.g. Tauri IPC, which buffers the whole payload) simply never calls it.
+export type ProgressCallback = (progress: LoadProgress) => void;
+
 export type RunOutcome =
   | { kind: "completed"; record: RunRecord }
   | { kind: "failed"; message: string };

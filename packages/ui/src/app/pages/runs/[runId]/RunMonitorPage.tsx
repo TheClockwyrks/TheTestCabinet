@@ -27,7 +27,10 @@ export function RunMonitorPage() {
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   const [status, setStatus] = useState<MonitorStatus>({ kind: "running" });
   const [error, setError] = useState<string | null>(null);
-  const feedRef = useRef<HTMLDivElement>(null);
+  // Whether the feed auto-follows the newest event. On by default; the user
+  // scrolling up (reported by the feed) or toggling the Follow button turns it
+  // off, and toggling it back on snaps to the bottom and resumes.
+  const [following, setFollowing] = useState(true);
   const feedStyle = useAppSettings((s) => s.eventFeedStyle);
 
   // Hold the latest runtime in a ref so the subscription effect can reach its
@@ -65,11 +68,6 @@ export function RunMonitorPage() {
     return unsubscribe;
   }, [worker, runId]);
 
-  // Auto-scroll the feed as events arrive.
-  useEffect(() => {
-    feedRef.current?.scrollTo(0, feedRef.current.scrollHeight);
-  }, [events]);
-
   return (
     <PageLayout fill>
       <PromptHeader command="--monitor" comment={<>// live run activity</>} />
@@ -80,10 +78,6 @@ export function RunMonitorPage() {
           this job.
         </p>
       )}
-
-      <p className={styles.muted}>
-        Run id <code>{runId}</code>
-      </p>
 
       {status.kind === "done" && status.outcome.kind === "completed" && (
         <p className={`${styles.notice} ${styles.ok}`}>
@@ -101,12 +95,29 @@ export function RunMonitorPage() {
       )}
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
 
-      <p className={styles.sectionLabel}>Live harness events</p>
+      <div className={styles.feedHeader}>
+        <div className={styles.feedHeading}>
+          <span className={styles.feedTitle}>Live Event Feed</span>
+          <span className={styles.feedRunId}>
+            Run id <code>{runId}</code>
+          </span>
+        </div>
+        <button
+          type="button"
+          className={styles.followButton}
+          data-active={following ? "" : undefined}
+          aria-pressed={following}
+          onClick={() => setFollowing((on) => !on)}
+        >
+          Follow
+        </button>
+      </div>
       <EventFeed
         events={events}
         feedStyle={feedStyle}
-        scrollRef={feedRef}
         fill
+        follow={following}
+        onFollowChange={setFollowing}
         emptyLabel={
           status.kind === "running"
             ? "Waiting for events…"
