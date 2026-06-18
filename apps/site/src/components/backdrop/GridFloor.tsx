@@ -74,8 +74,15 @@ export function GridFloor({ near, far }: GridFloorProps) {
   // material's uniforms — mutating the memoized object above has no effect.
   useFrame((_, delta) => {
     const time = material.current?.uniforms.uTime;
-    if (time) {
-      time.value += delta;
+    const speed = material.current?.uniforms.uSpeed;
+    if (time && speed) {
+      // The scroll pattern repeats every 1/uSpeed seconds (`fract` has period 1
+      // in cell space), so wrap uTime to that period. Left unbounded it grows
+      // for the whole session — and once large it loses float32 precision when
+      // uploaded to the shader, making the scrolled (horizontal) lines step
+      // unevenly and stutter on a long-lived tab.
+      const period = 1 / speed.value;
+      time.value = (time.value + delta) % period;
     }
   });
 
