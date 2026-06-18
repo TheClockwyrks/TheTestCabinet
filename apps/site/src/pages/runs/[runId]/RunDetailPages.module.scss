@@ -108,3 +108,67 @@
   margin: 0;
   color: t.$color-text-muted;
 }
+
+// The reviewer checklist: the case-declared items the reviewer worked through,
+// each with the recorded verdict. Sits beneath the writeup body in the Verdict
+// tab's panel.
+.checklist {
+  margin-top: t.$space-xl;
+}
+
+.checklistHeading {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-sm;
+}
+
+.checklistItems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.verdictRow {
+  display: flex;
+  gap: t.$space-md;
+  align-items: baseline;
+  font-size: t.$font-sm;
+  border-left: 3px solid t.$color-border;
+  padding: t.$space-xs 0 t.$space-xs t.$space-md;
+}
+
+.verdictStatus {
+  flex-shrink: 0;
+  min-width: 3rem;
+  font-weight: 600;
+}
+
+.verdictItem {
+  color: t.$color-text;
+}
+
+.verdictNote {
+  color: t.$color-text-muted;
+}
+
+.verdictPass {
+  border-left-color: t.$color-positive;
+  .verdictStatus {
+    color: t.$color-positive;
+  }
+}
+
+.verdictFail {
+  border-left-color: t.$color-negative;
+  .verdictStatus {
+    color: t.$color-negative;
+  }
+}
+
+.verdictNa {
+  .verdictStatus {
+    color: t.$color-text-muted;
+  }
+}

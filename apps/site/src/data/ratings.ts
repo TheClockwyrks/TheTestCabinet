@@ -54,10 +54,36 @@ export function isRating(value: string): value is Rating {
   return (RATINGS as readonly string[]).includes(value);
 }
 
-/** A writeup split into its rating and its prose body. */
+/** A reviewer's verdict on one declared checklist item. */
+export type VerdictStatus = "pass" | "fail" | "na";
+
+/** Display metadata for a verdict status. */
+export const VERDICT_META: Record<VerdictStatus, { label: string }> = {
+  pass: { label: "Pass" },
+  fail: { label: "Fail" },
+  na: { label: "N/A" },
+};
+
+/** A reviewer's recorded verdict on one declared checklist item. */
+export interface ReviewVerdict {
+  /** The declared item's stable id. */
+  id: string;
+  /** The reviewer's verdict. */
+  status: VerdictStatus;
+  /** An optional one-line note, when the reviewer left one. */
+  note?: string;
+}
+
+function isVerdictStatus(value: string): value is VerdictStatus {
+  return value === "pass" || value === "fail" || value === "na";
+}
+
+/** A writeup split into its rating, its checklist verdicts, and its prose body. */
 export interface ParsedWriteup {
   /** The rating from the frontmatter, or null when none was authored. */
   rating: Rating | null;
+  /** The reviewer's checklist verdicts, in frontmatter order. Empty when none. */
+  checklist: ReviewVerdict[];
   /** The Markdown body with the frontmatter stripped. */
   body: string;
 }
@@ -68,16 +94,17 @@ export interface ParsedWriteup {
 // actually refuses to release a run without a valid one.
 const FRONTMATTER = /^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
-/** Split a writeup's frontmatter rating from its body. */
+/** Split a writeup's frontmatter rating and checklist verdicts from its body. */
 export function parseWriteup(raw: string): ParsedWriteup {
   const withoutBom = raw.replace(/^﻿/, "");
   const match = FRONTMATTER.exec(withoutBom);
   if (!match) {
-    return { rating: null, body: raw.trim() };
+    return { rating: null, checklist: [], body: raw.trim() };
   }
   const [, frontmatter, body] = match;
   const rating = readRating(frontmatter ?? "");
-  return { rating, body: (body ?? "").trim() };
+  const checklist = readChecklist(frontmatter ?? "");
+  return { rating, checklist, body: (body ?? "").trim() };
 }
 
 function readRating(frontmatter: string): Rating | null {
@@ -89,4 +116,26 @@ function readRating(frontmatter: string): Rating | null {
     return isRating(value) ? value : null;
   }
   return null;
+}
+
+// Mirrors the Rust parser: each `review.<id>: <status> [note]` line, in order.
+// The value's first token is the status; the remainder is the note. A line with
+// an unknown status is skipped (lenient, like the rating parse).
+function readChecklist(frontmatter: string): ReviewVerdict[] {
+  const verdicts: ReviewVerdict[] = [];
+  for (const line of frontmatter.split(/\r?\n/)) {
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    const key = line.slice(0, separator).trim();
+    if (!key.startsWith("review.")) continue;
+    const id = key.slice("review.".length).trim();
+    if (!id) continue;
+    const value = line.slice(separator + 1).trim();
+    const space = value.search(/\s/);
+    const statusToken = (space === -1 ? value : value.slice(0, space)).toLowerCase();
+    if (!isVerdictStatus(statusToken)) continue;
+    const note = space === -1 ? "" : value.slice(space + 1).trim();
+    verdicts.push({ id, status: statusToken, ...(note ? { note } : {}) });
+  }
+  return verdicts;
 }

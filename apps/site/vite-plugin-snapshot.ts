@@ -44,9 +44,16 @@ interface SnapshotRunSummary {
   };
 }
 
+interface SnapshotReviewVerdict {
+  id: string;
+  status: string;
+  note?: string;
+}
+
 interface SnapshotReview {
   rating: string;
   writeup: string;
+  checklist?: SnapshotReviewVerdict[];
 }
 
 // `runs/<run-id>.json`: the full run record plus its review and links.
@@ -134,10 +141,21 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 // Reconstruct a writeup's `---\nrating: …\n---\n\n<body>` framing from a review,
-// so the existing `parseWriteup` path is unchanged on the site side.
+// so the existing `parseWriteup` path is unchanged on the site side. Checklist
+// verdicts are re-emitted as the same `review.<id>: <status> [note]` frontmatter
+// lines the authored writeup.md uses, so `parseWriteup` recovers them too.
 function frameWriteup(review: SnapshotReview): string {
   const body = review.writeup ?? "";
-  return `---\nrating: ${review.rating}\n---\n\n${body}`;
+  const verdicts = (review.checklist ?? [])
+    .map((v) => {
+      const note = (v.note ?? "").replace(/\s+/g, " ").trim();
+      return `review.${v.id}: ${v.status}${note ? ` ${note}` : ""}`;
+    })
+    .join("\n");
+  const frontmatter = verdicts
+    ? `rating: ${review.rating}\n${verdicts}`
+    : `rating: ${review.rating}`;
+  return `---\n${frontmatter}\n---\n\n${body}`;
 }
 
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
