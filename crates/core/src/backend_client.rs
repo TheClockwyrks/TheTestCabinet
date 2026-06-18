@@ -74,6 +74,43 @@ pub struct PublishAck {
     pub newly_published: bool,
 }
 
+/// A run on the backend's read side, as served by `GET /runs` and
+/// `GET /runs/{id}`: the full record (with its links resolved), the review it
+/// was published with, and the resolved links. This is what a reporter or
+/// gallery consumes — the publish-time counterpart is [`BackendClient::publish_run`].
+#[derive(Debug, Clone)]
+pub struct PublishedRun {
+    /// The full run record. Its [`RunLinks`] are the resolved links the backend
+    /// holds (the separate [`links`](Self::links) field, merged onto the blob).
+    pub record: RunRecord,
+    /// The review the run was published with.
+    pub review: PublishedReview,
+    /// The resolved source-repo and playable-build links the backend recorded.
+    pub links: RunLinks,
+}
+
+/// A review as the backend serves it on the read side: the rating tier token, the
+/// prose body, and the reviewer's verdicts on the case's checklist items.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedReview {
+    /// One of `flawless | great | scuffed | broken`.
+    pub rating: String,
+    /// The review prose.
+    pub writeup: String,
+    /// The reviewer's verdicts on the case's declared checklist items.
+    pub checklist: Vec<crate::review::ReviewVerdict>,
+}
+
+/// One page of published runs from `GET /runs`, newest first.
+#[derive(Debug, Clone)]
+pub struct RunPage {
+    /// The runs on this page, newest first.
+    pub runs: Vec<PublishedRun>,
+    /// The `before` cursor to pass for the following page, or `None` when this is
+    /// the last page.
+    pub next_before: Option<String>,
+}
+
 /// What runners use to resolve definitions from, and publish runs to, the
 /// backend.
 #[async_trait::async_trait]
@@ -124,6 +161,17 @@ pub trait BackendClient: Send + Sync {
         review: &Writeup,
         links: &RunLinks,
     ) -> Result<PublishAck>;
+
+    /// List published runs, newest first, paginated. (`GET /runs?before=&limit=`)
+    ///
+    /// `before` is the cursor from a previous page's
+    /// [`RunPage::next_before`] (`None` for the first page); `limit` caps the page
+    /// size (the backend clamps it to its own bounds). This is the read side a
+    /// reporter or gallery consumes.
+    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage>;
+
+    /// Read one published run by id. (`GET /runs/{id}`)
+    async fn read_run(&self, id: &str) -> Result<PublishedRun>;
 }
 
 /// Materialize a backend-resolved version onto disk so the existing seeder,
@@ -478,6 +526,31 @@ impl BackendClient for HttpBackendClient {
             newly_published: ack.newly_published,
         })
     }
+
+    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
+        let mut path = String::from("/runs");
+        let mut query = Vec::new();
+        if let Some(before) = before {
+            query.push(format!("before={}", encode(before)));
+        }
+        if let Some(limit) = limit {
+            query.push(format!("limit={limit}"));
+        }
+        if !query.is_empty() {
+            path.push('?');
+            path.push_str(&query.join("&"));
+        }
+        let body: RunPageBody = self.get_json(&path).await?;
+        Ok(RunPage {
+            runs: body.runs.into_iter().map(stored_run_from).collect(),
+            next_before: body.next_before,
+        })
+    }
+
+    async fn read_run(&self, id: &str) -> Result<PublishedRun> {
+        let body: StoredRunBody = self.get_json(&format!("/runs/{}", encode(id))).await?;
+        Ok(stored_run_from(body))
+    }
 }
 
 impl HttpBackendClient {
@@ -734,6 +807,68 @@ struct LinksBody {
 struct PublishAckBody {
     id: String,
     newly_published: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunPageBody {
+    runs: Vec<StoredRunBody>,
+    #[serde(default)]
+    next_before: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredRunBody {
+    record: RunRecord,
+    review: ReviewOutBody,
+    #[serde(default)]
+    links: LinksOutBody,
+}
+
+#[derive(Deserialize)]
+struct ReviewOutBody {
+    rating: String,
+    writeup: String,
+    #[serde(default)]
+    checklist: Vec<crate::review::ReviewVerdict>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct LinksOutBody {
+    #[serde(default)]
+    source_repo: Option<String>,
+    #[serde(default)]
+    playable_build: Option<String>,
+}
+
+/// Turn a wire run into a [`PublishedRun`], resolving its links. The backend
+/// serves the resolved links in a separate `links` object as well as on the
+/// record blob; the separate object is authoritative, so it wins, and the merged
+/// result is written back onto the record so callers see one consistent set.
+fn stored_run_from(body: StoredRunBody) -> PublishedRun {
+    let mut record = body.record;
+    let links = RunLinks {
+        source_repo: body
+            .links
+            .source_repo
+            .or_else(|| record.links.source_repo.clone()),
+        playable_build: body
+            .links
+            .playable_build
+            .or_else(|| record.links.playable_build.clone()),
+    };
+    record.links = links.clone();
+    PublishedRun {
+        record,
+        review: PublishedReview {
+            rating: body.review.rating,
+            writeup: body.review.writeup,
+            checklist: body.review.checklist,
+        },
+        links,
+    }
 }
 
 // --- Helpers ----------------------------------------------------------------

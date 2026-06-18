@@ -14,7 +14,7 @@ use test_cabinet_core::{
     ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, BuildValidator,
     CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug,
     HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices, Orchestrator,
-    PrerenderedReferenceRenderer, PublishConfig, PublishRequest, Publisher, Rating,
+    PrerenderedReferenceRenderer, PublishConfig, PublishRequest, PublishedRun, Publisher, Rating,
     ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord, RunRequest, SystemCommandRunner,
     TestCase, TestCaseCatalog, TestCaseVersion, Writeup, implementation_dir, materialize_version,
     missing_verdicts, parse_writeup,
@@ -503,6 +503,71 @@ pub fn read_run(id: String) -> CmdResult<StoredRun> {
         record: Box::new(record),
         review,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Published gallery: reading runs the backend serves (the read side).
+// ---------------------------------------------------------------------------
+
+/// One page of published runs from the backend, in the shape the webview's
+/// `BackendClient` consumes: the runs newest-first plus the cursor for the next
+/// page (`null` when there are no more).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishedRunPage {
+    pub runs: Vec<StoredRun>,
+    pub next_cursor: Option<String>,
+}
+
+/// List published runs from the configured backend (`GET /runs`), newest first.
+///
+/// This is the desktop's proxy for the backend read side: the local catalog and
+/// this app's produced runs are served by the embedded core, but the *published*
+/// gallery lives on the backend, so it is fetched over HTTP here. Requires
+/// `TCAB_BACKEND_URL`; without it the published gallery is simply empty.
+#[tauri::command]
+pub async fn list_published_runs(
+    before: Option<String>,
+    limit: Option<usize>,
+) -> CmdResult<PublishedRunPage> {
+    let url = config::backend_url().ok_or_else(|| {
+        "listing published runs needs a backend, but TCAB_BACKEND_URL is not set".to_string()
+    })?;
+    let page = HttpBackendClient::new(url)
+        .list_runs(before.as_deref(), limit)
+        .await
+        .map_err(|e| err("listing published runs from the backend", e))?;
+    Ok(PublishedRunPage {
+        runs: page.runs.into_iter().map(published_to_stored).collect(),
+        next_cursor: page.next_before,
+    })
+}
+
+/// Read one published run by id from the configured backend (`GET /runs/{id}`).
+#[tauri::command]
+pub async fn read_published_run(id: String) -> CmdResult<StoredRun> {
+    let url = config::backend_url().ok_or_else(|| {
+        "reading a published run needs a backend, but TCAB_BACKEND_URL is not set".to_string()
+    })?;
+    let run = HttpBackendClient::new(url)
+        .read_run(&id)
+        .await
+        .map_err(|e| err("reading a published run from the backend", e))?;
+    Ok(published_to_stored(run))
+}
+
+/// Map a backend [`PublishedRun`] into the webview's [`StoredRun`] shape. A
+/// published run always carries a review, so it is never `None` here.
+fn published_to_stored(run: PublishedRun) -> StoredRun {
+    StoredRun {
+        id: run.record.id.clone(),
+        record: Box::new(run.record),
+        review: Some(ReviewDocument {
+            rating: run.review.rating,
+            writeup: run.review.writeup,
+            checklist: run.review.checklist,
+        }),
+    }
 }
 
 /// The reviewer checklist items a run must be judged against, as the webview

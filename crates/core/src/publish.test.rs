@@ -7,7 +7,8 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::backend_client::{
-    BackendClient, ContainerImage, PublishAck, ResolvedArtifact, ResolvedReference,
+    BackendClient, ContainerImage, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference,
+    RunPage,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Rating;
@@ -285,6 +286,12 @@ impl BackendClient for MockBackend {
             id: record.id.clone(),
             newly_published: !self.already_published,
         })
+    }
+    async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
+        unimplemented!("not exercised by publish tests")
+    }
+    async fn read_run(&self, _id: &str) -> Result<PublishedRun> {
+        unimplemented!("not exercised by publish tests")
     }
 }
 

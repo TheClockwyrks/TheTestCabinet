@@ -80,10 +80,12 @@ interface StoredRunResponse {
   links?: { sourceRepo: string | null; playableBuild: string | null };
 }
 
-// `GET /runs`: a page of stored runs plus the cursor for the next page.
+// `GET /runs`: a page of stored runs plus the cursor for the next page. The
+// backend names the cursor `nextBefore` (the `before` value for the next page);
+// it maps to the transport-neutral `nextCursor` on `RunPage`.
 interface RunPageResponse {
   runs: StoredRunResponse[];
-  nextCursor?: string | null;
+  nextBefore?: string | null;
 }
 
 // The backend serves the record with its links already populated, so the run's
@@ -197,7 +199,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
       return {
         runs: body.runs.map(toStoredRun),
-        nextCursor: body.nextCursor ?? null,
+        nextCursor: body.nextBefore ?? null,
       };
     },
 

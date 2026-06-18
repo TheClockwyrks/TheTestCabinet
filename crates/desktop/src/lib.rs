@@ -56,6 +56,8 @@ pub fn run() {
             commands::launch_run,
             commands::list_runs,
             commands::read_run,
+            commands::list_published_runs,
+            commands::read_published_run,
             commands::read_review_items,
             commands::save_review,
             commands::publish_run,

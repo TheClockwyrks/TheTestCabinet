@@ -1,11 +1,11 @@
 // The BackendClient over Tauri IPC. The catalog (harnesses, models, test cases,
 // specs) is resolved by the desktop core's `#[tauri::command]` handlers, which
 // themselves read from the configured backend (`TCAB_BACKEND_URL`) or local
-// disk. The published-run read endpoints are not exposed over IPC yet, so those
-// throw NotSupported — the desktop gallery shows the local catalog and the
-// worker's produced runs until a proxy command is added.
+// disk. The published-run read endpoints proxy to the backend's `GET /runs` /
+// `GET /runs/{id}` through the `list_published_runs` / `read_published_run`
+// commands; with no backend configured they fail gracefully (an empty published
+// gallery), leaving the local catalog and the worker's produced runs.
 import {
-  NotSupportedError,
   type BackendClient,
   type BackendIdentity,
   type RunPage,
@@ -34,11 +34,11 @@ export function createTauriBackend(): BackendClient {
     resolveVersion: (slug, version) => api.resolveVersion(slug, version),
     readSpecs: (slug, version, variant) =>
       api.readSpecs(slug, version, variant),
-    listRuns(): Promise<RunPage> {
-      return Promise.reject(new NotSupportedError("listRuns"));
+    listRuns(opts): Promise<RunPage> {
+      return api.listPublishedRuns(opts);
     },
-    readRun(): Promise<StoredRun> {
-      return Promise.reject(new NotSupportedError("readRun"));
+    readRun(id): Promise<StoredRun> {
+      return api.readPublishedRun(id);
     },
   };
 }

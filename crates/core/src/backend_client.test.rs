@@ -3,8 +3,13 @@
 //! client.
 
 use super::*;
+use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::reference::ReferenceRenderer;
+use crate::run_record::{
+    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
+};
 use crate::test_case::{BuildCommands, ReferenceView, SpecFile, TestCaseVersion, Variant};
+use crate::validation::ValidationSummary;
 
 /// A minimal in-memory [`BackendClient`] returning a one-spec, one-asset,
 /// one-common-reference version so materialization can be exercised end to end.
@@ -99,6 +104,15 @@ impl BackendClient for StubBackend {
             newly_published: true,
         })
     }
+    async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
+        Ok(RunPage {
+            runs: vec![],
+            next_before: None,
+        })
+    }
+    async fn read_run(&self, _id: &str) -> Result<PublishedRun> {
+        unimplemented!("not exercised by materialize tests")
+    }
 }
 
 #[tokio::test]
@@ -149,9 +163,10 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
 
 /// Serve a single fixed `200` JSON response on a fresh local port, returning the
 /// bound base URL. The one-shot server answers exactly one request, which is all
-/// a single `resolve_container` call makes.
-async fn serve_once(json: &'static str) -> String {
+/// a single `resolve_container` / `list_runs` / `read_run` call makes.
+async fn serve_once(json: impl Into<String>) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let json = json.into();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -185,4 +200,116 @@ async fn resolve_container_parses_harness_and_reference() {
         image.reference,
         "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b"
     );
+}
+
+/// A minimal valid run record whose `links` are empty, so a test can prove the
+/// backend's separately-served links are what end up on the resolved run.
+fn sample_record(id: &str) -> RunRecord {
+    RunRecord {
+        id: id.to_string(),
+        started_at: "2026-06-14T10:00:00Z".to_string(),
+        finished_at: "2026-06-14T10:05:00Z".to_string(),
+        subject: RunSubject {
+            test_case_slug: "pong".to_string(),
+            test_case_version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
+            harness_slug: HarnessSlug::Claude,
+            harness_version: None,
+            model_id: "anthropic/claude-opus-4".to_string(),
+        },
+        tooling: RunTooling {
+            test_cabinet_commit: None,
+        },
+        environment: RunEnvironment {
+            os: "Debian GNU/Linux 12".to_string(),
+            container_image: "ghcr.io/example/test-cabinet-claude@sha256:abc".to_string(),
+            node_version: None,
+        },
+        metrics: RunMetrics {
+            run_time_seconds: 300.0,
+            tokens: TokenCounts {
+                uncached_input: 1,
+                cached_input: 0,
+                output: 1,
+                reasoning: 0,
+            },
+            cost: Cost {
+                comparable: 0.0,
+                actual: 0.0,
+            },
+        },
+        validation: ValidationSummary {
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: vec![],
+        },
+        links: RunLinks::default(),
+        status: RunStatus {
+            state: RunState::Completed,
+            detail: None,
+        },
+    }
+}
+
+#[tokio::test]
+async fn list_runs_parses_page_cursor_links_and_review() {
+    // The backend names the cursor `nextBefore`, serves the review tier as a
+    // string, and serves the resolved links separately from the record blob.
+    let record = serde_json::to_value(sample_record("run-1")).expect("serialize");
+    let body = serde_json::json!({
+        "runs": [{
+            "record": record,
+            "review": { "rating": "great", "writeup": "Plays well.", "checklist": [] },
+            "links": {
+                "sourceRepo": "https://example.com/repo",
+                "playableBuild": "https://abc.pages.dev",
+            },
+        }],
+        "nextBefore": "2026-06-14T10:00:00Z",
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let page = HttpBackendClient::new(base)
+        .list_runs(None, Some(10))
+        .await
+        .expect("list runs");
+
+    assert_eq!(page.next_before.as_deref(), Some("2026-06-14T10:00:00Z"));
+    assert_eq!(page.runs.len(), 1);
+    let run = &page.runs[0];
+    assert_eq!(run.record.id, "run-1");
+    assert_eq!(run.review.rating, "great");
+    // The separately-served links win and are merged onto the record blob (whose
+    // own links were empty), so both views agree.
+    assert_eq!(
+        run.links.source_repo.as_deref(),
+        Some("https://example.com/repo")
+    );
+    assert_eq!(
+        run.record.links.playable_build.as_deref(),
+        Some("https://abc.pages.dev")
+    );
+}
+
+#[tokio::test]
+async fn read_run_parses_a_single_stored_run() {
+    let record = serde_json::to_value(sample_record("run-9")).expect("serialize");
+    let body = serde_json::json!({
+        "record": record,
+        "review": { "rating": "scuffed", "writeup": "Janky.", "checklist": [] },
+        "links": { "sourceRepo": null, "playableBuild": null },
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let run = HttpBackendClient::new(base)
+        .read_run("run-9")
+        .await
+        .expect("read run");
+
+    assert_eq!(run.record.id, "run-9");
+    assert_eq!(run.review.rating, "scuffed");
+    assert_eq!(run.review.writeup, "Janky.");
+    assert!(run.links.source_repo.is_none());
 }

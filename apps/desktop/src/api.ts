@@ -162,6 +162,21 @@ export const launchRun = (config: LaunchConfig) =>
   invoke<string>("launch_run", { config });
 export const listRuns = () => invoke<StoredRun[]>("list_runs");
 export const readRun = (id: string) => invoke<StoredRun>("read_run", { id });
+
+// One page of published runs served by the backend (the read side), as the
+// `BackendClient` consumes it.
+export interface RunPage {
+  runs: StoredRun[];
+  nextCursor: string | null;
+}
+
+export const listPublishedRuns = (opts?: { before?: string; limit?: number }) =>
+  invoke<RunPage>("list_published_runs", {
+    before: opts?.before ?? null,
+    limit: opts?.limit ?? null,
+  });
+export const readPublishedRun = (id: string) =>
+  invoke<StoredRun>("read_published_run", { id });
 export const readReviewItems = (id: string) =>
   invoke<ReviewItem[]>("read_review_items", { id });
 export const saveReview = (

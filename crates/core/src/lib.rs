@@ -45,7 +45,8 @@ use time::format_description::well_known::Rfc3339;
 
 pub use backend_client::{
     BackendClient, ContainerImage, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck,
-    ResolvedArtifact, ResolvedReference, materialize_version,
+    PublishedReview, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
+    materialize_version,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
