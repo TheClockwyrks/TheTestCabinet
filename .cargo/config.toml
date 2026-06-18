@@ -3,20 +3,31 @@
 # The default build is a normal dynamically linked glibc build, which targets
 # mainstream Linux (Ubuntu and similar). This file does NOT change that default.
 #
-# It only adds a convenience alias for a portable, fully static build of the
-# `tcab` CLI via the musl target. A static binary has no dynamic linker, so it
-# runs on distributions that do not ship the generic FHS loader — notably NixOS —
-# as well as on mainstream distributions.
+# It only adds convenience aliases for portable, fully static builds of the
+# headless binaries via the musl target. A static binary has no dynamic linker,
+# so it runs on distributions that do not ship the generic FHS loader — notably
+# NixOS — as well as on mainstream distributions.
 #
-# Prerequisites (see https://docs.testcabinet.ai/development/building/#portable-static-tcab-build):
+# Two binaries can be built this way:
+#   - `tcab`        — the CLI (`build-portable`)
+#   - `tcab-worker` — the run/publish worker server (`build-portable-worker`)
+# Both share the same `test-cabinet-core` and so the same prerequisites. The
+# Tauri desktop shell is NOT portable to musl: its Linux backend links system
+# WebKitGTK/GTK shared libraries that have no musl-static build (see building.md).
+#
+# Prerequisites (see https://docs.testcabinet.ai/development/building/#portable-static-builds):
 #   rustup target add x86_64-unknown-linux-musl
 #   a musl C toolchain on PATH (musl-gcc), e.g. Debian/Ubuntu `musl-tools`,
 #   needed because the `ring` TLS backend compiles a little C.
 #
-# Build it with:
-#   cargo build-portable
-# The binary is written to:
-#   target/x86_64-unknown-linux-musl/release/tcab
+# Build with:
+#   cargo build-portable          # -> target/x86_64-unknown-linux-musl/release/tcab
+#   cargo build-portable-worker   # -> target/x86_64-unknown-linux-musl/release/tcab-worker
+#
+# NOTE: `tcab-worker` drives runs by shelling out to a container runtime, so the
+# host it runs on still needs Podman or Docker on PATH (the static binary removes
+# only the glibc/loader dependency, not the runtime it orchestrates).
 
 [alias]
 build-portable = "build -p test-cabinet-cli --release --target x86_64-unknown-linux-musl"
+build-portable-worker = "build -p test-cabinet-worker --release --target x86_64-unknown-linux-musl"

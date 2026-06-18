@@ -61,16 +61,17 @@ cargo fmt --all
 cargo clippy --workspace
 ```
 
-### Portable (static) `tcab` build
+### Portable (static) builds
 
 The default build dynamically links against glibc and the generic FHS dynamic
 loader (`/lib64/ld-linux-x86-64.so.2`), which is right for mainstream Linux such
 as Ubuntu. Distributions that do not ship that loader — notably NixOS — cannot
 run such a binary directly.
 
-For those, build a fully static `tcab` via the musl target. A static binary has
+For those, build a fully static binary via the musl target. A static binary has
 no dynamic linker, so it runs anywhere, including NixOS. This is opt-in and does
-not change the default build. Prerequisites:
+not change the default build. Two headless binaries can be built this way — the
+`tcab` CLI and the `tcab-worker` server. Prerequisites:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
@@ -78,15 +79,30 @@ rustup target add x86_64-unknown-linux-musl
 # backend compiles a little C. On Debian/Ubuntu: `apt-get install musl-tools`.
 ```
 
-Then build with the alias defined in `.cargo/config.toml`:
+Then build with the aliases defined in `.cargo/config.toml`:
 
 ```sh
 cargo build-portable
-# -> target/x86_64-unknown-linux-musl/release/tcab  (statically linked)
+# -> target/x86_64-unknown-linux-musl/release/tcab         (statically linked)
+
+cargo build-portable-worker
+# -> target/x86_64-unknown-linux-musl/release/tcab-worker  (statically linked)
 ```
 
-Only the `tcab` CLI is built this way; the Tauri desktop shell is not portable to
-musl. A convenient workflow is to build the static binary in a mainstream-Linux
+The `tcab-worker` server lets you drive runs from the web UI against a worker
+running on your own host (point the UI at its `TCAB_WORKER_BIND` address; see the
+[worker configuration](/components/worker/overview/) for the environment it
+expects). The static binary removes the glibc/loader dependency but **not** the
+container runtime the worker orchestrates — the host still needs Podman or Docker
+on `PATH`, plus the harness API key(s) for the harnesses you run.
+
+The Tauri desktop shell is **not** portable to musl: its Linux backend links the
+system WebKitGTK and GTK shared libraries, which have no musl-static build. To
+run the desktop app on a non-FHS host such as NixOS, wrap the normal glibc build
+with an FHS environment (`nix-ld`, `buildFHSEnv`/`steam-run`, or a Nix derivation
+that provides `webkitgtk`) rather than building it statically.
+
+A convenient workflow is to build the static binary in a mainstream-Linux
 environment (for example a container) and copy the single binary to the host.
 
 ## Building TypeScript

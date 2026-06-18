@@ -35,7 +35,8 @@ Then run **Dev Containers: Reopen in Container** in VS Code.
 ```sh
 cargo build --workspace        # CLI, core, and the Tauri desktop shell
 cargo test --workspace
-cargo build-portable           # static musl tcab (see https://docs.testcabinet.ai/development/building/)
+cargo build-portable           # static musl tcab        (see https://docs.testcabinet.ai/development/building/)
+cargo build-portable-worker    # static musl tcab-worker (run it on the host, drive it from the web UI)
 npm install && npm run build    # the TypeScript workspaces
 ```
 

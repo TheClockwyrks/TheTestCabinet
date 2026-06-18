@@ -41,7 +41,7 @@ with `cargo fmt --all` and `cargo clippy --workspace`.
 If you are on a distribution without the generic FHS dynamic loader (notably
 NixOS), build the fully static `tcab` instead with `cargo build-portable` (an
 alias that targets `x86_64-unknown-linux-musl`); see
-[Portable build](/development/building/#portable-static-tcab-build) for the musl
+[Portable build](/development/building/#portable-static-builds) for the musl
 prerequisites.
 
 ## 2. A container runtime
