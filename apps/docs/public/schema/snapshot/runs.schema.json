@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/runs.schema.json",
+  "title": "SnapshotRunIndex",
+  "description": "The snapshot's run index (`runs.json`): a flat array of run summaries, newest first. Enough for the gallery's cards and its client-side filter (by test case, harness, model) without fetching every per-run file; the site fetches full records lazily per run page.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runs"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/RunSummary" }
+    }
+  },
+  "$defs": {
+    "RunSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "publishedAt",
+        "startedAt",
+        "finishedAt",
+        "subject",
+        "caseName",
+        "metrics",
+        "validationLoaded",
+        "state",
+        "rating",
+        "links"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" },
+        "subject": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunSubject",
+          "description": "The run's subject, verbatim from the run record."
+        },
+        "caseName": {
+          "type": "string",
+          "description": "The case display name, denormalized from case metadata for cards."
+        },
+        "metrics": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunMetrics",
+          "description": "The run's metrics, verbatim from the run record."
+        },
+        "validationLoaded": {
+          "type": "boolean",
+          "description": "validation.loaded — the primary signal on the card."
+        },
+        "state": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunState",
+          "description": "status.state, verbatim from the run record."
+        },
+        "rating": {
+          "type": "string",
+          "description": "The review rating — a per-run badge, never aggregated.",
+          "enum": ["flawless", "great", "scuffed", "broken"]
+        },
+        "links": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunLinks"
+        }
+      }
+    }
+  }
+}

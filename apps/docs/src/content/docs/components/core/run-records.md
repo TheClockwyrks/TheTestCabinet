@@ -14,6 +14,11 @@ stored with the run's other artifacts. It is written locally beside those
 artifacts when a run finishes (see [Co-located Run Files](#co-located-run-files))
 and uploaded to the backend when the run is published.
 
+Schema: [`core/run-record.schema.json`](https://docs.testcabinet.ai/schema/core/run-record.schema.json).
+The [backend's API and snapshot](/components/backend/api/) contracts reference
+this schema rather than redefining the record, so there is one source of truth
+for its shape.
+
 ## Contents
 
 A run record must capture at least the following.

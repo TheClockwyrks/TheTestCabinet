@@ -10,12 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./schema.json": "./schema/run-record.schema.json"
+    }
   },
   "files": [
-    "dist",
-    "schema"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -b",

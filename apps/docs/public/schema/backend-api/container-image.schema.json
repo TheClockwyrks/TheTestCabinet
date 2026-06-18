@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/container-image.schema.json",
+  "title": "ContainerImage",
+  "description": "A resolved harness container image reference. The backend tracks the latest pullable image per harness; a runner pulls exactly this reference by digest and never composes a registry, org, or tag of its own. Used as the GET /containers/{harness} response and the POST /containers request and response body.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["harness", "reference"],
+  "properties": {
+    "harness": {
+      "type": "string",
+      "description": "The harness slug this image provides the CLI for, or \"base\" for the shared base image the harness images build FROM.",
+      "examples": ["claude", "codex", "base"]
+    },
+    "reference": {
+      "type": "string",
+      "description": "A full, registry-qualified digest reference the runner pulls verbatim. Recorded into a run record as environment.containerImage.",
+      "minLength": 1,
+      "examples": [
+        "ghcr.io/theclockwyrks/test-cabinet-claude@sha256:1a7b…"
+      ]
+    }
+  }
+}

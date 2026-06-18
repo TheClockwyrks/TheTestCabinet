@@ -43,7 +43,18 @@ Concretely, the backend holds:
   than building its own. See [Execution](/components/core/execution/#containerization).
 - **Run results.** The published [run records](/components/core/run-records/),
   with their links to each run's public source repository and playable build.
-  This is the system of record for published runs.
+  This is the system of record for published runs, persisted in an embedded
+  SQLite database. (The exact tables are a backend implementation detail; what is
+  fixed is the [run record](/components/core/run-records/) shape stored in them
+  and the [HTTP API](/components/backend/api/) and
+  [public snapshot](/components/backend/snapshot/) that expose them.)
+
+Every component interacts with the backend over one [HTTP API](/components/backend/api/);
+that interface and the [public snapshot](/components/backend/snapshot/) it exports
+are the backend's two cross-component contracts. The backend itself is configured
+entirely through environment variables (its bind address, database and store
+paths, the repository checkout it ingests from, and its R2 and deploy-hook
+credentials) — no configuration file is required.
 
 ## Authentication
 
@@ -111,6 +122,10 @@ the only thing that crosses into public reach is an exported, read-only dataset
 of already-published runs, and the connection always flows *outward* from the
 backend — nothing reaches in. The site has no live dependency on the backend and
 remains a fully static deployment. See [Site](/components/site/overview/).
+
+The snapshot's exact file layout — the keys, the atomic-swap pointer, and the
+shape of each file the site reads — is specified in
+[Public Snapshot](/components/backend/snapshot/).
 
 ## Status
 

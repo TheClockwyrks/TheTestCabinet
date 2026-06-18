@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/resolved-test-case-version.schema.json",
+  "title": "ResolvedTestCaseVersion",
+  "description": "The full manifest a runner needs to seed and validate a run, as returned by GET /test-cases/{slug}/versions/{version}. It is the authored test-case version with host-absolute paths rewritten to definition-store-relative `source` keys (a runner has no checkout), references resolved to backend-rendered screenshot URLs rather than mockup source, and the prompt template served inline. Spec and asset bodies are NOT inlined; they are fetched per file from the artifact endpoint using each `source` key.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slug",
+    "version",
+    "name",
+    "difficulty",
+    "tags",
+    "maxRuntimeSeconds",
+    "build",
+    "promptTemplate",
+    "commonSpecs",
+    "assets",
+    "variants",
+    "commonReferences",
+    "checks"
+  ],
+  "properties": {
+    "slug": { "type": "string" },
+    "version": { "type": "string" },
+    "name": { "type": "string" },
+    "difficulty": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "summary": {
+      "type": ["string", "null"],
+      "description": "Short site-facing summary."
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "The resolved description.md body. Site-facing context, NOT seeded into the workspace."
+    },
+    "maxRuntimeSeconds": { "type": "integer" },
+    "build": { "$ref": "#/$defs/BuildCommands" },
+    "promptTemplate": {
+      "type": "string",
+      "description": "The prompt.hbs Handlebars source, served inline because the runner renders it locally and it never hits the runner's disk."
+    },
+    "commonSpecs": {
+      "type": "array",
+      "description": "Specs seeded for every variant.",
+      "items": { "$ref": "#/$defs/SpecFile" }
+    },
+    "assets": {
+      "type": "array",
+      "description": "Asset files seeded into the workspace; authored directories are expanded to one entry per file.",
+      "items": { "$ref": "#/$defs/AssetFile" }
+    },
+    "variants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Variant" }
+    },
+    "commonReferences": {
+      "type": "array",
+      "description": "Reference views shared by every variant, resolved to rendered screenshots.",
+      "items": { "$ref": "#/$defs/ResolvedReference" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Check" }
+    }
+  },
+  "$defs": {
+    "BuildCommands": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The install and build commands run to validate an implementation.",
+      "properties": {
+        "install": { "type": "string" },
+        "build": { "type": "string" }
+      }
+    },
+    "SpecFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "dest"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Store-relative key the runner passes to the artifact endpoint to fetch this file's bytes."
+        },
+        "dest": {
+          "type": "string",
+          "description": "Path in the workspace the file is seeded to."
+        },
+        "template": {
+          "type": "boolean",
+          "description": "Whether `source` is a Handlebars (.hbs) template the runner renders before seeding. Defaults to false.",
+          "default": false
+        }
+      }
+    },
+    "AssetFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "dest"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Store-relative key the runner passes to the artifact endpoint to fetch this file's bytes."
+        },
+        "dest": {
+          "type": "string",
+          "description": "Path in the workspace the file is seeded to."
+        }
+      }
+    },
+    "ResolvedReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "screenshotUrl"],
+      "description": "A reference view resolved to its backend-rendered screenshot. The runner downloads the PNG, seeds it as the visual target, and uses it as the validation baseline. The runner never receives mockup HTML.",
+      "properties": {
+        "view": { "type": "string" },
+        "screenshotUrl": {
+          "type": "string",
+          "description": "Backend path to the rendered PNG (GET /test-cases/{slug}/versions/{version}/references/{scope}/{view}.png, scope `_common` or a variant slug)."
+        }
+      }
+    },
+    "Variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "name", "specs", "references"],
+      "properties": {
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "specs": {
+          "type": "array",
+          "description": "Specs additive to the common specs, same shape.",
+          "items": { "$ref": "#/$defs/SpecFile" }
+        },
+        "references": {
+          "type": "array",
+          "description": "References additive to the common references, resolved to rendered screenshots.",
+          "items": { "$ref": "#/$defs/ResolvedReference" }
+        }
+      }
+    },
+    "Check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "name", "referenceView", "actions"],
+      "description": "A declared validation check: drive the implementation through `actions`, capture `view`, and compare against the reference identified by `referenceView`.",
+      "properties": {
+        "view": { "type": "string" },
+        "name": { "type": "string" },
+        "referenceView": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "description": "An internally tagged CheckAction list (each item has a `type`), matching the browser-driver action contract.",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

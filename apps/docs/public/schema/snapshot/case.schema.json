@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/case.schema.json",
+  "title": "SnapshotCase",
+  "description": "A per-case-version metadata file in the snapshot (`cases/<slug>/<version>.json`): the site-facing slice of a test-case version used to frame a run. Derived from the ingested manifest, with no spec bodies, no mockup HTML, and no host paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "slug",
+    "version",
+    "name",
+    "difficulty",
+    "tags",
+    "variants",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "slug": { "type": "string" },
+    "version": { "type": "string" },
+    "name": { "type": "string" },
+    "difficulty": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": ["string", "null"] },
+    "description": {
+      "type": ["string", "null"],
+      "description": "The resolved description.md body."
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "name"],
+        "properties": {
+          "slug": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "description": "The declared checks, without their action lists (those are a runner concern).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["view", "name", "referenceView"],
+        "properties": {
+          "view": { "type": "string" },
+          "name": { "type": "string" },
+          "referenceView": { "type": "string" }
+        }
+      }
+    }
+  }
+}

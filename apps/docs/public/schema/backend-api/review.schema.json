@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
+  "title": "Review",
+  "description": "A run's hand-written review: a quality rating plus a markdown writeup. Authored separately from the machine-generated run record and required for a run to be published.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rating", "writeup"],
+  "properties": {
+    "rating": {
+      "type": "string",
+      "description": "The reviewer's one-glance verdict. Never aggregated or used to rank.",
+      "enum": ["flawless", "great", "scuffed", "broken"]
+    },
+    "writeup": {
+      "type": "string",
+      "description": "The markdown writeup body, with any rating frontmatter stripped. Must be non-empty.",
+      "minLength": 1
+    }
+  }
+}

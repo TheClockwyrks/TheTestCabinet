@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/run.schema.json",
+  "title": "SnapshotRun",
+  "description": "A per-run file in the snapshot (`runs/<run-id>.json`): the full run record (links populated), plus the review and links the site needs for the detail page. The writeup is gated ahead of the embedded build; the rating is shown up front.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "record", "review", "links"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "record": {
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
+      "description": "The full RunRecord, verbatim, with `links` populated."
+    },
+    "review": {
+      "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
+    },
+    "links": {
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunLinks"
+    }
+  }
+}

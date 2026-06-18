@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://the-test-cabinet.dev/schema/run-record.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
   "title": "RunRecord",
   "description": "The central data contract for a single Test Cabinet benchmark run.",
   "type": "object",

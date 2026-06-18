@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/index.schema.json",
+  "title": "SnapshotIndex",
+  "description": "The top-level pointer object of the public snapshot (`index.json`). The backend writes everything else under a content-addressed `snapshots/<snapshotId>/` prefix first, then overwrites this single small object last — that overwrite is the atomic cut-over. The site reads this, then follows it to the versioned prefix.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "generatedAt",
+    "runCount",
+    "runsKey",
+    "runsPrefix",
+    "casesPrefix"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "snapshotId": {
+      "type": "string",
+      "description": "A timestamp+hash identifying this snapshot, used as the prefix so a new snapshot never clobbers the previous one until this pointer is swapped.",
+      "examples": ["2026-06-17T2148Z-1a7b"]
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "runCount": { "type": "integer", "minimum": 0 },
+    "runsKey": {
+      "type": "string",
+      "description": "Key of the run index (runs.json) within this snapshot."
+    },
+    "runsPrefix": {
+      "type": "string",
+      "description": "Key prefix the per-run record files live under."
+    },
+    "casesPrefix": {
+      "type": "string",
+      "description": "Key prefix the per-case-version metadata files live under."
+    }
+  }
+}

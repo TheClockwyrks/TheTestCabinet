@@ -196,7 +196,11 @@ export default defineConfig({
             {
               label: "Backend",
               collapsed: true,
-              items: ["components/backend/overview"],
+              items: [
+                "components/backend/overview",
+                "components/backend/api",
+                "components/backend/snapshot",
+              ],
             },
             {
               label: "Site",

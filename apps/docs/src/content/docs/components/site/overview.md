@@ -89,8 +89,9 @@ Because every run is its own repository with its own build, the gallery embeds
 each build rather than bundling every implementation into the site itself. This
 keeps the site lightweight as the number of published runs grows.
 
-Each build is deployed to Cloudflare Pages under a per-run branch alias, so it
-is served at its own `https://<run-id>.<project>.pages.dev` root and embedded
-from there. The gallery does not host the builds; it only points an iframe at
-each run's `pages.dev` URL, recorded as a link in the run's
-[record](/components/core/run-records/#links).
+Each build is deployed to its own Cloudflare Pages URL and embedded from there.
+The gallery does not host the builds; it only points an iframe at the deployment
+URL the deploy reported, recorded as a link in the run's
+[record](/components/core/run-records/#links). That reported URL is used verbatim
+rather than a host constructed from the run id and project, which Cloudflare's
+branch-alias sanitization may truncate.
