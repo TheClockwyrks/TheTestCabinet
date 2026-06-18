@@ -13,7 +13,9 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::{HarnessSlug, RunRecord, RunRequest};
+use test_cabinet_core::{
+    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file,
+};
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::api::AppState;
@@ -174,9 +176,18 @@ fn read_produced(out_dir: &std::path::Path) -> std::io::Result<Vec<ProducedRun>>
         let Ok(text) = std::fs::read_to_string(entry.path().join("run-record.json")) else {
             continue;
         };
-        let Ok(record) = serde_json::from_str::<RunRecord>(&text) else {
+        let Ok(mut record) = serde_json::from_str::<RunRecord>(&text) else {
             continue;
         };
+        // A produced-but-unpublished run carries no public links (publishing is
+        // what deploys the build and fills them in). But its collected static
+        // build sits right here on disk, and the worker serves it at
+        // `/runs/{id}/build/` — so surface that as the playable link, root-
+        // relative, for the UI to resolve against the worker's own origin. This
+        // is what lets a reviewer play the build before publishing it.
+        if find_build_output(&entry.path().join("implementation")).is_some() {
+            record.links.playable_build = Some(format!("/runs/{}/build/", record.id));
+        }
         runs.push(ProducedRun {
             id: record.id.clone(),
             record,
@@ -184,6 +195,41 @@ fn read_produced(out_dir: &std::path::Path) -> std::io::Result<Vec<ProducedRun>>
         });
     }
     Ok(runs)
+}
+
+/// `GET /runs/{id}/build` — serve a produced run's playable build at its root
+/// (the build's `index.html`).
+pub async fn build_root(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    serve_build(&state, &id, "")
+}
+
+/// `GET /runs/{id}/build/{*path}` — serve a file within a produced run's playable
+/// build (an asset the `index.html` references).
+pub async fn build_path(
+    State(state): State<AppState>,
+    Path((id, path)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    serve_build(&state, &id, &path)
+}
+
+/// Resolve and serve one file from a produced run's static build output, which
+/// lives beside the collected implementation at
+/// `{out_dir}/{id}/implementation/{dist|build|out}/`. The build is mounted under
+/// a per-run base path, so its HTML is relocated to resolve assets there (see
+/// [`serve_build_file`]). A `404` covers an unknown run, a run with no build, and
+/// a path that does not resolve to a file inside the build.
+fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, ApiError> {
+    let impl_dir = state.config.out_dir.join(id).join("implementation");
+    let build_dir = find_build_output(&impl_dir).ok_or_else(|| {
+        ApiError::not_found(format!("run `{id}` has no playable build to serve"))
+    })?;
+    let base_href = format!("/runs/{id}/build/");
+    let file = serve_build_file(&build_dir, rel_path, &base_href)
+        .ok_or_else(|| ApiError::not_found(format!("no build file `{rel_path}` for run `{id}`")))?;
+    Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
 }
 
 /// `GET /runs/{job}` — the current status of a submitted run.

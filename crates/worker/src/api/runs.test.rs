@@ -12,7 +12,7 @@ use test_cabinet_core::{
     RunSubject, RunTooling, TokenCounts, ValidationSummary,
 };
 
-use super::{SubmitBody, list_produced, status, submit};
+use super::{SubmitBody, build_path, build_root, list_produced, status, submit};
 use crate::api::AppState;
 use crate::config::Config;
 use crate::jobs::JobRegistry;
@@ -173,6 +173,111 @@ async fn list_produced_with_no_output_dir_is_empty() {
     let state = state_with_out_dir(out_dir);
     let Json(runs) = list_produced(State(state)).await.expect("listing succeeds");
     assert!(runs.is_empty());
+}
+
+/// Write a static build beside a run's implementation, the way a finished run's
+/// collected output sits at `{out_dir}/{id}/implementation/dist/`.
+fn write_build(out_dir: &std::path::Path, id: &str, files: &[(&str, &str)]) {
+    let build = out_dir.join(id).join("implementation").join("dist");
+    for (rel, contents) in files {
+        let target = build.join(rel);
+        std::fs::create_dir_all(target.parent().unwrap()).expect("create build dirs");
+        std::fs::write(target, contents).expect("write build file");
+    }
+}
+
+#[tokio::test]
+async fn list_produced_sets_playable_build_only_when_a_build_exists() {
+    let out_dir = std::env::temp_dir().join("tcab-worker-playable-link");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    write_record(&out_dir, &record("with-build", "2026-06-18T20:00:00Z"));
+    write_record(&out_dir, &record("no-build", "2026-06-18T10:00:00Z"));
+    // Only `with-build` collected a static build, so only it gets a playable link
+    // — the worker serves it at `/runs/{id}/build/` for review before publishing.
+    write_build(&out_dir, "with-build", &[("index.html", "<html></html>")]);
+
+    let state = state_with_out_dir(out_dir.clone());
+    let Json(runs) = list_produced(State(state)).await.expect("listing succeeds");
+    let by_id = |id: &str| runs.iter().find(|r| r.id == id).expect("run present");
+    assert_eq!(
+        by_id("with-build").record.links.playable_build.as_deref(),
+        Some("/runs/with-build/build/"),
+    );
+    assert!(by_id("no-build").record.links.playable_build.is_none());
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[tokio::test]
+async fn build_root_serves_relocated_index_and_unknown_run_is_404() {
+    let out_dir = std::env::temp_dir().join("tcab-worker-build-serve");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    write_build(
+        &out_dir,
+        "run1",
+        &[(
+            "index.html",
+            "<html><head><script src=\"/assets/x.js\"></script></head><body></body></html>",
+        )],
+    );
+    let state = state_with_out_dir(out_dir.clone());
+
+    let res = build_root(State(state.clone()), Path("run1".to_string()))
+        .await
+        .expect("the build index serves");
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .expect("read body");
+    let html = String::from_utf8(bytes.to_vec()).expect("utf-8 body");
+    // The build is relocated under its per-run base: the base tag is injected and
+    // the absolute asset reference is de-absolutized so it resolves there.
+    assert!(html.contains("<base href=\"/runs/run1/build/\">"));
+    assert!(html.contains("src=\"assets/x.js\""));
+
+    // A run with no build on disk is a 404.
+    let err = build_root(State(state), Path("ghost".to_string()))
+        .await
+        .expect_err("a missing build is a 404");
+    assert_eq!(err.status, StatusCode::NOT_FOUND);
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[tokio::test]
+async fn build_path_serves_assets_and_refuses_traversal() {
+    let out_dir = std::env::temp_dir().join("tcab-worker-build-asset");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    write_build(
+        &out_dir,
+        "run1",
+        &[("assets/x.js", "console.log('hi')")],
+    );
+    // A secret beside the build that a traversal must not reach.
+    std::fs::write(
+        out_dir.join("run1").join("implementation").join("secret"),
+        "nope",
+    )
+    .expect("write secret");
+    let state = state_with_out_dir(out_dir.clone());
+
+    let res = build_path(
+        State(state.clone()),
+        Path(("run1".to_string(), "assets/x.js".to_string())),
+    )
+    .await
+    .expect("the asset serves");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let err = build_path(
+        State(state),
+        Path(("run1".to_string(), "../secret".to_string())),
+    )
+    .await
+    .expect_err("a traversal is refused");
+    assert_eq!(err.status, StatusCode::NOT_FOUND);
+
+    let _ = std::fs::remove_dir_all(&out_dir);
 }
 
 #[tokio::test]

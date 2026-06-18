@@ -12,22 +12,18 @@
 //! A run cannot be published without a review (a hand-written rating + writeup),
 //! so the request carries one; a missing or invalid rating is a `422`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
     ArtifactCollection, BackendPublisher, HttpBackendClient, PublishConfig, PublishRequest,
-    Publisher, Rating, RunRecord, SystemCommandRunner, Writeup,
+    Publisher, Rating, RunRecord, SystemCommandRunner, Writeup, find_build_output,
 };
 
 use crate::api::AppState;
 use crate::error::ApiError;
-
-/// Candidate static build-output directories a run's implementation may produce,
-/// matching the CLI's publish path.
-const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
 
 /// The body of `POST /publish`: which finished run to publish, and its review.
 #[derive(Debug, Deserialize)]
@@ -139,14 +135,4 @@ pub async fn publish(
 fn load_record(path: &Path) -> Result<RunRecord, String> {
     let text = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
     serde_json::from_str(&text).map_err(|err| err.to_string())
-}
-
-/// Find a deployable static build output beside a run's implementation, if one
-/// was produced (the validator builds into `dist`/`build`/`out`). Returns the
-/// first that exists, or `None` so the run is published without a build.
-fn find_build_output(impl_dir: &Path) -> Option<PathBuf> {
-    BUILD_OUTPUTS
-        .iter()
-        .map(|name| impl_dir.join(name))
-        .find(|candidate| candidate.is_dir())
 }

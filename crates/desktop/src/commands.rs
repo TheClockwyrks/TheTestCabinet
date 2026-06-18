@@ -6,7 +6,7 @@
 //! strings so the UI can show them verbatim. The orchestration itself lives in
 //! the core; the shell owns no run logic of its own.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -16,11 +16,12 @@ use test_cabinet_core::{
     HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices, Orchestrator,
     PrerenderedReferenceRenderer, PublishConfig, PublishRequest, PublishedRun, Publisher, Rating,
     ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord, RunRequest, SystemCommandRunner,
-    TestCase, TestCaseCatalog, TestCaseVersion, Writeup, implementation_dir, materialize_version,
-    missing_verdicts, parse_writeup,
+    TestCase, TestCaseCatalog, TestCaseVersion, Writeup, find_build_output, implementation_dir,
+    materialize_version, missing_verdicts, parse_writeup,
 };
 
 use crate::config;
+use crate::playable::build_base_url;
 use crate::events::{WebviewEventSink, done_channel};
 
 /// A command result whose error is a plain string the webview can render.
@@ -441,7 +442,8 @@ pub fn list_runs() -> CmdResult<Vec<StoredRun>> {
         if !record_path.is_file() {
             continue;
         }
-        let record = load_record(&record_path)?;
+        let mut record = load_record(&record_path)?;
+        attach_playable_build(&mut record, &entry.path());
         let review = read_review_beside(&record_path);
         runs.push(StoredRun {
             id: record.id.clone(),
@@ -457,14 +459,29 @@ pub fn list_runs() -> CmdResult<Vec<StoredRun>> {
 /// Read one finished run by its id.
 #[tauri::command]
 pub fn read_run(id: String) -> CmdResult<StoredRun> {
-    let record_path = config::output_dir().join(&id).join("run-record.json");
-    let record = load_record(&record_path)?;
+    let run_dir = config::output_dir().join(&id);
+    let record_path = run_dir.join("run-record.json");
+    let mut record = load_record(&record_path)?;
+    attach_playable_build(&mut record, &run_dir);
     let review = read_review_beside(&record_path);
     Ok(StoredRun {
         id: record.id.clone(),
         record: Box::new(record),
         review,
     })
+}
+
+/// Point an unpublished run's `playableBuild` link at the desktop's
+/// build-serving scheme when its static build is on disk, so a reviewer can play
+/// it before publishing. A run that produced no build is left with a null link;
+/// one that already carries links (an oddity for a produced run) is untouched.
+fn attach_playable_build(record: &mut RunRecord, run_dir: &Path) {
+    if record.links.playable_build.is_some() {
+        return;
+    }
+    if find_build_output(&run_dir.join("implementation")).is_some() {
+        record.links.playable_build = Some(build_base_url(&record.id));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -605,9 +622,6 @@ pub async fn save_review(
 // Publishing a reviewed run.
 // ---------------------------------------------------------------------------
 
-/// Candidate static build output directories a run's implementation may produce.
-const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
-
 /// The result of publishing, surfaced to the UI.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -729,11 +743,3 @@ async fn review_items_for_record(record: &RunRecord) -> CmdResult<Vec<ReviewItem
     Ok(resolved.review_items_for(variant))
 }
 
-/// Find a deployable static build output beside a run's implementation, if one
-/// was produced. Returns the first of `dist`/`build`/`out` that exists.
-fn find_build_output(impl_dir: &Path) -> Option<PathBuf> {
-    BUILD_OUTPUTS
-        .iter()
-        .map(|name| impl_dir.join(name))
-        .find(|candidate| candidate.is_dir())
-}

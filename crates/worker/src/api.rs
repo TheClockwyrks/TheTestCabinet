@@ -45,6 +45,15 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{job}", get(runs::status))
         // The live harness-event stream for a job, as NDJSON.
         .route("/runs/{job}/events", get(runs::events))
+        // Serve a produced run's playable build (the static output collected
+        // beside its implementation) so a reviewer can play it before it is
+        // published. `{id}` is the run-record id the produced-run list reports.
+        // Both the bare and trailing-slash roots serve the build's index.html;
+        // the wildcard serves the assets it references (the wildcard does not
+        // match an empty tail, so the trailing-slash root is its own route).
+        .route("/runs/{id}/build", get(runs::build_root))
+        .route("/runs/{id}/build/", get(runs::build_root))
+        .route("/runs/{id}/build/{*path}", get(runs::build_path))
         // Publish a finished run: release code, deploy the build, submit to the
         // backend — the same terms a local `tcab publish` uses.
         .route("/publish", post(publish_api::publish))

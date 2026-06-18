@@ -15,6 +15,7 @@
 mod commands;
 mod config;
 mod events;
+mod playable;
 
 /// The desktop application's version string (the crate version).
 #[tauri::command]
@@ -44,6 +45,12 @@ pub fn run() {
     let _ = dotenvy::dotenv();
 
     tauri::Builder::default()
+        // Serve produced runs' playable builds to the webview so a reviewer can
+        // play an unpublished run (see `playable`). The build's HTML and assets
+        // are read from disk per request and relocated under the run's base URL.
+        .register_uri_scheme_protocol(playable::SCHEME, |_app, request| {
+            playable::handle_request(&request)
+        })
         .invoke_handler(tauri::generate_handler![
             app_version,
             backend_configured,

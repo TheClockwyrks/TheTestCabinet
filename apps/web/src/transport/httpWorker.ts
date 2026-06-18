@@ -58,6 +58,20 @@ function mapState(status: string): RunJob["state"] {
   return "running";
 }
 
+// A produced run's playable build is served by the worker itself, so the worker
+// reports the link root-relative (`/runs/{id}/build/`). Resolve it against the
+// worker's own base URL — the origin the browser actually reached it on — so the
+// console can embed the build directly. A link that is already absolute (an
+// already-published run the worker happens to hold) is left as-is.
+function resolveBuildLink(record: RunRecord, baseUrl: string): RunRecord {
+  const link = record.links.playableBuild;
+  if (!link || !link.startsWith("/")) return record;
+  return {
+    ...record,
+    links: { ...record.links, playableBuild: joinUrl(baseUrl, link) },
+  };
+}
+
 export function createHttpWorker(baseUrl: string): WorkerClient {
   return {
     async identity(): Promise<WorkerIdentity> {
@@ -112,7 +126,11 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
     async listRuns(): Promise<StoredRun[]> {
       // The worker lists the run records under its output directory as produced
       // (unpublished) runs — record plus a null review.
-      return getJson<StoredRun[]>(baseUrl, "/runs");
+      const runs = await getJson<StoredRun[]>(baseUrl, "/runs");
+      return runs.map((run) => ({
+        ...run,
+        record: resolveBuildLink(run.record, baseUrl),
+      }));
     },
 
     async readRun(id: string): Promise<StoredRun> {
@@ -121,7 +139,7 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
         `/runs/${encodeURIComponent(id)}`,
       );
       if (!job.record) throw new Error(`Run ${id} has no record yet.`);
-      return { id, record: job.record, review: null };
+      return { id, record: resolveBuildLink(job.record, baseUrl), review: null };
     },
 
     async publish(
