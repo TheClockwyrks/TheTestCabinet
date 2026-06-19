@@ -1,0 +1,16 @@
+[package]
+name = "test-cabinet-entities"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "test_cabinet_entities"
+path = "src/lib.rs"
+
+[dependencies]
+# Entity models are driver-agnostic, but they inherit the workspace's SeaORM
+# (drivers + rustls runtime) so the derive macros and column types resolve to the
+# same SeaORM the backend and migration use.
+sea-orm = { workspace = true }

@@ -9,7 +9,7 @@ reporters read published runs back from it. Container images are **not** part of
 this API — a runner pulls them from its own configured registry (see
 [Container images](#container-images)). This page is the authoritative contract
 for that interface — the cross-component surface. How the backend stores what it
-serves (its SQLite system of record, its on-disk definition store) is an internal
+serves (its SeaORM system of record, its on-disk definition store) is an internal
 concern covered in the [Overview](/components/backend/overview/), not part of
 this contract.
 

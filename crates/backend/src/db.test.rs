@@ -58,9 +58,9 @@ fn links() -> RunLinks {
     }
 }
 
-#[test]
-fn publish_then_get_round_trips_with_links_populated() {
-    let db = Db::open_in_memory().unwrap();
+#[tokio::test]
+async fn publish_then_get_round_trips_with_links_populated() {
+    let db = Db::connect_in_memory().await.unwrap();
     let outcome = db
         .publish(
             &record("r1"),
@@ -69,10 +69,11 @@ fn publish_then_get_round_trips_with_links_populated() {
             "2026-06-17T21:40:00Z",
             None,
         )
+        .await
         .unwrap();
     assert!(outcome.newly_published);
 
-    let stored = db.get_run("r1").unwrap().unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.review.rating, Rating::Great);
     // The checklist verdicts round-trip through the JSON column.
     assert_eq!(stored.review.checklist, review().checklist);
@@ -85,9 +86,9 @@ fn publish_then_get_round_trips_with_links_populated() {
     assert_eq!(stored.published_at, "2026-06-17T21:40:00Z");
 }
 
-#[test]
-fn publish_stores_events_json_and_get_run_returns_it() {
-    let db = Db::open_in_memory().unwrap();
+#[tokio::test]
+async fn publish_stores_events_json_and_get_run_returns_it() {
+    let db = Db::connect_in_memory().await.unwrap();
     let events = r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#;
     db.publish(
         &record("r1"),
@@ -96,8 +97,9 @@ fn publish_stores_events_json_and_get_run_returns_it() {
         "2026-06-17T21:40:00Z",
         Some(events),
     )
+    .await
     .unwrap();
-    let stored = db.get_run("r1").unwrap().unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.events_json.as_deref(), Some(events));
 
     // A run published without an event log stores NULL and reads back as None.
@@ -108,13 +110,14 @@ fn publish_stores_events_json_and_get_run_returns_it() {
         "2026-06-17T21:41:00Z",
         None,
     )
+    .await
     .unwrap();
-    assert_eq!(db.get_run("r2").unwrap().unwrap().events_json, None);
+    assert_eq!(db.get_run("r2").await.unwrap().unwrap().events_json, None);
 }
 
-#[test]
-fn republish_is_idempotent_and_keeps_first_published_at() {
-    let db = Db::open_in_memory().unwrap();
+#[tokio::test]
+async fn republish_is_idempotent_and_keeps_first_published_at() {
+    let db = Db::connect_in_memory().await.unwrap();
     db.publish(
         &record("r1"),
         &review(),
@@ -122,6 +125,7 @@ fn republish_is_idempotent_and_keeps_first_published_at() {
         "2026-06-17T21:40:00Z",
         None,
     )
+    .await
     .unwrap();
 
     let updated_review = StoredReview {
@@ -137,19 +141,20 @@ fn republish_is_idempotent_and_keeps_first_published_at() {
             "2026-06-18T09:00:00Z",
             None,
         )
+        .await
         .unwrap();
     assert!(!outcome.newly_published);
 
-    let stored = db.get_run("r1").unwrap().unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.review.rating, Rating::Flawless);
     // published_at is preserved from the first publish.
     assert_eq!(stored.published_at, "2026-06-17T21:40:00Z");
-    assert_eq!(db.run_count().unwrap(), 1);
+    assert_eq!(db.run_count().await.unwrap(), 1);
 }
 
-#[test]
-fn list_runs_orders_newest_first_and_paginates() {
-    let db = Db::open_in_memory().unwrap();
+#[tokio::test]
+async fn list_runs_orders_newest_first_and_paginates() {
+    let db = Db::connect_in_memory().await.unwrap();
     db.publish(
         &record("r1"),
         &review(),
@@ -157,6 +162,7 @@ fn list_runs_orders_newest_first_and_paginates() {
         "2026-06-17T10:00:00Z",
         None,
     )
+    .await
     .unwrap();
     db.publish(
         &record("r2"),
@@ -165,6 +171,7 @@ fn list_runs_orders_newest_first_and_paginates() {
         "2026-06-17T11:00:00Z",
         None,
     )
+    .await
     .unwrap();
     db.publish(
         &record("r3"),
@@ -173,24 +180,25 @@ fn list_runs_orders_newest_first_and_paginates() {
         "2026-06-17T12:00:00Z",
         None,
     )
+    .await
     .unwrap();
 
-    let (page, next) = db.list_runs(2, None).unwrap();
+    let (page, next) = db.list_runs(2, None).await.unwrap();
     assert_eq!(page.len(), 2);
     assert_eq!(page[0].record.id, "r3");
     assert_eq!(page[1].record.id, "r2");
     let next = next.expect("a next cursor");
 
-    let (page2, next2) = db.list_runs(2, Some(&next)).unwrap();
+    let (page2, next2) = db.list_runs(2, Some(&next)).await.unwrap();
     assert_eq!(page2.len(), 1);
     assert_eq!(page2[0].record.id, "r1");
     assert!(next2.is_none());
 }
 
-#[test]
-fn publish_marks_snapshot_dirty() {
-    let db = Db::open_in_memory().unwrap();
-    assert!(!db.snapshot_state().unwrap().dirty);
+#[tokio::test]
+async fn publish_marks_snapshot_dirty() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(!db.snapshot_state().await.unwrap().dirty);
     db.publish(
         &record("r1"),
         &review(),
@@ -198,19 +206,20 @@ fn publish_marks_snapshot_dirty() {
         "2026-06-17T10:00:00Z",
         None,
     )
+    .await
     .unwrap();
-    assert!(db.snapshot_state().unwrap().dirty);
+    assert!(db.snapshot_state().await.unwrap().dirty);
 
-    db.mark_uploaded("2026-06-17T10:05:00Z", 1).unwrap();
-    let state = db.snapshot_state().unwrap();
+    db.mark_uploaded("2026-06-17T10:05:00Z", 1).await.unwrap();
+    let state = db.snapshot_state().await.unwrap();
     assert!(!state.dirty);
     assert_eq!(state.last_run_count, Some(1));
     assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
 }
 
-#[test]
-fn all_runs_returns_everything_newest_first() {
-    let db = Db::open_in_memory().unwrap();
+#[tokio::test]
+async fn all_runs_returns_everything_newest_first() {
+    let db = Db::connect_in_memory().await.unwrap();
     db.publish(
         &record("r1"),
         &review(),
@@ -218,6 +227,7 @@ fn all_runs_returns_everything_newest_first() {
         "2026-06-17T10:00:00Z",
         None,
     )
+    .await
     .unwrap();
     db.publish(
         &record("r2"),
@@ -226,8 +236,9 @@ fn all_runs_returns_everything_newest_first() {
         "2026-06-17T11:00:00Z",
         None,
     )
+    .await
     .unwrap();
-    let all = db.all_runs().unwrap();
+    let all = db.all_runs().await.unwrap();
     assert_eq!(all.len(), 2);
     assert_eq!(all[0].record.id, "r2");
 }

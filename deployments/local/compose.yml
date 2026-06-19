@@ -25,7 +25,7 @@ services:
       - ../../.env.backend
     environment:
       TCAB_BACKEND_BIND: "0.0.0.0:8787"
-      TCAB_BACKEND_DB: "/state/tcab-backend.sqlite"
+      TCAB_BACKEND_DATABASE_URL: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
       TCAB_BACKEND_STORE: "/state/tcab-store"
       TCAB_BACKEND_CHECKOUT: "/checkout"
       TCAB_ENV: "local"

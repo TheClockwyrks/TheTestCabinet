@@ -33,7 +33,7 @@ COPY --from=build /src/target/release/tcab-backend /usr/local/bin/tcab-backend
 
 # State paths are mounted at runtime (an Azure Files volume in Container Apps, a
 # named volume locally). The compose file and containerapp.yaml set the matching
-# TCAB_BACKEND_DB / _STORE / _CHECKOUT values.
+# TCAB_BACKEND_DATABASE_URL / _STORE / _CHECKOUT values.
 ENV TCAB_BACKEND_BIND=0.0.0.0:8787 \
     TCAB_REFERENCE_BROWSER=/usr/bin/chromium
 

@@ -7,6 +7,8 @@ members = [
 	"crates/backend",
 	"crates/worker",
 	"crates/telemetry",
+	"crates/entities",
+	"crates/migration",
 ]
 
 [workspace.package]
@@ -71,9 +73,30 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# Embedded SQLite (the backend's system of record). `bundled` compiles SQLite
-# from source so the backend builds on a host without a system libsqlite.
-rusqlite = { version = "0.32", features = ["bundled"] }
+# The backend's system of record, accessed through SeaORM so one connection URL
+# selects the driver: SQLite for local/dev/tests, PostgreSQL for deployments.
+# `default-features = false` drops SeaORM's native-tls runtime; we re-add only the
+# two SQLx drivers and the rustls runtime so the backend keeps building statically
+# under musl with no system OpenSSL (the `cargo build-portable-backend` alias).
+# `libsqlite3-sys` is named with `bundled` so the SQLite C source is vendored and
+# compiled — the same no-system-libsqlite stance the old `rusqlite` had.
+sea-orm = { version = "1", default-features = false, features = [
+	"macros",
+	"sqlx-sqlite",
+	"sqlx-postgres",
+	"runtime-tokio-rustls",
+] }
+sea-orm-migration = { version = "1", default-features = false, features = [
+	"sqlx-sqlite",
+	"sqlx-postgres",
+	"runtime-tokio-rustls",
+] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+# The entity definitions and schema migration for the SeaORM store, factored into
+# their own crates per SeaORM convention so the migration can run at startup and
+# the entities are reusable.
+test-cabinet-entities = { path = "crates/entities" }
+test-cabinet-migration = { path = "crates/migration" }
 # SigV4 signing for R2's S3-compatible API (the backend holds the only write
 # credential). Implemented directly over `hmac`/`sha2` rather than pulling the
 # full AWS SDK, since R2 only needs PutObject.

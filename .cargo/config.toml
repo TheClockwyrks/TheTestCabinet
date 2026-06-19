@@ -13,8 +13,9 @@
 #   - `tcab-worker`  — the run/publish worker server (`build-portable-worker`)
 #   - `tcab-backend` — the definition/run store + API (`build-portable-backend`)
 # All share `test-cabinet-core` and so the same prerequisites. The backend also
-# pulls in `rusqlite` with its `bundled` feature, which compiles SQLite from
-# vendored C source via the same musl toolchain — so it links statically too. The
+# pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
+# SQLite from vendored C source via the same musl toolchain — so it links
+# statically too (its PostgreSQL driver is pure Rust over rustls). The
 # Tauri desktop shell is NOT portable to musl: its Linux backend links system
 # WebKitGTK/GTK shared libraries that have no musl-static build (see building.md).
 #

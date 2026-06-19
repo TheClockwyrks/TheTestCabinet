@@ -66,18 +66,20 @@ difference drives every choice in this section.
   Running a worker therefore means running Docker- or Podman-in-a-container, so a
   worker belongs on a **VM** (or any host with a normal container runtime), not
   on a serverless container platform that forbids nested/privileged containers.
-- **The backend is a stateful service with no container runtime.** It keeps an
-  embedded SQLite database, an on-disk definition store, and a repository
-  checkout it ingests from, and it renders reference screenshots with a headless
-  browser at ingest. It runs perfectly well on a managed container platform —
-  provided it is pinned to a **single replica** (SQLite is single-writer) with a
-  **persistent volume** and an image that includes a browser. The details are in
-  [Azure: staging & prod](/deployment/azure/#backend-on-azure-container-apps).
+- **The backend is a (mostly) stateful service with no container runtime.** It
+  keeps a database, an on-disk definition store, and a repository checkout it
+  ingests from, and it renders reference screenshots with a headless browser at
+  ingest. With its default embedded **SQLite** store it runs on a managed
+  container platform provided it is pinned to a **single replica** (SQLite is
+  single-writer) with a **persistent volume** and an image that includes a
+  browser. Pointing `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL**
+  instead lifts the single-replica and database-volume constraints. The details
+  are in [Azure: staging & prod](/deployment/azure/#backend-on-azure-container-apps).
 
 | Service | Container runtime on host? | Persistent storage | External egress |
 | ------- | ------------------------- | ------------------ | --------------- |
 | Worker | **Yes** — runs each test case in a container | Scratch only (`TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`) | Model APIs + package registries (from inside run containers); GitHub & Cloudflare when it publishes |
-| Backend | No | **Yes** — SQLite DB, definition store, ingest checkout | Cloudflare R2 (snapshot upload) + the site's deploy hook |
+| Backend | No | **Yes** — database (SQLite, or external PostgreSQL), definition store, ingest checkout | Cloudflare R2 (snapshot upload) + the site's deploy hook |
 
 ## Access: there is no app-level auth
 

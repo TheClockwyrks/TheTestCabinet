@@ -39,8 +39,9 @@ Concretely, the backend holds:
   See [Test Cases](/components/core/test-cases/#catalog-layout).
 - **Run results.** The published [run records](/components/core/run-records/),
   with their links to each run's public source repository and playable build.
-  This is the system of record for published runs, persisted in an embedded
-  SQLite database. (The exact tables are a backend implementation detail; what is
+  This is the system of record for published runs, persisted in a relational
+  database (embedded SQLite by default, or PostgreSQL) through SeaORM. (The exact
+  tables are a backend implementation detail; what is
   fixed is the [run record](/components/core/run-records/) shape stored in them
   and the [HTTP API](/components/backend/api/) and
   [public snapshot](/components/backend/snapshot/) that expose them.)
@@ -127,9 +128,10 @@ shape of each file the site reads — is specified in
 
 The backend ships in [v0.2.0](/changelogs/v0.2.0/) as the
 `test-cabinet-backend` crate (`crates/backend`): an [Axum](https://github.com/tokio-rs/axum)
-server backed by an embedded SQLite system of record and an on-disk definition
-store. It is configured entirely through environment variables — its bind
-address (`TCAB_BACKEND_BIND`), SQLite path (`TCAB_BACKEND_DB`), definition store
+server backed by a SeaORM system of record (embedded SQLite by default, or an
+external PostgreSQL) and an on-disk definition store. It is configured entirely
+through environment variables — its bind address (`TCAB_BACKEND_BIND`), database
+connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
 (`TCAB_BACKEND_STORE`), the repository checkout it ingests from
 (`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
 (`TCAB_SNAPSHOT_COALESCE_MS`), and its R2 (`TCAB_R2_*`) and deploy-hook

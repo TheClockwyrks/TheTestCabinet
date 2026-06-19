@@ -73,8 +73,9 @@ definitions from — point it at this repository:
 ```sh
 TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # Leave TCAB_BACKEND_BIND at its default 127.0.0.1:8787 for local use.
+# Leave TCAB_BACKEND_DATABASE_URL unset to use the default local SQLite file.
 # R2 + deploy-hook variables can stay blank: with them unset the backend still
-# records to SQLite and regenerates the snapshot on disk (a dev-only mode).
+# records to its database and regenerates the snapshot on disk (a dev-only mode).
 ```
 
 In `.env.worker`, point the worker at the local backend and provide the harness
@@ -95,7 +96,7 @@ Either run the binary directly from a directory containing `.env.backend`:
 ```
 
 or bring it up with the compose template, which mounts a local volume for the
-SQLite database and definition store so they survive a restart:
+default SQLite database and the definition store so they survive a restart:
 
 ```sh
 docker compose -f deployments/local/compose.yml up backend

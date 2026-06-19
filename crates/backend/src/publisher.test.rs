@@ -39,10 +39,12 @@ fn record(id: &str) -> RunRecord {
     }
 }
 
-/// Build a publisher in dev mode (no R2, no hook) over fresh temp paths.
-fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
+/// Build a publisher in dev mode (no R2, no hook): an in-memory database and a
+/// fresh temp definition store. The `TempDir` is returned so the store outlives
+/// the publisher.
+async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
     let dir = TempDir::new().unwrap();
-    let db = Arc::new(Db::open(dir.path().join("db.sqlite")).unwrap());
+    let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let store = DefinitionStore::open(dir.path().join("store")).unwrap();
     let publisher = Publisher::new(
         Arc::clone(&db),
@@ -56,7 +58,7 @@ fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
 
 #[tokio::test]
 async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
-    let (_dir, publisher, db) = dev_publisher();
+    let (_dir, publisher, db) = dev_publisher().await;
     db.publish(
         &record("r1"),
         &StoredReview {
@@ -68,22 +70,27 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
         "2026-06-17T21:40:00Z",
         None,
     )
+    .await
     .unwrap();
-    assert!(db.snapshot_state().unwrap().dirty);
+    assert!(db.snapshot_state().await.unwrap().dirty);
 
     let outcome = publisher.refresh_now().await.unwrap();
     assert_eq!(outcome.run_count, 1);
     // No hook configured in dev mode.
     assert!(!outcome.deploy_hook_fired);
     // The refresh clears the dirty flag and records the run count.
-    let state = db.snapshot_state().unwrap();
+    let state = db.snapshot_state().await.unwrap();
     assert!(!state.dirty);
     assert_eq!(state.last_run_count, Some(1));
 }
 
-#[tokio::test(start_paused = true)]
+// Real time (not the paused clock): the async SQLite pool the refresher drives
+// does its work on a blocking thread, which a paused clock cannot advance through
+// deterministically. The coalescing window is only 10ms (see `dev_publisher`), so
+// a generous real-time poll for the cleared flag is both reliable and fast.
+#[tokio::test]
 async fn coalesced_refresher_folds_a_burst_into_one_clear() {
-    let (_dir, publisher, db) = dev_publisher();
+    let (_dir, publisher, db) = dev_publisher().await;
     let handle = publisher.spawn();
 
     // A burst of three publishes, each waking the debounce loop.
@@ -99,28 +106,24 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
             &format!("2026-06-17T21:4{i}:00Z"),
             None,
         )
+        .await
         .unwrap();
         publisher.queue_refresh();
     }
-    assert!(db.snapshot_state().unwrap().dirty);
 
-    // Advance past the coalescing window; the debounce loop fires exactly one
-    // refresh, which clears the dirty flag over the full set.
-    tokio::time::advance(Duration::from_millis(50)).await;
-    // Yield so the spawned task runs to completion of the refresh.
-    tokio::task::yield_now().await;
-    tokio::time::advance(Duration::from_millis(50)).await;
-    tokio::task::yield_now().await;
-
-    // Eventually the dirty flag is cleared and all three runs are accounted for.
-    for _ in 0..10 {
-        if !db.snapshot_state().unwrap().dirty {
+    // The debounce loop coalesces the burst, converging on a clean snapshot over
+    // the full three-run set. Poll up to ~2s (far longer than the 10ms window) for
+    // that terminal state. Waiting on the converged count, rather than the first
+    // cleared flag, tolerates an early refresh that snapshots a row mid-burst —
+    // the loop always runs a final refresh once the last publish has landed.
+    let mut state = db.snapshot_state().await.unwrap();
+    for _ in 0..100 {
+        if !state.dirty && state.last_run_count == Some(3) {
             break;
         }
-        tokio::time::advance(Duration::from_millis(20)).await;
-        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        state = db.snapshot_state().await.unwrap();
     }
-    let state = db.snapshot_state().unwrap();
     assert!(!state.dirty, "the coalesced refresh cleared the dirty flag");
     assert_eq!(state.last_run_count, Some(3));
 

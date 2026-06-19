@@ -97,9 +97,9 @@ pub enum BackendError {
     #[error("{0}")]
     Unprocessable(String),
 
-    /// A SQLite operation failed.
+    /// A database operation failed (SQLite or PostgreSQL, via SeaORM).
     #[error("database error: {0}")]
-    Db(#[from] rusqlite::Error),
+    Db(#[from] sea_orm::DbErr),
 
     /// An I/O operation against the definition store failed.
     #[error("io error: {0}")]

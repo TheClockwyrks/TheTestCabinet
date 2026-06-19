@@ -11,8 +11,10 @@ use std::time::Duration;
 
 /// The default address the Axum server binds when `TCAB_BACKEND_BIND` is unset.
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
-/// The default SQLite path when `TCAB_BACKEND_DB` is unset.
-const DEFAULT_DB: &str = "./tcab-backend.sqlite";
+/// The default database URL when `TCAB_BACKEND_DATABASE_URL` is unset: a local
+/// SQLite file, created if missing (`mode=rwc`). Deployments override this with a
+/// `postgres://…` URL to run on PostgreSQL.
+const DEFAULT_DATABASE_URL: &str = "sqlite://./tcab-backend.sqlite?mode=rwc";
 /// The default on-disk definition store when `TCAB_BACKEND_STORE` is unset.
 const DEFAULT_STORE: &str = "./tcab-store";
 /// The default coalescing window, in milliseconds, when
@@ -44,8 +46,9 @@ pub struct R2Config {
 pub struct Config {
     /// Address the Axum server binds (`TCAB_BACKEND_BIND`).
     pub bind: String,
-    /// Path to the embedded SQLite file (`TCAB_BACKEND_DB`).
-    pub db_path: PathBuf,
+    /// The database connection URL (`TCAB_BACKEND_DATABASE_URL`). The scheme picks
+    /// the backend: `sqlite://…` (local/dev) or `postgres://…` (deployment).
+    pub database_url: String,
     /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
     pub checkout: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
@@ -83,7 +86,7 @@ impl Config {
     /// and the deploy-hook fire. Production deployments supply the full set.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
-        let db_path = PathBuf::from(env_or("TCAB_BACKEND_DB", DEFAULT_DB));
+        let database_url = env_or("TCAB_BACKEND_DATABASE_URL", DEFAULT_DATABASE_URL);
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
 
@@ -103,7 +106,7 @@ impl Config {
 
         Ok(Self {
             bind,
-            db_path,
+            database_url,
             checkout,
             store,
             r2,

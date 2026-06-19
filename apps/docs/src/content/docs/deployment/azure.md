@@ -78,25 +78,33 @@ collects the commands below into one annotated script you can step through.
 
 ## Backend on Azure Container Apps
 
-The backend is [stateful](/deployment/overview/#two-runtime-shapes): it owns a
-SQLite database, an on-disk definition store, a checkout it ingests from, and a
-headless browser for rendering references. Hosting it on Container Apps works,
-but three things are non-negotiable and follow directly from that:
+The backend with its default **SQLite** store is
+[stateful](/deployment/overview/#two-runtime-shapes): it owns a database file, an
+on-disk definition store, a checkout it ingests from, and a headless browser for
+rendering references. Hosting it on Container Apps that way works, but three
+things are non-negotiable and follow directly from that:
 
 1. **A single replica.** SQLite is single-writer and the store is local, so the
    app must be pinned `minReplicas = maxReplicas = 1`. This service coordinates
    publishes and serves a low-traffic API; it is not something you scale out.
-2. **A persistent volume.** Mount an Azure Files share at the paths
-   `TCAB_BACKEND_DB`, `TCAB_BACKEND_STORE`, and `TCAB_BACKEND_CHECKOUT` point to,
-   so the database, store, and checkout survive a revision or restart. Prefer an
-   **NFS** Azure Files share for the SQLite file — SMB file locking interacts
-   poorly with SQLite. A volume survives restarts but is **not** a backup; see
-   [Backups](/deployment/backups/).
+2. **A persistent volume.** Mount an Azure Files share at the SQLite database
+   path (in `TCAB_BACKEND_DATABASE_URL`) and the paths `TCAB_BACKEND_STORE` and
+   `TCAB_BACKEND_CHECKOUT` point to, so the database, store, and checkout survive
+   a revision or restart. Prefer an **NFS** Azure Files share for the SQLite file
+   — SMB file locking interacts poorly with SQLite. A volume survives restarts
+   but is **not** a backup; see [Backups](/deployment/backups/).
 3. **An image with a browser.** The stock binary has no Chromium. Build the
    backend image from
    [`deployments/azure/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/azure/backend.Dockerfile),
    which layers the `tcab-backend` binary and a headless Chromium; set
    `TCAB_REFERENCE_BROWSER` to that browser if it is not auto-detected.
+
+Constraints 1 and 2 are properties of the **SQLite** store, not the backend
+itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance
+(see [Backups](/deployment/backups/#managed-postgresql)) and the backend becomes
+stateless: no volume for the database, no single-replica pin. Constraint 3 (the
+browser image) and the volume for the definition store and checkout still apply,
+since those remain on local disk.
 
 Internal ingress only — the Container App must not have a public FQDN. Workers
 and operators reach it over the private network, and its outbound R2 and

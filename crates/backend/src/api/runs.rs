@@ -102,6 +102,7 @@ pub async fn publish(
             &published_at,
             events_json.as_deref(),
         )
+        .await
         .map_err(ApiError::from)?;
 
     // Coalesced: the dirty flag was set in the publish transaction; this only
@@ -133,6 +134,7 @@ pub async fn list(
     let (runs, next_before) = state
         .db
         .list_runs(limit, params.before.as_deref())
+        .await
         .map_err(ApiError::from)?;
     Ok(Json(ListResponse {
         runs: runs.iter().map(stored_run_out).collect(),
@@ -148,6 +150,7 @@ pub async fn get(
     let run = state
         .db
         .get_run(&id)
+        .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
     Ok(Json(stored_run_out(&run)))
@@ -164,6 +167,7 @@ pub async fn events(
     let run = state
         .db
         .get_run(&id)
+        .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
     // Stored verbatim as a JSON array; pass it through unparsed, defaulting to an

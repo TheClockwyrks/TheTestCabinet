@@ -31,7 +31,8 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
   run functionality so runs can be driven on a remote host.
 - `crates/backend` — `test-cabinet-backend` (binary `tcab-backend`). The
   [backend](/components/backend/overview/), the private definition/run store and
-  API. It keeps an embedded SQLite database (via `rusqlite`).
+  API. Its system of record is a SeaORM database — embedded SQLite by default, or
+  PostgreSQL when `TCAB_BACKEND_DATABASE_URL` points at one.
 - `crates/desktop` — `test-cabinet-desktop`. The
   [Tauri v2 desktop application](/components/tauri/overview/), the primary
   interactive way to configure, launch, and review runs locally.
@@ -91,8 +92,9 @@ For those, build a fully static binary via the musl target. A static binary has
 no dynamic linker, so it runs anywhere, including NixOS. This is opt-in and does
 not change the default build. Three headless binaries can be built this way — the
 `tcab` CLI, the `tcab-worker` server, and the `tcab-backend` store/API. (The
-backend's `rusqlite` dependency compiles SQLite from vendored C source with the
-same musl toolchain, so it links statically too.) Prerequisites:
+backend's SeaORM SQLite driver compiles SQLite from vendored C source with the
+same musl toolchain, so it links statically too; its PostgreSQL driver is pure
+Rust over rustls.) Prerequisites:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl

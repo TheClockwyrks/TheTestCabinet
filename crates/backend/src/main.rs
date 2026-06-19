@@ -49,7 +49,7 @@ async fn main() -> ExitCode {
         );
     }
 
-    let backend = match test_cabinet_backend::build(config) {
+    let backend = match test_cabinet_backend::build(config).await {
         Ok(backend) => backend,
         Err(err) => {
             eprintln!("startup error: {err}");

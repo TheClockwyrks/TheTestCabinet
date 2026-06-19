@@ -13,7 +13,8 @@
 # already runs WAL) — so pair this with the backend running on a VM.
 
 dbs:
-  # Must match TCAB_BACKEND_DB.
+  # Must match the SQLite file path in TCAB_BACKEND_DATABASE_URL. (Litestream is
+  # for the SQLite shape only; on PostgreSQL, use provider-managed backups + PITR.)
   - path: /var/lib/test-cabinet/tcab-backend.sqlite
     replicas:
       # Cloudflare R2 (S3-compatible). For Azure Blob, use `type: abs` instead.

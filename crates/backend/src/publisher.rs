@@ -100,7 +100,7 @@ impl Publisher {
         let handle = tokio::spawn(
             async move {
                 // Recover a refresh that was pending when the process last stopped.
-                if matches!(inner.db.snapshot_state(), Ok(state) if state.dirty)
+                if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty)
                     && let Err(err) = run_refresh(&inner).await
                 {
                     tracing::error!("startup snapshot refresh failed: {err}");
@@ -168,7 +168,7 @@ impl RefresherHandle {
     err,
 )]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
-    let runs = inner.db.all_runs()?;
+    let runs = inner.db.all_runs().await?;
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
@@ -199,7 +199,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let uploaded_at = generated_at
         .format(&Rfc3339)
         .map_err(|e| BackendError::Snapshot(format!("formatting uploaded_at: {e}")))?;
-    inner.db.mark_uploaded(&uploaded_at, run_count as i64)?;
+    inner.db.mark_uploaded(&uploaded_at, run_count as i64).await?;
 
     Ok(RefreshOutcome {
         run_count,

@@ -16,6 +16,8 @@ path = "src/lib.rs"
 [dependencies]
 test-cabinet-core = { path = "../core" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-entities = { workspace = true }
+test-cabinet-migration = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -32,7 +34,11 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
 http = { workspace = true }
-rusqlite = { workspace = true }
+sea-orm = { workspace = true }
+# Named directly (not used in code) so its `bundled` feature unifies onto the
+# SQLite driver SeaORM pulls transitively, vendoring SQLite's C source. This is
+# what keeps `cargo build-portable-backend` linking statically under musl.
+libsqlite3-sys = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
 hmac = { workspace = true }

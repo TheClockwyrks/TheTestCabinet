@@ -56,8 +56,10 @@ properties:
           # ── Non-secret (mirror deployments/env/backend.<env>.env.example) ──
           - name: TCAB_BACKEND_BIND
             value: "0.0.0.0:8787"
-          - name: TCAB_BACKEND_DB
-            value: "/state/tcab-backend.sqlite"
+          # SQLite file URL — the single-replica shape (rules 1 & 2 above). Point
+          # this at a postgres:// instance to run stateless (deployment/backups.md).
+          - name: TCAB_BACKEND_DATABASE_URL
+            value: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
           - name: TCAB_BACKEND_STORE
             value: "/state/tcab-store"
           - name: TCAB_BACKEND_CHECKOUT
