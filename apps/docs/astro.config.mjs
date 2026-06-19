@@ -233,6 +233,7 @@ export default defineConfig({
           items: [
             "development/building",
             "development/releasing",
+            "development/observability",
           ],
         },
       ],

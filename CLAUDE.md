@@ -54,6 +54,9 @@ Cargo and npm workspaces live in
 [`development/building.md`](apps/docs/src/content/docs/development/building.md).
 Releasing and deployment:
 [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md).
+Telemetry/observability (opt-in OpenTelemetry, the local Grafana LGTM stack, and
+prod config):
+[`development/observability.md`](apps/docs/src/content/docs/development/observability.md).
 Do not duplicate these commands here.
 
 ## Doing things (guides & quickstarts)

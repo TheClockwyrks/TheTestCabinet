@@ -6,7 +6,9 @@ This page covers cutting a release of the `tcab` binary and the one-time
 configuration behind the project's three deployed sites. For building locally see
 [Building](/development/building/); for what a *run* publishes (its source
 repository and playable build) see [Results](/components/core/results/) and
-[Publishing a Test Run Result](/guides/publishing-a-test-run-result/).
+[Publishing a Test Run Result](/guides/publishing-a-test-run-result/). For
+pointing a deployed service's telemetry at a collector see
+[Observability](/development/observability/#production-and-staging).
 
 ## Releasing the `tcab` binary
 
