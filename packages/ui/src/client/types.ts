@@ -33,11 +33,12 @@ export interface VariantInfo {
   slug: string;
   name: string;
   description: string | null;
-  // The instruction handed to the harness (prompt.hbs rendered). Optional: the
-  // public snapshot omits prompts, so it is absent on the static site.
-  prompt?: string | null;
-  // Rendered reference screenshots for this variant, when the source serves them.
-  references?: ReferenceShot[];
+  // The instruction handed to the harness (prompt.hbs rendered as a real run
+  // receives it). The backend renders it for every variant.
+  prompt: string;
+  // Rendered reference screenshots for this variant (common first, then the
+  // variant's own), resolved to loadable URLs. Empty when none are served.
+  references: ReferenceShot[];
 }
 
 export interface VersionInfo {

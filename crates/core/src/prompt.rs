@@ -21,7 +21,7 @@ use serde::Serialize;
 
 use crate::error::{Error, Result};
 use crate::execution::WORKSPACE_DIR;
-use crate::test_case::{SpecFile, TestCaseVersion, Variant};
+use crate::test_case::{TestCaseVersion, Variant};
 
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
 ///
@@ -100,29 +100,70 @@ struct PromptSpec {
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
 pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<String> {
-    let render_err = |detail: String| Error::PromptRender {
-        slug: test_case.slug.clone(),
-        version: test_case.version.clone(),
-        detail,
-    };
-
     let template = std::fs::read_to_string(&test_case.prompt_path).map_err(|err| {
-        render_err(format!(
-            "could not read {}: {err}",
-            test_case.prompt_path.display()
-        ))
+        Error::PromptRender {
+            slug: test_case.slug.clone(),
+            version: test_case.version.clone(),
+            detail: format!("could not read {}: {err}", test_case.prompt_path.display()),
+        }
     })?;
 
-    let specs = test_case.seeded_specs(variant);
+    let dests: Vec<String> = test_case
+        .seeded_specs(variant)
+        .iter()
+        .map(|spec| unix_path(&spec.dest))
+        .collect();
+
+    render_prompt_from_template(
+        &test_case.slug,
+        &test_case.version,
+        &template,
+        &variant.slug,
+        &variant.name,
+        variant.description.as_deref(),
+        &dests,
+    )
+}
+
+/// Render a prompt from its already-loaded template text and resolved variant
+/// inputs, without reading a manifest from disk.
+///
+/// This is the rendering core that [`render_prompt`] delegates to once it has
+/// read the template and resolved the seeded specs off a [`TestCaseVersion`]. It
+/// is exposed for callers that hold those pieces directly — notably the backend
+/// and desktop catalog APIs, which render a variant's prompt for the gallery's
+/// Specifications tab from stored manifest fields rather than a disk checkout.
+/// `spec_dests` are the seeded specs' workspace-relative destination paths in
+/// seed order (the common specs first, then the variant's own), exactly as
+/// [`TestCaseVersion::seeded_specs`] orders them. Rendering uses the same strict,
+/// no-escape engine as a real run, so the output matches what the harness
+/// receives.
+pub fn render_prompt_from_template(
+    slug: &str,
+    version: &str,
+    template: &str,
+    variant_slug: &str,
+    variant_name: &str,
+    variant_description: Option<&str>,
+    spec_dests: &[String],
+) -> Result<String> {
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
-        variant: TemplateVariant::new(variant),
-        specs: specs.iter().map(prompt_spec).collect(),
+        variant: TemplateVariant {
+            slug: variant_slug,
+            name: variant_name,
+            description: variant_description,
+        },
+        specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
     };
 
     template_engine()
-        .render_template(&template, &context)
-        .map_err(|err| render_err(err.to_string()))
+        .render_template(template, &context)
+        .map_err(|err| Error::PromptRender {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            detail: err.to_string(),
+        })
 }
 
 /// Render a `.hbs` spec into the text seeded into the run for the selected
@@ -169,13 +210,13 @@ fn template_engine() -> handlebars::Handlebars<'static> {
     handlebars
 }
 
-/// Turn a seeded spec into its prompt-facing form: a workspace-relative dest, an
-/// absolute in-container path, and the dest's file stem as a label.
-fn prompt_spec(spec: &SpecFile) -> PromptSpec {
-    let dest = unix_path(&spec.dest);
+/// Turn a seeded spec's workspace-relative dest into its prompt-facing form: the
+/// dest (unix-normalized), its absolute in-container path, and its file stem as a
+/// label.
+fn prompt_spec(dest: &str) -> PromptSpec {
+    let dest = unix_path(Path::new(dest));
     let path = format!("{WORKSPACE_DIR}/{dest}");
-    let name = spec
-        .dest
+    let name = Path::new(&dest)
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or_default()

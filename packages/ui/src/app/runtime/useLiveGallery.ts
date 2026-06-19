@@ -107,13 +107,11 @@ async function toTestCaseSummary(
       slug: v.slug,
       name: v.name,
       description: v.description,
-      // The rendered prompt is a run-time artifact (it interpolates the seeded
-      // specs and the container workspace path), so the catalog read can't carry
-      // it; it stays empty here and the Specifications tab simply omits the
-      // panel. Seeded inputs and references do come from the backend.
-      prompt: v.prompt ?? "",
+      // The backend renders the prompt and serves the references; the seeded
+      // spec bodies are fetched per file (see fetchSeededInputs).
+      prompt: v.prompt,
       seededInputs: await fetchSeededInputs(backend, info.slug, info.version, v.slug),
-      referenceScreenshots: (v.references ?? []).map((r) => ({
+      referenceScreenshots: v.references.map((r) => ({
         view: r.view,
         url: r.url,
       })),

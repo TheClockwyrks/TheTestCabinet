@@ -131,7 +131,7 @@ impl SnapshotBuilder {
             let (references, reference_objects) = self.case_references(manifest, &prefix);
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(manifest, references),
+                &case_metadata(manifest, references)?,
             )?);
             objects.extend(reference_objects);
         }
@@ -423,10 +423,14 @@ struct CaseReferenceOut {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CaseVariantOut<'a> {
     slug: &'a str,
     name: &'a str,
     description: Option<&'a str>,
+    /// The variant's prompt, rendered as a real run receives it, so the public
+    /// gallery's Specifications tab shows the instruction the model was handed.
+    prompt: String,
 }
 
 #[derive(Serialize)]
@@ -438,9 +442,49 @@ struct CaseCheckOut<'a> {
 }
 
 /// Build the case-metadata document for one ingested version (no spec bodies, no
-/// mockup HTML, no host paths — only the site-facing slice).
-fn case_metadata(manifest: &StoredManifest, references: Vec<CaseReferenceOut>) -> CaseMetadata<'_> {
-    CaseMetadata {
+/// mockup HTML, no host paths — only the site-facing slice). Each variant's
+/// prompt is rendered exactly as a run receives it, so the public gallery shows
+/// the same instruction the consoles do; the spec bodies and seeded inputs it
+/// references are still resolved from the backend, not inlined here.
+fn case_metadata<'a>(
+    manifest: &'a StoredManifest,
+    references: Vec<CaseReferenceOut>,
+) -> Result<CaseMetadata<'a>, BackendError> {
+    let variants = manifest
+        .variants
+        .iter()
+        .map(|v| {
+            let spec_dests: Vec<String> = manifest
+                .common_specs
+                .iter()
+                .chain(v.specs.iter())
+                .map(|spec| spec.dest.clone())
+                .collect();
+            let prompt = test_cabinet_core::render_prompt_from_template(
+                &manifest.slug,
+                &manifest.version,
+                &manifest.prompt_template,
+                &v.slug,
+                &v.name,
+                v.description.as_deref(),
+                &spec_dests,
+            )
+            .map_err(|e| {
+                BackendError::Snapshot(format!(
+                    "rendering prompt for `{}@{}` variant `{}`: {e}",
+                    manifest.slug, manifest.version, v.slug
+                ))
+            })?;
+            Ok(CaseVariantOut {
+                slug: &v.slug,
+                name: &v.name,
+                description: v.description.as_deref(),
+                prompt,
+            })
+        })
+        .collect::<Result<Vec<_>, BackendError>>()?;
+
+    Ok(CaseMetadata {
         schema_version: SCHEMA_VERSION,
         slug: &manifest.slug,
         version: &manifest.version,
@@ -449,15 +493,7 @@ fn case_metadata(manifest: &StoredManifest, references: Vec<CaseReferenceOut>) -
         tags: &manifest.tags,
         summary: manifest.summary.as_deref(),
         description: manifest.description.as_deref(),
-        variants: manifest
-            .variants
-            .iter()
-            .map(|v| CaseVariantOut {
-                slug: &v.slug,
-                name: &v.name,
-                description: v.description.as_deref(),
-            })
-            .collect(),
+        variants,
         checks: manifest
             .checks
             .iter()
@@ -468,7 +504,7 @@ fn case_metadata(manifest: &StoredManifest, references: Vec<CaseReferenceOut>) -
             })
             .collect(),
         references,
-    }
+    })
 }
 
 /// The wire string for a run state.

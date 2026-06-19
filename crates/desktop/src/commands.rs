@@ -20,7 +20,7 @@ use test_cabinet_core::{
     Publisher, Rating, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord,
     RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog, TestCaseVersion, Writeup,
     find_build_output, implementation_dir, materialize_version, missing_verdicts, parse_writeup,
-    read_event_log,
+    read_event_log, render_prompt,
 };
 
 use crate::config;
@@ -87,13 +87,29 @@ pub async fn list_versions(slug: String) -> CmdResult<Vec<String>> {
 // Version resolution & reading the specs.
 // ---------------------------------------------------------------------------
 
-/// A variant of a resolved version, flattened for the configuration picker.
+/// A rendered reference screenshot for a variant: the view it depicts and the
+/// URL the webview loads it from (the backend's reference endpoint).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceShot {
+    pub view: String,
+    pub url: String,
+}
+
+/// A variant of a resolved version, flattened for the configuration picker and
+/// the test-case detail tabs.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VariantInfo {
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
+    /// The variant's prompt, rendered as a real run receives it.
+    pub prompt: String,
+    /// Rendered reference screenshots (common first, then the variant's own),
+    /// resolved to backend URLs. Empty for a locally-resolved checkout, which has
+    /// no rendered baselines without a backend to serve them.
+    pub references: Vec<ReferenceShot>,
 }
 
 /// A resolved test-case version's site-facing framing, enough to configure a run
@@ -112,35 +128,74 @@ pub struct VersionInfo {
 }
 
 impl VersionInfo {
-    fn from_version(v: &TestCaseVersion) -> Self {
-        Self {
+    /// Build the framing the webview consumes. `reference_base` is the backend
+    /// URL whose reference endpoint serves the rendered baselines (the backend
+    /// the version was resolved from); it is `None` for a local checkout, which
+    /// has no rendered baselines, so those variants carry no references. The
+    /// prompt is rendered for every variant regardless, the same way a run
+    /// receives it.
+    fn from_version(v: &TestCaseVersion, reference_base: Option<&str>) -> CmdResult<Self> {
+        let variants = v
+            .variants
+            .iter()
+            .map(|variant| {
+                let prompt = render_prompt(v, variant)
+                    .map_err(|e| err("rendering the variant prompt", e))?;
+                Ok(VariantInfo {
+                    slug: variant.slug.clone(),
+                    name: variant.name.clone(),
+                    description: variant.description.clone(),
+                    prompt,
+                    references: reference_base
+                        .map(|base| variant_reference_shots(base, v, variant))
+                        .unwrap_or_default(),
+                })
+            })
+            .collect::<CmdResult<Vec<_>>>()?;
+        Ok(Self {
             slug: v.slug.clone(),
             version: v.version.clone(),
             name: v.name.clone(),
             difficulty: v.difficulty.clone(),
             tags: v.tags.clone(),
             summary: v.summary.clone(),
-            variants: v
-                .variants
-                .iter()
-                .map(|variant| VariantInfo {
-                    slug: variant.slug.clone(),
-                    name: variant.name.clone(),
-                    description: variant.description.clone(),
-                })
-                .collect(),
+            variants,
             max_runtime_seconds: v.max_runtime_seconds,
-        }
+        })
     }
 }
 
+/// The reference screenshots for a variant, resolved to backend URLs: the common
+/// references (served under the `_common` scope) followed by the variant's own
+/// (served under the variant slug), matching the backend's reference layout.
+fn variant_reference_shots(
+    base: &str,
+    v: &TestCaseVersion,
+    variant: &test_cabinet_core::Variant,
+) -> Vec<ReferenceShot> {
+    let base = base.trim_end_matches('/');
+    let shot = |scope: &str, view: &str| ReferenceShot {
+        view: view.to_string(),
+        url: format!(
+            "{base}/test-cases/{}/{}/references/{scope}/{view}.png",
+            v.slug, v.version
+        ),
+    };
+    v.common_references
+        .iter()
+        .map(|r| shot("_common", &r.view))
+        .chain(variant.references.iter().map(|r| shot(&variant.slug, &r.view)))
+        .collect()
+}
+
 /// Resolve an exact test-case version to its configuration framing (its name,
-/// difficulty, tags, and its variants for the variant picker).
+/// difficulty, tags, its variants for the variant picker, and each variant's
+/// rendered prompt and reference baselines for the detail tabs).
 #[tauri::command]
 #[tracing::instrument(fields(%slug, %version))]
 pub async fn resolve_version(slug: String, version: String) -> CmdResult<VersionInfo> {
     let resolved = resolve_version_inner(&slug, &version).await?;
-    Ok(VersionInfo::from_version(&resolved))
+    VersionInfo::from_version(&resolved, config::backend_url().as_deref())
 }
 
 /// Resolve a version from the backend (materializing its served definition to

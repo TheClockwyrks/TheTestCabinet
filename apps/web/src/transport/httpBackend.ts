@@ -87,6 +87,8 @@ interface ResolvedVersion {
     slug: string;
     name: string;
     description: string | null;
+    // The variant's prompt, rendered by the backend as a real run receives it.
+    prompt: string;
     specs?: SpecDescriptor[];
     reviewItems?: ReviewItem[];
     references?: ReferenceDescriptor[];
@@ -164,6 +166,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           slug: v.slug,
           name: v.name,
           description: v.description,
+          // The backend renders the prompt as a real run receives it.
+          prompt: v.prompt,
           // The common references apply to every variant; the variant's own
           // references follow. The backend serves them as backend-relative URLs,
           // so resolve each to an absolute URL the gallery can load directly (the
