@@ -27,16 +27,16 @@ IaC pipeline — adapt them rather than running them blind.
 
 ```
                  private network (Tailscale tailnet or Azure VNet)
-   ┌───────────────────────────────────────────────────────────────────┐
+   ┌─────────────────────────────────────────────────────────────────────┐
    │                                                                     │
-   │   Azure Container App            VM / VM Scale Set                   │
+   │   Azure Container App            VM / VM Scale Set                  │
    │   ┌───────────────────┐          ┌──────────────┐ ┌──────────────┐  │
    │   │  tcab-backend     │◀─────────│ tcab-worker  │ │ tcab-worker  │  │
    │   │  1 replica        │          │  + Docker    │ │  + Docker    │  │
    │   │  + volume (state) │          └──────────────┘ └──────────────┘  │
    │   └─────────┬─────────┘            each individually addressable    │
    │             │                                                       │
-   │        web console (operator browser, joins the same network)      │
+   │        web console (operator browser, joins the same network)       │
    └─────────────┼───────────────────────────────────────────────────────┘
                  │ outbound only
                  ▼
