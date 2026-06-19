@@ -2,6 +2,16 @@ Build **Carom**, a neon top-down paddle duel that runs entirely in the browser.
 
 Your project root is `{{workspace}}`. Create the game there.
 
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency. Its dependencies have already been
+installed for you — `node_modules/` is populated and Playwright's headless
+**Chromium** is downloaded — so you can build and verify right away. Build on
+this project rather than replacing it: keep the `package.json`, add your
+framework, bundler, and a `build` script on top of it, and keep the lockfile in
+sync (see below).
+
 ## What to read first
 
 The full specification is split across the files below, all already present in
@@ -26,9 +36,10 @@ Deliver a complete, polished, playable game, not a tech demo. It must:
 - **Run in the browser with no backend** — no server, accounts, database, or
   network calls at runtime; everything needed to play is self-contained.
 - Require **no API keys or credentials** of any kind to build, run, or play.
-- Be a **Node project** (a `package.json` at `{{workspace}}`) built with only
-  Node.js and npm-installed dependencies — no separately installed language
-  toolchain. **Commit a `package-lock.json`** — the build is installed with
+- Stay a **Node project** built with only Node.js and npm-installed dependencies —
+  no separately installed language toolchain. Extend the provided `package.json`
+  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after
+  you change dependencies so the lockfile matches) — the build is installed with
   `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
   static site, with no other manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory.
@@ -49,9 +60,9 @@ copying the images.
 
 ## Verify before you finish
 
-Your environment has **Playwright** and a headless **Chromium** installed, and
-network access — use them to verify your build, do not just assume it works.
-Before you consider the task complete:
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete:
 
 - Produce the **static production build** and serve it locally, then open it in
   Chromium with Playwright and confirm it **loads with no console errors** and no
@@ -61,9 +72,9 @@ Before you consider the task complete:
   against the matching image in `reference/` and against the specs, and fix what
   does not match before finishing.
 
-Playwright is preinstalled and pinned to `playwright@1.56.1`, with its Chromium
-already cached; adding that exact version to your project reuses the cached
-browser instead of downloading one. You can also drive Chromium with the global
-`playwright` CLI that is already on `PATH`. Launch Chromium with the
+Use the project's own Playwright: import it from your project (for example
+`import { chromium } from "playwright"`) or run the project-local CLI with
+`npx playwright`. There is **no** global Playwright on `PATH` — it lives in your
+project's `node_modules`, like any other dependency. Launch Chromium with the
 `--no-sandbox` argument — this container has no Chromium sandbox, so a default
 launch will fail.

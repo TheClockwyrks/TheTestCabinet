@@ -34,9 +34,10 @@ example by deleting files.
 ## Seeding
 
 Each run must be seeded into its own newly created git repository that contains
-the data a model needs to build the game: the specs of the selected variant, the
-test case's assets, and the rendered reference screenshots that serve as visual
-targets. A run selects exactly one
+the data a model needs to build the game: the selected variant's
+[workspace](/components/core/test-cases/#workspace) starter files, the specs of
+the selected variant, the test case's assets, and the rendered reference
+screenshots that serve as visual targets. A run selects exactly one
 [variant](/components/core/test-cases/#variants), and the variant's specs are
 seeded at their declared `dest` paths — the common specs plus that variant's own
 — rather than as a single specification at the repository root.
@@ -47,6 +48,12 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
+- The selected variant's [workspace](/components/core/test-cases/#workspace)
+  starter files are seeded into the repository **root** first, before the specs,
+  so the specification and reference screenshots land on top of a baseline
+  project. They are copied verbatim. Resolution rejects any collision between a
+  workspace file and a spec, asset, or reference destination, so seeding never
+  silently clobbers one with another.
 - A spec whose source is a Handlebars template (a `.hbs` extension) is
   **rendered** with the selected variant and version while seeding, and the
   result lands at the spec's `dest`; every other spec is copied verbatim. This
@@ -76,6 +83,26 @@ variant's seeded specs, the seeded assets, and the fresh git history — can be
 inspected without launching a container. Because the prompt is not seeded,
 `tcab prompt` renders and prints the instruction a run would hand the harness
 for a given variant, without seeding or launching anything.
+
+## Init
+
+A test case may declare an [init command](/components/core/test-cases/#init) that
+runs **inside the run container** once the seeded repository is mounted and
+before the harness session begins. It is where a case prepares the workspace it
+shipped — typically installing its dependencies — so the harness starts against a
+ready project. It runs as the container's unprivileged run user with the seeded
+repository as its working directory.
+
+- The init step runs **after** the container starts and the workspace is mounted,
+  and **before** the harness is invoked, so anything it installs is in place for
+  the model.
+- It is bounded by the run's maximum runtime, the same cap that bounds the
+  harness session, so a hung setup can never run unbounded.
+- A non-zero exit or a timeout aborts the run before the harness starts and tears
+  the container down — a broken setup would only waste a harness session — with
+  the captured output surfaced for diagnosis.
+- Because init needs a running container, it is **not** performed by `tcab seed`,
+  which only materializes the seeded files on disk.
 
 ## Model Authored Tests
 

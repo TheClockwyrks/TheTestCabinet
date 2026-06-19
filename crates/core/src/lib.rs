@@ -81,7 +81,7 @@ pub use run_record::{
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
     Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseCatalog,
-    TestCaseVersion, Variant,
+    TestCaseVersion, Variant, WorkspaceFile,
 };
 pub use validation::{CapturedView, CheckResult, StepResult, ValidationSummary, Validator};
 pub use validator::BuildValidator;
@@ -198,10 +198,11 @@ where
         self.renderer.render_references(test_case, variant)
     }
 
-    /// Seed a fresh git repository with the selected variant's specs, the test
-    /// case's assets, and the rendered reference screenshots. Obtain `specs` from
-    /// [`TestCaseVersion::seeded_specs`] for the chosen `variant`, which is also
-    /// the context for rendering any `.hbs` spec.
+    /// Seed a fresh git repository with the selected variant's starter
+    /// workspace, its specs, the test case's assets, and the rendered reference
+    /// screenshots. Obtain `specs` from [`TestCaseVersion::seeded_specs`] and
+    /// `workspace` from [`TestCaseVersion::workspace_for`] for the chosen
+    /// `variant`, which is also the context for rendering any `.hbs` spec.
     #[instrument(
         name = "seed",
         skip_all,
@@ -217,12 +218,14 @@ where
         test_case: &TestCaseVersion,
         variant: &Variant,
         specs: &[SpecFile],
+        workspace: &[WorkspaceFile],
         references: &[RenderedReference],
     ) -> Result<SeededRepo> {
         self.seeder.seed(&SeedRequest {
             test_case,
             variant,
             specs,
+            workspace,
             references,
         })
     }
@@ -345,17 +348,39 @@ where
         // `containerImage`.
         let environment = self.probe_environment(&handle, recorded_image).await;
 
+        // Bound the harness session by the run's maximum runtime so it can never
+        // continue unbounded. The cap comes from the test case manifest, possibly
+        // overridden on the request, and also bounds the init step below.
+        let max_runtime = request.effective_max_runtime(test_case);
+
+        // Run the test case's init command, if any, now that the seeded workspace
+        // is mounted at the working directory. This is where a case installs its
+        // dependencies or runs a setup script (for example `npm install`) before
+        // the harness starts, so the workspace it shipped is fully prepared. It
+        // runs as the container's unprivileged run user in the workspace; a
+        // non-zero exit or a timeout aborts the run — a broken setup would only
+        // waste a harness session — and the container is torn down first.
+        if let Some(init) = &test_case.init {
+            // A non-login shell so the command runs with the container's own
+            // environment (its `PATH` already carries the npm global prefix and
+            // the user-level bin dirs); a login shell could reset `PATH` from
+            // `/etc/profile` and drop them.
+            let command = vec!["sh".to_string(), "-c".to_string(), init.clone()];
+            if let Err(err) = run_init(&self.runtime, &handle, &command, max_runtime).await {
+                let _ = self.runtime.stop(&handle).await;
+                return Err(err);
+            }
+        }
+
         let invocation = HarnessInvocation {
             slug,
             model_id: request.model_id.clone(),
             prompt: render_prompt(test_case, variant)?,
         };
-        // Bound the harness session by the run's maximum runtime so it can never
-        // continue unbounded. The cap comes from the test case manifest, possibly
-        // overridden on the request. On timeout the session future is dropped
-        // (cancelling the in-flight exec) and the same `Err` arm below tears the
-        // container down, just as it does for any other harness failure.
-        let max_runtime = request.effective_max_runtime(test_case);
+        // The harness session is bounded by `max_runtime` (computed above). On
+        // timeout the session future is dropped (cancelling the in-flight exec)
+        // and the same `Err` arm below tears the container down, just as it does
+        // for any other harness failure.
         let invoke = harness.invoke(&self.runtime, &handle, &invocation, events);
         match with_runtime_cap(invoke, max_runtime, slug).await {
             Ok(mut outcome) => {
@@ -526,6 +551,10 @@ where
         // slug is what the run record attributes the run to.
         let variant = test_case.variant(&request.variant)?.clone();
         let specs = test_case.seeded_specs(&variant);
+        // The starter workspace seeded for this variant: its own when it overrides
+        // the case's workspace, otherwise the common one. Cloned so it outlives the
+        // borrow of `test_case` through the rest of the run.
+        let workspace = test_case.workspace_for(&variant).to_vec();
         // Render the selected variant's reference mockups once: the screenshots
         // are both seeded as visual targets and reused as validation baselines
         // below. A variant may add references of its own on top of the common set.
@@ -551,7 +580,7 @@ where
                 missing,
             });
         }
-        let seeded = self.seed(test_case, &variant, &specs, &references)?;
+        let seeded = self.seed(test_case, &variant, &specs, &workspace, &references)?;
         let (handle, outcome, environment) = self
             .execute(test_case, &variant, &seeded, request, events)
             .await?;
@@ -652,6 +681,57 @@ fn write_jsonl<T: serde::Serialize>(path: &std::path::Path, items: &[T]) -> Resu
     }
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+/// Run a test case's init command inside the run container under a wall-clock
+/// cap, returning an error if it exits non-zero or does not finish in time.
+///
+/// The command is bounded by the same `seconds` cap as the harness session so a
+/// hung setup step can never run unbounded. On a non-zero exit the captured
+/// output is summarized into the error so a broken setup can be diagnosed; the
+/// caller tears the container down on any error this returns.
+async fn run_init(
+    runtime: &impl ContainerRuntime,
+    handle: &ContainerHandle,
+    command: &[String],
+    seconds: u64,
+) -> Result<()> {
+    let exec = runtime.exec(handle, command);
+    let output = match tokio::time::timeout(Duration::from_secs(seconds), exec).await {
+        Ok(result) => result?,
+        Err(_elapsed) => return Err(Error::InitTimedOut { seconds }),
+    };
+    if output.exit_code != 0 {
+        return Err(Error::Init(init_failure_detail(&output)));
+    }
+    Ok(())
+}
+
+/// Summarize a failed init command's output into a single-line-ish detail: the
+/// exit code plus the tail of stderr (falling back to stdout), trimmed so an
+/// error message stays readable while still pointing at the cause.
+fn init_failure_detail(output: &execution::ExecOutput) -> String {
+    const TAIL: usize = 2000;
+    let stream = if output.stderr.trim().is_empty() {
+        output.stdout.trim_end()
+    } else {
+        output.stderr.trim_end()
+    };
+    let tail = if stream.len() > TAIL {
+        let start = stream.len() - TAIL;
+        // Start at a char boundary so slicing never splits a UTF-8 sequence.
+        let start = (start..stream.len())
+            .find(|&i| stream.is_char_boundary(i))
+            .unwrap_or(stream.len());
+        format!("…{}", &stream[start..])
+    } else {
+        stream.to_string()
+    };
+    if tail.is_empty() {
+        format!("exited with code {}", output.exit_code)
+    } else {
+        format!("exited with code {}: {tail}", output.exit_code)
+    }
 }
 
 /// Drive a harness session future under a wall-clock cap.

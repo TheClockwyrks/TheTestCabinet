@@ -57,9 +57,9 @@ Each test case version must contain:
 - **Validation criteria** describing what can be checked automatically. See
   [Validation](/components/core/validation/).
 
-The selected variant's specs, the assets, and the rendered reference screenshots
-are what gets seeded into a run; the prompt is rendered and handed to the
-harness rather than seeded. See [Execution](/components/core/execution/#seeding).
+The selected variant's [workspace](#workspace) and specs, the assets, and the
+rendered reference screenshots are what gets seeded into a run; the prompt is
+rendered and handed to the harness rather than seeded. See [Execution](/components/core/execution/#seeding).
 
 ## Manifest
 
@@ -79,6 +79,8 @@ summary = "..."              # optional one- or two-sentence abstract for the si
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
+workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
+init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 
 # How validation builds the produced implementation into a served static site.
@@ -102,6 +104,7 @@ slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 description = "..."          # optional inline prose (site-facing)
 spec = []                    # ADDITIVE specs on top of the common specs
+workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
 # ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
 # `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
 reference = [{ view = "title", path = "reference/menu-base.html" }]
@@ -154,6 +157,14 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
   (one hour) when omitted and must be greater than zero. This is the per-case
   default; a run can override it for a single invocation (for example
   `tcab run --max-runtime <seconds>`).
+- `workspace` is an optional path to a **starter directory** whose contents are
+  seeded into the root of the run before the specs (see [Workspace](#workspace)).
+  A variant may override it with its own `workspace` (see [Variants](#variants)).
+  Like every path it must resolve inside the version folder and is validated to
+  be a directory.
+- `init` is an optional **init command** run inside the run container once the
+  workspace and specs are seeded and before the harness starts (see
+  [Init](#init)). It must be non-empty when declared.
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated
@@ -265,6 +276,59 @@ reason the prompt, not the spec, carries `/work`. A spec template's seeded outpu
 must still satisfy [Self-Contained Specifications](#self-contained-specifications)
 for whichever variant renders it.
 
+## Workspace
+
+A test case may ship a **workspace**: a directory of starter files seeded into
+the **root** of the run before the specs, giving the model a baseline project to
+build on rather than a blank repository. It is declared with the top-level
+`workspace` key as a path to a directory inside the version folder (for example
+`workspaces/base`). Each file under it seeds at its path **relative to the
+workspace directory**, so `workspaces/base/package.json` lands at `package.json`
+at the run's root and `workspaces/base/src/main.ts` at `src/main.ts`.
+
+A workspace is the idiomatic way to give a case a fixed build interface and any
+tooling it needs as **project-local dependencies** rather than relying on tools
+preinstalled in the container image. Carom and Coil, for instance, ship a
+`package.json` that pins Playwright as a dev dependency, so the in-container
+browser tooling a model uses to verify its build is a visible part of its own
+project (installed by the case's [init command](#init)) instead of a global a
+model has to know is already on the machine.
+
+Workspace files are seeded **verbatim** — unlike specs, they are never rendered
+as templates. Hidden entries (names beginning with `.`) are **not** seeded: they
+are skipped to match how a version folder is distributed, so a workspace cannot
+rely on shipping a dotfile such as `.gitignore`.
+
+Because the workspace, the specs, the assets, and the rendered reference
+screenshots are all seeded into the one run tree, **no two of them may land on
+the same destination**. A collision — for example a workspace that ships a file
+at a spec's `dest`, or under `reference/` — is rejected at resolution rather than
+silently clobbering one of them. This is what keeps the workspace integrated with
+the spec-seeding step.
+
+A variant may **override** the workspace; see [Variants](#variants).
+
+## Init
+
+A test case may declare a top-level `init` command, run inside the run container
+**once the workspace and specs are seeded and mounted, and before the harness
+starts**. It is where a case prepares the workspace it shipped — installing its
+dependencies or running a setup script — so the model begins against a ready
+project. It runs as the container's unprivileged run user with the seeded
+repository as its working directory, through a shell (`sh -c`), so it can be a
+plain command (`npm install`) or invoke a file the workspace supplies
+(`python3 setup.py`). Carom and Coil use
+`npm install && npx playwright install chromium` to install the workspace's
+dependencies and download the Playwright Chromium build.
+
+The command is bounded by the run's maximum runtime (the same cap as the harness
+session), so a hung setup can never run unbounded. A non-zero exit or a timeout
+aborts the run before the harness starts and tears the container down — a broken
+setup would only waste a harness session — with the captured output surfaced for
+diagnosis. `init` is **not** run by `tcab seed`, which only materializes the
+seeded files on disk without a container; a real run is where it executes. See
+[Execution](/components/core/execution/#init).
+
 ## Variants
 
 A test case version offers one or more **variants**, and a run selects exactly
@@ -289,6 +353,17 @@ Within a single variant the common specs and the variant's own specs must not
 map two entries onto the same `dest` — a collision would clobber one of them, so
 it is rejected at resolution. (Two *different* variants reusing the same `dest`,
 as in the remapping example above, is exactly the point and is allowed.)
+
+### Variant-specific workspace
+
+A variant may declare its own `workspace`, which **replaces** the case's common
+workspace for runs of that variant rather than layering on top of it (the way
+`spec` and `reference` are additive). This lets a variant ship a different
+baseline project — a different `package.json`, configs, or starter files — while
+variants that declare none inherit the common workspace. When a variant overrides
+the workspace, only its files are seeded for that variant; the common workspace
+is not also applied. The same no-collision rule holds for the effective
+workspace of each variant (see [Workspace](#workspace)).
 
 ### Variant-specific references
 

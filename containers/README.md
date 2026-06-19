@@ -30,19 +30,25 @@ harness layer, run records, and site use.
 
 `base/` carries everything common to a run and nothing harness specific: `git`
 (each run is a fresh repository), a Node.js build toolchain (test cases produce
-web UIs that are built inside the container), Playwright with a headless Chromium
-(test cases are browser games, so a model can drive and screenshot its own build
-to verify it), system fonts (a slim base ships none, so without them Chromium and
-Canvas text render no glyphs — `fonts-dejavu-core` covers the monospace stack the
-test cases require, and Playwright adds the broader Liberation/Noto/CJK/emoji
-set), and an unprivileged `node` user whose home is configured so each harness
-image can install its CLI without root. Every harness image is `FROM` the base
-via the `BASE_IMAGE` build argument.
+web UIs that are built inside the container), the shared libraries a headless
+Chromium links against (so a test case can install Playwright and Chromium
+*itself* and drive its build in a real browser to verify it), system fonts (a
+slim base ships none, so without them Chromium and Canvas text render no glyphs —
+`fonts-dejavu-core` covers the monospace stack the test cases require), and an
+unprivileged `node` user whose home is configured so each harness image can
+install its CLI without root. Every harness image is `FROM` the base via the
+`BASE_IMAGE` build argument.
 
-Playwright is pinned to the same version as the harness's own
-`packages/browser-driver`, and the Chromium build is cached in the run user's
-`~/.cache/ms-playwright`, so a model that adds `playwright@1.61.0` to its project
-reuses the cached browser rather than downloading one at run time.
+The base image deliberately does **not** install the Playwright npm package or
+the Chromium browser binary. A test case that needs a browser provides Playwright
+as a dependency in its [workspace](/components/core/test-cases/#workspace) (for
+example a `package.json` pinning `playwright`) and installs it with the case's
+[init command](/components/core/test-cases/#init) (`npm install` then
+`npx playwright install chromium`). This keeps browser tooling a visible,
+project-local dependency a model installs and uses through its own project,
+rather than a global tool a model has to know is already on the machine. Only the
+OS-level libraries Chromium links against live in the image, because the
+unprivileged run user cannot `apt-get` them at init time.
 
 ## Building
 

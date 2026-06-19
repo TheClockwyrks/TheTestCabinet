@@ -82,6 +82,16 @@ impl RepoSeeder for FsRepoSeeder {
         let test_case = request.test_case;
         let repo = self.create_run_dir(&test_case.slug, &test_case.version)?;
 
+        // The starter workspace is seeded first, so the specs, assets, and
+        // reference screenshots below land on top of a baseline project (a
+        // `package.json` and whatever else the case ships). Each file's `dest` is
+        // relative to the run's root. Resolution already rejected any collision
+        // between a workspace file and a spec/asset/reference dest, so these
+        // copies never clobber one another.
+        for file in request.workspace {
+            copy_file(&file.source_path, &repo.join(&file.dest))?;
+        }
+
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
         // the workspace, so joining them onto the repo root is safe. A spec whose

@@ -51,12 +51,17 @@ test-cases/<slug>/<version>/
     theme.css            #   shared palette, type, field furniture
     <view>.html          #   one mockup per view (per variant where it differs)
     screenshots/         #   git-ignored; rendered by the harness per variant
+  workspaces/            # starter files seeded into the run root — SEEDED (omit if none)
+    base/                #   the common workspace (e.g. a package.json to build on)
+    <variant>/           #   a per-variant override (replaces base for that variant)
   assets/                # sprites etc. the model must use — SEEDED (omit if none)
 ```
 
-What a run actually receives: the **selected variant's** seeded specs, the
-case's assets, and the **rendered reference screenshots**. Everything marked *NOT
-seeded* is authoring- or site-side only. The prompt is rendered and handed to the
+What a run actually receives: the **selected variant's** workspace starter files
+and seeded specs, the case's assets, and the **rendered reference screenshots**.
+The case's `init` command then runs in the container to prepare the workspace
+(for example installing dependencies). Everything marked *NOT seeded* is
+authoring- or site-side only. The prompt is rendered and handed to the
 harness as the instruction; it is never written to the run's disk. The reference
 **source** is deliberately withheld so a model cannot copy the UI in place of
 building it from the spec.

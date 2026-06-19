@@ -5,9 +5,33 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage, copy_tree, with_runtime_cap,
-    write_run_streams,
+    OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage, copy_tree,
+    init_failure_detail, with_runtime_cap, write_run_streams,
 };
+use crate::execution::ExecOutput;
+
+#[test]
+fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
+    let output = ExecOutput {
+        exit_code: 7,
+        stdout: "installing…\n".to_string(),
+        stderr: "npm ERR! missing script: build\n".to_string(),
+    };
+    let detail = init_failure_detail(&output);
+    assert!(detail.contains("code 7"), "{detail}");
+    assert!(detail.contains("missing script: build"), "{detail}");
+}
+
+#[test]
+fn init_failure_detail_falls_back_to_stdout_when_stderr_is_empty() {
+    let output = ExecOutput {
+        exit_code: 1,
+        stdout: "boom on stdout".to_string(),
+        stderr: "   \n".to_string(),
+    };
+    let detail = init_failure_detail(&output);
+    assert!(detail.contains("boom on stdout"), "{detail}");
+}
 
 /// The two JSONL files must round-trip and, crucially, replaying `raw.jsonl`
 /// through a fresh parser must reproduce the events in `events.jsonl`. That
@@ -170,6 +194,8 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
             build: "npm run build".to_string(),
         },
         common_specs: Vec::new(),
+        common_workspace: Vec::new(),
+        init: None,
         asset_paths: Vec::new(),
         variants: Vec::new(),
         common_references: Vec::new(),

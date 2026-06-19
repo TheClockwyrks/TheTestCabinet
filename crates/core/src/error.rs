@@ -134,6 +134,20 @@ pub enum Error {
         seconds: u64,
     },
 
+    /// The test case's init command failed inside the run container. The detail
+    /// carries the exit code and captured output so a broken setup step can be
+    /// diagnosed. The container is torn down before this is returned.
+    #[error("init command failed: {0}")]
+    Init(String),
+
+    /// The test case's init command exceeded the run's maximum runtime before it
+    /// finished. The container is torn down before this is returned.
+    #[error("init command exceeded the maximum runtime of {seconds}s and was stopped")]
+    InitTimedOut {
+        /// The maximum runtime, in seconds, that was exceeded.
+        seconds: u64,
+    },
+
     /// The container runtime abstraction reported a failure.
     #[error("container runtime error: {0}")]
     ContainerRuntime(String),

@@ -40,6 +40,7 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
     let specs = test_case.seeded_specs(variant);
+    let workspace = test_case.workspace_for(variant);
 
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("creating output directory {}", args.out_dir.display()))?;
@@ -58,6 +59,7 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
             test_case: &test_case,
             variant,
             specs: &specs,
+            workspace,
             references: &references,
         })
         .context("seeding the run repository")?;
@@ -69,7 +71,16 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     for spec in &specs {
         println!("    {}", spec.dest.display());
     }
+    println!("  workspace:      {}", workspace.len());
+    for file in workspace {
+        println!("    {}", file.dest.display());
+    }
     println!("  assets:         {}", test_case.asset_paths.len());
+    // The init command runs only in a real run's container, not during `tcab
+    // seed`, so note it here rather than executing it against the host.
+    if let Some(init) = &test_case.init {
+        println!("  init (run-only): {init}");
+    }
     let reference_count = test_case.references_for(variant).len();
     println!(
         "  reference imgs: {} of {}",

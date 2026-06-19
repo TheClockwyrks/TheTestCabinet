@@ -122,6 +122,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     // the standard mode.
     let base = version.variant("base").expect("base variant");
     let specs = version.seeded_specs(base);
+    let workspace = version.workspace_for(base);
 
     // Stand in for a rendered reference screenshot. The seeder copies the file
     // verbatim, so its bytes do not need to be a real PNG for this contract test
@@ -140,6 +141,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             test_case: &version,
             variant: base,
             specs: &specs,
+            workspace,
             references: &references,
         })
         .expect("seed pong");
@@ -155,6 +157,10 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         dir_name.starts_with("pong-v1.0.0-"),
         "run directory is named for the test case and version: {dir_name}"
     );
+
+    // The starter workspace is seeded at the run root: Carom ships a
+    // `package.json` for the model to build on.
+    assert!(seeded.path.join("package.json").is_file());
 
     // The base variant's specs are seeded at their destination paths.
     assert!(seeded.path.join("specs/overview.md").is_file());

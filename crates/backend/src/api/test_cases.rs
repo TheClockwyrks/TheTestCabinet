@@ -100,6 +100,10 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
                 description: v.description.clone(),
                 prompt: render_variant_prompt(manifest, v)?,
                 specs: v.specs.iter().map(spec_out).collect(),
+                workspace: v
+                    .workspace
+                    .as_ref()
+                    .map(|files| files.iter().map(workspace_out).collect()),
                 references: v
                     .references
                     .iter()
@@ -128,6 +132,8 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         },
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
+        workspace: manifest.workspace.iter().map(workspace_out).collect(),
+        init: manifest.init.clone(),
         assets: manifest
             .assets
             .iter()
@@ -210,6 +216,14 @@ fn spec_out(spec: &crate::store::StoredSpec) -> SpecOut {
     }
 }
 
+/// Map a stored workspace file to the wire `{source, dest}` shape.
+fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
+    WorkspaceOut {
+        source: file.source.clone(),
+        dest: file.dest.clone(),
+    }
+}
+
 /// Build a raw-bytes response with a best-effort content type and length.
 fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
     let content_type = content_type_for(path);
@@ -280,6 +294,8 @@ pub struct VersionResponse {
     build: BuildOut,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
+    workspace: Vec<WorkspaceOut>,
+    init: Option<String>,
     assets: Vec<AssetOut>,
     variants: Vec<VariantOut>,
     common_references: Vec<ReferenceOut>,
@@ -307,6 +323,12 @@ struct AssetOut {
 }
 
 #[derive(Serialize)]
+struct WorkspaceOut {
+    source: String,
+    dest: String,
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VariantOut {
     slug: String,
@@ -315,6 +337,7 @@ struct VariantOut {
     /// The variant's prompt, rendered as a real run receives it.
     prompt: String,
     specs: Vec<SpecOut>,
+    workspace: Option<Vec<WorkspaceOut>>,
     references: Vec<ReferenceOut>,
     review_items: Vec<ReviewItemOut>,
 }
