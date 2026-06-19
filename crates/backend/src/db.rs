@@ -231,7 +231,10 @@ impl Db {
         })
         .on_conflict(
             OnConflict::column(run_link::Column::RunId)
-                .update_columns([run_link::Column::SourceRepo, run_link::Column::PlayableBuild])
+                .update_columns([
+                    run_link::Column::SourceRepo,
+                    run_link::Column::PlayableBuild,
+                ])
                 .to_owned(),
         )
         .exec(&txn)
@@ -302,7 +305,9 @@ impl Db {
             .into_model::<StoredRunRow>()
             .all(&self.conn)
             .await?;
-        rows.into_iter().map(StoredRunRow::into_stored_run).collect()
+        rows.into_iter()
+            .map(StoredRunRow::into_stored_run)
+            .collect()
     }
 
     /// The total number of published runs.
@@ -413,7 +418,10 @@ impl StoredRunRow {
     fn into_stored_run(self) -> Result<StoredRun> {
         let record: RunRecord = serde_json::from_str(&self.record_json)?;
         let rating = Rating::parse(&self.rating).ok_or_else(|| {
-            BackendError::BadRequest(format!("stored review has invalid rating `{}`", self.rating))
+            BackendError::BadRequest(format!(
+                "stored review has invalid rating `{}`",
+                self.rating
+            ))
         })?;
         let checklist: Vec<ReviewVerdict> = serde_json::from_str(&self.checklist)?;
         Ok(StoredRun {

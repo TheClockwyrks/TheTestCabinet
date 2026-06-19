@@ -199,7 +199,10 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let uploaded_at = generated_at
         .format(&Rfc3339)
         .map_err(|e| BackendError::Snapshot(format!("formatting uploaded_at: {e}")))?;
-    inner.db.mark_uploaded(&uploaded_at, run_count as i64).await?;
+    inner
+        .db
+        .mark_uploaded(&uploaded_at, run_count as i64)
+        .await?;
 
     Ok(RefreshOutcome {
         run_count,
