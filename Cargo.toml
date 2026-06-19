@@ -6,6 +6,7 @@ members = [
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",
+	"crates/telemetry",
 ]
 
 [workspace.package]
@@ -88,3 +89,36 @@ percent-encoding = "2"
 # so naming them here adds no new fetch.
 futures-util = "0.3"
 bytes = "1"
+
+# OpenTelemetry. These crates move in lockstep across the `opentelemetry`
+# ecosystem and are pinned together here so the whole workspace shares one
+# mutually-compatible set; bumping one means bumping all. They are consumed
+# through `crates/telemetry` (`test-cabinet-telemetry`), which splits the light
+# propagation deps (default features) from the heavy exporter/init deps (the
+# `otlp` feature). Transport is OTLP over HTTP/protobuf (collector port 4318),
+# using a non-blocking `reqwest` client with rustls so we inherit the same TLS
+# stack as the rest of the workspace and need no system OpenSSL or `protoc`.
+#
+# `http` is named here so the propagation helpers can speak in terms of
+# `http::HeaderMap` without leaning on a transitive copy from axum/reqwest.
+http = "1"
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+	"http-proto",
+	"reqwest-blocking-client",
+	"trace",
+	"metrics",
+	"logs",
+] }
+# `reqwest-rustls` routes the OTLP exporter's reqwest client through rustls,
+# matching the workspace's no-system-OpenSSL stance. The propagation helpers use
+# only the no-default-feature core (the `HeaderExtractor`/`HeaderInjector`).
+opentelemetry-http = { version = "0.32", default-features = false }
+# `semconv_experimental` exposes the stabilized-but-feature-gated keys we use,
+# notably `deployment.environment.name`.
+opentelemetry-semantic-conventions = { version = "0.32", features = [
+	"semconv_experimental",
+] }
+opentelemetry-appender-tracing = "0.32"
+tracing-opentelemetry = "0.33"
