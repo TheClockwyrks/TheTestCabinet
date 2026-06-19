@@ -1,0 +1,26 @@
+# tcab-backend as a systemd service — for the VM fallback where the backend runs
+# on a host instead of Azure Container Apps (see deployment/azure.md).
+#
+# Install:
+#   sudo cp deployments/systemd/tcab-backend.service /etc/systemd/system/
+#   sudo install -Dm600 deployments/env/backend.<env>.env.example /etc/test-cabinet/backend.env  # then edit
+#   sudo systemctl enable --now tcab-backend.service
+#
+# The host needs a headless Chromium for reference rendering at ingest; set
+# TCAB_REFERENCE_BROWSER in the env file if it is not auto-detected.
+
+[Unit]
+Description=The Test Cabinet backend (tcab-backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/test-cabinet/backend.env
+WorkingDirectory=/var/lib/test-cabinet
+ExecStart=/usr/local/bin/tcab-backend
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+# Local backend for service-driven testing.
+#
+# This brings up ONLY the backend, in a container, with a local volume for its
+# state (SQLite DB + definition store + ingest checkout). The WORKER is NOT here
+# on purpose: a worker starts a container per run, so it runs directly on the
+# host using the host's container runtime. See
+# apps/docs/src/content/docs/deployment/local.md.
+#
+#   docker compose -f deployments/local/compose.yml up backend
+#
+# Then, in a separate shell, run the worker on the host:
+#
+#   ./target/debug/tcab-worker      # with .env.worker in the working directory
+
+services:
+  backend:
+    # Built from the same image used for Azure Container Apps, so the local
+    # backend has the headless Chromium it needs to render references at ingest.
+    build:
+      context: ../..
+      dockerfile: deployments/azure/backend.Dockerfile
+    # The backend loads .env.backend (copied from the repo-root example). The
+    # in-container paths below override the file's host-oriented defaults.
+    env_file:
+      - ../../.env.backend
+    environment:
+      TCAB_BACKEND_BIND: "0.0.0.0:8787"
+      TCAB_BACKEND_DB: "/state/tcab-backend.sqlite"
+      TCAB_BACKEND_STORE: "/state/tcab-store"
+      TCAB_BACKEND_CHECKOUT: "/checkout"
+      TCAB_ENV: "local"
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      # Persistent state across restarts.
+      - backend-state:/state
+      # The repository, ingested via `POST /ingest`. Mounted read-only.
+      - ../..:/checkout:ro
+
+volumes:
+  backend-state:

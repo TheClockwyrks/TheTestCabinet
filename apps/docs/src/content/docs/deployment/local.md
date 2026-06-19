@@ -1,0 +1,144 @@
+---
+title: Local
+---
+
+This page runs the [backend](/components/backend/overview/), one
+[worker](/components/worker/overview/), and the
+[web console](/components/web/overview/) together on a single machine. It is the
+fastest way to see the whole service-driven flow — resolve a definition, launch a
+run on a remote-style worker, publish — without any cloud setup, and it is the
+environment to reach for when developing or debugging the services themselves.
+
+This is distinct from simply running a [CLI](/components/cli/overview/) or
+[Tauri](/components/tauri/overview/) run, which embeds its own runner and needs
+no backend or worker process. Here you run the services as their own processes,
+exactly as a deployed environment does, just all on `localhost`.
+
+## Prerequisites
+
+- A **container runtime** (Docker or Podman) on the host — the worker needs it to
+  execute runs. See [Execution](/components/core/execution/) and
+  [first-time setup](/guides/first-time-setup/).
+- The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
+  built or pullable for whichever harness you intend to run.
+- The two service binaries, built per [Building](/development/building/):
+  `cargo build -p test-cabinet-backend` and `cargo build -p test-cabinet-worker`
+  (or the `build-portable-*` aliases for a static binary). The web console is a
+  Vite app under `apps/web`.
+- A harness API key for the harness you will run (for example
+  `ANTHROPIC_API_KEY` for `claude`).
+
+## Why the worker runs on the host
+
+A natural instinct is to put everything in one `docker compose` stack. The
+backend is happy in a container, but the worker starts a **container per run**,
+so containerizing it means giving it access to the host's container runtime
+(bind-mounting the Docker socket) and ensuring the run's
+[work directory](/components/worker/overview/) is a path the host shares — the
+nested run containers are started by the host's daemon, so `TCAB_WORK_DIR` must
+resolve to the *same* path on the host, not just inside the worker container.
+That is the same caveat the
+[`.env.worker.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.worker.example)
+flags for macOS/Windows.
+
+To keep the moving parts obvious, **run the worker directly on the host** and
+only optionally containerize the backend. The
+[`deployments/local/compose.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/compose.yml)
+template brings the backend up in a container with a local volume for its state;
+the worker stays a host process throughout.
+
+## 1. Configure the services
+
+Copy the repo-root example env files and fill them in. These remain the
+authoritative list of every variable each service reads.
+
+```sh
+cp .env.backend.example .env.backend
+cp .env.worker.example  .env.worker
+```
+
+In `.env.backend`, the only required value is the checkout the backend ingests
+definitions from — point it at this repository:
+
+```sh
+TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
+# Leave TCAB_BACKEND_BIND at its default 127.0.0.1:8787 for local use.
+# R2 + deploy-hook variables can stay blank: with them unset the backend still
+# records to SQLite and regenerates the snapshot on disk (a dev-only mode).
+```
+
+In `.env.worker`, point the worker at the local backend and provide the harness
+key for whatever you will run:
+
+```sh
+TCAB_BACKEND_URL=http://127.0.0.1:8787
+# Leave TCAB_WORKER_BIND at its default 127.0.0.1:8788.
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+## 2. Start the backend
+
+Either run the binary directly from a directory containing `.env.backend`:
+
+```sh
+./target/debug/tcab-backend
+```
+
+or bring it up with the compose template, which mounts a local volume for the
+SQLite database and definition store so they survive a restart:
+
+```sh
+docker compose -f deployments/local/compose.yml up backend
+```
+
+Once it is up, ingest the repository so the catalog is populated:
+
+```sh
+curl -X POST http://127.0.0.1:8787/ingest
+```
+
+Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
+`curl http://127.0.0.1:8787/test-cases`.
+
+## 3. Start the worker
+
+From a directory containing `.env.worker`, on the host:
+
+```sh
+./target/debug/tcab-worker
+```
+
+It reads `TCAB_BACKEND_URL`, resolves definitions from the backend you just
+started, and binds `127.0.0.1:8788`. Check `curl http://127.0.0.1:8788/healthz` —
+the response reports the worker's identity and the backend it is bound to, which
+is a quick way to confirm the two agree.
+
+## 4. Start the web console
+
+Run the console's dev server and open it in a browser:
+
+```sh
+npm run dev -w @test-cabinet/web
+```
+
+In the UI, set the backend to `http://127.0.0.1:8787` and add the worker at
+`http://127.0.0.1:8788`. The console verifies the worker is bound to the same
+backend before it will launch runs on it. From there you can launch a run on the
+local worker, watch its [event stream](/components/core/events/) live, and review
+the result exactly as you would against a remote environment.
+
+## Telemetry (optional)
+
+To watch traces across `tcab-backend` → `tcab-worker` locally, enable the
+bundled Grafana LGTM stack and point each process at it. That is fully described
+under [Observability](/development/observability/) — note the
+[endpoint-duality rule](/development/observability/#endpoint-duality-host-vs-container):
+a backend running inside the devcontainer uses `http://lgtm:4318`, while a worker
+on the host uses `http://localhost:4318`. Leaving `OTEL_EXPORTER_OTLP_ENDPOINT`
+unset keeps both on plain stdout logging.
+
+## Next
+
+When this works end to end, the same two binaries deploy unchanged to
+[staging and prod on Azure](/deployment/azure/) — what changes is where they bind
+and how they are supervised, not how they are configured.

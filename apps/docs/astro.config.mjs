@@ -236,6 +236,19 @@ export default defineConfig({
             "development/observability",
           ],
         },
+        // Standing up the backend and worker services as real environments.
+        // Releasing (above) covers the static sites + binary; this covers the
+        // always-on services. Runnable templates live in the repo's
+        // `deployments/` folder, which these pages link to.
+        {
+          label: "Deployment",
+          collapsed: true,
+          items: [
+            "deployment/overview",
+            "deployment/local",
+            "deployment/azure",
+          ],
+        },
       ],
     }),
   ],

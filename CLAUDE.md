@@ -52,8 +52,11 @@ to).
 The canonical repo layout and the build/format/lint/test commands for both the
 Cargo and npm workspaces live in
 [`development/building.md`](apps/docs/src/content/docs/development/building.md).
-Releasing and deployment:
+Releasing the `tcab` binary and the static sites (gallery, docs, per-run builds):
 [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md).
+Deploying the always-on **services** (backend + workers) as local/staging/prod
+environments — with runnable templates in [`deployments/`](deployments/):
+[`deployment/`](apps/docs/src/content/docs/deployment/).
 Telemetry/observability (opt-in OpenTelemetry, the local Grafana LGTM stack, and
 prod config):
 [`development/observability.md`](apps/docs/src/content/docs/development/observability.md).

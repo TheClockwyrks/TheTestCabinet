@@ -1,0 +1,28 @@
+# tcab-worker as a systemd service on a VM. The worker-cloud-init.yaml template
+# writes an equivalent unit on first boot; this standalone copy is for installing
+# a worker on an existing host (see deployment/azure.md).
+#
+# Install:
+#   sudo cp deployments/systemd/tcab-worker.service /etc/systemd/system/
+#   sudo install -Dm600 deployments/env/worker.<env>.env.example /etc/test-cabinet/worker.env  # then edit
+#   sudo systemctl enable --now tcab-worker.service
+#
+# Requires Docker (or another container runtime) on the host — the worker runs
+# each test case in a container.
+
+[Unit]
+Description=The Test Cabinet worker (tcab-worker)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/test-cabinet/worker.env
+WorkingDirectory=/var/lib/test-cabinet
+ExecStart=/usr/local/bin/tcab-worker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
