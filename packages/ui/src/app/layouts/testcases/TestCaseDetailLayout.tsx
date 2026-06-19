@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { NavLink, useLocation, useParams } from "react-router";
+import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
@@ -38,6 +39,7 @@ export function TestCaseDetailLayout({
 }: TestCaseDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
+  const { canExecute } = useGalleryData();
   const { testCases } = useTestCases();
   const testCase = testCases.find((entry) => entry.slug === slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
@@ -104,20 +106,37 @@ export function TestCaseDetailLayout({
             </NavLink>
           ))}
         </nav>
-        <label className={styles.variant}>
-          <span className={styles.variantLabel}>Variant</span>
-          <select
-            className={styles.variantSelect}
-            value={variant.slug}
-            onChange={(event) => setVariant(event.target.value)}
-          >
-            {testCase.variants.map((entry) => (
-              <option key={entry.slug} value={entry.slug}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className={styles.actions}>
+          <label className={styles.variant}>
+            <span className={styles.variantLabel}>Variant</span>
+            <select
+              className={styles.variantSelect}
+              value={variant.slug}
+              onChange={(event) => setVariant(event.target.value)}
+            >
+              {testCase.variants.map((entry) => (
+                <option key={entry.slug} value={entry.slug}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* Only the consoles can launch runs; the static site omits this and
+              has no new-run form to land on. The selected variant carries
+              through so the run form opens on exactly what is being viewed. */}
+          {canExecute && (
+            <Link
+              className={styles.run}
+              to={routes.runNew({
+                slug: testCase.slug,
+                version: testCase.latestVersion,
+                variant: variant.slug,
+              })}
+            >
+              Run ▸
+            </Link>
+          )}
+        </div>
       </div>
 
       {children({ testCase, variant })}

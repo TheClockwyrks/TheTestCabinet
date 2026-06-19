@@ -31,10 +31,27 @@ export const routes = {
   settingsConnections: (): string => "/settings/connections",
   runs: (): string => "/runs",
   // Run-execution routes (consoles only; the static site never links to them).
-  runNew: (): string => "/runs/new",
+  // `runNew` optionally carries a test case to pre-select, so the Run button on
+  // a test case lands on the new-run form with that case already chosen.
+  runNew: (preselect?: {
+    slug?: string;
+    version?: string;
+    variant?: string;
+  }): string => {
+    const params = new URLSearchParams();
+    if (preselect?.slug) params.set("slug", preselect.slug);
+    if (preselect?.version) params.set("version", preselect.version);
+    if (preselect?.variant) params.set("variant", preselect.variant);
+    const query = params.toString();
+    return query ? `/runs/new?${query}` : "/runs/new";
+  },
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
   runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
+  runSpecs: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/specs`,
+  runReferences: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/references`,
   runPlay: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/play`,
   runMetrics: (runId: string): string =>
@@ -69,6 +86,8 @@ export const routePatterns = {
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
+  runSpecs: "/runs/:runId/specs",
+  runReferences: "/runs/:runId/references",
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
