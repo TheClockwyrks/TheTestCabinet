@@ -21,7 +21,7 @@ actually shipped, see the [changelogs](/changelogs/v0.2.0/).
   - Evaluate results with and without Chromium/Playwright provided
 - Use of less common languages
   - This would check how well models are able to generalize knowledge to more
-    infrequently languages
+    infrequently used languages
 - Support for alternate execution modes
   - Ralph loop
   - Issue-based code generation
