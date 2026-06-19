@@ -22,6 +22,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod ingest;
+pub mod metrics;
 pub mod publisher;
 pub mod r2;
 pub mod render;

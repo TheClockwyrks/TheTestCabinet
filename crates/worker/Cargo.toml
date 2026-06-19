@@ -15,6 +15,9 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# The worker is a binary: it owns telemetry init, so it pulls the heavy `otlp`
+# feature (the propagation-only default is for libraries like `core`).
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -30,7 +33,10 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+# Used directly for the OTel meter and request/run metric instruments. The
+# `tracing-subscriber` subscriber is now installed by `test-cabinet-telemetry`.
+opentelemetry = { workspace = true }
+http = { workspace = true }
 
 futures-util = { workspace = true }
 bytes = { workspace = true }

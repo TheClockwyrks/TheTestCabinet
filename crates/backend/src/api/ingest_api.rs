@@ -17,6 +17,7 @@ use super::AppState;
 ///
 /// The scan touches the filesystem and renders references (CPU/process-bound), so
 /// it runs on a blocking thread to keep the async runtime responsive.
+#[tracing::instrument(name = "ingest", skip(state, body), err(Debug))]
 pub async fn ingest(
     State(state): State<AppState>,
     body: Option<Json<IngestBody>>,

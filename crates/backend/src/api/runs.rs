@@ -25,6 +25,16 @@ const MAX_LIMIT: usize = 200;
 /// `POST /runs` — submit a published run (record + review + links). Validates
 /// the review gate, ingests into SQLite, then queues a coalesced snapshot
 /// refresh. Idempotent on `record.id` (201 newly published, 200 re-publish).
+#[tracing::instrument(
+    name = "runs.publish",
+    skip(state, request),
+    fields(
+        run.id = %request.record.id,
+        case.slug = %request.record.subject.test_case_slug,
+        case.version = %request.record.subject.test_case_version,
+    ),
+    err(Debug),
+)]
 pub async fn publish(
     State(state): State<AppState>,
     Json(request): Json<PublishRequest>,
@@ -98,6 +108,9 @@ pub async fn publish(
     // wakes the debounce loop, which folds a burst into one regen/upload/rebuild.
     state.publisher.queue_refresh();
 
+    // Domain metric: one accepted publish, split by first-publish vs re-publish.
+    crate::metrics::record_run_published(outcome.newly_published);
+
     let body = PublishResponse {
         id: request.record.id.clone(),
         newly_published: outcome.newly_published,
@@ -167,6 +180,7 @@ pub async fn events(
 }
 
 /// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire.
+#[tracing::instrument(name = "snapshot.refresh", skip(state), err(Debug))]
 pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshResponse>, ApiError> {
     let outcome = state
         .publisher

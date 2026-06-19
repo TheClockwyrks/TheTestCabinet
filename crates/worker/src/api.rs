@@ -10,14 +10,19 @@
 //! shared [`AppState`] and assembles the router.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{MatchedPath, Request, State};
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::jobs::JobRegistry;
+use crate::metrics::Metrics;
 
 mod publish_api;
 mod runs;
@@ -29,6 +34,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The registry of submitted run jobs.
     pub jobs: JobRegistry,
+    /// The worker's OTel metric instruments.
+    pub metrics: Metrics,
 }
 
 /// The contract version this worker reports from `/healthz`. The worker tracks
@@ -62,6 +69,31 @@ pub fn router(state: AppState) -> Router {
         // Publish a finished run: release code, deploy the build, submit to the
         // backend — the same terms a local `tcab publish` uses.
         .route("/publish", post(publish_api::publish))
+        // Record request count + latency for every handled request. Runs inside
+        // the trace span (added below) so its timing covers the same work the
+        // span does.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            record_request_metrics,
+        ))
+        // Graft the caller's W3C trace context (if any) onto the request span so
+        // server spans continue the caller's trace. A no-op when no propagator is
+        // installed (the fmt-only fallback) or the request carries no context.
+        .layer(axum::middleware::from_fn(accept_inbound_context))
+        // Emit a span per request/response. Naming the span by the matched route
+        // (e.g. `GET /runs/{job}`) keeps cardinality bounded — the concrete id is
+        // a span field, not part of the span name.
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+                let method = request.method();
+                let route = request
+                    .extensions()
+                    .get::<MatchedPath>()
+                    .map(MatchedPath::as_str)
+                    .unwrap_or_else(|| request.uri().path());
+                tracing::info_span!("http.request", %method, route, otel.name = %format!("{method} {route}"))
+            }),
+        )
         // The browser UIs reach the worker from a different localhost origin, so
         // requests — including the best-effort `/healthz` identity probe — are
         // cross-origin. The worker shares the backend's no-auth, reachability-is-
@@ -69,6 +101,41 @@ pub fn router(state: AppState) -> Router {
         // are sent, so a wildcard origin is valid.
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Middleware: recover the caller's W3C trace context from the request headers
+/// and attach it to the current request span, so the worker's server span is a
+/// child of the caller's trace. Degrades to a no-op when no propagator is
+/// installed or the request carries no context.
+async fn accept_inbound_context(request: Request, next: Next) -> Response {
+    test_cabinet_telemetry::propagation::accept_inbound(request.headers());
+    next.run(request).await
+}
+
+/// Middleware: time the request and record the request count + latency metrics,
+/// tagged by the matched route, method, and response status.
+async fn record_request_metrics(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // Resolve the matched route before consuming the request; fall back to the
+    // raw path for an unrouted request (e.g. a 404).
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|matched| matched.as_str().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
+    let method = request.method().to_string();
+
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let elapsed = started.elapsed().as_secs_f64();
+
+    state
+        .metrics
+        .record_request(&route, &method, response.status().as_u16(), elapsed);
+    response
 }
 
 /// `GET /healthz` — liveness/readiness probe.

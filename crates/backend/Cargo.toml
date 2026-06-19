@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -29,7 +30,8 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+opentelemetry = { workspace = true }
+http = { workspace = true }
 rusqlite = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }

@@ -15,6 +15,7 @@ use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file};
 use tokio::sync::broadcast::error::RecvError;
+use tracing::Instrument as _;
 
 use crate::api::AppState;
 use crate::error::ApiError;
@@ -99,10 +100,26 @@ pub async fn submit(
         work_dir: state.config.work_dir.clone(),
     };
 
+    state.metrics.record_run_submitted();
+
+    // The spawned run outlives this request, so it must not be traced under the
+    // request span (which ends when submit returns). Create a dedicated job span,
+    // parented to the current request span so the run is reachable from the
+    // submitting trace, and attach it to the background future so the whole run —
+    // up to an hour of work — is traced under one span keyed by the job id.
+    let job_span = tracing::info_span!(
+        "run.job",
+        job_id = %job_id,
+        test_case = %request.test_case_slug,
+        variant = %request.variant,
+        harness = request.harness.as_str(),
+        model = %request.model_id,
+    );
+
     // The run can last up to an hour; drive it on a detached task so submit can
     // return now. The task records its outcome on the job, which the status and
     // event endpoints surface.
-    tokio::spawn(drive_run(ctx, request, job));
+    tokio::spawn(drive_run(ctx, request, job).instrument(job_span));
 
     let ack = SubmitAck {
         job_id: job_id.clone(),

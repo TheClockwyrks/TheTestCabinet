@@ -44,6 +44,12 @@ impl R2Client {
     /// Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body` and the
     /// given content type, signed with SigV4. Returns an error when the request
     /// cannot be sent or R2 responds with a non-2xx status.
+    #[tracing::instrument(
+        name = "r2.put_object",
+        skip(self, body),
+        fields(r2.key = %key, r2.bytes = body.len()),
+        err,
+    )]
     pub async fn put_object(&self, key: &str, body: Vec<u8>, content_type: &str) -> Result<()> {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
@@ -87,6 +93,12 @@ impl R2Client {
             self.config.access_key_id
         );
 
+        // Inject the current span's W3C trace context as extra headers so the
+        // upload joins the refresh trace. These are not in `signed_headers`, so
+        // R2 ignores them for signature validation; a no-op when telemetry is off.
+        let mut trace_headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut trace_headers);
+
         let url = format!("{}{canonical_uri}", scheme_prefix(&self.config.endpoint));
         let response = self
             .http
@@ -96,6 +108,7 @@ impl R2Client {
             .header("x-amz-content-sha256", payload_hash)
             .header("Authorization", authorization)
             .header("Content-Type", content_type)
+            .headers(trace_headers)
             .body(body)
             .send()
             .await

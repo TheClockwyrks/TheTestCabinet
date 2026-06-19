@@ -19,6 +19,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::{Notify, mpsc};
+use tracing::Instrument;
 
 use crate::db::Db;
 use crate::error::{BackendError, Result};
@@ -92,32 +93,39 @@ impl Publisher {
     pub fn spawn(&self) -> RefresherHandle {
         let inner = Arc::clone(&self.inner);
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-        let handle = tokio::spawn(async move {
-            // Recover a refresh that was pending when the process last stopped.
-            if matches!(inner.db.snapshot_state(), Ok(state) if state.dirty)
-                && let Err(err) = run_refresh(&inner).await
-            {
-                tracing::error!("startup snapshot refresh failed: {err}");
-            }
-            loop {
-                tokio::select! {
-                    _ = inner.wake.notified() => {
-                        // Debounce: wait the coalescing window, draining further
-                        // wakes that arrive during it into this one refresh.
-                        loop {
-                            tokio::select! {
-                                _ = tokio::time::sleep(inner.coalesce) => break,
-                                _ = inner.wake.notified() => continue,
+        // Give the detached coalescing task its own span. It is the root of every
+        // background refresh's trace (a refresh is not tied to one request), so
+        // `run_refresh`'s spans nest under it rather than floating free.
+        let task_span = tracing::info_span!("publisher.refresher");
+        let handle = tokio::spawn(
+            async move {
+                // Recover a refresh that was pending when the process last stopped.
+                if matches!(inner.db.snapshot_state(), Ok(state) if state.dirty)
+                    && let Err(err) = run_refresh(&inner).await
+                {
+                    tracing::error!("startup snapshot refresh failed: {err}");
+                }
+                loop {
+                    tokio::select! {
+                        _ = inner.wake.notified() => {
+                            // Debounce: wait the coalescing window, draining further
+                            // wakes that arrive during it into this one refresh.
+                            loop {
+                                tokio::select! {
+                                    _ = tokio::time::sleep(inner.coalesce) => break,
+                                    _ = inner.wake.notified() => continue,
+                                }
+                            }
+                            if let Err(err) = run_refresh(&inner).await {
+                                tracing::error!("coalesced snapshot refresh failed: {err}");
                             }
                         }
-                        if let Err(err) = run_refresh(&inner).await {
-                            tracing::error!("coalesced snapshot refresh failed: {err}");
-                        }
+                        _ = shutdown_rx.recv() => break,
                     }
-                    _ = shutdown_rx.recv() => break,
                 }
             }
-        });
+            .instrument(task_span),
+        );
         RefresherHandle {
             _shutdown: shutdown_tx,
             handle,
@@ -153,6 +161,12 @@ impl RefresherHandle {
 /// Regenerate the full snapshot, upload it (when R2 is configured), fire the
 /// deploy hook, and clear the dirty flag. This is the one place the snapshot is
 /// produced; both the debounce loop and the forced path call it.
+#[tracing::instrument(
+    name = "snapshot.run_refresh",
+    skip(inner),
+    fields(run_count = tracing::field::Empty),
+    err,
+)]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let runs = inner.db.all_runs()?;
     let cases = load_case_manifests(&inner.store)?;
@@ -160,6 +174,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone()).build(generated_at)?;
     let run_count = snapshot.run_count;
+    tracing::Span::current().record("run_count", run_count);
 
     let deploy_hook_fired = match &inner.r2 {
         Some(r2) => {

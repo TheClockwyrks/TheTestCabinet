@@ -21,6 +21,7 @@ pub mod api;
 pub mod config;
 pub mod error;
 pub mod jobs;
+pub mod metrics;
 pub mod runner;
 
 use std::sync::Arc;
@@ -45,6 +46,7 @@ pub fn build(config: Config) -> Worker {
     let state = AppState {
         config: Arc::new(config),
         jobs: JobRegistry::new(),
+        metrics: crate::metrics::Metrics::new(),
     };
     let router = api::router(state);
     Worker { router, bind }

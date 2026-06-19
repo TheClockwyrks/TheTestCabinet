@@ -9,8 +9,10 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::Request;
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::db::Db;
@@ -60,6 +62,14 @@ pub fn router(state: AppState) -> Router {
         // for the web console reading published runs.
         .route("/runs/{id}/events", get(runs::events))
         .route("/snapshot/refresh", post(runs::refresh))
+        // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
+        // is outermost: it creates one server span per request and enters it for
+        // the inner stack. `trace_and_measure` (added first, thus nested inside)
+        // therefore runs *within* that span — it grafts the caller's W3C trace
+        // context onto the span (so server spans join the client's trace) and
+        // records request metrics. Both degrade to no-ops when telemetry is off.
+        .layer(axum::middleware::from_fn(trace_and_measure))
+        .layer(TraceLayer::new_for_http())
         // The browser UIs (gallery web app, Tauri dev server) run on a different
         // localhost origin than this backend, so every request is cross-origin.
         // The backend already trusts every caller that can reach it (the
@@ -68,6 +78,21 @@ pub fn router(state: AppState) -> Router {
         // that model. No credentials are sent, so a wildcard origin is valid.
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Middleware run inside the per-request server span: graft the caller's inbound
+/// W3C trace context onto the current span so the backend's spans join the
+/// client's trace, then time the request and record its metrics. Both halves are
+/// no-ops when telemetry is disabled.
+async fn trace_and_measure(
+    request: Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    // Recover the caller's parent context from the inbound headers and attach it
+    // to the current (TraceLayer-created) span. A no-op when no propagator is
+    // installed (telemetry disabled).
+    test_cabinet_telemetry::propagation::accept_inbound(request.headers());
+    crate::metrics::record_request(request, next).await
 }
 
 /// The contract version this backend implements, reported by `/healthz`. This

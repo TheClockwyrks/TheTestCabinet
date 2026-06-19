@@ -11,12 +11,28 @@ use test_cabinet_worker::config::Config;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    init_tracing();
-
-    // Load `.env.worker` beside the project before resolving config. A missing
-    // file is fine (variables can be exported instead); `dotenvy` never
-    // overrides already-set variables.
+    // Load `.env.worker` beside the project before anything reads the
+    // environment. A missing file is fine (variables can be exported instead);
+    // `dotenvy` never overrides already-set variables. This runs before the
+    // telemetry init below so any `OTEL_*`/`TCAB_ENV` configured in the file is
+    // visible to it (the file documents those keys as opt-in telemetry switches).
     let _ = dotenvy::from_filename(".env.worker");
+
+    // Initialize telemetry and hold the guard for the lifetime of `main`: on drop
+    // it flushes any buffered spans/metrics/logs. With no OTLP endpoint configured
+    // this installs only the fmt layer (today's stdout logging) and returns an
+    // inert guard — a missing collector is never fatal.
+    let _telemetry = match test_cabinet_telemetry::init(test_cabinet_telemetry::Config::new(
+        "tcab-worker",
+        env!("CARGO_PKG_VERSION"),
+        "info,test_cabinet_worker=info",
+    )) {
+        Ok(guard) => guard,
+        Err(err) => {
+            eprintln!("telemetry initialization error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let config = match Config::from_env() {
         Ok(config) => config,
@@ -48,12 +64,4 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
-}
-
-/// Initialize tracing from `RUST_LOG`, defaulting to `info`.
-fn init_tracing() {
-    use tracing_subscriber::EnvFilter;
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,test_cabinet_worker=info"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 }
