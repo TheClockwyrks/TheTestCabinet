@@ -219,11 +219,15 @@ impl CommandRunner for MockRunner {
     }
 }
 
+/// One run as captured by [`MockBackend`]: the stored record, its writeup, the
+/// resolved links, and the harness events submitted alongside it.
+type SubmittedRun = (RunRecord, Writeup, RunLinks, Vec<HarnessEvent>);
+
 /// A [`BackendClient`] that records each published run and reports whether it was
 /// newly recorded, so the submit half can be asserted without a real backend.
 struct MockBackend {
     already_published: bool,
-    submitted: Mutex<Vec<(RunRecord, Writeup, RunLinks, Vec<HarnessEvent>)>>,
+    submitted: Mutex<Vec<SubmittedRun>>,
 }
 
 impl MockBackend {
@@ -234,7 +238,7 @@ impl MockBackend {
         }
     }
 
-    fn submitted(&self) -> Vec<(RunRecord, Writeup, RunLinks, Vec<HarnessEvent>)> {
+    fn submitted(&self) -> Vec<SubmittedRun> {
         self.submitted.lock().expect("lock").clone()
     }
 }

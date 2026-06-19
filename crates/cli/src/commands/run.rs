@@ -24,7 +24,7 @@ use crate::commands::event_printer::PrintingEventSink;
 /// from concrete seams and drives the run to completion, then reports the record.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
-    let mut request = RunRequest {
+    let request = RunRequest {
         test_case_slug: args.test_case,
         test_case_version: Some(args.version),
         variant: args.variant,
