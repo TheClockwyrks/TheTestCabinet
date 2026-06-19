@@ -45,7 +45,7 @@ npm install && npm run build    # the TypeScript workspaces
 ## Running benchmarks
 
 The devcontainer is for development. Running a benchmark needs a container
-runtime to launch the per-harness images, which the container does not provide by
+runtime to launch the run-container image, which the container does not provide by
 default. Either:
 
 - build the portable binary (`cargo build-portable`) and run `tcab` on the host,

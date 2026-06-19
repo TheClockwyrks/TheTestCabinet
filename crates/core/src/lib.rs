@@ -61,6 +61,7 @@ pub use execution::{
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
+    resolve_base_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
@@ -108,12 +109,12 @@ pub struct RunRequest {
     /// replaces it for this run (for example `tcab run --max-runtime`). Either
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
-    /// An explicit per-run override for the harness container image: a full,
-    /// pullable reference the runtime pulls. `None` — the usual case — resolves
-    /// the image from the environment via [`AgentHarness::image`]
-    /// ([`resolve_harness_image`](crate::harness::resolve_harness_image)), which
-    /// consults no backend. Whatever image actually runs is recorded (resolved to
-    /// its registry digest where it has one) as [`RunEnvironment::container_image`].
+    /// An explicit per-run override for the run-container image: a full, pullable
+    /// reference the runtime pulls. `None` — the usual case — resolves the shared
+    /// base image from the environment via
+    /// [`resolve_base_image`](crate::harness::resolve_base_image), which consults
+    /// no backend. Whatever image actually runs is recorded (resolved to its
+    /// registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
 }
 
@@ -244,7 +245,7 @@ where
             harness = %request.harness.as_str(),
             model = %request.model_id,
             // Recorded once the run's image is resolved (per-run override or the
-            // harness's default). Never carries a secret.
+            // resolved base image). Never carries a secret.
             container.image = tracing::field::Empty,
         ),
         err,
@@ -279,23 +280,20 @@ where
         })?;
 
         // The image is the run's explicit per-run override when it carries one,
-        // else the image resolved from the environment by the harness layer (a
-        // registry reference, resolved without any backend). The runtime pulls it,
-        // so both the availability probe and the session run in the same image.
+        // else the single shared base image resolved from the environment (a
+        // registry reference, resolved without any backend). Every harness runs
+        // in this base image and installs its CLI into the container below; there
+        // is no per-harness image.
         let image = request
             .container_image
             .clone()
-            .unwrap_or_else(|| harness.image());
+            .unwrap_or_else(resolve_base_image);
         tracing::Span::current().record("container.image", image.as_str());
 
-        // Ensure the harness image is present before probing it. The availability
-        // probe runs with `--pull never` so a status listing stays cheap and
-        // offline; on a registry-backed setup that means a freshly published,
-        // not-yet-pulled image would otherwise always report the harness as
-        // unavailable — and the run that would have pulled it (via `--pull
-        // missing`) never starts, because the probe gates it. Pulling here closes
-        // that gap so the UI works without a manual `pull` step. It is idempotent:
-        // an image already present, including a local build, is left untouched.
+        // Pull the base image up front so the run fails fast with a clear error
+        // on an unreachable registry, and so its digest can be resolved below. It
+        // is idempotent: an image already present, including a local build, is
+        // left untouched (the same `--pull missing` policy `start` uses).
         self.runtime
             .pull(&image)
             .await
@@ -303,16 +301,6 @@ where
                 slug: slug.as_str().to_string(),
                 detail: err.to_string(),
             })?;
-
-        let availability = harness.check_availability(&self.runtime, &image).await?;
-        if !availability.available {
-            return Err(Error::HarnessUnavailable {
-                slug: slug.as_str().to_string(),
-                detail: availability
-                    .detail
-                    .unwrap_or_else(|| "harness is unavailable".to_string()),
-            });
-        }
 
         let mut secrets = BTreeMap::new();
         // The key is read from the host's `api_key_env` but injected into the
@@ -348,10 +336,51 @@ where
         // `containerImage`.
         let environment = self.probe_environment(&handle, recorded_image).await;
 
-        // Bound the harness session by the run's maximum runtime so it can never
-        // continue unbounded. The cap comes from the test case manifest, possibly
-        // overridden on the request, and also bounds the init step below.
+        // Bound every in-container setup step and the harness session by the
+        // run's maximum runtime so nothing can run unbounded. The cap comes from
+        // the test case manifest, possibly overridden on the request, and bounds
+        // the harness install and the init step below as well as the session.
         let max_runtime = request.effective_max_runtime(test_case);
+
+        // Install the harness's CLI into the running container before the
+        // session. The CLI is not baked into the base image; installing it here
+        // means a run always picks up the harness's latest published version. A
+        // non-zero exit or a timeout aborts the run — a broken install would only
+        // waste a harness session — and the container is torn down first.
+        if let Some(install) = harness.install_command() {
+            // A non-login shell so the command runs with the container's own
+            // environment (its `PATH` already carries the npm global prefix and
+            // the user-level bin dirs); a login shell could reset `PATH` from
+            // `/etc/profile` and drop them.
+            let command = vec!["sh".to_string(), "-c".to_string(), install.to_string()];
+            if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
+                let _ = self.runtime.stop(&handle).await;
+                return Err(match err {
+                    SetupError::TimedOut => Error::HarnessInstallTimedOut {
+                        slug: slug.as_str().to_string(),
+                        seconds: max_runtime,
+                    },
+                    SetupError::Failed(detail) => Error::HarnessInstall {
+                        slug: slug.as_str().to_string(),
+                        detail,
+                    },
+                    SetupError::Runtime(err) => err,
+                });
+            }
+        }
+
+        // Confirm the install produced a working CLI, capturing the version for
+        // the run record. A failed probe aborts the run before a session is spent.
+        let availability = harness.probe(&self.runtime, &handle).await?;
+        if !availability.available {
+            let _ = self.runtime.stop(&handle).await;
+            return Err(Error::HarnessUnavailable {
+                slug: slug.as_str().to_string(),
+                detail: availability
+                    .detail
+                    .unwrap_or_else(|| "harness is unavailable".to_string()),
+            });
+        }
 
         // Run the test case's init command, if any, now that the seeded workspace
         // is mounted at the working directory. This is where a case installs its
@@ -361,14 +390,16 @@ where
         // non-zero exit or a timeout aborts the run — a broken setup would only
         // waste a harness session — and the container is torn down first.
         if let Some(init) = &test_case.init {
-            // A non-login shell so the command runs with the container's own
-            // environment (its `PATH` already carries the npm global prefix and
-            // the user-level bin dirs); a login shell could reset `PATH` from
-            // `/etc/profile` and drop them.
             let command = vec!["sh".to_string(), "-c".to_string(), init.clone()];
-            if let Err(err) = run_init(&self.runtime, &handle, &command, max_runtime).await {
+            if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
                 let _ = self.runtime.stop(&handle).await;
-                return Err(err);
+                return Err(match err {
+                    SetupError::TimedOut => Error::InitTimedOut {
+                        seconds: max_runtime,
+                    },
+                    SetupError::Failed(detail) => Error::Init(detail),
+                    SetupError::Runtime(err) => err,
+                });
             }
         }
 
@@ -683,26 +714,41 @@ fn write_jsonl<T: serde::Serialize>(path: &std::path::Path, items: &[T]) -> Resu
     Ok(())
 }
 
-/// Run a test case's init command inside the run container under a wall-clock
-/// cap, returning an error if it exits non-zero or does not finish in time.
+/// Why a bounded in-container setup command (a harness install or a test case's
+/// init) did not succeed. Callers map this onto their own error — the install
+/// step onto [`Error::HarnessInstall`]/[`Error::HarnessInstallTimedOut`], the
+/// init step onto [`Error::Init`]/[`Error::InitTimedOut`] — so each failure
+/// reads in terms of the step that produced it.
+enum SetupError {
+    /// The command did not finish within the wall-clock cap.
+    TimedOut,
+    /// The command exited non-zero; the string summarizes the captured output.
+    Failed(String),
+    /// The container runtime itself failed to run the command.
+    Runtime(Error),
+}
+
+/// Run a setup command inside the run container under a wall-clock cap, returning
+/// a [`SetupError`] if it exits non-zero or does not finish in time.
 ///
 /// The command is bounded by the same `seconds` cap as the harness session so a
 /// hung setup step can never run unbounded. On a non-zero exit the captured
-/// output is summarized into the error so a broken setup can be diagnosed; the
-/// caller tears the container down on any error this returns.
-async fn run_init(
+/// output is summarized so a broken setup can be diagnosed; the caller tears the
+/// container down on any error this returns.
+async fn run_setup(
     runtime: &impl ContainerRuntime,
     handle: &ContainerHandle,
     command: &[String],
     seconds: u64,
-) -> Result<()> {
+) -> std::result::Result<(), SetupError> {
     let exec = runtime.exec(handle, command);
     let output = match tokio::time::timeout(Duration::from_secs(seconds), exec).await {
-        Ok(result) => result?,
-        Err(_elapsed) => return Err(Error::InitTimedOut { seconds }),
+        Ok(Ok(output)) => output,
+        Ok(Err(err)) => return Err(SetupError::Runtime(err)),
+        Err(_elapsed) => return Err(SetupError::TimedOut),
     };
     if output.exit_code != 0 {
-        return Err(Error::Init(init_failure_detail(&output)));
+        return Err(SetupError::Failed(init_failure_detail(&output)));
     }
     Ok(())
 }

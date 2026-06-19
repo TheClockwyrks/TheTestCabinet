@@ -472,7 +472,7 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                 )
                 .await
                 .map_err(|e| err("resolving the run's definition from the backend", e))?;
-                // The harness image resolves from the environment in the
+                // The base image resolves from the environment in the
                 // orchestrator (a registry reference, no backend involved); no
                 // explicit per-run override is set.
                 (

@@ -134,6 +134,28 @@ pub enum Error {
         seconds: u64,
     },
 
+    /// The harness's install command failed inside the run container before the
+    /// session could start. The detail carries the exit code and captured output
+    /// so a broken install can be diagnosed. The container is torn down before
+    /// this is returned.
+    #[error("harness `{slug}` install failed: {detail}")]
+    HarnessInstall {
+        /// The harness slug whose install command failed.
+        slug: String,
+        /// Detail describing the failure (exit code and captured output).
+        detail: String,
+    },
+
+    /// The harness's install command exceeded the run's maximum runtime before
+    /// it finished. The container is torn down before this is returned.
+    #[error("harness `{slug}` install exceeded the maximum runtime of {seconds}s and was stopped")]
+    HarnessInstallTimedOut {
+        /// The harness slug whose install command was stopped.
+        slug: String,
+        /// The maximum runtime, in seconds, that was exceeded.
+        seconds: u64,
+    },
+
     /// The test case's init command failed inside the run container. The detail
     /// carries the exit code and captured output so a broken setup step can be
     /// diagnosed. The container is torn down before this is returned.

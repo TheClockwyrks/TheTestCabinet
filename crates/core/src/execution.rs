@@ -176,24 +176,18 @@ pub trait ContainerRuntime: Send + Sync {
     ///
     /// This mirrors the `--pull missing` policy [`start`] uses: an image already
     /// present — including a purely local build with no registry behind it — is
-    /// left untouched, and only a genuinely absent image is fetched. It exists so
-    /// a run can guarantee the image is available before the cost-free
-    /// [`run_once`] availability probe, which runs with `--pull never` and would
-    /// otherwise report a freshly published, not-yet-pulled image as unavailable.
+    /// left untouched, and only a genuinely absent image is fetched. A run pulls
+    /// the base image up front so it fails fast with a clear error on an
+    /// unreachable registry, and so the run's exact image bytes can be resolved
+    /// to a digest before the session.
     ///
     /// The default implementation is a no-op, for runtimes whose images are
     /// always present locally.
     ///
     /// [`start`]: ContainerRuntime::start
-    /// [`run_once`]: ContainerRuntime::run_once
     async fn pull(&self, _image: &str) -> Result<()> {
         Ok(())
     }
-
-    /// Run a single command in a throwaway container from an image and capture
-    /// its output. Used for cost-free probes such as a harness `--version`
-    /// check; it must not require pulling the image from a remote registry.
-    async fn run_once(&self, image: &str, command: &[String]) -> Result<ExecOutput>;
 
     /// The registry digest reference (`repo@sha256:…`) of a locally-present image,
     /// if it has one. An image pulled from a registry carries a digest; a purely

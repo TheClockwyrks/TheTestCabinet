@@ -1,0 +1,7 @@
+# OpenCode harness definition. See `harnesses/README.md`.
+
+slug = "opencode"
+name = "OpenCode"
+binary = "opencode"
+
+install = "npm install -g opencode-ai && npm cache clean --force"

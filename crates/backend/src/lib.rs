@@ -6,8 +6,9 @@
 //! - serves test-case version definitions resolved from a repo checkout it is
 //!   pointed at, copied into an immutable on-disk store on ingest (with reference
 //!   screenshots rendered on the backend so every runner shares one baseline);
-//! - tracks the latest pullable **image reference** per harness (posted by the
-//!   image build/push step), which runners pull by digest from a registry;
+//! - plays **no part in container distribution**: every run executes in one
+//!   shared base run-container image that runners pull by digest from a registry
+//!   per their own configuration (and install the harness CLI into at run time);
 //! - is the **system of record** for published runs + reviews in a SeaORM store
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then

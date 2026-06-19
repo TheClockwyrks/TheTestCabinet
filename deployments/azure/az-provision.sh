@@ -51,8 +51,8 @@ az containerapp secret set -g "$RG" -n "tcab-backend" --secrets \
 
 # ── Workers: one VM per node (repeat, or use a VM Scale Set) ──────────────────
 # worker-cloud-init.yaml installs Docker, the worker binary + systemd unit, the
-# harness images, and joins the tailnet. Template the auth key into it at create
-# time; do not commit it.
+# run-container base image, and joins the tailnet. Template the auth key into it
+# at create time; do not commit it.
 az vm create -g "$RG" -n "tcab-worker-1" \
   --image Ubuntu2404 --size "$VM_SIZE" \
   --custom-data deployments/azure/worker-cloud-init.yaml

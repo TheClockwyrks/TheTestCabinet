@@ -1,0 +1,7 @@
+# Kilo Code harness definition. See `harnesses/README.md`.
+
+slug = "kilo"
+name = "Kilo Code"
+binary = "kilo"
+
+install = "npm install -g @kilocode/cli && npm cache clean --force"

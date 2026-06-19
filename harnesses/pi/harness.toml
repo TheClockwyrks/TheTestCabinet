@@ -1,0 +1,9 @@
+# Pi coding agent harness definition. See `harnesses/README.md`.
+
+slug = "pi"
+name = "Pi"
+binary = "pi"
+
+# --ignore-scripts mirrors the upstream-recommended install and skips lifecycle
+# scripts during the global install.
+install = "npm install -g --ignore-scripts @earendil-works/pi-coding-agent && npm cache clean --force"

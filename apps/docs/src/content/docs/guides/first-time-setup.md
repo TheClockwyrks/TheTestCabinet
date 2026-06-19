@@ -3,8 +3,8 @@ title: First Time Setup
 ---
 
 This guide takes a fresh checkout of The Test Cabinet to the point where you can
-launch a run. It covers the toolchain, the container runtime, the harness image,
-the headless browser, and credentials — the four things a
+launch a run. It covers the toolchain, the container runtime, the run-container
+image, the headless browser, and credentials — the four things a
 [run](/components/cli/overview/) needs that the repository alone does not provide.
 
 The project is in early development, so setup assumes some familiarity with Rust,
@@ -58,8 +58,8 @@ Runs always execute Linux containers, so platform expectations differ:
 - **macOS** — Podman runs containers inside its managed Linux VM
   (`podman machine init && podman machine start`). The VM shares your home
   directory but **not** the OS temp directory, which is why staged inputs default
-  to `~/.tcab` (below). On Apple Silicon the machine is `arm64`, so harness images
-  build and run `arm64` by default.
+  to `~/.tcab` (below). On Apple Silicon the machine is `arm64`, so the base image
+  builds and runs `arm64` by default.
 - **Windows** — Podman runs on its WSL2 backend, so **WSL must be installed**
   (`wsl --install`) before `podman machine init`.
 
@@ -69,28 +69,29 @@ artifacts, and capture scratch — is resolved as `--work-dir`, then
 macOS and Windows that rules out the OS temp directory, which is why the default
 is home-based.
 
-## 3. The harness image
+## 3. The run-container image
 
-A run drives an [agent harness](/components/core/harnesses/) inside the
-container, so it needs that harness's run-container image. By default a runner
-**pulls the image from a container registry** (GHCR) the first time it is needed
-and pins the resolved digest in the run record; you do not have to build anything
-to make a first run. Each runner resolves images from its own environment
-configuration (`TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG`, and per-harness
-overrides) — see [Harnesses](/components/core/harnesses/).
+Every run executes inside a **single shared base image**; the
+[agent harness](/components/core/harnesses/) you drive is installed into that
+container at run time, so there is no per-harness image to build or pull. By
+default a runner **pulls the base image from a container registry** (GHCR) the
+first time it is needed and pins the resolved digest in the run record; you do
+not have to build anything to make a first run. Each runner resolves the image
+from its own environment configuration (`TCAB_CONTAINER_REGISTRY`,
+`TCAB_CONTAINER_TAG`, or a full `TCAB_CONTAINER_IMAGE` override) — see
+[Execution](/components/core/execution/#containerization).
 
-To build the images locally instead — for offline development or while changing
-them — set `TCAB_CONTAINER_REGISTRY=` (empty) so the runner uses the
-locally-tagged build, and build from the `containers/` directory (see its
-`README.md`):
+To build the image locally instead — for offline development or while changing
+it — set `TCAB_CONTAINER_REGISTRY=` (empty) so the runner uses the locally-tagged
+build, and build from the `containers/` directory (see its `README.md`):
 
 ```sh
-cd containers && DOCKER=podman ./build.sh claude   # builds the base + claude image
+cd containers && DOCKER=podman ./build.sh   # builds the base image
 ```
 
 The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,
-`goose`, `kilo`, `opencode`, and `pi`. Confirm availability without starting a
-run:
+`goose`, `kilo`, `opencode`, and `pi`. Confirm which harnesses are ready to run
+(a harness is ready once its API key is exported):
 
 ```sh
 tcab harnesses          # human-readable table; add --json for machine output

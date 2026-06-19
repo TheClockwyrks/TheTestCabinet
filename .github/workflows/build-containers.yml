@@ -1,21 +1,25 @@
-name: Build containers
+name: Build container
 
-# Builds the run-container images (the shared base, then one per agent harness)
-# and pushes them to GHCR, pinned by digest. Runners resolve these published
-# images directly from their own registry configuration (default
-# ghcr.io/theclockwyrks on the latest tag); the backend plays no part — see
-# docs/components/core/execution.md.
+# Builds the single run-container image (the shared base) and pushes it to GHCR,
+# pinned by digest. Runners resolve this published image directly from their own
+# registry configuration (default ghcr.io/theclockwyrks on the latest tag); the
+# backend plays no part — see docs/components/core/execution.md.
+#
+# There is no per-harness image: a run installs the selected harness's CLI into
+# the base image at run time (see harnesses/README.md), so only the base is built
+# here and harness images never need rebuilding when a harness publishes a new
+# version.
 #
 # This is the one CI job that lives on GitHub Actions rather than the primary
-# Azure DevOps pipeline, by deliberate exception: the images are meant for anyone
-# who clones the repo to pull, so building them in public makes the supply chain
+# Azure DevOps pipeline, by deliberate exception: the image is meant for anyone
+# who clones the repo to pull, so building it in public makes the supply chain
 # visible, and GH Actions authenticates to GHCR for free via the built-in
 # GITHUB_TOKEN (no PAT to manage). Dormant until the repository is mirrored to
 # GitHub, like the other workflows here.
 #
-# One-time setup: after the first successful push, set each published package's
+# One-time setup: after the first successful push, set the published package's
 # visibility to Public in the org's GHCR package settings so unauthenticated
-# runners can pull them.
+# runners can pull it.
 on:
   push:
     branches: [master]
@@ -23,11 +27,6 @@ on:
       - "containers/**"
       - ".github/workflows/build-containers.yml"
   workflow_dispatch:
-    inputs:
-      harnesses:
-        description: "Space-separated harness slugs to build (empty = all)."
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -53,18 +52,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # build.sh builds the base + each harness FROM it, pushes to IMAGE_REGISTRY,
-      # and prints each pinned digest. The registry namespace is the repository
-      # owner, lowercased (GHCR requires lowercase), which is the resolver's
-      # default for the canonical repo. The harness list comes from the dispatch
-      # input (passed via env to avoid shell injection); empty builds all.
-      - name: Build and push images
+      # build.sh builds the base image, pushes it to IMAGE_REGISTRY, and prints
+      # its pinned digest. The registry namespace is the repository owner,
+      # lowercased (GHCR requires lowercase), which is the resolver's default for
+      # the canonical repo.
+      - name: Build and push image
         env:
           PUSH: "1"
           DOCKER: docker
-          HARNESSES: ${{ github.event.inputs.harnesses }}
           OWNER: ${{ github.repository_owner }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           echo "Pushing to $registry"
-          IMAGE_REGISTRY="$registry" ./containers/build.sh $HARNESSES
+          IMAGE_REGISTRY="$registry" ./containers/build.sh

@@ -1,0 +1,7 @@
+# Cline harness definition. See `harnesses/README.md`.
+
+slug = "cline"
+name = "Cline"
+binary = "cline"
+
+install = "npm install -g cline@latest && npm cache clean --force"

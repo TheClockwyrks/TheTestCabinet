@@ -76,8 +76,8 @@ Task-oriented walkthroughs:
 - Longer guides:
   [`guides/`](apps/docs/src/content/docs/guides/) — including
   [first-time setup](apps/docs/src/content/docs/guides/first-time-setup.md) for a
-  machine that will actually run test cases (container runtime, harness images,
-  credentials).
+  machine that will actually run test cases (container runtime, run-container
+  image, credentials).
 
 ## Working in this repo (skills)
 
@@ -99,9 +99,14 @@ authoring conventions:
   [`components/core/test-cases.md`](apps/docs/src/content/docs/components/core/test-cases.md).
 - **Models:** [`models/`](models/) — one `<model>.toml` + `<model>.md` per
   model. Add with `scripts/add-model.mjs`.
-- **Harness container images:** [`containers/`](containers/) — see
-  [`containers/README.md`](containers/README.md) and
+- **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness
+  (`harnesses/<slug>/`) declaring its name, CLI binary, and the command that
+  installs the CLI into the run container at run time. See
+  [`harnesses/README.md`](harnesses/README.md) and
   [`components/core/harnesses.md`](apps/docs/src/content/docs/components/core/harnesses.md).
+- **Run-container image:** [`containers/`](containers/) — the single shared base
+  image every run executes in (harnesses install into it at run time). See
+  [`containers/README.md`](containers/README.md).
 
 ## Changelog
 

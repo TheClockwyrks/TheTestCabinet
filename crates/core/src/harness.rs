@@ -13,52 +13,55 @@ use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 
-/// The default registry/namespace harness images are published under, used when
-/// `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace `containers/build.sh`
-/// pushes to, so the resolve side and the publish side default to the same place.
+/// The default registry/namespace the run-container image is published under,
+/// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
+/// `containers/build.sh` pushes to, so the resolve side and the publish side
+/// default to the same place.
 const DEFAULT_CONTAINER_REGISTRY: &str = "ghcr.io/theclockwyrks";
 /// The default image tag, used when `TCAB_CONTAINER_TAG` is unset.
 const DEFAULT_CONTAINER_TAG: &str = "latest";
+/// The name of the single, shared run-container image. Every harness runs in
+/// this one base image and installs its CLI into the container at run time (see
+/// [`AgentHarness::install_command`]); there is no longer a per-harness image.
+const BASE_IMAGE_NAME: &str = "test-cabinet-base";
 
-/// Resolve the container image reference to run a harness in, from the
-/// environment. The runner pulls this directly from a registry — it does **not**
-/// ask any backend, so a runner pointed at any backend (or none) resolves images
-/// the same way (see `docs/components/core/execution.md`).
+/// Resolve the run-container image reference, from the environment. Every run —
+/// whatever harness it drives — executes in this single shared base image; the
+/// harness's CLI is installed into the container at run time rather than baked
+/// into a per-harness image. The runner pulls the image directly from a registry
+/// — it does **not** ask any backend, so a runner pointed at any backend (or
+/// none) resolves it the same way (see `docs/components/core/execution.md`).
 ///
 /// Precedence:
-/// 1. `TCAB_CONTAINER_IMAGE_<HARNESS>` (e.g. `TCAB_CONTAINER_IMAGE_CLAUDE`) — a
-///    full, verbatim reference for that one harness. Set it to a `@sha256:…`
-///    digest to pin an exact image, or to point a harness at a private build.
-/// 2. `{registry}/test-cabinet-{slug}:{tag}`, where `registry` is
+/// 1. `TCAB_CONTAINER_IMAGE` — a full, verbatim reference. Set it to a
+///    `@sha256:…` digest to pin an exact image, or to point at a private build.
+/// 2. `{registry}/test-cabinet-base:{tag}`, where `registry` is
 ///    `TCAB_CONTAINER_REGISTRY` (default [`DEFAULT_CONTAINER_REGISTRY`]) and `tag`
 ///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). An explicitly
 ///    empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local
-///    image (`test-cabinet-{slug}:{tag}`) for offline development.
+///    image (`test-cabinet-base:{tag}`) for offline development.
 ///
 /// The default with nothing set is the published image on the latest tag:
-/// `ghcr.io/theclockwyrks/test-cabinet-{slug}:latest`.
-pub fn resolve_harness_image(slug: HarnessSlug) -> String {
-    let per_harness_var = format!("TCAB_CONTAINER_IMAGE_{}", slug.as_str().to_uppercase());
-    compose_harness_image(
-        slug,
-        std::env::var(per_harness_var).ok(),
+/// `ghcr.io/theclockwyrks/test-cabinet-base:latest`.
+pub fn resolve_base_image() -> String {
+    compose_base_image(
+        std::env::var("TCAB_CONTAINER_IMAGE").ok(),
         std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
         std::env::var("TCAB_CONTAINER_TAG").ok(),
     )
 }
 
-/// The pure core of [`resolve_harness_image`], taking the three environment
-/// values directly so the precedence and composition can be tested without
-/// touching process-global state. `None` is an unset variable; `Some("")` is an
+/// The pure core of [`resolve_base_image`], taking the three environment values
+/// directly so the precedence and composition can be tested without touching
+/// process-global state. `None` is an unset variable; `Some("")` is an
 /// explicitly empty one — for the registry those differ (unset → default
 /// namespace; empty → no registry prefix at all).
-fn compose_harness_image(
-    slug: HarnessSlug,
-    per_harness: Option<String>,
+fn compose_base_image(
+    explicit: Option<String>,
     registry: Option<String>,
     tag: Option<String>,
 ) -> String {
-    if let Some(reference) = per_harness
+    if let Some(reference) = explicit
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -75,11 +78,10 @@ fn compose_harness_image(
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_CONTAINER_TAG.to_string());
 
-    let name = format!("test-cabinet-{}", slug.as_str());
     if registry.is_empty() {
-        format!("{name}:{tag}")
+        format!("{BASE_IMAGE_NAME}:{tag}")
     } else {
-        format!("{registry}/{name}:{tag}")
+        format!("{registry}/{BASE_IMAGE_NAME}:{tag}")
     }
 }
 
@@ -137,17 +139,17 @@ pub struct HarnessOutcome {
     pub translated_events: Vec<HarnessEvent>,
 }
 
-/// Reports whether a harness can be invoked on the host.
+/// Reports whether a harness's CLI was installed and can be invoked.
 ///
-/// An availability check resolves the harness's binary and confirms it can run,
-/// for example via `--version`. It must **never** start a session or take any
-/// action that could incur cost.
+/// The harness CLI is installed into the run container at run time (see
+/// [`AgentHarness::install_command`]); this is the result of probing the
+/// installed binary, for example via `--version`, once that install has run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Availability {
     /// Whether the harness binary was resolved and could be invoked.
     pub available: bool,
-    /// The harness version reported by the cost-free check, when available.
+    /// The harness version reported by the probe, when available.
     pub version: Option<String>,
     /// Detail explaining unavailability.
     pub detail: Option<String>,
@@ -156,20 +158,28 @@ pub struct Availability {
 /// A single supported agent harness.
 ///
 /// Implementations are trait objects so the orchestrator can treat every
-/// harness uniformly. The harness CLI itself lives inside a per-harness
-/// container image, so both the availability probe and the session run through a
-/// [`ContainerRuntime`].
+/// harness uniformly. Every harness runs in the shared base run-container image
+/// and installs its own CLI into the container at run time via
+/// [`install_command`](AgentHarness::install_command), so both the install and
+/// the session run through a [`ContainerRuntime`].
 #[async_trait::async_trait]
 pub trait AgentHarness: Send + Sync {
     /// The slug this implementation handles.
     fn slug(&self) -> HarnessSlug;
 
-    /// The container image that provides this harness's CLI, resolved from the
-    /// environment by [`resolve_harness_image`]. Used when a run carries no
-    /// explicit per-run image override; the runner pulls it from a registry
-    /// without consulting any backend.
-    fn image(&self) -> String {
-        resolve_harness_image(self.slug())
+    /// The human-readable harness name, for display (for example by
+    /// `tcab harnesses`). Defaults to the slug.
+    fn name(&self) -> &str {
+        self.slug().as_str()
+    }
+
+    /// The command run inside the run container, before the harness session, to
+    /// install this harness's CLI. It runs through a non-login `sh -c` as the
+    /// container's unprivileged run user, so the CLI is installed fresh on every
+    /// run and a run always picks up the harness's latest published version.
+    /// `None` means the harness needs no install step.
+    fn install_command(&self) -> Option<&str> {
+        None
     }
 
     /// The environment variable carrying the provider API key, or `None` when
@@ -202,16 +212,17 @@ pub trait AgentHarness: Send + Sync {
         model_id.to_string()
     }
 
-    /// Resolve the harness binary in `image` and confirm it can be invoked, for
-    /// example via `--version`. `image` is the run's resolved container image (a
-    /// backend-pulled digest reference, or the local-build fallback), so the
-    /// probe checks the exact image the session will run in.
+    /// Confirm the harness's CLI is installed in an already-started run
+    /// container and can be invoked, for example via `--version`, capturing its
+    /// version. Run after [`install_command`](AgentHarness::install_command) has
+    /// installed the CLI and before the session starts, so the run fails with a
+    /// clear error if the install did not produce a working binary.
     ///
     /// This must be cost-free: it must **never** start a session.
-    async fn check_availability(
+    async fn probe(
         &self,
         runtime: &dyn ContainerRuntime,
-        image: &str,
+        container: &ContainerHandle,
     ) -> Result<Availability>;
 
     /// Drive a single harness session to completion inside an already-started

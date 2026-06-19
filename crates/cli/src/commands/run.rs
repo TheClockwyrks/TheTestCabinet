@@ -32,7 +32,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         model_id: args.model,
         max_runtime_override: args.max_runtime,
         // No explicit per-run image override: the orchestrator resolves the
-        // harness image from the environment (a registry reference).
+        // shared base image from the environment (a registry reference).
         container_image: None,
     };
 
@@ -91,7 +91,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
                     request.test_case_slug, version_str, request.variant
                 )
             })?;
-            // The harness image resolves from the environment in the orchestrator
+            // The base image resolves from the environment in the orchestrator
             // (a registry reference, no backend involved); `container_image` stays
             // `None` unless a caller sets an explicit per-run override.
             (

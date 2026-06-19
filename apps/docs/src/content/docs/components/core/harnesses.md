@@ -30,6 +30,30 @@ by a stable slug used throughout run records and the site.
 | OpenCode | `opencode` |
 | Pi | `pi` |
 
+Each harness has two halves. Its **declarative** half — name, the CLI binary, and
+the command that installs that CLI — is authored as a manifest in the repo under
+`harnesses/<slug>/harness.toml` (see `harnesses/README.md`), structured much like
+a test case under `test-cases/`. Its **imperative** half — the non-interactive
+invocation, usage parsing, and event translation described below — is code, in
+the adapter for that slug in `crates/core/src/harness_registry.rs`. Adding a new
+harness means both a manifest and an adapter.
+
+## Installation
+
+The run container ships **no agent harness**. The selected harness's CLI is
+installed into the running container at run time, just before the session, by
+running the manifest's `install` command — typically `npm install -g …` or a
+curl-piped installer. This is the same mechanism a test case uses to prepare its
+workspace with an [init command](/components/core/test-cases/#init), and it runs
+just before init does (see [Harness install](/components/core/execution/#harness-install)).
+
+Installing at run time, rather than baking each harness into a container image,
+is a deliberate choice: it means a run always exercises the harness's most
+recently published version, with no image to rebuild when a harness ships an
+update. The install command runs as the container's unprivileged run user and is
+bounded by the run's maximum runtime, so it needs no root and can never run
+unbounded.
+
 ## Invocations
 
 A harness invocation must be given at least:
@@ -53,27 +77,23 @@ so that early results reflect the harnesses' own unaided behavior.
 
 ## Availability
 
-The testing harness must be able to determine whether a harness is available by
-resolving its binary on the host and confirming it can be invoked, for example
-with a `--version` check. If an unavailable harness is requested, the run must
-fail with a clear error.
+Because the harness CLI is installed at run time rather than present in an image,
+availability is checked in two stages.
 
-Availability checks must **never** start a session or take any other action that
-could incur cost. Any stronger check must be triggered explicitly by the user.
-Because each run-container image is a registry image pulled by digest, the
-availability probe itself inspects only an image already present locally and
-**never pulls one** — fetching a registry image is a stronger, cost-bearing
-action, so a bare availability check (such as a status listing) reports a
-harness whose image has not yet been pulled as unavailable rather than fetching
-it.
+Outside a run — for example the `tcab harnesses` status listing — availability is
+a **cost-free readiness check** from configuration alone: a harness is available
+when it supports API-key authentication (the only mode supported for now) and its
+key variable is set in the environment. This never starts a container, so it can
+report which harnesses are ready to run without installing anything. It cannot
+confirm a harness's CLI will install successfully without actually running it;
+that is left to the run.
 
-Starting an actual run, however, is that stronger action: the run pulls the
-resolved image first (`--pull missing` semantics — an image already present,
-including a local build, is left untouched) and only then runs the probe against
-it. This is what lets the very first run of a freshly published, not-yet-pulled
-image succeed without a manual pull step. Without it, the probe would report the
-harness unavailable and gate the run that would have pulled the image, so no run
-could ever bootstrap a new registry image.
+During a run, the stronger check happens **inside the started container, after
+the install command has run**: the run probes the installed binary (for example
+with `--version`) to confirm the install produced a working CLI and to capture
+the harness version recorded for the run. A failed probe — a missing or broken
+binary — aborts the run with a clear error before a session is spent. This probe
+must **never** start a session or take any other action that could incur cost.
 
 ## Authentication
 

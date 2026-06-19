@@ -1,0 +1,25 @@
+# Anthropic Claude Code harness definition.
+#
+# A harness is installed into the run container at run time (see `install`
+# below), not baked into a per-harness image. This is how a run always picks up
+# the harness's most recently published version. See `harnesses/README.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name and one of the slugs the agent harness layer in `crates/core` knows.
+slug = "claude"
+
+# Human-readable name, shown by `tcab harnesses`.
+name = "Anthropic Claude Code"
+
+# The CLI binary the run probes (`<binary> --version`) and invokes. The installer
+# below must put it on the run user's PATH.
+binary = "claude"
+
+# Command run inside the run container, before the harness session, to install
+# the CLI. It runs as the unprivileged run user, with the same environment the
+# session uses (the base image's PATH already carries the user-level npm prefix
+# and bin dirs), so it can install without root. It runs fresh on every run, so
+# each run installs the latest published version.
+#
+# The installer drops the binary into ~/.local/bin, which is already on PATH.
+install = "curl -fsSL https://claude.ai/install.sh | bash"

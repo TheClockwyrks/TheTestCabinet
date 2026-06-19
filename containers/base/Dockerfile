@@ -1,7 +1,7 @@
-# Shared base image for The Test Cabinet run containers.
+# The single run-container image for The Test Cabinet.
 #
-# Every per-harness image builds FROM this. It provides the common toolchain a
-# run needs and nothing harness specific:
+# Every run — whatever harness it drives — executes in this one image. It
+# provides the common toolchain a run needs and nothing harness specific:
 #   - git, because every run executes inside a fresh git repository that is
 #     seeded on the host and mounted in.
 #   - a Node.js build toolchain, because the test cases ask the model to build
@@ -13,11 +13,14 @@
 #     binary are deliberately NOT baked in here: a run gets them from the test
 #     case's own workspace, so a model never relies on a globally installed tool
 #     it cannot see in its project. See `containers/README.md`.
-#   - an unprivileged user whose home is set up so that the per-harness images
-#     can install their CLI without needing root.
+#   - an unprivileged user whose home is set up so that a harness's install
+#     command (and a test case's init command) can install software at run time
+#     without needing root.
 #
-# This image installs no agent harness. See the sibling directories for the
-# per-harness images.
+# This image installs no agent harness. A run installs the selected harness's CLI
+# into the container at run time, by running the harness's `install` command (see
+# `harnesses/README.md`); installing at run time is what lets a run always pick
+# up the harness's latest published version.
 FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
@@ -72,8 +75,8 @@ RUN apt-get update \
 
 # The node base image ships an unprivileged `node` user (uid 1000); reuse it as
 # the run user rather than creating a second uid-1000 account. Set up
-# user-writable install locations so the per-harness images can install their
-# CLI as `node` with no root.
+# user-writable install locations so a harness's run-time install command can
+# install its CLI as `node` with no root.
 RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 	&& chown -R node:node /home/node /work
 

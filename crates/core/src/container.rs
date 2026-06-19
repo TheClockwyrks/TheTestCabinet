@@ -121,7 +121,7 @@ impl ContainerRuntime for CliContainerRuntime {
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
         let mount_source = crate::host_path::mount_source(&spec.repo_path)?;
 
-        // Pull the image if it is not already present locally: the harness image
+        // Pull the image if it is not already present locally: the base image
         // comes from a registry (resolved by digest), not a prior local build, so
         // a missing image must be fetched rather than failing the run. An image
         // already pulled by an earlier run is reused (digest refs are immutable).
@@ -301,37 +301,6 @@ impl ContainerRuntime for CliContainerRuntime {
             )));
         }
         Ok(())
-    }
-
-    async fn run_once(&self, image: &str, command: &[String]) -> Result<ExecOutput> {
-        let Some(entrypoint) = command.first() else {
-            return Err(Error::ContainerRuntime(
-                "run_once requires a command".to_string(),
-            ));
-        };
-        // `--pull never`: this one-shot is the harness availability probe, which
-        // must stay cost-free and must never fetch anything (see
-        // `Harness::check_availability` and `docs/harnesses.md`). A registry image
-        // that has not been pulled yet is therefore reported unavailable — pulling
-        // it is a stronger action reserved for an actual run (which uses
-        // `--pull missing` in `start`), not for a cheap availability check.
-        let mut args = vec![
-            "run".to_string(),
-            "--rm".to_string(),
-            "--pull".to_string(),
-            "never".to_string(),
-            "--entrypoint".to_string(),
-            entrypoint.clone(),
-            image.to_string(),
-        ];
-        args.extend(command.iter().skip(1).cloned());
-
-        let output = self.run(&args).await?;
-        Ok(ExecOutput {
-            exit_code: output.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })
     }
 
     async fn image_digest(&self, image: &str) -> Result<Option<String>> {
