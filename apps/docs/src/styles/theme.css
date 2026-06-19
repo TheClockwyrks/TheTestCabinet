@@ -105,3 +105,56 @@
   font-weight: 700;
   letter-spacing: 0.02em;
 }
+
+/*
+ * Layout widths. Two tweaks on top of Starlight's own column math
+ * (see node_modules/@astrojs/starlight: components/TwoColumnContent.astro and
+ * components/PageSidebar.astro). Both rely on this file being unlayered, so it
+ * wins over Starlight's `@layer starlight.core` regardless of specificity — the
+ * same mechanism that lets the palette overrides above take effect.
+ *
+ * 1. Content column +33% (45rem -> 60rem). Starlight's default reads as overly
+ *    narrow for this site's long technical prose. Scoped to pages that have the
+ *    left nav (every docs page); Starlight already widens sidebar-less pages to
+ *    67.5rem, so leave those alone.
+ */
+:root[data-has-sidebar] {
+  --sl-content-width: 60rem;
+}
+
+/*
+ * 2. Right-align the table-of-contents sidebar and make the two side gutters
+ *    symmetric. Above 72rem Starlight splits the leftover horizontal space in
+ *    half: one half becomes the left gutter (which lives *inside* the content
+ *    pane, as the content's auto start-margin) and the other half is reserved
+ *    inside the right TOC column (*outside* the content pane), with the
+ *    fixed-position TOC pinned to that column's left. Two consequences the
+ *    brief calls out:
+ *      - the TOC sits against the content with dead space to its right, and
+ *      - because the right gutter is outside the content pane while the left is
+ *        inside it, the content's own `--sl-content-pad-x` lands asymmetrically,
+ *        leaving the right gutter ~2 * content-pad-x wider than the left.
+ *    It also leaves the header divider (`.content-panel + .content-panel`
+ *    border) stopping at the content's right edge instead of running across.
+ *
+ *    Fix: give the content pane the entire width between the two sidebars and
+ *    center the content within it, so the leftover splits evenly *inside* the
+ *    pane — identical gutters on both sides (padding now belongs to the content,
+ *    not the sidebar), and the header divider spans the full pane, meeting the
+ *    TOC's leading border. The right column collapses to exactly the TOC width
+ *    and the TOC is re-pinned to the viewport's right edge.
+ */
+@media (min-width: 72rem) {
+  [data-has-toc] .main-pane {
+    --sl-content-margin-inline: auto;
+    width: calc(100% - var(--sl-sidebar-width));
+  }
+  .right-sidebar-container {
+    width: var(--sl-sidebar-width);
+  }
+  .right-sidebar {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    width: var(--sl-sidebar-width);
+  }
+}
