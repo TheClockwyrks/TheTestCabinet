@@ -87,12 +87,14 @@ pub async fn list_versions(slug: String) -> CmdResult<Vec<String>> {
 // Version resolution & reading the specs.
 // ---------------------------------------------------------------------------
 
-/// A rendered reference screenshot for a variant: the view it depicts and the
-/// URL the webview loads it from (the backend's reference endpoint).
+/// A reference for a variant: the view it depicts, whether its media is an image
+/// or video, and the URL the webview loads it from (the backend's reference
+/// endpoint).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceShot {
     pub view: String,
+    pub kind: test_cabinet_core::MediaKind,
     pub url: String,
 }
 
@@ -174,22 +176,21 @@ fn variant_reference_shots(
     variant: &test_cabinet_core::Variant,
 ) -> Vec<ReferenceShot> {
     let base = base.trim_end_matches('/');
-    let shot = |scope: &str, view: &str| ReferenceShot {
-        view: view.to_string(),
+    let shot = |scope: &str, r: &test_cabinet_core::ReferenceView| ReferenceShot {
+        view: r.view.clone(),
+        kind: r.kind.media_kind(),
         url: format!(
-            "{base}/test-cases/{}/{}/references/{scope}/{view}.png",
-            v.slug, v.version
+            "{base}/test-cases/{}/{}/references/{scope}/{}.{}",
+            v.slug,
+            v.version,
+            r.view,
+            r.extension()
         ),
     };
     v.common_references
         .iter()
-        .map(|r| shot("_common", &r.view))
-        .chain(
-            variant
-                .references
-                .iter()
-                .map(|r| shot(&variant.slug, &r.view)),
-        )
+        .map(|r| shot("_common", r))
+        .chain(variant.references.iter().map(|r| shot(&variant.slug, r)))
         .collect()
 }
 

@@ -92,11 +92,15 @@ fn manifest() -> StoredManifest {
             specs: vec![],
             workspace: None,
             references: vec![],
+            proofs: vec![],
             review_items: vec![],
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
+            kind: test_cabinet_core::ReferenceKind::Rendered,
+            extension: "png".to_string(),
         }],
+        common_proofs: vec![],
         checks: vec![StoredCheck {
             view: "title".to_string(),
             name: "Title".to_string(),
@@ -261,11 +265,13 @@ fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
     let mut m = manifest();
     m.variants[0].references = vec![StoredReference {
         view: "title".to_string(),
+        kind: test_cabinet_core::ReferenceKind::Rendered,
+        extension: "png".to_string(),
     }];
 
     let (_tmp, store) = empty_store();
     for (scope, view) in [("_common", "gameplay"), ("base", "title")] {
-        let path = store.reference_path(&m.slug, &m.version, scope, view);
+        let path = store.reference_path(&m.slug, &m.version, scope, &format!("{view}.png"));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, format!("png:{scope}/{view}").into_bytes()).unwrap();
     }

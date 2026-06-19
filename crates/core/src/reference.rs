@@ -14,15 +14,38 @@ use std::path::{Path, PathBuf};
 
 use crate::browser;
 use crate::error::Result;
-use crate::test_case::{TestCaseVersion, Variant};
+use crate::test_case::{MediaKind, TestCaseVersion, Variant};
 
-/// A reference view rendered to a screenshot on the host.
+/// A reference view resolved to a concrete media file on the host.
+///
+/// For a rendered mockup this is the captured screenshot; for a static reference
+/// it is the image or video file itself. Either way it is the artifact seeded
+/// into a run as a visual target and served to the reviewer UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedReference {
-    /// The view slug this screenshot corresponds to.
+    /// The view slug this media corresponds to.
     pub view: String,
-    /// Path to the rendered screenshot on the host.
-    pub image_path: PathBuf,
+    /// Whether the media is an image or a video.
+    pub kind: MediaKind,
+    /// Path to the media file on the host (a rendered screenshot, or the static
+    /// source served as-is).
+    pub media_path: PathBuf,
+}
+
+impl RenderedReference {
+    /// The file extension of the media (lowercased), defaulting to `png`.
+    pub fn extension(&self) -> String {
+        self.media_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .unwrap_or_else(|| "png".to_string())
+    }
+
+    /// The file name this reference seeds/serves under: `<view>.<ext>`.
+    pub fn file_name(&self) -> String {
+        format!("{}.{}", self.view, self.extension())
+    }
 }
 
 /// Renders a test case version's reference mockups to screenshots.
@@ -68,12 +91,23 @@ impl ReferenceRenderer for BrowserRenderer {
         let views = test_case.references_for(variant);
         let mut rendered = Vec::with_capacity(views.len());
         for view in &views {
+            // A static reference (image or video) is served as-is from its source;
+            // only an HTML mockup is rendered through the browser to a screenshot.
+            if !view.kind.is_rendered() {
+                rendered.push(RenderedReference {
+                    view: view.view.clone(),
+                    kind: view.kind.media_kind(),
+                    media_path: view.source_path.clone(),
+                });
+                continue;
+            }
             let out = cache.join(format!("{}.png", view.view));
             let url = file_url(&view.source_path);
             match browser::capture(&url, &[], &out) {
                 Ok(()) => rendered.push(RenderedReference {
                     view: view.view.clone(),
-                    image_path: out,
+                    kind: MediaKind::Image,
+                    media_path: out,
                 }),
                 Err(detail) => {
                     eprintln!(

@@ -41,20 +41,28 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             specs: vec![],
             workspace: None,
             references: vec![],
+            proofs: vec![],
             review_items: vec![StoredReviewItem {
                 id: "mode-only".to_string(),
                 title: "Mode list".to_string(),
                 text: "The base variant lists only the standard modes.".to_string(),
+                reference: None,
+                proof: None,
             }],
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
+            kind: test_cabinet_core::ReferenceKind::Rendered,
+            extension: "png".to_string(),
         }],
+        common_proofs: vec![],
         checks: vec![],
         common_review_items: vec![StoredReviewItem {
             id: "ball-spin".to_string(),
             title: "Paddle spin".to_string(),
             text: "Swinging a paddle imparts spin on the ball.".to_string(),
+            reference: None,
+            proof: None,
         }],
     }
 }

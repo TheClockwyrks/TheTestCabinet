@@ -62,11 +62,13 @@ interface SpecDescriptor {
   template?: boolean;
 }
 
-// A rendered reference screenshot in a resolved version: the view it depicts and
-// the backend-relative URL the screenshot is served at.
+// A reference in a resolved version: the view it depicts, how it is produced
+// (rendered mockup, static image, or static video), and the backend-relative URL
+// its media is served at.
 interface ReferenceDescriptor {
   view: string;
-  screenshotUrl: string;
+  kind: "rendered" | "image" | "video";
+  mediaUrl: string;
 }
 
 // The subset of `GET /test-cases/{slug}/versions/{version}` we consume.
@@ -177,7 +179,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             ...(v.references ?? []),
           ].map((ref) => ({
             view: ref.view,
-            url: joinUrl(baseUrl, ref.screenshotUrl),
+            kind: ref.kind === "video" ? "video" : "image",
+            url: joinUrl(baseUrl, ref.mediaUrl),
           })),
         })),
       };

@@ -90,7 +90,9 @@ impl SnapshotBuilder {
 
         // runs/<id>.json — per-run record + review + links, plus the recorded
         // normalized event stream (when captured) so the site can serve the run's
-        // Events tab. Raw harness output is never published.
+        // Events tab. Raw harness output is never published. The run's uploaded
+        // proof media is exported alongside under `runs/<id>/proof/` and named by
+        // snapshot-relative key in `proofMedia`.
         for run in &self.runs {
             let events = run
                 .events_json
@@ -103,6 +105,7 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
+            let (proof_media, proof_objects) = self.run_proofs(&run.record.id, &prefix);
             objects.push(json_object(
                 format!("{prefix}/runs/{}.json", run.record.id),
                 &PerRun {
@@ -118,8 +121,10 @@ impl SnapshotBuilder {
                         playable_build: run.links.playable_build.as_deref(),
                     },
                     events,
+                    proof_media,
                 },
             )?);
+            objects.extend(proof_objects);
         }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
@@ -203,35 +208,78 @@ impl SnapshotBuilder {
     ) -> (Vec<CaseReferenceOut>, Vec<SnapshotObject>) {
         let (slug, version) = (&manifest.slug, &manifest.version);
 
-        // (store scope, metadata `variant`, view). Common references carry a null
-        // variant; variant-scoped ones carry the variant slug.
-        let mut declared: Vec<(&str, Option<&str>, &str)> = Vec::new();
+        // (store scope, metadata `variant`, the stored reference). Common
+        // references carry a null variant; variant-scoped ones carry the variant
+        // slug. The stored reference carries its kind and the extension its media
+        // is stored under (a rendered mockup is a `.png`; a static reference keeps
+        // its own extension).
+        let mut declared: Vec<(&str, Option<&str>, &crate::store::StoredReference)> = Vec::new();
         for reference in &manifest.common_references {
-            declared.push(("_common", None, &reference.view));
+            declared.push(("_common", None, reference));
         }
         for variant in &manifest.variants {
             for reference in &variant.references {
-                declared.push((&variant.slug, Some(variant.slug.as_str()), &reference.view));
+                declared.push((&variant.slug, Some(variant.slug.as_str()), reference));
             }
         }
 
         let mut metas = Vec::new();
         let mut objects = Vec::new();
-        for (scope, variant, view) in declared {
-            let Ok(bytes) = self.store.read_reference(slug, version, scope, view) else {
+        for (scope, variant, reference) in declared {
+            let view = &reference.view;
+            let file = format!("{view}.{}", reference.extension);
+            let Ok(bytes) = self.store.read_reference(slug, version, scope, &file) else {
                 continue;
             };
-            let key = format!("{prefix}/cases/{slug}/{version}/references/{scope}/{view}.png");
+            let key = format!("{prefix}/cases/{slug}/{version}/references/{scope}/{file}");
             objects.push(SnapshotObject {
                 key: key.clone(),
                 bytes,
-                content_type: "image/png".to_string(),
+                content_type: media_content_type(&reference.extension).to_string(),
             });
             metas.push(CaseReferenceOut {
                 variant: variant.map(str::to_string),
                 view: view.to_string(),
+                kind: reference.kind,
                 key,
             });
+        }
+        (metas, objects)
+    }
+
+    /// Collect a run's uploaded proof media: the `proofMedia[]` metadata entries
+    /// (snapshot-relative keys + kind) and the media objects to upload. A run with
+    /// no stored proofs contributes nothing.
+    fn run_proofs(&self, run_id: &str, prefix: &str) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        let Ok(files) = self.store.list_run_proofs(run_id) else {
+            return (metas, objects);
+        };
+        for file in files {
+            let Ok(bytes) = self.store.read_run_proof(run_id, &file) else {
+                continue;
+            };
+            let extension = std::path::Path::new(&file)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            let id = file
+                .rsplit_once('.')
+                .map(|(stem, _)| stem.to_string())
+                .unwrap_or_else(|| file.clone());
+            let kind = if extension.eq_ignore_ascii_case("mp4") {
+                test_cabinet_core::MediaKind::Video
+            } else {
+                test_cabinet_core::MediaKind::Image
+            };
+            let key = format!("{prefix}/runs/{run_id}/proof/{file}");
+            objects.push(SnapshotObject {
+                key: key.clone(),
+                bytes,
+                content_type: media_content_type(extension).to_string(),
+            });
+            metas.push(RunProofOut { id, kind, key });
         }
         (metas, objects)
     }
@@ -250,6 +298,18 @@ impl SnapshotBuilder {
         }
         let short = hex::encode(hasher.finalize());
         Ok(format!("{stamp}-{}", &short[..8]))
+    }
+}
+
+/// A best-effort content type for reference/proof media from its extension.
+fn media_content_type(extension: &str) -> &'static str {
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
     }
 }
 
@@ -377,6 +437,20 @@ struct PerRun<'a> {
     /// tab fetches; raw harness output is never included.
     #[serde(skip_serializing_if = "Option::is_none")]
     events: Option<serde_json::Value>,
+    /// The run's uploaded proof-of-implementation media, named by snapshot-relative
+    /// key. Empty when the run produced none.
+    proof_media: Vec<RunProofOut>,
+}
+
+/// A proof media file exposed in a per-run document. `id` matches the proof's
+/// declared id (and its `validation.proofs[].id`); `kind` is image or video;
+/// `key` is the snapshot-relative object key of the media.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunProofOut {
+    id: String,
+    kind: test_cabinet_core::MediaKind,
+    key: String,
 }
 
 #[derive(Serialize)]
@@ -413,12 +487,14 @@ struct CaseMetadata<'a> {
 
 /// A reference baseline exposed in case metadata. `variant` is `null` for a
 /// common reference (shown on every variant) or the variant slug for one scoped
-/// to a single variant; `key` is the snapshot-relative object key of the PNG.
+/// to a single variant; `kind` is how it is produced (rendered/image/video); `key`
+/// is the snapshot-relative object key of the media.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CaseReferenceOut {
     variant: Option<String>,
     view: String,
+    kind: test_cabinet_core::ReferenceKind,
     key: String,
 }
 

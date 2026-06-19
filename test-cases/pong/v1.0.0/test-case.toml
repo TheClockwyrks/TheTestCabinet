@@ -98,6 +98,14 @@ dest = "specs/flow.md"
 source = "specs/modes/standard.md"
 dest = "specs/modes/standard.md"
 
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
+# reviewer can see what the build actually produced. The paths in this spec and in
+# the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+dest = "specs/proof.md"
+
 # Asset files or directories (relative to this folder) seeded alongside the
 # specs. Carom is simple enough to need none.
 assets = []
@@ -169,6 +177,33 @@ path = "reference/gameplay.html"
 view = "game-over"
 path = "reference/game-over.html"
 
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.mp4` to as evidence the feature works; `specs/proof.md` instructs the build to
+# produce them at exactly these paths. Validation records whether each turned up
+# (informational — a missing proof does not fail the run), and a reviewer pairs
+# each with its expected reference (see the `review_item` links below). The media
+# kind is inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Match over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "rally"
+name = "Rally clip"
+dest = "proof/rally.mp4"
+
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation through `actions`, screenshots it, and compares against the
 # rendered screenshot of `reference`. Only the title screen is deterministic
@@ -208,11 +243,15 @@ text = "Hitting the center of a stationary paddle sends the ball straight across
 id = "paddle-speed"
 title = "Rally acceleration"
 text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually rather than jumping to full speed; ball and paddle motion read at the spec's pace, not noticeably fast or sluggish."
+reference = "gameplay"
+proof = "rally"
 
 [[review_item]]
 id = "ball-trail"
 title = "Ball trail"
 text = "The ball leaves a continuous, tapering motion trail (a smooth comet, not discrete dots) that curves with spin and stretches as the ball speeds up, collapsing to nothing during the pre-serve hold."
+reference = "gameplay"
+proof = "gameplay"
 
 [[review_item]]
 id = "obstacle-bank"
@@ -233,6 +272,8 @@ text = "After a point the next serve travels toward the player who was just scor
 id = "match-win"
 title = "Match win"
 text = "Reaching 11 points with at least a 2-point lead ends the match and shows the match-over screen with the correct winner and final score."
+reference = "game-over"
+proof = "game-over"
 
 [[review_item]]
 id = "match-deuce"
@@ -248,6 +289,8 @@ text = "The AI opponent tracks the ball competently but is clearly beatable — 
 id = "states-complete"
 title = "Game states"
 text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the pre-serve countdown, pause (resume/restart/quit), and match-over (play again/menu)."
+reference = "title"
+proof = "title"
 
 [[review_item]]
 id = "fits-window"

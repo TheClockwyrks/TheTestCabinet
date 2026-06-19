@@ -129,6 +129,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
             install: None,
             build: None,
             checks: vec![],
+            proofs: vec![],
         },
         links: RunLinks::default(),
         status: RunStatus {

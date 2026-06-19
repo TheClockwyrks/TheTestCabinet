@@ -462,11 +462,47 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
             .submit_run(&record, request.writeup, &links, request.events)
             .await?;
 
+        // Upload each produced proof-of-implementation file so the backend can
+        // serve it back as the reviewer's submitted-evidence pane. Proofs live in
+        // the collected implementation tree at their recorded `dest`; a missing or
+        // unreadable one is skipped (its validation result already records the gap).
+        self.upload_proofs(&record, request.artifacts).await?;
+
         Ok(PublishOutcome {
             source_repo,
             playable_build,
             newly_published,
         })
+    }
+}
+
+impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
+    /// Upload the run's present proof media to the backend, keyed by run id. Each
+    /// proof file is named `<proof-id>.<ext>` (the extension taken from its
+    /// recorded `dest`).
+    async fn upload_proofs(
+        &self,
+        record: &RunRecord,
+        artifacts: &ArtifactCollection,
+    ) -> Result<()> {
+        for proof in &record.validation.proofs {
+            if !proof.present {
+                continue;
+            }
+            let path = artifacts.repo_path.join(&proof.dest);
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let extension = Path::new(&proof.dest)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("png");
+            let file = format!("{}.{}", proof.id, extension);
+            self.backend
+                .publish_run_proof(&record.id, &file, bytes)
+                .await?;
+        }
+        Ok(())
     }
 }
 

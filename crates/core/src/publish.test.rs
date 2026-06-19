@@ -57,6 +57,7 @@ fn sample_record() -> RunRecord {
             install: None,
             build: None,
             checks: vec![],
+            proofs: vec![],
         },
         links: RunLinks::default(),
         status: RunStatus {

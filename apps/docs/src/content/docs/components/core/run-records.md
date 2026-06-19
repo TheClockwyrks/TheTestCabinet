@@ -76,7 +76,10 @@ The harness version is not duplicated here; it lives in the subject.
 
 - A summary of the [validation](/components/core/validation/) results, including
   the outcome of the required install and build steps, whether the
-  implementation loaded, and the similarity signal from each declared check.
+  implementation loaded, the similarity signal from each declared check, and a
+  **proof** result per declared proof-of-implementation artifact (its id, name,
+  media kind, expected `dest`, and whether the build produced it). Proof presence
+  is informational and does not affect the run's status.
 
 ### Links
 
@@ -94,7 +97,11 @@ The record is written into a per-run directory alongside the run's other
 artifacts:
 
 - `run-record.json` — the run record described above.
-- `implementation/` — a copy of the produced working tree.
+- `implementation/` — a copy of the produced working tree. Any proof-of-
+  implementation files the build wrote live here at their declared `dest`; on
+  publish, each present proof is uploaded and served back as per-run media
+  (`/runs/<id>/proof/<proof-id>.<ext>`) so the reviewer UI can show the submitted
+  evidence beside the expected reference.
 - `raw.jsonl` — the harness's raw output, one JSON object per captured line in
   arrival order, each tagging the [stream](/components/core/events/) the line
   came from and the line's verbatim text.

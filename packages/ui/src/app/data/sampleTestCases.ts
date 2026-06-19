@@ -37,9 +37,9 @@ export const sampleTestCases: TestCaseSummary[] = [
           },
         ],
         referenceScreenshots: [
-          { view: "title", url: "/catalog/carom/v1.0.0/base/reference/title.png" },
-          { view: "gameplay", url: "/catalog/carom/v1.0.0/base/reference/gameplay.png" },
-          { view: "game-over", url: "/catalog/carom/v1.0.0/base/reference/game-over.png" },
+          { view: "title", kind: "image", url: "/catalog/carom/v1.0.0/base/reference/title.png" },
+          { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/base/reference/gameplay.png" },
+          { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/base/reference/game-over.png" },
         ],
       },
       {
@@ -66,9 +66,9 @@ export const sampleTestCases: TestCaseSummary[] = [
           },
         ],
         referenceScreenshots: [
-          { view: "title", url: "/catalog/carom/v1.0.0/frenzy/reference/title.png" },
-          { view: "gameplay", url: "/catalog/carom/v1.0.0/frenzy/reference/gameplay.png" },
-          { view: "game-over", url: "/catalog/carom/v1.0.0/frenzy/reference/game-over.png" },
+          { view: "title", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/title.png" },
+          { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/gameplay.png" },
+          { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/game-over.png" },
         ],
       },
       {
@@ -95,9 +95,9 @@ export const sampleTestCases: TestCaseSummary[] = [
           },
         ],
         referenceScreenshots: [
-          { view: "title", url: "/catalog/carom/v1.0.0/multi/reference/title.png" },
-          { view: "gameplay", url: "/catalog/carom/v1.0.0/multi/reference/gameplay.png" },
-          { view: "game-over", url: "/catalog/carom/v1.0.0/multi/reference/game-over.png" },
+          { view: "title", kind: "image", url: "/catalog/carom/v1.0.0/multi/reference/title.png" },
+          { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/multi/reference/gameplay.png" },
+          { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/multi/reference/game-over.png" },
         ],
       },
     ],
@@ -128,8 +128,8 @@ export const sampleTestCases: TestCaseSummary[] = [
           },
         ],
         referenceScreenshots: [
-          { view: "wave", url: "/catalog/phalanx/v0.9.0/base/reference/wave.png" },
-          { view: "game-over", url: "/catalog/phalanx/v0.9.0/base/reference/game-over.png" },
+          { view: "wave", kind: "image", url: "/catalog/phalanx/v0.9.0/base/reference/wave.png" },
+          { view: "game-over", kind: "image", url: "/catalog/phalanx/v0.9.0/base/reference/game-over.png" },
         ],
       },
       {
@@ -151,8 +151,8 @@ export const sampleTestCases: TestCaseSummary[] = [
           },
         ],
         referenceScreenshots: [
-          { view: "wave", url: "/catalog/phalanx/v0.9.0/frenzy/reference/wave.png" },
-          { view: "game-over", url: "/catalog/phalanx/v0.9.0/frenzy/reference/game-over.png" },
+          { view: "wave", kind: "image", url: "/catalog/phalanx/v0.9.0/frenzy/reference/wave.png" },
+          { view: "game-over", kind: "image", url: "/catalog/phalanx/v0.9.0/frenzy/reference/game-over.png" },
         ],
       },
     ],

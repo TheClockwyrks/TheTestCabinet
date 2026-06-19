@@ -113,6 +113,7 @@ async function toTestCaseSummary(
       seededInputs: await fetchSeededInputs(backend, info.slug, info.version, v.slug),
       referenceScreenshots: v.references.map((r) => ({
         view: r.view,
+        kind: r.kind,
         url: r.url,
       })),
     })),
@@ -146,7 +147,7 @@ async function fetchTestCases(
 }
 
 export function useLiveGallery(): GalleryDataInput {
-  const { client: backend } = useBackend();
+  const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
@@ -157,6 +158,22 @@ export function useLiveGallery(): GalleryDataInput {
   const [testCases, setTestCases] = useState<TestCaseSummary[]>([]);
 
   const workerClient = worker?.client ?? null;
+  const workerUrl = worker?.url ?? null;
+
+  // Resolve a run's proof media URL: a produced (local) run is served by its
+  // worker, any other (published) run by the backend. The built-in local (Tauri)
+  // worker has no HTTP base, so its produced proofs are not URL-loadable here and
+  // resolve to null (the UI then shows presence without media).
+  const proofMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/proof/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, localIds],
+  );
 
   useEffect(() => {
     let active = true;
@@ -234,5 +251,11 @@ export function useLiveGallery(): GalleryDataInput {
     testCasesUsingSamples,
     canExecute: true,
     fetchRunEvents,
+    proofMediaUrl,
   };
+}
+
+/** Join a base URL and an absolute path, collapsing the boundary slash. */
+function joinPath(base: string, path: string): string {
+  return `${base.replace(/\/+$/, "")}${path}`;
 }

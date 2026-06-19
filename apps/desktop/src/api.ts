@@ -45,6 +45,7 @@ export interface TestCase {
 // can load (the backend's reference endpoint).
 export interface ReferenceShot {
   view: string;
+  kind: "image" | "video";
   url: string;
 }
 
@@ -94,6 +95,8 @@ export interface ReviewItem {
   id: string;
   title: string;
   text: string;
+  reference?: string | null;
+  proof?: string | null;
 }
 
 // A reviewer's verdict on one declared checklist item. `note` is omitted when

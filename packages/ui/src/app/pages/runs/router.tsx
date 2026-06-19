@@ -7,6 +7,7 @@ import { RunMetadataPage } from "./[runId]/RunMetadataPage";
 import { RunMetricsPage } from "./[runId]/RunMetricsPage";
 import { RunMonitorPage } from "./[runId]/RunMonitorPage";
 import { RunPlayPage } from "./[runId]/RunPlayPage";
+import { RunProofPage } from "./[runId]/RunProofPage";
 import { RunReferencesPage } from "./[runId]/RunReferencesPage";
 import { RunSpecsPage } from "./[runId]/RunSpecsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
@@ -37,6 +38,7 @@ export function runsRoutes(canExecute: boolean) {
         path={routePatterns.runReferences}
         element={<RunReferencesPage />}
       />
+      <Route path={routePatterns.runProof} element={<RunProofPage />} />
       <Route path={routePatterns.runPlay} element={<RunPlayPage />} />
       <Route path={routePatterns.runMetrics} element={<RunMetricsPage />} />
       <Route path={routePatterns.runEvents} element={<RunEventsPage />} />

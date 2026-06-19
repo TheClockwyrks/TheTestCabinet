@@ -17,6 +17,7 @@ export type RunDetailTab =
   | "play"
   | "specs"
   | "references"
+  | "proof"
   | "metrics"
   | "events"
   | "metadata";
@@ -72,6 +73,7 @@ export function RunDetailLayout({
     { key: "play", label: "Play", to: routes.runPlay(run.id) },
     { key: "specs", label: "Specifications", to: routes.runSpecs(run.id) },
     { key: "references", label: "References", to: routes.runReferences(run.id) },
+    { key: "proof", label: "Proof", to: routes.runProof(run.id) },
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },

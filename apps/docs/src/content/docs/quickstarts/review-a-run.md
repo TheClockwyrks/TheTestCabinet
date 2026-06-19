@@ -14,11 +14,18 @@ The [Tauri desktop app](/components/tauri/overview/) and the
 [web console](/components/web/overview/) are the primary way to review. Open the
 finished run, play its build, then fill in the review editor:
 
-- Work the **reviewer checklist** — each item the case declared gets a verdict
-  (**pass** / **fail** / **na**), optionally with a note. The console will not let
-  you save the review or publish the run until every item has a verdict (the
-  **completeness gate**).
+- Work the **reviewer checklist** — one item at a time, with a rail of every item
+  alongside (answered items marked done) so you can move freely. Each item gets a
+  verdict (**pass** / **fail** / **na**), optionally with a note. When the item
+  pairs them, the question shows the case's **expected** reference beside the
+  agent's **submitted** [proof of implementation](/components/core/validation/#proofs)
+  — image or video — so you compare the target against the evidence before judging.
+  The console will not let you save the review or publish the run until every item
+  has a verdict (the **completeness gate**).
 - Pick the **rating** and write the prose **writeup**.
+
+Every run also has a **Proof** tab listing all the proof media the build
+submitted (and any it didn't), browsable independent of the checklist.
 
 The console writes the review to `runs/<id>/writeup.md` for you.
 

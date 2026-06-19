@@ -97,6 +97,14 @@ dest = "specs/flow.md"
 source = "specs/modes/standard.md"
 dest = "specs/modes/standard.md"
 
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
+# reviewer can see what the build actually produced. The paths in this spec and in
+# the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+dest = "specs/proof.md"
+
 # Asset files or directories (relative to this folder) seeded alongside the
 # specs. Coil draws everything in code, so it needs none.
 assets = []
@@ -167,6 +175,33 @@ path = "reference/gameplay.html"
 view = "game-over"
 path = "reference/game-over.html"
 
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.mp4` to as evidence the feature works; `specs/proof.md` instructs the build to
+# produce them at exactly these paths. Validation records whether each turned up
+# (informational — a missing proof does not fail the run), and a reviewer pairs
+# each with its expected reference (see the `review_item` links below). The media
+# kind is inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Game over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "combo"
+name = "Combo clip"
+dest = "proof/combo.mp4"
+
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation through `actions`, screenshots it, and compares against the
 # rendered screenshot of `reference`. Only the title screen is deterministic
@@ -196,6 +231,8 @@ text = "Eating pellets in quick succession raises the combo multiplier by one pe
 id = "combo-window"
 title = "Combo window"
 text = "The 2.4-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
+reference = "gameplay"
+proof = "combo"
 
 [[review_item]]
 id = "fixed-tick"
@@ -231,11 +268,15 @@ text = "The BEST score persists across sessions via localStorage with no backend
 id = "states-complete"
 title = "Game states"
 text = "Every game state is reachable and behaves correctly: title menu, how-to-play, playing, pause (resume/restart/quit to menu, with the tick frozen while paused), and game-over (play again/menu) showing the final score and BEST."
+reference = "title"
+proof = "title"
 
 [[review_item]]
 id = "board-cleared"
 title = "Board-cleared win"
 text = "If the snake grows to fill every interior cell, the round ends cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — without the game crashing or attempting an impossible pellet placement."
+reference = "game-over"
+proof = "game-over"
 
 [[review_item]]
 id = "fits-window"
@@ -246,3 +287,5 @@ text = "The entire 1280x720 stage — the whole board, every wall, the full HUD,
 id = "crisp-grid"
 title = "Crisp grid and snake"
 text = "Cells render as crisp, un-blurred squares on the faintly gridded board, and the snake's brighter head is always distinguishable from its dimmer body segments."
+reference = "gameplay"
+proof = "gameplay"

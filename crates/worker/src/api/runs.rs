@@ -293,6 +293,60 @@ pub async fn raw_file(
     serve_run_stream(&state, &id, "raw.jsonl")
 }
 
+/// `GET /runs/{id}/proof/{file}` — a produced run's proof-of-implementation media
+/// (`{file}` is `<proof-id>.<ext>`), served from the collected implementation tree
+/// at the proof's recorded `dest`. The proof id is resolved against the run
+/// record's `validation.proofs` to find its path, so the agent's chosen location
+/// is honored. The content type follows the file extension. `404` when the run,
+/// the proof, or the file is absent.
+pub async fn proof_file(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    // Resolve the proof id from the requested file name (`<proof-id>.<ext>`).
+    let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(&file);
+
+    let record_path = state.config.out_dir.join(&id).join("run-record.json");
+    let record_bytes = std::fs::read(&record_path)
+        .map_err(|_| ApiError::not_found(format!("run `{id}` is not held by this worker")))?;
+    let record: test_cabinet_core::RunRecord = serde_json::from_slice(&record_bytes)
+        .map_err(|e| ApiError::internal(format!("reading run record for `{id}`: {e}")))?;
+
+    let proof = record
+        .validation
+        .proofs
+        .iter()
+        .find(|p| p.id == proof_id)
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` declares no proof `{proof_id}`")))?;
+
+    let path = state
+        .config
+        .out_dir
+        .join(&id)
+        .join("implementation")
+        .join(&proof.dest);
+    let bytes = std::fs::read(&path)
+        .map_err(|_| ApiError::not_found(format!("run `{id}` has no proof media `{proof_id}`")))?;
+    Ok(([(header::CONTENT_TYPE, proof_content_type(&file))], bytes).into_response())
+}
+
+/// A best-effort content type for a proof media file from its extension.
+fn proof_content_type(file: &str) -> &'static str {
+    let ext = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Serve a recorded run stream file (`events.jsonl` or `raw.jsonl`) from a
 /// finished run's output directory as immutable NDJSON. A finished run's logs
 /// never change, so they are safe to cache aggressively. A missing file maps to a

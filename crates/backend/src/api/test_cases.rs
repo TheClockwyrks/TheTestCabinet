@@ -64,30 +64,58 @@ pub async fn artifact(
     Ok(bytes_response(&path, bytes))
 }
 
-/// `GET /test-cases/{slug}/versions/{version}/references/{scope}/{view}.png` — a
-/// rendered reference screenshot. The route captures `{view}` including the
-/// `.png` suffix, which is stripped before lookup.
+/// `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}` — a
+/// reference's served media (`{file}` is `<view>.<ext>`: a rendered `.png`, or a
+/// static image/video served as-is). The content type follows the extension.
 pub async fn reference(
     State(state): State<AppState>,
-    Path((slug, version, scope, view)): Path<(String, String, String, String)>,
+    Path((slug, version, scope, file)): Path<(String, String, String, String)>,
 ) -> Result<Response, ApiError> {
-    let view = view.strip_suffix(".png").unwrap_or(&view);
     let bytes = state
         .store
-        .read_reference(&slug, &version, &scope, view)
+        .read_reference(&slug, &version, &scope, &file)
         .map_err(ApiError::from)?;
-    Ok((StatusCode::OK, [(header::CONTENT_TYPE, "image/png")], bytes).into_response())
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
+/// `<proof-id>.<ext>`). The content type follows the extension.
+pub async fn run_proof(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_proof(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
+/// by the publisher alongside the run record. The raw request body is the bytes.
+pub async fn put_run_proof(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_proof(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.
 fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiError> {
-    let reference_url = |scope: &str, view: &str| {
-        format!(
-            "/test-cases/{}/{}/references/{scope}/{view}.png",
-            manifest.slug, manifest.version
-        )
+    let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
+        view: r.view.clone(),
+        kind: r.kind,
+        media_url: format!(
+            "/test-cases/{}/{}/references/{scope}/{}.{}",
+            manifest.slug, manifest.version, r.view, r.extension
+        ),
     };
 
     let variants = manifest
@@ -107,11 +135,9 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
                 references: v
                     .references
                     .iter()
-                    .map(|r| ReferenceOut {
-                        view: r.view.clone(),
-                        screenshot_url: reference_url(&v.slug, &r.view),
-                    })
+                    .map(|r| reference_out(&v.slug, r))
                     .collect(),
+                proofs: v.proofs.iter().map(proof_out).collect(),
                 review_items: v.review_items.iter().map(review_item_out).collect(),
             })
         })
@@ -146,11 +172,9 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         common_references: manifest
             .common_references
             .iter()
-            .map(|r| ReferenceOut {
-                view: r.view.clone(),
-                screenshot_url: reference_url("_common", &r.view),
-            })
+            .map(|r| reference_out("_common", r))
             .collect(),
+        common_proofs: manifest.common_proofs.iter().map(proof_out).collect(),
         checks: manifest
             .checks
             .iter()
@@ -198,12 +222,25 @@ fn render_variant_prompt(
     .map_err(|err| ApiError::internal(err.to_string()))
 }
 
-/// Map a stored reviewer checklist item to its wire `{id, text}` shape.
+/// Map a stored reviewer checklist item to its wire shape, carrying the optional
+/// reference/proof pairings the reviewer UI resolves.
 fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
     ReviewItemOut {
         id: item.id.clone(),
         title: item.title.clone(),
         text: item.text.clone(),
+        reference: item.reference.clone(),
+        proof: item.proof.clone(),
+    }
+}
+
+/// Map a stored proof declaration to its wire shape.
+fn proof_out(proof: &crate::store::StoredProof) -> ProofOut {
+    ProofOut {
+        id: proof.id.clone(),
+        name: proof.name.clone(),
+        kind: proof.kind,
+        dest: proof.dest.clone(),
     }
 }
 
@@ -252,6 +289,9 @@ fn content_type_for(path: &str) -> &'static str {
         "json" => "application/json",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
         "svg" => "image/svg+xml",
         "css" => "text/css",
         "js" | "mjs" => "text/javascript",
@@ -299,6 +339,7 @@ pub struct VersionResponse {
     assets: Vec<AssetOut>,
     variants: Vec<VariantOut>,
     common_references: Vec<ReferenceOut>,
+    common_proofs: Vec<ProofOut>,
     checks: Vec<CheckOut>,
     common_review_items: Vec<ReviewItemOut>,
 }
@@ -339,21 +380,37 @@ struct VariantOut {
     specs: Vec<SpecOut>,
     workspace: Option<Vec<WorkspaceOut>>,
     references: Vec<ReferenceOut>,
+    proofs: Vec<ProofOut>,
     review_items: Vec<ReviewItemOut>,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReviewItemOut {
     id: String,
     title: String,
     text: String,
+    reference: Option<String>,
+    proof: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReferenceOut {
     view: String,
-    screenshot_url: String,
+    /// How the reference is produced (`rendered`, `image`, or `video`).
+    kind: test_cabinet_core::ReferenceKind,
+    /// The URL path the reference media is served under.
+    media_url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProofOut {
+    id: String,
+    name: String,
+    kind: test_cabinet_core::MediaKind,
+    dest: String,
 }
 
 #[derive(Serialize)]

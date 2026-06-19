@@ -51,6 +51,22 @@ most test cases will validate only a small number of deterministic views (often
 just the initial screen), even though they seed more references as visual
 targets.
 
+## Proofs
+
+A test case can ask the build to produce **proof of implementation** — a
+screenshot or short `.mp4` written to a known path as evidence that a feature
+works (see [`[[proof]]`](/components/core/test-cases/#manifest)). Validation does
+not judge a proof's contents; it records, for each declared proof, whether the
+file turned up in the produced tree and is non-empty. A proof that the build did
+not produce is recorded as **missing** rather than failing the run.
+
+This is deliberately **informational**: a missing proof never changes whether the
+run loaded or its status. It is surfaced so a reviewer sees the gap, and so the
+reviewer UI can show the submitted media beside the expected reference for a
+review item that pairs them. Each present proof is uploaded with the published run
+and served back as per-run media (see
+[run records](/components/core/run-records/)).
+
 ## Results
 
 Validation output is summarized into the [run record](/components/core/run-records/)
@@ -61,4 +77,7 @@ result with its outcome rather than being folded silently into the load signal.
 The summary therefore covers the install and the build alongside whether the
 implementation loaded and how closely each declared check matched its reference
 baseline. Each check result additionally carries its display name alongside its
-view slug so the site can label it without re-deriving one.
+view slug so the site can label it without re-deriving one. The summary also
+carries a **proof** result per declared proof — its id, display name, media kind,
+expected `dest`, and whether it was present — so the site and reviewer UI can show
+each proof's status and resolve its submitted media.

@@ -21,8 +21,8 @@ use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredReference,
-    StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredProof,
+    StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -141,46 +141,62 @@ impl<'a> Ingestor<'a> {
         })
     }
 
-    /// Render every reference view (common + per-variant) of a resolved version
-    /// into the store's reference sidecar. A render failure aborts the version's
-    /// ingest, since serving a version with a missing baseline would let a runner
-    /// validate against a hole. Returns the number of screenshots rendered.
+    /// Store every reference view (common + per-variant) of a resolved version
+    /// into the store's reference sidecar. An HTML mockup is rendered to a
+    /// screenshot; a static image/video is copied as-is. A failure aborts the
+    /// version's ingest, since serving a version with a missing baseline would let
+    /// a runner validate against a hole. Returns the number of references stored.
     fn render_references(&self, resolved: &TestCaseVersion) -> Result<usize> {
         let slug = &resolved.slug;
         let version = &resolved.version;
         let mut count = 0;
 
-        // Common references render once under the `_common` scope.
+        // Common references store once under the `_common` scope.
         for reference in &resolved.common_references {
-            let out = self
-                .store
-                .reference_path(slug, version, "_common", &reference.view);
-            self.render_one(&reference.source_path, &out, &reference.view)?;
+            self.store_one_reference(slug, version, "_common", reference)?;
             count += 1;
         }
-        // Variant-specific references render under each variant's slug scope, so a
+        // Variant-specific references store under each variant's slug scope, so a
         // view shared across variants (e.g. a per-variant `title`) does not clobber.
         for variant in &resolved.variants {
             for reference in &variant.references {
-                let out = self
-                    .store
-                    .reference_path(slug, version, &variant.slug, &reference.view);
-                self.render_one(&reference.source_path, &out, &reference.view)?;
+                self.store_one_reference(slug, version, &variant.slug, reference)?;
                 count += 1;
             }
         }
         Ok(count)
     }
 
-    /// Render one reference, mapping a browser failure to a backend error naming
-    /// the view that failed.
-    fn render_one(&self, source: &Path, out: &Path, view: &str) -> Result<()> {
+    /// Store one reference under `scope`: render an HTML mockup to a `.png`, or
+    /// copy a static image/video as-is to `<view>.<ext>`.
+    fn store_one_reference(
+        &self,
+        slug: &str,
+        version: &str,
+        scope: &str,
+        reference: &test_cabinet_core::ReferenceView,
+    ) -> Result<()> {
+        let file = format!("{}.{}", reference.view, reference.extension());
+        let out = self.store.reference_path(slug, version, scope, &file);
         if let Some(parent) = out.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        render::render_reference(source, out).map_err(|detail| {
-            BackendError::Snapshot(format!("could not render reference `{view}`: {detail}"))
-        })
+        if reference.kind.is_rendered() {
+            render::render_reference(&reference.source_path, &out).map_err(|detail| {
+                BackendError::Snapshot(format!(
+                    "could not render reference `{}`: {detail}",
+                    reference.view
+                ))
+            })
+        } else {
+            std::fs::copy(&reference.source_path, &out).map_err(|err| {
+                BackendError::Snapshot(format!(
+                    "could not store reference media `{}`: {err}",
+                    reference.view
+                ))
+            })?;
+            Ok(())
+        }
     }
 }
 
@@ -244,13 +260,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 description: variant.description.clone(),
                 specs,
                 workspace,
-                references: variant
-                    .references
-                    .iter()
-                    .map(|r| StoredReference {
-                        view: r.view.clone(),
-                    })
-                    .collect(),
+                references: variant.references.iter().map(stored_reference).collect(),
+                proofs: variant.proofs.iter().map(stored_proof).collect(),
                 review_items: variant
                     .review_items
                     .iter()
@@ -282,10 +293,9 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         common_references: resolved
             .common_references
             .iter()
-            .map(|r| StoredReference {
-                view: r.view.clone(),
-            })
+            .map(stored_reference)
             .collect(),
+        common_proofs: resolved.common_proofs.iter().map(stored_proof).collect(),
         checks: resolved
             .checks
             .iter()
@@ -310,6 +320,28 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         id: item.id.clone(),
         title: item.title.clone(),
         text: item.text.clone(),
+        reference: item.reference.clone(),
+        proof: item.proof.clone(),
+    }
+}
+
+/// Build a [`StoredReference`] from a resolved reference view, recording its kind
+/// and the extension its media is served under.
+fn stored_reference(reference: &test_cabinet_core::ReferenceView) -> StoredReference {
+    StoredReference {
+        view: reference.view.clone(),
+        kind: reference.kind,
+        extension: reference.extension(),
+    }
+}
+
+/// Build a [`StoredProof`] from a resolved proof-of-implementation declaration.
+fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
+    StoredProof {
+        id: proof.id.clone(),
+        name: proof.name.clone(),
+        kind: proof.kind,
+        dest: to_forward_slash(&proof.dest),
     }
 }
 

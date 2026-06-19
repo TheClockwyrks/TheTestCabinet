@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::TestCaseVersion;
+use crate::test_case::{MediaKind, ProofFile, TestCaseVersion};
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +62,32 @@ pub struct CheckResult {
     pub detail: Option<String>,
 }
 
+/// The presence result for a single declared proof-of-implementation artifact.
+///
+/// A test case can ask the agent to write evidence (a screenshot or short clip)
+/// to a known path; validation records whether each declared proof turned up in
+/// the produced tree. This is **informational** — a missing proof never gates the
+/// run's status; it is surfaced so a reviewer sees the gap.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofResult {
+    /// The proof id this result records under (matches a declared
+    /// [`ProofFile`](crate::test_case::ProofFile)).
+    pub id: String,
+    /// Human-readable display name, carried through from the declared proof.
+    pub name: String,
+    /// Whether the proof media is an image or a video.
+    pub kind: MediaKind,
+    /// The run-root-relative path the proof was expected at, carried through from
+    /// the declared proof. Locates the produced file for publishing and tells a UI
+    /// where it lives.
+    pub dest: String,
+    /// Whether the agent produced the proof at its declared `dest`.
+    pub present: bool,
+    /// Detail about a missing or unreadable proof, or `None` when present.
+    pub detail: Option<String>,
+}
+
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +108,11 @@ pub struct ValidationSummary {
     pub build: Option<StepResult>,
     /// Per-check results for the validation checks the test case declares.
     pub checks: Vec<CheckResult>,
+    /// Per-proof presence results for the proof-of-implementation artifacts the
+    /// test case requests. Empty when the case declares none. Informational: a
+    /// missing proof does not change [`Self::loaded`].
+    #[serde(default)]
+    pub proofs: Vec<ProofResult>,
 }
 
 /// Runs validation over a produced implementation.
@@ -91,11 +122,14 @@ pub trait Validator {
     ///
     /// `references` are the screenshots rendered from the test case's reference
     /// mockups (see [`crate::reference::ReferenceRenderer`]); a check's baseline
-    /// is looked up here by its reference view.
+    /// is looked up here by its reference view. `proofs` are the proof-of-
+    /// implementation artifacts requested for the selected variant (see
+    /// [`TestCaseVersion::proofs_for`]); each is recorded present or missing.
     fn validate(
         &self,
         test_case: &TestCaseVersion,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
+        proofs: &[ProofFile],
     ) -> Result<ValidationSummary>;
 }

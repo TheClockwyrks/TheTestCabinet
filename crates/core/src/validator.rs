@@ -17,8 +17,8 @@ use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::TestCaseVersion;
-use crate::validation::{CheckResult, StepResult, ValidationSummary, Validator};
+use crate::test_case::{MediaKind, ProofFile, TestCaseVersion};
+use crate::validation::{CheckResult, ProofResult, StepResult, ValidationSummary, Validator};
 
 /// Candidate output directories a static build may produce.
 const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
@@ -49,13 +49,21 @@ impl Validator for BuildValidator {
         test_case: &TestCaseVersion,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
+        proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
+
+        // Proof presence is independent of whether the build succeeds — the agent
+        // writes proofs into the working tree regardless — so it is recorded on
+        // every path, including an early return for a build that never loads.
+        let proof_results = proof_results(proofs, repo);
+
         if !repo.join("package.json").is_file() {
             return Ok(failed_load(
                 "no package.json found in the produced implementation",
                 None,
                 None,
+                proof_results,
             ));
         }
 
@@ -65,12 +73,17 @@ impl Validator for BuildValidator {
         let install = run_step(repo, &test_case.build.install);
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
-            return Ok(failed_load(&detail, Some(install), None));
+            return Ok(failed_load(&detail, Some(install), None, proof_results));
         }
         let build = run_step(repo, &test_case.build.build);
         if !build.succeeded {
             let detail = build.detail.clone().unwrap_or_default();
-            return Ok(failed_load(&detail, Some(install), Some(build)));
+            return Ok(failed_load(
+                &detail,
+                Some(install),
+                Some(build),
+                proof_results,
+            ));
         }
 
         let Some(output_dir) = BUILD_OUTPUTS
@@ -82,6 +95,7 @@ impl Validator for BuildValidator {
                 "build produced no dist/build/out directory",
                 Some(install),
                 Some(build),
+                proof_results,
             ));
         };
 
@@ -94,8 +108,44 @@ impl Validator for BuildValidator {
             install: Some(install),
             build: Some(build),
             checks,
+            proofs: proof_results,
         })
     }
+}
+
+/// Record whether each requested proof-of-implementation artifact is present in
+/// the produced tree. A proof counts as present when its `dest` exists and is a
+/// non-empty file; an empty file is treated as missing, since a zero-byte capture
+/// is never a usable proof.
+fn proof_results(proofs: &[ProofFile], repo: &Path) -> Vec<ProofResult> {
+    proofs
+        .iter()
+        .map(|proof| {
+            let path = repo.join(&proof.dest);
+            let (present, detail) = match std::fs::metadata(&path) {
+                Ok(meta) if meta.is_file() && meta.len() > 0 => (true, None),
+                Ok(meta) if meta.is_file() => {
+                    (false, Some(format!("`{}` is empty", proof.dest.display())))
+                }
+                Ok(_) => (
+                    false,
+                    Some(format!("`{}` is not a file", proof.dest.display())),
+                ),
+                Err(_) => (
+                    false,
+                    Some(format!("`{}` was not produced", proof.dest.display())),
+                ),
+            };
+            ProofResult {
+                id: proof.id.clone(),
+                name: proof.name.clone(),
+                kind: proof.kind,
+                dest: proof.dest.to_string_lossy().replace('\\', "/"),
+                present,
+                detail,
+            }
+        })
+        .collect()
 }
 
 impl BuildValidator {
@@ -157,6 +207,22 @@ impl BuildValidator {
                 )),
             };
         };
+        // A check scores a captured screenshot pixel-for-pixel against its
+        // baseline, which only makes sense for an image baseline. A video
+        // reference cannot be a check baseline, so flag the misconfiguration
+        // rather than attempting to decode it as a PNG.
+        if baseline.kind != MediaKind::Image {
+            return CheckResult {
+                view: check.view.clone(),
+                name: check.name.clone(),
+                reached: false,
+                similarity: 0.0,
+                detail: Some(format!(
+                    "reference baseline `{}` is not an image and cannot be scored",
+                    check.reference_view
+                )),
+            };
+        }
 
         let capture = captures.join(format!("{}.png", check.view));
         if let Err(detail) = browser::capture(url, &check.actions, &capture) {
@@ -169,7 +235,7 @@ impl BuildValidator {
             };
         }
 
-        match score(&baseline.image_path, &capture) {
+        match score(&baseline.media_path, &capture) {
             Ok(similarity) => CheckResult {
                 view: check.view.clone(),
                 name: check.name.clone(),
@@ -189,11 +255,13 @@ impl BuildValidator {
 }
 
 /// A validation summary for a build that never loaded, carrying whichever build
-/// steps had run by the point it failed.
+/// steps had run by the point it failed and the proof-presence results (which are
+/// independent of the build).
 fn failed_load(
     detail: &str,
     install: Option<StepResult>,
     build: Option<StepResult>,
+    proofs: Vec<ProofResult>,
 ) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
@@ -201,6 +269,7 @@ fn failed_load(
         install,
         build,
         checks: Vec::new(),
+        proofs,
     }
 }
 

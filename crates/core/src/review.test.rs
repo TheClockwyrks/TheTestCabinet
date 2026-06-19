@@ -168,11 +168,15 @@ fn missing_verdicts_reports_unaddressed_items() {
             id: "ball-spin".to_string(),
             title: "Paddle spin".to_string(),
             text: "Spin curves the ball.".to_string(),
+            reference: None,
+            proof: None,
         },
         ReviewItem {
             id: "bank-shot".to_string(),
             title: "Bank shots".to_string(),
             text: "Obstacles enable bank shots.".to_string(),
+            reference: None,
+            proof: None,
         },
     ];
     let writeup = Writeup {

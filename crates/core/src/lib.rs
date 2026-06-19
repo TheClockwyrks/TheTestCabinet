@@ -80,10 +80,12 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseCatalog,
-    TestCaseVersion, Variant, WorkspaceFile,
+    Check, CheckAction, MediaKind, ProofFile, ReferenceKind, ReferenceView, ReviewItem, SpecFile,
+    TestCase, TestCaseCatalog, TestCaseVersion, Variant, WorkspaceFile,
 };
-pub use validation::{CapturedView, CheckResult, StepResult, ValidationSummary, Validator};
+pub use validation::{
+    CapturedView, CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
+};
 pub use validator::BuildValidator;
 
 /// What to run, with what, against which model.
@@ -509,8 +511,10 @@ where
         test_case: &TestCaseVersion,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
+        proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
-        self.validator.validate(test_case, artifacts, references)
+        self.validator
+            .validate(test_case, artifacts, references, proofs)
     }
 
     /// Serialize the run record as camelCase JSON and store it, alongside a copy
@@ -645,7 +649,10 @@ where
             }
         };
         let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
-        let validation = self.validate(test_case, &artifacts, &references)?;
+        // The proof-of-implementation artifacts requested for this variant; the
+        // validator records whether each turned up in the produced tree.
+        let proofs = test_case.proofs_for(&variant);
+        let validation = self.validate(test_case, &artifacts, &references, &proofs)?;
         let finished_at = OffsetDateTime::now_utc();
 
         let run_id = uuid::Uuid::new_v4().to_string();

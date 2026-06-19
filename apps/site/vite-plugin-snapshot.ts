@@ -74,6 +74,9 @@ interface SnapshotRunFile {
   review: SnapshotReview;
   links?: { sourceRepo: string | null; playableBuild: string | null };
   events?: unknown; // a JSON array of normalized HarnessEvents, when present
+  // The run's uploaded proof-of-implementation media, named by snapshot-relative
+  // key. Optional for snapshots written before proofs existed.
+  proofMedia?: Array<{ id: string; kind: "image" | "video"; key: string }>;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -100,6 +103,9 @@ interface SnapshotCaseFile {
   references?: Array<{
     variant: string | null; // null/`_common` => shown on every variant
     view: string;
+    // How the reference is produced: rendered mockup, static image, or static
+    // video. Optional for snapshots written before the field existed.
+    kind?: "rendered" | "image" | "video";
     key: string; // snapshot-relative object key
   }>;
 }
@@ -115,10 +121,14 @@ interface AssembledSnapshot {
   writeups: Record<string, string>;
   // Test-case metadata, mapped to the app's TestCaseSummary shape.
   testCases: AssembledTestCase[];
+  // Resolved proof media URLs, keyed by run id then by served file name
+  // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
+  proofMediaUrls: Record<string, Record<string, string>>;
 }
 
 interface AssembledReference {
   view: string;
+  kind: "image" | "video";
   url: string;
 }
 
@@ -143,7 +153,12 @@ interface AssembledTestCase {
   variants: AssembledVariant[];
 }
 
-const EMPTY: AssembledSnapshot = { runs: [], writeups: {}, testCases: [] };
+const EMPTY: AssembledSnapshot = {
+  runs: [],
+  writeups: {},
+  testCases: [],
+  proofMediaUrls: {},
+};
 
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
 function joinUrl(base: string, key: string): string {
@@ -191,6 +206,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
       view: r.view,
+      kind: (r.kind === "video" ? "video" : "image") as "image" | "video",
       url: joinUrl(base, r.key),
     }));
     return {
@@ -276,6 +292,7 @@ async function loadSnapshot(
 
   const runs: unknown[] = [];
   const writeups: Record<string, string> = {};
+  const proofMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
@@ -287,6 +304,16 @@ async function loadSnapshot(
     runs.push(runFile.record);
     if (runFile.review) {
       writeups[summary.id] = frameWriteup(runFile.review);
+    }
+    // The run's proof media, keyed by served file name (the key's last segment),
+    // resolved to absolute URLs the proof/review UI loads.
+    if (runFile.proofMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const proof of runFile.proofMedia) {
+        const file = proof.key.split("/").pop() ?? proof.key;
+        byFile[file] = joinUrl(base, proof.key);
+      }
+      proofMediaUrls[summary.id] = byFile;
     }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
@@ -312,7 +339,12 @@ async function loadSnapshot(
     }
   }
 
-  return { runs, writeups, testCases: collapseCases(base, caseFiles) };
+  return {
+    runs,
+    writeups,
+    testCases: collapseCases(base, caseFiles),
+    proofMediaUrls,
+  };
 }
 
 function serialize(data: AssembledSnapshot): string {
@@ -321,6 +353,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const runs = ${JSON.stringify(data.runs)};`,
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
+    `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
   ].join("\n");
 }
 

@@ -26,19 +26,25 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase,
-    TestCaseVersion, Variant, WorkspaceFile,
+    BuildCommands, Check, CheckAction, MediaKind, ProofFile, ReferenceKind, ReferenceView,
+    ReviewItem, SpecFile, TestCase, TestCaseVersion, Variant, WorkspaceFile,
 };
 
-/// A reference view resolved to its backend-rendered screenshot bytes. The runner
-/// seeds these as visual targets and uses them as validation baselines; it never
-/// receives the mockup HTML (rendering happens on backend ingest).
+/// A reference view resolved to its backend-served media bytes. The runner seeds
+/// these as visual targets and (for image references) uses them as validation
+/// baselines; it never receives a rendered reference's mockup HTML (rendering
+/// happens on backend ingest). A static reference's bytes are the image/video
+/// served as-is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedReference {
-    /// The view slug this screenshot corresponds to.
+    /// The view slug this media corresponds to.
     pub view: String,
-    /// The rendered PNG bytes.
-    pub png_bytes: Vec<u8>,
+    /// Whether the media is an image or a video.
+    pub kind: MediaKind,
+    /// The file extension the media is served under (for example `png` or `mp4`).
+    pub extension: String,
+    /// The raw media bytes (a rendered screenshot, or a static reference as-is).
+    pub bytes: Vec<u8>,
 }
 
 /// One seeded artifact (a spec source or an asset file) fetched by key.
@@ -146,6 +152,16 @@ pub trait BackendClient: Send + Sync {
         events: &[HarnessEvent],
     ) -> Result<PublishAck>;
 
+    /// Upload one proof-of-implementation media file for a published run, served
+    /// back as the reviewer's submitted-evidence pane. `file` is `<proof-id>.<ext>`.
+    /// (`POST /runs/{id}/proof/{file}`) Idempotent: identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without proof support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_proof(&self, _run_id: &str, _file: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
     /// List published runs, newest first, paginated. (`GET /runs?before=&limit=`)
     ///
     /// `before` is the cursor from a previous page's
@@ -229,22 +245,23 @@ pub async fn materialize_version(
         .map(|r| r.view.as_str())
         .collect();
     let common: std::collections::HashSet<String> = common.iter().map(|s| s.to_string()).collect();
-    let pngs = client.references(slug, version, variant).await?;
-    let mut rendered = Vec::with_capacity(pngs.len());
-    for png in &pngs {
-        let scope = if common.contains(&png.view) {
+    let media = client.references(slug, version, variant).await?;
+    let mut rendered = Vec::with_capacity(media.len());
+    for item in &media {
+        let scope = if common.contains(&item.view) {
             "_common".to_string()
         } else {
             variant.to_string()
         };
-        let image_path = root
+        let media_path = root
             .join("references")
             .join(&scope)
-            .join(format!("{}.png", png.view));
-        write_at(&image_path, &png.png_bytes)?;
+            .join(format!("{}.{}", item.view, item.extension));
+        write_at(&media_path, &item.bytes)?;
         rendered.push(RenderedReference {
-            view: png.view.clone(),
-            image_path,
+            view: item.view.clone(),
+            kind: item.kind,
+            media_path,
         });
     }
 
@@ -267,19 +284,16 @@ pub async fn materialize_version(
                 file.source_path = root.join(&file.source_path);
             }
         }
-        // Point each reference view at its materialized PNG (scope = variant).
+        // Point each reference view at its materialized media (scope = variant);
+        // a rendered reference is a `.png`, a static reference keeps its extension.
         for reference in &mut variant.references {
-            reference.source_path = root
-                .join("references")
-                .join(&variant.slug)
-                .join(format!("{}.png", reference.view));
+            let file = format!("{}.{}", reference.view, reference.extension());
+            reference.source_path = root.join("references").join(&variant.slug).join(file);
         }
     }
     for reference in &mut resolved.common_references {
-        reference.source_path = root
-            .join("references")
-            .join("_common")
-            .join(format!("{}.png", reference.view));
+        let file = format!("{}.{}", reference.view, reference.extension());
+        reference.source_path = root.join("references").join("_common").join(file);
     }
 
     Ok((resolved, rendered))
@@ -459,20 +473,21 @@ impl BackendClient for HttpBackendClient {
         version: &str,
         variant: &str,
     ) -> Result<Vec<ResolvedReference>> {
-        // The resolved version tells us which views exist and under which scope
-        // (`_common` or the variant's slug); fetch the PNG for each.
+        // The resolved version tells us which views exist, under which scope
+        // (`_common` or the variant's slug), and each one's media kind/extension;
+        // fetch the served media for each.
         let resolved = self.resolve_version(slug, version).await?;
         let variant_def = resolved.variant(variant)?;
         let mut out = Vec::new();
         for reference in &resolved.common_references {
             out.push(
-                self.fetch_reference(slug, version, "_common", &reference.view)
+                self.fetch_reference(slug, version, "_common", reference)
                     .await?,
             );
         }
         for reference in &variant_def.references {
             out.push(
-                self.fetch_reference(slug, version, variant, &reference.view)
+                self.fetch_reference(slug, version, variant, reference)
                     .await?,
             );
         }
@@ -545,6 +560,29 @@ impl BackendClient for HttpBackendClient {
         })
     }
 
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id, proof.file = %file),
+        err,
+    )]
+    async fn publish_run_proof(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/proof/{}", encode(run_id), encode(file)));
+        let content_type = content_type_for_file(file);
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
     async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
         let mut path = String::from("/runs");
         let mut query = Vec::new();
@@ -572,27 +610,31 @@ impl BackendClient for HttpBackendClient {
 }
 
 impl HttpBackendClient {
-    /// Fetch one rendered reference screenshot under `scope` (`_common` or a
-    /// variant slug).
+    /// Fetch one reference's served media under `scope` (`_common` or a variant
+    /// slug), using the reference's resolved kind/extension to address it.
     async fn fetch_reference(
         &self,
         slug: &str,
         version: &str,
         scope: &str,
-        view: &str,
+        reference: &ReferenceView,
     ) -> Result<ResolvedReference> {
+        let extension = reference.extension();
         let bytes = self
             .get_bytes(&format!(
-                "/test-cases/{}/versions/{}/references/{}/{}.png",
+                "/test-cases/{}/versions/{}/references/{}/{}.{}",
                 encode(slug),
                 encode(version),
                 encode(scope),
-                encode(view),
+                encode(&reference.view),
+                extension,
             ))
             .await?;
         Ok(ResolvedReference {
-            view: view.to_string(),
-            png_bytes: bytes,
+            view: reference.view.clone(),
+            kind: reference.kind.media_kind(),
+            extension,
+            bytes,
         })
     }
 }
@@ -637,6 +679,8 @@ struct VersionBody {
     assets: Vec<AssetBody>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
+    #[serde(default)]
+    common_proofs: Vec<ProofBody>,
     checks: Vec<CheckBody>,
     #[serde(default)]
     common_review_items: Vec<ReviewItemBody>,
@@ -688,6 +732,7 @@ impl VersionBody {
                         .workspace
                         .map(|files| files.iter().map(workspace_from).collect()),
                     references: variant.references.iter().map(reference_from).collect(),
+                    proofs: variant.proofs.iter().map(proof_from).collect(),
                     review_items: variant
                         .review_items
                         .into_iter()
@@ -696,6 +741,7 @@ impl VersionBody {
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
+            common_proofs: self.common_proofs.iter().map(proof_from).collect(),
             checks: self
                 .checks
                 .into_iter()
@@ -735,23 +781,56 @@ fn workspace_from(file: &WorkspaceFileBody) -> WorkspaceFile {
     }
 }
 
-/// Build a [`ReferenceView`] from a wire reference, keying `source_path` by the
-/// rendered screenshot URL path (rewritten to a host path by
-/// [`materialize_version`]).
 /// Build a [`ReviewItem`] from a wire review item. Reviewer checklist items are
-/// reporter-side material, so they carry no path to rewrite.
+/// reporter-side material, so they carry no path to rewrite; the optional
+/// reference/proof links are pairings the reviewer UI resolves.
 fn review_item_from(item: ReviewItemBody) -> ReviewItem {
     ReviewItem {
         id: item.id,
         title: item.title,
         text: item.text,
+        reference: item.reference,
+        proof: item.proof,
     }
 }
 
+/// Build a [`ReferenceView`] from a wire reference, keying `source_path` by the
+/// media URL path (rewritten to a host path by [`materialize_version`]) and
+/// carrying its kind so static image/video references are handled as-is.
 fn reference_from(reference: &ReferenceBody) -> ReferenceView {
     ReferenceView {
         view: reference.view.clone(),
-        source_path: PathBuf::from(&reference.screenshot_url),
+        kind: reference.kind,
+        source_path: PathBuf::from(&reference.media_url),
+    }
+}
+
+/// Build a [`ProofFile`] from a wire proof declaration. Proofs are produced by the
+/// agent, not seeded, so they carry no host path to rewrite.
+fn proof_from(proof: &ProofBody) -> ProofFile {
+    ProofFile {
+        id: proof.id.clone(),
+        name: proof.name.clone(),
+        kind: proof.kind,
+        dest: PathBuf::from(&proof.dest),
+    }
+}
+
+/// A best-effort content type for an uploaded proof media file, from its
+/// extension. Proof media is only ever an image or an `.mp4`.
+fn content_type_for_file(file: &str) -> &'static str {
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
     }
 }
 
@@ -791,6 +870,8 @@ struct VariantBody {
     workspace: Option<Vec<WorkspaceFileBody>>,
     references: Vec<ReferenceBody>,
     #[serde(default)]
+    proofs: Vec<ProofBody>,
+    #[serde(default)]
     review_items: Vec<ReviewItemBody>,
 }
 
@@ -803,17 +884,34 @@ struct WorkspaceFileBody {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ReviewItemBody {
     id: String,
     title: String,
     text: String,
+    #[serde(default)]
+    reference: Option<String>,
+    #[serde(default)]
+    proof: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReferenceBody {
     view: String,
-    screenshot_url: String,
+    /// How the reference is produced (`rendered`, `image`, or `video`).
+    kind: ReferenceKind,
+    /// The URL path the reference media is served under.
+    media_url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProofBody {
+    id: String,
+    name: String,
+    kind: MediaKind,
+    dest: String,
 }
 
 #[derive(Deserialize)]

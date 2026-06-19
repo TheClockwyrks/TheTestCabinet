@@ -29,6 +29,26 @@
           "type": { "type": "string" }
         }
       }
+    },
+    "proofMedia": {
+      "type": "array",
+      "description": "Optional: the run's uploaded proof-of-implementation media, exported under `runs/<id>/proof/` and named by snapshot-relative key. The site resolves each to an absolute URL for the review flow and the Proof tab.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "key"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The proof id, matching the run record's validation.proofs[].id."
+          },
+          "kind": { "enum": ["image", "video"] },
+          "key": {
+            "type": "string",
+            "description": "Snapshot-relative object key of the proof media."
+          }
+        }
+      }
     }
   }
 }

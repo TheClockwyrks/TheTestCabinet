@@ -89,8 +89,12 @@ pub struct StoredManifest {
     pub assets: Vec<StoredAsset>,
     /// Variants, each with additive specs and references.
     pub variants: Vec<StoredVariant>,
-    /// Common references rendered for every variant.
+    /// Common references rendered (or served as-is) for every variant.
     pub common_references: Vec<StoredReference>,
+    /// Proof-of-implementation artifacts requested for every variant. Defaulted
+    /// for manifests stored before the field existed.
+    #[serde(default)]
+    pub common_proofs: Vec<StoredProof>,
     /// Declared validation checks.
     pub checks: Vec<StoredCheck>,
     /// Reviewer checklist items declared for every variant. Reporter-side
@@ -160,18 +164,59 @@ pub struct StoredVariant {
     pub workspace: Option<Vec<StoredWorkspaceFile>>,
     /// Additive references.
     pub references: Vec<StoredReference>,
+    /// Additive proof-of-implementation artifacts. Defaulted for manifests stored
+    /// before the field existed.
+    #[serde(default)]
+    pub proofs: Vec<StoredProof>,
     /// Additive reviewer checklist items. Defaulted for manifests stored before
     /// the field existed.
     #[serde(default)]
     pub review_items: Vec<StoredReviewItem>,
 }
 
-/// A reference persisted in a [`StoredManifest`]. The rendered screenshot lives
-/// under the version's `.tcab/references/<scope>/<view>.png`.
+/// A reference persisted in a [`StoredManifest`]. The served media lives under the
+/// version's `.tcab/references/<scope>/<view>.<ext>` — a rendered mockup is a
+/// `.png`; a static reference is the image/video stored as-is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReference {
     /// The view slug.
     pub view: String,
+    /// How the reference is produced (rendered mockup, static image, or static
+    /// video). Defaulted to `rendered` for manifests stored before the field
+    /// existed (every reference was an HTML mockup then).
+    #[serde(default = "default_reference_kind")]
+    pub kind: test_cabinet_core::ReferenceKind,
+    /// The file extension the media is stored and served under (`png` for a
+    /// rendered mockup; the static source's own extension otherwise). Defaulted to
+    /// `png` for manifests stored before the field existed.
+    #[serde(default = "default_reference_extension")]
+    pub extension: String,
+}
+
+/// The default reference kind for manifests stored before `kind` was recorded:
+/// every reference used to be an HTML mockup rendered to a screenshot.
+fn default_reference_kind() -> test_cabinet_core::ReferenceKind {
+    test_cabinet_core::ReferenceKind::Rendered
+}
+
+/// The default reference extension for manifests stored before it was recorded.
+fn default_reference_extension() -> String {
+    "png".to_string()
+}
+
+/// A proof-of-implementation artifact persisted in a [`StoredManifest`]. Produced
+/// by the agent at its `dest` during a run (not seeded); validation records its
+/// presence and the reporter pairs it with the expected reference.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredProof {
+    /// Stable slug identifying the proof.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// Whether the proof media is an image or a video.
+    pub kind: test_cabinet_core::MediaKind,
+    /// The run-root-relative path the agent must write the proof to.
+    pub dest: String,
 }
 
 /// A reviewer checklist item persisted in a [`StoredManifest`]. Reporter-side
@@ -186,6 +231,12 @@ pub struct StoredReviewItem {
     pub title: String,
     /// The prose a reviewer reads — what to check.
     pub text: String,
+    /// Optional reference view paired with this item as the expected target.
+    #[serde(default)]
+    pub reference: Option<String>,
+    /// Optional proof id paired with this item as the submitted media.
+    #[serde(default)]
+    pub proof: Option<String>,
 }
 
 /// A check persisted in a [`StoredManifest`].
@@ -304,34 +355,91 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("unknown artifact `{key}`")))
     }
 
-    /// Path to a rendered reference screenshot for a version. `scope` is
-    /// `_common` or a variant slug.
-    pub fn reference_path(&self, slug: &str, version: &str, scope: &str, view: &str) -> PathBuf {
+    /// Path to a stored reference media file for a version. `scope` is `_common`
+    /// or a variant slug; `file` is `<view>.<ext>`.
+    pub fn reference_path(&self, slug: &str, version: &str, scope: &str, file: &str) -> PathBuf {
         self.version_dir(slug, version)
             .join(SIDECAR)
             .join("references")
             .join(scope)
-            .join(format!("{view}.png"))
+            .join(file)
     }
 
-    /// Read a rendered reference screenshot.
+    /// Read a stored reference media file (`<view>.<ext>`).
     pub fn read_reference(
         &self,
         slug: &str,
         version: &str,
         scope: &str,
-        view: &str,
+        file: &str,
     ) -> Result<Vec<u8>> {
-        // `scope` and `view` are validated to be single, traversal-free path
+        // `scope` and `file` are validated to be single, traversal-free path
         // segments so a crafted request cannot read outside the references dir.
-        if !is_safe_segment(scope) || !is_safe_segment(view) {
+        if !is_safe_segment(scope) || !is_safe_segment(file) {
             return Err(BackendError::BadRequest(
-                "invalid reference scope or view".to_string(),
+                "invalid reference scope or file".to_string(),
             ));
         }
-        let path = self.reference_path(slug, version, scope, view);
+        let path = self.reference_path(slug, version, scope, file);
         std::fs::read(&path)
-            .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{view}` not rendered")))
+            .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
+    }
+
+    // --- Per-run proof media ------------------------------------------------
+
+    /// The directory a published run's proof media is stored under.
+    pub fn run_proof_dir(&self, run_id: &str) -> PathBuf {
+        self.root.join("runs").join(run_id).join("proof")
+    }
+
+    /// Persist one proof media file for a run under `runs/<run_id>/proof/<file>`
+    /// (`file` is `<proof-id>.<ext>`). The store is immutable per key, but proof
+    /// media is keyed by the run id a publish carries, so a re-publish overwrites
+    /// the identical bytes.
+    pub fn write_run_proof(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or proof file".to_string(),
+            ));
+        }
+        let dir = self.run_proof_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// List a run's stored proof media file names (`<proof-id>.<ext>`), sorted.
+    /// A run with no stored proofs yields an empty list.
+    pub fn list_run_proofs(&self, run_id: &str) -> Result<Vec<String>> {
+        let dir = self.run_proof_dir(run_id);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// Read one proof media file for a run (`<proof-id>.<ext>`).
+    pub fn read_run_proof(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or proof file".to_string(),
+            ));
+        }
+        let path = self.run_proof_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("proof `{run_id}/{file}` not stored")))
     }
 }
 

@@ -40,7 +40,11 @@ interfaces. A host imports only what it needs.
   assembly). A `canExecute` flag on this value is what gates the run-execution
   surface — the new-run button, the live monitor, the editable review, the
   Connections settings, and the notification layer — so the static site renders
-  the same component with those parts off.
+  the same component with those parts off. The value also resolves each run's
+  submitted [proof-of-implementation](/components/core/validation/#proofs) media to
+  loadable URLs (the consoles point at the backend/worker proof endpoints, the site
+  at snapshot assets), which the reworked review flow and the run **Proof** tab
+  display beside the expected references.
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks
   every GUI uses: the Markdown renderer, the rating badge, panels, the metric
   tile, the spec/reference accordion, pagination, and the chart wrapper.

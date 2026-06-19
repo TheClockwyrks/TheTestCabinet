@@ -39,12 +39,16 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         .render_references(&test_case, variant)
         .context("rendering reference baselines")?;
 
+    // The proof-of-implementation artifacts requested for this variant; the
+    // validator records whether each is present in the produced tree.
+    let proofs = test_case.proofs_for(variant);
+
     let artifacts = ArtifactCollection {
         repo_path: args.implementation,
     };
     let validator = BuildValidator::new(crate::work_dir::staging_dir(None).join("screenshots"));
     let summary = validator
-        .validate(&test_case, &artifacts, &references)
+        .validate(&test_case, &artifacts, &references, &proofs)
         .context("validation failed")?;
 
     println!("  loaded: {}", summary.loaded);
@@ -62,6 +66,18 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
             } else {
                 let detail = check.detail.as_deref().unwrap_or("not reached");
                 println!("  {} not reached ({detail})", check.view);
+            }
+        }
+    }
+    if summary.proofs.is_empty() {
+        println!("  proofs: none");
+    } else {
+        for proof in &summary.proofs {
+            if proof.present {
+                println!("  proof {}: present", proof.id);
+            } else {
+                let detail = proof.detail.as_deref().unwrap_or("missing");
+                println!("  proof {}: missing ({detail})", proof.id);
             }
         }
     }

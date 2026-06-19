@@ -13,4 +13,9 @@ declare module "virtual:tcab-snapshot" {
   export const writeups: Record<string, string>;
   /** Published test-case catalog metadata. */
   export const testCases: TestCaseSummary[];
+  /**
+   * Resolved proof-of-implementation media URLs, keyed by run id then by served
+   * file name (`<proof-id>.<ext>`).
+   */
+  export const proofMediaUrls: Record<string, Record<string, string>>;
 }

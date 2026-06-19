@@ -36,7 +36,7 @@ case should look like it.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: specs, variants, references, checks, review items
+  test-case.toml         # manifest: specs, variants, references, proofs, checks, review items
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -47,6 +47,7 @@ test-cases/<slug>/<version>/
     flow.md              #   scoring, states, controls, HUD, scope
     modes/standard.md    #   the always-present mode (common)
     modes/<other>.md     #   variant-only mode specs
+    proof.md             #   asks the build to capture proof of implementation
   reference/             # mockup SOURCE — rendered to screenshots, NOT seeded
     theme.css            #   shared palette, type, field furniture
     <view>.html          #   one mockup per view (per variant where it differs)
@@ -129,32 +130,55 @@ and step 4 of [`adding-a-variant`](../adding-a-variant/SKILL.md).
 Author `test-case.toml` per the schema in
 [`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md): metadata, the common
 `[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
-the default — usually `base`), any opt-in `[[check]]`, and the common
-`[[review_item]]` list (see step 7). For additional variants follow
-[`adding-a-variant`](../adding-a-variant/SKILL.md). A `.hbs` source is rendered;
-anything else is seeded verbatim.
+the default — usually `base`), any opt-in `[[check]]`, the common `[[proof]]`
+list (see step 7), and the common `[[review_item]]` list (see step 8). For
+additional variants follow [`adding-a-variant`](../adding-a-variant/SKILL.md). A
+`.hbs` source is rendered; anything else is seeded verbatim.
 
-### 7. Declare the reviewer checklist
+### 7. Declare proof of implementation
+
+Decide what evidence the build should submit that its features work, and declare
+it two ways that must agree:
+
+- a **`proof.md` spec** (seeded) that tells the build to capture a small set of
+  screenshots and/or short `.mp4` clips at fixed paths under `proof/` — framed
+  like the references, captured from the built game via the project-local
+  Playwright;
+- one **`[[proof]]`** per file in the manifest, whose `dest` matches the path in
+  `proof.md` exactly. The media kind is inferred from the extension (`.png` image,
+  `.mp4` video).
+
+The spec and the `[[proof]]` `dest`s are a single contract — if they drift, the
+build writes a file the validator never checks, or vice versa. Validation records
+each proof present/missing (informational; never fails the run). Then **pair**
+proofs with the checklist: on a `[[review_item]]`, set `reference` to a reference
+view (the expected target) and `proof` to a proof id (the submitted media) so the
+reviewer compares the two side by side. Prefer giving a proof whatever reference
+best shows the same screen; where a proof is requested, provide a matching
+reference image (or a static-`media` reference video) wherever you can. Pong and
+Coil are the model.
+
+### 8. Declare the reviewer checklist
 
 In the manifest, declare `[[review_item]]`s: the major, observable requirements a
 reviewer must explicitly check by playing the build — the signature mechanics and
 the easy-to-miss correctness behaviors that validation cannot judge. Each item is
 a stable `id`, a short `title` (a few words — the reviewer UI heads the item with
-it and a synthesized number), plus the `text` a reviewer reads; a variant adds its
-own for the mode it introduces (see
-[`adding-a-variant`](../adding-a-variant/SKILL.md)). These
+it and a synthesized number), plus the `text` a reviewer reads, and optionally a
+`reference`/`proof` pairing (see step 7); a variant adds its own for the mode it
+introduces (see [`adding-a-variant`](../adding-a-variant/SKILL.md)). These
 are **not seeded** — they restate requirements the seeded specs already state, so
 the model never receives the checklist. The reviewer records a verdict for each
 before a run can be published. Pong's items are the model; aim for a handful that
 capture what a person must verify, not an exhaustive restatement of the spec.
 
-### 8. Write the non-seeded docs
+### 9. Write the non-seeded docs
 
 `description.md` (site blurb), `README.md` (human overview, slug-vs-title note),
 and `reference/README.md` (the view table). These never reach a run; keep them
 honest about what is seeded.
 
-### 9. Validate and commit
+### 10. Validate and commit
 
 See *Validating* below.
 

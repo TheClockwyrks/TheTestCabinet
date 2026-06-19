@@ -1,0 +1,8 @@
+@use "../../styles/tokens" as t;
+
+.media {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: t.$radius-sm;
+}

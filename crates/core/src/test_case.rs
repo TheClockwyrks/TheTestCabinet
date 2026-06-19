@@ -81,10 +81,17 @@ struct Manifest {
     /// must be declared.
     #[serde(default)]
     variant: Vec<ManifestVariant>,
-    /// Reference views. Each is rendered to a screenshot and seeded as a visual
-    /// target; the reference source is not seeded.
+    /// Reference views. Each is either an HTML mockup rendered to a screenshot
+    /// or a static image/video used as-is, seeded as a visual target; a rendered
+    /// reference's source mockup is not seeded.
     #[serde(default)]
     reference: Vec<ManifestReference>,
+    /// Proof-of-implementation artifacts the agent is asked to produce, declared
+    /// for **every** variant. Each names a `dest` path the agent must write a
+    /// screenshot or `.mp4` to; validation records whether it is present. Declared
+    /// as repeated `[[proof]]` tables.
+    #[serde(default)]
+    proof: Vec<ManifestProof>,
     /// Opt-in validation checks. Only declared checks run.
     #[serde(default)]
     check: Vec<ManifestCheck>,
@@ -146,6 +153,12 @@ struct ManifestVariant {
     /// reference or another of this variant's references.
     #[serde(default, rename = "reference")]
     references: Vec<ManifestReference>,
+    /// Proof-of-implementation artifacts this variant declares in addition to the
+    /// common ones. Declared as a `proof` array of inline `{ id, name, dest }`
+    /// tables; an id must not collide with a common proof or another of this
+    /// variant's proofs.
+    #[serde(default, rename = "proof")]
+    proofs: Vec<ManifestProof>,
     /// Reviewer checklist items this variant declares in addition to the common
     /// items. Declared as a `review_item` array of inline `{ id, text }` tables.
     /// A variant-specific item lets a mode-only requirement be checked only when
@@ -156,12 +169,39 @@ struct ManifestVariant {
 }
 
 /// A single `[[reference]]` entry in the manifest.
+///
+/// A reference is **either** an HTML mockup rendered to a screenshot (`path`) or
+/// a static image/video served as-is (`media`). Exactly one of the two must be
+/// set; resolution rejects declaring both or neither.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestReference {
     /// The view slug.
     view: String,
-    /// The reference source path, relative to the version folder.
-    path: PathBuf,
+    /// The HTML mockup source path, relative to the version folder. Rendered to a
+    /// PNG screenshot; the source is never seeded. Mutually exclusive with
+    /// [`Self::media`].
+    #[serde(default)]
+    path: Option<PathBuf>,
+    /// A static image or `.mp4` file path, relative to the version folder, used as
+    /// the reference as-is (not rendered). Lets the "expected" side of a review
+    /// item be a video or a prepared still. Mutually exclusive with [`Self::path`].
+    #[serde(default)]
+    media: Option<PathBuf>,
+}
+
+/// A single `[[proof]]` entry in the manifest (or a variant's `proof` array): one
+/// proof-of-implementation artifact the agent is asked to produce.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestProof {
+    /// Stable slug identifying this proof; recorded in the run's validation and
+    /// used to pair a review item with the submitted media.
+    id: String,
+    /// Human-readable display name. Defaults to a humanized form of `id`.
+    name: Option<String>,
+    /// The path, relative to the run's workspace root, the agent must write the
+    /// proof to. The media kind (image or video) is inferred from its extension.
+    /// The spec that requests the proof must reference this same path.
+    dest: PathBuf,
 }
 
 /// A single `[[check]]` entry in the manifest.
@@ -192,6 +232,14 @@ struct ManifestReviewItem {
     title: String,
     /// The prose a reviewer reads — what to check.
     text: String,
+    /// Optional reference view to show the reviewer as the **expected** target for
+    /// this item. Must name a reference that resolves for the item's variant.
+    #[serde(default)]
+    reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown to the reviewer for
+    /// this item. Must name a proof that resolves for the item's variant.
+    #[serde(default)]
+    proof: Option<String>,
 }
 
 /// The manifest file name expected in every version folder.
@@ -206,6 +254,82 @@ pub struct TestCase {
     pub slug: String,
     /// The versions available for this test case.
     pub versions: Vec<String>,
+}
+
+/// The kind of a piece of media — used for both reference media and proof
+/// artifacts so a UI knows whether to render an `<img>` or a `<video>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MediaKind {
+    /// A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).
+    Image,
+    /// A video clip (`mp4`).
+    Video,
+}
+
+impl MediaKind {
+    /// Infer the media kind from a path's file extension. Returns `None` for an
+    /// extension that is neither a supported image nor a supported video.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+        match ext.as_str() {
+            "png" | "jpg" | "jpeg" | "webp" | "gif" => Some(Self::Image),
+            "mp4" => Some(Self::Video),
+            _ => None,
+        }
+    }
+}
+
+/// How a reference view's source is turned into the seeded/served artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReferenceKind {
+    /// An HTML mockup rendered to a PNG screenshot. The served media is always an
+    /// image.
+    Rendered,
+    /// A static image file used as-is.
+    Image,
+    /// A static video file (`mp4`) used as-is.
+    Video,
+}
+
+impl ReferenceKind {
+    /// The kind of media this reference ultimately presents (a rendered mockup is
+    /// always an image).
+    pub fn media_kind(self) -> MediaKind {
+        match self {
+            Self::Rendered | Self::Image => MediaKind::Image,
+            Self::Video => MediaKind::Video,
+        }
+    }
+
+    /// Whether the reference is an HTML mockup that must be rendered (rather than
+    /// a static file served as-is).
+    pub fn is_rendered(self) -> bool {
+        matches!(self, Self::Rendered)
+    }
+}
+
+/// A proof-of-implementation artifact a test case asks the agent to produce.
+///
+/// Unlike specs and references, a proof is **not** seeded into a run: it is
+/// output the agent writes during the run to its [`Self::dest`] path (a screenshot
+/// or short `.mp4`) to evidence that a feature works. Validation records whether
+/// each declared proof is present (see [`crate::validation::ProofResult`]), and a
+/// reviewer pairs it with the expected reference when judging the run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofFile {
+    /// Stable slug identifying this proof; recorded in validation and used to pair
+    /// a review item with the submitted media.
+    pub id: String,
+    /// Human-readable display name, surfaced in the reviewer UI.
+    pub name: String,
+    /// The media kind, inferred from [`Self::dest`]'s extension.
+    pub kind: MediaKind,
+    /// The path, relative to the run's workspace root, the agent must write the
+    /// proof to.
+    pub dest: PathBuf,
 }
 
 /// A spec file seeded into a run.
@@ -291,6 +415,9 @@ pub struct Variant {
     /// references. Rendered and seeded only when this variant is selected, so a
     /// view such as the title menu can differ per variant.
     pub references: Vec<ReferenceView>,
+    /// Proof-of-implementation artifacts this variant declares in addition to the
+    /// case's common proofs. Requested only when this variant is selected.
+    pub proofs: Vec<ProofFile>,
     /// Reviewer checklist items this variant declares in addition to the case's
     /// common items. Surfaced to a reviewer only when this variant is selected, so
     /// a mode-specific check rides along only with the variant that adds the mode.
@@ -310,9 +437,29 @@ pub struct ReferenceView {
     /// The view name (for example, `title`), matched against a declared
     /// [`Check`]'s baseline.
     pub view: String,
-    /// Path to the reference source mockup on the host, relative to the version
-    /// folder. Rendered to a screenshot; never seeded directly.
+    /// How the reference is produced: a rendered HTML mockup, or a static
+    /// image/video served as-is.
+    pub kind: ReferenceKind,
+    /// Path to the reference source on the host. For a [`ReferenceKind::Rendered`]
+    /// reference this is the HTML mockup (rendered to a screenshot, never seeded);
+    /// for a static reference it is the image or video file itself, which is
+    /// seeded and served as-is.
     pub source_path: PathBuf,
+}
+
+impl ReferenceView {
+    /// The file extension under which this reference is seeded and served:
+    /// `png` for a rendered mockup, otherwise the static source's own extension.
+    pub fn extension(&self) -> String {
+        if self.kind.is_rendered() {
+            return "png".to_string();
+        }
+        self.source_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .unwrap_or_else(|| "png".to_string())
+    }
 }
 
 /// A single action that drives a served implementation toward a view.
@@ -387,6 +534,12 @@ pub struct ReviewItem {
     pub title: String,
     /// The prose a reviewer reads — what to check.
     pub text: String,
+    /// Optional reference view shown to the reviewer as the **expected** target
+    /// for this item. `None` when the item has no paired reference.
+    pub reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown to the reviewer for
+    /// this item. `None` when the item has no paired proof.
+    pub proof: Option<String>,
 }
 
 // `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
@@ -456,6 +609,10 @@ pub struct TestCaseVersion {
     /// [`Variant::references`]); the full set for a variant is
     /// [`Self::references_for`].
     pub common_references: Vec<ReferenceView>,
+    /// Proof-of-implementation artifacts requested for **every** variant (the
+    /// common set). A variant may declare additional proofs of its own (see
+    /// [`Variant::proofs`]); the full set for a variant is [`Self::proofs_for`].
+    pub common_proofs: Vec<ProofFile>,
     /// Opt-in validation checks declared by this version.
     pub checks: Vec<Check>,
     /// Reviewer checklist items declared for **every** variant (the common set). A
@@ -511,6 +668,17 @@ impl TestCaseVersion {
         self.common_references
             .iter()
             .chain(variant.references.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The full set of proof-of-implementation artifacts requested for a variant:
+    /// the common proofs followed by the variant's own. Resolution forbids two
+    /// proofs sharing an `id`, so the order is stable and each id is unambiguous.
+    pub fn proofs_for(&self, variant: &Variant) -> Vec<ProofFile> {
+        self.common_proofs
+            .iter()
+            .chain(variant.proofs.iter())
             .cloned()
             .collect()
     }
@@ -753,20 +921,86 @@ impl TestCaseCatalog {
             })
             .collect();
 
-        // Resolve one reference mapping: the source mockup must exist inside the
+        // Resolve one reference mapping. A reference is either an HTML mockup
+        // rendered to a screenshot (`path`) or a static image/video served as-is
+        // (`media`); exactly one must be declared. The source must exist inside the
         // version folder. Shared by the common references and each variant's own.
         let resolve_reference = |reference: &ManifestReference| -> Result<ReferenceView> {
-            let path = resolve_inside(&reference.path, "reference")?;
-            if !path.is_file() {
+            let (rel, kind) = match (&reference.path, &reference.media) {
+                (Some(path), None) => (path, ReferenceKind::Rendered),
+                (None, Some(media)) => {
+                    let kind = MediaKind::from_path(media).ok_or_else(|| {
+                        invalid(format!(
+                            "reference media `{}` for view `{}` has an unsupported extension \
+                             (expected an image or .mp4)",
+                            media.display(),
+                            reference.view
+                        ))
+                    })?;
+                    let kind = match kind {
+                        MediaKind::Image => ReferenceKind::Image,
+                        MediaKind::Video => ReferenceKind::Video,
+                    };
+                    (media, kind)
+                }
+                (Some(_), Some(_)) => {
+                    return Err(invalid(format!(
+                        "reference for view `{}` declares both `path` and `media`; \
+                         exactly one is allowed",
+                        reference.view
+                    )));
+                }
+                (None, None) => {
+                    return Err(invalid(format!(
+                        "reference for view `{}` declares neither `path` nor `media`",
+                        reference.view
+                    )));
+                }
+            };
+            let source_path = resolve_inside(rel, "reference")?;
+            if !source_path.is_file() {
                 return Err(invalid(format!(
                     "reference `{}` for view `{}` does not exist",
-                    reference.path.display(),
+                    rel.display(),
                     reference.view
                 )));
             }
             Ok(ReferenceView {
                 view: reference.view.clone(),
-                source_path: path,
+                kind,
+                source_path,
+            })
+        };
+
+        // Resolve one proof-of-implementation declaration: its id must be
+        // non-empty, its dest must stay inside the run workspace, and the media
+        // kind is inferred from the dest extension. Shared by the common proofs
+        // and each variant's own.
+        let resolve_proof = |proof: &ManifestProof| -> Result<ProofFile> {
+            if proof.id.trim().is_empty() {
+                return Err(invalid("proof `id` must not be empty".to_string()));
+            }
+            if escapes_folder(&proof.dest) {
+                return Err(invalid(format!(
+                    "proof `{}` dest `{}` escapes the run workspace",
+                    proof.id,
+                    proof.dest.display()
+                )));
+            }
+            let kind = MediaKind::from_path(&proof.dest).ok_or_else(|| {
+                invalid(format!(
+                    "proof `{}` dest `{}` has an unsupported extension \
+                     (expected an image or .mp4)",
+                    proof.id,
+                    proof.dest.display()
+                ))
+            })?;
+            let name = proof.name.clone().unwrap_or_else(|| humanize(&proof.id));
+            Ok(ProofFile {
+                id: proof.id.clone(),
+                name,
+                kind,
+                dest: proof.dest.clone(),
             })
         };
 
@@ -799,12 +1033,19 @@ impl TestCaseCatalog {
                 id: item.id.clone(),
                 title: item.title.clone(),
                 text: item.text.clone(),
+                reference: item.reference.clone(),
+                proof: item.proof.clone(),
             })
         };
 
         let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
         for item in &manifest.review_items {
             common_review_items.push(resolve_review_item(item)?);
+        }
+
+        let mut common_proofs = Vec::with_capacity(manifest.proof.len());
+        for proof in &manifest.proof {
+            common_proofs.push(resolve_proof(proof)?);
         }
 
         // A case must offer at least one variant; a run always selects exactly
@@ -841,6 +1082,24 @@ impl TestCaseCatalog {
             for reference in &variant.references {
                 references.push(resolve_reference(reference)?);
             }
+
+            let mut proofs = Vec::with_capacity(variant.proofs.len());
+            for proof in &variant.proofs {
+                proofs.push(resolve_proof(proof)?);
+            }
+            // The common proofs and the variant's own are recorded under one id
+            // each; two proofs sharing an id would make a recorded result
+            // ambiguous, so a collision is rejected.
+            let mut seen_proof_ids = std::collections::BTreeSet::new();
+            for proof in common_proofs.iter().chain(proofs.iter()) {
+                if !seen_proof_ids.insert(&proof.id) {
+                    return Err(invalid(format!(
+                        "variant `{}` declares two proofs with the same id `{}`",
+                        variant.slug, proof.id
+                    )));
+                }
+            }
+
             // The common references and the variant's own are rendered and seeded
             // together under one view slug each; two references sharing a view
             // would clobber each other (a view is either common or owned by this
@@ -884,16 +1143,27 @@ impl TestCaseCatalog {
             for dest in &asset_dests {
                 claim(dest.clone(), "asset")?;
             }
-            // The reference screenshots seed under `reference/<view>.png`, with a
-            // `reference/README.md` notice alongside them when any are present.
+            // The reference media seeds under `reference/<view>.<ext>` (a rendered
+            // mockup is a `.png`; a static reference keeps its own extension), with
+            // a `reference/README.md` notice alongside them when any are present.
             for reference in common_references.iter().chain(references.iter()) {
                 claim(
-                    Path::new("reference").join(format!("{}.png", reference.view)),
+                    Path::new("reference").join(format!(
+                        "{}.{}",
+                        reference.view,
+                        reference.extension()
+                    )),
                     "reference",
                 )?;
             }
             if !common_references.is_empty() || !references.is_empty() {
                 claim(Path::new("reference").join("README.md"), "reference")?;
+            }
+            // A proof is produced by the agent at its `dest`, not seeded; but a
+            // proof dest that collides with a seeded file would have the agent and
+            // the seeder fight over the same path, so reject the collision here.
+            for proof in common_proofs.iter().chain(proofs.iter()) {
+                claim(proof.dest.clone(), "proof")?;
             }
 
             let mut review_items = Vec::with_capacity(variant.review_items.len());
@@ -913,6 +1183,34 @@ impl TestCaseCatalog {
                 }
             }
 
+            // A review item may pair an expected reference and a submitted proof
+            // with its checklist entry; both must resolve for this variant so the
+            // reviewer UI can always show them whichever variant runs.
+            for item in common_review_items.iter().chain(review_items.iter()) {
+                if let Some(reference) = &item.reference
+                    && !common_references
+                        .iter()
+                        .chain(references.iter())
+                        .any(|r| &r.view == reference)
+                {
+                    return Err(invalid(format!(
+                        "review item `{}` references reference view `{}`, which variant `{}` does not declare",
+                        item.id, reference, variant.slug
+                    )));
+                }
+                if let Some(proof) = &item.proof
+                    && !common_proofs
+                        .iter()
+                        .chain(proofs.iter())
+                        .any(|p| &p.id == proof)
+                {
+                    return Err(invalid(format!(
+                        "review item `{}` references proof `{}`, which variant `{}` does not declare",
+                        item.id, proof, variant.slug
+                    )));
+                }
+            }
+
             let name = variant
                 .name
                 .clone()
@@ -924,6 +1222,7 @@ impl TestCaseCatalog {
                 specs,
                 workspace,
                 references,
+                proofs,
                 review_items,
             });
         }
@@ -977,6 +1276,7 @@ impl TestCaseCatalog {
             asset_paths,
             variants,
             common_references,
+            common_proofs,
             checks,
             common_review_items,
         })

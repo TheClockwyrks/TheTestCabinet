@@ -69,6 +69,10 @@ pub fn router(state: AppState) -> Router {
         // id, these back the run-detail Events tab after the live job is gone.
         .route("/runs/{id}/events.jsonl", get(runs::events_file))
         .route("/runs/{id}/raw.jsonl", get(runs::raw_file))
+        // A produced run's proof-of-implementation media (`<proof-id>.<ext>`),
+        // served from its collected implementation so a reviewer can see the
+        // submitted evidence before the run is published.
+        .route("/runs/{id}/proof/{file}", get(runs::proof_file))
         // Serve a produced run's playable build (the static output collected
         // beside its implementation) so a reviewer can play it before it is
         // published. `{id}` is the run-record id the produced-run list reports.

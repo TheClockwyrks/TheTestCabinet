@@ -86,6 +86,31 @@ export interface RunMetrics {
   cost: CostMetrics;
 }
 
+/** Whether a piece of media is a still image or a video clip. */
+export type MediaKind = "image" | "video";
+
+/**
+ * The presence result for a single declared proof-of-implementation artifact.
+ *
+ * A test case can ask the agent to write evidence (a screenshot or short clip)
+ * to a known path; validation records whether each turned up. Informational — a
+ * missing proof never gates the run's status.
+ */
+export interface ProofResult {
+  /** The proof id this result records under (matches a declared proof). */
+  id: string;
+  /** Human-readable display name, carried through from the declared proof. */
+  name: string;
+  /** Whether the proof media is an image or a video. */
+  kind: MediaKind;
+  /** The run-root-relative path the proof was expected at. */
+  dest: string;
+  /** Whether the agent produced the proof at its declared `dest`. */
+  present: boolean;
+  /** Detail about a missing or unreadable proof, or null when present. */
+  detail: string | null;
+}
+
 /** The result of a single opt-in validation check. */
 export interface CheckResult {
   view: string;
@@ -130,6 +155,12 @@ export interface RunValidation {
   build: StepResult | null;
   /** Per-check results for the checks the test case declares. */
   checks: CheckResult[];
+  /**
+   * Per-proof presence results for the proof-of-implementation artifacts the
+   * test case requests. Empty when the case declares none. Informational: a
+   * missing proof does not change `loaded`.
+   */
+  proofs: ProofResult[];
 }
 
 /** Outbound links for a run. Either may be null when not published. */

@@ -1,5 +1,6 @@
 import { Markdown, SpecAccordion, type AccordionEntry } from "@test-cabinet/ui";
 import type { SeededInput, VariantSummary } from "../data/testCases";
+import { MediaView } from "./MediaView";
 
 // Shared renderers for a variant's specifications and reference images. Both the
 // test-case detail tabs (where the variant comes from the URL slug) and the run
@@ -41,24 +42,35 @@ export function VariantSpecsView({ variant }: { variant: VariantSummary }) {
   );
 }
 
-// The rendered reference screenshots that are the visual targets for a variant.
-// They are validation material, not seeded into a run, so they read on their own
-// apart from the specification files but share the same full-width accordion.
+// The reference media that are the visual targets for a variant: rendered mockups
+// and static images, plus any reference video clips. They are validation
+// material, not seeded into a run, so they read on their own apart from the
+// specification files but share the same full-width accordion. A video reference
+// renders with native controls; an image renders inline.
 export function VariantReferencesView({
   variant,
 }: {
   variant: VariantSummary;
 }) {
-  const entries: AccordionEntry[] = variant.referenceScreenshots.map((shot) => ({
-    path: `reference/${shot.view}.png`,
-    kind: "image",
-    body: <img src={shot.url} alt={`${variant.name} ${shot.view}`} />,
-  }));
+  const entries: AccordionEntry[] = variant.referenceScreenshots.map((shot) => {
+    const ext = shot.kind === "video" ? "mp4" : "png";
+    return {
+      path: `reference/${shot.view}.${ext}`,
+      kind: shot.kind,
+      body: (
+        <MediaView
+          kind={shot.kind}
+          url={shot.url}
+          alt={`${variant.name} ${shot.view}`}
+        />
+      ),
+    };
+  });
   return (
     <SpecAccordion
       key={variant.slug}
       entries={entries}
-      emptyLabel="This variant has no reference images."
+      emptyLabel="This variant has no reference media."
     />
   );
 }

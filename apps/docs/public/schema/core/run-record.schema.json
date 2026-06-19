@@ -127,16 +127,35 @@
         "detail": { "type": ["string", "null"] }
       }
     },
+    "ProofResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "dest", "present", "detail"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["image", "video"] },
+        "dest": { "type": "string" },
+        "present": { "type": "boolean" },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
     "RunValidation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["loaded", "detail", "checks"],
+      "required": ["loaded", "detail", "checks", "proofs"],
       "properties": {
         "loaded": { "type": "boolean" },
         "detail": { "type": ["string", "null"] },
+        "install": { "type": ["object", "null"] },
+        "build": { "type": ["object", "null"] },
         "checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/CheckResult" }
+        },
+        "proofs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ProofResult" }
         }
       }
     },

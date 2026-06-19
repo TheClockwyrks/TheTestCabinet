@@ -19,11 +19,14 @@ export interface SeededInput {
   url?: string;
 }
 
-/** A rendered reference screenshot used as a visual target for a view. */
+/** A reference used as a visual target for a view: a rendered mockup or static
+ * image (`kind: "image"`) or a static clip (`kind: "video"`). */
 export interface ReferenceScreenshot {
-  /** The view the screenshot depicts (e.g. `title`, `game-over`). */
+  /** The view the reference depicts (e.g. `title`, `game-over`). */
   view: string;
-  /** Public `/catalog/...` URL of the rendered image. */
+  /** Whether the media is a still image or a video. */
+  kind: "image" | "video";
+  /** Public URL of the reference media. */
   url: string;
 }
 

@@ -1,7 +1,12 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import type { ProgressCallback, RunEventStreams } from "../../client/types";
+import type {
+  ProgressCallback,
+  ProofMedia,
+  RunEventStreams,
+} from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
+import { extensionFor } from "./proofMedia";
 import type { TestCaseSummary } from "./testCases";
 
 // The gallery's data source, injected by the host app. The same routed UI lives
@@ -59,6 +64,14 @@ export interface GalleryDataInput {
     runId: string,
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
+  /**
+   * Resolve the loadable URL for one run's proof media file (`<proof-id>.<ext>`),
+   * or null when the host cannot serve it (so the UI shows presence only). Each
+   * host wires its own source: the consoles point at the backend (published) or
+   * worker (produced) proof endpoint, the static site at the snapshot asset.
+   * Omitted by a host that serves no proof media.
+   */
+  proofMediaUrl?: (runId: string, file: string) => string | null;
 }
 
 export interface GalleryData extends GalleryDataInput {
@@ -71,6 +84,13 @@ export interface GalleryData extends GalleryDataInput {
     runId: string,
     override?: Readonly<Record<string, string>>,
   ): ParsedWriteup | undefined;
+  /**
+   * The run's submitted proof-of-implementation media, derived from its recorded
+   * `validation.proofs` and resolved to loadable URLs via {@link proofMediaUrl}.
+   * Each entry carries the recorded presence; `url` is null when the media cannot
+   * be served. Empty when the run declares no proofs.
+   */
+  proofMediaFor(run: RunRecord): ProofMedia[];
 }
 
 const GalleryDataContext = createContext<GalleryData | null>(null);
@@ -83,12 +103,24 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups } = value;
+    const { writeups, proofMediaUrl } = value;
     return {
       ...value,
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      proofMediaFor(run) {
+        return run.validation.proofs.map((proof) => ({
+          id: proof.id,
+          name: proof.name,
+          kind: proof.kind,
+          present: proof.present,
+          url:
+            proof.present && proofMediaUrl
+              ? proofMediaUrl(run.id, `${proof.id}.${extensionFor(proof.dest)}`)
+              : null,
+        }));
       },
     };
   }, [value]);

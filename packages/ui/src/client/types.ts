@@ -2,10 +2,11 @@
 // The HTTP transport (apps/web) and the Tauri transport (apps/desktop, a later
 // item) both produce and consume these. Fields are camelCase to match both the
 // backend HTTP API and the run-record contract.
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { MediaKind, RunRecord } from "@test-cabinet/run-record";
 import type { Rating, ReviewVerdict, VerdictStatus } from "../ratings";
 
 export type { Rating, ReviewVerdict, VerdictStatus };
+export type { MediaKind };
 
 // --- Catalog (served by the backend) ---
 
@@ -23,10 +24,23 @@ export interface TestCase {
   versions: string[];
 }
 
-// A rendered reference mockup screenshot for a view, resolved to an absolute URL.
+// A reference for a view, resolved to an absolute media URL. A rendered mockup or
+// static image is `kind: "image"`; a static reference clip is `kind: "video"`.
 export interface ReferenceShot {
   view: string;
+  kind: MediaKind;
   url: string;
+}
+
+// A run's submitted proof-of-implementation media for a declared proof, resolved
+// to an absolute media URL. `present` mirrors the run's validation result; `url`
+// is set only when the media is available to load.
+export interface ProofMedia {
+  id: string;
+  name: string;
+  kind: MediaKind;
+  present: boolean;
+  url: string | null;
 }
 
 export interface VariantInfo {
@@ -76,6 +90,11 @@ export interface ReviewItem {
   id: string;
   title: string;
   text: string;
+  // Optional paired reference view shown as the "expected" target, and proof id
+  // whose submitted media is shown as "submitted", for this item. Null when the
+  // item declares no pairing.
+  reference?: string | null;
+  proof?: string | null;
 }
 
 export interface ReviewDocument {

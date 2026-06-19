@@ -58,14 +58,17 @@ impl BackendClient for StubBackend {
                 specs: vec![],
                 workspace: None,
                 references: vec![],
+                proofs: vec![],
                 review_items: vec![],
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
+                kind: crate::test_case::ReferenceKind::Rendered,
                 source_path: std::path::PathBuf::from(
                     "/test-cases/pong/v1.0.0/references/_common/title.png",
                 ),
             }],
+            common_proofs: vec![],
             checks: vec![],
             common_review_items: vec![],
         })
@@ -89,7 +92,9 @@ impl BackendClient for StubBackend {
     ) -> Result<Vec<ResolvedReference>> {
         Ok(vec![ResolvedReference {
             view: "title".to_string(),
-            png_bytes: b"\x89PNG\r\n".to_vec(),
+            kind: crate::test_case::MediaKind::Image,
+            extension: "png".to_string(),
+            bytes: b"\x89PNG\r\n".to_vec(),
         }])
     }
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
@@ -162,7 +167,7 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
     assert_eq!(references.len(), 1);
     assert_eq!(references[0].view, "title");
     assert_eq!(
-        references[0].image_path,
+        references[0].media_path,
         store.join("references/_common/title.png")
     );
 
@@ -244,6 +249,7 @@ fn sample_record(id: &str) -> RunRecord {
             install: None,
             build: None,
             checks: vec![],
+            proofs: vec![],
         },
         links: RunLinks::default(),
         status: RunStatus {

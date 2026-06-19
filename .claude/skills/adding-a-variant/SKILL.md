@@ -28,7 +28,7 @@ new variant should look like them.
 
 ```text
 test-cases/pong/v1.0.0/
-  test-case.toml         # manifest: specs, variants, references, checks, review items
+  test-case.toml         # manifest: specs, variants, references, proofs, checks, review items
   prompt.hbs             # rendered per run into the model's instruction
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -148,7 +148,15 @@ Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/tes
   one for the mode this variant introduces — the observable thing a reviewer must
   check that the standard modes don't have (Gyre's oriented bounce, Frenzy's
   uncapped speed ramp). An item `id` must be unique within the variant's effective
-  set (common + own). Review items are reporter-side, never seeded.
+  set (common + own). Review items are reporter-side, never seeded. An item may
+  pair an expected reference and the submitted proof via its optional `reference`
+  (a reference view) and `proof` (a proof id) — each must resolve for this variant
+  (a common one or one this variant adds).
+- `proof` entries are additive on top of the common `[[proof]]`s — declare one
+  only if this variant asks for proof a standard mode doesn't. A proof `id` must
+  be unique within the variant's effective set, its `dest` must not collide with a
+  seeded file, and (as with common proofs) the seeded mode spec must instruct the
+  build to write the file at that same `dest`.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
   variant — for `pong`, every variant provides its own `title`, which is what the
   `title` check baselines against.

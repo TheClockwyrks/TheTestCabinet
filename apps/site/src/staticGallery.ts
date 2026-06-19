@@ -11,6 +11,7 @@ import {
   runs as publishedRuns,
   writeups as publishedWriteups,
   testCases as catalogTestCases,
+  proofMediaUrls as publishedProofMediaUrls,
 } from "virtual:tcab-snapshot";
 
 // The static site's gallery data source. It is the build-time public R2 snapshot
@@ -100,6 +101,15 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // A published run's proof media, resolved at build time to absolute snapshot
+  // URLs keyed by run id then served file name (`<proof-id>.<ext>`). Produced
+  // (local, dev-only) runs are not published, so they have no snapshot media.
+  const proofMediaUrl = useCallback(
+    (runId: string, file: string): string | null =>
+      publishedProofMediaUrls[runId]?.[file] ?? null,
+    [],
+  );
+
   return {
     runs,
     localIds,
@@ -109,5 +119,6 @@ export function useStaticGallery(): GalleryDataInput {
     testCasesUsingSamples,
     canExecute: false,
     fetchRunEvents,
+    proofMediaUrl,
   };
 }

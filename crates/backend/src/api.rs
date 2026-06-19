@@ -57,6 +57,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/runs", post(runs::publish).get(runs::list))
         .route("/runs/{id}", get(runs::get))
+        // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
+        // uploaded by the publisher (POST) and served as-is for the reviewer UI's
+        // submitted-evidence panes (GET).
+        .route(
+            "/runs/{id}/proof/{file}",
+            get(test_cases::run_proof).post(test_cases::put_run_proof),
+        )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.

@@ -120,15 +120,16 @@ impl RepoSeeder for FsRepoSeeder {
             copy_into(asset, &repo.join(relative))?;
         }
 
-        // Reference screenshots are seeded as visual targets under `reference/`,
-        // one PNG per view, alongside a short notice. The reference source
-        // mockups they were rendered from are deliberately not seeded.
+        // Reference media is seeded as visual targets under `reference/`, one file
+        // per view (a rendered mockup is a `.png`; a static reference keeps its own
+        // extension), alongside a short notice. A rendered reference's source
+        // mockup is deliberately not seeded.
         if !request.references.is_empty() {
             let reference_dir = repo.join("reference");
             for rendered in request.references {
                 copy_file(
-                    &rendered.image_path,
-                    &reference_dir.join(format!("{}.png", rendered.view)),
+                    &rendered.media_path,
+                    &reference_dir.join(rendered.file_name()),
                 )?;
             }
             fs::write(reference_dir.join("README.md"), reference_notice(request))

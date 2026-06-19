@@ -369,3 +369,125 @@
   gap: t.$space-md;
   flex-wrap: wrap;
 }
+
+// --- Review flow: one question at a time, with a navigable item rail ---------
+
+// Two-column shell: the item rail on the left, the current question on the right.
+// On narrow viewports the rail stacks above the question.
+.reviewLayout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) 1fr;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-lg;
+
+  @media (max-width: 48rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.itemRail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.itemNavList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One item button in the rail: a status mark plus the item title. The current
+// item is accented; an answered item is tinted and its mark becomes a check.
+.itemNav {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.itemNavActive {
+  border-color: t.$color-accent;
+  color: t.$color-accent;
+}
+
+.itemNavDone .itemNavMark {
+  color: t.$color-accent;
+}
+
+.itemNavMark {
+  flex: 0 0 1.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+}
+
+.itemNavTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.questionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// Expected vs submitted media, side by side (stacking when space is tight).
+.mediaPanes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: t.$space-md;
+  margin: t.$space-sm 0;
+
+  @media (max-width: 40rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mediaPane {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.mediaPaneLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.mediaMissing {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+.questionNav {
+  display: flex;
+  gap: t.$space-sm;
+  margin-top: t.$space-sm;
+}

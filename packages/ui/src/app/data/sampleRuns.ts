@@ -44,6 +44,7 @@ export const sampleRuns: RunRecord[] = [
         { view: "title", name: "Title", reached: true, similarity: 0.969, detail: null },
         { view: "rally", name: "Rally", reached: true, similarity: 0.882, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-pong-codex",
@@ -89,6 +90,7 @@ export const sampleRuns: RunRecord[] = [
         { view: "match", name: "Match", reached: true, similarity: 0.873, detail: null },
         { view: "spin", name: "Spin", reached: true, similarity: 0.79, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-carom-claude",
@@ -139,6 +141,7 @@ export const sampleRuns: RunRecord[] = [
           detail: "could not reach game-over screen",
         },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-phalanx-gemini",
@@ -182,6 +185,7 @@ export const sampleRuns: RunRecord[] = [
       checks: [
         { view: "board", name: "Board", reached: true, similarity: 0.915, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-serpentine-goose",
@@ -227,6 +231,7 @@ export const sampleRuns: RunRecord[] = [
         detail: "build threw on startup: missing canvas context",
       },
       checks: [],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-brickfall-cline",
@@ -280,6 +285,7 @@ export const sampleRuns: RunRecord[] = [
           detail: null,
         },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-cascade-kilo",
@@ -329,6 +335,7 @@ export const sampleRuns: RunRecord[] = [
           detail: "ship sprite missing",
         },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: null,
@@ -375,6 +382,7 @@ export const sampleRuns: RunRecord[] = [
       checks: [
         { view: "title", name: "Title", reached: true, similarity: 0.844, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-pong-pi",
@@ -419,6 +427,7 @@ export const sampleRuns: RunRecord[] = [
         { view: "menu", name: "Menu", reached: true, similarity: 0.92, detail: null },
         { view: "match", name: "Match", reached: true, similarity: 0.851, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-carom-codex-base",
@@ -464,6 +473,7 @@ export const sampleRuns: RunRecord[] = [
         { view: "match", name: "Match", reached: true, similarity: 0.812, detail: null },
         { view: "spin", name: "Spin", reached: true, similarity: 0.741, detail: null },
       ],
+      proofs: [],
     },
     links: {
       sourceRepo: "https://github.com/the-test-cabinet/sample-carom-goose-multi",

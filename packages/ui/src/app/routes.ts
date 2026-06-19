@@ -52,6 +52,8 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/specs`,
   runReferences: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/references`,
+  runProof: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/proof`,
   runPlay: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/play`,
   runMetrics: (runId: string): string =>
@@ -88,6 +90,7 @@ export const routePatterns = {
   runDetail: "/runs/:runId",
   runSpecs: "/runs/:runId/specs",
   runReferences: "/runs/:runId/references",
+  runProof: "/runs/:runId/proof",
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",

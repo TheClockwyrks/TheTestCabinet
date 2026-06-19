@@ -53,6 +53,27 @@
           "referenceView": { "type": "string" }
         }
       }
+    },
+    "references": {
+      "type": "array",
+      "description": "Reference media exposed as snapshot-relative keys the site resolves to absolute URLs. A common reference carries a null `variant`; a variant-scoped one carries the variant slug.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["variant", "view", "kind", "key"],
+        "properties": {
+          "variant": { "type": ["string", "null"] },
+          "view": { "type": "string" },
+          "kind": {
+            "enum": ["rendered", "image", "video"],
+            "description": "How the reference is produced (a rendered mockup and a static image both display as an image; a video displays with controls)."
+          },
+          "key": {
+            "type": "string",
+            "description": "Snapshot-relative object key of the reference media."
+          }
+        }
+      }
     }
   }
 }

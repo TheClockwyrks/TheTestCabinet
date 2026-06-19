@@ -30,6 +30,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         asset_paths: vec![],
         variants: vec![],
         common_references: vec![],
+        common_proofs: vec![],
         checks: vec![],
         common_review_items: vec![],
     }
@@ -46,6 +47,7 @@ fn frenzy() -> Variant {
         }],
         workspace: None,
         references: vec![],
+        proofs: vec![],
         review_items: vec![],
     }
 }
@@ -86,6 +88,7 @@ fn strict_mode_rejects_unknown_variables() {
         specs: vec![],
         workspace: None,
         references: vec![],
+        proofs: vec![],
         review_items: vec![],
     };
     assert!(

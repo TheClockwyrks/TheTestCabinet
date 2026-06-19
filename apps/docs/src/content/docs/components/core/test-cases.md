@@ -113,12 +113,26 @@ reference = [{ view = "title", path = "reference/menu-base.html" }]
 # checked only when this variant runs.
 review_item = []
 
-# Common reference views, rendered and seeded for EVERY variant. Each `path`
-# mockup is rendered to a screenshot that is seeded as a visual target; the source
-# is not seeded. References are not validated unless a check below names them.
+# Common reference views, seeded for EVERY variant. A reference is EITHER an HTML
+# mockup rendered to a screenshot (`path`) OR a static image/video served as-is
+# (`media`) — exactly one. A rendered source is not seeded; a static one is.
+# References are not validated unless a check below names them.
 [[reference]]
 view = "gameplay"            # view slug
-path = "reference/gameplay.html" # the reference source mockup (relative to this folder)
+path = "reference/gameplay.html" # rendered mockup (relative to this folder)
+# A static media reference instead of a rendered mockup (image or .mp4):
+# [[reference]]
+# view = "intro"
+# media = "reference/intro.mp4"  # served as-is; kind inferred from the extension
+
+# Proof of implementation, requested for EVERY variant. Each declares a `dest`
+# path the build must write a screenshot or .mp4 to as evidence; the spec that
+# asks for it must reference the same path. Validation records whether each is
+# present (informational). The media kind is inferred from the extension.
+[[proof]]
+id = "title"                 # stable slug, recorded in validation and paired by review items
+name = "Title menu"          # display name (optional; default humanizes the id)
+dest = "proof/title.png"     # where the build must write it (relative to the run root)
 
 # Validation checks (opt-in). Only declared checks run.
 [[check]]
@@ -134,6 +148,8 @@ actions = []                 # actions to drive the build into the view (empty =
 id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
 title = "Paddle spin"        # short heading shown above the item (numbered) in the reviewer UI
 text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
+reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
+proof = "title"              # optional: a proof id whose SUBMITTED media is shown
 ```
 
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
@@ -185,14 +201,31 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
 - Each `[[variant]]` declares a build the case offers. A run selects exactly one
   variant, which seeds the common specs plus the variant's own `spec` entries;
   see [Variants](#variants) below.
-- Each `[[reference]]` declares a **common** reference view — rendered to a
-  screenshot and seeded as a visual target for **every** variant; its `path`
-  **source** is never seeded. A variant may declare additional, variant-specific
-  references through its own `reference` array (same `{ view, path }` shape); see
-  [Variants](#variants). A view slug must not be declared both as a common
-  reference and by a variant, and a variant must not declare the same view twice.
-  All paths are relative to the version folder and must resolve inside it, keeping
-  a version self-contained.
+- Each `[[reference]]` declares a **common** reference view, seeded as a visual
+  target for **every** variant. A reference is **either** an HTML mockup rendered
+  to a screenshot (`path`, whose source is never seeded) **or** a static image or
+  `.mp4` served as-is (`media`, which is seeded and served unchanged) — exactly
+  one of the two; declaring both or neither is rejected. A static reference's
+  media kind (image vs. video) is inferred from its extension, letting the
+  "expected" side of a review item be a video or a prepared still. A variant may
+  declare additional, variant-specific references through its own `reference`
+  array; see [Variants](#variants). A view slug must not be declared both as a
+  common reference and by a variant, and a variant must not declare the same view
+  twice. All paths are relative to the version folder and must resolve inside it,
+  keeping a version self-contained.
+- Each `[[proof]]` declares a **proof-of-implementation** artifact the build is
+  asked to produce, requested for **every** variant. It names a stable `id`
+  (recorded in the run's [validation results](/components/core/validation/#results)
+  and used to pair a review item with the submitted media), an optional `name`
+  (defaulting to a humanized `id`), and a `dest` path the build must write the
+  proof to, relative to the run workspace root. The media kind (image or video)
+  is inferred from the `dest` extension (`png`/`jpg`/`jpeg`/`webp`/`gif` →
+  image, `mp4` → video); any other extension is rejected. Unlike specs and
+  references a proof is **not seeded** — it is *output* the agent produces during
+  the run — so the spec that requests it must reference the same `dest`. A
+  variant may declare additive proofs through its own `proof` array; an id must
+  be unique within a variant's effective set, and a `dest` must not collide with a
+  seeded file. See [Validation](/components/core/validation/#proofs).
 - Each `[[check]]` is an opt-in validation comparison. Its `reference` must name
   a reference view that resolves for **every** variant — a common reference, or
   one that each variant declares — whose rendered screenshot is the baseline;
@@ -210,7 +243,12 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
   receives the checklist. They restate observable requirements the seeded
   specification already states, so withholding them hides nothing. An item id
   must be unique within a variant's effective set (common plus that variant's
-  own); a collision is rejected at resolution. See
+  own); a collision is rejected at resolution. An item may also pair an expected
+  reference and the submitted proof with its check: the optional `reference` names
+  a reference view (shown as the **expected** target) and the optional `proof`
+  names a proof id (whose **submitted** media is shown), so the reviewer compares
+  the target against the evidence before judging. Each must resolve for the
+  item's variant or resolution is rejected. See
   [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 
 ## Prompt template

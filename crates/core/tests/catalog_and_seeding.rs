@@ -132,7 +132,8 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     std::fs::write(&fake_image, b"not-a-real-png").expect("write fake image");
     let references = [RenderedReference {
         view: "title".to_string(),
-        image_path: fake_image,
+        kind: test_cabinet_core::MediaKind::Image,
+        media_path: fake_image,
     }];
 
     let seeder = FsRepoSeeder::new(seed_base.path());

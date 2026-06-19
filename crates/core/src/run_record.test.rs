@@ -4,7 +4,8 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::validation::{CheckResult, StepResult, ValidationSummary};
+use crate::test_case::MediaKind;
+use crate::validation::{CheckResult, ProofResult, StepResult, ValidationSummary};
 
 fn sample_record() -> RunRecord {
     RunRecord {
@@ -58,6 +59,14 @@ fn sample_record() -> RunRecord {
                 name: "Title".to_string(),
                 reached: true,
                 similarity: 0.92,
+                detail: None,
+            }],
+            proofs: vec![ProofResult {
+                id: "title-screen".to_string(),
+                name: "Title screen".to_string(),
+                kind: MediaKind::Image,
+                dest: "proof/title-screen.png".to_string(),
+                present: true,
                 detail: None,
             }],
         },
@@ -116,6 +125,9 @@ fn serializes_to_camel_case_contract() {
             "build": { "command": "npm run build", "succeeded": true, "detail": null },
             "checks": [
                 { "view": "title", "name": "Title", "reached": true, "similarity": 0.92, "detail": null }
+            ],
+            "proofs": [
+                { "id": "title-screen", "name": "Title screen", "kind": "image", "dest": "proof/title-screen.png", "present": true, "detail": null }
             ]
         },
         "links": {
