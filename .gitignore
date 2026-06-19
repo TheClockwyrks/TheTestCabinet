@@ -276,3 +276,6 @@ tcab-backend.sqlite*
 
 # Ignore worker-generated files
 /.tcab-worker/
+
+# Claude memories — host-mounted for container-rebuild persistence, not committed
+.claude/memories/
