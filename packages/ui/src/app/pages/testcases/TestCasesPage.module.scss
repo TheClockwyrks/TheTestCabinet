@@ -51,13 +51,16 @@
   align-items: center;
 }
 
-// A pill-shaped facet toggle; lights up with the accent glow when active.
+// A pill-shaped facet toggle; lights up with the accent glow when active. Unlike
+// the card badges it sits directly on the page, so it carries the panel
+// background to stay legible where the row crosses the backdrop's sun rather
+// than washing out against it.
 .chip {
   padding: t.$space-xs t.$space-md;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   color: t.$color-text;
-  background: transparent;
+  background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-lg;
   cursor: pointer;
