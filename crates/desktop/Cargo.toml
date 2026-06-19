@@ -20,6 +20,10 @@ path = "src/main.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# Opt-in OpenTelemetry: the `otlp` feature pulls the SDK/exporter init path so the
+# shell can export traces (and bridge logs/metrics) when a collector is configured;
+# with no `OTEL_EXPORTER_OTLP_ENDPOINT` it degrades to today's stdout logging.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 tauri = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -35,6 +39,9 @@ uuid = { workspace = true }
 # `.env` beside the project, matching the CLI, so the shell can be driven without
 # exporting every variable into the launching shell.
 dotenvy = { workspace = true }
+# Spans around each invoked IPC command so a desktop action that calls into core
+# produces a trace; core supplies the deeper spans beneath these.
+tracing = { workspace = true }
 
 [build-dependencies]
 tauri-build = { workspace = true }

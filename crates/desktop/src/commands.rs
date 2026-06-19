@@ -41,6 +41,7 @@ fn err<E: std::fmt::Display>(context: &str, e: E) -> String {
 /// from `models/<slug>.toml`. Used to populate the run-configuration model
 /// picker (with the model ids that identify each in run records).
 #[tauri::command]
+#[tracing::instrument]
 pub fn list_models() -> CmdResult<Vec<Model>> {
     ModelCatalog::new(config::models_root())
         .list()
@@ -51,6 +52,7 @@ pub fn list_models() -> CmdResult<Vec<Model>> {
 /// the backend when one is configured (`TCAB_BACKEND_URL`), otherwise from the
 /// local `test-cases/` checkout for offline development.
 #[tauri::command]
+#[tracing::instrument]
 pub async fn list_test_cases() -> CmdResult<Vec<TestCase>> {
     match config::backend_url() {
         Some(url) => HttpBackendClient::new(url)
@@ -66,6 +68,7 @@ pub async fn list_test_cases() -> CmdResult<Vec<TestCase>> {
 /// The versions available for one test case, newest-listed-last, from the same
 /// source as [`list_test_cases`].
 #[tauri::command]
+#[tracing::instrument(fields(%slug))]
 pub async fn list_versions(slug: String) -> CmdResult<Vec<String>> {
     match config::backend_url() {
         Some(url) => HttpBackendClient::new(url)
@@ -132,6 +135,7 @@ impl VersionInfo {
 /// Resolve an exact test-case version to its configuration framing (its name,
 /// difficulty, tags, and its variants for the variant picker).
 #[tauri::command]
+#[tracing::instrument(fields(%slug, %version))]
 pub async fn resolve_version(slug: String, version: String) -> CmdResult<VersionInfo> {
     let resolved = resolve_version_inner(&slug, &version).await?;
     Ok(VersionInfo::from_version(&resolved))
@@ -207,6 +211,7 @@ pub struct Specification {
 /// the optional site-facing description, and reads each seeded spec's body from
 /// its source on disk.
 #[tauri::command]
+#[tracing::instrument(fields(%slug, %version, %variant))]
 pub async fn read_specs(
     slug: String,
     version: String,
@@ -288,6 +293,13 @@ fn parse_harness(slug: &str) -> CmdResult<HarnessSlug> {
 /// error) is emitted on `run://<runId>/done`. This is the async job model — the
 /// command does not block for the (up-to-an-hour) run.
 #[tauri::command]
+#[tracing::instrument(skip_all, fields(
+    test_case = %config.test_case,
+    version = %config.version,
+    variant = %config.variant,
+    harness = %config.harness,
+    model_id = %config.model_id,
+))]
 pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<String> {
     let harness = parse_harness(&config.harness)?;
     // The live-stream id is generated up front so the UI can subscribe before the
@@ -425,6 +437,7 @@ pub struct ReviewDocument {
 /// List the finished runs written under the output directory, each with its
 /// record and any review authored beside it. Newest first by start time.
 #[tauri::command]
+#[tracing::instrument]
 pub fn list_runs() -> CmdResult<Vec<StoredRun>> {
     let dir = config::output_dir();
     let mut runs = Vec::new();
@@ -459,6 +472,7 @@ pub fn list_runs() -> CmdResult<Vec<StoredRun>> {
 
 /// Read one finished run by its id.
 #[tauri::command]
+#[tracing::instrument(fields(%id))]
 pub fn read_run(id: String) -> CmdResult<StoredRun> {
     let run_dir = config::output_dir().join(&id);
     let record_path = run_dir.join("run-record.json");
@@ -489,6 +503,7 @@ pub struct RunEventStreams {
 /// Best-effort per stream — a missing file yields an empty list — so a run that
 /// recorded only one (or neither) still resolves rather than erroring.
 #[tauri::command]
+#[tracing::instrument(fields(%id))]
 pub fn read_run_events(id: String) -> CmdResult<RunEventStreams> {
     let run_dir = config::output_dir().join(&id);
     Ok(RunEventStreams {
@@ -543,6 +558,7 @@ pub struct PublishedRunPage {
 /// gallery lives on the backend, so it is fetched over HTTP here. Requires
 /// `TCAB_BACKEND_URL`; without it the published gallery is simply empty.
 #[tauri::command]
+#[tracing::instrument(fields(?before, ?limit))]
 pub async fn list_published_runs(
     before: Option<String>,
     limit: Option<usize>,
@@ -562,6 +578,7 @@ pub async fn list_published_runs(
 
 /// Read one published run by id from the configured backend (`GET /runs/{id}`).
 #[tauri::command]
+#[tracing::instrument(fields(%id))]
 pub async fn read_published_run(id: String) -> CmdResult<StoredRun> {
     let url = config::backend_url().ok_or_else(|| {
         "reading a published run needs a backend, but TCAB_BACKEND_URL is not set".to_string()
@@ -593,6 +610,7 @@ fn published_to_stored(run: PublishedRun) -> StoredRun {
 /// the desktop core serves them through its backend facade, mirroring the HTTP
 /// backend's resolved-version endpoint.
 #[tauri::command]
+#[tracing::instrument(fields(%slug, %version, %variant))]
 pub async fn read_review_items(
     slug: String,
     version: String,
@@ -614,6 +632,7 @@ pub async fn read_review_items(
 /// requirement the case author marked as something to check. The rating itself
 /// stays entirely the reviewer's call.
 #[tauri::command]
+#[tracing::instrument(skip_all, fields(%id, %rating))]
 pub async fn save_review(
     id: String,
     rating: String,
@@ -676,6 +695,7 @@ pub struct PublishResult {
 /// Requires `TCAB_BACKEND_URL` and a `writeup.md` beside the record (authored via
 /// [`save_review`]); both are checked before anything is released.
 #[tauri::command]
+#[tracing::instrument(fields(%id))]
 pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
     let backend = config::backend_url().ok_or_else(|| {
         "publishing submits the run to the backend, but TCAB_BACKEND_URL is not set".to_string()

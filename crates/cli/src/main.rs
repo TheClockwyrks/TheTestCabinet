@@ -16,17 +16,40 @@ mod commands;
 mod work_dir;
 
 use clap::Parser;
+use tracing::Instrument;
 
 use crate::cli::{Cli, Command};
 
 /// Entry point. Async because orchestration in the core is async.
+///
+/// Telemetry is initialized after the dotenv load so any OTLP configuration that
+/// lives in `.env.runner` is visible, and the returned guard is bound for the
+/// whole of `main` so its `Drop` force-flushes buffered telemetry before the
+/// short-lived process exits. For that flush to run we always return from `main`
+/// rather than calling [`std::process::exit`], which would skip the guard's
+/// destructor and lose any buffered spans, metrics, and logs.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     load_dotenv()?;
 
+    let _telemetry = test_cabinet_telemetry::init(test_cabinet_telemetry::Config::new(
+        "tcab-cli",
+        env!("CARGO_PKG_VERSION"),
+        "info,test_cabinet_cli=info",
+    ))?;
+
     let cli = Cli::parse();
 
-    match cli.command {
+    // Give the whole invocation a single root span named after the subcommand so
+    // a `tcab` run is one trace; the core adds the deeper spans beneath it.
+    let span = tracing::info_span!("tcab", command = command_name(&cli.command));
+
+    dispatch(cli.command).instrument(span).await
+}
+
+/// Route a parsed subcommand to its handler.
+async fn dispatch(command: Command) -> anyhow::Result<()> {
+    match command {
         Command::Run(args) => commands::run::execute(args).await,
         Command::Validate(args) => commands::validate::execute(args).await,
         Command::Publish(args) => commands::publish::execute(args).await,
@@ -34,6 +57,19 @@ async fn main() -> anyhow::Result<()> {
         Command::Seed(args) => commands::seed::execute(args).await,
         Command::Prompt(args) => commands::prompt::execute(args).await,
         Command::Catalog(args) => commands::catalog::execute(args).await,
+    }
+}
+
+/// The static subcommand name used to label the invocation's root span.
+fn command_name(command: &Command) -> &'static str {
+    match command {
+        Command::Run(_) => "run",
+        Command::Validate(_) => "validate",
+        Command::Publish(_) => "publish",
+        Command::Harnesses(_) => "harnesses",
+        Command::Seed(_) => "seed",
+        Command::Prompt(_) => "prompt",
+        Command::Catalog(_) => "catalog",
     }
 }
 

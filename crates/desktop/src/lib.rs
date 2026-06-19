@@ -19,6 +19,7 @@ mod playable;
 
 /// The desktop application's version string (the crate version).
 #[tauri::command]
+#[tracing::instrument]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -26,6 +27,7 @@ fn app_version() -> String {
 /// Whether a backend is configured (`TCAB_BACKEND_URL`), which the UI uses to
 /// gate the publish action and to label where definitions resolve from.
 #[tauri::command]
+#[tracing::instrument]
 fn backend_configured() -> bool {
     config::backend_url().is_some()
 }
@@ -40,9 +42,32 @@ pub fn run() {
     // Load harness API keys and TCAB_* configuration from `.env.runner` beside
     // the project, matching the CLI (with a legacy `.env` as a fallback). A
     // missing file is fine (variables can be exported instead); `dotenvy` never
-    // overrides already-set variables.
+    // overrides already-set variables. Loading happens first so the telemetry
+    // init below sees `OTEL_*`/`TCAB_ENV` from the env file.
     let _ = dotenvy::from_filename(".env.runner");
     let _ = dotenvy::dotenv();
+
+    // Opt-in telemetry. When `OTEL_EXPORTER_OTLP_ENDPOINT` is set the init builds
+    // OTLP exporters whose batch/periodic readers spawn background tasks on a
+    // Tokio runtime; unlike the worker/backend binaries this entrypoint is *not*
+    // `#[tokio::main]` (Tauri owns the event loop), so there is no ambient runtime
+    // when `init()` runs. We stand up a small multi-thread runtime and enter it
+    // for the lifetime of the app so those exporter tasks have somewhere to live,
+    // and so the guard's flush-on-drop (below) runs with the runtime still up.
+    //
+    // In the common no-collector case `init()` installs only the fmt layer and
+    // returns an inert guard — the runtime is then merely idle, never fatal.
+    let telemetry_runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("build the telemetry Tokio runtime");
+    let _telemetry_runtime_guard = telemetry_runtime.enter();
+    let _telemetry = test_cabinet_telemetry::init(test_cabinet_telemetry::Config::new(
+        "tcab-desktop",
+        env!("CARGO_PKG_VERSION"),
+        "info,test_cabinet_desktop_lib=info",
+    ))
+    .expect("initialize telemetry");
 
     tauri::Builder::default()
         // Serve produced runs' playable builds to the webview so a reviewer can
