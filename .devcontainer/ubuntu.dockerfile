@@ -32,6 +32,7 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./tools/lazygit.sh \
 	./tools/az.sh \
 	./tools/gh.sh \
+	./tools/wrangler.sh \
 	./post-install.sh \
 	./system/.bashrc \
 	./system/.tmux.conf \
@@ -51,6 +52,7 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/az.sh && \
 	bash /tmp/scripts/gh.sh && \
 	bash /tmp/scripts/languages/node/install.sh && \
+	bash /tmp/scripts/wrangler.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \
 	bash /tmp/scripts/languages/rust/tauri.sh && \
 	bash /tmp/scripts/claude.sh && \

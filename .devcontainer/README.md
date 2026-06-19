@@ -3,7 +3,8 @@
 A VS Code devcontainer for developing The Test Cabinet. It provides the Rust
 toolchain (with `rustfmt`, `clippy`, and the `x86_64-unknown-linux-musl` target
 for the portable `tcab` build), Node.js, the Tauri v2 system libraries for the
-desktop shell, and `markdownlint-cli2` for the docs.
+desktop shell, `markdownlint-cli2` for the docs, and the Cloudflare `wrangler`
+CLI that `tcab publish` uses to deploy run builds to Cloudflare Pages.
 
 ## First-time setup
 
