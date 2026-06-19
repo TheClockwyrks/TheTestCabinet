@@ -100,13 +100,12 @@ struct PromptSpec {
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
 pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<String> {
-    let template = std::fs::read_to_string(&test_case.prompt_path).map_err(|err| {
-        Error::PromptRender {
+    let template =
+        std::fs::read_to_string(&test_case.prompt_path).map_err(|err| Error::PromptRender {
             slug: test_case.slug.clone(),
             version: test_case.version.clone(),
             detail: format!("could not read {}: {err}", test_case.prompt_path.display()),
-        }
-    })?;
+        })?;
 
     let dests: Vec<String> = test_case
         .seeded_specs(variant)

@@ -184,7 +184,12 @@ fn variant_reference_shots(
     v.common_references
         .iter()
         .map(|r| shot("_common", &r.view))
-        .chain(variant.references.iter().map(|r| shot(&variant.slug, &r.view)))
+        .chain(
+            variant
+                .references
+                .iter()
+                .map(|r| shot(&variant.slug, &r.view)),
+        )
         .collect()
 }
 
