@@ -30,11 +30,16 @@ Old prefixes can be garbage-collected after a grace period.
 ## Keys
 
 ```text
-index.json                                           # top-level pointer (overwritten last)
-snapshots/<snapshotId>/runs.json                     # the run index — summaries
-snapshots/<snapshotId>/runs/<run-id>.json            # per-run: record + review + links
-snapshots/<snapshotId>/cases/<slug>/<version>.json   # per-case-version metadata
+index.json                                                              # top-level pointer (overwritten last)
+snapshots/<snapshotId>/runs.json                                        # the run index — summaries
+snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + review + links
+snapshots/<snapshotId>/cases/<slug>/<version>.json                      # per-case-version metadata
+snapshots/<snapshotId>/cases/<slug>/<version>/references/<scope>/<view>.png  # rendered reference baselines
 ```
+
+`<scope>` is `_common` for a reference shown on every variant, or a variant slug
+for one scoped to that variant. Each case-metadata file names its baselines by
+their snapshot-relative key (see [below](#casesslugversionjson--case-metadata)).
 
 The site reads `index.json`, then follows its prefixes to the rest. Every file
 carries a `schemaVersion` (currently `1`).
@@ -102,10 +107,13 @@ Schema: [`snapshot/run.schema.json`](https://docs.testcabinet.ai/schema/snapshot
 
 The site-facing slice of a [test case version](/components/core/test-cases/):
 what the gallery shows to frame a run — name, difficulty, tags,
-summary/description, variant labels, and the declared checks (without their
-action lists). It carries **no** spec bodies, **no** mockup HTML, and **no** host
-paths. Emitting only the case-versions that have a published run is sufficient;
-emitting every ingested version is also valid. The site keys lookups by
-`(slug, version)` from each run's subject.
+summary/description, variant labels, the declared checks (without their action
+lists), and a `references` array naming each rendered reference baseline by its
+snapshot-relative key (with a `variant` of `null` for a common reference or the
+variant slug for a variant-scoped one), which the site resolves to absolute URLs
+to show baselines. It carries **no** spec bodies, **no** mockup HTML, and **no**
+host paths. The backend emits every ingested version (simpler than tracking which
+have runs, and equally valid). The site keys lookups by `(slug, version)` from
+each run's subject.
 
 Schema: [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).

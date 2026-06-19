@@ -2,9 +2,13 @@
 title: Run a Test Case
 ---
 
-Drive a single test case through an agent harness and write a run record. For
-the full walkthrough, prerequisites, and platform notes see
-[First Time Setup](/guides/first-time-setup/).
+Drive a single test case through an agent harness and write a run record. This
+quickstart uses the [CLI](/components/cli/overview/), the most direct path for
+scripting and batch sweeps. You can also launch and watch runs interactively in
+the [Tauri desktop app](/components/tauri/overview/) (its built-in local worker)
+or the [web console](/components/web/overview/) (a remote
+[worker](/components/worker/overview/)). For the full walkthrough, prerequisites,
+and platform notes see [First Time Setup](/guides/first-time-setup/).
 
 ## Prerequisites
 

@@ -58,9 +58,10 @@ is the case's guarantee that the major requirements are verified by hand rather
 than left to whatever a reviewer happens to notice; it is **not** seeded into the
 run, so it never reaches the model.
 
-In the desktop app the items for the run's variant appear in the review editor,
-and each must be given a verdict before the review can be saved or the run
-published:
+In the [desktop app](/components/tauri/overview/) and the
+[web console](/components/web/overview/) the items for the run's variant appear
+in the review editor, and each must be given a verdict before the review can be
+saved or the run published:
 
 - **pass** — checked, and the build satisfies it.
 - **fail** — checked, and the build does not satisfy it.
@@ -86,7 +87,7 @@ Movement and collision feel right. The pause menu doesn't restore keyboard
 focus, but it doesn't block play.
 ```
 
-The desktop app writes this file for you, including the checklist lines; the
+The consoles write this file for you, including the checklist lines; the
 format is documented here because the file is also hand-editable. A run cannot be
 published while any declared checklist item is missing its verdict.
 

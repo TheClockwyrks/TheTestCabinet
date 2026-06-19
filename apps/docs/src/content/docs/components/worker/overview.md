@@ -80,6 +80,16 @@ rather than holding one request open for the whole run:
   normalized event log, the second the raw harness output it was mapped from;
   together they back the run-detail Events tab after a run finishes. `404` when
   the run or that stream is absent.
+- `GET /runs/{id}/build`, `GET /runs/{id}/build/`, and `GET /runs/{id}/build/{path}`
+  — serve a **produced** run's playable static build directly from disk (the build
+  output collected beside its implementation), so a reviewer can play it *before*
+  it is published. The bare/trailing-slash roots serve the build's `index.html`
+  relocated under this per-run base path; the wildcard serves the assets it
+  references. A produced run with a build advertises this root as its
+  `playableBuild` link in `GET /runs` (root-relative, against the worker's own
+  origin), since publishing — which deploys the build and fills in a public URL —
+  has not happened yet. `404` for an unknown run, a run with no build, or a path
+  that does not resolve inside it.
 - `GET /notifications` — a worker-wide [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
   stream of run completions, one event per run reaching a terminal state (`kind`
   `run-completed`). Distinct from `/runs/{job}/events` (a single run's events):
@@ -98,8 +108,10 @@ rather than holding one request open for the whole run:
   [`worker-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json);
   response schema:
   [`worker-api/publish-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-ack.schema.json).
-- `GET /healthz` — liveness/readiness and identity (the backend this worker is
-  bound to, for the UI's backend-consistency check). Schema:
+- `GET /healthz` — liveness/readiness and identity: the service `status`, the
+  contract `version`, a `role` of `worker`, and the `backendUrl` this worker is
+  bound to (so the UI can check a worker shares the backend it is itself pointed
+  at). Schema:
   [`worker-api/health.schema.json`](https://docs.testcabinet.ai/schema/worker-api/health.schema.json).
 
 On failure every endpoint returns the same `{ "error": { "code", "message" } }`

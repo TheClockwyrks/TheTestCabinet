@@ -72,16 +72,25 @@ is home-based.
 ## 3. The harness image
 
 A run drives an [agent harness](/components/core/harnesses/) inside the
-container, so the harness's run-container image must be built once. From the
-`containers/` directory (see its `README.md`):
+container, so it needs that harness's run-container image. By default a runner
+**pulls the image from a container registry** (GHCR) the first time it is needed
+and pins the resolved digest in the run record; you do not have to build anything
+to make a first run. Each runner resolves images from its own environment
+configuration (`TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG`, and per-harness
+overrides) — see [Harnesses](/components/core/harnesses/).
+
+To build the images locally instead — for offline development or while changing
+them — set `TCAB_CONTAINER_REGISTRY=` (empty) so the runner uses the
+locally-tagged build, and build from the `containers/` directory (see its
+`README.md`):
 
 ```sh
 cd containers && DOCKER=podman ./build.sh claude   # builds the base + claude image
 ```
 
-Build the image for whichever harness you intend to run. The supported harness
-slugs are `claude`, `codex`, `cline`, `antigravity`, `goose`, `kilo`,
-`opencode`, and `pi`. Confirm availability without starting a run:
+The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,
+`goose`, `kilo`, `opencode`, and `pi`. Confirm availability without starting a
+run:
 
 ```sh
 tcab harnesses          # human-readable table; add --json for machine output
@@ -128,7 +137,7 @@ resolve (override the catalog location with `TCAB_TEST_CASES_DIR`):
 ```sh
 tcab run \
   --test-case pong --version v1.0.0 --variant base \
-  --harness claude --model anthropic/claude-opus-4 \
+  --harness claude --model claude-opus-4-8 \
   --out-dir runs
 ```
 

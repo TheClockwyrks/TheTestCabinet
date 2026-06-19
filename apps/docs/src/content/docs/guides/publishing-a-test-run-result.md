@@ -8,8 +8,14 @@ generated code, its playable build, and its [run record](/components/core/run-re
 on the gallery. The final product is released as it is — bugs and all — rather
 than reduced to a score (see [Results](/components/core/results/)).
 
-This guide covers running a publish. For the conceptual model behind it — the two
-halves of a publish and where each safely happens — read
+This guide covers running a publish from the [CLI](/components/cli/overview/),
+which is the path for scripting and batch sweeps. You can also publish a reviewed
+run interactively from the [Tauri desktop app](/components/tauri/overview/) or the
+[web console](/components/web/overview/): open the run and use its publish action,
+and the console runs exactly the same operation described here — releasing the
+source and build, then submitting the record and review to the backend. The same
+prerequisites apply wherever you publish from. For the conceptual model behind it
+— the two halves of a publish and where each safely happens — read
 [Results: Publishing](/components/core/results/#publishing).
 
 ## Prerequisites

@@ -19,11 +19,14 @@ take it to completion autonomously?".
 ## Audience
 
 This documentation is intended for developers working on The Test Cabinet itself
-and for any end users who would like to run The Test Cabinet locally. Developers
-will want to primarily refer to the [Components](/components/architecture/)
-section, while end users should focus their attention on the
-[Quickstarts](/quickstarts/overview/) and [User Guides](/guides/overview/)
-sections. New users should start with
+and for any end users who would like to run The Test Cabinet locally. Test cases
+can be driven from the command line with the [CLI](/components/cli/overview/),
+interactively in the [Tauri desktop app](/components/tauri/overview/), or on a
+remote [worker](/components/worker/overview/) from the
+[web console](/components/web/overview/). Developers will want to primarily refer
+to the [Components](/components/architecture/) section, while end users should
+focus their attention on the [Quickstarts](/quickstarts/overview/) and
+[User Guides](/guides/overview/) sections. New users should start with
 [First Time Setup](/guides/first-time-setup/).
 
 ## AI-Generated Documentation

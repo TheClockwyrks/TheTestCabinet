@@ -11,8 +11,10 @@ but delivered as a static web app instead of a desktop binary, and backed by
 **remote workers** rather than a built-in local one.
 
 It shares its entire UI with the Tauri app through the
-[UI library](/components/ui/overview/): both mount the same console and differ
-only in what they connect to.
+[UI library](/components/ui/overview/): both mount the same `GalleryApp` and
+differ only in what they connect to. The shared app gates its run-execution
+surface on a `canExecute` flag, which both consoles set; the static site leaves
+it off.
 
 ## Two kinds of connection
 
@@ -29,9 +31,10 @@ The console talks to two distinct services, mirroring
   from there.
 
 The web console **starts with no workers**: a person adds worker servers by URL
-in the Connections tab, then picks which one a run is submitted to. This is the
-one substantive difference from the Tauri app, which pre-adds its host's
-[built-in local worker](/components/tauri/overview/) and can add more.
+in the Connections settings (under the Settings gear), then picks which one a run
+is submitted to. This is the one substantive difference from the Tauri app, which
+pre-adds its host's [built-in local worker](/components/tauri/overview/); the
+desktop's connections are otherwise fixed (nothing to add or remove).
 
 ## One backend, consistent workers
 
@@ -42,9 +45,11 @@ against the active backend and flags a worker bound to a different one — so it
 can't ask a worker to run a test case that worker's backend can't resolve.
 Launching on a mismatched worker is disabled.
 
-The worker identity used for this check is best-effort today: the
-[worker](/components/worker/overview/) exposes no info endpoint yet, so a worker
-whose backend can't be confirmed is shown as *unverified* rather than blocked.
+The worker reports the backend it is bound to from its `GET /healthz` probe (as
+`backendUrl`), which the console compares against the backend it is itself
+pointed at. A worker that can't be reached or doesn't report a backend is shown
+as *unverified* rather than blocked, so an unreachable health probe degrades
+gracefully instead of locking the worker out.
 
 ## Deployment
 
@@ -57,11 +62,15 @@ not deployed to the public internet.
 
 ## Status
 
-The console shell, the Connections UI (backend selection and worker
-add/remove/select), and the HTTP transports are implemented in `apps/web`,
-against the documented backend and worker contracts. Because the
-[backend](/components/backend/overview/) is not built yet and the worker exposes
-only its run-execution endpoints, operations that depend on missing endpoints
-(enumerating produced runs, reading checklist items, saving a review, the
-authoritative worker-backend check) degrade gracefully — the console shows a
-clear "not available" state — until those endpoints exist.
+`apps/web` is a thin host: it supplies the HTTP `BackendClient` and
+`WorkerClient` transports and the connection state (backend selection and worker
+add/remove/select), then mounts the shared `GalleryApp`. The whole console UI —
+the routed gallery plus the run-execution screens — comes from the
+[UI library](/components/ui/overview/), so it is the same app the desktop renders.
+
+It runs against the now-implemented [backend](/components/backend/overview/) and
+[worker](/components/worker/overview/) contracts: the backend serves the catalog
+and published runs, and the worker exposes its run-execution, produced-run
+listing, recorded-event, notification, and publish endpoints. Where a host can't
+provide a piece of data — for example a worker that returns no recorded events
+for an older run — the shared UI degrades gracefully rather than erroring.

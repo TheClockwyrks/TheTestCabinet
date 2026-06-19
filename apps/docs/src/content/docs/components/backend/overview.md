@@ -125,5 +125,15 @@ shape of each file the site reads — is specified in
 
 ## Status
 
-The backend has **not** been implemented yet. It is the headline change for the
-next milestone; see the [Roadmap](/roadmap/).
+The backend ships in [v0.2.0](/changelogs/v0.2.0/) as the
+`test-cabinet-backend` crate (`crates/backend`): an [Axum](https://github.com/tokio-rs/axum)
+server backed by an embedded SQLite system of record and an on-disk definition
+store. It is configured entirely through environment variables — its bind
+address (`TCAB_BACKEND_BIND`), SQLite path (`TCAB_BACKEND_DB`), definition store
+(`TCAB_BACKEND_STORE`), the repository checkout it ingests from
+(`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
+(`TCAB_SNAPSHOT_COALESCE_MS`), and its R2 (`TCAB_R2_*`) and deploy-hook
+(`TCAB_SITE_DEPLOY_HOOK_URL`) credentials. Only `TCAB_BACKEND_CHECKOUT` is
+required; with the R2 and deploy-hook variables omitted the backend still
+ingests and records publishes and regenerates the snapshot on disk, skipping
+only the upload and rebuild — a dev-only mode.

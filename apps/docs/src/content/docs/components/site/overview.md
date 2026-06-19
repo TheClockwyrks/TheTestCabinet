@@ -14,7 +14,15 @@ The site is a fully **static** site with no backend, no accounts, and no databas
 of its own. This keeps it cheap, durable, and trivially public, and mirrors the
 constraint placed on the games themselves (see
 [Test Cases](/components/core/test-cases/#design-requirements)). Any
-interactivity, such as filtering, is handled client-side.
+interactivity, such as filtering, is handled client-side. The built bundle is
+deployed to **GitHub Pages**, served at the project's custom domain.
+
+The gallery is the same routed application the [web](/components/web/overview/)
+and [Tauri](/components/tauri/overview/) consoles render, shared through the
+[UI library](/components/ui/overview/). The site simply mounts it with the
+build-time snapshot as its data source and run execution turned off
+(`canExecute` is false), so it shows the published gallery without the consoles'
+run, monitor, review, or connection screens.
 
 The site is built from a dataset of published [run records](/components/core/run-records/).
 Originally that dataset was committed into the site's own repository; it is now

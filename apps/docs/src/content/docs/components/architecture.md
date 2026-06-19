@@ -27,7 +27,7 @@ The Test Cabinet is made up of the following components.
 | [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by remote workers rather than a built-in local one. |
 | [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and stores published run results. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
-| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the presentational primitives all three GUIs use, plus the console and the backend/worker client interfaces the Tauri and web apps share. |
+| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend/worker client interfaces the Tauri and web consoles share. |
 | [Docs](/components/docs/overview/) | This documentation site. |
 
 ## Runners and Reporters
@@ -51,8 +51,10 @@ Test Cabinet is used: it launches runs, reviews them, and shows results in one
 place. The [web console](/components/web/overview/) is the same console in a
 browser — it reviews and reports like the Tauri app and launches runs too, but
 drives them on remote [workers](/components/worker/overview/) instead of a
-built-in local runner. The two share their UI through the
-[UI library](/components/ui/overview/).
+built-in local runner. All three GUIs in fact mount the *same* routed gallery
+application from the [UI library](/components/ui/overview/); the consoles are
+that app with run execution enabled, and the public site is the same app with it
+off.
 
 ## The Backend
 

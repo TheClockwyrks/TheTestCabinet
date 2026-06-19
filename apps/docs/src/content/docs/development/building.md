@@ -26,12 +26,22 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/cli` — `test-cabinet-cli` (binary `tcab`). The
   [command line interface](/components/cli/overview/) over the core so runs can
   be scripted and benchmark sweeps run in batch.
+- `crates/worker` — `test-cabinet-worker` (binary `tcab-worker`). The
+  [worker](/components/worker/overview/), an HTTP server that exposes the core's
+  run functionality so runs can be driven on a remote host.
+- `crates/backend` — `test-cabinet-backend` (binary `tcab-backend`). The
+  [backend](/components/backend/overview/), the private definition/run store and
+  API. It keeps an embedded SQLite database (via `rusqlite`).
 - `crates/desktop` — `test-cabinet-desktop`. The
   [Tauri v2 desktop application](/components/tauri/overview/), the primary
   interactive way to configure, launch, and review runs locally.
+- `crates/telemetry` — `test-cabinet-telemetry`. The shared
+  [OpenTelemetry](/development/observability/) wiring every long-lived binary
+  initializes at startup.
 
-`cli` and `desktop` both depend on `test-cabinet-core`. Shared dependency
-versions are declared once in the root `Cargo.toml` under
+The `cli`, `worker`, `backend`, and `desktop` crates all depend on
+`test-cabinet-core` (and on `test-cabinet-telemetry` for instrumentation). Shared
+dependency versions are declared once in the root `Cargo.toml` under
 `[workspace.dependencies]` and inherited by member crates with
 `{ workspace = true }`.
 
@@ -44,10 +54,17 @@ versions are declared once in the root `Cargo.toml` under
   driver script (`driver.mjs`) the [validator](/components/core/validation/)
   shells out to, used both to render reference mockups to screenshots and to
   drive and screenshot a produced implementation for a validation check.
+- `packages/ui` — `@test-cabinet/ui`. The shared
+  [UI library](/components/ui/overview/) that hosts the full routed gallery
+  application plus the presentational primitives; the site, web console, and
+  desktop UI are thin hosts over it.
 - `apps/desktop` — `@test-cabinet/desktop`. The React + TypeScript + Vite UI that
   is loaded by the Tauri desktop app.
 - `apps/site` — `@test-cabinet/site`. The React + TypeScript + Vite static
   [gallery site](/components/site/overview/) that displays published run records.
+- `apps/web` — `@test-cabinet/web`. The browser
+  [web console](/components/web/overview/) (React + TypeScript + Vite) that
+  drives runs against remote workers.
 - `apps/docs` — `@test-cabinet/docs`. This Astro Starlight documentation site.
 
 ## Building Rust

@@ -4,12 +4,14 @@ title: HTTP API
 
 The backend exposes a single HTTP API that every other component talks to: the
 [runners](/components/architecture/#runners-and-reporters) resolve test case
-definitions and container images through it, the build/push step posts image
-references to it, the operator's component publishes runs to it, and reporters
-read published runs back from it. This page is the authoritative contract for
-that interface — the cross-component surface. How the backend stores what it
-serves (its database, its on-disk layout) is an internal concern covered in the
-[Overview](/components/backend/overview/), not part of this contract.
+definitions through it, the operator's component publishes runs to it, and
+reporters read published runs back from it. Container images are **not** part of
+this API — a runner pulls them from its own configured registry (see
+[Container images](#container-images)). This page is the authoritative contract
+for that interface — the cross-component surface. How the backend stores what it
+serves (its SQLite system of record, its on-disk definition store) is an internal
+concern covered in the [Overview](/components/backend/overview/), not part of
+this contract.
 
 ## Conventions
 
@@ -135,7 +137,10 @@ A representative response:
       "specs": [],
       "references": [
         { "view": "title", "screenshotUrl": "/test-cases/pong/v1.0.0/references/base/title.png" }
-      ]
+      ],
+      // Variant-specific reviewer checklist items, for the consoles' guided
+      // review (see Reviews). Empty when the variant declares none.
+      "reviewItems": []
     }
   ],
   "commonReferences": [
@@ -143,6 +148,10 @@ A representative response:
   ],
   "checks": [
     { "view": "title", "name": "Title", "referenceView": "title", "actions": [ { "type": "wait", "ms": 500 } ] }
+  ],
+  // Reviewer checklist items common to every variant.
+  "commonReviewItems": [
+    { "id": "controls", "title": "Controls", "text": "Both paddles respond to input." }
   ]
 }
 ```
@@ -190,7 +199,9 @@ record blob without changing when it was first published.
 ```jsonc
 {
   "record": { "…": "a full RunRecord; its links MAY be empty here" },
-  "review": { "rating": "great", "writeup": "Plays well, but…" },
+  // `checklist` is optional: the reviewer's verdicts on the case's declared
+  // reviewer checklist items (see Reviews). Omit it when the case declares none.
+  "review": { "rating": "great", "writeup": "Plays well, but…", "checklist": [] },
   "links": {
     "sourceRepo": "https://github.com/TheClockwyrks/tcab-pong-claude-…",
     "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
@@ -236,7 +247,8 @@ runs. `404` for an unknown run.
 
 Force an immediate [public snapshot](/components/backend/snapshot/) regeneration,
 upload, and deploy-hook fire, outside the normal coalescing window. For operator
-recovery.
+recovery. The response reports whether the snapshot was refreshed, the run count
+it covers, and whether the deploy hook fired.
 
 ## Reference rendering
 

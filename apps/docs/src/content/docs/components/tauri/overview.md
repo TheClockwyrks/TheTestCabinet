@@ -52,9 +52,24 @@ on, and it resolves definitions from and publishes to the
 
 ## Status
 
-A **minimal functional shell** is implemented: every capability above is
-reachable and works end to end over Tauri commands that delegate to the
-[core](/components/core/overview/) — configuring and launching a run with a live
-event stream, reading the seeded specs, writing a review (writeup + rating), and
-publishing a reviewed run. The UI is plain; polish follows. See the
-[Roadmap](/roadmap/).
+The desktop app is **built around the full shared console**, not a stripped-down
+shell. It mounts the same `GalleryApp` from the
+[UI library](/components/ui/overview/) that the
+[web console](/components/web/overview/) and the
+[public site](/components/site/overview/) render, so its UI — the routed gallery
+pages plus the run-execution screens (new run, live monitor, review, the
+Connections settings) — is the web console's UI, not a separate, plainer one.
+
+The desktop's only departures from the web console are its host wiring: it
+provides the [UI library](/components/ui/overview/)'s `BackendClient` and
+`WorkerClient` over Tauri commands instead of HTTP, resolving the catalog from
+the embedded [core](/components/core/overview/) over IPC and pre-adding a single
+**built-in local worker** (also the embedded core). Those commands cover the
+whole flow end to end — resolving the catalog, configuring and launching a run
+with a live event stream, reading the seeded specs, writing a review (writeup +
+rating), and publishing a reviewed run.
+
+Because the UI is shared, the desktop build is expected to be feature-complete
+against that shared app by construction rather than re-implemented; the desktop
+binary has not yet been hand-tested end to end on every platform. Remaining work
+is wiring and polish rather than missing screens. See the [Roadmap](/roadmap/).

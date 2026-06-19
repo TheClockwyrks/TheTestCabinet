@@ -2,6 +2,14 @@
 title: Terminology
 ---
 
+## Backend
+
+The [backend](/components/backend/overview/) is The Test Cabinet's single private
+service. It is the canonical source of test case definitions for runners and the
+system of record for published run results. It replaces the earlier
+"git-as-a-db" design and is the only stateful service the runners and consoles
+talk to (aside from the [workers](#worker) that execute runs).
+
 ## Catalog
 
 The term "catalog" is used to refer to The Test Cabinet's full set of test
@@ -33,7 +41,9 @@ until published.
 ## Reporters
 
 Reporters are The Test Cabinet components capable of reporting run results. Only
-GUI reporters allow users to interact with test case implementations.
+GUI reporters allow users to interact with test case implementations. The
+[Tauri desktop app](/components/tauri/overview/) and the
+[web console](#web-console) are both reporters (and runners).
 
 ## Review
 
@@ -41,6 +51,17 @@ All test cases are manually reviewed after the implementation is complete. This
 allows the reviewer to assess how well a model matched the spec, check for any
 bugs, and otherwise provide non-automated feedback about the run result. Reviews
 are slightly subjective since games don't map cleanly to a rigid grading scale.
+A review carries a rating, a prose writeup, and a verdict on each
+[reviewer-checklist](#reviewer-checklist) item the case declares.
+
+## Reviewer Checklist
+
+A test case may declare a reviewer checklist: a list of major, observable
+requirements that every reviewer must explicitly verify by playing the build.
+The [consoles](#web-console) present it as a guided review with a completeness
+gate — every item needs a verdict (pass / fail / na) before a review can be
+saved or the run published. The checklist is reporter-side and is never seeded,
+so it never reaches the model.
 
 ## Run Records
 
@@ -51,7 +72,15 @@ token/cost data.
 ## Runners
 
 The term "runner" is used to refer to any The Test Cabinet component that is
-capable of running test cases.
+capable of running test cases — the [CLI](/components/cli/overview/), a
+[worker](#worker), the desktop app's built-in local worker, and the
+[core](/components/core/overview/) they all build on.
+
+## Snapshot
+
+A snapshot is the public export the [backend](#backend) produces from its
+published results. The static [public site](/components/site/overview/) is built
+from this snapshot, so the gallery keeps no live dependency on the backend.
 
 ## Test Case
 
@@ -70,3 +99,19 @@ Test cases may define multiple variants, which identify modifications to make to
 the specifications provided as input for the test. These variants may change
 game mechanics, add or remove content, and may noticeably affect the difficulty
 of a test case.
+
+## Web Console
+
+The [web console](/components/web/overview/) is The Test Cabinet's
+runner/reporter GUI running in a plain browser. It is the same console as the
+[Tauri desktop app](/components/tauri/overview/), sharing its entire UI, but is
+delivered as a static web app and executes runs on remote [workers](#worker)
+rather than a built-in local one. It is an operator tool, served on the private
+network, not a public site.
+
+## Worker
+
+A [worker](/components/worker/overview/) exposes the core's run functionality
+over an HTTP API, so a test case can be executed on a remote machine. Workers are
+the execution backend for the [web console](#web-console); the desktop app ships
+with its own built-in local worker.

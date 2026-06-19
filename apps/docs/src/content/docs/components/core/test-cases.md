@@ -75,6 +75,7 @@ explicitly.
 name = "Carom"               # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
 tags = ["arcade", "2d"]      # free-form classification tags (site-facing, required)
+summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
@@ -135,6 +136,11 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
   filter the case; they have no bearing on how a run is executed. All three are
   **required**, though `tags` may be an empty list.
+- `summary` is an optional one- or two-sentence abstract shown on the site's test
+  case cards. Unlike `description` it is authored **inline** as plain text rather
+  than as a file, so it stays short and renders safely inside the card's link;
+  the longer `description` is shown on the detail page. Like `description` it is
+  **never seeded** into a run — it is site-only prose.
 - `description` is an optional path to a Markdown file describing the case for
   the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
   is site-only prose. Like every other path it must resolve inside the version
@@ -184,9 +190,10 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
   See [Validation](/components/core/validation/#checks).
 - Each `[[review_item]]` declares a **common** reviewer checklist item — one a
   person must explicitly check when reviewing any variant — by a stable `id`
-  (recorded with the verdict) and the `text` a reviewer reads. A variant may
-  declare **additive** items through its own `review_item` array (same
-  `{ id, text }` shape); see [Variants](#variants). Review items are
+  (recorded with the verdict), a short `title` shown above the item in the
+  reviewer UI, and the `text` a reviewer reads. A variant may declare
+  **additive** items through its own `review_item` array (same
+  `{ id, title, text }` shape); see [Variants](#variants). Review items are
   reporter-side material: like the reference *source* and a case's
   `description`, they are **never seeded** into a run, so the model never
   receives the checklist. They restate observable requirements the seeded
@@ -304,7 +311,7 @@ checked view must be supplied either commonly or by **every** variant.
 ### Variant-specific reviewer checklist items
 
 A variant may likewise declare **variant-specific reviewer checklist items**
-through a `review_item` array of `{ id, text }` tables, additive on top of the
+through a `review_item` array of `{ id, title, text }` tables, additive on top of the
 common `[[review_item]]` list just as `spec` and `reference` are additive. This
 lets a mode-only requirement be checked only when the variant that adds the mode
 runs — for example an item about an extra mode's escalating speed rides along

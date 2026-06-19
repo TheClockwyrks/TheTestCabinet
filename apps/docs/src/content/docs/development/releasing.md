@@ -8,10 +8,10 @@ app, and the one-time configuration behind the project's three deployed
 downloadable artifacts and the CI-built sites. Standing up the always-on
 **services** — the
 [backend](/components/backend/overview/) and
-[workers](/components/worker/overview/) — as staging or production environments is
-covered separately under [Deployment](/deployment/overview/), and running any of
-this on your own machine is covered under [Running](/development/running/). For
-building locally see [Building](/development/building/); for what a *run*
+[workers](/components/worker/overview/) — as staging or production environments
+is covered separately under [Deployment](/deployment/overview/), and running any
+of this on your own machine is covered under [Running](/development/running/).
+For building locally see [Building](/development/building/); for what a *run*
 publishes (its source repository and playable build) see
 [Results](/components/core/results/) and
 [Publishing a Test Run Result](/guides/publishing-a-test-run-result/). For
@@ -61,7 +61,7 @@ in CI; the third is the per-run playable builds produced by
 | ---- | ---- | ------- | --------- |
 | [Gallery](/components/site/overview/) (`apps/site`) | GitHub Pages | `testcabinet.ai` (apex) | `deploy-site.yml` |
 | [Docs](/components/docs/overview/) (`apps/docs`) | Cloudflare Pages | `docs.testcabinet.ai` | `deploy-docs.yml` |
-| Per-run playable builds | Cloudflare Pages | `<run-id>.<project>.pages.dev` | `tcab publish` |
+| Per-run playable builds | Cloudflare Pages | a per-run `*.pages.dev` URL | `tcab publish` |
 
 The gallery owns the apex on GitHub Pages, and GitHub Pages allows only one
 custom domain per repository — which is why the docs are a **separate**
@@ -75,10 +75,13 @@ than a subpath keeps it playable exactly as the test case's
 ## Gallery (GitHub Pages, one-time)
 
 The gallery is built and deployed by `.github/workflows/deploy-site.yml`, which
-regenerates the catalog datasets from `test-cases/` and `models/` as part of the
-build (so the deployed site always reflects the current specs) and publishes the
-static output to GitHub Pages. The workflow is dormant until the repository is
-mirrored to GitHub with Pages enabled.
+regenerates the bundled model dataset (`models.json`) from `models/` as part of
+the build (so the deployed site always reflects current model prices) and
+publishes the static output to GitHub Pages. The test-case and run data the
+gallery shows are *not* baked in here — they come from the
+[backend's public R2 snapshot](/components/backend/snapshot/), fetched at build
+time. The workflow is dormant until the repository is mirrored to GitHub with
+Pages enabled.
 
 - Enable GitHub Pages on the gallery repository and point the apex
   `testcabinet.ai` at it, with the repository claiming it as its custom domain,
@@ -87,6 +90,11 @@ mirrored to GitHub with Pages enabled.
 Because per-run builds now live on Cloudflare Pages (below) rather than on
 per-run GitHub Pages subdomains, no `*.testcabinet.ai` wildcard or organization
 domain verification is required for them.
+
+Each per-run build is deployed under its own Cloudflare Pages **branch alias**
+(`--branch=<run-id>`), and the served URL is read back from `wrangler`'s output
+rather than constructed — Cloudflare sanitizes and truncates long branch-alias
+subdomains, so the literal `<run-id>.<project>.pages.dev` is not a reliable host.
 
 ## Docs (Cloudflare Pages, one-time)
 
@@ -97,8 +105,8 @@ Rust/catalog step.
 
 - In the Cloudflare dashboard, create a Pages project named `test-cabinet-docs`
   (this must match `--project-name` in the deploy workflow). Use a
-  *Direct Upload* project — the build runs in GitHub Actions, not on Cloudflare —
-  and set its production branch to `master`.
+  *Direct Upload* project — the build runs in GitHub Actions, not on
+  Cloudflare — and set its production branch to `master`.
 - Add `docs.testcabinet.ai` as a custom domain on that Pages project, with a
   `docs.testcabinet.ai` CNAME pointing at `test-cabinet-docs.pages.dev`.
 - Create a Cloudflare API token with the *Cloudflare Pages: Edit* permission and
@@ -108,10 +116,10 @@ Rust/catalog step.
 ## Per-run builds (Cloudflare Pages)
 
 A [publish](/guides/publishing-a-test-run-result/) deploys each run's static
-build to Cloudflare Pages under a per-run branch alias, served at its own
-`<run-id>.<project>.pages.dev` root and embedded by the gallery from there. This
-is the operator's half of a publish, so the operator holds the Cloudflare
-credentials it uses (see
+build to Cloudflare Pages under a per-run branch alias (`--branch=<run-id>`),
+served at the `*.pages.dev` URL `wrangler` reports and embedded by the gallery
+from there. This is the operator's half of a publish, so the operator holds the
+Cloudflare credentials it uses (see
 [CLI Authentication](/components/cli/overview/#authentication)); there is no
 shared infrastructure to configure beyond those credentials, and because builds
 are served from `pages.dev` they need no custom DNS.

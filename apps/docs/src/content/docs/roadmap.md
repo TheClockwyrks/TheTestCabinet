@@ -3,12 +3,8 @@ title: Roadmap
 ---
 
 This document covers the changes that are planned for The Test Cabinet and the
-(approximate) order that they'll be completed in.
-
-## v0.2.0
-
-- Introduce all additional components documented for The Test Cabinet
-  - v0.1.0 only introduces the CLI, website, and documentation
+(approximate) order that they'll be completed in. For what each released version
+actually shipped, see the [changelogs](/changelogs/v0.2.0/).
 
 ## v0.3.0
 
