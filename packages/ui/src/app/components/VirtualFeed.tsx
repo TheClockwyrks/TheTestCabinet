@@ -79,7 +79,14 @@ export function VirtualFeed({
         style={{ height: "100%" }}
         totalCount={count}
         itemContent={itemContent}
-        computeItemKey={computeKey}
+        // Only forward a key function when the caller supplies one. Passing
+        // `computeItemKey={undefined}` is NOT the same as omitting it:
+        // react-virtuoso treats the prop as present and overwrites its own
+        // `index => index` default with `undefined`, then calls it per row and
+        // throws "computeItemKey is not a function" the moment the first item
+        // renders. Omitting the prop lets that built-in default stand — which is
+        // the index-keyed behavior this component documents anyway.
+        {...(computeKey ? { computeItemKey: computeKey } : {})}
         // Start pinned to the newest item when following — `followOutput` only
         // reacts to growth after mount, so a subscription that replays its
         // backlog in one batch (mounting straight to N items) would otherwise

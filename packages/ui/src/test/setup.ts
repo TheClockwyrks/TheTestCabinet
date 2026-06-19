@@ -23,19 +23,26 @@ vi.mock("react-virtuoso", async () => {
     const itemContent = props.itemContent as
       | ((index: number) => React.ReactNode)
       | undefined;
-    const computeItemKey = props.computeItemKey as
-      | ((index: number) => React.Key)
-      | undefined;
     React.useImperativeHandle(ref, () => ({
       scrollToIndex: () => {},
       scrollTo: () => {},
     }));
+    // Mirror react-virtuoso's prop handling faithfully: a `computeItemKey` key
+    // that is *present* (even with an `undefined` value) overrides the library's
+    // `index => index` default and is then called per row — so passing
+    // `computeItemKey={undefined}` throws "is not a function" in production. Key
+    // off presence, not truthiness, so that footgun reproduces under test rather
+    // than being silently papered over.
+    const computeItemKey =
+      "computeItemKey" in props
+        ? (props.computeItemKey as (index: number) => React.Key)
+        : (i: number) => i;
     const rows: React.ReactNode[] = [];
     for (let i = 0; i < totalCount; i += 1) {
       rows.push(
         React.createElement(
           "div",
-          { key: computeItemKey ? computeItemKey(i) : i, "data-index": i },
+          { key: computeItemKey(i), "data-index": i },
           itemContent ? itemContent(i) : null,
         ),
       );
