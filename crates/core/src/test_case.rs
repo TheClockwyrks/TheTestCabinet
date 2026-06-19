@@ -59,6 +59,20 @@ struct Manifest {
     /// `[[spec]]` tables.
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
+    /// Optional starter **workspace** directory, relative to the version folder.
+    /// Its contents are copied into the root of the run's workspace before the
+    /// specs are seeded, giving every run a baseline project to build on (for
+    /// example a `package.json`). A variant may override it with its own
+    /// directory (see [`ManifestVariant::workspace`]). `None` seeds no starter
+    /// files.
+    #[serde(default)]
+    workspace: Option<PathBuf>,
+    /// Optional **init** command, run inside the run container once the workspace
+    /// and specs are seeded and before the harness starts. It can be a plain
+    /// command (for example `npm install`) or invoke a file the workspace
+    /// supplies. `None` runs no init step.
+    #[serde(default)]
+    init: Option<String>,
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
@@ -119,6 +133,12 @@ struct ManifestVariant {
     /// `spec` array of inline `{ source, dest }` tables.
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
+    /// Optional starter **workspace** directory for this variant, relative to the
+    /// version folder. When present it **replaces** the case's common workspace
+    /// for runs of this variant (it is not additive), so a variant can ship a
+    /// different baseline project. `None` falls back to the common workspace.
+    #[serde(default)]
+    workspace: Option<PathBuf>,
     /// Reference views this variant declares in addition to the common
     /// references. Declared as a `reference` array of inline `{ view, path }`
     /// tables. A variant-specific reference lets one view (for example the title
@@ -205,6 +225,28 @@ pub struct SpecFile {
     pub dest: PathBuf,
 }
 
+/// A single starter file copied into a run's workspace from a test case's
+/// **workspace** directory.
+///
+/// A case (or a variant overriding it) may declare a workspace directory whose
+/// contents seed the root of the run's repository before the specs are written,
+/// giving the model a baseline project to build on — a `package.json`, configs,
+/// and whatever else a run should start with. Each file is enumerated from that
+/// directory at resolution: [`Self::source_path`] is the file on the host and
+/// [`Self::dest`] is its path **relative to the workspace directory**, which is
+/// where it lands in the run (so `workspaces/base/package.json` seeds to
+/// `package.json` at the repository root). Workspace files are seeded verbatim;
+/// unlike specs, they are never rendered as templates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceFile {
+    /// Source path on the host, inside the version folder's workspace directory.
+    pub source_path: PathBuf,
+    /// Destination path relative to the run's workspace root, where the file is
+    /// seeded.
+    pub dest: PathBuf,
+}
+
 /// The commands the validator runs to build a produced implementation into a
 /// served static site, resolved from the manifest's required `[build]` table.
 ///
@@ -239,6 +281,12 @@ pub struct Variant {
     pub description: Option<String>,
     /// Specs this variant seeds in addition to the case's common specs.
     pub specs: Vec<SpecFile>,
+    /// Starter workspace files for this variant, when it overrides the case's
+    /// common workspace. `Some` **replaces** the common workspace for this
+    /// variant (it is not additive); `None` falls back to
+    /// [`TestCaseVersion::common_workspace`]. Resolve the effective set for a
+    /// variant with [`TestCaseVersion::workspace_for`].
+    pub workspace: Option<Vec<WorkspaceFile>>,
     /// Reference views this variant declares in addition to the case's common
     /// references. Rendered and seeded only when this variant is selected, so a
     /// view such as the title menu can differ per variant.
@@ -388,6 +436,16 @@ pub struct TestCaseVersion {
     pub build: BuildCommands,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
+    /// Starter workspace files seeded for every variant that does not override
+    /// the workspace (the common set, enumerated from the manifest's `workspace`
+    /// directory). Empty when the case declares no workspace. A variant may
+    /// replace these with its own (see [`Variant::workspace`]); the effective set
+    /// for a variant is [`Self::workspace_for`].
+    pub common_workspace: Vec<WorkspaceFile>,
+    /// The command run inside the run container once the workspace and specs are
+    /// seeded and before the harness starts (the manifest's `init`). `None` when
+    /// the case declares no init step. See [`crate::Orchestrator::execute`].
+    pub init: Option<String>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
     /// The variants this case offers, in declared order. At least one is always
@@ -419,6 +477,18 @@ impl TestCaseVersion {
                 version: self.version.clone(),
                 variant: slug.to_string(),
             })
+    }
+
+    /// The starter workspace files seeded for a variant: the variant's own set
+    /// when it overrides the workspace, otherwise the case's common workspace.
+    /// Unlike specs, a variant's workspace **replaces** the common one rather
+    /// than layering on top, so this returns one or the other rather than a
+    /// concatenation.
+    pub fn workspace_for<'a>(&'a self, variant: &'a Variant) -> &'a [WorkspaceFile] {
+        variant
+            .workspace
+            .as_deref()
+            .unwrap_or(&self.common_workspace)
     }
 
     /// The full set of specs seeded for a variant: the common specs followed by
@@ -607,6 +677,42 @@ impl TestCaseCatalog {
             common_specs.push(resolve_spec(spec)?);
         }
 
+        // Resolve a starter workspace directory into the list of files it seeds.
+        // The directory must exist inside the version folder; each file's `dest`
+        // is its path relative to that directory, so `workspaces/base/package.json`
+        // seeds to `package.json` at the run's root. Shared by the common
+        // workspace and each variant's override.
+        let resolve_workspace = |dir: &Path, kind: &str| -> Result<Vec<WorkspaceFile>> {
+            let path = resolve_inside(dir, kind)?;
+            if !path.is_dir() {
+                return Err(invalid(format!(
+                    "{kind} `{}` is not a directory",
+                    dir.display()
+                )));
+            }
+            let mut files = Vec::new();
+            collect_workspace_files(&path, &path, &mut files).map_err(|err| {
+                invalid(format!("could not read {kind} `{}`: {err}", dir.display()))
+            })?;
+            // Stable, dest-ordered so seeding and the stored manifest are
+            // deterministic regardless of directory read order.
+            files.sort_by(|a, b| a.dest.cmp(&b.dest));
+            Ok(files)
+        };
+        let common_workspace = match &manifest.workspace {
+            Some(dir) => resolve_workspace(dir, "workspace")?,
+            None => Vec::new(),
+        };
+
+        // The init command, when declared, runs in the container after seeding; a
+        // blank string would be a no-op the author almost certainly did not mean,
+        // so reject it rather than silently running nothing.
+        if let Some(init) = &manifest.init
+            && init.trim().is_empty()
+        {
+            return Err(invalid("init must not be empty when declared".to_string()));
+        }
+
         // The site-facing description is validated to exist when declared, with
         // the same self-containment guard as every other path, but it is never
         // seeded into a run.
@@ -635,6 +741,17 @@ impl TestCaseCatalog {
             }
             asset_paths.push(path);
         }
+        // The run-relative dest of each seeded asset, used by the per-variant
+        // collision check below. An asset keeps its path relative to the version
+        // folder when seeded (a directory recursively under that path).
+        let asset_dests: Vec<PathBuf> = asset_paths
+            .iter()
+            .map(|path| {
+                path.strip_prefix(&root)
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|_| path.clone())
+            })
+            .collect();
 
         // Resolve one reference mapping: the source mockup must exist inside the
         // version folder. Shared by the common references and each variant's own.
@@ -713,19 +830,12 @@ impl TestCaseCatalog {
             for spec in &variant.specs {
                 specs.push(resolve_spec(spec)?);
             }
-            // The common specs and the variant's own specs are seeded together;
-            // two specs landing on the same dest would clobber each other, so a
-            // collision is rejected rather than silently resolved.
-            let mut seen = std::collections::BTreeSet::new();
-            for spec in common_specs.iter().chain(specs.iter()) {
-                if !seen.insert(&spec.dest) {
-                    return Err(invalid(format!(
-                        "variant `{}` seeds two specs to the same dest `{}`",
-                        variant.slug,
-                        spec.dest.display()
-                    )));
-                }
-            }
+            // A variant's workspace, when declared, replaces the common workspace
+            // for this variant rather than layering on top of it.
+            let workspace = match &variant.workspace {
+                Some(dir) => Some(resolve_workspace(dir, "variant workspace")?),
+                None => None,
+            };
 
             let mut references = Vec::with_capacity(variant.references.len());
             for reference in &variant.references {
@@ -743,6 +853,47 @@ impl TestCaseCatalog {
                         variant.slug, reference.view
                     )));
                 }
+            }
+
+            // The workspace files, the common and variant specs, the assets, and
+            // the rendered reference screenshots are all seeded into the one run
+            // tree. Two of them landing on the same dest would clobber each other,
+            // so any collision across them — for example a workspace that ships a
+            // file at a spec's `dest` — is rejected here rather than silently
+            // resolved at seed time. The effective workspace is the variant's own
+            // when it overrides, otherwise the case's common workspace.
+            let workspace_files = workspace.as_deref().unwrap_or(&common_workspace);
+            let mut seeded_dests: std::collections::BTreeMap<PathBuf, &'static str> =
+                std::collections::BTreeMap::new();
+            let mut claim = |dest: PathBuf, kind: &'static str| -> Result<()> {
+                if let Some(prev) = seeded_dests.insert(dest.clone(), kind) {
+                    return Err(invalid(format!(
+                        "variant `{}` seeds two entries ({prev} and {kind}) to the same dest `{}`",
+                        variant.slug,
+                        dest.display()
+                    )));
+                }
+                Ok(())
+            };
+            for file in workspace_files {
+                claim(file.dest.clone(), "workspace")?;
+            }
+            for spec in common_specs.iter().chain(specs.iter()) {
+                claim(spec.dest.clone(), "spec")?;
+            }
+            for dest in &asset_dests {
+                claim(dest.clone(), "asset")?;
+            }
+            // The reference screenshots seed under `reference/<view>.png`, with a
+            // `reference/README.md` notice alongside them when any are present.
+            for reference in common_references.iter().chain(references.iter()) {
+                claim(
+                    Path::new("reference").join(format!("{}.png", reference.view)),
+                    "reference",
+                )?;
+            }
+            if !common_references.is_empty() || !references.is_empty() {
+                claim(Path::new("reference").join("README.md"), "reference")?;
             }
 
             let mut review_items = Vec::with_capacity(variant.review_items.len());
@@ -771,6 +922,7 @@ impl TestCaseCatalog {
                 name,
                 description: variant.description.clone(),
                 specs,
+                workspace,
                 references,
                 review_items,
             });
@@ -820,6 +972,8 @@ impl TestCaseCatalog {
                 build: build.build,
             },
             common_specs,
+            common_workspace,
+            init: manifest.init,
             asset_paths,
             variants,
             common_references,
@@ -898,6 +1052,43 @@ fn version_key(version: &str) -> Vec<u64> {
 /// can override it per invocation.
 fn default_max_runtime_seconds() -> u64 {
     3600
+}
+
+/// Recursively enumerate the files under a workspace directory into
+/// [`WorkspaceFile`]s, computing each file's `dest` as its path relative to
+/// `base` (the workspace directory's root). Directories are descended into;
+/// only files become entries, so an empty directory contributes nothing.
+///
+/// Hidden entries (names beginning with `.`) are skipped, matching how the
+/// backend copies a version folder into its store: a dotfile would be listed
+/// here but never distributed, so a backend-driven run would fail to fetch it.
+/// Keeping the two in lockstep means a workspace seeds the same set locally and
+/// remotely.
+fn collect_workspace_files(
+    base: &Path,
+    dir: &Path,
+    out: &mut Vec<WorkspaceFile>,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_workspace_files(base, &path, out)?;
+        } else {
+            let dest = path
+                .strip_prefix(base)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|_| path.clone());
+            out.push(WorkspaceFile {
+                source_path: path,
+                dest,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Humanize a slug into a display name by splitting on `-`/`_` and capitalizing

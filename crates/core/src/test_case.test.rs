@@ -158,3 +158,188 @@ fn a_review_item_with_empty_title_is_rejected() {
         "unexpected error: {err}"
     );
 }
+
+/// Write a `demo/v1.0.0` version with the given manifest and supporting files
+/// (relative path -> contents), returning the temp dir (kept alive) and a
+/// catalog rooted at it. Unlike [`catalog_with_manifest`], the caller supplies
+/// the whole manifest, so it can place top-level keys (`workspace`, `init`)
+/// before the `[build]` table, and can seed the workspace directory the manifest
+/// points at.
+fn catalog_with_files(
+    manifest: &str,
+    files: &[(&str, &str)],
+) -> (tempfile::TempDir, TestCaseCatalog) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = dir.path().join("demo/v1.0.0");
+    fs::create_dir_all(&version).expect("create version dir");
+    fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
+    for (path, contents) in files {
+        let full = version.join(path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).expect("create parent");
+        }
+        fs::write(full, contents).expect("write file");
+    }
+    fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
+    let catalog = TestCaseCatalog::new(dir.path());
+    (dir, catalog)
+}
+
+/// The required header plus a `[build]` table, with `body` (top-level keys and
+/// tables) spliced in between so a test can declare `workspace`/`init` before the
+/// build table and append variants/specs after it.
+fn manifest_with(body: &str, after_build: &str) -> String {
+    format!(
+        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         {body}\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         {after_build}"
+    )
+}
+
+#[test]
+fn workspace_files_resolve_with_run_relative_dests_and_init() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\ninit = \"npm install\"\n",
+        "[[variant]]\nslug = \"base\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("workspaces/base/src/main.ts", "// entry"),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    // The init command is carried through verbatim.
+    assert_eq!(version.init.as_deref(), Some("npm install"));
+    // Each workspace file's dest is its path relative to the workspace dir, so it
+    // seeds at the run root.
+    let dests: Vec<String> = version
+        .common_workspace
+        .iter()
+        .map(|f| f.dest.display().to_string())
+        .collect();
+    assert!(dests.contains(&"package.json".to_string()), "{dests:?}");
+    assert!(dests.contains(&"src/main.ts".to_string()), "{dests:?}");
+    // A variant with no override inherits the common workspace.
+    let base = version.variant("base").expect("base");
+    assert_eq!(version.workspace_for(base).len(), 2);
+}
+
+#[test]
+fn workspace_dotfiles_are_not_seeded() {
+    // A dotfile in the workspace is skipped (matching how the backend copies a
+    // version into its store), so it is not listed as a seeded workspace file.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[[variant]]\nslug = \"base\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("workspaces/base/.gitignore", "node_modules/"),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let dests: Vec<String> = version
+        .common_workspace
+        .iter()
+        .map(|f| f.dest.display().to_string())
+        .collect();
+    assert_eq!(
+        dests,
+        ["package.json"],
+        "dotfiles must be skipped: {dests:?}"
+    );
+}
+
+#[test]
+fn a_variant_workspace_overrides_the_common_one() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[[variant]]\nslug = \"base\"\n\
+         [[variant]]\nslug = \"special\"\nworkspace = \"workspaces/special\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{\"name\":\"base\"}"),
+            ("workspaces/special/package.json", "{\"name\":\"special\"}"),
+            ("workspaces/special/extra.txt", "x"),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+    let special = version.variant("special").expect("special");
+
+    // The override replaces the common workspace rather than layering on it.
+    assert_eq!(version.workspace_for(base).len(), 1);
+    let special_dests: Vec<String> = version
+        .workspace_for(special)
+        .iter()
+        .map(|f| f.dest.display().to_string())
+        .collect();
+    assert!(
+        special_dests.contains(&"extra.txt".to_string()),
+        "{special_dests:?}"
+    );
+    assert!(!special_dests.contains(&"package.json".to_string()) || special_dests.len() == 2);
+}
+
+#[test]
+fn a_workspace_file_colliding_with_a_spec_dest_is_rejected() {
+    // The workspace ships a file at the same dest a spec seeds to; the two would
+    // clobber each other, so resolution rejects it.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[[spec]]\nsource = \"overview.md\"\ndest = \"specs/overview.md\"\n\
+         [[variant]]\nslug = \"base\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("overview.md", "# Overview"),
+            ("workspaces/base/specs/overview.md", "clobber"),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a workspace/spec dest collision is rejected");
+    assert!(
+        format!("{err}").contains("same dest"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_blank_init_command_is_rejected() {
+    let manifest = manifest_with("init = \"   \"\n", "[[variant]]\nslug = \"base\"\n");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a blank init command is rejected");
+    assert!(
+        format!("{err}").contains("init must not be empty"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_missing_workspace_directory_is_rejected() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[[variant]]\nslug = \"base\"\n",
+    );
+    // The manifest points at a workspace dir that was never created.
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a missing workspace directory is rejected");
+    assert!(
+        format!("{err}").contains("workspace"),
+        "unexpected error: {err}"
+    );
+}

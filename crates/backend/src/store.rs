@@ -76,6 +76,15 @@ pub struct StoredManifest {
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
+    /// Common starter workspace files (directory already expanded to individual
+    /// files), seeded into the run root for every variant that does not override
+    /// the workspace. Defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub workspace: Vec<StoredWorkspaceFile>,
+    /// The init command run in the run container after seeding, or `None`.
+    /// Defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub init: Option<String>,
     /// Asset files, directories already expanded to individual files.
     pub assets: Vec<StoredAsset>,
     /// Variants, each with additive specs and references.
@@ -121,6 +130,18 @@ pub struct StoredAsset {
     pub dest: String,
 }
 
+/// A starter workspace file persisted in a [`StoredManifest`]. The directory the
+/// author declared is already expanded to individual files; `source` is the
+/// store-relative artifact key and `dest` is the file's path relative to the run
+/// root (where it is seeded).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredWorkspaceFile {
+    /// Store-relative artifact key.
+    pub source: String,
+    /// Run-root-relative destination path.
+    pub dest: String,
+}
+
 /// A variant persisted in a [`StoredManifest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredVariant {
@@ -132,6 +153,11 @@ pub struct StoredVariant {
     pub description: Option<String>,
     /// Additive specs.
     pub specs: Vec<StoredSpec>,
+    /// The variant's workspace override (directory expanded to files), when it
+    /// replaces the common workspace for this variant. `None` inherits the common
+    /// workspace. Defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub workspace: Option<Vec<StoredWorkspaceFile>>,
     /// Additive references.
     pub references: Vec<StoredReference>,
     /// Additive reviewer checklist items. Defaulted for manifests stored before

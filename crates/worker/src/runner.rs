@@ -102,7 +102,7 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
         )
     })?;
 
-    // The harness image resolves from the environment inside the orchestrator (a
+    // The base image resolves from the environment inside the orchestrator (a
     // registry reference, no backend involved); the request carries no explicit
     // per-run override.
     let orchestrator = Orchestrator {

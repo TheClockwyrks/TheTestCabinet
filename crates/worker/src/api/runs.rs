@@ -87,7 +87,8 @@ pub async fn submit(
         harness: body.harness,
         model_id: body.model,
         max_runtime_override: body.max_runtime_seconds,
-        // The worker resolves the harness image from the backend in `drive_run`.
+        // The base image resolves from the environment in the orchestrator (see
+        // `drive_run`), not from the backend; no explicit per-run override.
         container_image: None,
     };
 

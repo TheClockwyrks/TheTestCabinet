@@ -1,10 +1,11 @@
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
 // the static site maps the public R2 snapshot's case slice, the consoles map the
-// backend catalog. The public snapshot deliberately omits spec bodies, prompts,
-// and seeded inputs — those resolve from the backend at run time, not on the
-// public site — so `prompt`/`seededInputs` come through empty there and the
-// Specifications tab shows only what the source carries.
+// backend catalog. The prompt and reference screenshots come through everywhere
+// (the backend renders the prompt at ingest and serves it in the snapshot too).
+// Spec bodies and seeded inputs resolve from the backend, not the public site, so
+// `seededInputs` comes through empty on the static site and the Specifications
+// tab there shows the prompt but no seeded files.
 
 /** A single input seeded into a run's fresh repository, as the catalog records it. */
 export interface SeededInput {

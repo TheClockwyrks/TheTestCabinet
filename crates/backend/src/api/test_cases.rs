@@ -48,7 +48,7 @@ pub async fn resolve_version(
         .store
         .read_manifest(&slug, &version)
         .map_err(ApiError::from)?;
-    Ok(Json(version_response(&manifest)))
+    Ok(Json(version_response(&manifest)?))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}` — one seeded
@@ -80,8 +80,9 @@ pub async fn reference(
 }
 
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
-/// screenshot URLs from the version's store layout.
-fn version_response(manifest: &StoredManifest) -> VersionResponse {
+/// screenshot URLs from the version's store layout and rendering each variant's
+/// prompt the way a real run receives it.
+fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiError> {
     let reference_url = |scope: &str, view: &str| {
         format!(
             "/test-cases/{}/{}/references/{scope}/{view}.png",
@@ -89,7 +90,34 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
         )
     };
 
-    VersionResponse {
+    let variants = manifest
+        .variants
+        .iter()
+        .map(|v| {
+            Ok(VariantOut {
+                slug: v.slug.clone(),
+                name: v.name.clone(),
+                description: v.description.clone(),
+                prompt: render_variant_prompt(manifest, v)?,
+                specs: v.specs.iter().map(spec_out).collect(),
+                workspace: v
+                    .workspace
+                    .as_ref()
+                    .map(|files| files.iter().map(workspace_out).collect()),
+                references: v
+                    .references
+                    .iter()
+                    .map(|r| ReferenceOut {
+                        view: r.view.clone(),
+                        screenshot_url: reference_url(&v.slug, &r.view),
+                    })
+                    .collect(),
+                review_items: v.review_items.iter().map(review_item_out).collect(),
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+
+    Ok(VersionResponse {
         slug: manifest.slug.clone(),
         version: manifest.version.clone(),
         name: manifest.name.clone(),
@@ -104,6 +132,8 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
         },
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
+        workspace: manifest.workspace.iter().map(workspace_out).collect(),
+        init: manifest.init.clone(),
         assets: manifest
             .assets
             .iter()
@@ -112,25 +142,7 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
                 dest: a.dest.clone(),
             })
             .collect(),
-        variants: manifest
-            .variants
-            .iter()
-            .map(|v| VariantOut {
-                slug: v.slug.clone(),
-                name: v.name.clone(),
-                description: v.description.clone(),
-                specs: v.specs.iter().map(spec_out).collect(),
-                references: v
-                    .references
-                    .iter()
-                    .map(|r| ReferenceOut {
-                        view: r.view.clone(),
-                        screenshot_url: reference_url(&v.slug, &r.view),
-                    })
-                    .collect(),
-                review_items: v.review_items.iter().map(review_item_out).collect(),
-            })
-            .collect(),
+        variants,
         common_references: manifest
             .common_references
             .iter()
@@ -154,7 +166,36 @@ fn version_response(manifest: &StoredManifest) -> VersionResponse {
             .iter()
             .map(review_item_out)
             .collect(),
-    }
+    })
+}
+
+/// Render a variant's prompt the way a real run receives it: the version's
+/// `prompt.hbs` template rendered against the variant and its seeded specs (the
+/// common specs followed by the variant's own, matching seed order). The
+/// in-container workspace path is the engine's fixed default, so this preview is
+/// identical to the run-time instruction. A template error is exceptional (the
+/// same template renders at run time), so surface it as an internal error rather
+/// than silently dropping the prompt.
+fn render_variant_prompt(
+    manifest: &StoredManifest,
+    variant: &crate::store::StoredVariant,
+) -> Result<String, ApiError> {
+    let spec_dests: Vec<String> = manifest
+        .common_specs
+        .iter()
+        .chain(variant.specs.iter())
+        .map(|spec| spec.dest.clone())
+        .collect();
+    test_cabinet_core::render_prompt_from_template(
+        &manifest.slug,
+        &manifest.version,
+        &manifest.prompt_template,
+        &variant.slug,
+        &variant.name,
+        variant.description.as_deref(),
+        &spec_dests,
+    )
+    .map_err(|err| ApiError::internal(err.to_string()))
 }
 
 /// Map a stored reviewer checklist item to its wire `{id, text}` shape.
@@ -172,6 +213,14 @@ fn spec_out(spec: &crate::store::StoredSpec) -> SpecOut {
         source: spec.source.clone(),
         dest: spec.dest.clone(),
         template: spec.template,
+    }
+}
+
+/// Map a stored workspace file to the wire `{source, dest}` shape.
+fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
+    WorkspaceOut {
+        source: file.source.clone(),
+        dest: file.dest.clone(),
     }
 }
 
@@ -245,6 +294,8 @@ pub struct VersionResponse {
     build: BuildOut,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
+    workspace: Vec<WorkspaceOut>,
+    init: Option<String>,
     assets: Vec<AssetOut>,
     variants: Vec<VariantOut>,
     common_references: Vec<ReferenceOut>,
@@ -272,12 +323,21 @@ struct AssetOut {
 }
 
 #[derive(Serialize)]
+struct WorkspaceOut {
+    source: String,
+    dest: String,
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VariantOut {
     slug: String,
     name: String,
     description: Option<String>,
+    /// The variant's prompt, rendered as a real run receives it.
+    prompt: String,
     specs: Vec<SpecOut>,
+    workspace: Option<Vec<WorkspaceOut>>,
     references: Vec<ReferenceOut>,
     review_items: Vec<ReviewItemOut>,
 }

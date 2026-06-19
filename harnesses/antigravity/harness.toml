@@ -1,0 +1,14 @@
+# Google Antigravity harness definition. See `harnesses/README.md`.
+#
+# Antigravity authenticates only through a Google account and reports no token
+# usage in its non-interactive mode, so the adapter reports it unavailable under
+# The Test Cabinet's API-key-only authentication. It is defined here for when
+# subscription auth is added.
+
+slug = "antigravity"
+name = "Google Antigravity"
+binary = "agy"
+
+# A curl-piped installer; its install location and headless behavior are among
+# the least predictable of the supported harnesses (confirm on a Docker host).
+install = "curl -fsSL https://antigravity.google/cli/install.sh | bash"

@@ -10,7 +10,7 @@ sections for the detail it skips.
 
 If you are setting the project up for the first time, start with
 [First Time Setup](/guides/first-time-setup/) instead — the quickstarts assume a
-working toolchain, a container runtime, a built harness image, and a configured
+working toolchain, a container runtime, the run-container image, and a configured
 API key.
 
 ## Available quickstarts

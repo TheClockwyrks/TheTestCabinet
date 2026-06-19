@@ -359,37 +359,6 @@ impl ContainerRuntime for CliContainerRuntime {
         Ok(())
     }
 
-    async fn run_once(&self, image: &str, command: &[String]) -> Result<ExecOutput> {
-        let Some(entrypoint) = command.first() else {
-            return Err(Error::ContainerRuntime(
-                "run_once requires a command".to_string(),
-            ));
-        };
-        // `--pull never`: this one-shot is the harness availability probe, which
-        // must stay cost-free and must never fetch anything (see
-        // `Harness::check_availability` and `docs/harnesses.md`). A registry image
-        // that has not been pulled yet is therefore reported unavailable — pulling
-        // it is a stronger action reserved for an actual run (which uses
-        // `--pull missing` in `start`), not for a cheap availability check.
-        let mut args = vec![
-            "run".to_string(),
-            "--rm".to_string(),
-            "--pull".to_string(),
-            "never".to_string(),
-            "--entrypoint".to_string(),
-            entrypoint.clone(),
-            image.to_string(),
-        ];
-        args.extend(command.iter().skip(1).cloned());
-
-        let output = self.run(&args).await?;
-        Ok(ExecOutput {
-            exit_code: output.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })
-    }
-
     async fn image_digest(&self, image: &str) -> Result<Option<String>> {
         // Read the image's first repo digest. An image pulled from a registry has
         // one (`repo@sha256:…`); a local build has an empty `RepoDigests`, so the

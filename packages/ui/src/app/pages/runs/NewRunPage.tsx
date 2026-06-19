@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
@@ -19,7 +19,15 @@ export function NewRunPage() {
   const { client: backend } = useBackend();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
-  const sel = useCatalog();
+  // A test case's Run button links here with `?slug=…&version=…&variant=…` so the
+  // form opens with that case pre-selected; absent the params the catalog leads
+  // with its first case as before.
+  const [params] = useSearchParams();
+  const sel = useCatalog({
+    slug: params.get("slug"),
+    version: params.get("version"),
+    variant: params.get("variant"),
+  });
 
   const [models, setModels] = useState<Model[]>([]);
   // Harnesses are a fixed, code-defined catalog (not backend-served): default to

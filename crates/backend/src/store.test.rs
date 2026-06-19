@@ -28,12 +28,18 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             dest: "specs/overview.md".to_string(),
             template: true,
         }],
+        workspace: vec![StoredWorkspaceFile {
+            source: "workspaces/base/package.json".to_string(),
+            dest: "package.json".to_string(),
+        }],
+        init: Some("npm install".to_string()),
         assets: vec![],
         variants: vec![StoredVariant {
             slug: "base".to_string(),
             name: "Base".to_string(),
             description: None,
             specs: vec![],
+            workspace: None,
             references: vec![],
             review_items: vec![StoredReviewItem {
                 id: "mode-only".to_string(),

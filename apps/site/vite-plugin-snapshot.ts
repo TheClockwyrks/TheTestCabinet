@@ -86,7 +86,13 @@ interface SnapshotCaseFile {
   tags: string[];
   summary: string | null;
   description: string | null;
-  variants: Array<{ slug: string; name: string; description: string | null }>;
+  variants: Array<{
+    slug: string;
+    name: string;
+    description: string | null;
+    // The variant's prompt, rendered by the backend as a real run receives it.
+    prompt: string;
+  }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // Optional: reference screenshots exposed as snapshot-relative keys. The
   // contract permits emitting these per case; when present we resolve them to
@@ -173,8 +179,10 @@ function frameWriteup(review: SnapshotReview): string {
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   // Reference screenshots are optional in the snapshot. Common references
   // (variant null / `_common`) apply to every variant; variant-scoped ones only
-  // to their variant. Spec bodies, prompts, and seeded inputs are deliberately
-  // NOT in the public snapshot, so those render empty here.
+  // to their variant. The variant prompt is carried (rendered at ingest); spec
+  // bodies and seeded inputs are deliberately NOT in the public snapshot — those
+  // resolve from the backend — so the Specifications tab shows the prompt but no
+  // seeded files here.
   const refs = file.references ?? [];
   const commonRefs = refs.filter(
     (r) => r.variant == null || r.variant === "_common",
@@ -189,7 +197,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       slug: variant.slug,
       name: variant.name,
       description: variant.description,
-      prompt: "",
+      prompt: variant.prompt,
       seededInputs: [],
       referenceScreenshots,
     };

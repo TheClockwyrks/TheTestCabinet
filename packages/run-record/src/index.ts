@@ -28,8 +28,9 @@ export interface RunEnvironment {
   /** Container OS, from `/etc/os-release` PRETTY_NAME; `"unknown"` on failure. */
   os: string;
   /**
-   * The per-harness image, pinned to its registry digest where it has one,
-   * e.g. `"ghcr.io/theclockwyrks/test-cabinet-codex@sha256:…"`.
+   * The run-container image — the single shared base image, the same for every
+   * harness — pinned to its registry digest where it has one,
+   * e.g. `"ghcr.io/theclockwyrks/test-cabinet-base@sha256:…"`.
    */
   containerImage: string;
   /** Trimmed `node --version` inside the container; null if undeterminable. */

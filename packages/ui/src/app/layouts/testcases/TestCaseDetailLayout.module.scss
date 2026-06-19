@@ -120,11 +120,46 @@
   border-bottom-color: t.$color-accent;
 }
 
+// The right side of the control strip: the variant selector paired with the Run
+// action (consoles only). Bottom-aligned so both sit on the tabs' baseline.
+.actions {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+}
+
 .variant {
   display: inline-flex;
   align-items: center;
   gap: t.$space-sm;
   margin-bottom: t.$space-sm;
+}
+
+// The Run action: a compact accent-filled button that carries the viewed case
+// (and selected variant) into the new-run form. Mirrors the "+ New run" primary
+// so the two run entry points read alike.
+.run {
+  margin-bottom: t.$space-sm;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  box-shadow: var(--ttc-glow);
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-bg;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
 }
 
 .variantLabel {

@@ -27,7 +27,7 @@ use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
     BuildCommands, Check, CheckAction, ReferenceView, ReviewItem, SpecFile, TestCase,
-    TestCaseVersion, Variant,
+    TestCaseVersion, Variant, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-rendered screenshot bytes. The runner
@@ -162,8 +162,9 @@ pub trait BackendClient: Send + Sync {
 /// prompt renderer, and validator — all of which read host paths — work
 /// unchanged against a remote definition.
 ///
-/// Writes the prompt template, every spec source, every asset, and the
-/// backend-rendered reference screenshots under `store_dir`, then returns a
+/// Writes the prompt template, every spec source, every starter workspace file,
+/// every asset, and the backend-rendered reference screenshots under
+/// `store_dir`, then returns a
 /// [`TestCaseVersion`] whose path fields point inside `store_dir`, together with
 /// the [`RenderedReference`]s for `variant` (the common references plus that
 /// variant's own). Pair the returned references with a
@@ -202,7 +203,19 @@ pub async fn materialize_version(
     for asset in &resolved.asset_paths {
         assets.insert(asset.clone());
     }
-    for key in sources.iter().chain(assets.iter()) {
+    // Starter workspace files (common + each variant's override) are fetched by
+    // their store-relative key the same way, then rewritten to host paths below.
+    let mut workspace: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    for file in resolved.common_workspace.iter().chain(
+        resolved
+            .variants
+            .iter()
+            .filter_map(|variant| variant.workspace.as_ref())
+            .flatten(),
+    ) {
+        workspace.insert(file.source_path.clone());
+    }
+    for key in sources.iter().chain(assets.iter()).chain(workspace.iter()) {
         let artifact = client.artifact(slug, version, key).await?;
         write_at(&root.join(key), &artifact.bytes)?;
     }
@@ -242,9 +255,17 @@ pub async fn materialize_version(
         spec.source_path = root.join(&spec.source_path);
     }
     resolved.asset_paths = resolved.asset_paths.iter().map(|a| root.join(a)).collect();
+    for file in &mut resolved.common_workspace {
+        file.source_path = root.join(&file.source_path);
+    }
     for variant in &mut resolved.variants {
         for spec in &mut variant.specs {
             spec.source_path = root.join(&spec.source_path);
+        }
+        if let Some(files) = &mut variant.workspace {
+            for file in files {
+                file.source_path = root.join(&file.source_path);
+            }
         }
         // Point each reference view at its materialized PNG (scope = variant).
         for reference in &mut variant.references {
@@ -609,6 +630,10 @@ struct VersionBody {
     build: BuildBody,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
+    #[serde(default)]
+    workspace: Vec<WorkspaceFileBody>,
+    #[serde(default)]
+    init: Option<String>,
     assets: Vec<AssetBody>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
@@ -644,6 +669,8 @@ impl VersionBody {
                 build: self.build.build,
             },
             common_specs: self.common_specs.iter().map(spec_from).collect(),
+            common_workspace: self.workspace.iter().map(workspace_from).collect(),
+            init: self.init,
             asset_paths: self
                 .assets
                 .iter()
@@ -657,6 +684,9 @@ impl VersionBody {
                     name: variant.name,
                     description: variant.description,
                     specs: variant.specs.iter().map(spec_from).collect(),
+                    workspace: variant
+                        .workspace
+                        .map(|files| files.iter().map(workspace_from).collect()),
                     references: variant.references.iter().map(reference_from).collect(),
                     review_items: variant
                         .review_items
@@ -692,6 +722,16 @@ fn spec_from(spec: &SpecBody) -> SpecFile {
     SpecFile {
         source_path: PathBuf::from(&spec.source),
         dest: PathBuf::from(&spec.dest),
+    }
+}
+
+/// Build a [`WorkspaceFile`] from a wire workspace file, keying `source_path` by
+/// the store-relative `source` (rewritten to a host path by
+/// [`materialize_version`]) and preserving the run-relative `dest`.
+fn workspace_from(file: &WorkspaceFileBody) -> WorkspaceFile {
+    WorkspaceFile {
+        source_path: PathBuf::from(&file.source),
+        dest: PathBuf::from(&file.dest),
     }
 }
 
@@ -744,9 +784,22 @@ struct VariantBody {
     name: String,
     description: Option<String>,
     specs: Vec<SpecBody>,
+    /// The variant's workspace override, when it declares one (it replaces the
+    /// common workspace for this variant). Absent when the variant inherits the
+    /// common workspace.
+    #[serde(default)]
+    workspace: Option<Vec<WorkspaceFileBody>>,
     references: Vec<ReferenceBody>,
     #[serde(default)]
     review_items: Vec<ReviewItemBody>,
+}
+
+/// A starter workspace file in the §1.2 wire shape: a store-relative `source`
+/// key the runner fetches and the run-relative `dest` it seeds to.
+#[derive(Deserialize)]
+struct WorkspaceFileBody {
+    source: String,
+    dest: String,
 }
 
 #[derive(Deserialize)]

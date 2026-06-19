@@ -1,0 +1,9 @@
+# OpenAI Codex harness definition. See `harnesses/README.md`.
+
+slug = "codex"
+name = "OpenAI Codex"
+binary = "codex"
+
+# Installed globally into the user-writable npm prefix; the cache is cleaned so
+# the install leaves nothing behind in the container's home.
+install = "npm install -g @openai/codex && npm cache clean --force"

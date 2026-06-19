@@ -41,10 +41,22 @@ export interface TestCase {
   versions: string[];
 }
 
+// A rendered reference screenshot for a variant, resolved to a URL the webview
+// can load (the backend's reference endpoint).
+export interface ReferenceShot {
+  view: string;
+  url: string;
+}
+
 export interface VariantInfo {
   slug: string;
   name: string;
   description: string | null;
+  // The variant's prompt, rendered as a real run receives it.
+  prompt: string;
+  // Rendered reference screenshots (common first, then the variant's own), or
+  // empty for a locally-resolved checkout with no backend to serve baselines.
+  references: ReferenceShot[];
 }
 
 export interface VersionInfo {

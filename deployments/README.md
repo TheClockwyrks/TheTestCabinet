@@ -28,7 +28,7 @@ deployments/
 ├── azure/
 │   ├── backend.Dockerfile     # tcab-backend + headless Chromium, for Azure Container Apps
 │   ├── containerapp.yaml      # example Container App: 1 replica, state volume, env refs
-│   ├── worker-cloud-init.yaml # VM/VMSS first-boot: Docker + harness images + worker unit + Tailscale
+│   ├── worker-cloud-init.yaml # VM/VMSS first-boot: Docker + run-container base image + worker unit + Tailscale
 │   └── az-provision.sh        # annotated `az` CLI walkthrough for one environment
 ├── systemd/
 │   ├── tcab-backend.service   # for the VM fallback (backend on a VM instead of Container Apps)

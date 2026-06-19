@@ -22,7 +22,7 @@ use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredReference,
-    StoredReviewItem, StoredSpec, StoredVariant,
+    StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -202,6 +202,15 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
         .collect::<Result<Vec<_>>>()?;
 
+    // The starter workspace files (common + each variant's override) are keyed by
+    // their store-relative source path; the runner fetches each like an asset and
+    // seeds it at the file's run-relative `dest`.
+    let workspace = resolved
+        .common_workspace
+        .iter()
+        .map(|file| stored_workspace(root, file))
+        .collect::<Result<Vec<_>>>()?;
+
     // Asset *paths* in a resolved version may be files or directories; the
     // contract expands directories to individual files. Each becomes an artifact
     // keyed by its store-relative path, with `dest` mirroring the source layout.
@@ -219,11 +228,22 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 .iter()
                 .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
                 .collect::<Result<Vec<_>>>()?;
+            let workspace = variant
+                .workspace
+                .as_ref()
+                .map(|files| {
+                    files
+                        .iter()
+                        .map(|file| stored_workspace(root, file))
+                        .collect::<Result<Vec<_>>>()
+                })
+                .transpose()?;
             Ok(StoredVariant {
                 slug: variant.slug.clone(),
                 name: variant.name.clone(),
                 description: variant.description.clone(),
                 specs,
+                workspace,
                 references: variant
                     .references
                     .iter()
@@ -255,6 +275,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         },
         prompt_template,
         common_specs,
+        workspace,
+        init: resolved.init.clone(),
         assets,
         variants,
         common_references: resolved
@@ -304,6 +326,19 @@ fn stored_spec(root: &Path, source_path: &Path, dest: &Path) -> Result<StoredSpe
         source,
         dest: to_forward_slash(dest),
         template,
+    })
+}
+
+/// Build a [`StoredWorkspaceFile`] from a resolved workspace file: the
+/// store-relative `source` key plus the run-relative `dest` (already computed at
+/// resolution as the file's path within the workspace directory).
+fn stored_workspace(
+    root: &Path,
+    file: &test_cabinet_core::WorkspaceFile,
+) -> Result<StoredWorkspaceFile> {
+    Ok(StoredWorkspaceFile {
+        source: relative_key(root, &file.source_path)?,
+        dest: to_forward_slash(&file.dest),
     })
 }
 

@@ -1,48 +1,36 @@
 //! `tcab harnesses` — list supported harnesses and their availability.
 
 use test_cabinet_core::{
-    Availability, CliContainerRuntime, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug,
+    AgentHarness, Availability, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug,
 };
 
 use crate::cli::HarnessesArgs;
 
-/// List every supported agent harness alongside whether it is available.
+/// List every supported agent harness alongside whether it is ready to run.
 ///
-/// Availability runs a cost-free `--version` probe of each harness's container
-/// image. It must **never** start a session or take any action that could incur
-/// cost. A missing container runtime or image is reported as unavailable with a
-/// reason rather than failing the command.
+/// Each harness installs its CLI into the run container **at run time**, so this
+/// cannot cheaply probe an installed binary without launching a run. Instead it
+/// reports readiness from configuration alone: a harness is available when it
+/// supports API-key authentication and its key variable is set in the
+/// environment. This is cost-free and never starts a container.
 pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     let registry = DefaultHarnessRegistry::new();
-    let runtime = CliContainerRuntime::detect();
 
-    let mut listing: Vec<(HarnessSlug, Availability)> = Vec::with_capacity(HarnessSlug::ALL.len());
+    let mut listing: Vec<(HarnessSlug, String, Availability)> =
+        Vec::with_capacity(HarnessSlug::ALL.len());
     for slug in HarnessSlug::ALL {
-        let availability = match &runtime {
-            Ok(runtime) => match registry.get(slug) {
-                // `tcab harnesses` is a local availability probe with no backend,
-                // so it checks the harness's local-build image.
-                Some(harness) => harness
-                    .check_availability(runtime, &harness.image())
-                    .await
-                    .unwrap_or_else(|err| Availability {
-                        available: false,
-                        version: None,
-                        detail: Some(err.to_string()),
-                    }),
-                None => Availability {
+        let (name, availability) = match registry.get(slug) {
+            Some(harness) => (harness.name().to_string(), availability_of(harness)),
+            None => (
+                slug.as_str().to_string(),
+                Availability {
                     available: false,
                     version: None,
                     detail: Some("no adapter registered".to_string()),
                 },
-            },
-            Err(err) => Availability {
-                available: false,
-                version: None,
-                detail: Some(err.to_string()),
-            },
+            ),
         };
-        listing.push((slug, availability));
+        listing.push((slug, name, availability));
     }
 
     if args.json {
@@ -52,6 +40,34 @@ pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Report a harness's readiness from configuration alone.
+///
+/// A harness that cannot use API-key authentication (the only mode supported for
+/// now) is unavailable. Otherwise it is available once its host key variable is
+/// set; the actual CLI is installed into the container at run time, so there is
+/// no version to report here.
+fn availability_of(harness: &dyn AgentHarness) -> Availability {
+    match harness.api_key_env() {
+        None => Availability {
+            available: false,
+            version: None,
+            detail: Some("API-key authentication is not supported by this harness".to_string()),
+        },
+        Some(var) => match std::env::var(var) {
+            Ok(value) if !value.trim().is_empty() => Availability {
+                available: true,
+                version: None,
+                detail: None,
+            },
+            _ => Availability {
+                available: false,
+                version: None,
+                detail: Some(format!("set {var} to run this harness")),
+            },
+        },
+    }
 }
 
 /// A short, stable label for an availability result.
@@ -70,32 +86,38 @@ fn label(availability: &Availability) -> String {
 }
 
 /// Render the listing as an aligned, human-readable table.
-fn print_table(listing: &[(HarnessSlug, Availability)]) {
-    let width = listing
+fn print_table(listing: &[(HarnessSlug, String, Availability)]) {
+    let slug_width = listing
         .iter()
-        .map(|(slug, _)| slug.as_str().len())
+        .map(|(slug, _, _)| slug.as_str().len())
+        .max()
+        .unwrap_or(0);
+    let name_width = listing
+        .iter()
+        .map(|(_, name, _)| name.len())
         .max()
         .unwrap_or(0);
 
-    for (slug, availability) in listing {
+    for (slug, name, availability) in listing {
         println!(
-            "{:<width$}  {}",
+            "{:<slug_width$}  {:<name_width$}  {}",
             slug.as_str(),
+            name,
             label(availability),
-            width = width
         );
     }
 }
 
-/// Render the listing as a JSON array of `{ "slug", "available", "version",
-/// "detail" }` objects.
-fn print_json(listing: &[(HarnessSlug, Availability)]) {
+/// Render the listing as a JSON array of `{ "slug", "name", "available",
+/// "version", "detail" }` objects.
+fn print_json(listing: &[(HarnessSlug, String, Availability)]) {
     let entries: Vec<String> = listing
         .iter()
-        .map(|(slug, availability)| {
+        .map(|(slug, name, availability)| {
             format!(
-                "  {{ \"slug\": \"{}\", \"available\": {}, \"version\": {}, \"detail\": {} }}",
+                "  {{ \"slug\": \"{}\", \"name\": {}, \"available\": {}, \"version\": {}, \"detail\": {} }}",
                 slug.as_str(),
+                json_opt(Some(name)),
                 availability.available,
                 json_opt(availability.version.as_deref()),
                 json_opt(availability.detail.as_deref()),

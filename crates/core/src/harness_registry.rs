@@ -1,16 +1,22 @@
 //! Concrete agent harness adapters and the registry that owns them.
 //!
-//! Each adapter encodes one third-party harness's non-interactive invocation:
-//! the binary, the flags that run a single prompt to completion, the API-key
+//! An adapter has two halves. The **declarative** half — the harness's name, the
+//! CLI binary, and the command that installs that CLI into the run container —
+//! is authored as a manifest under `harnesses/<slug>/harness.toml`, embedded
+//! here at build time and parsed into a [`HarnessManifest`]. The **imperative**
+//! half — the flags that run a single prompt to completion, the API-key
 //! environment variable, and how to translate the harness's own usage reporting
-//! into the normalized [`TokenCounts`] classes. The harness CLI runs inside the
-//! per-harness container image; the adapter only builds commands and parses
-//! output.
+//! into the normalized [`TokenCounts`] classes — is code, kept in
+//! [`adapter_spec`]. [`descriptor`] merges the two into one [`CliHarness`].
+//!
+//! Every harness runs in the shared base run-container image and installs its
+//! own CLI at run time; the adapter only builds commands and parses output.
 //!
 //! Usage parsing is intentionally tolerant — it searches each harness's JSON
 //! event stream for known token fields — because several harnesses' exact field
 //! names are provider-shaped and must be confirmed against the real CLIs.
 
+use serde::Deserialize;
 use serde_json::Value;
 use tracing::instrument;
 
@@ -74,10 +80,26 @@ impl UsageShape {
     };
 }
 
-/// A generic adapter driven by a per-harness descriptor.
-pub struct CliHarness {
+/// A harness definition authored under `harnesses/<slug>/harness.toml`: the
+/// declarative half of an adapter. Embedded at build time and parsed into this
+/// shape; see the module docs and `harnesses/README.md`.
+#[derive(Debug, Deserialize)]
+struct HarnessManifest {
+    /// Stable slug; must match the manifest's directory name.
     slug: HarnessSlug,
-    binary: &'static str,
+    /// Human-readable name, for display.
+    name: String,
+    /// The CLI binary a run probes (`<binary> --version`) and invokes.
+    binary: String,
+    /// Shell command run inside the run container, before the session, to
+    /// install the CLI.
+    install: String,
+}
+
+/// The imperative half of an adapter: how a harness's CLI is invoked
+/// non-interactively and how its output is interpreted. This is code rather than
+/// manifest configuration. Merged with a [`HarnessManifest`] by [`descriptor`].
+struct AdapterSpec {
     /// Prefix prepended to the model ID to form the OpenRouter catalog ID used
     /// for the comparable-cost lookup, when the harness takes a provider-native
     /// model ID rather than an OpenRouter one. `None` passes the ID through
@@ -94,10 +116,37 @@ pub struct CliHarness {
     event_format: EventFormat,
 }
 
+/// A generic adapter, built by merging a [`HarnessManifest`] with an
+/// [`AdapterSpec`].
+pub struct CliHarness {
+    slug: HarnessSlug,
+    /// Display name, from the manifest.
+    name: String,
+    /// CLI binary, from the manifest.
+    binary: String,
+    /// Command that installs the CLI into the run container at run time, from
+    /// the manifest.
+    install: String,
+    pricing_model_prefix: Option<&'static str>,
+    api_key_env: Option<&'static str>,
+    container_key_env: Option<&'static str>,
+    session_args: fn(model: &str, prompt: &str) -> Vec<String>,
+    usage: UsageShape,
+    event_format: EventFormat,
+}
+
 #[async_trait::async_trait]
 impl AgentHarness for CliHarness {
     fn slug(&self) -> HarnessSlug {
         self.slug
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn install_command(&self) -> Option<&str> {
+        Some(&self.install)
     }
 
     fn api_key_env(&self) -> Option<&'static str> {
@@ -116,20 +165,16 @@ impl AgentHarness for CliHarness {
         }
     }
 
-    async fn check_availability(
+    async fn probe(
         &self,
         runtime: &dyn ContainerRuntime,
-        image: &str,
+        container: &ContainerHandle,
     ) -> Result<Availability> {
-        if self.api_key_env.is_none() {
-            return Ok(Availability {
-                available: false,
-                version: None,
-                detail: Some("API-key authentication is not supported by this harness".to_string()),
-            });
-        }
-        let probe = vec![self.binary.to_string(), "--version".to_string()];
-        match runtime.run_once(image, &probe).await {
+        // Probe the binary the install command put on PATH, inside the running
+        // container. A clean `--version` confirms the install produced a working
+        // CLI and yields the version recorded for the run.
+        let probe = vec![self.binary.clone(), "--version".to_string()];
+        match runtime.exec(container, &probe).await {
             Ok(output) if output.exit_code == 0 => Ok(Availability {
                 available: true,
                 version: parse_version(&output.stdout),
@@ -318,16 +363,70 @@ fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
     HarnessSlug::ALL.into_iter().map(descriptor).collect()
 }
 
-/// The adapter for a single slug.
+/// The embedded `harnesses/<slug>/harness.toml` source for a slug. Baked in at
+/// build time so the registry needs no filesystem access at run time and a
+/// backend-driven worker (which has no local checkout) resolves harnesses the
+/// same way as the CLI.
+fn manifest_toml(slug: HarnessSlug) -> &'static str {
+    match slug {
+        HarnessSlug::Claude => include_str!("../../../harnesses/claude/harness.toml"),
+        HarnessSlug::Codex => include_str!("../../../harnesses/codex/harness.toml"),
+        HarnessSlug::Cline => include_str!("../../../harnesses/cline/harness.toml"),
+        HarnessSlug::Antigravity => include_str!("../../../harnesses/antigravity/harness.toml"),
+        HarnessSlug::Goose => include_str!("../../../harnesses/goose/harness.toml"),
+        HarnessSlug::Kilo => include_str!("../../../harnesses/kilo/harness.toml"),
+        HarnessSlug::Opencode => include_str!("../../../harnesses/opencode/harness.toml"),
+        HarnessSlug::Pi => include_str!("../../../harnesses/pi/harness.toml"),
+    }
+}
+
+/// Parse the embedded manifest for a slug. The manifests ship in the repo and
+/// are validated by a unit test, so a parse failure or a slug that disagrees
+/// with its directory is a build-time authoring bug, not a runtime user error.
+fn load_manifest(slug: HarnessSlug) -> HarnessManifest {
+    let manifest: HarnessManifest = toml::from_str(manifest_toml(slug)).unwrap_or_else(|err| {
+        panic!(
+            "embedded harness manifest for `{}` is invalid: {err}",
+            slug.as_str()
+        )
+    });
+    assert_eq!(
+        manifest.slug,
+        slug,
+        "harness manifest declares slug `{}` but lives in the `{}` directory",
+        manifest.slug.as_str(),
+        slug.as_str(),
+    );
+    manifest
+}
+
+/// Build a harness adapter for a slug by merging its embedded manifest (name,
+/// binary, install command) with its code-defined [`AdapterSpec`].
+fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
+    let manifest = load_manifest(slug);
+    let spec = adapter_spec(slug);
+    Box::new(CliHarness {
+        slug,
+        name: manifest.name,
+        binary: manifest.binary,
+        install: manifest.install,
+        pricing_model_prefix: spec.pricing_model_prefix,
+        api_key_env: spec.api_key_env,
+        container_key_env: spec.container_key_env,
+        session_args: spec.session_args,
+        usage: spec.usage,
+        event_format: spec.event_format,
+    })
+}
+
+/// The code-defined invocation spec for a single slug.
 ///
 /// The flags here are the documented non-interactive invocations for each
 /// harness. Token field names that are provider-shaped (kilo, opencode, pi) are
 /// best-effort and should be confirmed against the real CLI output.
-fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
-    let harness = match slug {
-        HarnessSlug::Claude => CliHarness {
-            slug,
-            binary: "claude",
+fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
+    match slug {
+        HarnessSlug::Claude => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("ANTHROPIC_API_KEY"),
             container_key_env: None,
@@ -360,9 +459,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Claude,
         },
-        HarnessSlug::Codex => CliHarness {
-            slug,
-            binary: "codex",
+        HarnessSlug::Codex => AdapterSpec {
             pricing_model_prefix: Some("openai/"),
             api_key_env: Some("OPENAI_API_KEY"),
             // `codex exec` authenticates only from `CODEX_API_KEY`; it ignores
@@ -392,9 +489,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Codex,
         },
-        HarnessSlug::Cline => CliHarness {
-            slug,
-            binary: "cline",
+        HarnessSlug::Cline => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
@@ -422,9 +517,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Cline,
         },
-        HarnessSlug::Antigravity => CliHarness {
-            slug,
-            binary: "agy",
+        HarnessSlug::Antigravity => AdapterSpec {
             pricing_model_prefix: None,
             // Antigravity only supports Google-account auth; with no API-key mode
             // it cannot participate in The Test Cabinet's API-key-only runs.
@@ -440,9 +533,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             usage: UsageShape::NONE,
             event_format: EventFormat::Generic,
         },
-        HarnessSlug::Goose => CliHarness {
-            slug,
-            binary: "goose",
+        HarnessSlug::Goose => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
@@ -472,9 +563,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Goose,
         },
-        HarnessSlug::Kilo => CliHarness {
-            slug,
-            binary: "kilo",
+        HarnessSlug::Kilo => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
@@ -501,9 +590,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Kilo,
         },
-        HarnessSlug::Opencode => CliHarness {
-            slug,
-            binary: "opencode",
+        HarnessSlug::Opencode => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
@@ -530,9 +617,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Opencode,
         },
-        HarnessSlug::Pi => CliHarness {
-            slug,
-            binary: "pi",
+        HarnessSlug::Pi => AdapterSpec {
             pricing_model_prefix: None,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
@@ -560,8 +645,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
             },
             event_format: EventFormat::Pi,
         },
-    };
-    Box::new(harness)
+    }
 }
 
 /// Parse normalized usage out of a harness's command output.

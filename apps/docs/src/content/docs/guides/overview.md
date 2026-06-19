@@ -15,8 +15,8 @@ guide when you are doing the task for the first time, or when you need to know
 ## Guides
 
 - [First Time Setup](/guides/first-time-setup/) — install the toolchain,
-  container runtime, harness image, browser, and credentials, then make a first
-  run.
+  container runtime, run-container image, browser, and credentials, then make a
+  first run.
 - [Authoring a Test Case](/guides/authoring-a-test-case/) — write a new case or
   version: its specification, prompt, references, and manifest.
 - [Creating a Test Case Variant](/guides/creating-a-test-case-variant/) — add a

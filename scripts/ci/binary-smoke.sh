@@ -7,7 +7,7 @@
 # It runs on every target platform so a platform-specific break is caught before
 # release: Azure DevOps runs it on Linux and Windows; GitHub runs it on macOS
 # (Azure has no macOS agents). The checks are deliberately dependency-free — no
-# container runtime, harness images, or API keys — so they validate the binary
+# container runtime, run-container image, or API keys — so they validate the binary
 # itself, reliably, on any agent. The cross-platform runtime surface
 # (`host_path`, work-dir resolution, runtime detection) is covered by the unit
 # tests this also runs on each platform.

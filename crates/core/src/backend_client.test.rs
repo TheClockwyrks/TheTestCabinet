@@ -8,7 +8,9 @@ use crate::reference::ReferenceRenderer;
 use crate::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
-use crate::test_case::{BuildCommands, ReferenceView, SpecFile, TestCaseVersion, Variant};
+use crate::test_case::{
+    BuildCommands, ReferenceView, SpecFile, TestCaseVersion, Variant, WorkspaceFile,
+};
 use crate::validation::ValidationSummary;
 
 /// A minimal in-memory [`BackendClient`] returning a one-spec, one-asset,
@@ -43,12 +45,18 @@ impl BackendClient for StubBackend {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
             }],
+            common_workspace: vec![WorkspaceFile {
+                source_path: std::path::PathBuf::from("workspaces/base/package.json"),
+                dest: std::path::PathBuf::from("package.json"),
+            }],
+            init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),
                 description: None,
                 specs: vec![],
+                workspace: None,
                 references: vec![],
                 review_items: vec![],
             }],
@@ -122,6 +130,7 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
     // on disk under the store dir.
     assert!(store.join("prompt.hbs").is_file());
     assert!(store.join("specs/overview.md").is_file());
+    assert!(store.join("workspaces/base/package.json").is_file());
     assert!(store.join("assets/ball.png").is_file());
     assert!(store.join("references/_common/title.png").is_file());
 
@@ -133,6 +142,17 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         version.common_specs[0].source_path,
         store.join("specs/overview.md")
     );
+    // The workspace file is rooted at the store dir too, with its run-relative
+    // dest preserved, and the init command carried through.
+    assert_eq!(
+        version.common_workspace[0].source_path,
+        store.join("workspaces/base/package.json")
+    );
+    assert_eq!(
+        version.common_workspace[0].dest,
+        std::path::PathBuf::from("package.json")
+    );
+    assert_eq!(version.init.as_deref(), Some("npm install"));
     assert_eq!(
         version.common_references[0].source_path,
         store.join("references/_common/title.png")

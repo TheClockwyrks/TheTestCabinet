@@ -21,22 +21,26 @@ example by deleting files.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
-- The per-harness run-container image is a registry image. A runner resolves the
-  image for the selected harness from its **own registry configuration** —
-  `TCAB_CONTAINER_REGISTRY` (default `ghcr.io/theclockwyrks`), `TCAB_CONTAINER_TAG`
-  (default `latest`), or a per-harness `TCAB_CONTAINER_IMAGE_<HARNESS>` override —
-  and pulls it at run start (`--pull missing`). No backend is consulted, so a
-  runner resolves images the same way against any backend or none. Whatever image
-  actually runs is resolved to its registry digest where it has one and recorded
-  in the [run record](/components/core/run-records/#environment), so a run still
-  pins the exact image bytes it used even when launched by a mutable tag.
+- Every run — whatever harness it drives — executes in a **single shared base
+  image**; there is no per-harness image. The selected harness's CLI is installed
+  into the container at run time (see [Harness install](#harness-install) below),
+  not baked into the image. The base image is a registry image, and a runner
+  resolves it from its **own registry configuration** — `TCAB_CONTAINER_REGISTRY`
+  (default `ghcr.io/theclockwyrks`), `TCAB_CONTAINER_TAG` (default `latest`), or a
+  `TCAB_CONTAINER_IMAGE` override — and pulls it at run start (`--pull missing`).
+  No backend is consulted, so a runner resolves the image the same way against any
+  backend or none. Whatever image actually runs is resolved to its registry digest
+  where it has one and recorded in the
+  [run record](/components/core/run-records/#environment), so a run still pins the
+  exact image bytes it used even when launched by a mutable tag.
 
 ## Seeding
 
 Each run must be seeded into its own newly created git repository that contains
-the data a model needs to build the game: the specs of the selected variant, the
-test case's assets, and the rendered reference screenshots that serve as visual
-targets. A run selects exactly one
+the data a model needs to build the game: the selected variant's
+[workspace](/components/core/test-cases/#workspace) starter files, the specs of
+the selected variant, the test case's assets, and the rendered reference
+screenshots that serve as visual targets. A run selects exactly one
 [variant](/components/core/test-cases/#variants), and the variant's specs are
 seeded at their declared `dest` paths — the common specs plus that variant's own
 — rather than as a single specification at the repository root.
@@ -47,6 +51,12 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
+- The selected variant's [workspace](/components/core/test-cases/#workspace)
+  starter files are seeded into the repository **root** first, before the specs,
+  so the specification and reference screenshots land on top of a baseline
+  project. They are copied verbatim. Resolution rejects any collision between a
+  workspace file and a spec, asset, or reference destination, so seeding never
+  silently clobbers one with another.
 - A spec whose source is a Handlebars template (a `.hbs` extension) is
   **rendered** with the selected variant and version while seeding, and the
   result lands at the spec's `dest`; every other spec is copied verbatim. This
@@ -77,6 +87,47 @@ variant's seeded specs, the seeded assets, and the fresh git history — can be
 inspected without launching a container. Because the prompt is not seeded,
 `tcab prompt` renders and prints the instruction a run would hand the harness
 for a given variant, without seeding or launching anything.
+
+## Harness install
+
+The base image ships **no agent harness**. Once the container starts, the run
+installs the selected harness's CLI into it by running that harness's
+[install command](/components/core/harnesses/#installation) — typically a
+single-line `npm install -g …` or a curl-piped installer. Installing at run time,
+rather than baking the CLI into an image, is what lets a run always pick up the
+harness's most recently published version.
+
+- The install step runs **after** the container starts and **before** the test
+  case's init command and the harness session, so the CLI is in place for both.
+- It runs through a non-login `sh -c` as the container's unprivileged run user,
+  with the container's own environment, so it installs into the user-writable
+  locations the base image puts on `PATH` without needing root.
+- It is bounded by the run's maximum runtime, the same cap that bounds the
+  harness session, so a hung install can never run unbounded.
+- A non-zero exit, a timeout, or a missing binary afterward (the run probes
+  `<binary> --version` to confirm the install worked and to record the version)
+  aborts the run before a harness session is spent and tears the container down,
+  with the captured output surfaced for diagnosis.
+
+## Init
+
+A test case may declare an [init command](/components/core/test-cases/#init) that
+runs **inside the run container** once the seeded repository is mounted and the
+harness CLI is installed, and before the harness session begins. It is where a
+case prepares the workspace it shipped — typically installing its dependencies —
+so the harness starts against a ready project. It runs as the container's
+unprivileged run user with the seeded repository as its working directory.
+
+- The init step runs **after** the container starts, the workspace is mounted,
+  and the harness is installed, and **before** the harness is invoked, so anything
+  it installs is in place for the model.
+- It is bounded by the run's maximum runtime, the same cap that bounds the
+  harness session, so a hung setup can never run unbounded.
+- A non-zero exit or a timeout aborts the run before the harness starts and tears
+  the container down — a broken setup would only waste a harness session — with
+  the captured output surfaced for diagnosis.
+- Because init needs a running container, it is **not** performed by `tcab seed`,
+  which only materializes the seeded files on disk.
 
 ## Model Authored Tests
 

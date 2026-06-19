@@ -1,0 +1,9 @@
+# Goose harness definition. See `harnesses/README.md`.
+
+slug = "goose"
+name = "Goose"
+binary = "goose"
+
+# CONFIGURE=false skips the interactive configuration the installer would
+# otherwise run. The binary installs into ~/.local/bin, already on PATH.
+install = "curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash"

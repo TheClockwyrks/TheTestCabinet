@@ -185,3 +185,39 @@ fn parses_a_version_line() {
     );
     assert_eq!(parse_version("v0.78.1\n"), Some("0.78.1".to_string()));
 }
+
+#[test]
+fn every_embedded_manifest_parses_and_matches_its_slug() {
+    for slug in HarnessSlug::ALL {
+        // `load_manifest` panics on a parse error or a slug that disagrees with
+        // its directory, so this exercises every shipped `harness.toml`.
+        let manifest = load_manifest(slug);
+        assert_eq!(manifest.slug, slug);
+        assert!(!manifest.name.trim().is_empty(), "{slug:?} name is empty");
+        assert!(
+            !manifest.binary.trim().is_empty(),
+            "{slug:?} binary is empty"
+        );
+        assert!(
+            !manifest.install.trim().is_empty(),
+            "{slug:?} install is empty"
+        );
+    }
+}
+
+#[test]
+fn every_harness_exposes_a_name_and_runtime_install_command() {
+    let registry = DefaultHarnessRegistry::new();
+    for slug in HarnessSlug::ALL {
+        let harness = registry.get(slug).expect("every slug is registered");
+        assert!(!harness.name().is_empty(), "{slug:?} should expose a name");
+        // The CLI is installed at run time, so every harness carries an install
+        // command rather than relying on a prebuilt per-harness image.
+        assert!(
+            harness
+                .install_command()
+                .is_some_and(|cmd| !cmd.trim().is_empty()),
+            "{slug:?} should carry a non-empty install command",
+        );
+    }
+}

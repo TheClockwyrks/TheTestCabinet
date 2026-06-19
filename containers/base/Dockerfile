@@ -1,31 +1,46 @@
-# Shared base image for The Test Cabinet run containers.
+# The single run-container image for The Test Cabinet.
 #
-# Every per-harness image builds FROM this. It provides the common toolchain a
-# run needs and nothing harness specific:
+# Every run — whatever harness it drives — executes in this one image. It
+# provides the common toolchain a run needs and nothing harness specific:
 #   - git, because every run executes inside a fresh git repository that is
 #     seeded on the host and mounted in.
 #   - a Node.js build toolchain, because the test cases ask the model to build
 #     web UIs and those builds (Vite/npm and friends) run inside this container.
-#   - Playwright and a headless Chromium, because the test cases are browser
-#     games and a model is expected to drive its own build in a real browser to
-#     verify it before finishing.
-#   - an unprivileged user whose home is set up so that the per-harness images
-#     can install their CLI without needing root.
+#   - the system libraries a headless Chromium links against, so a test case can
+#     install Playwright and its Chromium *itself* — as a project dependency, via
+#     the case's workspace and init command — and drive its build in a real
+#     browser to verify it. The Playwright npm package and the Chromium browser
+#     binary are deliberately NOT baked in here: a run gets them from the test
+#     case's own workspace, so a model never relies on a globally installed tool
+#     it cannot see in its project. See `containers/README.md`.
+#   - an unprivileged user whose home is set up so that a harness's install
+#     command (and a test case's init command) can install software at run time
+#     without needing root.
 #
-# This image installs no agent harness. See the sibling directories for the
-# per-harness images.
+# This image installs no agent harness. A run installs the selected harness's CLI
+# into the container at run time, by running the harness's `install` command (see
+# `harnesses/README.md`); installing at run time is what lets a run always pick
+# up the harness's latest published version.
 FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
 #   - git: each run is its own fresh repository.
 #   - curl, ca-certificates, unzip: used by the curl-based harness installers.
-#   - build-essential, python3: let npm build native addons during UI installs.
+#   - build-essential, python3: let npm build native addons during UI installs,
+#     and let a test case's init command shell out to python3 when it needs to.
 #   - fonts-dejavu-core: real font files so Chromium (and Canvas text) actually
 #     render glyphs — a slim base ships none, so without this text is invisible.
 #     DejaVu Sans Mono specifically is the first family in the test cases'
 #     required monospace stack, so the run renders the same font the reference
-#     screenshots are rendered with. Playwright's `install-deps` adds the broader
-#     Liberation/Noto/CJK/emoji set below, but not DejaVu.
+#     screenshots are rendered with.
+#   - the libnss3 / libatk / libgbm / libx*… set: the shared libraries a headless
+#     Chromium links against. These are OS-level and need root to install, so
+#     they live in the image even though Playwright and the Chromium binary
+#     themselves do not — a test case installs those into its own project at run
+#     time, but the unprivileged run user cannot apt-get system libraries. The
+#     list mirrors what `playwright install-deps chromium` installs on Debian
+#     bookworm; if a future Playwright/Chromium reports a missing library, add it
+#     here.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		build-essential \
@@ -35,12 +50,33 @@ RUN apt-get update \
 		git \
 		python3 \
 		unzip \
+		libasound2 \
+		libatk-bridge2.0-0 \
+		libatk1.0-0 \
+		libatspi2.0-0 \
+		libcairo2 \
+		libcups2 \
+		libdbus-1-3 \
+		libdrm2 \
+		libgbm1 \
+		libglib2.0-0 \
+		libnspr4 \
+		libnss3 \
+		libpango-1.0-0 \
+		libx11-6 \
+		libxcb1 \
+		libxcomposite1 \
+		libxdamage1 \
+		libxext6 \
+		libxfixes3 \
+		libxkbcommon0 \
+		libxrandr2 \
 	&& rm -rf /var/lib/apt/lists/*
 
 # The node base image ships an unprivileged `node` user (uid 1000); reuse it as
 # the run user rather than creating a second uid-1000 account. Set up
-# user-writable install locations so the per-harness images can install their
-# CLI as `node` with no root.
+# user-writable install locations so a harness's run-time install command can
+# install its CLI as `node` with no root.
 RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 	&& chown -R node:node /home/node /work
 
@@ -48,43 +84,9 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 # install locations on PATH, so both `npm install -g` and curl-based installers
 # work as the unprivileged user.
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
-	PLAYWRIGHT_SKIP_BROWSER_GC=1 \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
 
-# Playwright + headless Chromium for in-container browser verification.
-#
-# The two halves of the install have to happen as two different users:
-#   - The CLI and the Chromium OS dependencies (system libraries Chromium links
-#     against) are installed as root: `playwright install-deps` runs apt-get.
-#   - The Chromium *browser* itself is downloaded below as the `node` user so it
-#     lands in that user's default cache (~/.cache/ms-playwright), the location a
-#     project-local Playwright resolves with no extra configuration.
-#
-# Pinned to the same Playwright version the harness's own browser-driver uses
-# (packages/browser-driver). Keeping them in lockstep means a model that adds
-# `playwright@1.61.0` to its project reuses this cached browser instead of
-# downloading another one at run time.
-#
-# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops the global install's postinstall from
-# fetching Chromium into root's cache; the only browser download is the explicit
-# one below, as `node`, into the run user's cache.
-#
-# This install runs as root but writes into the node user's home (the global
-# prefix is /home/node/.npm-global and npm's cache lands under /home/node). That
-# leaves those trees root-owned, so a later `npm install -g` by the `node` user
-# in a per-harness image can't create directories under them (EACCES). Hand the
-# whole home back to `node` afterward so those installs work without root.
-RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g playwright@1.61.0 \
-	&& playwright install-deps chromium \
-	&& rm -rf /var/lib/apt/lists/* \
-	&& chown -R node:node /home/node
-
 USER node
-
-# Download the Chromium build into the run user's Playwright cache so it is
-# present without network access and is reused by a project-local install of the
-# pinned version.
-RUN playwright install chromium
 
 # The seeded repository is mounted here at run time and is the harness's working
 # directory.

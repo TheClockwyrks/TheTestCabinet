@@ -10,9 +10,9 @@
 # and any API keys from your secret store at `az vm create` time, e.g. by
 # templating this file.
 #
-# This brings the node up with Docker, the harness images, the tcab-worker
-# service, and a private-network address. Each worker is addressed individually
-# (see deployment/azure.md) — there is no shared load balancer.
+# This brings the node up with Docker, the run-container base image, the
+# tcab-worker service, and a private-network address. Each worker is addressed
+# individually (see deployment/azure.md) — there is no shared load balancer.
 
 package_update: true
 packages:
@@ -66,11 +66,12 @@ runcmd:
   - chmod +x /usr/local/bin/tcab-worker
   - mkdir -p /var/lib/test-cabinet
 
-  # ── Harness container images ──
-  # Pull the images this worker may run from your registry. The worker resolves
-  # images per its TCAB_CONTAINER_REGISTRY configuration (see containers/README.md).
+  # ── Run container image ──
+  # Pull the single base image every run executes in from your registry. The
+  # worker resolves it per its TCAB_CONTAINER_REGISTRY configuration (see
+  # containers/README.md); a run installs the selected harness's CLI into it at
+  # run time, so there is no per-harness image to pull.
   - docker pull <registry>/test-cabinet-base:latest
-  - docker pull <registry>/test-cabinet-claude:latest
 
   # ── Private network (Tailscale) ──
   - curl -fsSL https://tailscale.com/install.sh | sh

@@ -7,6 +7,8 @@ import { RunMetadataPage } from "./[runId]/RunMetadataPage";
 import { RunMetricsPage } from "./[runId]/RunMetricsPage";
 import { RunMonitorPage } from "./[runId]/RunMonitorPage";
 import { RunPlayPage } from "./[runId]/RunPlayPage";
+import { RunReferencesPage } from "./[runId]/RunReferencesPage";
+import { RunSpecsPage } from "./[runId]/RunSpecsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
@@ -30,6 +32,11 @@ export function runsRoutes(canExecute: boolean) {
         <Route path={routePatterns.runMonitor} element={<RunMonitorPage />} />
       )}
       <Route path={routePatterns.runDetail} element={<RunVerdictPage />} />
+      <Route path={routePatterns.runSpecs} element={<RunSpecsPage />} />
+      <Route
+        path={routePatterns.runReferences}
+        element={<RunReferencesPage />}
+      />
       <Route path={routePatterns.runPlay} element={<RunPlayPage />} />
       <Route path={routePatterns.runMetrics} element={<RunMetricsPage />} />
       <Route path={routePatterns.runEvents} element={<RunEventsPage />} />
