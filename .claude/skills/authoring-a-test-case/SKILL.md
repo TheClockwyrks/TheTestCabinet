@@ -187,7 +187,7 @@ interface, which is fixed for every case — see below.
 ### Fix the build interface, not the implementation
 
 How a build is *produced and served* is **not** a free choice. The harness
-load-check and the per-run GitHub Pages deploy both build an implementation the
+load-check and the per-run Cloudflare Pages deploy both build an implementation the
 same hardcoded way, so a build that doesn't match that interface is recorded as
 "failed to load" and cannot be deployed — even when it is otherwise correct and
 trivially static. Every case must therefore require, as a hard requirement in its

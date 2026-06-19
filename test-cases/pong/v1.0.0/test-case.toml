@@ -41,7 +41,7 @@ prompt = "prompt.hbs"
 # healthy build needs while still catching a session that never terminates.
 max_runtime_seconds = 1800
 
-# How the validator (and the per-run GitHub Pages deploy) turns a produced
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root: dependencies are installed, then the static build is produced
 # into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
