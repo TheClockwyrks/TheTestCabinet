@@ -65,7 +65,10 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
-pub use playable::{BUILD_OUTPUTS, ServedBuildFile, find_build_output, serve_build_file};
+pub use playable::{
+    BUILD_OUTPUTS, ServedBuildFile, ServedProofFile, find_build_output, serve_build_file,
+    serve_proof_file,
+};
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{

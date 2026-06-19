@@ -1,8 +1,15 @@
-//! Tests for discovering and serving a run's playable build.
+//! Tests for discovering and serving a run's playable build and proof media.
 
 use super::*;
 use std::fs;
 use tempfile::TempDir;
+
+use crate::metrics::{Cost, RunMetrics, TokenCounts};
+use crate::run_record::{
+    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
+};
+use crate::test_case::MediaKind;
+use crate::validation::{ProofResult, ValidationSummary};
 
 /// Build a fake implementation directory containing one named build output with
 /// the given files (path within the build → contents).
@@ -100,4 +107,123 @@ fn missing_file_is_none() {
     let dir = impl_with_build("dist", &[("index.html", "<html></html>")]);
     let build = dir.path().join("implementation").join("dist");
     assert_eq!(serve_build_file(&build, "does-not-exist.js", "/b/"), None);
+}
+
+/// Build a run output directory holding a `run-record.json` whose validation
+/// declares the given proofs (id, dest), plus the named media files under
+/// `implementation/`.
+fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8])]) -> TempDir {
+    let dir = TempDir::new().expect("temp dir");
+    let record = RunRecord {
+        id: "run-1".to_string(),
+        started_at: "2026-06-14T10:00:00Z".to_string(),
+        finished_at: "2026-06-14T10:05:00Z".to_string(),
+        subject: RunSubject {
+            test_case_slug: "pong".to_string(),
+            test_case_version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
+            harness_slug: HarnessSlug::Claude,
+            harness_version: None,
+            model_id: "anthropic/claude-opus-4".to_string(),
+        },
+        tooling: RunTooling {
+            test_cabinet_commit: None,
+        },
+        environment: RunEnvironment {
+            os: "linux".to_string(),
+            container_image: "img:latest".to_string(),
+            node_version: None,
+        },
+        metrics: RunMetrics {
+            run_time_seconds: 1.0,
+            tokens: TokenCounts {
+                uncached_input: 0,
+                cached_input: 0,
+                output: 0,
+                reasoning: 0,
+            },
+            cost: Cost {
+                comparable: 0.0,
+                actual: 0.0,
+            },
+        },
+        validation: ValidationSummary {
+            proofs: proofs
+                .iter()
+                .map(|(id, dest, kind)| ProofResult {
+                    id: id.to_string(),
+                    name: id.to_string(),
+                    kind: *kind,
+                    dest: dest.to_string(),
+                    present: true,
+                    detail: None,
+                })
+                .collect(),
+            ..Default::default()
+        },
+        links: RunLinks {
+            source_repo: None,
+            playable_build: None,
+        },
+        status: RunStatus {
+            state: RunState::Completed,
+            detail: None,
+        },
+    };
+    fs::write(
+        dir.path().join("run-record.json"),
+        serde_json::to_string(&record).expect("serialize record"),
+    )
+    .expect("write record");
+    for (rel, bytes) in media {
+        let target = dir.path().join("implementation").join(rel);
+        fs::create_dir_all(target.parent().unwrap()).expect("create dirs");
+        fs::write(target, bytes).expect("write media");
+    }
+    dir
+}
+
+#[test]
+fn serves_proof_media_by_id_at_its_recorded_dest() {
+    // The request file is `<proof-id>.<ext>`; the media lives at the proof's
+    // recorded `dest`, which need not match the request extension.
+    let dir = run_dir_with_proofs(
+        &[("rally", "evidence/clip.mp4", MediaKind::Video)],
+        &[("evidence/clip.mp4", b"\x00\x00\x00 ftypisom")],
+    );
+    let served = serve_proof_file(dir.path(), "rally.mp4").expect("proof served");
+    assert_eq!(served.content_type, "video/mp4");
+    assert_eq!(served.body, b"\x00\x00\x00 ftypisom");
+}
+
+#[test]
+fn proof_content_type_follows_the_request_extension() {
+    let dir = run_dir_with_proofs(
+        &[("title", "proof/title.png", MediaKind::Image)],
+        &[("proof/title.png", b"\x89PNG\r\n")],
+    );
+    let served = serve_proof_file(dir.path(), "title.png").unwrap();
+    assert_eq!(served.content_type, "image/png");
+}
+
+#[test]
+fn unknown_proof_id_is_none() {
+    let dir = run_dir_with_proofs(
+        &[("title", "proof/title.png", MediaKind::Image)],
+        &[("proof/title.png", b"x")],
+    );
+    assert_eq!(serve_proof_file(dir.path(), "missing.png"), None);
+}
+
+#[test]
+fn declared_proof_with_no_media_on_disk_is_none() {
+    // The proof is declared but its file was never written (a missing proof).
+    let dir = run_dir_with_proofs(&[("title", "proof/title.png", MediaKind::Image)], &[]);
+    assert_eq!(serve_proof_file(dir.path(), "title.png"), None);
+}
+
+#[test]
+fn proof_without_a_record_is_none() {
+    let dir = TempDir::new().unwrap();
+    assert_eq!(serve_proof_file(dir.path(), "title.png"), None);
 }

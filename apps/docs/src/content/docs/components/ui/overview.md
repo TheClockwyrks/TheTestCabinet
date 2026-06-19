@@ -42,9 +42,10 @@ interfaces. A host imports only what it needs.
   Connections settings, and the notification layer — so the static site renders
   the same component with those parts off. The value also resolves each run's
   submitted [proof-of-implementation](/components/core/validation/#proofs) media to
-  loadable URLs (the consoles point at the backend/worker proof endpoints, the site
-  at snapshot assets), which the reworked review flow and the run **Proof** tab
-  display beside the expected references.
+  loadable URLs (a published run from the backend, a produced run from its
+  worker — the HTTP worker's proof endpoint, or the Tauri worker's
+  `tcab-proof://` scheme; the site from snapshot assets), which the reworked
+  review flow and the run **Proof** tab display beside the expected references.
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks
   every GUI uses: the Markdown renderer, the rating badge, panels, the metric
   tile, the spec/reference accordion, pagination, and the chart wrapper.

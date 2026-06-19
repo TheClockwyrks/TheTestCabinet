@@ -96,5 +96,12 @@ export function createTauriWorker(): WorkerClient {
       await api.saveReview(id, review.rating, review.writeup, review.checklist);
       return api.publishRun(id);
     },
+
+    // The local core has no HTTP origin, so a produced run's proof media is served
+    // to the webview over the desktop shell's custom `tcab-proof://` scheme (see
+    // `crates/desktop/src/proof.rs`). The base mirrors `proof.rs`'s SCHEME: the run
+    // id then the requested `<proof-id>.<ext>` file.
+    proofMediaUrl: (runId, file) =>
+      `tcab-proof://localhost/${encodeURIComponent(runId)}/${encodeURIComponent(file)}`,
   };
 }

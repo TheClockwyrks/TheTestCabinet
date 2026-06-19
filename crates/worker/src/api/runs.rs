@@ -13,7 +13,9 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::{HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file};
+use test_cabinet_core::{
+    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file, serve_proof_file,
+};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::Instrument as _;
 
@@ -298,53 +300,16 @@ pub async fn raw_file(
 /// at the proof's recorded `dest`. The proof id is resolved against the run
 /// record's `validation.proofs` to find its path, so the agent's chosen location
 /// is honored. The content type follows the file extension. `404` when the run,
-/// the proof, or the file is absent.
+/// the proof, or the file is absent. The desktop core serves the same media over
+/// its proof URI scheme from this same [`serve_proof_file`] resolver.
 pub async fn proof_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    // Resolve the proof id from the requested file name (`<proof-id>.<ext>`).
-    let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(&file);
-
-    let record_path = state.config.out_dir.join(&id).join("run-record.json");
-    let record_bytes = std::fs::read(&record_path)
-        .map_err(|_| ApiError::not_found(format!("run `{id}` is not held by this worker")))?;
-    let record: test_cabinet_core::RunRecord = serde_json::from_slice(&record_bytes)
-        .map_err(|e| ApiError::internal(format!("reading run record for `{id}`: {e}")))?;
-
-    let proof = record
-        .validation
-        .proofs
-        .iter()
-        .find(|p| p.id == proof_id)
-        .ok_or_else(|| ApiError::not_found(format!("run `{id}` declares no proof `{proof_id}`")))?;
-
-    let path = state
-        .config
-        .out_dir
-        .join(&id)
-        .join("implementation")
-        .join(&proof.dest);
-    let bytes = std::fs::read(&path)
-        .map_err(|_| ApiError::not_found(format!("run `{id}` has no proof media `{proof_id}`")))?;
-    Ok(([(header::CONTENT_TYPE, proof_content_type(&file))], bytes).into_response())
-}
-
-/// A best-effort content type for a proof media file from its extension.
-fn proof_content_type(file: &str) -> &'static str {
-    let ext = std::path::Path::new(file)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "mp4" => "video/mp4",
-        _ => "application/octet-stream",
-    }
+    let run_dir = state.config.out_dir.join(&id);
+    let served = serve_proof_file(&run_dir, &file)
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no proof media `{file}`")))?;
+    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
 }
 
 /// Serve a recorded run stream file (`events.jsonl` or `raw.jsonl`) from a

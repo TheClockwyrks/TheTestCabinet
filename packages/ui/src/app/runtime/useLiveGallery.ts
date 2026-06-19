@@ -161,18 +161,24 @@ export function useLiveGallery(): GalleryDataInput {
   const workerUrl = worker?.url ?? null;
 
   // Resolve a run's proof media URL: a produced (local) run is served by its
-  // worker, any other (published) run by the backend. The built-in local (Tauri)
-  // worker has no HTTP base, so its produced proofs are not URL-loadable here and
-  // resolve to null (the UI then shows presence without media).
+  // worker, any other (published) run by the backend. A worker reachable over HTTP
+  // serves proofs under its base URL; a worker with no HTTP base (the built-in
+  // Tauri worker) instead supplies its own resolver — `proofMediaUrl` — returning a
+  // custom-scheme URL the desktop shell serves. When neither is available the proof
+  // is not URL-loadable here and resolves to null (the UI then shows presence
+  // without media).
   const proofMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/proof/${encodeURIComponent(file)}`;
       if (localIds.has(runId)) {
+        if (workerClient?.proofMediaUrl) {
+          return workerClient.proofMediaUrl(runId, file);
+        }
         return workerUrl ? joinPath(workerUrl, path) : null;
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, localIds],
+    [backendUrl, workerUrl, workerClient, localIds],
   );
 
   useEffect(() => {

@@ -180,6 +180,15 @@ export interface WorkerClient {
    * resulting public links.
    */
   publish(id: string, review: ReviewDocumentInput): Promise<PublishResult>;
+
+  /**
+   * The URL to load one of a produced run's proof-of-implementation media files
+   * (`<proof-id>.<ext>`) from, or null when this worker cannot serve it. Optional:
+   * a worker reachable over HTTP needs no override — the gallery resolves the file
+   * against the worker's base URL — but the built-in Tauri worker has no HTTP base,
+   * so it implements this to return its custom proof URI scheme.
+   */
+  proofMediaUrl?(runId: string, file: string): string | null;
 }
 
 // The reviewer's input when saving a review.

@@ -1,4 +1,4 @@
-//! Serving a run's produced playable build to a reviewer.
+//! Serving a run's produced playable build and proof media to a reviewer.
 //!
 //! A finished run collects its implementation under `<run>/implementation/`,
 //! including the static build output the validator produced (`dist`/`build`/`out`).
@@ -9,6 +9,13 @@
 //! serves the same on-disk build locally: the worker over HTTP, the desktop core
 //! over a custom URI scheme. Both reach for the helpers here so the build is
 //! discovered and served identically.
+//!
+//! The same dual-serving story applies to a run's proof-of-implementation media —
+//! the screenshots and clips the agent wrote as evidence (see
+//! [`serve_proof_file`]). A published run's proofs are uploaded to the backend, but
+//! an unpublished run's sit in its collected tree, so the worker serves them over
+//! HTTP and the desktop core over its proof URI scheme — again from one shared
+//! resolver here.
 //!
 //! Serving under a per-run sub-path (rather than a host root) is the one wrinkle.
 //! A Vite build emitted with the default `base: "/"` references its assets
@@ -70,6 +77,61 @@ pub fn serve_build_file(
         bytes
     };
     Some(ServedBuildFile { content_type, body })
+}
+
+/// A proof-of-implementation media file resolved from a run, ready to write to an
+/// HTTP or IPC response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedProofFile {
+    /// The `Content-Type` to send, derived from the file extension.
+    pub content_type: &'static str,
+    /// The proof media bytes, served verbatim.
+    pub body: Vec<u8>,
+}
+
+/// Resolve and read one proof-of-implementation media file from a produced run's
+/// output directory, for serving to a reviewer before the run is published.
+///
+/// `run_dir` is the run's output directory (`<out>/<id>`), which holds its
+/// `run-record.json` and its collected `implementation/` tree. `file` is the
+/// requested file name `<proof-id>.<ext>` — the proof id is matched against the
+/// record's `validation.proofs` to find the proof's recorded `dest`, so the
+/// agent's chosen location is honored and the extension is only cosmetic. The
+/// media is then read from `implementation/<dest>` and its content type derived
+/// from `file`'s extension. Returns `None` when the run record, the named proof,
+/// or the media file is missing or unreadable — the caller maps that to a 404.
+pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
+    // The request names the file `<proof-id>.<ext>`; recover the proof id.
+    let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
+
+    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
+    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+    let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
+
+    let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
+    Some(ServedProofFile {
+        content_type: proof_content_type(file),
+        body,
+    })
+}
+
+/// The `Content-Type` for a proof media file, by file extension — the image and
+/// video formats a proof's `dest` may name (see
+/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back
+/// to a binary stream.
+fn proof_content_type(file: &str) -> &'static str {
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("mp4") => "video/mp4",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Resolve a request path to a real file inside `build_dir`, refusing anything

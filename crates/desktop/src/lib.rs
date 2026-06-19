@@ -16,6 +16,7 @@ mod commands;
 mod config;
 mod events;
 mod playable;
+mod proof;
 
 /// The desktop application's version string (the crate version).
 #[tauri::command]
@@ -79,6 +80,12 @@ pub fn run() {
         // are read from disk per request and relocated under the run's base URL.
         .register_uri_scheme_protocol(playable::SCHEME, |_app, request| {
             playable::handle_request(&request)
+        })
+        // Serve produced runs' proof-of-implementation media to the webview so a
+        // reviewer sees the submitted screenshots and clips for an unpublished run
+        // (see `proof`). Each file is read from the run's collected tree per request.
+        .register_uri_scheme_protocol(proof::SCHEME, |_app, request| {
+            proof::handle_request(&request)
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
