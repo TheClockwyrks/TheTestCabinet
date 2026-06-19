@@ -1,0 +1,40 @@
+---
+/*
+ * Override of Starlight's table-of-contents sidebar ("On this page").
+ *
+ * Starlight marks the heading the reader has scrolled to with
+ * `aria-current="true"` (set client-side by its IntersectionObserver, see
+ * node_modules/@astrojs/starlight/components-internals/TableOfContents/starlight-toc.ts).
+ * We want every link *above* that active one to read as already-visited — a
+ * muted color — which CSS alone can't express (there's no "earlier in document
+ * order" selector across the nested list). So we render Starlight's default
+ * component unchanged and layer on a small script that flags the passed links
+ * with `data-toc-passed`; the muted color itself lives in src/styles/theme.css.
+ */
+import Default from "@astrojs/starlight/components/TableOfContents.astro";
+---
+
+<Default />
+
+<script>
+  function markPassedLinks(toc: HTMLElement) {
+    const links = [...toc.querySelectorAll<HTMLAnchorElement>("a")];
+    const currentIndex = links.findIndex(
+      (link) => link.getAttribute("aria-current") === "true",
+    );
+    links.forEach((link, index) => {
+      link.toggleAttribute("data-toc-passed", currentIndex > 0 && index < currentIndex);
+    });
+  }
+
+  for (const toc of document.querySelectorAll<HTMLElement>("starlight-toc")) {
+    // Reflect the initial state, then keep it in sync as the active heading
+    // changes — Starlight only flips `aria-current`, never re-emits the markup.
+    markPassedLinks(toc);
+    new MutationObserver(() => markPassedLinks(toc)).observe(toc, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-current"],
+    });
+  }
+</script>

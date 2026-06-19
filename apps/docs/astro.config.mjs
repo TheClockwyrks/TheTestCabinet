@@ -113,6 +113,11 @@ export default defineConfig({
       logo: { src: "./src/assets/cabinet.svg", alt: "The Test Cabinet" },
       favicon: "/cabinet.svg",
       customCss: ["./src/styles/theme.css"],
+      // Override the on-this-page table of contents so links above the active
+      // heading render muted; see the component for the full rationale.
+      components: {
+        TableOfContents: "./src/components/TableOfContents.astro",
+      },
       // Synthwave code blocks, in keeping with the palette. The theme ships with
       // the Expressive Code integration Starlight already bundles.
       expressiveCode: { themes: ["synthwave-84"] },

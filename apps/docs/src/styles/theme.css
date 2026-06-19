@@ -158,3 +158,20 @@
     width: var(--sl-sidebar-width);
   }
 }
+
+/*
+ * Table-of-contents "read progress": links above the heading the reader has
+ * scrolled to are dimmed below the default link color (--sl-color-gray-3), so
+ * the active section and what's still ahead stand out. The `data-toc-passed`
+ * flag is applied client-side by the TableOfContents override
+ * (src/components/TableOfContents.astro); Starlight has no selector for "earlier
+ * in the page" on its own. This rule is unlayered, so it wins over Starlight's
+ * layered link color; the matching hover rule restores the normal hover accent
+ * that this would otherwise out-specify.
+ */
+.right-sidebar-panel a[data-toc-passed] {
+  color: var(--sl-color-gray-4);
+}
+.right-sidebar-panel a[data-toc-passed]:hover {
+  color: var(--sl-color-white);
+}
