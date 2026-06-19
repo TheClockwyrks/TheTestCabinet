@@ -2,10 +2,11 @@
 title: Releasing
 ---
 
-This page covers cutting a release of the `tcab` binary and the one-time
-configuration behind the project's three deployed **static** sites. It is the
-release-time half of shipping the project: the downloadable CLI and the
-CI-built sites. Standing up the always-on **services** — the
+This page covers cutting a release of the downloadable binaries and the desktop
+app, and the one-time configuration behind the project's three deployed
+**static** sites. It is the release-time half of shipping the project: the
+downloadable artifacts and the CI-built sites. Standing up the always-on
+**services** — the
 [backend](/components/backend/overview/) and
 [workers](/components/worker/overview/) — as staging or production environments is
 covered separately under [Deployment](/deployment/overview/), and running any of
@@ -17,30 +18,38 @@ publishes (its source repository and playable build) see
 pointing a deployed service's telemetry at a collector see
 [Observability](/development/observability/#production-and-staging).
 
-## Releasing the `tcab` binary
+## Releasing the binaries and desktop app
 
 Public releases are cut on **GitHub** (the Azure DevOps repository is private to
 the org), driven by two manual workflows. The process is deliberately two-phase
-so binaries are tested before they reach users:
+so artifacts are tested before they reach users:
 
 1. Run the **Release** workflow (`.github/workflows/release.yml`,
-   `workflow_dispatch`) with the version tag (for example `v0.1.0`). It builds
-   `tcab` for Linux (static musl — see
-   [Portable build](/development/building/#portable-static-tcab-build)), Windows,
-   and macOS; smoke-tests each binary on its own platform with
-   `scripts/ci/smoke-binary.sh`; and publishes the archives — with a
-   `SHA256SUMS` — to a GitHub **prerelease** at that tag. Re-running for the same
-   tag refreshes its assets.
-2. Download the prerelease binaries and exercise them.
+   `workflow_dispatch`) with the version tag (for example `v0.1.0`). For Linux
+   (static musl — see
+   [Portable builds](/development/building/#portable-static-builds)), Windows,
+   and macOS it builds:
+   - the three headless binaries — the `tcab` CLI, the `tcab-worker` server, and
+     the `tcab-backend` store/API — as archives, smoke-testing each platform's
+     `tcab` with `scripts/ci/smoke-binary.sh`;
+   - the [Tauri desktop app](/components/tauri/overview/) as the platform's
+     installer (a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
+     `.exe` on Windows).
+
+   It then publishes everything — with a `SHA256SUMS` — to a GitHub
+   **prerelease** at that tag. Re-running for the same tag refreshes its assets.
+2. Download the prerelease artifacts and exercise them.
 3. Once satisfied, run the **Release (promote)** workflow
    (`.github/workflows/release-promote.yml`) with the same tag to flip the
    prerelease into the latest full release. It does **not** rebuild, so the exact
-   binaries you tested are the ones published.
+   artifacts you tested are the ones published.
 
-The per-platform smoke check is the same `scripts/ci/smoke-binary.sh` the CI
-binary job runs, so binaries are validated both continuously (Azure, on Linux and
-Windows) and again on the shipped artifacts (the Release workflow, on every
-platform).
+The per-platform `tcab` smoke check is the same `scripts/ci/smoke-binary.sh` the
+CI binary job runs, so the CLI is validated both continuously (Azure, on Linux
+and Windows) and again on the shipped artifact (the Release workflow, on every
+platform). The worker and backend are servers and the desktop app is graphical,
+so for those the build itself is the gate and they are exercised by hand from the
+prerelease.
 
 ## Static-site topology
 

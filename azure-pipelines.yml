@@ -3,10 +3,12 @@
 # Validates the project's headless components: every Rust crate except the Tauri
 # desktop shell (the `tcab` CLI, the `tcab-worker` and `tcab-backend` servers, and
 # the libraries they share) plus the TypeScript front ends (the gallery, the
-# operator web console, and these docs). The Tauri desktop app is intentionally
-# not built here yet, so runners need no GUI system libraries. Every job delegates
-# to a shared script under scripts/ci/, so the GitHub workflows run exactly the
-# same checks (see scripts/ci/README.md).
+# operator web console, and these docs). The Tauri desktop app is deliberately not
+# built in this per-change CI, so runners need no GUI system libraries; it is
+# built and bundled for every platform in the GitHub Release workflow
+# (.github/workflows/release.yml) instead. Every job delegates to a shared script
+# under scripts/ci/, so the GitHub workflows run exactly the same checks (see
+# scripts/ci/README.md).
 #
 # Azure is the primary CI and covers Linux and Windows; macOS validation lives in
 # GitHub because Azure has no macOS agents. The `binary` job release-builds and

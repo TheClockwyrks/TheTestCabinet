@@ -4,10 +4,11 @@
 # libraries they share.
 #
 # Scoped with `--workspace --exclude test-cabinet-desktop`: the only crate left
-# out is the Tauri desktop shell (`crates/desktop`), so runners do not need the
-# desktop app's heavy system libraries while that app is deferred for v1.0 (see
-# rust-lint.sh). This is the critical Rust validation that both Azure DevOps and
-# GitHub run.
+# out is the Tauri desktop shell (`crates/desktop`), so the per-change CI runners
+# do not need the desktop app's heavy GUI system libraries (see rust-lint.sh). The
+# desktop app is built and bundled for every platform in the GitHub Release
+# workflow (.github/workflows/release.yml) instead. This is the critical Rust
+# validation that both Azure DevOps and GitHub run.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

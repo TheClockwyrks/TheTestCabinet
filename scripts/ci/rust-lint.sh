@@ -3,10 +3,11 @@
 # warnings denied.
 #
 # Formatting is checked across the whole workspace (it needs no compilation, so
-# the deferred desktop crate costs nothing here). Clippy covers every headless
-# crate via `--workspace --exclude test-cabinet-desktop`; only the Tauri desktop
-# shell (`crates/desktop`) is left out so CI runners do not need the desktop app's
-# heavy system libraries while that app is deferred for v1.0.
+# the desktop crate costs nothing here). Clippy covers every headless crate via
+# `--workspace --exclude test-cabinet-desktop`; only the Tauri desktop shell
+# (`crates/desktop`) is left out so the per-change CI runners do not need the
+# desktop app's heavy GUI system libraries. The desktop app is built and bundled
+# for every platform in the GitHub Release workflow (.github/workflows/release.yml).
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

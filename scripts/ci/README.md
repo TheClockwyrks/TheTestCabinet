@@ -64,11 +64,13 @@ side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), th
 operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
 `packages/run-record` and the source-consumed `packages/ui`.
 
-The Tauri desktop app (`crates/desktop`, `apps/desktop`) is intentionally **not**
-built yet, so CI runners do not need the desktop app's GUI system libraries. The
-Rust scripts therefore pass `--workspace --exclude test-cabinet-desktop` rather
-than a bare `--workspace`; the one excluded crate is the only one with that
-dependency.
+The Tauri desktop app (`crates/desktop`, `apps/desktop`) is deliberately **not**
+built by these per-change CI scripts, so their runners do not need the desktop
+app's GUI system libraries. The Rust scripts therefore pass
+`--workspace --exclude test-cabinet-desktop` rather than a bare `--workspace`; the
+one excluded crate is the only one with that dependency. The desktop app is built
+and bundled for every platform in the GitHub Release workflow
+(`.github/workflows/release.yml`) instead.
 
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
 and provides the `log` helper.

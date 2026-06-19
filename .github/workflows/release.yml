@@ -1,19 +1,24 @@
 name: Release
 
-# On-demand release pipeline for the `tcab` CLI. Public releases are cut on
-# GitHub (the Azure DevOps repository is private to the org), so this is where
-# downloadable binaries are built and published.
+# On-demand release pipeline for The Test Cabinet's distributable artifacts:
+# the headless binaries — the `tcab` CLI, the `tcab-worker` server, and the
+# `tcab-backend` store/API — plus the Tauri desktop app, each built for every
+# platform. Public releases are cut on GitHub (the Azure DevOps repository is
+# private to the org), so this is where downloadable artifacts are built and
+# published.
 #
 # It is deliberately manual and two-phase, matching how releases are cut: run
-# this workflow to build, smoke-test, and publish the binaries as a PRERELEASE;
+# this workflow to build, smoke-test, and publish the artifacts as a PRERELEASE;
 # download and exercise them; then finalize with the "Release (promote)" workflow
-# once they are trusted. Promotion does not rebuild, so the exact binaries that
+# once they are trusted. Promotion does not rebuild, so the exact artifacts that
 # were tested are the ones published.
 #
-# Even though Azure already smoke-tests the Linux and Windows binaries
+# Even though Azure already smoke-tests the Linux and Windows CLI binaries
 # continuously, this re-runs the same check (scripts/ci/smoke-binary.sh) on every
-# platform's actual shipped artifact: a green Azure run must never be the only
-# thing standing between a broken binary and users.
+# platform's actual shipped `tcab`: a green Azure run must never be the only
+# thing standing between a broken binary and users. The worker and backend are
+# servers (they need a runtime/store to do anything), so the build is their gate;
+# the desktop app is exercised by hand from the published prerelease.
 #
 # Dormant until the repository is mirrored to GitHub.
 on:
@@ -36,35 +41,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux ships the static musl build (the `cargo build-portable` target):
-          # no dynamic loader, so it runs on any distro including NixOS.
+          # Linux ships the static musl builds (the `cargo build-portable*`
+          # targets): no dynamic loader, so they run on any distro including
+          # NixOS. All three headless binaries link statically this way.
           - name: linux-x86_64
             os: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            bin: tcab
+            exe: ""
           - name: windows-x86_64
             os: windows-2022
             target: x86_64-pc-windows-msvc
-            bin: tcab.exe
+            exe: ".exe"
           - name: macos-aarch64
             os: macos-14
             target: aarch64-apple-darwin
-            bin: tcab
+            exe: ""
     steps:
       - uses: actions/checkout@v6
       # The musl target needs a musl C toolchain because the `ring` TLS backend
-      # compiles a little C.
+      # and the backend's bundled SQLite each compile a little C.
       - name: Install musl toolchain
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
-      - name: Build release binary
-        run: cargo build --release --locked -p test-cabinet-cli --target ${{ matrix.target }}
-      # Re-run the shared smoke check on the exact artifact about to be shipped.
-      - name: Smoke-test binary
+      # All three headless binaries share `test-cabinet-core`, so one compile
+      # produces the whole set.
+      - name: Build release binaries
+        run: >-
+          cargo build --release --locked --target ${{ matrix.target }}
+          -p test-cabinet-cli -p test-cabinet-worker -p test-cabinet-backend
+      # Re-run the shared smoke check on the exact `tcab` about to be shipped. The
+      # servers have no equivalent dependency-free smoke (they bind ports and need
+      # a runtime/store), so a clean build is their release gate.
+      - name: Smoke-test tcab
         shell: bash
-        run: ./scripts/ci/smoke-binary.sh "target/${{ matrix.target }}/release/${{ matrix.bin }}"
+        run: ./scripts/ci/smoke-binary.sh "target/${{ matrix.target }}/release/tcab${{ matrix.exe }}"
       - name: Package (tar.gz)
         if: runner.os != 'Windows'
         shell: bash
@@ -72,8 +84,10 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist
-          tar -czf "dist/tcab-${VERSION}-${{ matrix.name }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
+          for bin in tcab tcab-worker tcab-backend; do
+            tar -czf "dist/${bin}-${VERSION}-${{ matrix.name }}.tar.gz" \
+              -C "target/${{ matrix.target }}/release" "$bin"
+          done
       - name: Package (zip)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -81,17 +95,90 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.bin }}" `
-            -DestinationPath "dist/tcab-$env:VERSION-${{ matrix.name }}.zip"
+          foreach ($bin in "tcab", "tcab-worker", "tcab-backend") {
+            Compress-Archive -Path "target/${{ matrix.target }}/release/$bin.exe" `
+              -DestinationPath "dist/$bin-$env:VERSION-${{ matrix.name }}.zip"
+          }
       - uses: actions/upload-artifact@v6
         with:
           name: dist-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
 
+  desktop:
+    name: Desktop app (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The desktop shell links the system web view, so it builds against the
+          # host's native toolchain (no musl) and ships the platform's installer:
+          # a .deb on Linux, a .dmg on macOS, and both an .msi and an NSIS .exe on
+          # Windows.
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            bundles: deb
+          - name: windows-x86_64
+            os: windows-2022
+            bundles: msi,nsis
+          - name: macos-aarch64
+            os: macos-14
+            bundles: dmg
+    steps:
+      - uses: actions/checkout@v6
+      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
+      # libraries. The devcontainer already curates exactly this package set, so
+      # reuse it rather than duplicating the list. macOS and Windows ship their
+      # web view with the OS.
+      - name: Install Linux GUI libraries
+        if: runner.os == 'Linux'
+        run: ./.devcontainer/languages/rust/tauri.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      # The Tauri CLI drives the build (UI + Rust shell + installer); it is a
+      # Cargo subcommand, matching how the app is built locally.
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Install npm workspace
+        run: npm ci
+      # The desktop UI imports the run-record package's compiled types, so build
+      # it before the Tauri build runs the UI's own `vite build` (its
+      # beforeBuildCommand).
+      - name: Build run-record package
+        run: npm run build -w @test-cabinet/run-record
+      # Run from the crate that holds tauri.conf.json so the CLI resolves it.
+      # `--bundles` narrows the config's "all" targets to this platform's chosen
+      # installer(s) — notably skipping Linux AppImage, whose builder reaches out
+      # to the network and is the flaky one in CI.
+      - name: Build desktop app
+        working-directory: crates/desktop
+        run: cargo tauri build --bundles ${{ matrix.bundles }}
+      # Tauri writes installers under target/release/bundle/<type>/ with a
+      # product-named, spaced filename; rename each to the same scheme as the
+      # binary archives so the release assets are uniform and shell-safe.
+      - name: Collect installers
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          find target/release/bundle -type f \
+            \( -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) -print0 |
+            while IFS= read -r -d '' f; do
+              cp "$f" "dist/test-cabinet-desktop-${VERSION}-${{ matrix.name }}.${f##*.}"
+            done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist-desktop-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
   publish:
     name: Publish prerelease
-    needs: build
+    needs: [build, desktop]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -104,7 +191,11 @@ jobs:
         shell: bash
         run: |
           cd dist
-          sha256sum tcab-* > SHA256SUMS
+          # Checksum every shipped asset (binary archives + desktop installers),
+          # null-delimited so product-named installers survive. Exclude the
+          # SHA256SUMS file itself so it never hashes its own (empty) self.
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS
           cat SHA256SUMS
       - name: Publish prerelease
         env:
@@ -115,7 +206,7 @@ jobs:
         # Idempotent: re-running for the same candidate refreshes its assets rather
         # than failing because the prerelease already exists.
         run: |
-          notes="Candidate build of ${VERSION}. Download and test these binaries, then finalize with the \"Release (promote)\" workflow. Each binary was smoke-tested on its own platform during build."
+          notes="Candidate build of ${VERSION}: the tcab CLI, the worker and backend servers, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build."
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else
