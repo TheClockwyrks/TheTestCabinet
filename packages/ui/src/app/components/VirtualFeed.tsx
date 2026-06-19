@@ -56,9 +56,18 @@ export function VirtualFeed({
   // re-enabling follow after the user scrolled away. Intentionally keyed on
   // `follow` alone — re-running on every count change would yank the view to the
   // bottom even while the user is reading further up.
+  //
+  // `align: "end"` lands the *bottom* of the last item at the viewport bottom.
+  // The default ("start") aligns its top, so a final event taller than the
+  // remaining space leaves the scroller short of the bottom — which trips
+  // `atBottomStateChange(false)` and immediately turns follow back off.
   useEffect(() => {
     if (follow && count > 0) {
-      handle.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
+      handle.current?.scrollToIndex({
+        index: "LAST",
+        align: "end",
+        behavior: "auto",
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow]);
