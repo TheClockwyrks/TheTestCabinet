@@ -30,6 +30,14 @@
   color: t.$color-text-muted;
 }
 
+// A review-editor field that follows another field. These labels are direct
+// panel children (not in the `.fields` grid), so a stacked field needs an
+// explicit top gap to match the space the checklist's bottom margin gives
+// above the Writeup field.
+.fieldStacked {
+  margin-top: t.$space-md;
+}
+
 // The "?" affordance beside a field label: a small circular badge whose native
 // `title` carries the help text (matching the rest of the app's tooltip pattern).
 .help {

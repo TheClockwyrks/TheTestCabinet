@@ -222,7 +222,7 @@ export function RunReviewEditor({
         />
       </label>
 
-      <label className={styles.field}>
+      <label className={`${styles.field} ${styles.fieldStacked}`}>
         <span className={styles.fieldLabel}>
           Rating
           <span
