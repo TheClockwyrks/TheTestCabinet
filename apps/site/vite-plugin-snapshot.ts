@@ -15,6 +15,13 @@ import type { Plugin } from "vite";
 // module resolves to an empty dataset and the build still succeeds. The
 // `localRuns` dev plugin remains the source of on-disk, unpublished runs during
 // `vite dev`; this plugin contributes the *published* dataset.
+//
+// A set URL whose `index.json` 404s is the *fresh-deployment* case: the bucket
+// exists but nothing has been published yet (`index.json` is the atomic pointer
+// the backend writes last, only on a publish). That, too, resolves to an empty
+// dataset and succeeds — otherwise every gallery build would fail until the very
+// first publish. Only a *reachable-but-broken* snapshot (a network error, a 5xx,
+// or a sub-file that `index.json` references but is missing) fails the build.
 
 const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
@@ -238,8 +245,23 @@ function collapseCases(
 async function loadSnapshot(
   base: string,
   emitEvents: (runId: string, json: string) => void,
-): Promise<AssembledSnapshot> {
-  const index = await fetchJson<SnapshotIndex>(joinUrl(base, "index.json"));
+): Promise<AssembledSnapshot | null> {
+  // `index.json` is the atomic pointer the backend writes last, only after a
+  // publish. A 404 here means nothing has been published yet (a fresh
+  // deployment), which is the empty-dataset bootstrap case — signal it with
+  // `null` so the build succeeds empty. Any other non-OK status is a genuinely
+  // broken snapshot and must fail the build.
+  const indexUrl = joinUrl(base, "index.json");
+  const indexResponse = await fetch(indexUrl);
+  if (indexResponse.status === 404) {
+    return null;
+  }
+  if (!indexResponse.ok) {
+    throw new Error(
+      `${indexResponse.status} ${indexResponse.statusText} for ${indexUrl}`,
+    );
+  }
+  const index = (await indexResponse.json()) as SnapshotIndex;
   const runsFile = await fetchJson<SnapshotRunsFile>(
     joinUrl(base, index.runsKey),
   );
@@ -330,6 +352,13 @@ export function snapshot(): Plugin {
           });
           eventAssets += 1;
         });
+        if (data === null) {
+          this.warn(
+            `no published snapshot at ${base} yet (index.json 404); building with an empty dataset. The backend's deploy hook will rebuild the gallery once a run is published.`,
+          );
+          module = serialize(EMPTY);
+          return;
+        }
         this.info(
           `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s).`,
         );
