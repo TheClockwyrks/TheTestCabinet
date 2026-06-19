@@ -16,6 +16,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::test_case::CheckAction;
@@ -52,6 +53,7 @@ pub fn driver_path() -> Option<PathBuf> {
 /// `url` may be a `file://` mockup or an `http://` served build. Returns a
 /// human-readable error when the driver is missing or the capture fails, so the
 /// caller can record a degraded signal instead of failing the run.
+#[instrument(name = "browser.capture", skip(actions), fields(url = %url, action_count = actions.len()), err)]
 pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::Result<(), String> {
     let driver = driver_path().ok_or_else(|| {
         format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
@@ -77,20 +79,26 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
     let actions_json =
         serde_json::to_string(actions).map_err(|err| format!("encoding actions: {err}"))?;
 
-    let output = Command::new("node")
-        .arg(&driver)
-        .args([
-            "--url",
-            url,
-            "--out",
-            &temp.to_string_lossy(),
-            "--actions",
-            &actions_json,
-            "--width",
-            &VIEWPORT.0.to_string(),
-            "--height",
-            &VIEWPORT.1.to_string(),
-        ])
+    let mut command = Command::new("node");
+    command.arg(&driver).args([
+        "--url",
+        url,
+        "--out",
+        &temp.to_string_lossy(),
+        "--actions",
+        &actions_json,
+        "--width",
+        &VIEWPORT.0.to_string(),
+        "--height",
+        &VIEWPORT.1.to_string(),
+    ]);
+    // Propagate the current trace context to the driver process so a browser
+    // capture can be correlated back to its run; a no-op when nothing is in
+    // scope to propagate.
+    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+        command.env("TRACEPARENT", traceparent);
+    }
+    let output = command
         .output()
         .map_err(|err| format!("running browser driver via node: {err}"))?;
 

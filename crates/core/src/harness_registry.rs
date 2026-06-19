@@ -12,6 +12,7 @@
 //! names are provider-shaped and must be confirmed against the real CLIs.
 
 use serde_json::Value;
+use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::{EventFormat, EventKind, EventParser, EventSink, HarnessEvent};
@@ -152,6 +153,16 @@ impl AgentHarness for CliHarness {
         }
     }
 
+    #[instrument(
+        name = "harness.invoke",
+        skip_all,
+        fields(
+            harness = %self.slug.as_str(),
+            model = %invocation.model_id,
+            container.id = %container.id,
+        ),
+        err,
+    )]
     async fn invoke(
         &self,
         runtime: &dyn ContainerRuntime,

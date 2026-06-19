@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
@@ -344,14 +345,14 @@ impl HttpBackendClient {
 
     /// GET `path` and deserialize a JSON body, mapping transport and status
     /// failures into [`Error::Publish`]-free [`Error`] variants.
+    ///
+    /// The span carries only the method and request `path` (never the base URL,
+    /// which is environment config, nor any header): there is no app-level auth,
+    /// so no credential is ever attached to these requests.
+    #[instrument(skip(self), fields(otel.kind = "client", http.request.method = "GET", url.path = %path), err)]
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T> {
         let url = self.url(path);
-        let response = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|err| backend_err(&url, err))?;
+        let response = self.get(&url).await.map_err(|err| backend_err(&url, err))?;
         let response = error_for_status(&url, response).await?;
         response
             .json::<T>()
@@ -360,20 +361,26 @@ impl HttpBackendClient {
     }
 
     /// GET `path` and return the raw response bytes.
+    #[instrument(skip(self), fields(otel.kind = "client", http.request.method = "GET", url.path = %path), err)]
     async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
         let url = self.url(path);
-        let response = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|err| backend_err(&url, err))?;
+        let response = self.get(&url).await.map_err(|err| backend_err(&url, err))?;
         let response = error_for_status(&url, response).await?;
         Ok(response
             .bytes()
             .await
             .map_err(|err| backend_err(&url, err))?
             .to_vec())
+    }
+
+    /// Issue a GET to `url` with the current trace context injected into the
+    /// outbound headers, so the backend can continue this trace. The injection is
+    /// a no-op unless a binary installed the global propagator (the propagation
+    /// helper degrades silently otherwise), so this is safe in fmt-only mode.
+    async fn get(&self, url: &str) -> reqwest::Result<reqwest::Response> {
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        self.http.get(url).headers(headers).send().await
     }
 }
 
@@ -463,6 +470,16 @@ impl BackendClient for HttpBackendClient {
         Ok(body.prompt_template)
     }
 
+    #[instrument(
+        skip(self, record, review, links, events),
+        fields(
+            otel.kind = "client",
+            http.request.method = "POST",
+            url.path = "/runs",
+            run.id = %record.id,
+        ),
+        err,
+    )]
     async fn publish_run(
         &self,
         record: &RunRecord,
@@ -484,9 +501,14 @@ impl BackendClient for HttpBackendClient {
             },
             events,
         };
+        // Inject the current trace context so the backend continues this trace.
+        // A no-op when no propagator is installed (fmt-only mode).
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
         let response = self
             .http
             .post(&url)
+            .headers(headers)
             .json(&body)
             .send()
             .await

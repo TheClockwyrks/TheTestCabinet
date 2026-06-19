@@ -43,6 +43,7 @@ use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use tracing::instrument;
 
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
@@ -183,6 +184,12 @@ where
     /// as seeded visual targets and as validation baselines. The set rendered is
     /// the common references plus the variant's own; see
     /// [`TestCaseVersion::references_for`].
+    #[instrument(
+        name = "render_references",
+        skip_all,
+        fields(test_case.slug = %test_case.slug, variant = %variant.slug),
+        err,
+    )]
     pub fn render_references(
         &self,
         test_case: &TestCaseVersion,
@@ -195,6 +202,16 @@ where
     /// case's assets, and the rendered reference screenshots. Obtain `specs` from
     /// [`TestCaseVersion::seeded_specs`] for the chosen `variant`, which is also
     /// the context for rendering any `.hbs` spec.
+    #[instrument(
+        name = "seed",
+        skip_all,
+        fields(
+            test_case.slug = %test_case.slug,
+            test_case.version = %test_case.version,
+            variant = %variant.slug,
+        ),
+        err,
+    )]
     pub fn seed(
         &self,
         test_case: &TestCaseVersion,
@@ -215,6 +232,20 @@ where
     ///
     /// The caller owns the returned [`ContainerHandle`] and must stop it. On any
     /// failure after the container starts, it is stopped before returning.
+    #[instrument(
+        name = "execute",
+        skip_all,
+        fields(
+            test_case.slug = %test_case.slug,
+            variant = %variant.slug,
+            harness = %request.harness.as_str(),
+            model = %request.model_id,
+            // Recorded once the run's image is resolved (per-run override or the
+            // harness's default). Never carries a secret.
+            container.image = tracing::field::Empty,
+        ),
+        err,
+    )]
     pub async fn execute(
         &self,
         test_case: &TestCaseVersion,
@@ -252,6 +283,7 @@ where
             .container_image
             .clone()
             .unwrap_or_else(|| harness.image());
+        tracing::Span::current().record("container.image", image.as_str());
 
         // Ensure the harness image is present before probing it. The availability
         // probe runs with `--pull never` so a status listing stays cheap and
@@ -411,6 +443,12 @@ where
 
     /// Run the validation pass over the produced implementation, scoring each
     /// declared check against the rendered reference baselines.
+    #[instrument(
+        name = "validate",
+        skip_all,
+        fields(test_case.slug = %test_case.slug, test_case.version = %test_case.version),
+        err,
+    )]
     pub fn validate(
         &self,
         test_case: &TestCaseVersion,
@@ -461,6 +499,20 @@ where
     /// [`crate::PrerenderedReferenceRenderer`] over the backend's screenshots in
     /// that case, so this method reuses them instead of re-rendering mockup HTML
     /// the runner never receives.
+    #[instrument(
+        name = "run",
+        skip_all,
+        fields(
+            test_case.slug = %test_case.slug,
+            test_case.version = %test_case.version,
+            variant = %request.variant,
+            harness = %request.harness.as_str(),
+            model = %request.model_id,
+            // Filled once the record id is minted near the end of the run.
+            run.id = tracing::field::Empty,
+        ),
+        err,
+    )]
     pub async fn run_resolved(
         &self,
         request: &RunRequest,
@@ -537,8 +589,10 @@ where
         let validation = self.validate(test_case, &artifacts, &references)?;
         let finished_at = OffsetDateTime::now_utc();
 
+        let run_id = uuid::Uuid::new_v4().to_string();
+        tracing::Span::current().record("run.id", run_id.as_str());
         let record = RunRecord {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),
             finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
             subject: RunSubject {

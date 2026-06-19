@@ -148,12 +148,17 @@ fn init_repo(repo: &Path) -> Result<String> {
 }
 
 /// Run a git command in `repo`, returning its stdout, or a seeding error.
+///
+/// The current trace context is propagated to the child as `TRACEPARENT` so the
+/// seeding subprocesses can be correlated to the run; a no-op when nothing is in
+/// scope to propagate.
 fn git(repo: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(repo)
-        .output()
-        .map_err(seed_err)?;
+    let mut command = Command::new("git");
+    command.args(args).current_dir(repo);
+    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+        command.env("TRACEPARENT", traceparent);
+    }
+    let output = command.output().map_err(seed_err)?;
     if !output.status.success() {
         return Err(Error::Seeding(format!(
             "git {} failed: {}",

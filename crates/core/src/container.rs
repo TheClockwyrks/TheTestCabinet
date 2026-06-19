@@ -11,6 +11,7 @@ use std::process::Stdio;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -77,9 +78,17 @@ impl CliContainerRuntime {
     }
 
     /// Run the runtime CLI with the given arguments, returning its output.
+    ///
+    /// The current trace context is propagated to the child as the `TRACEPARENT`
+    /// environment variable so a runtime that itself emits telemetry can continue
+    /// this trace. It is a no-op when nothing is in scope to propagate.
     async fn run(&self, args: &[String]) -> Result<std::process::Output> {
-        Command::new(&self.binary)
-            .args(args)
+        let mut command = Command::new(&self.binary);
+        command.args(args);
+        if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+            command.env("TRACEPARENT", traceparent);
+        }
+        command
             .output()
             .await
             .map_err(|err| Error::ContainerRuntime(format!("failed to run {}: {err}", self.binary)))
@@ -106,6 +115,9 @@ impl CliContainerRuntime {
 
 #[async_trait::async_trait]
 impl ContainerRuntime for CliContainerRuntime {
+    // `spec` is skipped: it carries the run's secrets (API keys passed as
+    // container env vars). Only the non-sensitive image reference is recorded.
+    #[instrument(name = "container.start", skip_all, fields(image = %spec.image), err)]
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
         let mount_source = crate::host_path::mount_source(&spec.repo_path)?;
 
@@ -172,6 +184,7 @@ impl ContainerRuntime for CliContainerRuntime {
         })
     }
 
+    #[instrument(name = "container.exec_streamed", skip_all, fields(container.id = %container.id), err)]
     async fn exec_streamed(
         &self,
         container: &ContainerHandle,
@@ -189,15 +202,20 @@ impl ContainerRuntime for CliContainerRuntime {
         // The harness is non-interactive, so close stdin: a harness that probes
         // stdin (Codex prints "Reading additional input from stdin...") then sees
         // EOF immediately instead of blocking on a stream that never arrives.
-        let mut child = Command::new(&self.binary)
+        let mut spawn = Command::new(&self.binary);
+        spawn
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|err| {
-                Error::ContainerRuntime(format!("failed to run {}: {err}", self.binary))
-            })?;
+            .stderr(Stdio::piped());
+        // Propagate the current trace context to the harness process so it can
+        // continue this trace; a no-op when nothing is in scope to propagate.
+        if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+            spawn.env("TRACEPARENT", traceparent);
+        }
+        let mut child = spawn.spawn().map_err(|err| {
+            Error::ContainerRuntime(format!("failed to run {}: {err}", self.binary))
+        })?;
 
         let stdout = child.stdout.take().ok_or_else(|| {
             Error::ContainerRuntime("failed to capture container stdout".to_string())

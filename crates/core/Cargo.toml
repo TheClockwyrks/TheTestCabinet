@@ -23,6 +23,13 @@ tempfile = { workspace = true }
 reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
+http = { workspace = true }
+tracing = { workspace = true }
+# Propagation only — the library never pulls in the OTLP exporters/SDK (those
+# live behind the `otlp` feature the binaries enable). This keeps `crates/core`
+# exporter-free; it only injects/extracts trace context through the process
+# global propagator a binary may have installed.
+test-cabinet-telemetry = { path = "../telemetry", default-features = false }
 
 [dev-dependencies]
 tempfile = { workspace = true }
