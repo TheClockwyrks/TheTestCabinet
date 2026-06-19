@@ -2,9 +2,9 @@
 //!
 //! See `docs/execution.md`. This drives a Docker- or Podman-compatible runtime
 //! through its command line so no single runtime is hard-coded. A run container
-//! is started detached from the harness's image, the seeded repository is bind
-//! mounted at `/work`, secrets are passed as environment variables, and the
-//! produced working tree is collected when the run finishes.
+//! is started detached from the harness's image, the seeded repository is copied
+//! into a runtime-managed volume at `/work`, secrets are passed as environment
+//! variables, and the produced working tree is collected when the run finishes.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -20,9 +20,15 @@ use crate::execution::{
     ExecOutput, OutputSink, OutputStream,
 };
 
-/// The container working directory the seeded repository is mounted at. Matches
+/// The container working directory the seeded repository is copied into. Matches
 /// the `WORKDIR` of the run-container images (`containers/base/Dockerfile`).
 const WORK_DIR: &str = "/work";
+
+/// The unprivileged user the run-container images run as: `containers/base/Dockerfile`
+/// reuses the Node base image's `node` user (uid 1000). The copied-in working
+/// tree is handed to this user so the harness — which runs as `node` — can build
+/// in it regardless of how the host files were owned.
+const RUN_USER: &str = "node";
 
 /// A container runtime that shells out to a Docker-compatible CLI.
 #[derive(Debug, Clone)]
@@ -65,18 +71,6 @@ impl CliContainerRuntime {
         &self.binary
     }
 
-    /// Whether the configured runtime is Podman. On native Linux this selects the
-    /// uid-mapping flag that keeps the container's `node` user able to write the
-    /// bind-mounted repository; see [`ContainerRuntime::start`] for why that flag
-    /// is scoped to Linux.
-    fn is_podman(&self) -> bool {
-        Path::new(&self.binary)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.contains("podman"))
-            .unwrap_or(false)
-    }
-
     /// Run the runtime CLI with the given arguments, returning its output.
     ///
     /// The current trace context is propagated to the child as the `TRACEPARENT`
@@ -111,6 +105,64 @@ impl CliContainerRuntime {
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
+
+    /// Copy the seeded repository into the started container's working directory
+    /// and hand the result to the run user.
+    ///
+    /// The repository is read from its native host path — `cp` runs on the host
+    /// side of the runtime, so a Windows `C:\...` source is used verbatim and
+    /// never goes through a WSL `/mnt/<drive>` mount — and copied into the volume
+    /// at `/work`. Copying (rather than bind-mounting the host directory) is what
+    /// keeps the working tree off the host filesystem: a bind mount of the
+    /// staging directory would, on Windows, mount the Windows partition the WSL2
+    /// VM exposes as `/mnt/<drive>` DrvFs, which carries no Linux ownership and
+    /// leaves the tree unwritable by the `node` user.
+    ///
+    /// `cp` does not set ownership to the container user consistently across
+    /// runtimes, and the host files may be owned by any uid, so a following
+    /// `chown` (run as uid 0 inside the container, whatever the run user) makes
+    /// the unprivileged run user own the tree it builds in.
+    async fn seed_workdir(&self, container: &ContainerHandle, repo_path: &Path) -> Result<()> {
+        let source = repo_path.to_str().ok_or_else(|| {
+            Error::ContainerRuntime(format!(
+                "seed repository path is not valid UTF-8: {}",
+                repo_path.display()
+            ))
+        })?;
+        // `cp <src>/. <id>:/work` copies the directory's *contents* (the trailing
+        // `/.`) into the working directory rather than nesting it under `/work`.
+        let copy = vec![
+            "cp".to_string(),
+            format!("{source}/."),
+            format!("{}:{WORK_DIR}", container.id),
+        ];
+        let output = self.run(&copy).await?;
+        if !output.status.success() {
+            return Err(Error::ContainerRuntime(format!(
+                "seeding `{WORK_DIR}` from `{source}` failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+
+        let chown = vec![
+            "exec".to_string(),
+            "--user".to_string(),
+            "0".to_string(),
+            container.id.clone(),
+            "chown".to_string(),
+            "--recursive".to_string(),
+            format!("{RUN_USER}:{RUN_USER}"),
+            WORK_DIR.to_string(),
+        ];
+        let output = self.run(&chown).await?;
+        if !output.status.success() {
+            return Err(Error::ContainerRuntime(format!(
+                "handing `{WORK_DIR}` to `{RUN_USER}` failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -119,8 +171,13 @@ impl ContainerRuntime for CliContainerRuntime {
     // container env vars). Only the non-sensitive image reference is recorded.
     #[instrument(name = "container.start", skip_all, fields(image = %spec.image), err)]
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
-        let mount_source = crate::host_path::mount_source(&spec.repo_path)?;
-
+        // The seeded repository is copied into the container after it starts
+        // rather than bind-mounted from the host (see `seed_workdir`): an
+        // anonymous volume keeps `/work` on the runtime's own Linux storage on
+        // every platform, sidestepping the Windows partition's unwritable DrvFs
+        // mount, and is removed together with the container by `stop`'s
+        // `--volumes`.
+        //
         // Pull the image if it is not already present locally: the harness image
         // comes from a registry (resolved by digest), not a prior local build, so
         // a missing image must be fetched rather than failing the run. An image
@@ -130,20 +187,11 @@ impl ContainerRuntime for CliContainerRuntime {
             "--detach".to_string(),
             "--pull".to_string(),
             "missing".to_string(),
+            "--volume".to_string(),
+            WORK_DIR.to_string(),
+            "--workdir".to_string(),
+            WORK_DIR.to_string(),
         ];
-        if self.is_podman() && cfg!(target_os = "linux") {
-            // Rootless Podman on Linux runs the container directly on the host, so
-            // map the invoking host user to the container's uid to keep the
-            // mounted repository writable by the run user. On macOS and Windows
-            // Podman runs the container inside its own Linux VM; the host user has
-            // no meaning there and `keep-id` would map to the wrong uid, so it is
-            // omitted and the VM's default mapping is used.
-            args.push("--userns=keep-id".to_string());
-        }
-        args.push("--volume".to_string());
-        args.push(format!("{mount_source}:{WORK_DIR}"));
-        args.push("--workdir".to_string());
-        args.push(WORK_DIR.to_string());
         if !spec.network_enabled {
             args.push("--network".to_string());
             args.push("none".to_string());
@@ -162,9 +210,17 @@ impl ContainerRuntime for CliContainerRuntime {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        Ok(ContainerHandle {
+        let handle = ContainerHandle {
             id: String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        })
+        };
+
+        // Seed the working tree now that the container exists. On any failure the
+        // just-started container is torn down so a failed start leaks nothing.
+        if let Err(err) = self.seed_workdir(&handle, &spec.repo_path).await {
+            let _ = self.stop(&handle).await;
+            return Err(err);
+        }
+        Ok(handle)
     }
 
     async fn exec(&self, container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
@@ -384,11 +440,10 @@ impl ArtifactCollector for CliArtifactCollector {
             .to_str()
             .ok_or_else(|| Error::ArtifactCollection("dest path is not valid UTF-8".to_string()))?;
 
-        // `cp <id>:/work/. <dest>` copies the contents of the working tree.
-        // Unlike a bind-mount source, the destination is not run through
-        // `host_path::mount_source`: `cp` is handled by the runtime CLI on the
-        // host, so it writes to the native host path directly (a Windows
-        // `C:\...` path, not its `/mnt/c/...` WSL form).
+        // `cp <id>:/work/. <dest>` copies the contents of the working tree out to
+        // the native host path. `cp` is handled by the runtime CLI on the host,
+        // so the destination is used verbatim — a Windows `C:\...` path, not its
+        // `/mnt/c/...` WSL form.
         let args = vec![
             "cp".to_string(),
             format!("{}:{WORK_DIR}/.", container.id),

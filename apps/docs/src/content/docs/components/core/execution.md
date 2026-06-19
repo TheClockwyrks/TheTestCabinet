@@ -68,8 +68,9 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   selected variant's seeded spec paths — and handed directly to the harness as
   its instruction. See [Prompt template](/components/core/test-cases/#prompt-template).
 
-The seeded repository is normally created, mounted, and torn down as part of a
-run, so its contents are never visible on their own. The `tcab seed` command runs
+The seeded repository is normally created on the host, copied into the run
+container, and torn down as part of a run, so its contents are never visible on
+their own. The `tcab seed` command runs
 this same seeding step for a chosen variant (`--variant`) and leaves the result
 on disk (under `tmp/` by default) so the exact inputs a harness receives — the
 variant's seeded specs, the seeded assets, and the fresh git history — can be

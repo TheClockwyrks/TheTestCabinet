@@ -15,7 +15,7 @@ use crate::error::Result;
 use crate::reference::RenderedReference;
 use crate::test_case::{SpecFile, TestCaseVersion, Variant};
 
-/// The directory the seeded run repository is mounted at inside the run
+/// The directory the seeded run repository is copied into inside the run
 /// container, and the working directory the harness builds in. Spec `dest` paths
 /// are relative to this, so the rendered prompt can point the model at absolute
 /// in-container paths.
@@ -43,7 +43,7 @@ pub struct SeedRequest<'a> {
     pub references: &'a [RenderedReference],
 }
 
-/// A seeded run repository, ready to be mounted into a container.
+/// A seeded run repository, ready to be copied into a container.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeededRepo {
@@ -70,7 +70,7 @@ pub trait RepoSeeder: Send + Sync {
 pub struct ContainerSpec {
     /// The container image to run.
     pub image: String,
-    /// The host path of the seeded repository to mount as the working tree.
+    /// The host path of the seeded repository to copy in as the working tree.
     pub repo_path: PathBuf,
     /// Secrets (such as API keys) supplied to the container. These must never be
     /// written into the seeded repository or committed anywhere.
@@ -130,9 +130,9 @@ pub trait OutputSink: Send {
 /// in.
 #[async_trait::async_trait]
 pub trait ContainerRuntime: Send + Sync {
-    /// Start a container from the given spec, mounting the seeded repository and
-    /// supplying secrets, without granting host filesystem access beyond the
-    /// mounted repository.
+    /// Start a container from the given spec, copying the seeded repository into
+    /// its working tree and supplying secrets, without granting access to the
+    /// host filesystem.
     async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle>;
 
     /// Run a command inside the container and wait for it to finish.

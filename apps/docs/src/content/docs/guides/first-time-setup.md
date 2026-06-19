@@ -56,18 +56,20 @@ Runs always execute Linux containers, so platform expectations differ:
 - **Linux** — rootless Podman runs containers directly on the host. `tcab` adds
   `--userns=keep-id` so the mounted repository stays writable by the run user.
 - **macOS** — Podman runs containers inside its managed Linux VM
-  (`podman machine init && podman machine start`). The VM shares your home
-  directory but **not** the OS temp directory, which is why staged inputs default
-  to `~/.tcab` (below). On Apple Silicon the machine is `arm64`, so harness images
-  build and run `arm64` by default.
+  (`podman machine init && podman machine start`). On Apple Silicon the machine is
+  `arm64`, so harness images build and run `arm64` by default.
 - **Windows** — Podman runs on its WSL2 backend, so **WSL must be installed**
   (`wsl --install`) before `podman machine init`.
 
-Where a run stages its mountable inputs — the seeded repository, collected
-artifacts, and capture scratch — is resolved as `--work-dir`, then
-`TCAB_WORK_DIR`, then `~/.tcab`. It must be a path the runtime can mount; on
-macOS and Windows that rules out the OS temp directory, which is why the default
-is home-based.
+Where a run stages its inputs — the seeded repository, collected artifacts, and
+capture scratch — is resolved as `--work-dir`, then `TCAB_WORK_DIR`, then
+`~/.tcab`. The seeded repository is **copied** into a runtime-managed volume
+inside the container rather than bind-mounted from the host, so this directory
+only needs to be readable by the runtime CLI; it does not have to be a path the
+container runtime can mount. (Copying is also what keeps Windows working: a bind
+mount of a home-directory path resolves to the Windows partition the WSL2 VM
+exposes under `/mnt/<drive>`, which carries no Linux ownership, so the
+container's unprivileged run user cannot write the working tree.)
 
 ## 3. The harness image
 
