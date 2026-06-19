@@ -211,9 +211,16 @@ async function main() {
     });
 
     if (options.sun) {
-      await page.addInitScript(() => {
-        window.localStorage.setItem("ttc:backdrop:sun", "true");
+      // Seed the persisted appSettings store (zustand `persist` envelope under
+      // `ttc:settings`) so the app hydrates with the sun enabled. The sun is on
+      // by default, so this matters mainly when a prior run persisted it off.
+      const settings = JSON.stringify({
+        state: { sunEnabled: true, eventFeedStyle: "gutter" },
+        version: 0,
       });
+      await page.addInitScript((value) => {
+        window.localStorage.setItem("ttc:settings", value);
+      }, settings);
     }
 
     await page.goto(routeToUrl(baseUrl, options.route), {
