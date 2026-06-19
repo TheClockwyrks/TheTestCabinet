@@ -59,8 +59,8 @@ interface PublishAck {
   newlyPublished: boolean;
 }
 
-// `GET /healthz` on a worker, if it offers one. Best-effort: used only to learn
-// which backend the worker is bound to for the consistency check.
+// `GET /healthz` on a worker. Best-effort: used only to learn which backend the
+// worker is bound to for the consistency check.
 interface WorkerHealth {
   version?: string | null;
   backendId?: string | null;
@@ -90,8 +90,8 @@ function resolveBuildLink(record: RunRecord, baseUrl: string): RunRecord {
 export function createHttpWorker(baseUrl: string): WorkerClient {
   return {
     async identity(): Promise<WorkerIdentity> {
-      // The worker has no defined info endpoint yet; probe /healthz and fall back
-      // to an unverified identity when it isn't there.
+      // Probe the worker's /healthz; fall back to an unverified identity when it
+      // can't be reached (e.g. a misconfigured or unreachable worker).
       try {
         const h = await getJson<WorkerHealth>(baseUrl, "/healthz");
         return {

@@ -46,8 +46,8 @@ pub enum Command {
     /// without seeding or launching anything.
     Prompt(PromptArgs),
 
-    /// Emit the static-site catalog datasets (test cases and models) the site
-    /// reads without a backend.
+    /// Regenerate the live `models.json` catalog the frontend reads. Test-case
+    /// data is served from the backend's published snapshot, not emitted here.
     Catalog(CatalogArgs),
 }
 

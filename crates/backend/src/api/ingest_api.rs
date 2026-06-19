@@ -12,8 +12,8 @@ use super::AppState;
 /// `POST /ingest` — scan the configured checkout, copying any new/changed
 /// test-case versions into the store and rendering reference screenshots.
 /// Synchronous; returns what changed. Container images are distributed via a
-/// registry and posted separately (`POST /containers`); ingest does not touch
-/// them.
+/// registry and pulled by runners by digest from their own configuration; the
+/// backend is out of the container path and ingest does not touch them.
 ///
 /// The scan touches the filesystem and renders references (CPU/process-bound), so
 /// it runs on a blocking thread to keep the async runtime responsive.

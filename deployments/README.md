@@ -24,7 +24,7 @@ lives on the docs site and this README is just a map.
 ```
 deployments/
 ├── local/
-│   └── compose.yml            # backend (+ optional LGTM) in a container; worker runs on the host
+│   └── compose.yml            # backend in a container; worker runs on the host
 ├── azure/
 │   ├── backend.Dockerfile     # tcab-backend + headless Chromium, for Azure Container Apps
 │   ├── containerapp.yaml      # example Container App: 1 replica, state volume, env refs

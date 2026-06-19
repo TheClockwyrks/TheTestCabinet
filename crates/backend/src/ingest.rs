@@ -8,8 +8,8 @@
 //! shares the same baseline.
 //!
 //! Container images are **not** ingested from the checkout: they are distributed
-//! via a registry and pulled by digest, their references posted to the backend by
-//! the image build/push step (`POST /containers`).
+//! via a registry and pulled by digest by each runner from its own
+//! configuration. The backend is out of the container path entirely.
 //!
 //! Ingest is idempotent: an already-present, unchanged `(slug, version)` is a
 //! no-op. `force` re-ingests and re-renders even when unchanged.

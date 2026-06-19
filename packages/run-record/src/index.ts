@@ -27,7 +27,10 @@ export type RunState = "completed" | "failed" | "unevaluable";
 export interface RunEnvironment {
   /** Container OS, from `/etc/os-release` PRETTY_NAME; `"unknown"` on failure. */
   os: string;
-  /** The per-harness image, e.g. `"test-cabinet/codex:latest"`. */
+  /**
+   * The per-harness image, pinned to its registry digest where it has one,
+   * e.g. `"ghcr.io/theclockwyrks/test-cabinet-codex@sha256:…"`.
+   */
   containerImage: string;
   /** Trimmed `node --version` inside the container; null if undeterminable. */
   nodeVersion: string | null;
