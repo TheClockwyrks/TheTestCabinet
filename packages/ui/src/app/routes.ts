@@ -3,9 +3,6 @@
 
 export const routes = {
   home: (): string => "/",
-  // Back-compat alias: the gallery now lives at the home route. Existing
-  // references to `galleryIndex` keep working; prefer `home` in new code.
-  galleryIndex: (): string => "/",
   testCases: (): string => "/test-cases",
   testCaseDetail: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}`,
@@ -46,10 +43,6 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
-  // Retained only so the legacy `/validation` deep link can redirect to the
-  // Metadata tab, which now hosts the validation widget. No tab links here.
-  runValidation: (runId: string): string =>
-    `/runs/${encodeURIComponent(runId)}/validation`,
 } as const;
 
 // Route patterns for <Route path={...}>. Kept alongside the builders so the
@@ -80,5 +73,4 @@ export const routePatterns = {
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
-  runValidation: "/runs/:runId/validation",
 } as const;

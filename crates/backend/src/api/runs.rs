@@ -154,9 +154,9 @@ pub async fn get(
 }
 
 /// `GET /runs/{id}/events` — the published run's recorded normalized event
-/// stream, as a JSON array (an empty array when the run recorded none, or was
-/// published before events were captured). Raw harness output is never published,
-/// so it is not served here. `404` for an unknown run.
+/// stream, as a JSON array (an empty array when the run recorded none). Raw
+/// harness output is never published, so it is not served here. `404` for an
+/// unknown run.
 pub async fn events(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -219,9 +219,8 @@ pub struct PublishRequest {
     review: ReviewIn,
     #[serde(default)]
     links: LinksIn,
-    /// The run's recorded normalized event stream. Optional for back-compat with
-    /// publishers that predate it; stored verbatim and re-emitted to the snapshot.
-    #[serde(default)]
+    /// The run's recorded normalized event stream (empty when the run recorded
+    /// none); stored verbatim and re-emitted to the snapshot.
     events: Vec<HarnessEvent>,
 }
 

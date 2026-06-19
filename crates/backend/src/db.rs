@@ -36,10 +36,9 @@ pub struct StoredRun {
     /// `publishedAt`). Not part of the run record itself.
     pub published_at: String,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
-    /// array string (the `run.events_json` column). `None` for a run published
-    /// before events were captured, or one that recorded none. Re-emitted into
-    /// the snapshot and served by `GET /runs/{id}/events`.
-    #[serde(default)]
+    /// array string (the `run.events_json` column). `None` for a run that
+    /// recorded none. Re-emitted into the snapshot and served by
+    /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
 }
 
@@ -52,8 +51,7 @@ pub struct StoredReview {
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items. Stored as
     /// a JSON array in the `review.checklist` column. Empty for a case with no
-    /// items, or a run published before the field existed.
-    #[serde(default)]
+    /// items.
     pub checklist: Vec<ReviewVerdict>,
 }
 
@@ -109,12 +107,11 @@ impl Db {
         })
     }
 
-    /// Apply the schema and pragmas (§2), then run additive migrations.
+    /// Apply the schema and pragmas (§2).
     fn init(conn: &Connection) -> Result<()> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA)?;
-        migrate(conn)?;
         Ok(())
     }
 
@@ -394,40 +391,6 @@ fn row_to_stored_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRun> {
 /// The shared eight-column projection every `StoredRun` query selects.
 const STORED_RUN_COLUMNS: &str = "r.record_json, rv.rating, rv.writeup, l.source_repo, \
      l.playable_build, r.published_at, rv.checklist, r.events_json";
-
-/// Apply additive schema migrations to an existing database.
-///
-/// The base [`SCHEMA`] uses `CREATE TABLE IF NOT EXISTS`, which never alters an
-/// existing table, so columns added after a database was first created are filled
-/// in here. Each step is a guarded `ALTER TABLE ADD COLUMN`, skipped when the
-/// column is already present, so `init` stays idempotent across restarts.
-fn migrate(conn: &Connection) -> Result<()> {
-    add_column_if_missing(conn, "run", "events_json", "TEXT")?;
-    Ok(())
-}
-
-/// Add `column` (`name type`) to `table` unless it already exists. Reads the
-/// table's columns via `PRAGMA table_info` so a fresh database (where the column
-/// is part of [`SCHEMA`]) and an upgraded one converge to the same shape.
-fn add_column_if_missing(
-    conn: &Connection,
-    table: &str,
-    column: &str,
-    column_type: &str,
-) -> Result<()> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
-    let existing: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    if existing.iter().any(|name| name == column) {
-        return Ok(());
-    }
-    conn.execute(
-        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
-        [],
-    )?;
-    Ok(())
-}
 
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {

@@ -51,7 +51,6 @@ interface AppSettings {
 }
 
 const STORAGE_KEY = "ttc:settings";
-const LEGACY_SUN_KEY = "ttc:backdrop:sun";
 
 // An in-memory stand-in used when `localStorage` is unavailable (private mode,
 // the static site's prerender step). Persistence is best-effort: the store still
@@ -80,21 +79,10 @@ function backingStorage() {
   return memoryStorage();
 }
 
-// Seed the sun from the pre-store key so a returning user who had hidden it keeps
-// it hidden. Only consulted for the initial state; once the store persists under
-// its own key this legacy value is never read again.
-function legacySunEnabled(): boolean {
-  try {
-    return window.localStorage.getItem(LEGACY_SUN_KEY) !== "false";
-  } catch {
-    return true;
-  }
-}
-
 export const useAppSettings = create<AppSettings>()(
   persist(
     (set) => ({
-      sunEnabled: legacySunEnabled(),
+      sunEnabled: true,
       eventFeedStyle: "gutter",
       setSunEnabled: (enabled) => set({ sunEnabled: enabled }),
       toggleSun: () => set((state) => ({ sunEnabled: !state.sunEnabled })),
