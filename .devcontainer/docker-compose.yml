@@ -25,3 +25,46 @@ services:
     tty: true
     volumes:
       - ..:/workspaces/the-test-cabinet:rw
+
+  # ── Local observability (OPT-IN) ─────────────────────────────────────────────
+  #
+  # Grafana LGTM (Loki / Grafana / Tempo / Mimir) all-in-one OTLP collector +
+  # backend + dashboards, for inspecting OpenTelemetry traces, metrics, and logs
+  # emitted by the workspace binaries during development.
+  #
+  # This service is OPT-IN: it costs nothing until something points
+  # OTEL_EXPORTER_OTLP_ENDPOINT at it (see the per-process `.env.*.example`
+  # files), and it only starts the next time the devcontainer is (re)built. To
+  # activate it, run **Dev Containers: Rebuild Container** after pulling this
+  # change — no other config is required for the `dev` service.
+  #
+  # Endpoints (note the duality — pick the address by WHERE the process runs):
+  #   • From INSIDE the devcontainer (backend + web UI run here) use the compose
+  #     service DNS name `lgtm`:
+  #         OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4317   (gRPC)
+  #         OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318   (HTTP/protobuf)
+  #   • From the HOST (worker + CLI run there, and the browser runs on the host)
+  #     use `localhost` against the published ports below:
+  #         OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317   (gRPC)
+  #         OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   (HTTP/protobuf)
+  #     The Rust binaries export over HTTP/protobuf (:4318); the browser also
+  #     uses the HTTP endpoint on localhost:4318.
+  #
+  # Grafana UI: http://localhost:3000 (anonymous admin; no login needed).
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    init: true
+    ports:
+      # Published to the HOST so host-side processes (worker, CLI, browser) can
+      # reach the collector at localhost. In-container processes reach it by the
+      # `lgtm` service name on the same compose network.
+      - "4317:4317" # OTLP/gRPC
+      - "4318:4318" # OTLP/HTTP
+      - "3000:3000" # Grafana UI
+    volumes:
+      # Persist Grafana's dashboards/state across container rebuilds. Telemetry
+      # (traces/metrics/logs) in the LGTM stores is intentionally ephemeral.
+      - lgtm-grafana:/data/grafana
+
+volumes:
+  lgtm-grafana:

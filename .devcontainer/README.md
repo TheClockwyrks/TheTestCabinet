@@ -53,6 +53,29 @@ default. Either:
   host's Podman/Docker socket) — the container user is already added to the
   `DOCKER_GID` group for this case.
 
+## Local observability (opt-in)
+
+The compose file ships an opt-in `lgtm` service running the
+[`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) all-in-one
+stack (OpenTelemetry collector + Tempo/Mimir/Loki + Grafana). It lets you
+inspect the traces, metrics, and logs the workspace binaries emit during
+development. It does nothing until a process points
+`OTEL_EXPORTER_OTLP_ENDPOINT` at it, and it only starts the next time you
+**Dev Containers: Rebuild Container**.
+
+After a rebuild, open the **Grafana UI at <http://localhost:3000>** (anonymous
+admin — no login). To start exporting, uncomment `OTEL_EXPORTER_OTLP_ENDPOINT`
+in the relevant `.env.*` file, choosing the address by where the process runs:
+
+- **Inside the container** (backend, web console): `http://lgtm:4318`.
+- **On the host** (worker, `tcab` CLI, desktop app, browser):
+  `http://localhost:4318`.
+
+The Rust binaries and the browser export over OTLP **HTTP/protobuf** (`:4318`);
+the gRPC port (`:4317`) is published too if you wire up a gRPC exporter. See the
+per-process `.env.*.example` files at the repo root (and `apps/web/.env.example`
+for the web console) for the exact variables.
+
 ## SSH agent forwarding
 
 If the host exposes its SSH agent at `/tmp/ssh-agent.sock`, the `postStartCommand`
