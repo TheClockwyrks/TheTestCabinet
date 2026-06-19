@@ -8,8 +8,11 @@ This folder holds the *assets*; the authoritative, narrative documentation is th
 and how they fit together:
 
 - Overview — `apps/docs/src/content/docs/deployment/overview.md`
-- Local — `apps/docs/src/content/docs/deployment/local.md`
 - Azure (staging & prod) — `apps/docs/src/content/docs/deployment/azure.md`
+
+Running the same services locally on one machine (the `local/` template below) is
+documented in the Development section, not here:
+`apps/docs/src/content/docs/development/running.md`.
 
 (Published at <https://docs.testcabinet.ai/deployment/overview/>.)
 

@@ -1,18 +1,28 @@
 ---
-title: Local
+title: Running
 ---
 
-This page runs the [backend](/components/backend/overview/), one
-[worker](/components/worker/overview/), and the
-[web console](/components/web/overview/) together on a single machine. It is the
-fastest way to see the whole service-driven flow — resolve a definition, launch a
-run on a remote-style worker, publish — without any cloud setup, and it is the
-environment to reach for when developing or debugging the services themselves.
+This page covers running The Test Cabinet **locally** — on your own machine, for
+development or to exercise the whole flow end to end. Two shapes of "running" are
+worth separating, because they need very different amounts of setup:
 
-This is distinct from simply running a [CLI](/components/cli/overview/) or
-[Tauri](/components/tauri/overview/) run, which embeds its own runner and needs
-no backend or worker process. Here you run the services as their own processes,
-exactly as a deployed environment does, just all on `localhost`.
+- **A single run**, driven by the [CLI](/components/cli/overview/) (`tcab`) or the
+  [Tauri desktop app](/components/tauri/overview/). Both embed the
+  [core](/components/core/overview/) runner directly, so they need **no backend or
+  worker process** — just a container runtime and a harness API key. This is the
+  fastest way to launch one run; the [quickstarts](/quickstarts/overview/) walk
+  through it and [Building](/development/building/) covers producing the binaries.
+- **The full service-driven flow** — the [backend](/components/backend/overview/),
+  a [worker](/components/worker/overview/), and the
+  [web console](/components/web/overview/) running as their own processes, exactly
+  as a deployed environment runs them, just all on `localhost`. This is the
+  environment to reach for when developing or debugging the services themselves,
+  and it is what the rest of this page sets up.
+
+Running the services on one machine is the local mirror of a real
+[deployment](/deployment/overview/): the same binaries and the same configuration,
+only bound to `localhost`. When you are ready to put them on real hosts — staging
+and prod — see [Deployment](/deployment/overview/).
 
 ## Prerequisites
 
@@ -141,4 +151,5 @@ unset keeps both on plain stdout logging.
 
 When this works end to end, the same two binaries deploy unchanged to
 [staging and prod on Azure](/deployment/azure/) — what changes is where they bind
-and how they are supervised, not how they are configured.
+and how they are supervised, not how they are configured. See
+[Deployment](/deployment/overview/) for the remote build.

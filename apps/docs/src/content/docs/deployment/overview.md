@@ -4,16 +4,20 @@ title: Overview
 
 This section covers standing up The Test Cabinet's two long-running **services**
 — the [backend](/components/backend/overview/) (`tcab-backend`) and the
-[worker](/components/worker/overview/) (`tcab-worker`) — as real environments: a
-[local](/deployment/local/) one for testing the moving parts on one machine, and
-a [staging and a production](/deployment/azure/) environment on Azure. The
-guidance is written to be reproducible by anyone running their own instance;
-there is nothing here that is specific to a private deployment.
+[worker](/components/worker/overview/) (`tcab-worker`) — as **remote**
+environments: a [staging and a production](/deployment/azure/) environment on
+Azure. The guidance is written to be reproducible by anyone running their own
+instance; there is nothing here that is specific to a private deployment.
+
+To run the same services **entirely on one machine** for development — the local
+mirror of everything below — see [Running](/development/running/) in the
+Development section. This section mentions the local shape where it helps explain
+the remote one, but its emphasis is the real, remote build.
 
 For the **static** surfaces — the public [gallery](/components/site/overview/),
 this [docs site](/components/docs/overview/), and the per-run playable builds —
-see [Releasing & Deployment](/development/releasing/) instead. Those are built in
-CI and need no servers. This section is only about the services that do.
+see [Releasing](/development/releasing/) instead. Those are built in CI and need
+no servers. This section is only about the services that do.
 
 ## What gets deployed
 
@@ -22,7 +26,7 @@ CI and need no servers. This section is only about the services that do.
 | [Backend](/components/backend/overview/) (`tcab-backend`) | A long-running HTTP service | This section |
 | [Worker](/components/worker/overview/) (`tcab-worker`) | A long-running HTTP service on a host with a container runtime | This section |
 | [Web console](/components/web/overview/) (`apps/web`) | A static bundle served to operators on the private network | This section |
-| [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static sites built in CI | [Releasing & Deployment](/development/releasing/) |
+| [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static sites built in CI | [Releasing](/development/releasing/) |
 | [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs | Not deployed — see [Building](/development/building/) |
 
 The [CLI](/components/cli/overview/) and [Tauri app](/components/tauri/overview/)
@@ -40,13 +44,15 @@ and logs from each can be told apart.
 
 | Environment | Purpose | Backend | Workers |
 | ----------- | ------- | ------- | ------- |
-| **Local** | Exercise the whole flow on one machine | A process (or container) on `localhost` | A process on the host, using the host's container runtime |
+| **Local** | Exercise the whole flow on one machine (development) | A process (or container) on `localhost` | A process on the host, using the host's container runtime |
 | **Staging** | A production-shaped environment to validate changes | Managed (Azure Container Apps) | One or more VM nodes |
 | **Prod** | The environment operators actually use | Managed (Azure Container Apps) | A pool of VM nodes |
 
-Staging and prod are the *same* topology — keep them identical so staging is a
-faithful rehearsal — differing only in scale, their own secrets, and their
-`TCAB_ENV` tag. See [Azure: staging & prod](/deployment/azure/).
+The **local** environment is a development convenience and is documented under
+[Running](/development/running/), not here. This section is about the two
+**remote** environments: staging and prod are the *same* topology — keep them
+identical so staging is a faithful rehearsal — differing only in scale, their own
+secrets, and their `TCAB_ENV` tag. See [Azure: staging & prod](/deployment/azure/).
 
 ## Two runtime shapes
 
@@ -126,10 +132,10 @@ seeing what the services are doing ([Telemetry](/deployment/telemetry/)).
 
 ## Where to go next
 
-- [Local](/deployment/local/) — run the backend, a worker, and the web console
-  together on one machine.
 - [Azure: staging & prod](/deployment/azure/) — the managed-backend +
   worker-VM build, for both environments.
+- [Running](/development/running/) — the local mirror: the backend, a worker, and
+  the web console together on one machine, for development.
 - [Backups](/deployment/backups/) — what's actually at risk (just the backend's
   database) and how to protect it.
 - [Telemetry](/deployment/telemetry/) — choosing and wiring a collector for

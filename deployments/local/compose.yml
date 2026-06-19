@@ -4,7 +4,7 @@
 # state (SQLite DB + definition store + ingest checkout). The WORKER is NOT here
 # on purpose: a worker starts a container per run, so it runs directly on the
 # host using the host's container runtime. See
-# apps/docs/src/content/docs/deployment/local.md.
+# apps/docs/src/content/docs/development/running.md.
 #
 #   docker compose -f deployments/local/compose.yml up backend
 #

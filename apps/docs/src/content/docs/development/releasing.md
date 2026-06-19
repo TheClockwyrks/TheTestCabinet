@@ -1,12 +1,15 @@
 ---
-title: Releasing & Deployment
+title: Releasing
 ---
 
 This page covers cutting a release of the `tcab` binary and the one-time
-configuration behind the project's three deployed **static** sites. Standing up
-the always-on **services** — the [backend](/components/backend/overview/) and
-[workers](/components/worker/overview/) — as local, staging, or production
-environments is covered separately under [Deployment](/deployment/overview/). For
+configuration behind the project's three deployed **static** sites. It is the
+release-time half of shipping the project: the downloadable CLI and the
+CI-built sites. Standing up the always-on **services** — the
+[backend](/components/backend/overview/) and
+[workers](/components/worker/overview/) — as staging or production environments is
+covered separately under [Deployment](/deployment/overview/), and running any of
+this on your own machine is covered under [Running](/development/running/). For
 building locally see [Building](/development/building/); for what a *run*
 publishes (its source repository and playable build) see
 [Results](/components/core/results/) and
@@ -39,7 +42,7 @@ binary job runs, so binaries are validated both continuously (Azure, on Linux an
 Windows) and again on the shipped artifacts (the Release workflow, on every
 platform).
 
-## Deployment topology
+## Static-site topology
 
 The project deploys three independent static sites. Two are project sites built
 in CI; the third is the per-run playable builds produced by

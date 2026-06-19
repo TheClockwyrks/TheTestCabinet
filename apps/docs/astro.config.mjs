@@ -237,20 +237,21 @@ export default defineConfig({
           collapsed: true,
           items: [
             "development/building",
+            "development/running",
             "development/releasing",
             "development/observability",
           ],
         },
-        // Standing up the backend and worker services as real environments.
-        // Releasing (above) covers the static sites + binary; this covers the
-        // always-on services. Runnable templates live in the repo's
-        // `deployments/` folder, which these pages link to.
+        // Standing up the backend and worker services as real, REMOTE
+        // environments. Releasing (above) covers the static sites + binary, and
+        // Running (above) covers the local mirror on one machine; this section is
+        // staging + prod. Runnable templates live in the repo's `deployments/`
+        // folder, which these pages link to.
         {
           label: "Deployment",
           collapsed: true,
           items: [
             "deployment/overview",
-            "deployment/local",
             "deployment/azure",
             "deployment/backups",
             "deployment/telemetry",

@@ -12,8 +12,8 @@ variables at any OTLP/HTTP collector turns export on.
 This page covers what is instrumented and how the spans nest, the configuration
 variables and their per-process notes, running the bundled local stack, and
 production guidance. For building and releasing the binaries see
-[Building](/development/building/) and
-[Releasing & Deployment](/development/releasing/).
+[Building](/development/building/) and [Releasing](/development/releasing/); for
+running the services locally see [Running](/development/running/).
 
 ## Opt-in by design
 

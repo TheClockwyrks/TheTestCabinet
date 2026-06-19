@@ -5,7 +5,7 @@ Shared validation scripts invoked by both CI systems:
 - **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and runs every
   script. It covers the Linux and Windows platforms.
 - **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
-  GitHub run still means the targeted v1.0 components actually build and pass. It
+  GitHub run still means the components actually build and pass. It
   also owns **macOS** validation, since Azure has no macOS agents — but because
   macOS runners are costly and only needed at release time, that check runs
   **on demand** in the separate `binary-macos.yml` workflow (manual trigger or
@@ -30,15 +30,15 @@ and can be run from anywhere, including locally:
 | Script             | Checks                                             | Critical |
 | ------------------ | -------------------------------------------------- | -------- |
 | `rust-lint.sh`     | `cargo fmt --check`, `cargo clippy -D warnings`    | no       |
-| `rust-test.sh`     | `cargo build` + `cargo test` (CLI + core)          | yes      |
+| `rust-test.sh`     | `cargo build` + `cargo test` (headless crates)     | yes      |
 | `binary-smoke.sh`  | release-build, `cargo test --release`, run binary  | yes      |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
-| `web-build.sh`     | `npm ci`, type-check + `vite build` of the site    | yes      |
+| `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 
-"Critical" scripts are the ones that catch a genuinely broken change (the CLI or
-site failing to build or test), so they run on both CI systems. The lint scripts
-run on Azure DevOps only.
+"Critical" scripts are the ones that catch a genuinely broken change (a crate or
+front end failing to build or test), so they run on both CI systems. The lint
+scripts run on Azure DevOps only.
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
@@ -56,12 +56,19 @@ binary path rather than resolving the repo root, so it does not use `lib.sh`.
 
 ## Scope
 
-These cover the two components targeted for v1.0: the `tcab` CLI (Rust `crates/cli`
-and the `crates/core` library it builds on) and the gallery website (`apps/site`
-and the `packages/run-record` it imports). The Tauri desktop app (`crates/desktop`,
-`apps/desktop`) is intentionally **not** built yet, so CI runners do not need the
-desktop app's system libraries. The Rust scripts pass `-p test-cabinet-core
--p test-cabinet-cli` rather than `--workspace` to keep the desktop crate out.
+These cover every **headless** component. On the Rust side that is the whole
+Cargo workspace except the Tauri desktop shell — the `tcab` CLI (`crates/cli`),
+the `tcab-worker` (`crates/worker`) and `tcab-backend` (`crates/backend`) servers,
+and the `crates/core`/`crates/telemetry` libraries they share. On the TypeScript
+side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
+operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
+`packages/run-record` and the source-consumed `packages/ui`.
+
+The Tauri desktop app (`crates/desktop`, `apps/desktop`) is intentionally **not**
+built yet, so CI runners do not need the desktop app's GUI system libraries. The
+Rust scripts therefore pass `--workspace --exclude test-cabinet-desktop` rather
+than a bare `--workspace`; the one excluded crate is the only one with that
+dependency.
 
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
 and provides the `log` helper.
