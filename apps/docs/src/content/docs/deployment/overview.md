@@ -16,8 +16,9 @@ the remote one, but its emphasis is the real, remote build.
 
 For the **static** surfaces — the public [gallery](/components/site/overview/),
 this [docs site](/components/docs/overview/), and the per-run playable builds —
-see [Releasing](/development/releasing/) instead. Those are built in CI and need
-no servers. This section is only about the services that do.
+see [Releasing](/development/releasing/) instead. Those are static Cloudflare
+Pages sites with no servers to operate. This section is only about the services
+that do.
 
 ## What gets deployed
 
@@ -26,7 +27,7 @@ no servers. This section is only about the services that do.
 | [Backend](/components/backend/overview/) (`tcab-backend`) | A long-running HTTP service | This section |
 | [Worker](/components/worker/overview/) (`tcab-worker`) | A long-running HTTP service on a host with a container runtime | This section |
 | [Web console](/components/web/overview/) (`apps/web`) | A static bundle served to operators on the private network | This section |
-| [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static sites built in CI | [Releasing](/development/releasing/) |
+| [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static Cloudflare Pages sites | [Releasing](/development/releasing/) |
 | [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs | Not deployed — see [Building](/development/building/) |
 
 The [CLI](/components/cli/overview/) and [Tauri app](/components/tauri/overview/)

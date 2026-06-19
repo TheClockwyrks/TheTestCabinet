@@ -15,7 +15,10 @@ of its own. This keeps it cheap, durable, and trivially public, and mirrors the
 constraint placed on the games themselves (see
 [Test Cases](/components/core/test-cases/#design-requirements)). Any
 interactivity, such as filtering, is handled client-side. The built bundle is
-deployed to **GitHub Pages**, served at the project's custom domain.
+deployed to **Cloudflare Pages**, served at the project's custom domain
+([testcabinet.ai](https://testcabinet.ai)). Cloudflare builds it directly from
+the repository, so a push rebuilds it — and, as below, so can the backend on its
+own when the snapshot changes.
 
 The gallery is the same routed application the [web](/components/web/overview/)
 and [Tauri](/components/tauri/overview/) consoles render, shared through the

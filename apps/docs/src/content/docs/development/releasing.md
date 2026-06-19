@@ -53,43 +53,64 @@ prerelease.
 
 ## Static-site topology
 
-The project deploys three independent static sites. Two are project sites built
-in CI; the third is the per-run playable builds produced by
-[publishing](/guides/publishing-a-test-run-result/).
+The project deploys three independent static sites, all on **Cloudflare Pages**.
+Each is its own Pages project under its own domain; they differ only in how they
+are built.
 
-| Site | Host | Address | Driven by |
-| ---- | ---- | ------- | --------- |
-| [Gallery](/components/site/overview/) (`apps/site`) | GitHub Pages | `testcabinet.ai` (apex) | `deploy-site.yml` |
-| [Docs](/components/docs/overview/) (`apps/docs`) | Cloudflare Pages | `docs.testcabinet.ai` | `deploy-docs.yml` |
-| Per-run playable builds | Cloudflare Pages | a per-run `*.pages.dev` URL | `tcab publish` |
+| Site | Project | Address | Built by |
+| ---- | ------- | ------- | -------- |
+| [Gallery](/components/site/overview/) (`apps/site`) | `test-cabinet-site` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
+| [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
+| Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
 
-The gallery owns the apex on GitHub Pages, and GitHub Pages allows only one
-custom domain per repository — which is why the docs are a **separate**
-Cloudflare Pages deployment under their own subdomain rather than a path on the
-gallery. Per-run builds are served from Cloudflare Pages at their own `pages.dev`
+The docs and per-run builds are **Direct Upload** projects — built elsewhere and
+pushed with `wrangler` — while the gallery is **git-connected**: Cloudflare clones
+the GitHub mirror and builds it itself. The gallery is git-connected on purpose,
+because it is the only site that must rebuild when something *other* than a code
+push changes — the backend's snapshot. A git-connected project has a **deploy
+hook** (a unique URL that triggers a rebuild on a bare POST), which is exactly
+what the backend fires after it uploads a new snapshot (see
+[`TCAB_SITE_DEPLOY_HOOK_URL`](#gallery-cloudflare-pages-one-time)). Direct Upload
+projects have no deploy hook, so they could not be rebuilt that way.
+
+Per-run builds are served from Cloudflare Pages at their own `pages.dev`
 subdomain root (see [Site Hosting](/components/site/overview/#hosting) and
 [Results](/components/core/results/#publishing)); serving each at a root rather
 than a subpath keeps it playable exactly as the test case's
 [build interface](/components/core/test-cases/#design-requirements) requires.
 
-## Gallery (GitHub Pages, one-time)
+## Gallery (Cloudflare Pages, one-time)
 
-The gallery is built and deployed by `.github/workflows/deploy-site.yml`, which
-regenerates the bundled model dataset (`models.json`) from `models/` as part of
-the build (so the deployed site always reflects current model prices) and
-publishes the static output to GitHub Pages. The test-case and run data the
-gallery shows are *not* baked in here — they come from the
-[backend's public R2 snapshot](/components/backend/snapshot/), fetched at build
-time. The workflow is dormant until the repository is mirrored to GitHub with
-Pages enabled.
+The gallery is a **git-connected** Cloudflare Pages project: Cloudflare clones the
+[GitHub mirror](#releasing-the-binaries-and-desktop-app) and builds `apps/site`
+itself, on every push to the production branch and whenever its deploy hook is
+fired. The test-case and run data the gallery shows are *not* baked in — they
+come from the [backend's public R2 snapshot](/components/backend/snapshot/),
+fetched at build time. There is no GitHub Actions workflow for it; Cloudflare's
+git integration is the whole pipeline.
 
-- Enable GitHub Pages on the gallery repository and point the apex
-  `testcabinet.ai` at it, with the repository claiming it as its custom domain,
-  so the site is served from the apex.
+In the Cloudflare dashboard, create a Pages project named `test-cabinet-site`
+(distinct from the `test-cabinet-docs` and `test-cabinet-runs` projects)
+connected to the GitHub mirror:
 
-Because per-run builds now live on Cloudflare Pages (below) rather than on
-per-run GitHub Pages subdomains, no `*.testcabinet.ai` wildcard or organization
-domain verification is required for them.
+- Set the **production branch** to `master`.
+- **Build command:** `npm ci && npm run build -w @test-cabinet/run-record && npm run build -w @test-cabinet/site`.
+- **Build output directory:** `apps/site/dist`.
+- The build is **pure Node** — Cloudflare's build image has no Rust, and none is
+  needed: the bundled model dataset (`packages/ui/src/app/data/models.json`) is
+  committed, so the site builds against whatever prices are in the repo. Refresh
+  them by running `tcab catalog` and committing the result (or with a scheduled
+  job that does the same); a commit triggers a rebuild like any other push.
+- Add `testcabinet.ai` as a **custom domain** on the project (apex), so the
+  gallery is served from the apex.
+- Create the project's **deploy hook** and give its URL to the backend as
+  `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
+  backend fires it after each snapshot upload, so a published run rebuilds the
+  gallery without a code push.
+
+Per-run builds and the docs are separate Cloudflare Pages projects; because every
+build is served from `*.pages.dev` or a subdomain, no `*.testcabinet.ai` wildcard
+or organization domain verification is required.
 
 Each per-run build is deployed under its own Cloudflare Pages **branch alias**
 (`--branch=<run-id>`), and the served URL is read back from `wrangler`'s output

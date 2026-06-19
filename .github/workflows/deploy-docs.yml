@@ -2,10 +2,10 @@ name: Deploy docs
 
 # Builds the developer documentation site (apps/docs, an Astro Starlight site)
 # and deploys it to Cloudflare Pages at docs.testcabinet.ai. Unlike the gallery
-# (apps/site), the docs are a pure static build with no Rust/catalog step, and
-# they live on Cloudflare rather than GitHub Pages so they can have their own
-# subdomain — GitHub Pages allows only one custom domain per repository, which
-# the gallery uses for testcabinet.ai.
+# (apps/site) — a git-connected Cloudflare Pages project that Cloudflare builds
+# itself, fetching the backend snapshot at build time — the docs are a pure
+# static build, so they are built here in CI and uploaded with wrangler (a
+# Direct Upload project).
 #
 # Runs on pushes to master that touch the docs or this workflow, and on demand.
 # Requires two repository secrets, configured once (see the one-time docs setup

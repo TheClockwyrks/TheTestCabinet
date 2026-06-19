@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router";
 import { GalleryApp, GalleryDataProvider } from "@test-cabinet/ui/app";
 import { useStaticGallery } from "./staticGallery";
 
-// GitHub Pages serves a single static bundle with no server-side routing, so a
+// The gallery ships as a single static bundle with no server-side routing, so a
 // deep link such as /runs/<id> arrives as a 404. `public/404.html` stashes the
 // requested path and redirects to the app root; restore it here, before the
 // router mounts, so the deep link resolves client-side.
