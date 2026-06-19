@@ -90,7 +90,8 @@ but three things are non-negotiable and follow directly from that:
    `TCAB_BACKEND_DB`, `TCAB_BACKEND_STORE`, and `TCAB_BACKEND_CHECKOUT` point to,
    so the database, store, and checkout survive a revision or restart. Prefer an
    **NFS** Azure Files share for the SQLite file — SMB file locking interacts
-   poorly with SQLite.
+   poorly with SQLite. A volume survives restarts but is **not** a backup; see
+   [Backups](/deployment/backups/).
 3. **An image with a browser.** The stock binary has no Chromium. Build the
    backend image from
    [`deployments/azure/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/azure/backend.Dockerfile),
@@ -215,12 +216,14 @@ private addressing to manage for the individually-addressed worker requirement,
 versus Tailscale handing each node a stable address for free. The service
 configuration is otherwise unchanged — only how hosts find each other differs.
 
-## Telemetry
+## Operating these environments
 
-Telemetry is configured identically to everywhere else — set the standard
-`OTEL_*` variables (and `TCAB_ENV`) on each service to export to your collector,
-authenticating with `OTEL_EXPORTER_OTLP_HEADERS` if it requires it. The full
-production guidance, including sampling, is under
-[Observability](/development/observability/#production-and-staging). Leaving
-`OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps a service on stdout-only logging, which
-is a valid production configuration.
+Two cross-cutting concerns have their own pages:
+
+- **[Backups](/deployment/backups/)** — the only irreplaceable data is the
+  backend's database, so backups reduce to protecting that one store. The
+  strategy is tied to the backend-hosting choice above: a SQLite backend on a VM
+  streams to object storage with Litestream, while managed PostgreSQL hands you
+  provider-managed point-in-time restore.
+- **[Telemetry](/deployment/telemetry/)** — choosing and wiring an OTLP collector
+  for staging and prod, tagged by `TCAB_ENV`. Enable it in both environments.

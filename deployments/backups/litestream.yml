@@ -1,0 +1,27 @@
+# Example Litestream configuration for backing up the backend's SQLite database.
+# See apps/docs/src/content/docs/deployment/backups.md.
+#
+# Run alongside tcab-backend (e.g. a systemd service):
+#   litestream replicate -config deployments/backups/litestream.yml
+#
+# Restore before starting the backend:
+#   litestream restore -config deployments/backups/litestream.yml /var/lib/test-cabinet/tcab-backend.sqlite
+#
+# Credentials come from the environment, NOT this file:
+#   LITESTREAM_ACCESS_KEY_ID, LITESTREAM_SECRET_ACCESS_KEY
+# Litestream needs the database on local disk and the DB in WAL mode (the backend
+# already runs WAL) — so pair this with the backend running on a VM.
+
+dbs:
+  # Must match TCAB_BACKEND_DB.
+  - path: /var/lib/test-cabinet/tcab-backend.sqlite
+    replicas:
+      # Cloudflare R2 (S3-compatible). For Azure Blob, use `type: abs` instead.
+      - type: s3
+        bucket: <backend-backups-bucket>
+        path: backend
+        endpoint: https://<r2-account-id>.r2.cloudflarestorage.com
+        region: auto
+        # Retain enough history for your target recovery window.
+        retention: 720h          # 30 days
+        snapshot-interval: 24h

@@ -116,9 +116,13 @@ Two ways to provide that private network are documented, and you can pick either
   which remain the authoritative reference for every variable each service reads.
 - **Telemetry** is opt-in and vendor-neutral and is configured the same way in
   every environment — by pointing the standard `OTEL_*` variables at a collector.
-  It is documented end to end under
-  [Observability](/development/observability/#production-and-staging); this
-  section does not repeat it, only notes where each service reads its endpoint.
+  The variables themselves are documented under
+  [Observability](/development/observability/); choosing and wiring a collector
+  for a deployment is covered in [Telemetry](/deployment/telemetry/).
+
+Two operational concerns get their own pages because they apply across every
+environment: keeping published runs safe ([Backups](/deployment/backups/)) and
+seeing what the services are doing ([Telemetry](/deployment/telemetry/)).
 
 ## Where to go next
 
@@ -126,3 +130,7 @@ Two ways to provide that private network are documented, and you can pick either
   together on one machine.
 - [Azure: staging & prod](/deployment/azure/) — the managed-backend +
   worker-VM build, for both environments.
+- [Backups](/deployment/backups/) — what's actually at risk (just the backend's
+  database) and how to protect it.
+- [Telemetry](/deployment/telemetry/) — choosing and wiring a collector for
+  staging and prod.

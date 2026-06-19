@@ -30,12 +30,20 @@ deployments/
 ├── systemd/
 │   ├── tcab-backend.service   # for the VM fallback (backend on a VM instead of Container Apps)
 │   └── tcab-worker.service    # worker on a VM
+├── backups/
+│   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
+├── telemetry/
+│   └── otel-collector.yaml    # example OTel Collector config for the Azure Monitor path
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example
     ├── worker.staging.env.example
     └── worker.prod.env.example
 ```
+
+See the docs' [Backups](apps/docs/src/content/docs/deployment/backups.md) and
+[Telemetry](apps/docs/src/content/docs/deployment/telemetry.md) pages for what
+`backups/` and `telemetry/` are for.
 
 ## Secrets
 

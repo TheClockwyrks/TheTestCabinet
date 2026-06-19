@@ -1,0 +1,40 @@
+# Example OpenTelemetry Collector config for the Azure Monitor telemetry path.
+# See apps/docs/src/content/docs/deployment/telemetry.md.
+#
+# The services export plain OTLP to this collector; the collector translates and
+# forwards to Azure Monitor / Application Insights. Run it as a sidecar or on its
+# own small host on the private network, and point each service's
+# OTEL_EXPORTER_OTLP_ENDPOINT at this collector's :4318.
+#
+# The connection string is a secret — inject it from your secret store as
+# APPLICATIONINSIGHTS_CONNECTION_STRING, do not commit it.
+
+receivers:
+  otlp:
+    protocols:
+      http:           # the binaries export OTLP over HTTP/protobuf (:4318)
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch: {}
+
+exporters:
+  azuremonitor:
+    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuremonitor]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuremonitor]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuremonitor]

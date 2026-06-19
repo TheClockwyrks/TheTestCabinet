@@ -247,6 +247,8 @@ export default defineConfig({
             "deployment/overview",
             "deployment/local",
             "deployment/azure",
+            "deployment/backups",
+            "deployment/telemetry",
           ],
         },
       ],
