@@ -9,6 +9,12 @@ declare module "*.module.scss" {
 
 declare module "*.css";
 
+// Image imports resolve to their emitted URL (e.g. the baked backdrop still).
+declare module "*.jpg" {
+  const src: string;
+  export default src;
+}
+
 // Side-effect stylesheet imports (e.g. the app's global.scss).
 declare module "*.scss";
 

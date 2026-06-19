@@ -9,6 +9,7 @@
     "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
     "preview": "vite preview",
     "screenshot": "node scripts/screenshot.mjs",
+    "capture-backdrop": "node scripts/capture-backdrop.mjs",
     "typecheck": "tsc -b tsconfig.json tsconfig.node.json"
   },
   "dependencies": {

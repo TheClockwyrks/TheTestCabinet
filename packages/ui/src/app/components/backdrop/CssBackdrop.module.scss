@@ -43,3 +43,16 @@
   transform-origin: top center;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 70%);
 }
+
+// The baked WebGL still, covering the glow/grid once it decodes. `cover` keeps it
+// filling the viewport across aspect ratios; the scene's horizon sits near the
+// vertical middle, so a centered crop reads well. Decorative and opaque, so it
+// fully replaces the placeholder grid underneath without any blending.
+.still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
