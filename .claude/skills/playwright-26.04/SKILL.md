@@ -41,10 +41,10 @@ To persist the override for interactive shells, add the same `case` block to
 ## Install Chromium
 
 After the override is set, install Playwright's managed Chromium browser from
-the frontend package that owns the Playwright dependency:
+the package that owns the Playwright dependency (`packages/browser-driver`):
 
 ```sh
-cd tools/juno/frontend
+cd packages/browser-driver
 npx playwright install chromium
 ```
 
@@ -76,7 +76,7 @@ listed by Playwright before retrying.
 Verify Chromium can launch before relying on screenshots:
 
 ```sh
-cd tools/juno/frontend
+cd packages/browser-driver
 node - <<'EOF'
 const { chromium } = require("playwright");
 
@@ -88,16 +88,17 @@ const { chromium } = require("playwright");
 EOF
 ```
 
-## Juno Screenshot Script
+## Gallery Screenshot Script
 
-Juno's screenshot script sets `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE` automatically
-when it detects Ubuntu 26.04 on `x64` or `arm64`, unless the environment already
-sets an explicit override. This keeps screenshot capture working across both
-amd64 and aarch64 hosts without hard-coding one host architecture.
+The gallery site's screenshot helper (`apps/site/scripts/screenshot.mjs`) sets
+`PLAYWRIGHT_HOST_PLATFORM_OVERRIDE` automatically when it detects Ubuntu 26.04 on
+`x64` or `arm64`, unless the environment already sets an explicit override. This
+keeps screenshot capture working across both amd64 and aarch64 hosts without
+hard-coding one host architecture.
 
-Run the screenshot helper from Juno's frontend folder:
+Run the screenshot helper from the gallery site folder:
 
 ```sh
-cd tools/juno/frontend
-npm run screenshot -- / tmp/screenshots/juno-index.png
+cd apps/site
+npm run screenshot -- / tmp/screenshots/index.png
 ```
