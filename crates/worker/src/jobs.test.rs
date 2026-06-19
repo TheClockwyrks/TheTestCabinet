@@ -4,6 +4,17 @@
 use super::*;
 use test_cabinet_core::EventKind;
 
+/// A throwaway run summary for jobs whose display identity is irrelevant to the
+/// assertion under test.
+fn summary() -> RunSummary {
+    RunSummary {
+        test_case_slug: "pong".to_string(),
+        variant: "base".to_string(),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-sonnet-4-5".to_string(),
+    }
+}
+
 /// Build a trivial agent event with the given message, for log/stream assertions.
 fn agent_event(message: &str) -> HarnessEvent {
     HarnessEvent {
@@ -20,8 +31,8 @@ fn create_registers_a_running_job_with_a_unique_id() {
     let registry = JobRegistry::new();
     assert!(registry.is_empty());
 
-    let a = registry.create();
-    let b = registry.create();
+    let a = registry.create(summary());
+    let b = registry.create(summary());
     assert_ne!(a.id(), b.id(), "each job gets a fresh id");
     assert_eq!(registry.len(), 2);
 
@@ -35,7 +46,7 @@ fn create_registers_a_running_job_with_a_unique_id() {
 #[test]
 fn get_returns_the_same_job_and_none_for_unknown() {
     let registry = JobRegistry::new();
-    let job = registry.create();
+    let job = registry.create(summary());
     let id = job.id().to_string();
     assert_eq!(registry.get(&id).unwrap().id(), id);
     assert!(registry.get("does-not-exist").is_none());
@@ -44,7 +55,7 @@ fn get_returns_the_same_job_and_none_for_unknown() {
 #[test]
 fn finish_failed_records_the_reason_and_terminates() {
     let registry = JobRegistry::new();
-    let job = registry.create();
+    let job = registry.create(summary());
     job.finish_failed("the container would not start");
 
     assert!(job.terminal_for_test());
@@ -57,10 +68,40 @@ fn finish_failed_records_the_reason_and_terminates() {
     assert!(status.record.is_none());
 }
 
+#[test]
+fn active_lists_running_jobs_and_drops_finished_ones() {
+    let registry = JobRegistry::new();
+    let running = registry.create(RunSummary {
+        test_case_slug: "pong".to_string(),
+        variant: "base".to_string(),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-haiku-4-5".to_string(),
+    });
+    let finishing = registry.create(summary());
+
+    // Both are running, so both are active; each entry carries its summary and a
+    // `running` state.
+    let active = registry.active();
+    assert_eq!(active.len(), 2);
+    let running_entry = active
+        .iter()
+        .find(|a| a.run_id == running.id())
+        .expect("the running job is listed");
+    assert_eq!(running_entry.summary.model_id, "claude-haiku-4-5");
+    assert_eq!(running_entry.state, "running");
+
+    // Once a job reaches a terminal state it is no longer active — it is now a
+    // produced run, listed by `/runs` instead.
+    finishing.finish_failed("boom");
+    let active = registry.active();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].run_id, running.id());
+}
+
 #[tokio::test]
 async fn subscribe_replays_the_backlog_then_streams_live_events() {
     let registry = JobRegistry::new();
-    let job = registry.create();
+    let job = registry.create(summary());
 
     // Two events arrive before anyone subscribes; they must still be delivered.
     job.push_event(agent_event("first"));
@@ -98,7 +139,7 @@ async fn subscribe_replays_the_backlog_then_streams_live_events() {
 #[test]
 fn subscribing_after_completion_reports_terminated_with_full_backlog() {
     let registry = JobRegistry::new();
-    let job = registry.create();
+    let job = registry.create(summary());
     job.push_event(agent_event("only"));
     job.finish_failed("boom");
 

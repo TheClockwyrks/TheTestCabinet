@@ -5,6 +5,7 @@
 // is imported lazily so the bundle still loads in a plain browser (where the
 // commands are absent) for development; `isTauri` gates the calls.
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { InProgressRun, RunNotification } from "@test-cabinet/ui/client";
 
 export function isTauri(): boolean {
   return (
@@ -169,6 +170,10 @@ export const readSpecs = (slug: string, version: string, variant: string) =>
   invoke<Specification>("read_specs", { slug, version, variant });
 export const launchRun = (config: LaunchConfig) =>
   invoke<string>("launch_run", { config });
+// The runs the shell is currently executing, by launch identity — the desktop
+// equivalent of the worker's `GET /runs/active`. The DTO matches `InProgressRun`.
+export const listActiveRuns = () =>
+  invoke<InProgressRun[]>("list_active_runs");
 export const listRuns = () => invoke<StoredRun[]>("list_runs");
 export const readRun = (id: string) => invoke<StoredRun>("read_run", { id });
 export const readRunEvents = (id: string) =>
@@ -201,3 +206,9 @@ export const publishRun = (id: string) =>
 
 export const eventChannel = (runId: string) => `run://${runId}/event`;
 export const doneChannel = (runId: string) => `run://${runId}/done`;
+
+// The worker-wide run-completion channel (a single global event, not per-run) the
+// shell emits on each run finishing — mirrors `crates/desktop`'s `NOTIFY_CHANNEL`.
+export const notifyChannel = "notifications://run";
+// Re-exported so the worker transport can type the listener payload.
+export type { RunNotification };

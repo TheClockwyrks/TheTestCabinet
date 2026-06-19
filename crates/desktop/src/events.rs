@@ -24,6 +24,42 @@ pub fn done_channel(run_id: &str) -> String {
     format!("run://{run_id}/done")
 }
 
+/// The worker-wide notification channel: one event per run completion, regardless
+/// of which run (or none) the UI is currently watching. The desktop equivalent of
+/// the worker's `GET /notifications` SSE stream — the console listens to it once
+/// to raise completion alerts without holding a per-run subscription open.
+pub const NOTIFY_CHANNEL: &str = "notifications://run";
+
+/// A worker-wide run-completion notification, emitted on [`NOTIFY_CHANNEL`].
+///
+/// Mirrors the worker's `WorkerNotification` field-for-field so the console
+/// deserializes both transports into one notification type: a `completed` run
+/// carries the `recordId` to open; a `failed` run carries the `message`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunNotification {
+    /// The notification kind; only `run-completed` exists today.
+    pub kind: &'static str,
+    /// The live stream/job id the run was observed under.
+    pub job_id: String,
+    /// The test-case slug that ran.
+    pub test_case_slug: String,
+    /// The variant that ran.
+    pub variant: String,
+    /// The harness that drove the run, as its slug string.
+    pub harness_slug: String,
+    /// The model id passed to the harness.
+    pub model_id: String,
+    /// How the run ended: `completed` (produced a record) or `failed`.
+    pub outcome: &'static str,
+    /// The produced record's id, present when `outcome` is `completed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_id: Option<String>,
+    /// The failure reason, present when `outcome` is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// An [`EventSink`] that forwards each harness event to the webview.
 ///
 /// Each emitted event is tagged with the launch-assigned `run_id` so the UI can

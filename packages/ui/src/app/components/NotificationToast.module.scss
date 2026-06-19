@@ -1,0 +1,61 @@
+@use "../../styles/tokens" as t;
+
+// The toast's inner layout: the message on the left, a dismiss control on the
+// right. The toastify container chrome (background, position, animation) is
+// themed in `notifications.scss`; this owns only the content.
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: t.$space-sm;
+  width: 100%;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.link {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  color: t.$color-text;
+  text-decoration: none;
+}
+
+a.link:hover .body {
+  color: t.$color-text;
+}
+
+.title {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-positive;
+
+  &[data-failed] {
+    color: t.$color-negative;
+  }
+}
+
+.body {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dismiss {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-lg;
+  line-height: 1;
+  padding: 0 t.$space-2xs;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}

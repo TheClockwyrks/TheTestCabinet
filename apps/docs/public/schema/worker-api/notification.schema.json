@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/notification.schema.json",
+  "title": "WorkerNotification",
+  "description": "One worker-wide notification, the `data` payload of a Server-Sent Event on GET /notifications. The stream is live-only (no backlog): a completion that occurs while no client is connected is not delivered — the run still surfaces as a produced run and drops out of GET /runs/active. Today the only kind is `run-completed`, emitted once per run reaching a terminal state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "jobId", "testCaseSlug", "variant", "harnessSlug", "modelId", "outcome"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "The notification kind. Only `run-completed` exists today; carried explicitly so a client can switch on it as more are added.",
+      "enum": ["run-completed"]
+    },
+    "jobId": {
+      "type": "string",
+      "description": "The live stream/job id the run was observed under.",
+      "minLength": 1
+    },
+    "testCaseSlug": {
+      "type": "string",
+      "description": "The test-case slug that ran (e.g. `pong`)."
+    },
+    "variant": {
+      "type": "string",
+      "description": "The variant that ran (e.g. `base`)."
+    },
+    "harnessSlug": {
+      "type": "string",
+      "description": "The harness that drove the run, as its slug string."
+    },
+    "modelId": {
+      "type": "string",
+      "description": "The model id passed to the harness."
+    },
+    "outcome": {
+      "type": "string",
+      "description": "How the run ended. `completed` means it produced a record (the record's own `status.state` distinguishes a completed run from one classified as failed/unevaluable); `failed` means it could not be driven to a record at all.",
+      "enum": ["completed", "failed"]
+    },
+    "recordId": {
+      "type": "string",
+      "description": "The produced run record's id — what a client links the alert to. Present only when `outcome` is `completed`; omitted otherwise."
+    },
+    "message": {
+      "type": "string",
+      "description": "A human-readable failure reason. Present only when `outcome` is `failed`; omitted otherwise."
+    }
+  }
+}

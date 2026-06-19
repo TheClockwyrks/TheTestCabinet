@@ -5,9 +5,14 @@
 // reviewer works through are catalog data, read from the backend instead.
 // Enumerating produced runs reads the worker's `GET /runs`, which lists the run
 // records it has written to its output directory.
-import type { WorkerClient, RunSubscription } from "@test-cabinet/ui/client";
+import type {
+  WorkerClient,
+  RunSubscription,
+  NotificationSubscription,
+} from "@test-cabinet/ui/client";
 import type {
   HarnessEvent,
+  InProgressRun,
   LaunchConfig,
   ProgressCallback,
   PublishResult,
@@ -15,6 +20,7 @@ import type {
   ReviewDocumentInput,
   RunEventStreams,
   RunJob,
+  RunNotification,
   StoredRun,
   WorkerIdentity,
 } from "@test-cabinet/ui/client";
@@ -130,6 +136,29 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       const controller = new AbortController();
       void streamEvents(baseUrl, runId, handlers, controller);
       return () => controller.abort();
+    },
+
+    async listActiveRuns(): Promise<InProgressRun[]> {
+      // The worker reports its still-running jobs by launch identity; the row
+      // shape is the console's in-progress run verbatim.
+      return getJson<InProgressRun[]>(baseUrl, "/runs/active");
+    },
+
+    subscribeToNotifications(handlers: NotificationSubscription): () => void {
+      // An EventSource holds one long-lived SSE connection and reconnects on its
+      // own if it drops — exactly what an always-on notifications channel wants.
+      const source = new EventSource(joinUrl(baseUrl, "/notifications"));
+      source.onmessage = (event) => {
+        try {
+          handlers.onNotification(JSON.parse(event.data) as RunNotification);
+        } catch {
+          // A malformed payload shouldn't tear down the channel; drop it.
+        }
+      };
+      // EventSource surfaces a connection drop as an error and then retries; pass
+      // it on for visibility but keep the connection open for the auto-reconnect.
+      source.onerror = (event) => handlers.onError?.(event);
+      return () => source.close();
     },
 
     async listRuns(): Promise<StoredRun[]> {

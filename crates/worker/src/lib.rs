@@ -22,6 +22,7 @@ pub mod config;
 pub mod error;
 pub mod jobs;
 pub mod metrics;
+pub mod notify;
 pub mod runner;
 
 use std::sync::Arc;
@@ -29,6 +30,7 @@ use std::sync::Arc;
 use crate::api::AppState;
 use crate::config::Config;
 use crate::jobs::JobRegistry;
+use crate::notify::WorkerNotifier;
 
 /// A fully wired, runnable worker: the Axum router plus the resolved bind address.
 pub struct Worker {
@@ -46,6 +48,7 @@ pub fn build(config: Config) -> Worker {
     let state = AppState {
         config: Arc::new(config),
         jobs: JobRegistry::new(),
+        notifier: WorkerNotifier::new(),
         metrics: crate::metrics::Metrics::new(),
     };
     let router = api::router(state);

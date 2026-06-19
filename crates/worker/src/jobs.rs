@@ -36,6 +36,38 @@ pub enum JobState {
     Failed,
 }
 
+/// The display identity of a run, captured at submit time so the active-run list
+/// can describe a job without waiting for the record it only gains at completion.
+/// Mirrors the console's `InProgressRun` shape (camelCase in JSON).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSummary {
+    /// The test-case slug being run (e.g. `pong`).
+    pub test_case_slug: String,
+    /// The variant being run (e.g. `base`).
+    pub variant: String,
+    /// The harness driving the run, as its slug string.
+    pub harness_slug: String,
+    /// The opaque model id passed to the harness.
+    pub model_id: String,
+}
+
+/// One currently-running job, as `GET /runs/active` reports it: the live
+/// stream/job id plus the run's display identity. `state` is always `running` —
+/// a job that reaches a terminal state is no longer active and drops out of the
+/// list. The flattened shape matches the console's `InProgressRun`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveRun {
+    /// The live stream/job id (`POST /runs` returns this).
+    pub run_id: String,
+    /// The run's display identity.
+    #[serde(flatten)]
+    pub summary: RunSummary,
+    /// Always `running`; an active run has not yet reached a terminal state.
+    pub state: &'static str,
+}
+
 /// A point-in-time view of a job, returned by the status endpoint.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,6 +106,9 @@ enum JobStateInner {
 #[derive(Debug, Clone)]
 pub struct Job {
     id: String,
+    /// The run's display identity, fixed at submit. Lets the active-run list
+    /// describe the job before it has produced a record.
+    summary: Arc<RunSummary>,
     inner: Arc<Mutex<JobInner>>,
     /// Live event fan-out. New subscribers are first replayed the backlog held in
     /// `inner.events`, then receive everything published after they subscribed.
@@ -94,6 +129,22 @@ impl Job {
     /// The job's id.
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// The run's display identity (test case, variant, harness, model).
+    pub fn summary(&self) -> &RunSummary {
+        &self.summary
+    }
+
+    /// This job as an active-run entry, or `None` once it has reached a terminal
+    /// state (a finished job is no longer "in progress").
+    fn active_entry(&self) -> Option<ActiveRun> {
+        let inner = self.inner.lock().expect("job mutex poisoned");
+        matches!(inner.state, JobStateInner::Running).then(|| ActiveRun {
+            run_id: self.id.clone(),
+            summary: (*self.summary).clone(),
+            state: "running",
+        })
     }
 
     /// Append an event to the log and publish it to every live subscriber.
@@ -211,12 +262,14 @@ impl JobRegistry {
         Self::default()
     }
 
-    /// Register a fresh job under a new id and return its handle.
-    pub fn create(&self) -> Job {
+    /// Register a fresh job under a new id and return its handle. The `summary`
+    /// describes the run for the active-run list before it has a record.
+    pub fn create(&self, summary: RunSummary) -> Job {
         let id = uuid::Uuid::new_v4().to_string();
         let (tx, _rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let job = Job {
             id: id.clone(),
+            summary: Arc::new(summary),
             inner: Arc::new(Mutex::new(JobInner::default())),
             tx,
         };
@@ -225,6 +278,18 @@ impl JobRegistry {
             .expect("registry mutex poisoned")
             .insert(id, job.clone());
         job
+    }
+
+    /// Every job still running, newest registration order not guaranteed (the
+    /// console sorts for display). A job that has reached a terminal state is
+    /// excluded — it is now a produced run, not an in-progress one.
+    pub fn active(&self) -> Vec<ActiveRun> {
+        self.jobs
+            .lock()
+            .expect("registry mutex poisoned")
+            .values()
+            .filter_map(Job::active_entry)
+            .collect()
     }
 
     /// Look up a job by id.

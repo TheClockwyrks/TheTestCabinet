@@ -70,6 +70,53 @@ a.row {
   }
 }
 
+// A still-running row: the same grid as a finished row, distinguished by the
+// spinner in the caret gutter and a faint accent wash so the live runs read as a
+// pinned band atop the log.
+.row[data-active] {
+  background: color-mix(in srgb, t.$color-accent 8%, transparent);
+}
+
+.row[data-failed] {
+  background: color-mix(in srgb, t.$color-negative 8%, transparent);
+}
+
+// The spinner occupies the caret column (the row's first cell). Animates while a
+// run is in flight; a failed row freezes it in the negative color.
+.spinner {
+  justify-self: center;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  border: 2px solid t.$color-accent;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+
+  .row[data-failed] & {
+    animation: none;
+    border-color: t.$color-negative;
+    border-top-color: t.$color-negative;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// The status cell of an active row, in place of a rating: "running…" or "failed".
+.activeStatus {
+  display: flex;
+  align-items: center;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+
+  .row[data-failed] & {
+    color: t.$color-negative;
+  }
+}
+
 .test {
   display: flex;
   align-items: center;

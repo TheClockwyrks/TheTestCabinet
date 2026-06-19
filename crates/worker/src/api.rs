@@ -23,7 +23,9 @@ use tower_http::trace::TraceLayer;
 use crate::config::Config;
 use crate::jobs::JobRegistry;
 use crate::metrics::Metrics;
+use crate::notify::WorkerNotifier;
 
+mod notify;
 mod publish_api;
 mod runs;
 
@@ -34,6 +36,9 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The registry of submitted run jobs.
     pub jobs: JobRegistry,
+    /// The worker-wide notification fan-out (run completions), streamed to the
+    /// console over `GET /notifications`.
+    pub notifier: WorkerNotifier,
     /// The worker's OTel metric instruments.
     pub metrics: Metrics,
 }
@@ -49,7 +54,14 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(health))
         // Submit a run (returns a job id), list produced runs, look one up by id.
         .route("/runs", post(runs::submit).get(runs::list_produced))
+        // The runs still executing, for the console's in-progress list (survives a
+        // reload, unlike the session-only client state). A static path, so it
+        // outranks the `/runs/{job}` dynamic route regardless of order.
+        .route("/runs/active", get(runs::list_active))
         .route("/runs/{job}", get(runs::status))
+        // The worker-wide notification stream (run completions) as Server-Sent
+        // Events, so the console can alert on any run finishing without polling.
+        .route("/notifications", get(notify::notifications))
         // The live harness-event stream for a job, as NDJSON.
         .route("/runs/{job}/events", get(runs::events))
         // A finished run's recorded streams, served from disk as NDJSON: the

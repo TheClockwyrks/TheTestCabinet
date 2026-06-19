@@ -70,6 +70,10 @@ pub fn run() {
     .expect("initialize telemetry");
 
     tauri::Builder::default()
+        // The shell's registry of in-flight runs, so `list_active_runs` can rebuild
+        // the console's in-progress list after a reload (the embedded core has no
+        // job registry of its own — see `commands::ActiveRuns`).
+        .manage(commands::ActiveRuns::default())
         // Serve produced runs' playable builds to the webview so a reviewer can
         // play an unpublished run (see `playable`). The build's HTML and assets
         // are read from disk per request and relocated under the run's base URL.
@@ -85,6 +89,7 @@ pub fn run() {
             commands::resolve_version,
             commands::read_specs,
             commands::launch_run,
+            commands::list_active_runs,
             commands::list_runs,
             commands::read_run,
             commands::read_run_events,

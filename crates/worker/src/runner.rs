@@ -20,6 +20,7 @@ use test_cabinet_core::{
 };
 
 use crate::jobs::{Job, JobEventSink};
+use crate::notify::{WorkerNotification, WorkerNotifier};
 
 /// Everything the worker needs to drive a run, derived once from the config and
 /// shared (cheaply cloned) into each background run task.
@@ -38,14 +39,24 @@ pub struct RunContext {
 /// Resolves the requested version from the backend, materializes it to disk,
 /// assembles the orchestrator, and runs it — emitting the harness's live events
 /// onto the job as they arrive. On success the produced [`RunRecord`] is recorded
-/// on the job; on any failure the job is marked failed with the reason. This
-/// function never returns an error: a run's outcome (including a hard failure to
-/// even start) is the job's terminal state, so the background task that calls it
-/// has nothing left to handle.
-pub async fn drive_run(ctx: RunContext, request: RunRequest, job: Job) {
+/// on the job; on any failure the job is marked failed with the reason. Either
+/// way a worker-wide completion notification is published to `notifier` so the
+/// console can alert without watching the live stream. This function never
+/// returns an error: a run's outcome (including a hard failure to even start) is
+/// the job's terminal state, so the background task that calls it has nothing
+/// left to handle.
+pub async fn drive_run(ctx: RunContext, request: RunRequest, job: Job, notifier: WorkerNotifier) {
     match run_inner(&ctx, &request, &job).await {
-        Ok(record) => job.finish_succeeded(record),
-        Err(detail) => job.finish_failed(detail),
+        Ok(record) => {
+            let notification = WorkerNotification::completed(job.id(), job.summary(), &record.id);
+            job.finish_succeeded(record);
+            notifier.notify(notification);
+        }
+        Err(detail) => {
+            let notification = WorkerNotification::failed(job.id(), job.summary(), &detail);
+            job.finish_failed(detail);
+            notifier.notify(notification);
+        }
     }
 }
 

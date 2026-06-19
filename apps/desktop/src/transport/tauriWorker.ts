@@ -5,7 +5,9 @@
 import {
   NotSupportedError,
   type HarnessEvent,
+  type NotificationSubscription,
   type RunJob,
+  type RunNotification,
   type RunOutcome,
   type RunSubscription,
   type WorkerClient,
@@ -58,6 +60,25 @@ export function createTauriWorker(): WorkerClient {
         cancelled = true;
         unEvent?.();
         unDone?.();
+      };
+    },
+
+    listActiveRuns: () => api.listActiveRuns(),
+
+    subscribeToNotifications(handlers: NotificationSubscription): () => void {
+      let un: (() => void) | null = null;
+      let cancelled = false;
+      // A single global Tauri event carries every run's completion — the desktop
+      // equivalent of the worker's `/notifications` SSE stream.
+      api
+        .listen<RunNotification>(api.notifyChannel, (n) =>
+          handlers.onNotification(n),
+        )
+        .then((u) => (cancelled ? u() : (un = u)))
+        .catch((err) => handlers.onError?.(err));
+      return () => {
+        cancelled = true;
+        un?.();
       };
     },
 

@@ -6,7 +6,7 @@ import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog } from "../../components/RunLog";
 import { findModelByModelId } from "../../data/models";
-import { useGalleryData } from "../../data/galleryContext";
+import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
 import { useRuns } from "../../data/useRuns";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { formatSlug } from "../../format";
@@ -38,6 +38,17 @@ export function RunsPage() {
     return recent.filter((run) => searchText(run).includes(needle));
   }, [runs, query]);
 
+  // Runs still executing, narrowed by the same query so search behaves uniformly.
+  // Only the consoles have these (the static site's runtime is always empty).
+  const activeRuns = useMemo(() => {
+    if (!canExecute) return [];
+    const needle = query.trim().toLowerCase();
+    if (!needle) return inProgress;
+    return inProgress.filter((run) =>
+      activeSearchText(run).includes(needle),
+    );
+  }, [canExecute, inProgress, query]);
+
   // A new query reshapes the result set, so jump back to the first page.
   useEffect(() => {
     setPage(0);
@@ -49,6 +60,10 @@ export function RunsPage() {
   const current = Math.min(page, pageCount - 1);
   const start = current * PAGE_SIZE;
   const pageRuns = matched.slice(start, start + PAGE_SIZE);
+  // In-progress runs lead the list, pinned to the first page so they don't repeat
+  // across pages. A run only here until it finishes — then it joins `matched`.
+  const showActive = activeRuns.length > 0 && current === 0;
+  const hasContent = matched.length > 0 || showActive;
 
   return (
     <PageLayout>
@@ -65,27 +80,6 @@ export function RunsPage() {
         )}
       </div>
 
-      {canExecute && inProgress.length > 0 && (
-        <div className={exec.inProgress}>
-          {inProgress.map((run) => (
-            <Link
-              key={run.runId}
-              to={routes.runMonitor(run.runId)}
-              className={`${exec.inProgressRow} ${run.state === "failed" ? exec.inProgressFailed : ""}`}
-            >
-              <span className={exec.spinner} aria-hidden="true" />
-              <span>
-                {formatSlug(run.testCaseSlug)} · {run.harnessSlug} ·{" "}
-                {run.variant} · {run.modelId}
-              </span>
-              <span className={exec.muted}>
-                {run.state === "failed" ? "failed" : "running…"}
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
-
       <div className={styles.controls}>
         <input
           className={styles.search}
@@ -97,7 +91,7 @@ export function RunsPage() {
         />
       </div>
 
-      {matched.length === 0 ? (
+      {!hasContent ? (
         <p className={styles.empty}>
           {runs.length === 0
             ? "No runs have been published yet."
@@ -107,6 +101,7 @@ export function RunsPage() {
         <section className={styles.results}>
           <RunLog
             runs={pageRuns}
+            active={showActive ? activeRuns : []}
             localIds={localIds}
             localWriteups={localWriteups}
           />
@@ -133,6 +128,23 @@ function searchText(run: RunRecord): string {
     subject.harnessSlug,
     model?.name ?? "",
     subject.modelId,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+// Case-insensitive haystack for an in-progress run: the same three subjects as a
+// finished row (test case, harness, model) plus its variant, so the search
+// narrows live and finished runs alike.
+function activeSearchText(run: InProgressRun): string {
+  const model = findModelByModelId(run.modelId);
+  return [
+    formatSlug(run.testCaseSlug),
+    run.testCaseSlug,
+    run.harnessSlug,
+    run.variant,
+    model?.name ?? "",
+    run.modelId,
   ]
     .join(" ")
     .toLowerCase();

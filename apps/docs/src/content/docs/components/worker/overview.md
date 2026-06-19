@@ -57,6 +57,12 @@ rather than holding one request open for the whole run:
   consoles read this to surface produced-but-unpublished runs in the gallery.
   Response schema:
   [`worker-api/produced-runs.schema.json`](https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json).
+- `GET /runs/active` — the runs this worker is **currently executing**, each by
+  the launch identity captured at submit (`runId`, `testCaseSlug`, `variant`,
+  `harnessSlug`, `modelId`). A job that reaches a terminal state drops out of this
+  list (it is then a produced run). The consoles seed their in-progress list from
+  it so a run being watched survives a page reload. Response schema:
+  [`worker-api/active-runs.schema.json`](https://docs.testcabinet.ai/schema/worker-api/active-runs.schema.json).
 - `GET /runs/{job}` — the job's current status (`running` | `succeeded` |
   `failed`), and the produced [run record](/components/core/run-records/) once it
   has finished (or the failure `detail`). `404` for an unknown job id. Schema:
@@ -74,6 +80,15 @@ rather than holding one request open for the whole run:
   normalized event log, the second the raw harness output it was mapped from;
   together they back the run-detail Events tab after a run finishes. `404` when
   the run or that stream is absent.
+- `GET /notifications` — a worker-wide [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
+  stream of run completions, one event per run reaching a terminal state (`kind`
+  `run-completed`). Distinct from `/runs/{job}/events` (a single run's events):
+  the console subscribes here once to raise a completion alert without polling
+  and without holding a per-run subscription open. The stream is **live-only** —
+  it replays no backlog, so a completion that occurs while no client is connected
+  is not delivered (the run still surfaces via `/runs` and drops out of
+  `/runs/active`). Each event's `data` is a
+  [`worker-api/notification.schema.json`](https://docs.testcabinet.ai/schema/worker-api/notification.schema.json).
 - `POST /publish` — [publish](/components/core/results/) a finished run on the
   same terms a local `tcab publish` does (release the source repo, deploy the
   build, submit the record + review + links to the

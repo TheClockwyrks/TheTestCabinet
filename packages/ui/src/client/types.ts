@@ -176,6 +176,39 @@ export interface RunJob {
   message: string | null;
 }
 
+// A run a worker is currently executing, as `listActiveRuns` returns it (the web
+// worker's `GET /runs/active`, the desktop `list_active_runs` command). A run only
+// gains a RunRecord at completion, so an in-progress run is described by its launch
+// identity instead. `state` is "running" off the wire; the console widens it to
+// "failed" for a run it has locally observed fail before it dropped out of the
+// list. This is the canonical shape; the gallery re-exports it as `InProgressRun`.
+export interface InProgressRun {
+  runId: string;
+  testCaseSlug: string;
+  variant: string;
+  harnessSlug: string;
+  modelId: string;
+  state: "running" | "failed";
+}
+
+// A worker-wide run-completion notification, pushed to the console without
+// polling (SSE over `GET /notifications` on web; a global Tauri event on desktop).
+// Mirrors the worker's `WorkerNotification` / desktop `RunNotification` field for
+// field, so both transports deserialize into this one type. `recordId` (the run to
+// open) is present when `outcome` is "completed"; `message` (the reason) when
+// "failed".
+export interface RunNotification {
+  kind: "run-completed";
+  jobId: string;
+  testCaseSlug: string;
+  variant: string;
+  harnessSlug: string;
+  modelId: string;
+  outcome: "completed" | "failed";
+  recordId?: string | null;
+  message?: string | null;
+}
+
 // --- Service identity (for the backend-consistency check) ---
 
 // The backend a UI is pointed at, from `GET /healthz`. `id` identifies the

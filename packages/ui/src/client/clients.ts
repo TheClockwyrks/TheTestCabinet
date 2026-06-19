@@ -7,6 +7,7 @@
 import type {
   BackendIdentity,
   HarnessEvent,
+  InProgressRun,
   LaunchConfig,
   Model,
   ProgressCallback,
@@ -16,6 +17,7 @@ import type {
   ReviewVerdict,
   RunEventStreams,
   RunJob,
+  RunNotification,
   RunOutcome,
   RunPage,
   Specification,
@@ -100,6 +102,14 @@ export interface RunSubscription {
   onError?: (error: unknown) => void;
 }
 
+// Handlers for the worker-wide notification subscription. `onNotification` fires
+// once per run completion across the whole worker; `onError` reports a transport
+// fault (the web `EventSource` reconnects on its own afterward).
+export interface NotificationSubscription {
+  onNotification: (notification: RunNotification) => void;
+  onError?: (error: unknown) => void;
+}
+
 // A worker: a runner that executes a test case and produces a run record. It
 // owns run jobs and publishing; it does NOT serve the catalog. Mirrors the
 // worker HTTP API (components/worker/overview.md). In Tauri the "local worker"
@@ -124,6 +134,22 @@ export interface WorkerClient {
    * run reaches a terminal state.
    */
   subscribeToRun(runId: string, handlers: RunSubscription): () => void;
+
+  /**
+   * The runs this worker is currently executing (`GET /runs/active`), each by its
+   * launch identity. The console seeds its in-progress list from this so a run it
+   * is watching survives a page reload. A worker that can't enumerate them
+   * resolves an empty list.
+   */
+  listActiveRuns(): Promise<InProgressRun[]>;
+
+  /**
+   * Subscribe to the worker-wide run-completion stream (`GET /notifications`),
+   * for raising completion alerts without polling or a per-run subscription.
+   * Returns an unsubscribe function. The stream is live-only — it does not replay
+   * completions that happened before connecting.
+   */
+  subscribeToNotifications(handlers: NotificationSubscription): () => void;
 
   /**
    * Finished runs this worker produced that are awaiting review/publish. May

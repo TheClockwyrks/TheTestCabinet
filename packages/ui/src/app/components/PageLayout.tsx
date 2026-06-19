@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
+import { selectUnreadCount, useNotifications } from "../runtime/notifications";
+import { BellIcon } from "./BellIcon";
 import { CabinetIcon } from "./CabinetIcon";
 import styles from "./PageLayout.module.scss";
 import exec from "../pages/runs/RunExec.module.scss";
@@ -73,6 +75,9 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
             ))}
           </nav>
           <div className={styles.controls}>
+            {/* The notifications bell is a console-only affordance (runs only
+                complete where they can be launched); the static site omits it. */}
+            {canExecute && <NotificationsBell />}
             <NavLink
               to={routes.settingsAppearance()}
               className={exec.gear}
@@ -88,5 +93,30 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
         {children}
       </main>
     </div>
+  );
+}
+
+// The topbar notifications bell: opens the slide-out notifications sidebar and
+// shows an unread dot while any notification is unread. The notification list and
+// sidebar state live in the shared `useNotifications` store, so this only reads
+// the unread count and toggles the panel.
+function NotificationsBell() {
+  const unread = useNotifications(selectUnreadCount);
+  const toggleSidebar = useNotifications((s) => s.toggleSidebar);
+  const label =
+    unread > 0
+      ? `Notifications (${unread} unread)`
+      : "Notifications";
+  return (
+    <button
+      type="button"
+      className={styles.bell}
+      onClick={toggleSidebar}
+      aria-label={label}
+      title={label}
+    >
+      <BellIcon />
+      {unread > 0 && <span className={styles.bellDot} aria-hidden="true" />}
+    </button>
   );
 }

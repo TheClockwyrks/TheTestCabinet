@@ -1,6 +1,7 @@
 import type { RunRecord } from "@test-cabinet/run-record";
 import { Link } from "react-router";
 import { RatingBadge } from "@test-cabinet/ui";
+import type { InProgressRun } from "../../client/types";
 import { UnpublishedTag } from "./UnpublishedTag";
 import type { Rating } from "../data/ratings";
 import { useFindReview } from "../data/writeups";
@@ -31,6 +32,13 @@ interface RunLogProps {
   localIds: ReadonlySet<string>;
   /** Raw local writeups, keyed by run id, used to resolve a run's rating. */
   localWriteups: Readonly<Record<string, string>>;
+  /**
+   * Runs still executing, rendered as spinner rows pinned above the finished
+   * ones (each links to its live monitor instead of a run detail). A run gains no
+   * record until it completes, so these can't be ordinary rows; they share the
+   * table so the styling matches. Defaults to none.
+   */
+  active?: InProgressRun[];
   /** Column set to render. Defaults to the full cross-case layout. */
   scope?: RunLogScope;
 }
@@ -43,6 +51,7 @@ export function RunLog({
   runs,
   localIds,
   localWriteups,
+  active = [],
   scope = "global",
 }: RunLogProps) {
   // The test/variant columns are constant on a variant-scoped log; the model
@@ -62,6 +71,14 @@ export function RunLog({
         <span className={styles.num}>COST</span>
         <span>RATING</span>
       </div>
+      {active.map((run) => (
+        <ActiveRow
+          key={run.runId}
+          run={run}
+          showCase={showCase}
+          showModel={showModel}
+        />
+      ))}
       {runs.map((run) => (
         <RunRow
           key={run.id}
@@ -73,6 +90,43 @@ export function RunLog({
         />
       ))}
     </div>
+  );
+}
+
+// A run still executing, rendered in the same grid as a finished row. The left
+// caret gutter holds a spinner instead of the hover chevron; the metric and
+// rating cells show placeholders since a run has no record (and so no metrics)
+// until it finishes. The whole row links to the live monitor.
+function ActiveRow({
+  run,
+  showCase,
+  showModel,
+}: {
+  run: InProgressRun;
+  showCase: boolean;
+  showModel: boolean;
+}) {
+  const failed = run.state === "failed";
+  return (
+    <Link
+      to={routes.runMonitor(run.runId)}
+      className={styles.row}
+      data-active=""
+      data-failed={failed ? "" : undefined}
+    >
+      <span className={styles.spinner} aria-hidden="true" />
+      {showCase && (
+        <span className={styles.test}>{formatSlug(run.testCaseSlug)}</span>
+      )}
+      <span className={styles.harness}>{run.harnessSlug}</span>
+      {showCase && <span className={styles.variant}>{run.variant}</span>}
+      {showModel && <span className={styles.model}>{run.modelId}</span>}
+      <span className={`${styles.num} ${styles.noRating}`}>&mdash;</span>
+      <span className={`${styles.num} ${styles.noRating}`}>&mdash;</span>
+      <span className={styles.activeStatus}>
+        {failed ? "failed" : "running…"}
+      </span>
+    </Link>
   );
 }
 

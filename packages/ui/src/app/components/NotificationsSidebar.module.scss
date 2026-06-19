@@ -1,0 +1,197 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+
+// The slide-out notifications panel and its scrim. The root spans the viewport
+// only to host the fixed scrim + panel; it is `pointer-events: none` so it never
+// blocks the page while closed, and its children re-enable pointer events.
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+// Dimming scrim behind the panel. A bare button so a click (or Enter) closes the
+// panel; fades in with the panel.
+.backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+
+  .root[data-open] & {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+// The panel itself: pinned to the right edge, sliding in from off-screen.
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(22rem, 90vw);
+  display: flex;
+  flex-direction: column;
+  background: s.$panel-bg;
+  border-left: t.$border-hairline solid t.$color-accent;
+  box-shadow: -0.5rem 0 2rem color-mix(in srgb, t.$color-accent 25%, transparent);
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+
+  .root[data-open] & {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.heading {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.clear {
+  font-family: var(--tcab-font);
+  font-size: t.$font-sm;
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.close {
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-xl;
+  line-height: 1;
+  padding: 0 t.$space-2xs;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.empty {
+  padding: t.$space-lg t.$space-md;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+// One notification row. An unread row carries an accent rail on the left so the
+// bell's "unread" state reads at a glance here too.
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  border-left: 3px solid transparent;
+
+  &[data-unread] {
+    border-left-color: t.$color-accent;
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+}
+
+.itemMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: t.$color-text;
+  text-decoration: none;
+}
+
+.itemTitle {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: t.$font-sm;
+  color: t.$color-positive;
+
+  .item[data-failed] & {
+    color: t.$color-negative;
+  }
+}
+
+.itemBody {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+a.itemMain:hover .itemBody {
+  color: t.$color-text;
+}
+
+.itemControls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: t.$space-2xs;
+  flex: 0 0 auto;
+}
+
+.markRead {
+  font-family: var(--tcab-font);
+  font-size: 0.7rem;
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.dismiss {
+  background: none;
+  border: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-lg;
+  line-height: 1;
+  padding: 0 t.$space-2xs;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}

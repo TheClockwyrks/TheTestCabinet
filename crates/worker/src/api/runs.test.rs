@@ -12,10 +12,11 @@ use test_cabinet_core::{
     RunSubject, RunTooling, TokenCounts, ValidationSummary,
 };
 
-use super::{SubmitBody, build_path, build_root, list_produced, status, submit};
+use super::{SubmitBody, build_path, build_root, list_active, list_produced, status, submit};
 use crate::api::AppState;
 use crate::config::Config;
-use crate::jobs::JobRegistry;
+use crate::jobs::{JobRegistry, RunSummary};
+use crate::notify::WorkerNotifier;
 
 /// A worker state with an empty job registry and a throwaway config, enough to
 /// exercise the handlers' validation and lookup paths.
@@ -28,6 +29,7 @@ fn test_state() -> AppState {
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),
         jobs: JobRegistry::new(),
+        notifier: WorkerNotifier::new(),
         metrics: crate::metrics::Metrics::new(),
     }
 }
@@ -90,6 +92,7 @@ fn state_with_out_dir(out_dir: std::path::PathBuf) -> AppState {
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),
         jobs: JobRegistry::new(),
+        notifier: WorkerNotifier::new(),
         metrics: crate::metrics::Metrics::new(),
     }
 }
@@ -276,6 +279,30 @@ async fn build_path_serves_assets_and_refuses_traversal() {
     assert_eq!(err.status, StatusCode::NOT_FOUND);
 
     let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[tokio::test]
+async fn list_active_reports_running_jobs_only() {
+    let state = test_state();
+    let running = state.jobs.create(RunSummary {
+        test_case_slug: "pong".to_string(),
+        variant: "base".to_string(),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-haiku-4-5".to_string(),
+    });
+    let done = state.jobs.create(RunSummary {
+        test_case_slug: "snake".to_string(),
+        variant: "base".to_string(),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-haiku-4-5".to_string(),
+    });
+    done.finish_failed("never started");
+
+    let Json(active) = list_active(State(state)).await;
+    assert_eq!(active.len(), 1, "only the still-running job is active");
+    assert_eq!(active[0].run_id, running.id());
+    assert_eq!(active[0].summary.test_case_slug, "pong");
+    assert_eq!(active[0].state, "running");
 }
 
 #[tokio::test]

@@ -16,15 +16,9 @@ import type { TestCaseSummary } from "./testCases";
 // completion, so an in-progress run is represented by its launch identity and
 // live state instead. It is shown ahead of the completed runs in the list. Live
 // in-progress runs are tracked in the runs runtime (see runtime/runsRuntime),
-// not in this data value, since they change as a session launches runs.
-export interface InProgressRun {
-  runId: string;
-  testCaseSlug: string;
-  variant: string;
-  harnessSlug: string;
-  modelId: string;
-  state: "running" | "failed";
-}
+// not in this data value, since they change as a session launches runs. The shape
+// is the worker's active-run row, so it is defined once in the client layer.
+export type { InProgressRun } from "../../client/types";
 
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.

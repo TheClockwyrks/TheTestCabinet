@@ -6,10 +6,12 @@
 //! strings so the UI can show them verbatim. The orchestration itself lives in
 //! the core; the shell owns no run logic of its own.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, State};
 use test_cabinet_core::{
     ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, BuildValidator,
     CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessEvent,
@@ -22,7 +24,7 @@ use test_cabinet_core::{
 };
 
 use crate::config;
-use crate::events::{WebviewEventSink, done_channel};
+use crate::events::{NOTIFY_CHANNEL, RunNotification, WebviewEventSink, done_channel};
 use crate::playable::build_base_url;
 
 /// A command result whose error is a plain string the webview can render.
@@ -253,6 +255,67 @@ pub async fn read_specs(
 // Launching a run with a live event stream (async job model).
 // ---------------------------------------------------------------------------
 
+/// One run currently executing in-process, as `list_active_runs` reports it.
+/// Mirrors the worker's `/runs/active` entry and the console's `InProgressRun`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveRun {
+    /// The live stream/job id the run was launched under.
+    pub run_id: String,
+    pub test_case_slug: String,
+    pub variant: String,
+    pub harness_slug: String,
+    pub model_id: String,
+    /// Always `running`; a finished run is removed from the registry.
+    pub state: &'static str,
+}
+
+/// The desktop shell's registry of in-flight runs.
+///
+/// The HTTP worker tracks running jobs in its job registry; the embedded core has
+/// none, so the shell records each launched run here and removes it when the run
+/// finishes. `list_active_runs` reads this so the console's in-progress list
+/// survives a reload (the session-only client state is rebuilt from it), matching
+/// the web path's `GET /runs/active`.
+#[derive(Debug, Default)]
+pub struct ActiveRuns(Mutex<HashMap<String, ActiveRun>>);
+
+impl ActiveRuns {
+    /// Record a run as in-flight under its job id.
+    fn insert(&self, run: ActiveRun) {
+        self.0
+            .lock()
+            .expect("active-runs mutex poisoned")
+            .insert(run.run_id.clone(), run);
+    }
+
+    /// Drop a run once it has reached a terminal state.
+    fn remove(&self, run_id: &str) {
+        self.0
+            .lock()
+            .expect("active-runs mutex poisoned")
+            .remove(run_id);
+    }
+
+    /// Snapshot the currently in-flight runs.
+    fn list(&self) -> Vec<ActiveRun> {
+        self.0
+            .lock()
+            .expect("active-runs mutex poisoned")
+            .values()
+            .cloned()
+            .collect()
+    }
+}
+
+/// List the runs the shell is currently executing, for the console's in-progress
+/// list. The desktop equivalent of the worker's `GET /runs/active`.
+#[tauri::command]
+#[tracing::instrument(skip_all)]
+pub fn list_active_runs(active: State<'_, ActiveRuns>) -> Vec<ActiveRun> {
+    active.list()
+}
+
 /// The configuration the webview submits to launch a run.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -309,7 +372,7 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
     // Resolve the version + renderer before spawning so a configuration error is
     // reported synchronously (the command returns an error) rather than only over
     // the event channel.
-    let mut request = RunRequest {
+    let request = RunRequest {
         test_case_slug: config.test_case.clone(),
         test_case_version: Some(config.version.clone()),
         variant: config.variant.clone(),
@@ -381,6 +444,18 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
         output_dir,
     };
 
+    // Record the run as in-flight so `list_active_runs` can rebuild the console's
+    // in-progress list after a reload; the background task drops it on completion.
+    let active = ActiveRun {
+        run_id: job_id.clone(),
+        test_case_slug: config.test_case.clone(),
+        variant: config.variant.clone(),
+        harness_slug: config.harness.clone(),
+        model_id: config.model_id.clone(),
+        state: "running",
+    };
+    app.state::<ActiveRuns>().insert(active.clone());
+
     let done = done_channel(&job_id);
     let mut sink = WebviewEventSink::new(app.clone(), job_id.clone());
     let outcome_app = app.clone();
@@ -399,6 +474,38 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                 message: e.to_string(),
             },
         };
+
+        // Build the worker-wide completion notification from the outcome before
+        // the record is moved onto the done channel.
+        let notification = match &outcome {
+            RunOutcome::Completed { record } => RunNotification {
+                kind: "run-completed",
+                job_id: active.run_id.clone(),
+                test_case_slug: active.test_case_slug.clone(),
+                variant: active.variant.clone(),
+                harness_slug: active.harness_slug.clone(),
+                model_id: active.model_id.clone(),
+                outcome: "completed",
+                record_id: Some(record.id.clone()),
+                message: None,
+            },
+            RunOutcome::Failed { message } => RunNotification {
+                kind: "run-completed",
+                job_id: active.run_id.clone(),
+                test_case_slug: active.test_case_slug.clone(),
+                variant: active.variant.clone(),
+                harness_slug: active.harness_slug.clone(),
+                model_id: active.model_id.clone(),
+                outcome: "failed",
+                record_id: None,
+                message: Some(message.clone()),
+            },
+        };
+
+        // The run is no longer in flight; drop it from the registry before
+        // announcing, so a reload racing the notification still sees it gone.
+        outcome_app.state::<ActiveRuns>().remove(&active.run_id);
+        let _ = outcome_app.emit(NOTIFY_CHANNEL, notification);
         let _ = outcome_app.emit(&done, outcome);
     });
 

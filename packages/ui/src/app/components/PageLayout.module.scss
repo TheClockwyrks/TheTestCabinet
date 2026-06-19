@@ -93,6 +93,45 @@
   gap: t.$space-md;
 }
 
+// The notifications bell. Mirrors the gear's sizing/hover so the two controls
+// match, with a relative box to host the unread dot.
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: none;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-md;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-border;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+// The unread indicator: a small accent dot at the bell's top-right, glowing so it
+// reads against the dark bar.
+.bellDot {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: t.$color-accent;
+  box-shadow: 0 0 0.4rem t.$color-accent;
+}
+
 // The page body stays aligned to the content column beneath the full-width bar.
 // It grows to fill the viewport below the topbar (the shell is a column flex), so
 // a `.mainFill` page can hand the leftover height to a child.

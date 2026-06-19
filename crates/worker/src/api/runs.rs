@@ -19,7 +19,7 @@ use tracing::Instrument as _;
 
 use crate::api::AppState;
 use crate::error::ApiError;
-use crate::jobs::{Job, JobStatus, StreamItem};
+use crate::jobs::{ActiveRun, Job, JobStatus, RunSummary, StreamItem};
 use crate::runner::{RunContext, drive_run};
 
 /// The body of `POST /runs`: what to run, with what, against which model.
@@ -91,7 +91,15 @@ pub async fn submit(
         container_image: None,
     };
 
-    let job = state.jobs.create();
+    // Capture the run's display identity now so the active-run list can describe
+    // it before it produces a record.
+    let summary = RunSummary {
+        test_case_slug: request.test_case_slug.clone(),
+        variant: request.variant.clone(),
+        harness_slug: request.harness.as_str().to_string(),
+        model_id: request.model_id.clone(),
+    };
+    let job = state.jobs.create(summary);
     let job_id = job.id().to_string();
 
     let ctx = RunContext {
@@ -118,8 +126,9 @@ pub async fn submit(
 
     // The run can last up to an hour; drive it on a detached task so submit can
     // return now. The task records its outcome on the job, which the status and
-    // event endpoints surface.
-    tokio::spawn(drive_run(ctx, request, job).instrument(job_span));
+    // event endpoints surface, and publishes a worker-wide completion
+    // notification the `/notifications` stream relays.
+    tokio::spawn(drive_run(ctx, request, job, state.notifier.clone()).instrument(job_span));
 
     let ack = SubmitAck {
         job_id: job_id.clone(),
@@ -160,6 +169,17 @@ pub async fn list_produced(
     // are RFC 3339 in UTC, so a lexical compare orders them chronologically.
     produced.sort_by(|a, b| recency(&b.record).cmp(recency(&a.record)));
     Ok(Json(produced))
+}
+
+/// `GET /runs/active` — list the runs this worker is currently executing.
+///
+/// Returns the in-memory job registry's still-running jobs, each described by the
+/// identity captured at submit (test case, variant, harness, model) plus its
+/// stream/job id. The console seeds its in-progress list from this so a run it is
+/// watching survives a page reload — the session-only client state is rebuilt
+/// from the worker's own view of what is running.
+pub async fn list_active(State(state): State<AppState>) -> Json<Vec<ActiveRun>> {
+    Json(state.jobs.active())
 }
 
 /// The timestamp a produced run is ordered by: its finish time, falling back to

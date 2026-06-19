@@ -1,0 +1,22 @@
+// Theme the react-toastify chrome onto the synthwave palette. Toastify is styled
+// through global CSS custom properties, so this maps its variables onto the
+// `--tcab-*` tokens (and is imported once, as a side effect, by
+// `NotificationsLayer`). The toast *content* is owned by `NotificationToast`.
+:root {
+  --toastify-font-family: var(--tcab-font);
+  --toastify-toast-bd-radius: 0.5rem;
+
+  // Dark theme is what the console runs; back the toast with the panel surface
+  // and an accent edge so it reads as part of the app.
+  --toastify-color-dark: var(--tcab-surface);
+  --toastify-text-color-dark: var(--tcab-text);
+
+  // Accent the progress bar / icons by outcome.
+  --toastify-color-success: var(--tcab-positive);
+  --toastify-color-error: var(--tcab-negative);
+}
+
+.Toastify__toast--dark {
+  border: 1px solid var(--tcab-accent);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--tcab-accent) 30%, transparent);
+}
