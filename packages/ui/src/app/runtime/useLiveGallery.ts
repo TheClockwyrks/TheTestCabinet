@@ -15,7 +15,7 @@ import type {
 import { frameReview } from "../data/frameReview";
 import { sampleTestCases } from "../data/sampleTestCases";
 import type { GalleryDataInput } from "../data/galleryContext";
-import type { TestCaseSummary } from "../data/testCases";
+import type { SeededInput, TestCaseSummary } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
 
 // The shared live gallery data source for the consoles (web and desktop). It is
@@ -74,7 +74,51 @@ async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
   return acc;
 }
 
-function toTestCaseSummary(tc: TestCase, info: VersionInfo): TestCaseSummary {
+// The files a run of a variant is seeded with, read from the backend. Spec
+// bodies are served per file (by store key), so the catalog read alone can't
+// carry them; we fetch the variant's resolved spec set and present each as a
+// seeded text input. A variant whose specs can't be read contributes none rather
+// than failing the whole catalog load.
+async function fetchSeededInputs(
+  backend: BackendClient,
+  slug: string,
+  version: string,
+  variant: string,
+): Promise<SeededInput[]> {
+  try {
+    const spec = await backend.readSpecs(slug, version, variant);
+    return spec.specs.map((s) => ({
+      path: s.dest,
+      kind: "text" as const,
+      text: s.body,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function toTestCaseSummary(
+  backend: BackendClient,
+  tc: TestCase,
+  info: VersionInfo,
+): Promise<TestCaseSummary> {
+  const variants = await Promise.all(
+    info.variants.map(async (v) => ({
+      slug: v.slug,
+      name: v.name,
+      description: v.description,
+      // The rendered prompt is a run-time artifact (it interpolates the seeded
+      // specs and the container workspace path), so the catalog read can't carry
+      // it; it stays empty here and the Specifications tab simply omits the
+      // panel. Seeded inputs and references do come from the backend.
+      prompt: v.prompt ?? "",
+      seededInputs: await fetchSeededInputs(backend, info.slug, info.version, v.slug),
+      referenceScreenshots: (v.references ?? []).map((r) => ({
+        view: r.view,
+        url: r.url,
+      })),
+    })),
+  );
   return {
     slug: info.slug,
     name: info.name,
@@ -84,19 +128,7 @@ function toTestCaseSummary(tc: TestCase, info: VersionInfo): TestCaseSummary {
     description: info.description ?? null,
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
-    variants: info.variants.map((v) => ({
-      slug: v.slug,
-      name: v.name,
-      description: v.description,
-      // Prompts and seeded inputs aren't part of the catalog read; references
-      // come through when the backend serves them.
-      prompt: v.prompt ?? "",
-      seededInputs: [],
-      referenceScreenshots: (v.references ?? []).map((r) => ({
-        view: r.view,
-        url: r.url,
-      })),
-    })),
+    variants,
   };
 }
 
@@ -110,7 +142,7 @@ async function fetchTestCases(
       .filter((tc) => tc.versions[0])
       .map(async (tc) => {
         const info = await backend.resolveVersion(tc.slug, tc.versions[0]!);
-        return toTestCaseSummary(tc, info);
+        return toTestCaseSummary(backend, tc, info);
       }),
   );
 }

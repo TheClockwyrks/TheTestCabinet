@@ -24,7 +24,7 @@ import type {
   VersionInfo,
 } from "@test-cabinet/ui/client";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { getJson, getJsonStreamed, getText } from "./http";
+import { getJson, getJsonStreamed, getText, joinUrl } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -62,6 +62,13 @@ interface SpecDescriptor {
   template?: boolean;
 }
 
+// A rendered reference screenshot in a resolved version: the view it depicts and
+// the backend-relative URL the screenshot is served at.
+interface ReferenceDescriptor {
+  view: string;
+  screenshotUrl: string;
+}
+
 // The subset of `GET /test-cases/{slug}/versions/{version}` we consume.
 interface ResolvedVersion {
   slug: string;
@@ -74,12 +81,15 @@ interface ResolvedVersion {
   maxRuntimeSeconds: number;
   commonSpecs?: SpecDescriptor[];
   commonReviewItems?: ReviewItem[];
+  // References every variant shares (rendered from the `_common` scope).
+  commonReferences?: ReferenceDescriptor[];
   variants: {
     slug: string;
     name: string;
     description: string | null;
     specs?: SpecDescriptor[];
     reviewItems?: ReviewItem[];
+    references?: ReferenceDescriptor[];
   }[];
 }
 
@@ -154,6 +164,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           slug: v.slug,
           name: v.name,
           description: v.description,
+          // The common references apply to every variant; the variant's own
+          // references follow. The backend serves them as backend-relative URLs,
+          // so resolve each to an absolute URL the gallery can load directly (the
+          // console and the backend are not necessarily the same origin).
+          references: [
+            ...(r.commonReferences ?? []),
+            ...(v.references ?? []),
+          ].map((ref) => ({
+            view: ref.view,
+            url: joinUrl(baseUrl, ref.screenshotUrl),
+          })),
         })),
       };
     },
