@@ -22,7 +22,7 @@ carries the arguments) with the end (which carries the result).
 | -------- | -------- |
 | `session` | Captures the session `id` (also tried as `sessionId`/`session_id`). No event. |
 | `agent_start`, `agent_end`, `turn_start`, `turn_end`, `message_start`, `message_update` | Lifecycle markers and partial deltas, consumed. No event. |
-| `message_end` | A completed message; an `assistant`-role message becomes an [agent](/components/core/events/#agent-message) message (see [Normalized mapping](#normalized-mapping)). |
+| `message_end` | A completed message; an `assistant`-role message becomes an [agent](/components/core/events/#agent-message) message (and a [reasoning](/components/core/events/#reasoning) event for any thinking parts; see [Normalized mapping](#normalized-mapping)). |
 | `tool_execution_start` | Records the tool's `toolCallId`, `toolName`, and `args` for later resolution. No event. |
 | `tool_execution_update` | A streaming partial of an in-progress execution, consumed. No event. |
 | `tool_execution_end` | Resolves the recorded start by `toolCallId` and maps it by tool name (see [Tool mapping](#tool-mapping)). |
@@ -31,9 +31,12 @@ carries the arguments) with the end (which carries the result).
 ## Normalized mapping
 
 A `message_end` record whose message role is `assistant` becomes an agent
-message; its content is read as either a string or an array of text parts. A
-non-assistant message — such as the echoed user prompt — is lifecycle noise and
-emits no event, as does an assistant message with empty text.
+message; its content is read as either a string or an array of typed parts, whose
+`text` parts form the message. Its `thinking` parts form a
+[reasoning](/components/core/events/#reasoning) event emitted ahead of the agent
+message. A non-assistant message — such as the echoed user prompt — is lifecycle
+noise and emits no event, as does an assistant message with neither text nor
+thinking.
 
 A tool execution is split across events: `tool_execution_start` carries the tool
 name (`toolName`, also tried as `tool_name`/`tool`/`name`) and its arguments

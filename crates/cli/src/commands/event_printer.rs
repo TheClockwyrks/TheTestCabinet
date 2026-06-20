@@ -26,6 +26,10 @@ const fn fg(color: AnsiColor) -> Style {
 // The per-event-type label colors. Each event kind gets a distinct color so the
 // stream is easy to scan; diagnostics are bold to stand out from activity.
 const AGENT: Style = fg(AnsiColor::Cyan);
+// Reasoning is the model's quiet aside, so it reads in a dimmed magenta italic —
+// the same purple family as the web feed's reasoning color, set apart from the
+// visible agent message.
+const REASONING: Style = fg(AnsiColor::Magenta).italic();
 const COMMAND: Style = fg(AnsiColor::Yellow);
 const READ: Style = fg(AnsiColor::Blue);
 const WRITE: Style = fg(AnsiColor::Green);
@@ -64,6 +68,7 @@ impl EventSink for PrintingEventSink {
 fn render(event: &HarnessEvent) -> String {
     match &event.kind {
         EventKind::Agent { message } => labeled(AGENT, "agent", message),
+        EventKind::Reasoning { message } => labeled(REASONING, "think", message),
         EventKind::Command {
             command,
             exit_code,

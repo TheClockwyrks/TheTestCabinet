@@ -627,16 +627,25 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 ]
             },
             usage: UsageShape {
-                input: &["inputTokens", "input"],
-                cached: &["cacheReadTokens", "cache_read"],
-                cache_creation: &["cacheWriteTokens"],
-                output: &["outputTokens", "output"],
-                reasoning: &["reasoningTokens", "reasoning"],
+                // Kilo Code's runtime is OpenCode's, so it reports usage the same
+                // way: per-step totals on `step_finish` under `part.tokens`, with
+                // cache reads/writes nested one level deeper in a `cache` object
+                // (`cache.read`, `cache.write`). Confining the search to
+                // `part.tokens` is what lets those bare `read`/`write` keys resolve
+                // to the cache counts. The previous flat `cacheReadTokens`/
+                // `cache_read` keys never matched, so every cached-read token (the
+                // bulk of a cache-heavy run) was silently dropped, leaving the
+                // comparable cost far too low.
+                input: &["input"],
+                cached: &["read"],
+                cache_creation: &["write"],
+                output: &["output"],
+                reasoning: &["reasoning"],
                 cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
-                usage_events: &[],
-                usage_path: &[],
+                usage_events: &["step_finish"],
+                usage_path: &["part", "tokens"],
             },
             event_format: EventFormat::Kilo,
         },

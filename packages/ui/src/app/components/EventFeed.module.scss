@@ -47,6 +47,9 @@
   &[data-event-type="agent"] {
     --event-color: var(--ttc-event-agent);
   }
+  &[data-event-type="reasoning"] {
+    --event-color: var(--ttc-event-reasoning);
+  }
   &[data-event-type="command"] {
     --event-color: var(--ttc-event-command);
   }
@@ -100,6 +103,27 @@
   white-space: pre-wrap;
   word-break: break-word;
   min-width: 0;
+}
+
+// A reasoning row's body is a collapsed <details>. The summary is the one-line
+// preview (muted, click to expand); the expanded reasoning text reads in the
+// event's accent color to set it apart from a normal agent message.
+.summary {
+  color: t.$color-text-muted;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &::marker {
+    color: var(--event-color);
+  }
+}
+
+.reasoning {
+  margin-top: t.$space-xs;
+  color: var(--event-color);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 // --- Layout: "gutter" (the original) -----------------------------------------

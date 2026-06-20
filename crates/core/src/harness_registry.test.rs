@@ -86,6 +86,27 @@ fn opencode_sums_per_step_deltas_and_reads_nested_cache() {
 }
 
 #[test]
+fn kilo_sums_per_step_deltas_and_reads_nested_cache() {
+    // Kilo Code runs on OpenCode's runtime, so it reports usage the same way:
+    // per-step under `part.tokens` with cache reads/writes nested in a `cache`
+    // object, plus a `reasoning` count. The nested `cache.read` is the cached
+    // class — the prior flat `cacheReadTokens` keys never matched it, dropping
+    // every cached-read token and undercounting the cost.
+    let stream = concat!(
+        r#"{"type":"step_start","part":{"type":"step-start"}}"#,
+        "\n",
+        r#"{"type":"step_finish","part":{"tokens":{"input":10973,"output":41,"reasoning":17,"cache":{"read":128,"write":0}},"cost":0.0033}}"#,
+        "\n",
+        r#"{"type":"step_finish","part":{"tokens":{"input":402,"output":378,"reasoning":0,"cache":{"read":70016,"write":0}},"cost":0.0047}}"#,
+    );
+    let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Kilo));
+    assert_eq!(usage.tokens.uncached_input, 11375); // 10973 + 402
+    assert_eq!(usage.tokens.cached_input, 70144); // 128 + 70016
+    assert_eq!(usage.tokens.output, 419); // 41 + 378
+    assert_eq!(usage.tokens.reasoning, 17);
+}
+
+#[test]
 fn pi_sums_per_message_usage_and_ignores_restated_turn_totals() {
     // Pi reports per-message usage under `message.usage` on `message_end`, then
     // restates the same block on `turn_end`. Only `message_end` is summed, so the

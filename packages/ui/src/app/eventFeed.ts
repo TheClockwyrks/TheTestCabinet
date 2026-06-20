@@ -17,6 +17,7 @@ import type { HarnessEvent } from "../client/types";
 export function eventDetail(e: HarnessEvent): string {
   switch (e.type) {
     case "agent":
+    case "reasoning":
       return e.message ?? "";
     case "command":
       return e.command ?? "";
@@ -36,6 +37,15 @@ export function eventDetail(e: HarnessEvent): string {
     default:
       return JSON.stringify(e.raw ?? e);
   }
+}
+
+// A short, single-line preview of a long detail (used as the summary of a
+// collapsed reasoning block): whitespace collapsed and truncated with an ellipsis.
+const SUMMARY_MAX = 120;
+export function eventSummary(detail: string): string {
+  const collapsed = detail.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= SUMMARY_MAX) return collapsed;
+  return `${collapsed.slice(0, SUMMARY_MAX)}…`;
 }
 
 // The wall-clock time of an event for the feed's gutter (e.g. "12:13:00 PM").

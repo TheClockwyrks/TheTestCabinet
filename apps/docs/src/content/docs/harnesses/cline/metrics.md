@@ -25,6 +25,13 @@ Cline's `inputTokens` does not already include the cached reads
 directly. Cache-creation tokens (`cacheWriteTokens`) are billed as input and are
 folded into the uncached input class.
 
+Cline does not break out a reasoning-token count in its usage totals, so the
+reasoning class is always 0 — even for a model that reasons. This is independent
+of the [event stream](./events/), which does surface reasoning *content* as
+[reasoning](/components/core/events/#reasoning) events when Cline reports it as a
+distinct block; some models instead fold their reasoning into the visible text,
+and in neither case is a separate reasoning token count available.
+
 ## Cost
 
 Cline reports no cost of its own. It drives the model through OpenRouter, so the

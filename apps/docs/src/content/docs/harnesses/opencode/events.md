@@ -11,13 +11,13 @@ from the first `sessionID`, `session_id`, or `sessionId` field seen.
 
 ## Raw event stream
 
-The stream is a sequence of step-oriented records. Step boundaries and reasoning
-carry no agent activity and are consumed; text, tool use, and errors carry it.
+The stream is a sequence of step-oriented records. Step boundaries are consumed;
+reasoning, text, tool use, and errors carry activity.
 
 | OpenCode event | Handling |
 | -------------- | -------- |
 | `step_start`, `step_finish` | Step boundaries, consumed. They carry the usage totals used for [metrics](./metrics/). No event. |
-| `reasoning` | Model thinking, consumed. No event. |
+| `reasoning` | Model thinking. Becomes a [reasoning](/components/core/events/#reasoning) event when it carries text, otherwise consumed. |
 | `text` | Becomes an [agent](/components/core/events/#agent-message) message (empty text emits nothing). |
 | `tool_use` | A self-contained tool record, classified in place (see [Tool mapping](#tool-mapping)). |
 | `error` | Becomes an [error](/components/core/events/#harness-error) event. |
@@ -49,7 +49,8 @@ Tool names are matched case-insensitively and classified self-contained:
 | `bash` | [command](/components/core/events/#command), or a recognized file operation |
 | `skill` | [skill](/components/core/events/#skill) |
 | `lsp` | [search](/components/core/events/#file-search) when it carries a query/symbol, otherwise [unknown](/components/core/events/#unknown) |
-| any other tool (webfetch, websearch, todowrite, question, …) | [unknown](/components/core/events/#unknown) |
+| `todowrite`, `todoread` | consumed — internal task list, no event |
+| any other tool (webfetch, websearch, question, …) | [unknown](/components/core/events/#unknown) |
 
 `lsp` is treated as a search only when it carries a query or symbol; a navigation
 operation with none falls through to an unknown event. OpenCode does not expose

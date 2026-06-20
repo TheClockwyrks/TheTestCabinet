@@ -365,10 +365,36 @@ fn claude_split_text_blocks_join_into_one_agent_message() {
 }
 
 #[test]
-fn claude_thinking_blocks_are_consumed_without_an_event() {
+fn claude_thinking_blocks_become_reasoning_events() {
+    // A thinking block is the model's reasoning, surfaced as its own event.
+    assert_eq!(
+        one(claude(
+            r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hmm"}]}}"#,
+        )),
+        EventKind::Reasoning {
+            message: "hmm".to_string(),
+        }
+    );
+    // When thinking precedes visible text in one message, the reasoning is
+    // reported ahead of the agent message it leads into.
+    let events = claude(
+        r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"plan"},{"type":"text","text":"done"}]}}"#,
+    );
+    assert_eq!(
+        events.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![
+            EventKind::Reasoning {
+                message: "plan".to_string(),
+            },
+            EventKind::Agent {
+                message: "done".to_string(),
+            },
+        ]
+    );
+    // A redacted thinking block carries no readable text, so it yields nothing.
     assert!(
         claude(
-            r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hmm"}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"redacted_thinking","data":"xx"}]}}"#,
         )
         .is_empty()
     );
@@ -654,13 +680,18 @@ fn opencode_steps_reasoning_errors_and_unknowns() {
         )
         .is_empty()
     );
-    assert!(
-        single(
+    // A reasoning event carrying text surfaces as a reasoning event.
+    assert_eq!(
+        one(single(
             EventFormat::Opencode,
             r#"{"type":"reasoning","part":{"text":"hmm"}}"#
-        )
-        .is_empty()
+        )),
+        EventKind::Reasoning {
+            message: "hmm".to_string(),
+        }
     );
+    // A reasoning event with no text is consumed.
+    assert!(single(EventFormat::Opencode, r#"{"type":"reasoning","part":{}}"#).is_empty());
     assert!(matches!(
         one(single(
             EventFormat::Opencode,
@@ -963,6 +994,127 @@ fn cline_captures_session_not_task_id_and_reads_legacy_text() {
         )),
         EventKind::Agent {
             message: "hi".to_string(),
+        }
+    );
+}
+
+#[test]
+fn goose_read_image_and_tree_classify() {
+    // `read_image` loads an image file, named in `source`, and is a read.
+    let read = seq_last(
+        EventFormat::Goose,
+        &[
+            r#"{"type":"message","message":{"role":"assistant","content":[{"type":"toolRequest","id":"i1","toolCall":{"status":"success","value":{"name":"read_image","arguments":{"source":"/work/reference/title.png"}}}}]}}"#,
+            r#"{"type":"message","message":{"role":"user","content":[{"type":"toolResponse","id":"i1","toolResult":{"status":"success"}}]}}"#,
+        ],
+    );
+    assert_eq!(
+        one(read),
+        EventKind::Read {
+            path: "/work/reference/title.png".to_string(),
+            start_line: None,
+            end_line: None,
+            is_success: Some(true),
+        }
+    );
+
+    // `tree` enumerates a directory, so it is a list.
+    let tree = seq_last(
+        EventFormat::Goose,
+        &[
+            r#"{"type":"message","message":{"role":"assistant","content":[{"type":"toolRequest","id":"t2","toolCall":{"status":"success","value":{"name":"tree","arguments":{"path":"/work","depth":3}}}}]}}"#,
+            r#"{"type":"message","message":{"role":"user","content":[{"type":"toolResponse","id":"t2","toolResult":{"status":"success"}}]}}"#,
+        ],
+    );
+    assert_eq!(
+        one(tree),
+        EventKind::List {
+            path: Some("/work".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn goose_thinking_accumulates_into_reasoning_and_text_flushes_it() {
+    // Thinking deltas accumulate into one reasoning event; the visible text that
+    // follows flushes the reasoning first, so the two are reported in order.
+    let events = parse_all(
+        EventFormat::Goose,
+        &[
+            r#"{"type":"message","id":"m1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let"}]}}"#,
+            r#"{"type":"message","id":"m1","message":{"role":"assistant","content":[{"type":"thinking","thinking":" me"}]}}"#,
+            r#"{"type":"message","id":"m1","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]}}"#,
+            r#"{"type":"complete","usage":{}}"#,
+        ],
+    );
+    assert_eq!(
+        events.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![
+            EventKind::Reasoning {
+                message: "Let me".to_string(),
+            },
+            EventKind::Agent {
+                message: "Done".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn kilo_consumes_todo_tools_without_an_unknown() {
+    // The todo tool only manages the agent's internal task list, so it produces
+    // no event rather than an unknown one.
+    assert!(
+        single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","tool":"todowrite","status":"completed","part":{"state":{"input":{"todos":[]}}}}"#,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn pi_thinking_parts_become_reasoning() {
+    // A message_end with both a thinking part and a text part reports the
+    // reasoning ahead of the agent message.
+    let events = single(
+        EventFormat::Pi,
+        r#"{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"weigh options"},{"type":"text","text":"answer"}]}}"#,
+    );
+    assert_eq!(
+        events.iter().map(|e| e.kind.clone()).collect::<Vec<_>>(),
+        vec![
+            EventKind::Reasoning {
+                message: "weigh options".to_string(),
+            },
+            EventKind::Agent {
+                message: "answer".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn cline_reasoning_content_and_legacy_say_become_reasoning() {
+    // A reasoning content block is its own stream, kept apart from the message.
+    assert_eq!(
+        one(single(
+            EventFormat::Cline,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"reasoning","text":"thinking it through"}}"#,
+        )),
+        EventKind::Reasoning {
+            message: "thinking it through".to_string(),
+        }
+    );
+    // The legacy say stream's reasoning is surfaced the same way.
+    assert_eq!(
+        one(single(
+            EventFormat::Cline,
+            r#"{"type":"say","say":"reasoning","text":"hmm"}"#
+        )),
+        EventKind::Reasoning {
+            message: "hmm".to_string(),
         }
     );
 }

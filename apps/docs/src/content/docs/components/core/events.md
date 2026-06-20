@@ -71,6 +71,23 @@ reports separately.
 - Discriminator: `agent`
 - **Message** — the plain text emitted by the agent.
 
+### Reasoning
+
+Generated when a harness reports the model's internal reasoning ("thinking")
+content as a stream distinct from the agent's visible message. Kept separate from
+an [agent message](#agent-message) because reasoning is often long and is a
+different kind of activity; a consumer can present it apart from the visible
+output (the web feed collapses it by default).
+
+Not every harness exposes reasoning content, and a harness that does only emits
+it for models that produce it. A harness that folds reasoning into its visible
+text (rather than reporting it as a separate block) produces no reasoning events,
+and reasoning that is reported only as a token count — not as content — is
+recorded in the run [metrics](metrics.md), not here.
+
+- Discriminator: `reasoning`
+- **Message** — the text of the model's reasoning.
+
 ### Command
 
 Generated when an agent runs a shell command. If a harness does not
@@ -327,8 +344,9 @@ Top level events map as follows:
 | any other type | [unknown](#unknown) |
 
 Within an `assistant` message, `text` blocks are joined into one agent message,
-while `thinking` and `redacted_thinking` blocks are model reasoning and carry no
-activity. Each tool-use block is recognized by name and recorded; an
+and `thinking` blocks are joined into one [reasoning](#reasoning) event emitted
+ahead of it; `redacted_thinking` blocks carry no readable text and emit nothing.
+Each tool-use block is recognized by name and recorded; an
 unrecognized tool (an MCP tool, web tool, todo tool, and the like) or a
 malformed tool-use block becomes an unknown event. Recognized tools map to
 events when their tool-result arrives, whose `is_error` and interruption flags
@@ -371,7 +389,9 @@ Within an `agent_event`, the nested event's `type` and `contentType` drive the
 mapping. Iteration boundaries, per-step `usage`, and `done` are consumed. A text
 block's streaming delta arrives on `content_start` and is consumed; the matching
 `content_end` carries the complete text and becomes an [agent](#agent-message)
-message. A tool call's input arrives on `content_start` (recorded against its
+message, or — for a `reasoning` (or `thinking`) content type — a
+[reasoning](#reasoning) event. A tool call's input arrives on `content_start`
+(recorded against its
 `toolCallId`) and is resolved when the `content_end` carries the tool output,
 whose `success` flag — or, for a batch, every item succeeding — sets the success
 field. Tool names map as follows:
@@ -389,7 +409,8 @@ field. Tool names map as follows:
 
 Older Cline versions emit a flat say/ask stream instead of the wrapped records.
 That legacy stream is handled conservatively: a `say` text or completion result
-and an `ask` followup become agent messages, reasoning is consumed, a diagnostic
+and an `ask` followup become agent messages, a `say` reasoning becomes a
+[reasoning](#reasoning) event, a diagnostic
 `say` becomes an [error](#harness-error), and everything else — including legacy
 tool activity, which is not reconstructed — becomes an unknown event. Cline does
 not emit a stable [orchestration](#orchestration) source in this version.
@@ -397,29 +418,31 @@ not emit a stable [orchestration](#orchestration) source in this version.
 ## Goose Event Mapping
 
 Goose is run with `goose run --output-format stream-json`, a line delimited JSON
-stream of `message`, `notification`, `error`, and `complete` events. The session
-id comes from the named session Goose is launched with. The `complete` event
-carries usage and is consumed; it also flushes the final assistant text.
+stream of `message`, `notification`, `error`, and `complete` events. Goose does
+not report a session identifier in this stream, so its events carry none. The
+`complete` event carries usage and is consumed; it also flushes the final
+assistant span.
 
 A `message` event carries a serialized conversation message whose `content` is
 an array of blocks processed in order. Assistant `text` blocks are accumulated
-into one pending message — Goose streams a message as cumulative-or-delta
-records sharing one id, so a record that restates the pending text replaces it
-and any other same-id record is appended — and flushed as an
-[agent](#agent-message) message when other activity follows or the run
-completes. User text and `thinking`/`redactedThinking` blocks carry no activity.
-A `toolRequest` block is recorded against its call id and resolved when the
-matching `toolResponse` arrives, whose `toolResult.status` sets the success
-field. Tool names, after stripping an extension prefix such as `developer__`,
-map as follows:
+into one pending [agent](#agent-message) message, and assistant `thinking` blocks
+into one pending [reasoning](#reasoning) event — Goose streams each as
+cumulative-or-delta records sharing one id, so a record that restates the pending
+text replaces it and any other same-kind, same-id record is appended. A pending
+span is flushed when activity of a different kind or id follows or the run
+completes, so a message's reasoning is reported just ahead of its visible text.
+User text and `redactedThinking` blocks carry no activity. A `toolRequest` block
+is recorded against its call id and resolved when the matching `toolResponse`
+arrives, whose `toolResult.status` sets the success field. Tool names, after
+stripping an extension prefix such as `developer__`, map as follows:
 
 | Goose tool | Event |
 | ---------- | ----- |
 | `text_editor` | [read](#file-read) or [write](#file-write), by its command |
-| `read` | [read](#file-read) |
+| `read`, `read_image` | [read](#file-read) (an image's path comes from `source`) |
 | `write`, `edit` | [write](#file-write) |
 | `grep`, `glob` | [search](#file-search) |
-| `list` | [list](#directory-list) |
+| `list`, `tree` | [list](#directory-list) |
 | `shell` | [command](#command), or a recognized file operation |
 | `load_skill`, `skill` | [skill](#skill) |
 | `todo__*` | consumed — internal session state, no event |
@@ -433,15 +456,16 @@ map as follows:
 Kilo Code is run with `kilo run --format json` and is built on OpenCode-style
 runtime events (see [OpenCode](#opencode-event-mapping)), so it shares that
 stream shape: `step_start`/`step_finish` boundaries (consumed; the latter carries
-usage), `reasoning` (consumed), `text` (an [agent](#agent-message) message),
-self-contained `tool_use` events, and `error` events. The session id is captured
-from `sessionID`. Kilo extends the OpenCode tool set with workflow and semantic
-tools:
+usage), `reasoning` (a [reasoning](#reasoning) event when it carries text), `text`
+(an [agent](#agent-message) message), self-contained `tool_use` events, and
+`error` events. The session id is captured from `sessionID`. Kilo extends the
+OpenCode tool set with workflow and semantic tools:
 
 | Kilo tool | Event |
 | --------- | ----- |
 | `task`, `agent_manager` | [orchestration](#orchestration) when the spawned agent/session is identified, otherwise [unknown](#unknown) |
 | `codesearch` | [search](#file-search) |
+| `todowrite`, `todoread` | consumed — internal task list, no event |
 | all OpenCode tools | as in the [OpenCode mapping](#opencode-event-mapping) |
 
 ## OpenCode Event Mapping
@@ -449,8 +473,9 @@ tools:
 OpenCode is run with `opencode run --format json`, a line delimited JSON stream
 of `step_start`, `text`, `tool_use`, `step_finish`, `reasoning`, and `error`
 events, with the session id at `sessionID`. Step boundaries carry usage and are
-consumed, reasoning is model thinking and is consumed, and a `text` event
-becomes an [agent](#agent-message) message.
+consumed; a `reasoning` event becomes a [reasoning](#reasoning) event when it
+carries text (otherwise it is consumed), and a `text` event becomes an
+[agent](#agent-message) message.
 
 A `tool_use` event is self-contained — it carries the tool name, input, and a
 terminal status in one event, so no request/response correlation is needed — and
@@ -465,7 +490,8 @@ its `completed`/`error` status sets the success field. Tool names map as follows
 | `bash` | [command](#command), or a recognized file operation |
 | `skill` | [skill](#skill) |
 | `lsp` | [search](#file-search) when it carries a query/symbol, otherwise [unknown](#unknown) |
-| any other tool (webfetch, websearch, todowrite, question, …) | [unknown](#unknown) |
+| `todowrite`, `todoread` | consumed — internal task list, no event |
+| any other tool (webfetch, websearch, question, …) | [unknown](#unknown) |
 
 `error` events become [error](#harness-error) events. OpenCode does not expose
 [orchestration](#orchestration) in this version.
@@ -480,9 +506,11 @@ is captured from the `session` record's `id`. Lifecycle markers, the partial
 `message_update` deltas, and `turn_end` (consumed for usage) emit no event.
 
 A `message_end` record whose message role is `assistant` becomes an
-[agent](#agent-message) message — its content is a string or an array of text
-parts — while a non-assistant message (such as the echoed user prompt) is
-ignored. A `tool_execution_end` record is self-contained and carries a
+[agent](#agent-message) message — its content is a string or an array of typed
+parts, whose `text` parts form the message. Its `thinking` parts form a
+[reasoning](#reasoning) event emitted ahead of the message. A non-assistant
+message (such as the echoed user prompt) is ignored. A `tool_execution_end`
+record is self-contained and carries a
 `toolName`, structured input, and a terminal status; its status or `error` field
 sets the success field. Tool names are matched case-insensitively:
 

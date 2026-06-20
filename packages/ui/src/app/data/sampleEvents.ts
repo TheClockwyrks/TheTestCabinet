@@ -13,6 +13,12 @@ export const SAMPLE_FEED_EVENTS: HarnessEvent[] = [
     message: "Pulling the run-container image",
   },
   {
+    timestamp: "2026-06-18T12:12:59Z",
+    type: "reasoning",
+    message:
+      "The button styles live in a CSS module, so I should read the component first to see which class names it expects before editing anything.",
+  },
+  {
     timestamp: "2026-06-18T12:13:00Z",
     type: "agent",
     message: "Reading the project layout to plan the change.",

@@ -37,7 +37,8 @@ warning.
 | Raw stream input | Normalized event |
 | ---------------- | ---------------- |
 | `assistant` `text` blocks (joined per message) | [agent](/components/core/events/#agent-message) |
-| `assistant` `thinking` / `redacted_thinking` blocks | consumed (model reasoning, no event) |
+| `assistant` `thinking` blocks (joined per message) | [reasoning](/components/core/events/#reasoning) |
+| `assistant` `redacted_thinking` blocks | consumed (no readable text, no event) |
 | `assistant` `tool_use` block | recorded; resolved when its tool-result arrives (see [tool mapping](#tool-mapping)) |
 | `user` `tool_result` block | the recorded tool use's event(s) |
 | `user` `text` block | consumed (echoed prompt or injected context) |

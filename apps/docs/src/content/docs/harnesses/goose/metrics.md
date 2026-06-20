@@ -17,10 +17,18 @@ carries them wins.
 | Output | `output_tokens` |
 | Reasoning | _(none read)_ |
 
-Goose reports no cache fields, so cached input is always 0 and the full
-`input_tokens` value is counted as uncached input. Input is not treated as
-cache-inclusive (`input_includes_cache = false`), so nothing is subtracted from
-it. No reasoning tokens are read.
+This is the whole of what Goose reports: its `complete` event carries only
+`input_tokens`, `output_tokens`, and `total_tokens` (where `total` is exactly
+`input + output`). There is no cache or reasoning breakdown anywhere in the
+stream — not on `complete`, and not on the per-message records — so cached input
+and reasoning are recorded as 0. This is a limitation of Goose's reporting, not a
+parsing gap: even when Goose drives a cache-backed model and emits extensive
+reasoning (its `thinking` blocks, surfaced as
+[reasoning](/components/core/events/#reasoning) events in the
+[event stream](./events/)), those reads and reasoning tokens are folded into the
+flat `input_tokens`/`output_tokens` totals and cannot be separated out. Input is
+not treated as cache-inclusive (`input_includes_cache = false`), so nothing is
+subtracted from it.
 
 ## Cost
 

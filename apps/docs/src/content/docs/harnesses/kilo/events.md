@@ -18,7 +18,7 @@ Each line is handled by its top-level `type`:
 | Kilo event | Handling |
 | ---------- | -------- |
 | `step_start`, `step_finish` | Step boundaries, consumed. `step_finish` carries the usage totals used for [metrics](./metrics/). No event. |
-| `reasoning` | Model thinking, consumed. No event. |
+| `reasoning` | Model thinking. Becomes a [reasoning](/components/core/events/#reasoning) event when it carries text, otherwise consumed. |
 | `text` | The assistant's plain text becomes an [agent](/components/core/events/#agent-message) message. An empty text emits no event. |
 | `tool_use` | A self-contained tool call, classified in place (see [Tool mapping](#tool-mapping)). |
 | `error` | Becomes an [error](/components/core/events/#harness-error) event. |
@@ -31,7 +31,8 @@ its status sets the success field.
 
 | Raw event | Normalized event |
 | --------- | ---------------- |
-| `step_start`, `step_finish`, `reasoning` | none (consumed) |
+| `step_start`, `step_finish` | none (consumed) |
+| `reasoning` | [reasoning](/components/core/events/#reasoning) message when it carries text, otherwise none |
 | `text` | [agent](/components/core/events/#agent-message) message |
 | `tool_use` | the event its tool classifies to (see [Tool mapping](#tool-mapping)) |
 | `error` | [error](/components/core/events/#harness-error) |
@@ -50,6 +51,7 @@ tool names are matched case-insensitively:
 | --------- | ----- |
 | `task`, `agent_manager` | [orchestration](/components/core/events/#orchestration) when the spawned agent/session is identified, otherwise [unknown](/components/core/events/#unknown) |
 | `codesearch` | [search](/components/core/events/#file-search) |
+| `todowrite`, `todoread` | consumed — internal task list, no event |
 | `read` | [read](/components/core/events/#file-read) |
 | `write`, `edit` | [write](/components/core/events/#file-write) |
 | `apply_patch` | one [write](/components/core/events/#file-write) per file named by the patch markers |

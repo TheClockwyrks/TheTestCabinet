@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { HarnessEvent } from "../../client/types";
-import { eventDetail, formatEventTime } from "../eventFeed";
+import { eventDetail, eventSummary, formatEventTime } from "../eventFeed";
 import type { EventFeedStyle } from "../store/appSettings";
 import { VirtualFeed } from "./VirtualFeed";
 import styles from "./EventFeed.module.scss";
@@ -35,13 +35,24 @@ interface EventFeedProps {
 // the event detail. The arrangement is driven entirely by CSS off the ancestor
 // feed's `data-feed-style`; this markup is identical across every layout.
 function EventLine({ event }: { event: HarnessEvent }) {
+  const detail = eventDetail(event);
   return (
     <div className={styles.line} data-event-type={event.type}>
       <div className={styles.gutter}>
         <span className={styles.type}>{event.type.toUpperCase()}</span>
         <span className={styles.time}>{formatEventTime(event.timestamp)}</span>
       </div>
-      <span className={styles.body}>{eventDetail(event)}</span>
+      {event.type === "reasoning" ? (
+        // Reasoning ("thinking") is often very long, so it is collapsed by
+        // default behind a one-line preview; a native <details> needs no state
+        // and react-virtuoso re-measures the row when it is toggled open.
+        <details className={styles.body}>
+          <summary className={styles.summary}>{eventSummary(detail)}</summary>
+          <div className={styles.reasoning}>{detail}</div>
+        </details>
+      ) : (
+        <span className={styles.body}>{detail}</span>
+      )}
     </div>
   );
 }

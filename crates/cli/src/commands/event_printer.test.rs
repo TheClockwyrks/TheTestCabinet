@@ -70,7 +70,8 @@ fn labeled_wraps_the_padded_label_in_the_style_escapes() {
 #[test]
 fn event_kinds_each_get_a_distinct_color() {
     let styles = [
-        AGENT, COMMAND, READ, WRITE, SEARCH, LIST, SKILL, SUBAGENT, SYSTEM, UNKNOWN, WARNING, ERROR,
+        AGENT, REASONING, COMMAND, READ, WRITE, SEARCH, LIST, SKILL, SUBAGENT, SYSTEM, UNKNOWN,
+        WARNING, ERROR,
     ];
     for (index, style) in styles.iter().enumerate() {
         for other in &styles[index + 1..] {
@@ -90,6 +91,12 @@ fn render_applies_the_matching_label_and_style_per_event_kind() {
                 message: "hello".to_string(),
             },
             labeled(AGENT, "agent", "hello"),
+        ),
+        (
+            EventKind::Reasoning {
+                message: "let me think".to_string(),
+            },
+            labeled(REASONING, "think", "let me think"),
         ),
         (
             EventKind::Write {

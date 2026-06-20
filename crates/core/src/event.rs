@@ -73,6 +73,15 @@ pub enum EventKind {
         /// The text the agent emitted.
         message: String,
     },
+    /// The model's internal reasoning ("thinking") content, reported by harnesses
+    /// that expose it as a distinct stream from the agent's visible output. It is
+    /// kept separate from [`Agent`](EventKind::Agent) because reasoning is often
+    /// long and is a different kind of activity; callers can present it apart from
+    /// the visible message (the UI collapses it by default).
+    Reasoning {
+        /// The text of the model's reasoning.
+        message: String,
+    },
     /// A shell command the agent ran.
     Command {
         /// The shell command the agent attempted to run.
@@ -201,6 +210,16 @@ pub enum EventKind {
         /// The original, unclassified harness output.
         raw: Value,
     },
+}
+
+/// Which stream an in-progress Goose assistant span belongs to: visible output or
+/// internal reasoning. Used to flush the accumulated fragments as the right event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GoosePendingKind {
+    /// Visible assistant text, flushed as an [`EventKind::Agent`].
+    Agent,
+    /// Internal reasoning ("thinking"), flushed as an [`EventKind::Reasoning`].
+    Reasoning,
 }
 
 /// The subagent orchestration states a harness can report.
@@ -338,11 +357,13 @@ pub struct EventParser {
     /// resolves them, for harnesses that split a call across two events (Cline,
     /// Goose). Empty for other formats.
     pending_tools: Vec<PendingTool>,
-    /// Accumulated Goose assistant text for the in-progress message, as
-    /// `(message id, text)`, flushed as an agent event when activity follows or
-    /// the run completes. Goose streams a message as cumulative-or-delta records
-    /// sharing one id, so the fragments are joined rather than emitted each.
-    goose_pending: Option<(String, String)>,
+    /// Accumulated Goose assistant content for the in-progress message, as
+    /// `(kind, message id, text)`, flushed as an agent or reasoning event when
+    /// activity of a different kind/id follows or the run completes. Goose streams
+    /// both visible text and reasoning ("thinking") as cumulative-or-delta records
+    /// sharing one id, so the fragments are joined rather than emitted each; the
+    /// kind keeps reasoning separate from the visible message.
+    goose_pending: Option<(GoosePendingKind, String, String)>,
     /// The session working directory used to resolve relative paths to absolute
     /// ones, captured from a harness's session/init event. Unset until seen.
     workspace: Option<String>,
@@ -551,6 +572,13 @@ impl EventParser {
         };
         let workspace = self.workspace.clone();
         let mut events = Vec::new();
+        // Reasoning ("thinking") blocks precede the visible message in the stream;
+        // join them into one reasoning event so a thought split across blocks is
+        // reported once, ahead of the agent message it leads into.
+        let reasoning: String = content.iter().filter_map(claude_thinking_block).collect();
+        if !reasoning.is_empty() {
+            events.push(self.event(EventKind::Reasoning { message: reasoning }));
+        }
         // Text blocks within one message are one logical message; join them so a
         // message split across blocks is reported as a single agent event.
         let message: String = content.iter().filter_map(claude_text_block).collect();
@@ -563,7 +591,7 @@ impl EventParser {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
             {
-                // Already handled above, or model reasoning that is not activity.
+                // Text and reasoning are both joined and emitted above.
                 "text" | "thinking" | "redacted_thinking" => {}
                 "tool_use" => match ClaudeToolUse::from_block(block, workspace.as_deref()) {
                     // A recognized tool: record it and wait for its result.
@@ -761,13 +789,17 @@ impl EventParser {
                 Vec::new()
             }
             "content_end" => match content_type {
-                "text" => match inner
-                    .get("text")
-                    .or_else(|| inner.get("content"))
-                    .and_then(Value::as_str)
-                    .filter(|text| !text.is_empty())
-                {
+                "text" => match cline_content_text(inner) {
                     Some(text) => vec![self.event(EventKind::Agent {
+                        message: text.to_string(),
+                    })],
+                    None => Vec::new(),
+                },
+                // Reasoning ("thinking") content is its own stream, kept apart from
+                // the visible message. The streaming delta arrives on content_start
+                // (consumed); content_end carries the complete reasoning text.
+                "reasoning" | "thinking" => match cline_content_text(inner) {
+                    Some(text) => vec![self.event(EventKind::Reasoning {
                         message: text.to_string(),
                     })],
                     None => Vec::new(),
@@ -826,8 +858,17 @@ impl EventParser {
         {
             "say" => match value.get("say").and_then(Value::as_str).unwrap_or_default() {
                 "text" | "completion_result" => self.cline_legacy_text(value),
-                // Reasoning is model thinking, not agent progress.
-                "reasoning" => Vec::new(),
+                // Reasoning is model thinking, surfaced as its own stream.
+                "reasoning" => match value
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty())
+                {
+                    Some(text) => vec![self.event(EventKind::Reasoning {
+                        message: text.to_string(),
+                    })],
+                    None => Vec::new(),
+                },
                 "error" | "api_req_failed" => vec![self.event(EventKind::Error {
                     message: string_field(value, "text", "cline reported an error"),
                     code: None,
@@ -871,7 +912,7 @@ impl EventParser {
             "notification" => self.parse_goose_notification(&value),
             "error" => {
                 let mut events = Vec::new();
-                self.flush_goose_text(&mut events);
+                self.flush_goose(&mut events);
                 events.push(self.event(EventKind::Error {
                     message: harness_error_message(&value, "goose reported an error"),
                     code: None,
@@ -879,15 +920,15 @@ impl EventParser {
                 events
             }
             // The run boundary carries usage, consumed elsewhere; flush the final
-            // assistant text so it is not lost.
+            // assistant span so it is not lost.
             "complete" => {
                 let mut events = Vec::new();
-                self.flush_goose_text(&mut events);
+                self.flush_goose(&mut events);
                 events
             }
             _ => {
                 let mut events = Vec::new();
-                self.flush_goose_text(&mut events);
+                self.flush_goose(&mut events);
                 events.push(self.event(EventKind::Unknown { raw: value.clone() }));
                 events
             }
@@ -923,19 +964,31 @@ impl EventParser {
                             .and_then(Value::as_str)
                             .filter(|t| !t.is_empty())
                     {
-                        self.push_goose_text(&id, text, &mut events);
+                        self.push_goose(GoosePendingKind::Agent, &id, text, &mut events);
                     }
                 }
-                "thinking" | "redactedThinking" => {}
+                // Assistant reasoning is its own stream; `redactedThinking` blocks
+                // carry no readable text, so only `thinking` contributes.
+                "thinking" => {
+                    if role == Some("assistant")
+                        && let Some(text) = block
+                            .get("thinking")
+                            .and_then(Value::as_str)
+                            .filter(|t| !t.is_empty())
+                    {
+                        self.push_goose(GoosePendingKind::Reasoning, &id, text, &mut events);
+                    }
+                }
+                "redactedThinking" => {}
                 "toolRequest" => {
-                    self.flush_goose_text(&mut events);
+                    self.flush_goose(&mut events);
                     match goose_tool_request(block) {
                         Some(tool) => self.pending_tools.push(tool),
                         None => events.push(self.event(EventKind::Unknown { raw: block.clone() })),
                     }
                 }
                 "toolResponse" => {
-                    self.flush_goose_text(&mut events);
+                    self.flush_goose(&mut events);
                     let id = goose_tool_id(block, "toolResponse");
                     let success = goose_response_success(block);
                     events.extend(self.resolve_pending_tool(
@@ -951,14 +1004,22 @@ impl EventParser {
         events
     }
 
-    /// Accumulate a Goose assistant text fragment into the pending message,
-    /// flushing the previous message first when the id changes.
-    fn push_goose_text(&mut self, id: &str, text: &str, events: &mut Vec<HarnessEvent>) {
-        if let Some((pending_id, pending_text)) = &mut self.goose_pending
+    /// Accumulate a Goose assistant fragment into the pending span, flushing the
+    /// previous span first when the kind or the message id changes (a text→thinking
+    /// transition within one message shares the id but differs in kind).
+    fn push_goose(
+        &mut self,
+        kind: GoosePendingKind,
+        id: &str,
+        text: &str,
+        events: &mut Vec<HarnessEvent>,
+    ) {
+        if let Some((pending_kind, pending_id, pending_text)) = &mut self.goose_pending
+            && *pending_kind == kind
             && pending_id == id
         {
             // A record that restates the pending text is a cumulative update; any
-            // other same-id record is a delta whose fragment is appended.
+            // other same-kind, same-id record is a delta whose fragment is appended.
             if text.starts_with(pending_text.as_str()) {
                 *pending_text = text.to_string();
             } else {
@@ -966,14 +1027,18 @@ impl EventParser {
             }
             return;
         }
-        self.flush_goose_text(events);
-        self.goose_pending = Some((id.to_string(), text.to_string()));
+        self.flush_goose(events);
+        self.goose_pending = Some((kind, id.to_string(), text.to_string()));
     }
 
-    /// Emit the pending Goose assistant text as an agent event, if any.
-    fn flush_goose_text(&mut self, events: &mut Vec<HarnessEvent>) {
-        if let Some((_, text)) = self.goose_pending.take() {
-            events.push(self.event(EventKind::Agent { message: text }));
+    /// Emit the pending Goose assistant span as an agent or reasoning event, if any.
+    fn flush_goose(&mut self, events: &mut Vec<HarnessEvent>) {
+        if let Some((kind, _, text)) = self.goose_pending.take() {
+            let kind = match kind {
+                GoosePendingKind::Agent => EventKind::Agent { message: text },
+                GoosePendingKind::Reasoning => EventKind::Reasoning { message: text },
+            };
+            events.push(self.event(kind));
         }
     }
 
@@ -1007,8 +1072,19 @@ impl EventParser {
             .and_then(Value::as_str)
             .unwrap_or_default()
         {
-            // Step boundaries carry usage, and reasoning is model thinking.
-            "step_start" | "step_finish" | "reasoning" => Vec::new(),
+            // Step boundaries carry usage, consumed elsewhere.
+            "step_start" | "step_finish" => Vec::new(),
+            // Reasoning is model thinking; surface its text as a reasoning event
+            // when the event carries any, otherwise consume it.
+            "reasoning" => match dig(&value, &[&["part", "text"], &["text"], &["reasoning"]])
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            {
+                Some(text) => vec![self.event(EventKind::Reasoning {
+                    message: text.to_string(),
+                })],
+                None => Vec::new(),
+            },
             "text" => match dig(&value, &[&["part", "text"], &["text"]])
                 .and_then(Value::as_str)
                 .filter(|text| !text.is_empty())
@@ -1038,10 +1114,11 @@ impl EventParser {
                 let success = step_tool_success(&value);
                 let workspace = self.workspace.clone();
                 match name.and_then(|name| classify(name, &input, success, workspace.as_deref())) {
-                    Some(kinds) if !kinds.is_empty() => {
-                        kinds.into_iter().map(|kind| self.event(kind)).collect()
-                    }
-                    _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
+                    // A recognized tool maps to zero or more events; an empty
+                    // result is a tool that was deliberately consumed (such as a
+                    // todo tool), so it emits nothing rather than an unknown event.
+                    Some(kinds) => kinds.into_iter().map(|kind| self.event(kind)).collect(),
+                    None => vec![self.event(EventKind::Unknown { raw: value.clone() })],
                 }
             }
             "error" => vec![self.event(EventKind::Error {
@@ -1111,8 +1188,10 @@ impl EventParser {
         }
     }
 
-    /// Emit a completed Pi assistant message as an agent event. Non-assistant
-    /// roles (such as the echoed user message) are lifecycle noise.
+    /// Emit a completed Pi assistant message's reasoning and visible text as
+    /// events. Non-assistant roles (such as the echoed user message) are lifecycle
+    /// noise. Pi carries reasoning as `thinking` parts alongside the `text` parts,
+    /// so the reasoning is reported as its own event ahead of the agent message.
     fn parse_pi_message(&self, value: &Value) -> Vec<HarnessEvent> {
         let Some(message) = dig(
             value,
@@ -1123,11 +1202,16 @@ impl EventParser {
         if message.get("role").and_then(Value::as_str) != Some("assistant") {
             return Vec::new();
         }
-        let text = pi_message_text(message);
-        if text.is_empty() {
-            return Vec::new();
+        let mut events = Vec::new();
+        let reasoning = pi_message_parts(message, "thinking", "thinking");
+        if !reasoning.is_empty() {
+            events.push(self.event(EventKind::Reasoning { message: reasoning }));
         }
-        vec![self.event(EventKind::Agent { message: text })]
+        let text = pi_message_text(message);
+        if !text.is_empty() {
+            events.push(self.event(EventKind::Agent { message: text }));
+        }
+        events
     }
 
     /// Resolve a completed Pi `tool_execution_end` into its normalized event(s)
@@ -1506,6 +1590,19 @@ fn claude_text_block(block: &Value) -> Option<&str> {
         .filter(|text| !text.is_empty())
 }
 
+/// The text of a Claude `thinking` content block, if the block is one and carries
+/// readable text. `redacted_thinking` blocks have no readable text, so they yield
+/// nothing.
+fn claude_thinking_block(block: &Value) -> Option<&str> {
+    if block.get("type").and_then(Value::as_str) != Some("thinking") {
+        return None;
+    }
+    block
+        .get("thinking")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+}
+
 /// Whether a Claude tool-result reports success: a result is a failure only when
 /// it is flagged as an error or as interrupted.
 fn claude_tool_result_success(block: &Value) -> bool {
@@ -1691,6 +1788,8 @@ fn tool_path(input: &Value, workspace: Option<&str>) -> Option<String> {
             "filepath",
             "abs_path",
             "absolutePath",
+            // Goose's `read_image` names the file it loads in `source`.
+            "source",
         ],
     )
     .filter(|path| !path.is_empty())
@@ -1886,6 +1985,11 @@ fn classify_opencode_tool(
         // `lsp` is a search only when it carries a query/symbol; navigation
         // operations have none and so fall through to an unknown event.
         "lsp" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        // The todo tools only manage the agent's internal task list — no
+        // workspace activity — so they are recognized and consumed (an explicit
+        // empty result) rather than surfaced as unknown events. This mirrors how
+        // Goose's `todo` extension is consumed.
+        "todowrite" | "todoread" | "todo" => Some(Vec::new()),
         _ => None,
     }
 }
@@ -2020,6 +2124,16 @@ fn cline_reads(
     read_event_kind(input, is_success, workspace).map(|kind| vec![kind])
 }
 
+/// The complete text of a Cline `content_end` block, from `text` or `content`,
+/// when non-empty.
+fn cline_content_text(inner: &Value) -> Option<&str> {
+    inner
+        .get("text")
+        .or_else(|| inner.get("content"))
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+}
+
 /// Whether a Cline tool output reports success: a `success` flag, or every item
 /// succeeding when the output is a batch of per-item results.
 fn cline_tool_success(output: Option<&Value>) -> Option<bool> {
@@ -2057,12 +2171,17 @@ fn classify_goose_tool(
         return Some(Vec::new());
     }
     match base.to_ascii_lowercase().as_str() {
-        "read" => read_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
+        // `read` is a text read; `read_image` loads an image file (its path is in
+        // `source`) — both are reads of a named file.
+        "read" | "read_image" => {
+            read_event_kind(input, is_success, workspace).map(|kind| vec![kind])
+        }
         "write" | "edit" => write_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
         "text_editor" => goose_text_editor(input, is_success, workspace),
         "shell" => bash_event_kind(input, is_success).map(|kind| vec![kind]),
         "grep" | "glob" => search_event_kind(input, is_success, workspace).map(|kind| vec![kind]),
-        "list" => Some(vec![list_event_kind(input, is_success, workspace)]),
+        // `list` and `tree` both enumerate a directory.
+        "list" | "tree" => Some(vec![list_event_kind(input, is_success, workspace)]),
         "load_skill" | "skill" => {
             skill_event_kind(input, is_success, workspace).map(|kind| vec![kind])
         }
@@ -2177,16 +2296,27 @@ fn pi_tool_success(value: &Value) -> Option<bool> {
     }
 }
 
-/// The text of a Pi assistant message, whose content is a string or an array of
-/// text parts.
+/// The visible text of a Pi assistant message, whose content is a string or an
+/// array of typed parts.
 fn pi_message_text(message: &Value) -> String {
     match message.get("content") {
+        // A bare string is the visible message.
         Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(_)) => pi_message_parts(message, "text", "text"),
+        _ => String::new(),
+    }
+}
+
+/// Join the text of every content part of the given `part_type`, reading each
+/// part's text from its `text_field`. Pi reports visible text as `text` parts
+/// (text in `text`) and reasoning as `thinking` parts (text in `thinking`).
+fn pi_message_parts(message: &Value, part_type: &str, text_field: &str) -> String {
+    match message.get("content") {
         Some(Value::Array(parts)) => parts
             .iter()
             .filter_map(|part| {
-                (part.get("type").and_then(Value::as_str) == Some("text"))
-                    .then(|| part.get("text").and_then(Value::as_str))
+                (part.get("type").and_then(Value::as_str) == Some(part_type))
+                    .then(|| part.get(text_field).and_then(Value::as_str))
                     .flatten()
             })
             .collect(),

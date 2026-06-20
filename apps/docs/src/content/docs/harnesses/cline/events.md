@@ -34,18 +34,26 @@ drive the mapping. An `agent_event` with no nested `event` becomes an
   here because the matching `content_end` carries the complete text.
 - `content_end` resolves the block: a `text` block emits an
   [agent](/components/core/events/#agent-message) message (from the record's
-  `text`, falling back to `content`; empty text emits nothing), and a `tool`
-  block resolves the recorded tool into its event(s). A tool whose
-  `content_start` was missed is still classified from the `content_end` alone
-  when it restates the `toolName` and `input`. Any other `contentType` becomes an
-  unknown event.
+  `text`, falling back to `content`; empty text emits nothing), a `reasoning` (or
+  `thinking`) block emits a [reasoning](/components/core/events/#reasoning) event
+  the same way, and a `tool` block resolves the recorded tool into its event(s). A
+  tool whose `content_start` was missed is still classified from the `content_end`
+  alone when it restates the `toolName` and `input`. Any other `contentType`
+  becomes an unknown event.
+
+  Note that whether reasoning arrives as its own `reasoning` block depends on the
+  model and provider: some models (for example Gemini routed through OpenRouter)
+  fold their reasoning into the visible `text` rather than emitting a separate
+  block, in which case it is reported as part of the agent message with no
+  reasoning event.
 
 A tool's success is read from its `content_end` `output`: a `success` flag, or —
 for a batch (`output` array or `output.results` array) — every item succeeding.
 
 Older Cline versions emit a flat say/ask stream. It is handled conservatively: a
 `say` of `text` or `completion_result`, and an `ask` of `followup`, become agent
-messages when they carry non-empty `text`; `say` `reasoning` is consumed; `say`
+messages when they carry non-empty `text`; `say` `reasoning` becomes a
+[reasoning](/components/core/events/#reasoning) event; `say`
 `error` or `api_req_failed` becomes an
 [error](/components/core/events/#harness-error) event. Everything else —
 including legacy tool activity, which is not reconstructed — becomes an unknown
@@ -60,9 +68,10 @@ event.
 | `agent_event` → `iteration_start` / `iteration_end` / `usage` / `done` | consumed |
 | `agent_event` → `content_start` | consumed (records tool input or text delta) |
 | `agent_event` → `content_end` (`text`) | [agent](/components/core/events/#agent-message) |
+| `agent_event` → `content_end` (`reasoning` / `thinking`) | [reasoning](/components/core/events/#reasoning) |
 | `agent_event` → `content_end` (`tool`) | per the [tool mapping](#tool-mapping) |
 | legacy `say` `text` / `completion_result`, `ask` `followup` | [agent](/components/core/events/#agent-message) |
-| legacy `say` `reasoning` | consumed |
+| legacy `say` `reasoning` | [reasoning](/components/core/events/#reasoning) |
 | legacy `say` `error` / `api_req_failed` | [error](/components/core/events/#harness-error) |
 | `agent_event` with no nested `event`, unrecognized `contentType`, legacy tool activity, anything else | [unknown](/components/core/events/#unknown) |
 
