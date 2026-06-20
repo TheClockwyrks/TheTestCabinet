@@ -6,9 +6,7 @@ title: Terminology
 
 The [backend](/components/backend/overview/) is The Test Cabinet's single private
 service. It is the canonical source of test case definitions for runners and the
-system of record for published run results. It replaces the earlier
-"git-as-a-db" design and is the only stateful service the runners and consoles
-talk to (aside from the [workers](#worker) that execute runs).
+system of record for published run results.
 
 ## Catalog
 
@@ -85,7 +83,7 @@ from this snapshot, so the gallery keeps no live dependency on the backend.
 ## Test Case
 
 Test cases provide the scenarios used for testing. Each test case represents
-some project that must be implemented from scratch.
+some isolated task that a harness/model must perform.
 
 ## Validation
 
