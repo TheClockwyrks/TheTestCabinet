@@ -1,0 +1,11 @@
+@use "tokens" as t;
+
+// Responsive helpers for the app chrome. The layout is authored desktop-first,
+// so these are all `max-width` (apply at or below the given breakpoint). Pass a
+// breakpoint token: `@include below(t.$bp-md) { … }`. Centralizing the query
+// keeps every component breaking at the same widths (see `$bp-*` in tokens).
+@mixin below($bp) {
+  @media (max-width: $bp) {
+    @content;
+  }
+}

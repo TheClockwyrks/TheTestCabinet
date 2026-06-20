@@ -26,6 +26,14 @@ $content-max: 64rem;
 $embed-height: 32rem;
 $topbar-height: 4rem;
 
+// Responsive breakpoints. The chrome is laid out desktop-first; these are the
+// max-width thresholds below which the mobile overrides kick in. Use them
+// through the `breakpoints` mixins (`@include bp.below(t.$bp-md) { … }`) rather
+// than re-typing raw widths, so every component breaks at the same places.
+// `sm` ≈ phones, `md` ≈ small tablets / large phones.
+$bp-sm: 40rem;
+$bp-md: 48rem;
+
 // Border width (only place px is allowed).
 $border-hairline: 1px;
 

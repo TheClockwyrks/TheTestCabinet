@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation } from "react-router";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { selectUnreadCount, useNotifications } from "../runtime/notifications";
@@ -15,6 +15,29 @@ interface PageLayoutProps {
    * live run monitor's event feed) expands into the space below the header.
    */
   fill?: boolean;
+}
+
+// The hamburger glyph for the mobile section-nav toggle. Sized to match the
+// gear/bell controls via the shared `.menuToggle` rule below.
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+// A close (×) glyph shown in place of the hamburger while the mobile menu is
+// open, mirroring the open/closed state in the icon itself.
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  );
 }
 
 // A small gear glyph for the connections/settings drawer trigger.
@@ -52,6 +75,34 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
   const navLinks = canExecute
     ? NAV_LINKS
     : [...NAV_LINKS, { label: "About", to: routes.about() }];
+
+  // The mobile section nav collapses behind a hamburger toggle. CSS owns which
+  // presentation (inline row vs. dropdown sheet) is visible at a given width, so
+  // this state only governs whether the *mobile* sheet is expanded; on desktop
+  // the inline nav shows regardless. Close on every navigation so tapping a link
+  // — or any other route change — dismisses the sheet.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const location = useLocation();
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  const renderNavLinks = (onNavigate?: () => void) =>
+    navLinks.map((link) => (
+      <NavLink
+        key={link.to}
+        to={link.to}
+        end={link.to === routes.home()}
+        onClick={onNavigate}
+        className={({ isActive }) =>
+          isActive ? `${styles.navLink} ${styles.navActive}` : styles.navLink
+        }
+      >
+        {link.label}
+      </NavLink>
+    ));
+
   return (
     <div className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}>
       <header className={styles.topbar}>
@@ -60,19 +111,10 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
             <CabinetIcon className={styles.mark} />
             <span className={styles.wordmark}>The Test Cabinet</span>
           </Link>
-          <nav className={styles.nav}>
-            {navLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.to === routes.home()}
-                className={({ isActive }) =>
-                  isActive ? `${styles.navLink} ${styles.navActive}` : styles.navLink
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
+          {/* Desktop section nav: hidden at/below $bp-md, where the toggle takes
+              over. Lives in the bar's middle, pushing the controls right. */}
+          <nav className={`${styles.nav} ${styles.navInline}`}>
+            {renderNavLinks()}
           </nav>
           <div className={styles.controls}>
             {/* The notifications bell is a console-only affordance (runs only
@@ -86,8 +128,32 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
             >
               <GearIcon />
             </NavLink>
+            {/* Mobile-only: collapses the section nav behind a hamburger. Hidden
+                above $bp-md so exactly one nav presentation shows at any width. */}
+            <button
+              type="button"
+              className={styles.menuToggle}
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              aria-controls={menuId}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              {menuOpen ? <CloseIcon /> : <MenuIcon />}
+            </button>
           </div>
         </div>
+        {/* Mobile dropdown sheet: rendered only when open and only ever visible
+            at/below $bp-md (the CSS hides it above). Stacks the links vertically
+            beneath the bar. Tapping a link closes the sheet. */}
+        {menuOpen && (
+          <nav
+            id={menuId}
+            className={`${styles.nav} ${styles.navSheet}`}
+            aria-label="Sections"
+          >
+            {renderNavLinks(() => setMenuOpen(false))}
+          </nav>
+        )}
       </header>
       <main className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}>
         {children}

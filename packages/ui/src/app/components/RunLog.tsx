@@ -61,7 +61,7 @@ export function RunLog({
   const findReview = useFindReview();
   return (
     <div className={styles.log} data-scope={scope}>
-      <div className={`${styles.row} ${styles.head}`}>
+      <div className={`${styles.row} ${styles.head}`} aria-hidden="true">
         <span />
         {showCase && <span>TEST</span>}
         <span>HARNESS</span>
@@ -118,12 +118,26 @@ function ActiveRow({
       {showCase && (
         <span className={styles.test}>{formatSlug(run.testCaseSlug)}</span>
       )}
-      <span className={styles.harness}>{run.harnessSlug}</span>
-      {showCase && <span className={styles.variant}>{run.variant}</span>}
-      {showModel && <span className={styles.model}>{run.modelId}</span>}
-      <span className={`${styles.num} ${styles.noRating}`}>&mdash;</span>
-      <span className={`${styles.num} ${styles.noRating}`}>&mdash;</span>
-      <span className={styles.activeStatus}>
+      <span className={styles.harness} data-label="Harness">
+        {run.harnessSlug}
+      </span>
+      {showCase && (
+        <span className={styles.variant} data-label="Variant">
+          {run.variant}
+        </span>
+      )}
+      {showModel && (
+        <span className={styles.model} data-label="Model">
+          {run.modelId}
+        </span>
+      )}
+      <span className={`${styles.num} ${styles.noRating}`} data-label="Tokens">
+        &mdash;
+      </span>
+      <span className={`${styles.num} ${styles.noRating}`} data-label="Cost">
+        &mdash;
+      </span>
+      <span className={styles.activeStatus} data-label="Status">
         {failed ? "failed" : "running…"}
       </span>
     </Link>
@@ -153,16 +167,28 @@ function RunRow({
           {local && <UnpublishedTag className={styles.tag} />}
         </span>
       )}
-      <span className={styles.harness}>
+      <span className={styles.harness} data-label="Harness">
         {subject.harnessSlug}
         {/* Without a TEST column to host it, flag unpublished runs here. */}
         {!showCase && local && <UnpublishedTag className={styles.tag} />}
       </span>
-      {showCase && <span className={styles.variant}>{subject.variant}</span>}
-      {showModel && <span className={styles.model}>{subject.modelId}</span>}
-      <span className={styles.num}>{formatCompact(totalTokens(metrics))}</span>
-      <span className={styles.num}>{formatUsd(metrics.cost.comparable)}</span>
-      <span className={styles.rating}>
+      {showCase && (
+        <span className={styles.variant} data-label="Variant">
+          {subject.variant}
+        </span>
+      )}
+      {showModel && (
+        <span className={styles.model} data-label="Model">
+          {subject.modelId}
+        </span>
+      )}
+      <span className={styles.num} data-label="Tokens">
+        {formatCompact(totalTokens(metrics))}
+      </span>
+      <span className={styles.num} data-label="Cost">
+        {formatUsd(metrics.cost.comparable)}
+      </span>
+      <span className={styles.rating} data-label="Rating">
         {rating ? (
           <RatingBadge rating={rating} />
         ) : (

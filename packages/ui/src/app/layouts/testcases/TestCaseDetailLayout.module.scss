@@ -1,6 +1,7 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 .header {
   display: flex;
@@ -88,12 +89,43 @@
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
   border-bottom: t.$border-hairline solid t.$color-border;
+
+  // On narrow screens the tabs and the variant/Run controls each take their own
+  // full-width row rather than crowding the strip. The baseline border moves to
+  // the tabs row (so the active underline still meets a baseline), and the
+  // actions stack beneath it.
+  @include bp.below(t.$bp-md) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: t.$space-md;
+    border-bottom: none;
+  }
 }
 
 .tabs {
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the run and model detail strips. Since the controls strip
+  // drops its border when stacked, the baseline border lives here so the active
+  // underline still has a baseline to meet. The row scrolls horizontally; the
+  // negative inline margins bleed it to the content edges so the first and last
+  // tabs aren't clipped by the page gutter, and the padding restores the gutter.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+    border-bottom: t.$border-hairline solid t.$color-border;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 }
 
 // Each tab reads as an underlined pill; the active tab glows in the accent and
@@ -112,6 +144,15 @@
     text-decoration: none;
     color: t.$color-text;
   }
+
+  // Keep each label on one line in the scrollable strip, and tighten the
+  // padding/type to match the other detail pages.
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
 }
 
 .tabActive {
@@ -126,6 +167,15 @@
   display: inline-flex;
   align-items: flex-end;
   gap: t.$space-md;
+
+  // Stacked into its own full-width row below the tabs on narrow screens. The
+  // variant control takes the available width and the Run button keeps its
+  // intrinsic (tappable) size beside it; neither shrinks to an unusable size.
+  @include bp.below(t.$bp-md) {
+    display: flex;
+    align-items: center;
+    gap: t.$space-md;
+  }
 }
 
 .variant {
@@ -133,6 +183,14 @@
   align-items: center;
   gap: t.$space-sm;
   margin-bottom: t.$space-sm;
+
+  // Grow to fill the stacked actions row so the select is comfortably tappable;
+  // the bottom margin (which aligned it to the tabs baseline) is no longer
+  // needed once it sits in its own row.
+  @include bp.below(t.$bp-md) {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+  }
 }
 
 // The Run action: a compact accent-filled button that carries the viewed case
@@ -160,6 +218,14 @@
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
+
+  // In the stacked actions row the button no longer aligns to the tabs baseline,
+  // so drop the bottom margin; a slightly larger tap target reads better here.
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    margin-bottom: 0;
+    padding: t.$space-sm t.$space-md;
+  }
 }
 
 .variantLabel {
@@ -182,6 +248,14 @@
   &:focus-visible {
     outline: t.$border-hairline solid t.$color-accent;
     border-color: t.$color-accent;
+  }
+
+  // Fill the remaining width of the stacked actions row and grow the tap target
+  // a touch so the selector is comfortable on mobile.
+  @include bp.below(t.$bp-md) {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: t.$space-sm;
   }
 }
 

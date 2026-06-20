@@ -1,5 +1,6 @@
 @use "../styles/tokens" as t;
 @use "../styles/surfaces" as s;
+@use "../styles/breakpoints" as bp;
 
 // Translucent neon-outlined panel so the grid + scanlines read through behind
 // the table.
@@ -164,4 +165,93 @@ a.row {
 .noRating {
   color: t.$color-text-muted;
   opacity: 0.6;
+}
+
+// --- Mobile: stack each row into a card ------------------------------------
+//
+// Below the small breakpoint the fixed per-scope column templates can't fit a
+// phone without forcing horizontal scroll and cramped, easily-misaligned rows.
+// Instead each row reflows into a self-contained card: the test (or harness,
+// when there's no test column) reads as the card title, and the remaining cells
+// become labelled value lines via their `data-label`. The header row is hidden
+// since its labels now live in the cards. Desktop is untouched.
+@include bp.below(t.$bp-sm) {
+  .log {
+    // Cards never overflow, so the scroll affordance is no longer needed.
+    overflow-x: visible;
+  }
+
+  // The column header is redundant once each cell carries its own label.
+  .head {
+    display: none;
+  }
+
+  // Drop the grid for a vertical stack. This wins over the per-scope
+  // `grid-template-columns` rules (higher specificity via the scope selector is
+  // matched below), so the fixed templates and min-widths no longer apply.
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding: t.$space-md;
+    white-space: normal;
+  }
+
+  // Neutralize the per-scope fixed templates / min-widths so nothing forces an
+  // overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
+  .log[data-scope="global"] .row,
+  .log[data-scope="variant"] .row,
+  .log[data-scope="model"] .row {
+    grid-template-columns: none;
+    min-width: 0;
+  }
+
+  // Cards read top-down, so cells are full-width lines rather than grid cells.
+  // The caret gutter collapses (no hover affordance on touch).
+  .rowCaret {
+    display: none;
+  }
+
+  // Title row: the test name (or, when there's no test column, the harness)
+  // anchors the card and keeps its accent treatment.
+  .test {
+    font-size: t.$font-md;
+  }
+
+  // Labelled value lines: render the column name inline ahead of the value so
+  // each figure stays identifiable without the header row.
+  [data-label] {
+    display: flex;
+    align-items: baseline;
+    gap: t.$space-sm;
+
+    &::before {
+      content: attr(data-label);
+      flex: 0 0 5rem;
+      font-size: t.$font-sm;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: t.$color-text-muted;
+    }
+  }
+
+  // The numeric cells are right-aligned in the dense desktop grid; in a card the
+  // value should sit beside its label instead.
+  .num {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  // Active rows: a stacked card has no caret gutter to hold the spinner, so pin
+  // it to the card's top-left and reserve room for it on the first line.
+  .row[data-active] {
+    position: relative;
+    padding-left: calc(#{t.$space-md} + 1.25rem);
+  }
+
+  .spinner {
+    position: absolute;
+    left: t.$space-md;
+    top: t.$space-md;
+  }
 }

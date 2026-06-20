@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/breakpoints" as bp;
 
 .shell {
   position: relative;
@@ -59,15 +60,52 @@
   font-size: t.$font-lg;
   font-weight: 700;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+
+  // Step the wordmark down on narrow screens so the brand, the menu toggle, and
+  // the controls all share the single top row without overflowing a ~360px
+  // viewport.
+  @include bp.below(t.$bp-md) {
+    font-size: t.$font-md;
+  }
 }
 
-// The section nav takes the middle, pushing the controls to the far right.
+// The section nav. Shared visual treatment for both presentations: the inline
+// desktop row (`.navInline`) and the collapsed mobile sheet (`.navSheet`).
 .nav {
   display: flex;
   align-items: center;
   gap: t.$space-lg;
+}
+
+// Desktop: the inline nav takes the middle, pushing the controls to the far
+// right. Collapsed behind the toggle at/below $bp-md.
+.navInline {
   margin-left: auto;
-  flex-wrap: wrap;
+
+  @include bp.below(t.$bp-md) {
+    display: none;
+  }
+}
+
+// Mobile: the dropdown sheet beneath the bar. Stacks links vertically, full
+// width, with the same surface wash and hairline rule as the bar. Hidden on
+// desktop (the inline nav is authoritative there) so exactly one shows.
+.navSheet {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: t.$color-surface;
+
+  .navLink {
+    padding: t.$space-md;
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  @media (min-width: t.$bp-md) {
+    display: none;
+  }
 }
 
 .navLink {
@@ -91,6 +129,41 @@
   display: inline-flex;
   align-items: center;
   gap: t.$space-md;
+}
+
+// The mobile section-nav toggle. Mirrors the gear/bell sizing and hover so the
+// three controls read as a set. Shown only at/below $bp-md; above it the inline
+// nav is authoritative and this is hidden so exactly one nav presentation shows.
+.menuToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: none;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-md;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-border;
+  }
+
+  &[aria-expanded="true"] {
+    color: t.$color-accent;
+    border-color: t.$color-border;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @include bp.below(t.$bp-md) {
+    display: inline-flex;
+  }
 }
 
 // The notifications bell. Mirrors the gear's sizing/hover so the two controls

@@ -1,5 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/halo" as h;
+@use "../../../styles/breakpoints" as bp;
 
 // Shared styles for the run detail tab bodies (Verdict, Play, Metrics,
 // Metadata). The page chrome — title, subject line, tabs — lives in the
@@ -26,6 +27,16 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: t.$space-md;
+
+  // Reflow on narrow viewports: three metadata tiles get cramped on a small
+  // tablet, and unreadable on a phone. Drop to 2-up, then a single column.
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 // The Metrics tab's stacked rows: a 2-up token-totals row, a 4-up breakdown row,
@@ -44,10 +55,26 @@
 
 .cols2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  // Two stat tiles stay side-by-side on tablets, but get too narrow to read on
+  // a phone — stack them.
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .cols4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+
+  // The 4-up breakdown row reflows to 2-up on a small tablet, then a single
+  // column on a phone, so each figure keeps a legible width.
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 // Muted text in loose contexts (paired with `.line` or sitting inside a haloed

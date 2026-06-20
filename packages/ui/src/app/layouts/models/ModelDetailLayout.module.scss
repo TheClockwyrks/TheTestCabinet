@@ -1,6 +1,7 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 .identity {
   margin-bottom: t.$space-lg;
@@ -107,6 +108,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the run and test-case detail strips. The row scrolls
+  // horizontally beneath the strip's fixed baseline border; the negative inline
+  // margins let it bleed to the content edges so the first and last tabs aren't
+  // clipped by the page gutter, and the padding restores the gutter inside.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 }
 
 // Each tab reads as an underlined pill; the active tab glows in the accent and
@@ -124,6 +143,15 @@
   &:hover {
     text-decoration: none;
     color: t.$color-text;
+  }
+
+  // Keep each label on one line in the scrollable strip, and tighten the
+  // padding/type to match the other detail pages.
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
   }
 }
 

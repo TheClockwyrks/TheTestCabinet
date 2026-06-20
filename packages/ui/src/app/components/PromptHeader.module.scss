@@ -12,7 +12,11 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-accent;
+  // Neon accent glow, plus a tight dark halo in the background color so the
+  // glyphs keep their edge when the backdrop's brighter decorations rise behind
+  // them on narrow viewports (the glow alone vanishes against similar warm tones).
   text-shadow:
+    0 0 0.25rem t.$color-bg,
     0 0 0.5rem t.$color-accent,
     0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
 }
@@ -35,5 +39,16 @@
 .comment {
   margin: t.$space-sm 0 0;
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
+  // The muted comment sits lower than the prompt, so on narrow/tall viewports
+  // the backdrop's warm sun/grid/terrain rise directly behind it — colors close
+  // to this accent, against which the accent `--ttc-glow` alone offers no
+  // contrast. Back the accent glow with the dark readability halo (same layered
+  // dark glow as `h.halo`, in the background color) so every glyph lifts off any
+  // background regardless of how the scene animates. Merged into one declaration
+  // because the halo mixin's `text-shadow` would otherwise override the glow.
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg,
+    var(--ttc-glow);
 }
