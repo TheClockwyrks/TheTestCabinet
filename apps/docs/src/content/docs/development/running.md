@@ -111,6 +111,29 @@ curl -X POST http://127.0.0.1:8787/ingest
 Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
 `curl http://127.0.0.1:8787/test-cases`.
 
+After you **edit a test case**, re-ingest so the backend serves the change.
+A plain scan skips any version it already holds (the store is immutable per
+`(slug, version)`), so force the overwrite — optionally scoping it to the case
+you touched:
+
+```sh
+curl -X POST http://127.0.0.1:8787/ingest \
+  -H 'content-type: application/json' \
+  -d '{"testCases": ["pong"], "force": true}'
+```
+
+Backend-driven runs (the desktop and web consoles) resolve their definition from
+the backend, so **without a re-ingest they keep running the previous
+definition** — a newly added spec, proof, or prompt change silently does not
+reach the model, and new manifest fields read back empty. (`tcab validate`
+against a local checkout reads the repository directly and is not affected.)
+
+Forced re-ingest overwrites the stored version in place and is a
+**development-only** convenience for iterating on a version no run has been
+published against. Once a published run references a version it is immutable —
+revise by creating a **new version** instead, never by editing and re-ingesting
+the published one (see [Test Cases](/components/core/test-cases/)).
+
 ## 3. Start the worker
 
 From a directory containing `.env.worker`, on the host:

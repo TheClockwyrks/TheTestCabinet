@@ -34,6 +34,16 @@ the requested version from the backend. The on-disk format described here is
 exactly what is authored in the repository and what the backend distributes —
 publishing a version caches it, it does not transform it.
 
+While a version is still being **authored**, re-ingesting it into a development
+backend — a forced overwrite via
+[`POST /ingest`](/components/backend/api/#post-ingest) — is the normal way to
+see edits take effect, because the store skips versions it already holds. That
+overwrite is a **development-only** convenience. Once a run has been
+**published** against a version, the version is frozen: its definition must keep
+matching every result that references it, so any further change requires a
+**new version** (bump `vX.Y.Z`) rather than editing and re-ingesting the
+published one.
+
 ## Contents
 
 Each test case version must contain:

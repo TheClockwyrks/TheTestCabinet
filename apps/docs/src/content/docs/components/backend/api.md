@@ -56,6 +56,21 @@ synchronous and reports what changed; an already-ingested, unchanged version is
 a no-op unless re-ingestion is forced. The request may restrict the scan to
 specific case slugs.
 
+The request body is optional JSON:
+
+```jsonc
+{
+  "testCases": ["pong"], // restrict the scan to these slugs (default: all)
+  "force": true          // re-ingest even versions already in the store
+}
+```
+
+`force` overwrites a version already stored, re-rendering its references. It
+exists for **development** iteration on a version no run has been published
+against; a version that published runs reference is immutable and must be
+revised by adding a new version, not re-ingested (see
+[Test Cases](/components/core/test-cases/)).
+
 Container images are **not** part of this API at all — they are distributed
 through a container registry and resolved by each runner directly from its own
 registry configuration (see [Execution](/components/core/execution/#containerization)).

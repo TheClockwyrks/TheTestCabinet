@@ -299,6 +299,33 @@ exported to the public snapshot by the **backend** when a run is ingested — th
 is no committed dataset to regenerate and `tcab catalog` only rebuilds the model
 catalog, so nothing extra to commit here.
 
+### Re-ingest after editing
+
+The local checkout is only the authoring source; a backend-driven run (the
+desktop and web consoles) resolves its definition from the **backend's store**,
+not your files. The store skips a version it already holds, so after editing a
+case you must **force a re-ingest** for the change to reach a run — otherwise
+the backend silently keeps serving the previous definition and any newly added
+spec, proof, or prompt edit never reaches the model (a missed re-ingest is the
+usual reason a just-authored feature "isn't working"). Against a local
+development backend:
+
+```sh
+curl -X POST http://127.0.0.1:8787/ingest \
+  -H 'content-type: application/json' \
+  -d '{"testCases": ["<slug>"], "force": true}'
+```
+
+Force-re-ingest overwrites the stored version in place — do this **only during
+development**, while iterating on a version no run has been published against.
+Once a published run references a version it is **immutable**: revise by
+creating a **new version** (bump `vX.Y.Z`), never by editing and re-ingesting
+the published one. See
+[`test-cases.md`](../../../apps/docs/src/content/docs/components/core/test-cases.md)
+and [`development/running.md`](../../../apps/docs/src/content/docs/development/running.md).
+(`tcab validate` reads the local checkout directly, so it is not affected by the
+store being stale.)
+
 Commit on the repository's default branch with a conventional-commit message
 scoped to the case (e.g. `feat(<slug>): add <version> …`). Do not commit rendered
 screenshots (git-ignored) or `node_modules/`.

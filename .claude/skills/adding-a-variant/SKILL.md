@@ -195,6 +195,23 @@ rebuilds the model catalog. See
 [`apps/docs/src/content/docs/components/core/validation.md`](../../../apps/docs/src/content/docs/components/core/validation.md)
 for what the harness checks automatically.
 
+A backend-driven run resolves its definition from the backend's store, which
+skips a version it already holds — so after adding the variant, **force a
+re-ingest** or the new variant will not appear in a run:
+
+```sh
+curl -X POST http://127.0.0.1:8787/ingest \
+  -H 'content-type: application/json' \
+  -d '{"testCases": ["<slug>"], "force": true}'
+```
+
+Force-re-ingest overwrites the stored version in place and is for
+**development** only. Adding a variant edits an existing version, so do it only
+while that version is unpublished; once a published run references the version
+it is immutable and a variant change requires a **new version** instead. See
+[`development/running.md`](../../../apps/docs/src/content/docs/development/running.md)
+and [`test-cases.md`](../../../apps/docs/src/content/docs/components/core/test-cases.md).
+
 ### 8. Commit
 
 Commit on the repository's default branch with a conventional-commit message
