@@ -75,9 +75,10 @@ availability is checked in two stages.
 
 Outside a run — for example the `tcab harnesses` status listing — availability is
 a **cost-free readiness check** from configuration alone: a harness is available
-when it supports API-key authentication (the only mode supported for now) and its
-key variable is set in the environment. This never starts a container, so it can
-report which harnesses are ready to run without installing anything. It cannot
+when the credentials its resolved [authentication mode](#authentication) needs are
+present — an API key set in the environment, or subscription credential files on
+disk. This never starts a container (and never reads credential contents), so it
+can report which harnesses are ready to run without installing anything. It cannot
 confirm a harness's CLI will install successfully without actually running it;
 that is left to the run.
 
@@ -90,27 +91,57 @@ must **never** start a session or take any other action that could incur cost.
 
 ## Authentication
 
-For its first version, The Test Cabinet supports **API key authentication only**.
-This keeps setup simple and yields an exact, attributable cost for every run.
+The Test Cabinet authenticates a harness in one of two modes:
 
-- API keys must be supplied to the run's container as secrets and must never be
-  written into the seeded repository or committed anywhere.
-- The variable a user exports on the host is the conventional provider one, but
-  the variable a harness's CLI actually reads can differ. The agent harness
-  layer absorbs this: it reads the key from the host variable and injects it
-  into the container under whatever variable the harness requires. Each
-  harness's Overview page under [Harnesses](/harnesses/) names the host variable
-  it reads and the container variable it is injected as.
-- Subscription based authentication is intentionally out of scope for the first
-  version. It may be added later for harnesses that support it.
+- **API key.** A provider key the user exports on the host is injected into the
+  run container as an environment variable. Billing is charged directly against
+  the key, which yields an exact, attributable cost for the run. The variable the
+  user exports is the conventional provider one, but the variable a harness's CLI
+  actually reads can differ — `codex exec` reads `CODEX_API_KEY`, not
+  `OPENAI_API_KEY` — and the harness layer absorbs this, reading the key from the
+  host variable and injecting it under whatever variable the harness requires.
+- **Subscription.** The credential files a harness's CLI writes when the user
+  signs in (for example `~/.codex/auth.json`) are copied into the run container at
+  the paths the CLI reads under the run user's home, so the harness authenticates
+  with the account subscription. The user signs in with the harness CLI itself in
+  a trusted environment; The Test Cabinet never performs the login or mints
+  tokens. A subscription carries no per-run provider charge — though a harness
+  that still reports an exact charge (Claude Code does, even on a subscription) is
+  recorded as-is, and one that reports none falls back to OpenRouter pricing.
 
-A harness that cannot authenticate with an API key — one that requires an
-account-based login instead — therefore reports itself **unavailable** under the
-current version: its adapter declares no API-key variable, so the layer has no
-credential to inject and a run against it fails with a clear error before a
-session is spent. Such a harness remains in the catalog for when subscription
-auth is added. [Antigravity](/harnesses/antigravity/overview/) is the current
-example.
+Credentials and keys are supplied only as container secrets or copied-in files;
+they are never written into the seeded repository or committed anywhere. Each
+harness's **Authentication** page under [Harnesses](/harnesses/) names the exact
+variables and credential files it uses.
+
+### Selecting a mode
+
+The mode is resolved once, from the harness's declared capabilities and the host
+environment, so the orchestrator and the `tcab harnesses` readiness listing select
+identically. By default The Test Cabinet **prefers a subscription** when its
+credentials are present, falling back to an API key otherwise. A user can lock the
+mode with `TCAB_AUTH_MODE` (every harness) or `TCAB_AUTH_MODE_<SLUG>` (one harness,
+which wins); the accepted values are `auto` (the default), `subscription`, and
+`api-key`.
+
+Selecting subscription means simply *not* injecting an API key: because the run
+container starts clean, there is no ambient key for the harness to prefer, so the
+copied-in credentials authenticate it.
+
+A harness supports whichever modes its adapter declares. One that supports neither
+the configured key nor a usable subscription reports itself **unavailable**, and a
+run against it fails with a clear error — naming what to set or sign in to — before
+a session is spent. [Antigravity](/harnesses/antigravity/overview/) supports only
+subscription authentication: it is unavailable until the user signs in with its
+CLI, and runnable once they have.
+
+### Credential refresh
+
+A subscription CLI may refresh its tokens mid-session, rewriting the credential
+file inside the container. The container is ephemeral and torn down after the run,
+so that refreshed copy is discarded — credentials are copied **in** only, never
+written back to the host. The supported subscription harnesses use long-lived
+refresh tokens, so the host credentials stay valid for the next run.
 
 ## Usage Reporting
 

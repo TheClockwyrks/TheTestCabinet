@@ -12,6 +12,8 @@ pages:
 
 - **Overview** — the harness's website, the model IDs it accepts, and how it is
   installed and invoked.
+- **Authentication** — the API-key variable it reads and, for the harnesses that
+  support it, how a subscription is supplied.
 - **Events** — how the harness's raw output is translated into the normalized
   [harness event](/components/core/events/) stream.
 - **Metrics** — how its token usage and cost are extracted into the normalized
@@ -47,8 +49,9 @@ format.
 
 ## Antigravity availability
 
-Google Antigravity authenticates only through a Google account and reports no
-token usage in its non-interactive mode, so its adapter reports it
-**unavailable** under The Test Cabinet's API-key-only authentication. It is
-defined here for when subscription auth is added; until then it accepts no model
-ID for a run. See [Antigravity → Overview](/harnesses/antigravity/overview/).
+Google Antigravity authenticates only through a Google account, so it has no
+API-key mode and runs under [subscription
+authentication](/components/core/harnesses/#authentication) alone: it is
+unavailable until you sign in with its `agy` CLI, and runnable once you have. It
+still accepts no model ID and reports no token usage in its non-interactive mode.
+See [Antigravity → Overview](/harnesses/antigravity/overview/).

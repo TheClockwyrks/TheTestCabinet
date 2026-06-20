@@ -25,10 +25,9 @@ There is **no detailed per-event mapping** for Antigravity. No
 [command](/components/core/events/#command), file-operation, or
 [skill](/components/core/events/#skill) events are produced, because the generic
 parser does not interpret the harness's output. A structured mapping could be
-added later — without changing the event contract — once the harness can actually
-run and a real output stream can be captured. As things stand it cannot run at
-all: Antigravity authenticates only with a Google account and so cannot
-participate in The Test Cabinet's API-key-only mode (see the
-[overview](./)).
+added later — without changing the event contract — once a real output stream can
+be captured. Antigravity runs under [subscription
+authentication](./authentication/) only, so capturing one means first signing in
+with its `agy` CLI (see the [overview](./)).
 
 See [Harness Events](/components/core/events/) for the normalized event contract.

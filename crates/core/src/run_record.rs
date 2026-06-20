@@ -130,6 +130,25 @@ pub struct RunEnvironment {
     /// The Node.js version reported by `node --version` inside the container
     /// (for example, `v22.11.0`), or `None` when it could not be determined.
     pub node_version: Option<String>,
+    /// Which authentication mode the run used. This is how the run's cost should
+    /// be read: an API-key run is billed against that key, while a subscription
+    /// run carries no per-run provider charge (a harness that still reports an
+    /// exact charge — Claude Code does even on a subscription — is recorded
+    /// as-is; one that reports none falls back to OpenRouter comparable pricing).
+    pub auth_mode: AuthMode,
+}
+
+/// The authentication mode a run used, recorded so a published run is
+/// self-describing about how its cost should be interpreted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AuthMode {
+    /// A provider API key, injected into the run container as an environment
+    /// variable. Billing is charged directly against that key.
+    ApiKey,
+    /// A harness account subscription, supplied as credential files copied into
+    /// the run container. There is no per-run provider charge.
+    Subscription,
 }
 
 /// Links to a run's published outputs.

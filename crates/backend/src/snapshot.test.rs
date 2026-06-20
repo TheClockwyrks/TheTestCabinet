@@ -38,6 +38,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 os: "Debian".to_string(),
                 container_image: "test-cabinet/claude:abcd".to_string(),
                 node_version: None,
+                auth_mode: test_cabinet_core::AuthMode::ApiKey,
             },
             metrics: RunMetrics::default(),
             validation: ValidationSummary {
@@ -273,11 +274,13 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let (_tmp, store) = empty_store();
     // Stage the asset media the run uploaded; one of the four (target.png) is
     // deliberately absent to prove a missing file is skipped, not fatal.
-    store.write_run_asset("a1", "regenerated.png", b"png:regen").unwrap();
-    store.write_run_asset("a1", "preview.png", b"png:preview").unwrap();
     store
-        .write_run_asset("a1", "actions.json", b"[]")
+        .write_run_asset("a1", "regenerated.png", b"png:regen")
         .unwrap();
+    store
+        .write_run_asset("a1", "preview.png", b"png:preview")
+        .unwrap();
+    store.write_run_asset("a1", "actions.json", b"[]").unwrap();
 
     let snapshot = SnapshotBuilder::new(
         vec![asset_run("a1", "2026-06-17T21:40:00Z")],
@@ -315,8 +318,14 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
     let media = parsed["assetMedia"].as_array().unwrap();
     let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
-    assert_eq!(files, vec!["regenerated.png", "preview.png", "actions.json"]);
-    let regen_meta = media.iter().find(|m| m["file"] == "regenerated.png").unwrap();
+    assert_eq!(
+        files,
+        vec!["regenerated.png", "preview.png", "actions.json"]
+    );
+    let regen_meta = media
+        .iter()
+        .find(|m| m["file"] == "regenerated.png")
+        .unwrap();
     assert_eq!(regen_meta["key"], regen_key);
 }
 
@@ -339,12 +348,7 @@ fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
     // An end-to-end run carries an empty assetMedia list and exports no asset objects.
     assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.contains("/asset/"))
-    );
+    assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
 }
 
 #[test]

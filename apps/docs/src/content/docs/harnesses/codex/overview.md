@@ -38,10 +38,12 @@ passes these flags:
 
 The prompt is passed as the final positional argument.
 
-**Authentication.** Codex's API key is sourced from `OPENAI_API_KEY` on the
-host. Because `codex exec` reads its key only from `CODEX_API_KEY` and ignores
-`OPENAI_API_KEY`, the host's `OPENAI_API_KEY` is injected into the run container
-under the name `CODEX_API_KEY`.
+**Authentication.** Codex authenticates with either an OpenAI API key or a ChatGPT
+account subscription; by default a subscription is preferred when you are signed
+in. With the API key, the key is sourced from `OPENAI_API_KEY` on the host and —
+because `codex exec` reads its key only from `CODEX_API_KEY` and ignores
+`OPENAI_API_KEY` — injected into the run container under the name `CODEX_API_KEY`.
+See [Authentication](./authentication/) for both modes and how to lock one.
 
 **Pricing.** Codex reports bare OpenAI model IDs, so the comparable-cost lookup
 prepends an `openai/` prefix before consulting OpenRouter — `gpt-5.5` becomes
@@ -50,6 +52,7 @@ is always OpenRouter-derived; see [Metrics](./metrics/).
 
 ---
 
-See [Events](./events/) for how Codex's output is normalized and
+See [Authentication](./authentication/) for the API-key and subscription modes,
+[Events](./events/) for how Codex's output is normalized, and
 [Metrics](./metrics/) for how its usage is counted. For the harness layer these
 pages fit into, see [Harnesses](/components/core/harnesses/).

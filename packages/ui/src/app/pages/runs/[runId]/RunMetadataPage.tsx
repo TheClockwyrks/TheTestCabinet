@@ -29,6 +29,14 @@ export function RunMetadataPage() {
                   value={environment.nodeVersion ?? "Unknown"}
                 />
                 <MetricTile
+                  label="Authentication"
+                  value={
+                    environment.authMode === "subscription"
+                      ? "Subscription"
+                      : "API key"
+                  }
+                />
+                <MetricTile
                   label="Harness version"
                   value={
                     subject.harnessVersion

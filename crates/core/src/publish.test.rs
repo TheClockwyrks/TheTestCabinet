@@ -38,6 +38,7 @@ fn sample_record() -> RunRecord {
             os: "Debian GNU/Linux 12 (bookworm)".to_string(),
             container_image: "test-cabinet/codex:1a7b".to_string(),
             node_version: Some("v22.11.0".to_string()),
+            auth_mode: crate::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 258.4,

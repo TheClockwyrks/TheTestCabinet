@@ -24,6 +24,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::instrument;
 
+use crate::auth::{CredFile, CredSource, SubscriptionSpec};
 use crate::error::{Error, Result};
 use crate::event::{EventFormat, EventKind, EventParser, EventSink, HarnessEvent};
 use crate::execution::{
@@ -140,6 +141,9 @@ struct AdapterSpec {
     /// The variable the key is injected into inside the container, when it
     /// differs from `api_key_env`. `None` reuses `api_key_env` on both sides.
     container_key_env: Option<&'static str>,
+    /// The subscription-authentication descriptor, when the harness supports it
+    /// (Claude Code, Codex, Antigravity). `None` for an API-key-only harness.
+    subscription: Option<SubscriptionSpec>,
     /// Builds the session argument vector (after the binary) from model + prompt.
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
     usage: UsageShape,
@@ -161,6 +165,7 @@ pub struct CliHarness {
     pricing_model: PricingModelId,
     api_key_env: Option<&'static str>,
     container_key_env: Option<&'static str>,
+    subscription: Option<SubscriptionSpec>,
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
     usage: UsageShape,
     event_format: EventFormat,
@@ -186,6 +191,10 @@ impl AgentHarness for CliHarness {
 
     fn container_key_env(&self) -> Option<&'static str> {
         self.container_key_env.or(self.api_key_env)
+    }
+
+    fn subscription_spec(&self) -> Option<SubscriptionSpec> {
+        self.subscription
     }
 
     fn pricing_model_id(&self, model_id: &str) -> String {
@@ -453,6 +462,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         pricing_model: spec.pricing_model,
         api_key_env: spec.api_key_env,
         container_key_env: spec.container_key_env,
+        subscription: spec.subscription,
         session_args: spec.session_args,
         usage: spec.usage,
         event_format: spec.event_format,
@@ -470,6 +480,27 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("ANTHROPIC_API_KEY"),
             container_key_env: None,
+            // Claude Code reads a Claude subscription from credentials the `claude`
+            // CLI writes when the user signs in. `.credentials.json` carries the
+            // token; `.claude.json` holds non-secret CLI state and is copied when
+            // present. When subscription auth is used, `ANTHROPIC_API_KEY` is not
+            // injected, so the CLI authenticates with the subscription.
+            subscription: Some(SubscriptionSpec {
+                files: &[
+                    CredFile {
+                        source: CredSource::HomeRelative(".claude/.credentials.json"),
+                        container_path: "/home/node/.claude/.credentials.json",
+                        mode: 0o600,
+                        required: true,
+                    },
+                    CredFile {
+                        source: CredSource::HomeRelative(".claude.json"),
+                        container_path: "/home/node/.claude.json",
+                        mode: 0o600,
+                        required: false,
+                    },
+                ],
+            }),
             session_args: |model, prompt| {
                 vec![
                     "--print".into(),
@@ -508,6 +539,22 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             // `OPENAI_API_KEY`, so the key the user exports as `OPENAI_API_KEY`
             // on the host is injected into the container under this name.
             container_key_env: Some("CODEX_API_KEY"),
+            // Codex reads a ChatGPT subscription from `auth.json` in its home
+            // directory (`CODEX_HOME`, default `~/.codex`). When subscription auth
+            // is used, neither `CODEX_API_KEY` nor `OPENAI_API_KEY` is injected, so
+            // `codex exec` authenticates with the subscription.
+            subscription: Some(SubscriptionSpec {
+                files: &[CredFile {
+                    source: CredSource::HomeDir {
+                        env: "CODEX_HOME",
+                        default_rel: ".codex",
+                        file: "auth.json",
+                    },
+                    container_path: "/home/node/.codex/auth.json",
+                    mode: 0o600,
+                    required: true,
+                }],
+            }),
             session_args: |model, prompt| {
                 vec![
                     "exec".into(),
@@ -537,6 +584,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
+            subscription: None,
             session_args: |model, prompt| {
                 vec![
                     "--json".into(),
@@ -573,10 +621,23 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
         },
         HarnessSlug::Antigravity => AdapterSpec {
             pricing_model: PricingModelId::Passthrough,
-            // Antigravity only supports Google-account auth; with no API-key mode
-            // it cannot participate in The Test Cabinet's API-key-only runs.
+            // Antigravity authenticates only through a Google account, so it has no
+            // API-key mode; it runs under subscription authentication only.
             api_key_env: None,
             container_key_env: None,
+            // The `agy` CLI writes a Google-account OAuth token to
+            // `~/.gemini/antigravity-cli/` when the user signs in; copying it into
+            // the container is what makes Antigravity runnable.
+            subscription: Some(SubscriptionSpec {
+                files: &[CredFile {
+                    source: CredSource::HomeRelative(
+                        ".gemini/antigravity-cli/antigravity-oauth-token",
+                    ),
+                    container_path: "/home/node/.gemini/antigravity-cli/antigravity-oauth-token",
+                    mode: 0o600,
+                    required: true,
+                }],
+            }),
             session_args: |_model, prompt| {
                 vec![
                     "--print".into(),
@@ -591,6 +652,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
+            subscription: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -623,6 +685,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::StripPrefix("openrouter/"),
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
+            subscription: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -661,6 +724,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::StripPrefix("openrouter/"),
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
+            subscription: None,
             session_args: |model, prompt| {
                 vec![
                     "run".into(),
@@ -695,6 +759,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
+            subscription: None,
             session_args: |model, prompt| {
                 vec![
                     "--mode".into(),

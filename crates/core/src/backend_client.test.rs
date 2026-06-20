@@ -235,6 +235,7 @@ fn sample_record(id: &str) -> RunRecord {
             os: "Debian GNU/Linux 12".to_string(),
             container_image: "ghcr.io/example/test-cabinet-claude@sha256:abc".to_string(),
             node_version: None,
+            auth_mode: crate::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 300.0,

@@ -263,7 +263,8 @@ export default defineConfig({
         },
         // The supported coding-agent harnesses. The catalogue overview lists
         // every harness; each harness then has its own Overview (website, model
-        // IDs, invocation), Events (raw → normalized event mapping), and Metrics
+        // IDs, invocation), Authentication (API-key and, where supported,
+        // subscription), Events (raw → normalized event mapping), and Metrics
         // (usage/cost extraction) pages.
         {
           label: "Harnesses",
@@ -275,6 +276,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/claude/overview",
+                "harnesses/claude/authentication",
                 "harnesses/claude/events",
                 "harnesses/claude/metrics",
               ],
@@ -284,6 +286,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/codex/overview",
+                "harnesses/codex/authentication",
                 "harnesses/codex/events",
                 "harnesses/codex/metrics",
               ],
@@ -293,6 +296,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/cline/overview",
+                "harnesses/cline/authentication",
                 "harnesses/cline/events",
                 "harnesses/cline/metrics",
               ],
@@ -302,6 +306,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/goose/overview",
+                "harnesses/goose/authentication",
                 "harnesses/goose/events",
                 "harnesses/goose/metrics",
               ],
@@ -311,6 +316,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/pi/overview",
+                "harnesses/pi/authentication",
                 "harnesses/pi/events",
                 "harnesses/pi/metrics",
               ],
@@ -320,6 +326,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/opencode/overview",
+                "harnesses/opencode/authentication",
                 "harnesses/opencode/events",
                 "harnesses/opencode/metrics",
               ],
@@ -329,6 +336,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/kilo/overview",
+                "harnesses/kilo/authentication",
                 "harnesses/kilo/events",
                 "harnesses/kilo/metrics",
               ],
@@ -338,6 +346,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "harnesses/antigravity/overview",
+                "harnesses/antigravity/authentication",
                 "harnesses/antigravity/events",
                 "harnesses/antigravity/metrics",
               ],

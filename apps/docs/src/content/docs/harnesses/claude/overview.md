@@ -46,9 +46,10 @@ bypassPermissions` lets the agent act without approval prompts; and
 `--output-format stream-json --verbose` selects the line-delimited JSON event
 stream the harness layer parses (see [Events](./events/)).
 
-The agent authenticates from the `ANTHROPIC_API_KEY` environment variable, which
-must be present on the host; it is forwarded into the run container under the
-same name.
+Claude Code authenticates with either an Anthropic API key or a Claude account
+subscription; by default a subscription is preferred when you are signed in. See
+[Authentication](./authentication/) for the variables and credential files each
+mode uses and how to lock the mode.
 
 Because Claude Code drives one provider at one price, the orchestrator records
 the exact charge the CLI reports rather than looking up per-token prices. Its
@@ -58,7 +59,8 @@ actual cost (see [Metrics](./metrics/)).
 
 ---
 
-See [Events](./events/) for how Claude Code's output maps to normalized harness
+See [Authentication](./authentication/) for the API-key and subscription modes,
+[Events](./events/) for how Claude Code's output maps to normalized harness
 events, [Metrics](./metrics/) for how its usage and cost are recorded, and the
 [agent harness layer](/components/core/harnesses/) for the contracts both
 implement.

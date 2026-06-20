@@ -1,9 +1,10 @@
 # Google Antigravity harness definition. See `harnesses/README.md`.
 #
-# Antigravity authenticates only through a Google account and reports no token
-# usage in its non-interactive mode, so the adapter reports it unavailable under
-# The Test Cabinet's API-key-only authentication. It is defined here for when
-# subscription auth is added.
+# Antigravity authenticates only through a Google account, so it has no API-key
+# mode and runs under subscription authentication alone: the adapter declares no
+# api_key_env and instead reads the OAuth token the `agy` CLI writes when the user
+# signs in, copying it into the run container. It is unavailable until that token
+# exists, and reports no token usage in its non-interactive mode.
 
 slug = "antigravity"
 name = "Google Antigravity"

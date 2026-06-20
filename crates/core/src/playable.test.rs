@@ -134,6 +134,7 @@ fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8]
             os: "linux".to_string(),
             container_image: "img:latest".to_string(),
             node_version: None,
+            auth_mode: crate::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 1.0,

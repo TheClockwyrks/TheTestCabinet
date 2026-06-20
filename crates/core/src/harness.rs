@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::auth::SubscriptionSpec;
 use crate::error::Result;
 use crate::event::{EventSink, HarnessEvent};
 use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
@@ -198,6 +199,15 @@ pub trait AgentHarness: Send + Sync {
     /// `CODEX_API_KEY`, not `OPENAI_API_KEY`.
     fn container_key_env(&self) -> Option<&'static str> {
         self.api_key_env()
+    }
+
+    /// The subscription-authentication descriptor for this harness, or `None`
+    /// when it supports only API-key authentication. It names the credential
+    /// files the harness's CLI writes when the user signs in, and the paths they
+    /// are copied to inside the run container so the harness authenticates with
+    /// the account subscription. See [`crate::auth`].
+    fn subscription_spec(&self) -> Option<SubscriptionSpec> {
+        None
     }
 
     /// Map a run's model ID to the ID OpenRouter lists it under, for the

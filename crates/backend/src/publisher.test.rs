@@ -29,6 +29,7 @@ fn record(id: &str) -> RunRecord {
             os: "Debian".to_string(),
             container_image: "img".to_string(),
             node_version: None,
+            auth_mode: test_cabinet_core::AuthMode::ApiKey,
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary::default(),

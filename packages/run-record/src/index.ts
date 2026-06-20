@@ -21,6 +21,14 @@ export type HarnessSlug =
 export type RunState = "completed" | "failed" | "unevaluable";
 
 /**
+ * How a run authenticated its harness. `"apiKey"` is billed directly against the
+ * provider key; `"subscription"` carries no per-run provider charge (a harness
+ * may still report an exact charge, e.g. Claude Code does even on a
+ * subscription). This is how a run's cost should be interpreted.
+ */
+export type AuthMode = "apiKey" | "subscription";
+
+/**
  * The container environment a run executed in. Sourced from inside the run
  * container, not the host. Probes are best-effort with sensible fallbacks.
  */
@@ -35,6 +43,8 @@ export interface RunEnvironment {
   containerImage: string;
   /** Trimmed `node --version` inside the container; null if undeterminable. */
   nodeVersion: string | null;
+  /** Which authentication mode the run used; how its cost should be read. */
+  authMode: AuthMode;
 }
 
 /**
@@ -263,6 +273,9 @@ export const RUN_STATES: readonly RunState[] = [
   "unevaluable",
 ];
 
+/** Every valid {@link AuthMode}. */
+export const AUTH_MODES: readonly AuthMode[] = ["apiKey", "subscription"];
+
 /** Narrowing type guard for {@link HarnessSlug}. */
 export function isHarnessSlug(value: string): value is HarnessSlug {
   return (HARNESS_SLUGS as readonly string[]).includes(value);
@@ -271,4 +284,9 @@ export function isHarnessSlug(value: string): value is HarnessSlug {
 /** Narrowing type guard for {@link RunState}. */
 export function isRunState(value: string): value is RunState {
   return (RUN_STATES as readonly string[]).includes(value);
+}
+
+/** Narrowing type guard for {@link AuthMode}. */
+export function isAuthMode(value: string): value is AuthMode {
+  return (AUTH_MODES as readonly string[]).includes(value);
 }

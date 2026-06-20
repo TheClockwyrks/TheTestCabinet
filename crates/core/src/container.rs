@@ -6,9 +6,11 @@
 //! into a runtime-managed volume at `/work`, secrets are passed as environment
 //! variables, and the produced working tree is collected when the run finishes.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use tempfile::NamedTempFile;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::instrument;
@@ -16,8 +18,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::execution::{
-    ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    ExecOutput, OutputSink, OutputStream,
+    ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
+    ContainerSpec, ExecOutput, OutputSink, OutputStream,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -163,7 +165,115 @@ impl CliContainerRuntime {
         }
         Ok(())
     }
+
+    /// Materialize files into the started container at their absolute paths,
+    /// owned by the run user with the requested mode.
+    ///
+    /// Subscription authentication needs a harness's credential files visible
+    /// inside the container at the paths its CLI reads from `$HOME`
+    /// (`/home/node`). Each file's bytes are staged in a private host temp file
+    /// (created `0600`) and copied in with `cp`, mirroring how the working tree
+    /// is seeded — copying a file rather than piping bytes through a command line
+    /// keeps secret contents off any argument list. The copied file is then
+    /// handed to the run user and its mode tightened, since `cp` sets neither
+    /// consistently across runtimes.
+    async fn materialize_files(
+        &self,
+        container: &ContainerHandle,
+        files: &[ContainerFile],
+    ) -> Result<()> {
+        for file in files {
+            // Create the parent directory as the run user so the tree under its
+            // home stays user-owned (and writable, should the CLI refresh the
+            // credential mid-session).
+            if let Some(parent) = parent_dir(&file.container_path) {
+                let mkdir = vec![
+                    "exec".to_string(),
+                    "--user".to_string(),
+                    RUN_USER.to_string(),
+                    container.id.clone(),
+                    "mkdir".to_string(),
+                    "-p".to_string(),
+                    parent.to_string(),
+                ];
+                let output = self.run(&mkdir).await?;
+                if !output.status.success() {
+                    return Err(Error::ContainerRuntime(format!(
+                        "creating `{parent}` in the container failed: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    )));
+                }
+            }
+
+            let mut temp = NamedTempFile::new().map_err(|err| {
+                Error::ContainerRuntime(format!(
+                    "staging a container file on the host failed: {err}"
+                ))
+            })?;
+            temp.write_all(&file.contents)
+                .and_then(|()| temp.flush())
+                .map_err(|err| {
+                    Error::ContainerRuntime(format!(
+                        "staging a container file on the host failed: {err}"
+                    ))
+                })?;
+            let source = temp.path().to_str().ok_or_else(|| {
+                Error::ContainerRuntime("staged container file path is not valid UTF-8".to_string())
+            })?;
+            let copy = vec![
+                "cp".to_string(),
+                source.to_string(),
+                format!("{}:{}", container.id, file.container_path),
+            ];
+            let output = self.run(&copy).await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "copying a file to `{}` in the container failed: {}",
+                    file.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+
+            // Hand the file to the run user and tighten its mode (run as uid 0 to
+            // chown). Container paths are fixed, quote-free constants, so single
+            // quotes are a safe shell escape here.
+            let fixup = vec![
+                "exec".to_string(),
+                "--user".to_string(),
+                "0".to_string(),
+                container.id.clone(),
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "chown {RUN_USER}:{RUN_USER} '{path}' && chmod {mode:o} '{path}'",
+                    path = file.container_path,
+                    mode = file.mode,
+                ),
+            ];
+            let output = self.run(&fixup).await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "setting ownership and mode on `{}` in the container failed: {}",
+                    file.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+        Ok(())
+    }
 }
+
+/// The parent-directory portion of an absolute container path, or `None` when it
+/// has no non-empty parent (a file at the filesystem root).
+fn parent_dir(path: &str) -> Option<&str> {
+    path.rsplit_once('/')
+        .map(|(parent, _)| parent)
+        .filter(|parent| !parent.is_empty())
+}
+
+#[cfg(test)]
+#[path = "container.test.rs"]
+mod tests;
 
 #[async_trait::async_trait]
 impl ContainerRuntime for CliContainerRuntime {
@@ -217,6 +327,14 @@ impl ContainerRuntime for CliContainerRuntime {
         // Seed the working tree now that the container exists. On any failure the
         // just-started container is torn down so a failed start leaks nothing.
         if let Err(err) = self.seed_workdir(&handle, &spec.repo_path).await {
+            let _ = self.stop(&handle).await;
+            return Err(err);
+        }
+
+        // Materialize any credential files (subscription authentication) at the
+        // paths the harness CLI reads under the run user's home, before the
+        // session. Same torn-down-on-failure contract as seeding.
+        if let Err(err) = self.materialize_files(&handle, &spec.files).await {
             let _ = self.stop(&handle).await;
             return Err(err);
         }

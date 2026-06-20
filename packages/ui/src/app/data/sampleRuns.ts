@@ -25,6 +25,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/codex:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 216,
@@ -83,6 +84,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/claude:latest",
       nodeVersion: "v22.14.0",
+      authMode: "subscription",
     },
     metrics: {
       runTimeSeconds: 1054,
@@ -149,6 +151,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Ubuntu 24.04.1 LTS",
       containerImage: "test-cabinet/opencode:latest",
       nodeVersion: "v20.18.1",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 1191,
@@ -207,6 +210,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/goose:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 552,
@@ -259,6 +263,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/cline:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 393,
@@ -310,6 +315,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Ubuntu 24.04.1 LTS",
       containerImage: "test-cabinet/kilo:latest",
       nodeVersion: "v20.18.1",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 1928,
@@ -368,6 +374,7 @@ export const sampleRuns: RunRecord[] = [
       os: "unknown",
       containerImage: "test-cabinet/antigravity:latest",
       nodeVersion: null,
+      authMode: "subscription",
     },
     metrics: {
       runTimeSeconds: 1727,
@@ -423,6 +430,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/pi:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 242,
@@ -475,6 +483,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/codex:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 801,
@@ -533,6 +542,7 @@ export const sampleRuns: RunRecord[] = [
       os: "Debian GNU/Linux 12 (bookworm)",
       containerImage: "test-cabinet/goose:latest",
       nodeVersion: "v22.14.0",
+      authMode: "apiKey",
     },
     metrics: {
       runTimeSeconds: 1308,

@@ -1,7 +1,7 @@
 //! `tcab harnesses` — list supported harnesses and their availability.
 
 use test_cabinet_core::{
-    AgentHarness, Availability, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug,
+    Availability, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, auth_readiness,
 };
 
 use crate::cli::HarnessesArgs;
@@ -10,9 +10,10 @@ use crate::cli::HarnessesArgs;
 ///
 /// Each harness installs its CLI into the run container **at run time**, so this
 /// cannot cheaply probe an installed binary without launching a run. Instead it
-/// reports readiness from configuration alone: a harness is available when it
-/// supports API-key authentication and its key variable is set in the
-/// environment. This is cost-free and never starts a container.
+/// reports readiness from configuration alone (see [`auth_readiness`]): a harness
+/// is available when the credentials its resolved authentication mode needs are
+/// present — an API key in the environment, or subscription credential files on
+/// disk. This is cost-free and never starts a container.
 pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     let registry = DefaultHarnessRegistry::new();
 
@@ -20,7 +21,7 @@ pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
         Vec::with_capacity(HarnessSlug::ALL.len());
     for slug in HarnessSlug::ALL {
         let (name, availability) = match registry.get(slug) {
-            Some(harness) => (harness.name().to_string(), availability_of(harness)),
+            Some(harness) => (harness.name().to_string(), auth_readiness(harness)),
             None => (
                 slug.as_str().to_string(),
                 Availability {
@@ -40,34 +41,6 @@ pub async fn execute(args: HarnessesArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Report a harness's readiness from configuration alone.
-///
-/// A harness that cannot use API-key authentication (the only mode supported for
-/// now) is unavailable. Otherwise it is available once its host key variable is
-/// set; the actual CLI is installed into the container at run time, so there is
-/// no version to report here.
-fn availability_of(harness: &dyn AgentHarness) -> Availability {
-    match harness.api_key_env() {
-        None => Availability {
-            available: false,
-            version: None,
-            detail: Some("API-key authentication is not supported by this harness".to_string()),
-        },
-        Some(var) => match std::env::var(var) {
-            Ok(value) if !value.trim().is_empty() => Availability {
-                available: true,
-                version: None,
-                detail: None,
-            },
-            _ => Availability {
-                available: false,
-                version: None,
-                detail: Some(format!("set {var} to run this harness")),
-            },
-        },
-    }
 }
 
 /// A short, stable label for an availability result.

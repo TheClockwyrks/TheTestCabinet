@@ -173,6 +173,7 @@ fn record_with_id(id: &str) -> RunRecord {
             os: "linux".to_string(),
             container_image: "test-cabinet/claude:abc".to_string(),
             node_version: None,
+            auth_mode: test_cabinet_core::AuthMode::ApiKey,
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary::default(),

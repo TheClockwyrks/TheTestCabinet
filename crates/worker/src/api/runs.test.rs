@@ -118,6 +118,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
             os: "linux".to_string(),
             container_image: "img".to_string(),
             node_version: None,
+            auth_mode: test_cabinet_core::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 0.0,

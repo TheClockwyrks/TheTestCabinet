@@ -28,6 +28,7 @@ fn sample_record() -> RunRecord {
             os: "Debian GNU/Linux 12 (bookworm)".to_string(),
             container_image: "test-cabinet/claude:latest".to_string(),
             node_version: Some("v22.11.0".to_string()),
+            auth_mode: crate::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 300.0,
@@ -106,7 +107,8 @@ fn serializes_to_camel_case_contract() {
         "environment": {
             "os": "Debian GNU/Linux 12 (bookworm)",
             "containerImage": "test-cabinet/claude:latest",
-            "nodeVersion": "v22.11.0"
+            "nodeVersion": "v22.11.0",
+            "authMode": "apiKey"
         },
         "metrics": {
             "runTimeSeconds": 300.0,

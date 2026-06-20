@@ -9,6 +9,7 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod auth;
 pub mod backend_client;
 pub mod browser;
 pub mod container;
@@ -44,6 +45,10 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::instrument;
 
+pub use auth::{
+    AuthPlan, CredFile, CredSource, RequestedAuthMode, SubscriptionSpec, auth_readiness,
+    resolve_auth,
+};
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
     PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
@@ -55,8 +60,9 @@ pub use event::{
     OrchestrationAction, SystemStage, SystemStatus,
 };
 pub use execution::{
-    ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
-    OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
+    ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
+    ContainerSpec, OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest, SeededRepo,
+    WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -82,7 +88,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
+    AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
+    RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -276,17 +283,14 @@ where
                 detail: "no adapter is registered for this harness".to_string(),
             })?;
 
-        // API-key authentication is the only supported mode for now.
-        let api_key_env = harness
-            .api_key_env()
-            .ok_or_else(|| Error::HarnessUnavailable {
-                slug: slug.as_str().to_string(),
-                detail: "API-key authentication is not supported by this harness".to_string(),
-            })?;
-        let api_key = std::env::var(api_key_env).map_err(|_| Error::HarnessUnavailable {
-            slug: slug.as_str().to_string(),
-            detail: format!("environment variable {api_key_env} is not set"),
-        })?;
+        // Resolve how this run authenticates: an API key injected as an
+        // environment secret, or a subscription supplied as credential files
+        // copied into the container. The mode is chosen from the harness's
+        // declared capabilities and the host environment (preferring a
+        // subscription when present, unless locked with `TCAB_AUTH_MODE`); see
+        // [`auth::resolve_auth`]. The recorded mode is captured for the run.
+        let auth = auth::resolve_auth(harness)?;
+        let auth_mode = auth.mode();
 
         // The image is the run's explicit per-run override when it carries one,
         // else the single shared base image resolved from the environment (a
@@ -324,16 +328,28 @@ where
             SystemStatus::Completed,
         ));
 
+        // Apply the resolved auth plan to the container: an API key becomes an
+        // environment secret (injected under the variable the harness's CLI
+        // actually reads, which can differ from the host one — Codex reads
+        // `CODEX_API_KEY`, not `OPENAI_API_KEY`); a subscription becomes
+        // credential files copied in at the paths the CLI reads under the run
+        // user's home. Not injecting a key is what forces subscription auth: the
+        // base container is clean, so there is no ambient key to unset.
         let mut secrets = BTreeMap::new();
-        // The key is read from the host's `api_key_env` but injected into the
-        // container under the variable the harness's CLI actually reads, which
-        // can differ (Codex reads `CODEX_API_KEY`, not `OPENAI_API_KEY`).
-        let container_key_env = harness.container_key_env().unwrap_or(api_key_env);
-        secrets.insert(container_key_env.to_string(), api_key);
+        let mut files = Vec::new();
+        match auth {
+            auth::AuthPlan::ApiKey { container_env, key } => {
+                secrets.insert(container_env, key);
+            }
+            auth::AuthPlan::Subscription { files: cred_files } => {
+                files = cred_files;
+            }
+        }
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
             secrets,
+            files,
             network_enabled: true,
         };
 
@@ -373,7 +389,9 @@ where
         // are best-effort: a failure degrades to sensible defaults rather than
         // failing the run. The resolved image is recorded as the run's
         // `containerImage`.
-        let environment = self.probe_environment(&handle, recorded_image).await;
+        let environment = self
+            .probe_environment(&handle, recorded_image, auth_mode)
+            .await;
 
         // Bound every in-container setup step and the harness session by the
         // run's maximum runtime so nothing can run unbounded. The cap comes from
@@ -518,6 +536,7 @@ where
         &self,
         handle: &ContainerHandle,
         container_image: String,
+        auth_mode: AuthMode,
     ) -> RunEnvironment {
         let os = self
             .runtime
@@ -541,6 +560,7 @@ where
             os,
             container_image,
             node_version,
+            auth_mode,
         }
     }
 

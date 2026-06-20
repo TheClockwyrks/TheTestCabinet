@@ -80,10 +80,35 @@ pub struct ContainerSpec {
     /// Secrets (such as API keys) supplied to the container. These must never be
     /// written into the seeded repository or committed anywhere.
     pub secrets: BTreeMap<String, String>,
+    /// Files materialized inside the container before the session, at absolute
+    /// paths under the run user's home. This is how subscription-authentication
+    /// credential files are made visible to a harness's CLI; it is empty for an
+    /// API-key run. Like [`secrets`](Self::secrets), these may carry credentials
+    /// and must never be written into the seeded repository or committed.
+    pub files: Vec<ContainerFile>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is
     /// expected to be enabled.
     pub network_enabled: bool,
+}
+
+/// A file to materialize inside a started run container.
+///
+/// Subscription authentication needs a harness's credential files present in
+/// the container at the paths its CLI reads (under the run user's `$HOME`).
+/// Carrying the bytes here — rather than a host path — keeps the runtime free of
+/// host-path coupling and lets an in-memory runtime used by tests record exactly
+/// what would be written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerFile {
+    /// Absolute destination path inside the container (for example
+    /// `/home/node/.codex/auth.json`).
+    pub container_path: String,
+    /// The file's raw bytes.
+    pub contents: Vec<u8>,
+    /// The Unix mode the file is given — for example `0o600` so a credential is
+    /// never left group- or world-readable.
+    pub mode: u32,
 }
 
 /// A handle to a running container.

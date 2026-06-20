@@ -78,11 +78,12 @@
     "RunEnvironment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["os", "containerImage", "nodeVersion"],
+      "required": ["os", "containerImage", "nodeVersion", "authMode"],
       "properties": {
         "os": { "type": "string" },
         "containerImage": { "type": "string" },
-        "nodeVersion": { "type": ["string", "null"] }
+        "nodeVersion": { "type": ["string", "null"] },
+        "authMode": { "enum": ["apiKey", "subscription"] }
       }
     },
     "TokenMetrics": {
