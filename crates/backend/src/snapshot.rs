@@ -92,7 +92,9 @@ impl SnapshotBuilder {
         // normalized event stream (when captured) so the site can serve the run's
         // Events tab. Raw harness output is never published. The run's uploaded
         // proof media is exported alongside under `runs/<id>/proof/` and named by
-        // snapshot-relative key in `proofMedia`.
+        // snapshot-relative key in `proofMedia`; an asset-generation run's media
+        // (regenerated/preview/target image + action log) is exported under
+        // `runs/<id>/asset/` and named by snapshot-relative key in `assetMedia`.
         for run in &self.runs {
             let events = run
                 .events_json
@@ -106,6 +108,7 @@ impl SnapshotBuilder {
                     ))
                 })?;
             let (proof_media, proof_objects) = self.run_proofs(&run.record.id, &prefix);
+            let (asset_media, asset_objects) = self.run_assets(run, &prefix);
             objects.push(json_object(
                 format!("{prefix}/runs/{}.json", run.record.id),
                 &PerRun {
@@ -122,9 +125,11 @@ impl SnapshotBuilder {
                     },
                     events,
                     proof_media,
+                    asset_media,
                 },
             )?);
             objects.extend(proof_objects);
+            objects.extend(asset_objects);
         }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
@@ -284,6 +289,41 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
+    /// Collect an asset-generation run's media: the `assetMedia[]` metadata entries
+    /// (served file name + snapshot-relative key) and the media objects to upload.
+    /// The served names are the stable, fixed set the result view requests
+    /// (`regenerated.png`, `preview.png`, `target.png`, `actions.json`); each is
+    /// read from the run's stored asset directory and skipped if missing. A run that
+    /// is not asset-generation (no `validation.asset`) contributes nothing.
+    fn run_assets(&self, run: &StoredRun, prefix: &str) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        if run.record.validation.asset.is_none() {
+            return (metas, objects);
+        }
+        let run_id = &run.record.id;
+        for file in ["regenerated.png", "preview.png", "target.png", "actions.json"] {
+            let Ok(bytes) = self.store.read_run_asset(run_id, file) else {
+                continue;
+            };
+            let extension = std::path::Path::new(file)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            let key = format!("{prefix}/runs/{run_id}/asset/{file}");
+            objects.push(SnapshotObject {
+                key: key.clone(),
+                bytes,
+                content_type: media_content_type(extension).to_string(),
+            });
+            metas.push(RunAssetOut {
+                file: file.to_string(),
+                key,
+            });
+        }
+        (metas, objects)
+    }
+
     /// Compute the snapshot id: a compact RFC-3339 timestamp plus a short hash of
     /// the run ids, so a new snapshot never collides with a prior prefix.
     fn snapshot_id(&self, generated_at: OffsetDateTime) -> Result<String> {
@@ -301,7 +341,7 @@ impl SnapshotBuilder {
     }
 }
 
-/// A best-effort content type for reference/proof media from its extension.
+/// A best-effort content type for reference/proof/asset media from its extension.
 fn media_content_type(extension: &str) -> &'static str {
     match extension.to_ascii_lowercase().as_str() {
         "png" => "image/png",
@@ -309,6 +349,7 @@ fn media_content_type(extension: &str) -> &'static str {
         "webp" => "image/webp",
         "gif" => "image/gif",
         "mp4" => "video/mp4",
+        "json" => "application/json",
         _ => "application/octet-stream",
     }
 }
@@ -440,6 +481,9 @@ struct PerRun<'a> {
     /// The run's uploaded proof-of-implementation media, named by snapshot-relative
     /// key. Empty when the run produced none.
     proof_media: Vec<RunProofOut>,
+    /// An asset-generation run's media (regenerated/preview/target image + action
+    /// log), named by snapshot-relative key. Empty for a non-asset-generation run.
+    asset_media: Vec<RunAssetOut>,
 }
 
 /// A proof media file exposed in a per-run document. `id` matches the proof's
@@ -450,6 +494,16 @@ struct PerRun<'a> {
 struct RunProofOut {
     id: String,
     kind: test_cabinet_core::MediaKind,
+    key: String,
+}
+
+/// An asset-generation media file exposed in a per-run document. `file` is the
+/// stable served name the result view requests (`regenerated.png`, `preview.png`,
+/// `target.png`, or `actions.json`); `key` is its snapshot-relative object key.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunAssetOut {
+    file: String,
     key: String,
 }
 

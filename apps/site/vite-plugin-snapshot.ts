@@ -82,6 +82,11 @@ interface SnapshotRunFile {
   // The run's uploaded proof-of-implementation media, named by snapshot-relative
   // key. Optional for snapshots written before proofs existed.
   proofMedia?: Array<{ id: string; kind: "image" | "video"; key: string }>;
+  // An asset-generation run's media (regenerated/preview/target image + action
+  // log), keyed by served file name (`regenerated.png`, `preview.png`,
+  // `target.png`, `actions.json`). Absent for a non-asset-generation run and for
+  // snapshots written before asset generation existed.
+  assetMedia?: Array<{ file: string; key: string }>;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -151,6 +156,10 @@ interface AssembledSnapshot {
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
+  // Resolved asset-generation media URLs, keyed by run id then by served file name
+  // (`regenerated.png`, `preview.png`, `target.png`, `actions.json`). The app's
+  // `assetMediaUrl(runId, file)` reads this.
+  assetMediaUrls: Record<string, Record<string, string>>;
 }
 
 interface AssembledReference {
@@ -203,6 +212,7 @@ const EMPTY: AssembledSnapshot = {
   writeups: {},
   testCases: [],
   proofMediaUrls: {},
+  assetMediaUrls: {},
 };
 
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
@@ -359,6 +369,7 @@ async function loadSnapshot(
   const runs: unknown[] = [];
   const writeups: Record<string, string> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
+  const assetMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
@@ -380,6 +391,15 @@ async function loadSnapshot(
         byFile[file] = joinUrl(base, proof.key);
       }
       proofMediaUrls[summary.id] = byFile;
+    }
+    // The run's asset-generation media, keyed by its served file name, resolved to
+    // absolute URLs the asset result view loads.
+    if (runFile.assetMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const asset of runFile.assetMedia) {
+        byFile[asset.file] = joinUrl(base, asset.key);
+      }
+      assetMediaUrls[summary.id] = byFile;
     }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
@@ -410,6 +430,7 @@ async function loadSnapshot(
     writeups,
     testCases: collapseCases(base, caseFiles),
     proofMediaUrls,
+    assetMediaUrls,
   };
 }
 
@@ -420,6 +441,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
+    `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
   ].join("\n");
 }
 

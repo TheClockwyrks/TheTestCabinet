@@ -90,6 +90,14 @@ rather than holding one request open for the whole run:
   origin), since publishing — which deploys the build and fills in a public URL —
   has not happened yet. `404` for an unknown run, a run with no build, or a path
   that does not resolve inside it.
+- `GET /runs/{id}/asset/{file}` — an
+  [asset-generation](/testing/asset-generation/overview/) run's media, resolved
+  from the produced run record's `validation.asset` (`{file}` is
+  `regenerated.png`, `preview.png`, `target.png`, or `actions.json`). This lets a
+  reviewer see the regenerated/target/preview side-by-side on a **produced** run
+  *before* it is published — the same artifacts the desktop core serves over its
+  `tcab-asset://` scheme and the backend exposes for published runs. `404` for an
+  unknown run, a non-asset-generation run, or an unrecognized file.
 - `GET /notifications` — a worker-wide [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events)
   stream of run completions, one event per run reaching a terminal state (`kind`
   `run-completed`). Distinct from `/runs/{job}/events` (a single run's events):

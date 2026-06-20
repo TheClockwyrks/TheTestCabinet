@@ -12,6 +12,7 @@ import {
   writeups as publishedWriteups,
   testCases as catalogTestCases,
   proofMediaUrls as publishedProofMediaUrls,
+  assetMediaUrls as publishedAssetMediaUrls,
 } from "virtual:tcab-snapshot";
 
 // The static site's gallery data source. It is the build-time public R2 snapshot
@@ -110,6 +111,16 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // A published asset-generation run's media (regenerated/preview/target image +
+  // action log), resolved at build time to absolute snapshot URLs keyed by run id
+  // then served file name (`regenerated.png`, etc.). Produced (local, dev-only)
+  // runs are not published, so they have no snapshot media.
+  const assetMediaUrl = useCallback(
+    (runId: string, file: string): string | null =>
+      publishedAssetMediaUrls[runId]?.[file] ?? null,
+    [],
+  );
+
   return {
     runs,
     localIds,
@@ -120,5 +131,6 @@ export function useStaticGallery(): GalleryDataInput {
     canExecute: false,
     fetchRunEvents,
     proofMediaUrl,
+    assetMediaUrl,
   };
 }

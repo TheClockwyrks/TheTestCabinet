@@ -22,6 +22,14 @@ and every manifest field is documented in
 is the practical procedure and the spec-writing guidance that sit on top of it;
 it does not restate the schema.
 
+There are two [test types](../../../apps/docs/src/content/docs/testing/).
+**Most of this skill is the end-to-end procedure** — building a playable game.
+An **asset-generation** case is a different shape (the model draws a sprite one
+operation at a time instead of building a site); if you are authoring one, read
+**[Asset-generation cases](#asset-generation-cases)** below first — it states
+what carries over and what differs — then apply only the parts of the end-to-end
+procedure it points back to.
+
 Scope of this skill vs. its sibling:
 
 - **This skill** — creating a *new* test case or version, and authoring or
@@ -70,6 +78,64 @@ harness as the instruction; it is never written to the run's disk. The reference
 **source** is deliberately withheld so a model cannot copy the UI in place of
 building it from the spec.
 
+## Asset-generation cases
+
+An asset-generation case asks a model to **draw a small pixel sprite**, one
+recorded drawing operation at a time, against a fixed target — not to build a
+game. It is a separate [test type](../../../apps/docs/src/content/docs/testing/);
+read its docs before authoring one and follow them as the authority:
+
+- [`testing/asset-generation/overview.md`](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+  — what the type measures and why the **action log**, not the pixels on disk, is
+  the authoritative output;
+- [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
+  — every manifest field;
+- [`testing/asset-generation/evaluation.md`](../../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md)
+  — how fidelity and cheat-divergence are scored.
+
+The worked examples are `gloamfin` and `lanternjaw`
+(`test-cases/gloamfin/v1.0.0/`). Read one alongside the docs — a new asset-gen
+case should look like it.
+
+**What carries over from the end-to-end procedure** (apply those steps as
+written): choosing a slug/lineage and an immutable `vX.Y.Z` version (step 1); a
+short `prompt.hbs` that points at the seeded brief (step 4); the manifest's
+site-facing metadata and `[[variant]]` rules (step 6); the non-seeded
+`description.md`/`README.md` (step 9); and **Validating** (`npm run lint:specs`,
+force-re-ingest after editing, conventional commit).
+
+**What is different:**
+
+- **The manifest, not a `[build]`.** An asset-gen case declares
+  `type = "asset-generation"` (required — omitting it defaults to `end-to-end`,
+  which rejects the new tables) plus the `[canvas]` (the fixed image to draw on),
+  `[tool]` (the `draw` binary, its `operations` schema, and the `preview` path),
+  and `[output]` (where the `actions` log is collected) tables. It declares
+  **no `[build]` table and no `[[check]]`** — there is no site to build or load,
+  so those are rejected for this type. See the manifests doc for the exact shape.
+- **One self-contained brief, not a decomposed spec.** Instead of
+  `overview`/`playfield`/`physics`/`flow`, seed a single `specs/brief.md` that
+  describes *what to draw* (subject, silhouette, palette, framing) and *how the
+  tool behaves*. The same self-containment, *what-not-how*, and precise-values
+  rules from **Writing specifications** apply — pin the palette and the canvas
+  framing in exact terms.
+- **Seed the operations schema verbatim.** The `[tool]` `operations` JSON Schema
+  is seeded like a spec so the model knows the drawing vocabulary. It must be the
+  canonical schema the binary emits — copy it from `draw schema` and keep each
+  case's copy **byte-for-byte identical** so it never drifts from the binary.
+- **The target is rendered from a `draw` action log, not hand-pixeled.** Author
+  the target as its own action log and render it through the same binary
+  (`draw render --actions … --out reference/target.png`), keeping the action log
+  as the un-seeded source beside it (e.g. `reference/target.actions.json`). This
+  guarantees the goal is achievable within the operation set, so fidelity scoring
+  is fair. The rendered `target.png` is the single `[[reference]]` (`view =
+  "target"`), seeded as the visual goal — there are no per-view reference mockups
+  and no `reference/theme.css`.
+- **Review items and domains score the drawing.** Declare `[[domain]]`s (e.g.
+  `fidelity`) and `[[review_item]]`s that judge how faithfully the regenerated
+  sprite matches the target — silhouette, palette, framing — each pairing
+  `reference = "target"`. There is no proof-of-implementation step.
+
 ## Creating a new case — procedure
 
 ### 1. Choose the game and confirm it qualifies
@@ -82,8 +148,9 @@ Every case must (see *Design Requirements* in
 - need **no API keys** and **no backend** to build, run, or play;
 - be **specifiable precisely enough** that at least one view can be compared
   against a reference automatically;
-- either need **no assets** or **pre-provide** them (asset *generation* is not
-  what the suite measures).
+- either need **no assets** or **pre-provide** them — an end-to-end case is about
+  *building the game*, so it never asks the model to produce art. (Generating an
+  asset is its own test type; see [Asset-generation cases](#asset-generation-cases).)
 
 Pick a **catalog slug** for the lineage (e.g. `pong`) and, separately, an
 original **in-game title** for the build (e.g. `Carom`). Pick a `version`

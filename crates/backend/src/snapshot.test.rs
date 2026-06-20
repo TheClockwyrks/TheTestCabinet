@@ -5,7 +5,7 @@ use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::ValidationSummary;
+use test_cabinet_core::validation::{AssetGenResult, ValidationSummary};
 
 use crate::db::StoredReview;
 use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
@@ -68,6 +68,24 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
         published_at: published_at.to_string(),
         events_json: None,
     }
+}
+
+/// An asset-generation variant of [`stored_run`]: its `validation.asset` is
+/// populated so the snapshot exports the run's media.
+fn asset_run(id: &str, published_at: &str) -> StoredRun {
+    let mut run = stored_run(id, published_at);
+    run.record.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    run.record.validation.asset = Some(AssetGenResult {
+        regenerated_image: "regenerated.png".to_string(),
+        preview_image: "preview.png".to_string(),
+        target_image: "target.png".to_string(),
+        actions_log: "actions.json".to_string(),
+        operation_count: 3,
+        target_fidelity: 0.9,
+        cheat_divergence: Some(0.05),
+        detail: None,
+    });
+    run
 }
 
 fn manifest() -> StoredManifest {
@@ -248,6 +266,85 @@ fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     // A run that captured no events omits the field entirely.
     let r2 = find("r2");
     assert!(r2.get("events").is_none());
+}
+
+#[test]
+fn per_run_file_exports_asset_media_and_names_it_by_key() {
+    let (_tmp, store) = empty_store();
+    // Stage the asset media the run uploaded; one of the four (target.png) is
+    // deliberately absent to prove a missing file is skipped, not fatal.
+    store.write_run_asset("a1", "regenerated.png", b"png:regen").unwrap();
+    store.write_run_asset("a1", "preview.png", b"png:preview").unwrap();
+    store
+        .write_run_asset("a1", "actions.json", b"[]")
+        .unwrap();
+
+    let snapshot = SnapshotBuilder::new(
+        vec![asset_run("a1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // The staged bytes are exported under the run's asset prefix with a content
+    // type that follows the extension.
+    let regen_key = format!("{prefix}/runs/a1/asset/regenerated.png");
+    let regen = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == regen_key)
+        .expect("regenerated image exported");
+    assert_eq!(regen.content_type, "image/png");
+    assert_eq!(regen.bytes, b"png:regen");
+    let actions = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/a1/asset/actions.json"))
+        .expect("action log exported");
+    assert_eq!(actions.content_type, "application/json");
+
+    // The per-run document names each present file by its served name + key; the
+    // missing target.png is omitted.
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/a1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let media = parsed["assetMedia"].as_array().unwrap();
+    let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
+    assert_eq!(files, vec!["regenerated.png", "preview.png", "actions.json"]);
+    let regen_meta = media.iter().find(|m| m["file"] == "regenerated.png").unwrap();
+    assert_eq!(regen_meta["key"], regen_key);
+}
+
+#[test]
+fn per_run_file_omits_asset_media_for_a_non_asset_run() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    // An end-to-end run carries an empty assetMedia list and exports no asset objects.
+    assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("/asset/"))
+    );
 }
 
 #[test]

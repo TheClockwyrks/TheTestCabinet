@@ -67,7 +67,12 @@ the embedded [core](/components/core/overview/) over IPC and pre-adding a single
 **built-in local worker** (also the embedded core). Those commands cover the
 whole flow end to end — resolving the catalog, configuring and launching a run
 with a live event stream, reading the seeded specs, writing a review (writeup +
-rating), and publishing a reviewed run.
+rating), and publishing a reviewed run. A run's loadable media — a produced run's
+proof artifacts and an [asset-generation](/testing/asset-generation/overview/)
+run's regenerated/target/preview images and action log — is served not over a
+command but over custom URI schemes (`tcab-proof://` and `tcab-asset://`), since
+the UI needs a real URL it can point an `<img>`/`<video>` at, where the HTTP
+worker would expose `/runs/{id}/proof/{file}` and `/runs/{id}/asset/{file}`.
 
 Because the UI is shared, the desktop build is expected to be feature-complete
 against that shared app by construction rather than re-implemented; the desktop

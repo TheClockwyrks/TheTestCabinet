@@ -46,6 +46,12 @@ interfaces. A host imports only what it needs.
   worker — the HTTP worker's proof endpoint, or the Tauri worker's
   `tcab-proof://` scheme; the site from snapshot assets), which the reworked
   review flow and the run **Proof** tab display beside the expected references.
+  It resolves an [asset-generation](/testing/asset-generation/overview/) run's
+  media — the regenerated, target, and preview images plus the action log — the
+  same way (a published run from the backend's `/runs/{id}/asset/{file}`
+  endpoint, a produced run from the HTTP worker's matching endpoint or the Tauri
+  worker's `tcab-asset://` scheme, the site from snapshot assets), which the
+  **Verdict** tab's result view shows side by side.
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks
   every GUI uses: the Markdown renderer, the rating badge, panels, the metric
   tile, the spec/reference accordion, pagination, and the chart wrapper.
