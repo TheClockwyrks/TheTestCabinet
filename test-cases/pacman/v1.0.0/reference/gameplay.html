@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!--
+  Fathom — in-trench reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  visual design), ../specs/sensing.md (fog, light, sonar), ../specs/predators.md,
+  and ../specs/playfield.md (HUD).
+
+  Live positions and the maze layout vary at runtime; this frame is a
+  representative layout used for a soft palette/layout comparison, not a strict
+  pixel match. A tile (col,row) has its top-left at (64 + col*32, 80 + row*32).
+
+  The frame shows: a small lit pocket of revealed corridors fading into black fog
+  around the forager; plankton in the corridors; the Lure glimpsed at the edge of
+  the light; a sonar pulse expanding past the light and revealing a corridor
+  around a bend, where the Listener is marked beyond sight.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fathom — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- HUD: top strip -->
+      <div class="hud-score">01340</div>
+      <div class="mode-tag">TRENCH</div>
+
+      <div class="maze">
+        <!-- Remembered-but-unlit corridor fragment, explored earlier (top-left). -->
+        <div class="cell remembered" style="left: 96px; top: 32px"></div>
+        <div class="cell remembered" style="left: 128px; top: 32px"></div>
+        <div class="cell remembered" style="left: 160px; top: 32px"></div>
+        <div class="cell remembered" style="left: 128px; top: 64px"></div>
+        <div class="cell remembered" style="left: 128px; top: 96px"></div>
+
+        <!-- The lit pocket: revealed rock fading to fog, centered on the forager
+             (forager center is maze-local (560, 304)). -->
+        <div class="light" style="left: 360px; top: 104px; width: 400px; height: 400px"></div>
+
+        <!-- Player's sonar pulse, expanding past the edge of the light. -->
+        <div class="sonar-ring" style="left: 345px; top: 89px; width: 430px; height: 430px"></div>
+
+        <!-- Revealed corridors (stage coords; maze-relative via .maze offset). -->
+        <!-- Vertical corridor, col 17. -->
+        <div class="cell" style="left: 544px; top: 192px"></div>
+        <div class="cell" style="left: 544px; top: 224px"></div>
+        <div class="cell" style="left: 544px; top: 256px"></div>
+        <div class="cell" style="left: 544px; top: 288px"></div>
+        <div class="cell" style="left: 544px; top: 320px"></div>
+        <div class="cell" style="left: 544px; top: 352px"></div>
+        <div class="cell" style="left: 544px; top: 384px"></div>
+        <!-- Horizontal corridor, row 9. -->
+        <div class="cell" style="left: 416px; top: 288px"></div>
+        <div class="cell" style="left: 448px; top: 288px"></div>
+        <div class="cell" style="left: 480px; top: 288px"></div>
+        <div class="cell" style="left: 512px; top: 288px"></div>
+        <div class="cell" style="left: 576px; top: 288px"></div>
+        <div class="cell" style="left: 608px; top: 288px"></div>
+        <div class="cell" style="left: 640px; top: 288px"></div>
+        <div class="cell" style="left: 672px; top: 288px"></div>
+        <!-- Branch up, col 20. -->
+        <div class="cell" style="left: 640px; top: 224px"></div>
+        <div class="cell" style="left: 640px; top: 256px"></div>
+        <!-- Branch down, col 14. -->
+        <div class="cell" style="left: 448px; top: 320px"></div>
+        <div class="cell" style="left: 448px; top: 352px"></div>
+
+        <!-- Corridor revealed by the sonar pulse, bending around a corner past
+             the light (cooler, dimmer). -->
+        <div class="cell sonar-lit" style="left: 704px; top: 288px"></div>
+        <div class="cell sonar-lit" style="left: 736px; top: 288px"></div>
+        <div class="cell sonar-lit" style="left: 736px; top: 256px"></div>
+        <div class="cell sonar-lit" style="left: 736px; top: 224px"></div>
+
+        <!-- Plankton in the lit corridors (forager's tile and predators' tiles
+             are empty). -->
+        <div class="plankton" style="left: 544px; top: 192px"></div>
+        <div class="plankton" style="left: 544px; top: 224px"></div>
+        <div class="plankton" style="left: 544px; top: 256px"></div>
+        <div class="plankton" style="left: 544px; top: 320px"></div>
+        <div class="plankton" style="left: 544px; top: 352px"></div>
+        <div class="plankton" style="left: 544px; top: 384px"></div>
+        <div class="plankton" style="left: 416px; top: 288px"></div>
+        <div class="plankton" style="left: 448px; top: 288px"></div>
+        <div class="plankton" style="left: 480px; top: 288px"></div>
+        <div class="plankton" style="left: 512px; top: 288px"></div>
+        <div class="plankton" style="left: 576px; top: 288px"></div>
+        <div class="plankton" style="left: 608px; top: 288px"></div>
+        <div class="plankton" style="left: 672px; top: 288px"></div>
+        <div class="plankton" style="left: 640px; top: 256px"></div>
+        <div class="plankton" style="left: 448px; top: 320px"></div>
+        <div class="plankton" style="left: 448px; top: 352px"></div>
+        <!-- Faint plankton in sonar-revealed corridor (dim, beyond the light). -->
+        <div class="plankton faint" style="left: 704px; top: 288px"></div>
+        <div class="plankton faint" style="left: 736px; top: 224px"></div>
+
+        <!-- The Lure, glimpsed at the edge of the light (col 20, row 7). -->
+        <div class="predator lure glimpse" style="left: 640px; top: 224px"></div>
+        <div class="lure-light" style="left: 666px; top: 226px"></div>
+
+        <!-- The Listener, marked by the sonar pulse beyond sight (col 23, row 8),
+             with its own pulse ring. -->
+        <div class="sonar-ring listener" style="left: 684px; top: 204px; width: 130px; height: 130px"></div>
+        <div class="predator listener glimpse" style="left: 736px; top: 256px"></div>
+
+        <!-- The forager, at the center of its light (col 17, row 9). -->
+        <div class="forager" style="left: 544px; top: 288px"></div>
+      </div>
+
+      <!-- HUD: bottom strip -->
+      <div class="lives">
+        <span class="life"></span>
+        <span class="life"></span>
+      </div>
+      <div class="gauges">
+        <div class="gauge sonar">
+          SONAR
+          <div class="bar"><span style="width: 45%"></span></div>
+        </div>
+        <div class="gauge ink">
+          INK
+          <div class="bar"><span style="width: 100%"></span></div>
+        </div>
+      </div>
+      <div class="depth">DEPTH 2</div>
+    </div>
+  </body>
+</html>

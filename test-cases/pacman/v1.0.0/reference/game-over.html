@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!--
+  Fathom — game-over reference mockup.
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Game over).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fathom — Game Over</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of dark trench behind the panel. -->
+      <div class="maze">
+        <div class="light dim" style="left: 420px; top: 180px; width: 360px; height: 360px"></div>
+        <div class="cell dim" style="left: 544px; top: 320px"></div>
+        <div class="cell dim" style="left: 576px; top: 320px"></div>
+        <div class="cell dim" style="left: 608px; top: 320px"></div>
+        <div class="cell dim" style="left: 576px; top: 288px"></div>
+        <div class="cell dim" style="left: 576px; top: 352px"></div>
+        <div class="predator flarefish dim" style="left: 576px; top: 320px"></div>
+      </div>
+
+      <div class="overlay"></div>
+
+      <div class="panel">
+        <p class="panel-eyebrow">LOST IN THE DARK</p>
+        <h2 class="panel-title">GAME OVER</h2>
+        <p class="panel-score">SCORE 04280</p>
+        <p class="panel-depth">REACHED DEPTH 3</p>
+        <nav class="menu">
+          <div class="menu-item selected">PLAY AGAIN</div>
+          <div class="menu-item">MENU</div>
+        </nav>
+      </div>
+    </div>
+  </body>
+</html>

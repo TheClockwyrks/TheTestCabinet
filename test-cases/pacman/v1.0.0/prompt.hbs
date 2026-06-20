@@ -1,0 +1,90 @@
+Build **Fathom**, a bioluminescent deep-sea maze chase that runs entirely in the
+browser.
+
+Your project root is `{{workspace}}`. Create the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency. Its dependencies have already been
+installed for you — `node_modules/` is populated and Playwright's headless
+**Chromium** is downloaded — so you can build and verify right away. Build on this
+project rather than replacing it: keep the `package.json`, add your framework,
+bundler, and a `build` script on top of it, and keep the lockfile in sync (see
+below).
+
+## What to read first
+
+The full specification is split across the files below, all already present in
+your project. Read every one of them before you start, then implement the game
+they describe as a single, cohesive build:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+Start with `overview` for the goals, hard requirements, coordinate system, tile
+grid, and palette. Then read `sensing` carefully — the fog of war, the
+line-of-sight passive light, the corridor-flooding sonar, and the brightness dial
+are the heart of this game. Then `playfield` (maze, den, tunnels, plankton, HUD),
+`movement` (tile movement, controls, ink), `predators` (the three hunters), and
+`flow` (scoring, lives, depth, states). Finally read the mode spec(s) under
+`modes/` for the playable modes. The specs cross-reference each other by name —
+treat them as one specification. **You design the maze layout** within the
+constraints in `playfield`; there is no fixed maze to copy.
+
+## Build requirements
+
+Deliver a complete, polished, playable game, not a tech demo. It must:
+
+- **Render real graphics** (Canvas 2D, WebGL/WebGPU, or positioned DOM) — not a
+  text-only or ASCII rendering.
+- **Run in the browser with no backend** — no server, accounts, database, or
+  network calls at runtime; everything needed to play is self-contained.
+- Require **no API keys or credentials** of any kind to build, run, or play.
+- Stay a **Node project** built with only Node.js and npm-installed dependencies —
+  no separately installed language toolchain. Extend the provided `package.json`
+  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after
+  you change dependencies so the lockfile matches) — the build is installed with
+  `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
+  static site, with no other manual step, into one of `dist/`, `build/`, or
+  `out/` at the project root, with an `index.html` at the root of that directory.
+  Serving that directory as-is at the root of any static file server must run the
+  game; it is deployed to static hosting exactly that way.
+- Include a `README.md` at `{{workspace}}` explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+You choose the language, framework, bundler, and rendering approach within those
+constraints — only the `npm ci` / `npm run build` commands and their
+`dist`/`build`/`out` output are fixed (plain TypeScript with Canvas 2D is entirely
+sufficient). The `reference/` folder under `{{workspace}}` holds screenshots that
+are visual targets for the title, gameplay, and game-over screens — match their
+layout, palette, and type, but build the screens from the specification rather
+than copying the images, and remember the maze shown is just one example layout.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete:
+
+- Produce the **static production build** and serve it locally, then open it in
+  Chromium with Playwright and confirm it **loads with no console errors** and no
+  uncaught exceptions.
+- **Drive the game** — press the keys, dive, ping with sonar, drop ink, get caught
+  to reach game-over — and **screenshot** the title, gameplay, and game-over
+  screens. Compare each against the matching image in `reference/` and against the
+  specs, and fix what does not match before finishing.
+- **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
+  the screenshots and the two short clips, each written to the precise `proof/`
+  path that spec names. These are required deliverables of the finished build, not
+  a private check. Do not invent a different folder or filename, and do not skip
+  the `.mp4` clips.
+
+Use the project's own Playwright: import it from your project (for example
+`import { chromium } from "playwright"`) or run the project-local CLI with
+`npx playwright`. There is **no** global Playwright on `PATH` — it lives in your
+project's `node_modules`, like any other dependency. Launch Chromium with the
+`--no-sandbox` argument — this container has no Chromium sandbox, so a default
+launch will fail.

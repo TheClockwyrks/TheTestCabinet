@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!--
+  Fathom — title / main menu reference mockup for the `base` variant.
+  Canonical view slug: title
+  Lists only the standard DIVE mode; the base variant seeds no extra mode.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title / main menu).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fathom — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of dark trench behind the menu. -->
+      <div class="maze">
+        <div class="light dim" style="left: 120px; top: 300px; width: 360px; height: 360px"></div>
+        <div class="cell dim" style="left: 224px; top: 448px"></div>
+        <div class="cell dim" style="left: 256px; top: 448px"></div>
+        <div class="cell dim" style="left: 288px; top: 448px"></div>
+        <div class="cell dim" style="left: 288px; top: 416px"></div>
+        <div class="cell dim" style="left: 288px; top: 480px"></div>
+        <div class="plankton dim" style="left: 224px; top: 448px"></div>
+        <div class="plankton dim" style="left: 288px; top: 416px"></div>
+        <div class="forager dim" style="left: 256px; top: 448px"></div>
+
+        <div class="light dim" style="left: 880px; top: 80px; width: 300px; height: 300px"></div>
+        <div class="cell dim" style="left: 992px; top: 192px"></div>
+        <div class="cell dim" style="left: 1024px; top: 192px"></div>
+        <div class="cell dim" style="left: 1024px; top: 160px"></div>
+        <div class="predator lure dim" style="left: 1024px; top: 192px"></div>
+        <div class="lure-light dim" style="left: 1050px; top: 194px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">FATHOM</h1>
+        <div class="tagline">HUNT IN THE DARK</div>
+        <nav class="menu">
+          <div class="menu-item selected">DIVE</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>

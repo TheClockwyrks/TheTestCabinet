@@ -1,0 +1,324 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Fathom"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Fathom asks
+# for a fog-of-war visibility system, tile-locked maze movement, three distinct
+# sensory predator behaviors, and several states — meaningfully more than the
+# easy paddle/grid cases, so it sits at medium.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "maze", "stealth"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A bioluminescent forager grazing a pitch-dark trench, where the maze is hidden \
+until your light or a sonar pulse reveals it, and three predators each hunt by a \
+different signal you give off — your light, your sound, or its own flare."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# is stopped. Fathom is a substantial build (fog of war, maze generation, three
+# AIs, multiple states), so it gets a full hour — comfortably more than a healthy
+# build needs while still bounding a runaway session.
+max_runtime_seconds = 3600
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern so mode-specific material
+# can be seeded per variant (see `[[variant]]`). These are always present, so the
+# mode specs may reference them freely; the common specs must never reference a
+# mode spec a given variant does not seed (only `modes/standard.md` is always
+# present). All common specs are plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+dest = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+dest = "specs/playfield.md"
+
+[[spec]]
+source = "specs/sensing.md"
+dest = "specs/sensing.md"
+
+[[spec]]
+source = "specs/movement.md"
+dest = "specs/movement.md"
+
+[[spec]]
+source = "specs/predators.md"
+dest = "specs/predators.md"
+
+[[spec]]
+source = "specs/flow.md"
+dest = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+dest = "specs/modes/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+dest = "specs/proof.md"
+
+# Asset files or directories seeded alongside the specs. Fathom draws everything
+# in code and the model designs its own maze, so it needs none.
+assets = []
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each variant seeds the common specs above plus its own additive specs. The base
+# variant is listed first, so it is the default. The variants differ in which
+# extra mode spec (if any) they add on top of the always-present Trench mode, and
+# in their `title` reference — the main menu lists a different set of modes per
+# variant, so each variant declares its own menu mockup for the `title` view:
+#   - base    — Trench only.
+#   - murk    — adds Murk, where passive light scatters and bends around corners
+#               (one propagation rule for both light and sonar).
+#   - reserve — adds Reserve, where ink is limited charges refilled by ink-glands
+#               instead of a cooldown.
+#   - beam    — adds Beam, a second, tighter directional sonar pulse.
+#
+# A variant's `reference` array is additive on top of the common references. Each
+# variant supplies the `title` view; `gameplay` and `game-over` are common. A view
+# slug must not appear both here and among the common references.
+[[variant]]
+slug = "base"
+name = "Base"
+description = "The standard Trench dive only."
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+[[variant]]
+slug = "murk"
+name = "Murk"
+description = "Trench plus Murk, where passive light bends around corners like sonar."
+spec = [{ source = "specs/modes/murk.md", dest = "specs/modes/murk.md" }]
+reference = [{ view = "title", path = "reference/menu-murk.html" }]
+review_item = [
+  { id = "murk-light-floods", title = "Murk light bends", text = "In Murk, your passive light uses the same corridor-flood propagation as sonar: it bends around corners, so you can see around the corner you stand next to — unlike the line-of-sight passive light of the standard dive.", weight = 1, domain = "sensing" },
+]
+
+[[variant]]
+slug = "reserve"
+name = "Reserve"
+description = "Trench plus Reserve, where ink is limited charges refilled by ink-glands."
+spec = [{ source = "specs/modes/reserve.md", dest = "specs/modes/reserve.md" }]
+reference = [{ view = "title", path = "reference/menu-reserve.html" }]
+review_item = [
+  { id = "reserve-ink-charges", title = "Ink charges", text = "In Reserve, ink is a limited set of charges (start with 2, max 3), spent one per use and refilled only by eating ink-glands that respawn after ~20s — not a recharging cooldown. The HUD shows the number of charges held.", weight = 1, domain = "predators" },
+]
+
+[[variant]]
+slug = "beam"
+name = "Beam"
+description = "Trench plus Beam, a second tighter directional sonar pulse."
+spec = [{ source = "specs/modes/beam.md", dest = "specs/modes/beam.md" }]
+reference = [{ view = "title", path = "reference/menu-beam.html" }]
+review_item = [
+  { id = "beam-directional", title = "Directional beam", text = "In Beam, a second sonar — the directional beam (F) — floods only forward down the corridor the forager faces, reaching farther than the omni pulse (Space) and making less noise (it draws the Listener less). The omni pulse still works exactly as in the standard dive.", weight = 1, domain = "sensing" },
+]
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant above) because the menu
+# differs by variant; `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.mp4` to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind
+# is inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-trench"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Game over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "sonar"
+name = "Sonar pulse clip"
+dest = "proof/sonar.mp4"
+
+[[proof]]
+id = "hunt"
+name = "Predator hunt clip"
+dest = "proof/hunt.mp4"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation, screenshots it, and compares against the rendered
+# screenshot of `reference`. Only the title screen is deterministic enough to
+# validate for Fathom: it is whatever the game shows on load, so it needs no
+# actions. Gameplay and game-over depend on live, fogged state, so they are seeded
+# as references but not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a beautifully readable
+# fog cannot mask predators that do not work, and vice versa. Domains are
+# case-level; an individual review item rolls up to one through its optional
+# `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "sensing"
+name = "Sensing & Fog"
+description = "Reading the dark: the fog of war and what is remembered, line-of-sight light versus corridor-flood sonar, the brightness dial, and the sonar/ink readouts."
+
+[[domain]]
+id = "predators"
+name = "The Hunt"
+description = "The three predators — each one's sense, its tell, and its counter — the den and release schedule, ink, and getting caught."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. A variant adds its own
+# items (see the `review_item` arrays above). Each item is worth `weight` points
+# toward the run's score; the reviewer records a pass/fail verdict for each before
+# the run can be published. The per-domain ratings stay the reviewer's call.
+[[review_item]]
+id = "fog-and-memory"
+title = "Fog and memory"
+text = "Unrevealed trench is solid black fog. Walls and plankton you have revealed stay visible (drawn dim) for the rest of the trench, but predators and the bonus drifter are never remembered — shown only while currently lit by your light, a sonar pulse, or a flare."
+weight = 1
+domain = "sensing"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "light-line-of-sight"
+title = "Light is line-of-sight"
+text = "Your passive light reveals a pocket around the forager by line of sight only: it does not show what is around a corner. A predator one tile away around a blind corner is not visible to your light alone."
+weight = 1
+domain = "sensing"
+
+[[review_item]]
+id = "sonar-flood"
+title = "Sonar floods corridors"
+text = "A sonar pulse floods through the open corridors — bending around corners but not through walls — out to its range, revealing maze your straight-line light cannot and marking any predator it reaches for a brief window beyond the bend."
+weight = 1
+domain = "sensing"
+proof = "sonar"
+
+[[review_item]]
+id = "brightness-dial"
+title = "Brightness from eating"
+text = "Eating plankton brightens the forager, which both widens your vision and widens the Lure's detection range; brightness decays back to near-dark within a couple of seconds of not eating, so eating fast lights you up and eating sparingly keeps you hidden."
+weight = 1
+domain = "sensing"
+
+[[review_item]]
+id = "sonar-attracts-listener"
+title = "Sonar is heard"
+text = "Emitting a sonar pulse makes noise that pulls the Listener and gives it a fix on you — pinging near the Listener feeds the chase rather than helping you."
+weight = 1
+domain = "predators"
+
+[[review_item]]
+id = "lure-behavior"
+title = "The Lure hunts light"
+text = "The Lure's detection range grows with your brightness, it carries a faint lure-light you can sometimes spot first, and it is shaken by going dim or by ink. Eating a streak near it pulls it straight to you."
+weight = 1
+domain = "predators"
+
+[[review_item]]
+id = "listener-juke"
+title = "Juking the Listener"
+text = "The Listener is faster than the forager at top speed but cannot take a turn while moving fast (above ~112 px/s), so it overshoots junctions; you lose it by juking through tight turns, and ink does nothing to it."
+weight = 1
+domain = "predators"
+proof = "hunt"
+
+[[review_item]]
+id = "flarefish-flare"
+title = "The Flarefish's flare"
+text = "The Flarefish only learns where you are if you are caught in its telegraphed flare at the bloom; its flare also reveals that area to you. Staying out of the flare's light, or dropping ink, prevents it acquiring you."
+weight = 1
+domain = "predators"
+
+[[review_item]]
+id = "ink-blinds-sight"
+title = "Ink blinds the seers"
+text = "Ink blinds the two sight-based predators — the Lure and the Flarefish — breaking their fix, but does nothing to the sound-based Listener."
+weight = 1
+domain = "predators"
+
+[[review_item]]
+id = "catch-and-descend"
+title = "Caught and descending"
+text = "Contact with any predator costs a life and resets the trench while keeping the revealed map and eaten plankton; clearing every plankton descends to a deeper trench that is faster and harder to read (lower sonar range)."
+weight = 1
+reference = "game-over"
+proof = "game-over"
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the dive countdown, pause (resume/restart/quit), trench-cleared, and game-over (play again/menu)."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full maze region, the HUD, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

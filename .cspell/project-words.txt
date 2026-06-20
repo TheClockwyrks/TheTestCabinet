@@ -19,3 +19,9 @@ WASD
 
 # Tooling.
 tcab
+bioluminescent
+cooldown
+Flarefish
+respawn
+desaturated
+pacman
