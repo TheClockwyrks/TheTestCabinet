@@ -40,16 +40,32 @@ pub struct TokenCounts {
 }
 
 impl TokenCounts {
-    /// Total input tokens across the cached and uncached classes, or `None` when
-    /// either class is unknown (so a partial total is never presented as a whole).
+    /// Total input tokens across the cached and uncached classes. An unreported
+    /// class (`None`) counts as zero rather than poisoning the total, because a
+    /// harness that does not break the split out still folds those tokens into the
+    /// class it *does* report (a cache-unaware harness reports all input as
+    /// uncached). The total is therefore only `None` when **neither** input class
+    /// is reported — a run with no input usage at all.
     pub fn total_input(&self) -> Option<u64> {
-        Some(self.uncached_input? + self.cached_input?)
+        sum_reported(self.uncached_input, self.cached_input)
     }
 
-    /// Total output tokens across the reasoning and non-reasoning classes, or
-    /// `None` when either class is unknown.
+    /// Total output tokens across the reasoning and non-reasoning classes, on the
+    /// same terms as [`Self::total_input`]: an unreported reasoning class folds
+    /// into the reported `output` total, so it counts as zero and the total stays
+    /// meaningful; `None` only when neither output class is reported.
     pub fn total_output(&self) -> Option<u64> {
-        Some(self.output? + self.reasoning?)
+        sum_reported(self.output, self.reasoning)
+    }
+}
+
+/// Sum two optional token counts, treating an unreported (`None`) class as zero,
+/// but returning `None` when **both** are unreported so a genuinely empty total
+/// stays distinguishable from a real zero.
+fn sum_reported(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    match (a, b) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
     }
 }
 

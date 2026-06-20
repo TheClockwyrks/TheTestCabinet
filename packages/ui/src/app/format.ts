@@ -3,19 +3,22 @@
 
 import type { RunMetrics } from "@test-cabinet/run-record";
 
-// Add two nullable token counts. Null when either is unknown, so a partial sum is
-// never presented as if it were complete.
+// Add two nullable token counts, treating an unreported (null) category as zero
+// because a harness that doesn't break the split out still folds those tokens into
+// the category it does report. Null only when BOTH are unreported, so a genuinely
+// empty total stays distinguishable from a real zero.
 export function sumTokens(
   a: number | null,
   b: number | null,
 ): number | null {
-  return a === null || b === null ? null : a + b;
+  return a === null && b === null ? null : (a ?? 0) + (b ?? 0);
 }
 
-// Sum of every token category — the headline token figure shown on a card. Null
-// when any category is unreported (a harness that does not break out, say,
-// reasoning tokens cannot have a meaningful total), so such runs are excluded from
-// token comparisons rather than charted with an understated total.
+// Sum of every token category — the headline token figure shown on a card. An
+// unreported category folds into the one it's accounted under (a cache-unaware
+// harness reports all input as uncached; a harness that doesn't separate reasoning
+// reports it within output), so it counts toward the total and the run still
+// participates in token comparisons. Null only when no category is reported at all.
 export function totalTokens(metrics: RunMetrics): number | null {
   const { uncachedInput, cachedInput, output, reasoning } = metrics.tokens;
   return sumTokens(

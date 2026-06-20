@@ -550,13 +550,21 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 ]
             },
             usage: UsageShape {
+                // Cline's `inputTokens` is cache-inclusive: it already contains the
+                // `cacheReadTokens`, restated alongside it. So `input_includes_cache`
+                // must be true and the cache reads subtracted to recover the uncached
+                // input — the prior `false` counted the cached reads twice (once in
+                // uncached input at the full prompt rate, once as cached input),
+                // inflating total input and cost (a run that cost $1.86 was recorded
+                // at $6.45). Verified against a run's per-iteration and total
+                // `cost`: uncached = `inputTokens - cacheReadTokens`.
                 input: &["inputTokens"],
                 cached: &["cacheReadTokens"],
                 cache_creation: &["cacheWriteTokens"],
                 output: &["outputTokens"],
                 reasoning: &[],
                 cost: &[],
-                input_includes_cache: false,
+                input_includes_cache: true,
                 aggregation: Aggregation::Last,
                 usage_events: &[],
                 usage_path: &[],

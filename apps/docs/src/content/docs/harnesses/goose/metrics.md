@@ -27,9 +27,10 @@ cache-backed model and emits extensive reasoning (its `thinking` blocks, surface
 as [reasoning](/components/core/events/#reasoning) events in the
 [event stream](./events/)), those reads and reasoning tokens are folded into the
 flat `input_tokens`/`output_tokens` totals and cannot be separated out. Because
-the cached and reasoning classes are unknown, a Goose run carries no meaningful
-[token total](/components/core/metrics/#tokens) and is excluded from token
-comparisons. Input is not treated as cache-inclusive
+they are folded into the reported input and output, a Goose run's
+[token total](/components/core/metrics/#tokens) still reflects them and the run
+participates in token comparisons — only the cache and reasoning *breakdowns* are
+unavailable. Input is not treated as cache-inclusive
 (`input_includes_cache = false`), so nothing is subtracted from it.
 
 ## Cost

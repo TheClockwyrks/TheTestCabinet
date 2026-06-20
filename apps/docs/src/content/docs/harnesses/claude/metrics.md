@@ -25,9 +25,9 @@ directly, with no subtraction. Cache-creation tokens
 (`cache_creation_input_tokens`) are billed as input rather than cache reads, so
 they are folded into the uncached-input class. Claude Code does not break out
 reasoning tokens, so the reasoning class is `null` (not determinable) rather than
-zero — a Claude Code run therefore has no meaningful
-[token total](/components/core/metrics/#tokens) and is excluded from token
-comparisons.
+zero; those tokens are still counted within `output_tokens`, so a Claude Code
+run's [token total](/components/core/metrics/#tokens) stays meaningful and the run
+participates in token comparisons — only the reasoning breakdown is unavailable.
 
 ## Cost
 

@@ -35,11 +35,18 @@ following normalized token classes:
 Each class is **optional**: a class is `null` when the harness does not report it
 at all. `null` means "could not be determined" and is deliberately distinct from
 `0` ("reported, and was zero") — for example a harness that folds reasoning into
-its output total, and so never reports a reasoning figure, records `null` for
-reasoning rather than `0`. A consumer that aggregates across classes must treat
-`null` as missing rather than zero: a total that folds in an unknown class is
-itself unknown, so such a run is excluded from token comparisons rather than
-charted with an understated total.
+its output total, and so never reports a separate reasoning figure, records `null`
+for reasoning rather than `0`.
+
+A `null` class is not lost from the **total**: a harness that doesn't break a split
+out still folds those tokens into the class it does report — a cache-unaware
+harness reports all input as uncached, and a harness that doesn't separate
+reasoning reports it within output — so the total counts them, and the run still
+participates in token comparisons. A total is unknown only when *no* input (or
+output) class is reported at all. What `null` does signal is that the **breakdown**
+is unavailable: a consumer must not, say, chart "cached vs uncached" for a run
+whose cached class is `null`, because the split is genuinely unknown rather than
+zero.
 
 The [agent harness layer](/components/core/harnesses/#usage-reporting) is
 responsible for producing these normalized values from each harness's raw

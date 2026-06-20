@@ -129,6 +129,21 @@ fn pi_sums_per_message_usage_and_ignores_restated_turn_totals() {
 }
 
 #[test]
+fn cline_subtracts_cache_reads_from_its_inclusive_input() {
+    // Cline's `inputTokens` is cache-inclusive — it already contains
+    // `cacheReadTokens` — so the cache reads are subtracted to recover the
+    // uncached input rather than counted a second time. Numbers are from a real
+    // run whose reported total cost ($1.86) only reconciles this way.
+    let line = r#"{"type":"run_result","usage":{"inputTokens":3519925,"cacheReadTokens":3062974,"cacheWriteTokens":0,"outputTokens":79240,"totalCost":1.8580326}}"#;
+    let usage = parse_usage(&stdout(line), shape_for(HarnessSlug::Cline));
+    assert_eq!(usage.tokens.uncached_input, Some(456951)); // 3519925 - 3062974
+    assert_eq!(usage.tokens.cached_input, Some(3062974));
+    assert_eq!(usage.tokens.output, Some(79240));
+    // Total input is the reported `inputTokens`, not inflated past it.
+    assert_eq!(usage.tokens.total_input(), Some(3519925));
+}
+
+#[test]
 fn goose_reports_neither_cache_nor_reasoning_as_unknown_not_zero() {
     // Goose's `complete` event carries only flat input/output totals; it declares
     // no cache or reasoning keys, so those classes are unknown (`None`) rather than
@@ -140,10 +155,11 @@ fn goose_reports_neither_cache_nor_reasoning_as_unknown_not_zero() {
     assert_eq!(usage.tokens.output, Some(20801));
     assert_eq!(usage.tokens.cached_input, None);
     assert_eq!(usage.tokens.reasoning, None);
-    // A total that folds in an unknown class is itself unknown, so a run whose
-    // breakdown is incomplete is excluded from totals rather than under-counted.
-    assert_eq!(usage.tokens.total_input(), None); // cached unknown
-    assert_eq!(usage.tokens.total_output(), None); // reasoning unknown
+    // The unreported cache/reasoning classes are folded into the reported input
+    // and output, so the totals still reflect them (Goose's `input_tokens` already
+    // includes any cache reads; its `output_tokens` already includes reasoning).
+    assert_eq!(usage.tokens.total_input(), Some(368956));
+    assert_eq!(usage.tokens.total_output(), Some(20801));
 }
 
 #[test]
