@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useRef,
   type ComponentPropsWithoutRef,
   type ReactNode,
@@ -50,27 +50,35 @@ export function VirtualFeed({
   ...rest
 }: VirtualFeedProps) {
   const handle = useRef<VirtuosoHandle>(null);
+  // True while we're programmatically pinning to the bottom (a new item arrived,
+  // or follow was just re-enabled). It tells `atBottomStateChange` to ignore the
+  // brief "left the bottom" report that growing the list emits before the pin
+  // lands — only a report while we're *not* pinning means the user scrolled away.
+  const pinningToBottom = useRef(false);
 
-  // Snap to the newest item whenever following is (re-)enabled. Ongoing pinning
-  // as items stream in is handled by `followOutput`; this covers the button
-  // re-enabling follow after the user scrolled away. Intentionally keyed on
-  // `follow` alone — re-running on every count change would yank the view to the
-  // bottom even while the user is reading further up.
+  // Pin to the newest item while following — on every new item as the feed
+  // streams, and when the Follow button re-enables it after the user scrolled
+  // away. Keyed on `count` as well as `follow`: re-running per item is exactly
+  // what keeps a live feed pinned, and it can't yank a reader upward because
+  // scrolling up has already set `follow` false (so this effect no-ops).
   //
-  // `align: "end"` lands the *bottom* of the last item at the viewport bottom.
-  // The default ("start") aligns its top, so a final event taller than the
-  // remaining space leaves the scroller short of the bottom — which trips
-  // `atBottomStateChange(false)` and immediately turns follow back off.
-  useEffect(() => {
+  // We own the pinning rather than leaning on react-virtuoso's `followOutput`
+  // because only `scrollToIndex` lets us pass `align: "end"`, which lands the
+  // *bottom* of the last item at the viewport bottom. `followOutput` aligns the
+  // item's top, so a final event taller than the remaining space stops short of
+  // the bottom — tripping `atBottomStateChange(false)` and turning follow off on
+  // its own. A `useLayoutEffect` pins before paint, so there's no flash of the
+  // unpinned position.
+  useLayoutEffect(() => {
     if (follow && count > 0) {
+      pinningToBottom.current = true;
       handle.current?.scrollToIndex({
         index: "LAST",
         align: "end",
         behavior: "auto",
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [follow]);
+  }, [follow, count]);
 
   if (count === 0) {
     return (
@@ -96,16 +104,24 @@ export function VirtualFeed({
         // renders. Omitting the prop lets that built-in default stand — which is
         // the index-keyed behavior this component documents anyway.
         {...(computeKey ? { computeItemKey: computeKey } : {})}
-        // Start pinned to the newest item when following — `followOutput` only
-        // reacts to growth after mount, so a subscription that replays its
-        // backlog in one batch (mounting straight to N items) would otherwise
-        // open scrolled to the top.
+        // Start pinned to the newest item when following — the pinning effect
+        // only runs after mount, so a subscription that replays its backlog in
+        // one batch (mounting straight to N items) would otherwise open scrolled
+        // to the top.
         initialTopMostItemIndex={follow ? Math.max(0, count - 1) : 0}
-        followOutput={follow ? "auto" : false}
         atBottomStateChange={(atBottom) => {
-          // Only ever report leaving the bottom — re-following is an explicit
-          // action (the Follow button), never a side effect of scrolling back.
-          if (!atBottom) onFollowChange?.(false);
+          if (atBottom) {
+            // Settled at the bottom: the pin (if any) has landed, so a later
+            // "left the bottom" is the user scrolling for real.
+            pinningToBottom.current = false;
+            return;
+          }
+          // Ignore the bottom leaving while we're pinning — that's the list
+          // growing under a freshly appended item, not the user scrolling.
+          // Otherwise report it so follow detaches; re-following is then an
+          // explicit action (the Follow button), never a side effect of
+          // scrolling back down.
+          if (!pinningToBottom.current) onFollowChange?.(false);
         }}
         increaseViewportBy={400}
       />
