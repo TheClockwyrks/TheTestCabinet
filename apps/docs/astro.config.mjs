@@ -134,6 +134,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "quickstarts/overview",
+            "quickstarts/set-up-authentication",
             "quickstarts/run-a-test-case",
             "quickstarts/author-an-end-to-end-test-case",
             "quickstarts/author-an-asset-generation-test-case",

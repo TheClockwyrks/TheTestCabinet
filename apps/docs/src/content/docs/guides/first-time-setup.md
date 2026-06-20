@@ -122,7 +122,9 @@ render failure aborts the run before a harness session is spent. (The `seed`,
 The harness needs an API key for its model provider. The CLI keeps the several
 kinds of credential separate and never conflates them (see
 [CLI Authentication](/components/cli/overview/#authentication)); for a basic run
-you only need the harness key.
+you only need the harness key. The
+[Set Up Authentication](/quickstarts/set-up-authentication/) quickstart covers
+both this and the subscription alternative end to end.
 
 Each harness reads a specific variable — `ANTHROPIC_API_KEY` for `claude`,
 `OPENAI_API_KEY` for `codex`, `OPENROUTER_API_KEY` for the OpenRouter-backed

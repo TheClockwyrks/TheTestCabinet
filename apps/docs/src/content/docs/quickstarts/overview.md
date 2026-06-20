@@ -15,6 +15,8 @@ API key.
 
 ## Available quickstarts
 
+- [Set Up Authentication](/quickstarts/set-up-authentication/) — give a harness
+  the API key or subscription credentials a run needs.
 - [Run a Test Case](/quickstarts/run-a-test-case/) — drive a single test case
   through a harness and write a run record.
 - [Author an End-to-End Test Case](/quickstarts/author-an-end-to-end-test-case/)

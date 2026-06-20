@@ -14,9 +14,10 @@ and platform notes see [First Time Setup](/guides/first-time-setup/).
 
 A working setup: a container runtime on `PATH` (Podman or Docker), the harness
 image built, the Chromium browser installed for the
-[browser driver](/components/core/validation/), and the harness API key exported
-or in a `.env.runner`. See [First Time Setup](/guides/first-time-setup/) if any of those
-are missing.
+[browser driver](/components/core/validation/), and the harness authenticated
+with an API key or subscription (see
+[Set Up Authentication](/quickstarts/set-up-authentication/)). See
+[First Time Setup](/guides/first-time-setup/) if any of those are missing.
 
 ## Run it
 
