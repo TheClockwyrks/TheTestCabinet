@@ -8,14 +8,14 @@ import { RunMetricsPage } from "./[runId]/RunMetricsPage";
 import { RunMonitorPage } from "./[runId]/RunMonitorPage";
 import { RunPlayPage } from "./[runId]/RunPlayPage";
 import { RunProofPage } from "./[runId]/RunProofPage";
-import { RunReferencesPage } from "./[runId]/RunReferencesPage";
-import { RunSpecsPage } from "./[runId]/RunSpecsPage";
+import { RunInputsPage } from "./[runId]/RunInputsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
-// detail, whose Verdict / Play / Metrics / Events / Metadata tabs are each their
-// own URL so a tab is linkable. The Verdict tab is the default at the bare run
-// URL. Validation no longer has its own tab — it lives on the Metadata tab. The
+// detail, whose Verdict / Play / Inputs / Proof / Metrics / Events / Metadata
+// tabs are each their own URL so a tab is linkable. The Verdict tab is the
+// default at the bare run URL. Validation no longer has its own tab — it lives on
+// the Metadata tab. The
 // run-execution routes (new run, live monitor) are included only when the host
 // can execute runs —
 // they call the backend/worker contexts the static site does not provide.
@@ -33,11 +33,7 @@ export function runsRoutes(canExecute: boolean) {
         <Route path={routePatterns.runMonitor} element={<RunMonitorPage />} />
       )}
       <Route path={routePatterns.runDetail} element={<RunVerdictPage />} />
-      <Route path={routePatterns.runSpecs} element={<RunSpecsPage />} />
-      <Route
-        path={routePatterns.runReferences}
-        element={<RunReferencesPage />}
-      />
+      <Route path={routePatterns.runInputs} element={<RunInputsPage />} />
       <Route path={routePatterns.runProof} element={<RunProofPage />} />
       <Route path={routePatterns.runPlay} element={<RunPlayPage />} />
       <Route path={routePatterns.runMetrics} element={<RunMetricsPage />} />

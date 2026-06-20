@@ -2,75 +2,79 @@ import { Markdown, SpecAccordion, type AccordionEntry } from "@test-cabinet/ui";
 import type { SeededInput, VariantSummary } from "../data/testCases";
 import { MediaView } from "./MediaView";
 
-// Shared renderers for a variant's specifications and reference images. Both the
-// test-case detail tabs (where the variant comes from the URL slug) and the run
-// detail tabs (where it is resolved from the run's subject against the catalog)
-// render these, so the two surfaces stay byte-for-byte identical and there is a
-// single place that decides how a prompt, seeded file, or reference reads.
+// Shared renderer for a variant's inputs: everything a run of the variant is
+// given. The prompt the harness hands the model, the exact files it is seeded
+// with, and the reference media it is judged against — gathered into one
+// accordion. Both the test-case detail Inputs tab (where the variant comes from
+// the URL slug) and the run detail Inputs tab (where it is resolved from the
+// run's subject against the catalog) render this, so the two surfaces stay
+// byte-for-byte identical and there is a single place that decides how a prompt,
+// spec file, or reference reads.
 
-// The specifications for a variant: the prompt the harness hands the model,
-// followed by the exact files a run of the variant is seeded with — the same set
-// `tcab seed --variant <slug>` materializes. The prompt leads because it is the
-// first thing the model sees and names the specs that follow. The `key` collapses
-// every panel again when the variant changes.
-export function VariantSpecsView({ variant }: { variant: VariantSummary }) {
+/**
+ * The kind of input an entry represents. It is shown as the entry's tag (in place
+ * of the media type) so one scannable list still tells prompt from spec from
+ * reference. `asset` is reserved for a future input kind and is not yet produced.
+ */
+export type InputKind = "prompt" | "spec" | "reference" | "asset";
+
+/** The tag text shown for each input kind. */
+const INPUT_KIND_LABELS: Record<InputKind, string> = {
+  prompt: "Prompt",
+  spec: "Spec",
+  reference: "Reference",
+  asset: "Asset",
+};
+
+// The inputs lead with the prompt (the first thing the model sees, naming the
+// specs that follow), then the seeded spec files, then the reference media. Each
+// entry is tagged with its input kind rather than its media type. The `key`
+// collapses every panel again when the variant changes.
+export function VariantInputsView({ variant }: { variant: VariantSummary }) {
   const entries: AccordionEntry[] = [
-    // The prompt is only carried for locally-previewed cases; the public
-    // snapshot omits seeded inputs (but not the prompt), so skip the panel when
-    // empty.
+    // The prompt is always carried (the public snapshot omits seeded inputs but
+    // not the prompt), but guard against an empty one anyway.
     ...(variant.prompt
       ? [
           {
             path: "prompt",
-            kind: "text" as const,
+            kind: INPUT_KIND_LABELS.prompt,
             body: <Markdown>{variant.prompt}</Markdown>,
           },
         ]
       : []),
+    // The exact files a run of the variant is seeded with — the same set
+    // `tcab seed --variant <slug>` materializes. The public snapshot omits these,
+    // so on the static site only the prompt and references show.
     ...variant.seededInputs.map((input) => ({
       path: input.path,
-      kind: input.kind,
+      kind: INPUT_KIND_LABELS.spec,
       body: <SeededBody input={input} />,
     })),
+    // The reference media that are the variant's visual targets: rendered mockups
+    // and static images, plus any reference video clips. They are validation
+    // material, not seeded into a run. A video renders with native controls; an
+    // image renders inline.
+    ...variant.referenceScreenshots.map((shot) => {
+      const ext = shot.kind === "video" ? "mp4" : "png";
+      return {
+        path: `reference/${shot.view}.${ext}`,
+        kind: INPUT_KIND_LABELS.reference,
+        body: (
+          <MediaView
+            kind={shot.kind}
+            url={shot.url}
+            alt={`${variant.name} ${shot.view}`}
+          />
+        ),
+      };
+    }),
   ];
   return (
     <SpecAccordion
       key={variant.slug}
       entries={entries}
-      emptyLabel="This variant seeds no files."
-    />
-  );
-}
-
-// The reference media that are the visual targets for a variant: rendered mockups
-// and static images, plus any reference video clips. They are validation
-// material, not seeded into a run, so they read on their own apart from the
-// specification files but share the same full-width accordion. A video reference
-// renders with native controls; an image renders inline.
-export function VariantReferencesView({
-  variant,
-}: {
-  variant: VariantSummary;
-}) {
-  const entries: AccordionEntry[] = variant.referenceScreenshots.map((shot) => {
-    const ext = shot.kind === "video" ? "mp4" : "png";
-    return {
-      path: `reference/${shot.view}.${ext}`,
-      kind: shot.kind,
-      body: (
-        <MediaView
-          kind={shot.kind}
-          url={shot.url}
-          alt={`${variant.name} ${shot.view}`}
-        />
-      ),
-    };
-  });
-  return (
-    <SpecAccordion
-      key={variant.slug}
-      entries={entries}
-      emptyLabel="This variant has no reference media."
+      emptyLabel="This variant has no inputs."
     />
   );
 }

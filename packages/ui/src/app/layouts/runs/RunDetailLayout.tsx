@@ -15,8 +15,7 @@ import styles from "./RunDetailLayout.module.scss";
 export type RunDetailTab =
   | "verdict"
   | "play"
-  | "specs"
-  | "references"
+  | "inputs"
   | "proof"
   | "metrics"
   | "events"
@@ -71,8 +70,7 @@ export function RunDetailLayout({
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
     { key: "play", label: "Play", to: routes.runPlay(run.id) },
-    { key: "specs", label: "Specifications", to: routes.runSpecs(run.id) },
-    { key: "references", label: "References", to: routes.runReferences(run.id) },
+    { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
     { key: "proof", label: "Proof", to: routes.runProof(run.id) },
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
     { key: "events", label: "Events", to: routes.runEvents(run.id) },

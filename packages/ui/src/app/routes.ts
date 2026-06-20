@@ -6,10 +6,8 @@ export const routes = {
   testCases: (): string => "/test-cases",
   testCaseDetail: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}`,
-  testCaseSpecs: (slug: string): string =>
-    `/test-cases/${encodeURIComponent(slug)}/specs`,
-  testCaseReferences: (slug: string): string =>
-    `/test-cases/${encodeURIComponent(slug)}/references`,
+  testCaseInputs: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/inputs`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
   testCaseMetrics: (slug: string): string =>
@@ -48,10 +46,8 @@ export const routes = {
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
   runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
-  runSpecs: (runId: string): string =>
-    `/runs/${encodeURIComponent(runId)}/specs`,
-  runReferences: (runId: string): string =>
-    `/runs/${encodeURIComponent(runId)}/references`,
+  runInputs: (runId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/inputs`,
   runProof: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/proof`,
   runPlay: (runId: string): string =>
@@ -70,8 +66,7 @@ export const routePatterns = {
   home: "/",
   testCases: "/test-cases",
   testCaseDetail: "/test-cases/:slug",
-  testCaseSpecs: "/test-cases/:slug/specs",
-  testCaseReferences: "/test-cases/:slug/references",
+  testCaseInputs: "/test-cases/:slug/inputs",
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseMetrics: "/test-cases/:slug/metrics",
   models: "/models",
@@ -88,8 +83,7 @@ export const routePatterns = {
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
-  runSpecs: "/runs/:runId/specs",
-  runReferences: "/runs/:runId/references",
+  runInputs: "/runs/:runId/inputs",
   runProof: "/runs/:runId/proof",
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",

@@ -10,12 +10,7 @@ import styles from "./TestCaseDetailLayout.module.scss";
 
 // The detail page's tabs. Each is a distinct route; this drives which tab link
 // reads as active.
-export type DetailTab =
-  | "overview"
-  | "specs"
-  | "references"
-  | "runs"
-  | "metrics";
+export type DetailTab = "overview" | "inputs" | "runs" | "metrics";
 
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -61,8 +56,7 @@ export function TestCaseDetailLayout({
   // selected variant.
   const tabs: { key: DetailTab; label: string; to: string }[] = [
     { key: "overview", label: "Overview", to: routes.testCaseDetail(testCase.slug) },
-    { key: "specs", label: "Specifications", to: routes.testCaseSpecs(testCase.slug) },
-    { key: "references", label: "References", to: routes.testCaseReferences(testCase.slug) },
+    { key: "inputs", label: "Inputs", to: routes.testCaseInputs(testCase.slug) },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     { key: "metrics", label: "Metrics", to: routes.testCaseMetrics(testCase.slug) },
   ];
