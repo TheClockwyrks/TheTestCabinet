@@ -10,18 +10,22 @@ output: each non-empty line is one complete JSON object carrying a top-level
 
 ## Raw event stream
 
-The stream is a mix of lifecycle markers and two activity-bearing records. The
-session id is captured from the `session` record (its `id`). Lifecycle markers
-and the partial `message_update` deltas carry no agent activity; `turn_end` is
-consumed for [usage](./metrics/). Only `message_end` and `tool_execution_end`
-produce normalized events.
+The stream is a mix of lifecycle markers, completed assistant messages, and tool
+executions. The session id is captured from the `session` record (its `id`).
+Lifecycle markers and the partial `message_update` deltas carry no agent
+activity; `turn_end` is consumed for [usage](./metrics/). A tool execution is
+reported across three records — `tool_execution_start`, `tool_execution_update`,
+and `tool_execution_end` — and is reconstructed by pairing the start (which
+carries the arguments) with the end (which carries the result).
 
 | Pi event | Handling |
 | -------- | -------- |
 | `session` | Captures the session `id` (also tried as `sessionId`/`session_id`). No event. |
 | `agent_start`, `agent_end`, `turn_start`, `turn_end`, `message_start`, `message_update` | Lifecycle markers and partial deltas, consumed. No event. |
 | `message_end` | A completed message; an `assistant`-role message becomes an [agent](/components/core/events/#agent-message) message (see [Normalized mapping](#normalized-mapping)). |
-| `tool_execution_end` | A completed tool execution, mapped by tool name (see [Tool mapping](#tool-mapping)). |
+| `tool_execution_start` | Records the tool's `toolCallId`, `toolName`, and `args` for later resolution. No event. |
+| `tool_execution_update` | A streaming partial of an in-progress execution, consumed. No event. |
+| `tool_execution_end` | Resolves the recorded start by `toolCallId` and maps it by tool name (see [Tool mapping](#tool-mapping)). |
 | any other type | Becomes an [unknown](/components/core/events/#unknown) event. |
 
 ## Normalized mapping
@@ -31,12 +35,16 @@ message; its content is read as either a string or an array of text parts. A
 non-assistant message — such as the echoed user prompt — is lifecycle noise and
 emits no event, as does an assistant message with empty text.
 
-A `tool_execution_end` record is self-contained: it carries a tool name
-(`toolName`, also tried as `tool_name`/`tool`/`name`), structured input
-(`input`, also tried as `arguments`/`args`/`toolInput`), and a terminal status.
-Its `status`/`state` field — or a non-null `error` field — sets the success
-field. A record whose tool name is unrecognized, and any line that fails to
-parse, become unknown events so the stream stays lossless.
+A tool execution is split across events: `tool_execution_start` carries the tool
+name (`toolName`, also tried as `tool_name`/`tool`/`name`) and its arguments
+(`args`, also tried as `input`/`arguments`/`toolInput`), while
+`tool_execution_end` carries only the result. The start is recorded and the end
+resolves it, pairing the two by `toolCallId` so the operation the agent requested
+is classified with its observed outcome. Success is read from the end's `isError`
+boolean (a present result with no error counts as success), falling back to an
+`error`/`status` field. An end with no recorded start, a record whose tool name
+is unrecognized, and any line that fails to parse all become unknown events so
+the stream stays lossless.
 
 ## Tool mapping
 

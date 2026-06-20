@@ -759,10 +759,15 @@ fn pi_messages_and_self_contained_tools_classify() {
         .is_empty()
     );
 
+    // A tool's arguments arrive on its start event and its result on the end
+    // event; the two are paired by id and classified together.
     assert_eq!(
-        one(single(
+        one(seq_last(
             EventFormat::Pi,
-            r#"{"type":"tool_execution_end","toolName":"read","status":"completed","input":{"path":"/work/a.ts"}}"#,
+            &[
+                r#"{"type":"tool_execution_start","toolCallId":"c1","toolName":"read","args":{"path":"/work/a.ts"}}"#,
+                r#"{"type":"tool_execution_end","toolCallId":"c1","toolName":"read","result":{"content":[]}}"#,
+            ],
         )),
         EventKind::Read {
             path: "/work/a.ts".to_string(),
@@ -772,11 +777,14 @@ fn pi_messages_and_self_contained_tools_classify() {
         }
     );
 
-    // Tool names match case-insensitively, and an error marks failure.
+    // Tool names match case-insensitively, and `isError` on the end marks failure.
     assert_eq!(
-        one(single(
+        one(seq_last(
             EventFormat::Pi,
-            r#"{"type":"tool_execution_end","toolName":"Bash","error":"nope","input":{"command":"make"}}"#,
+            &[
+                r#"{"type":"tool_execution_start","toolCallId":"c2","toolName":"Bash","args":{"command":"make"}}"#,
+                r#"{"type":"tool_execution_end","toolCallId":"c2","toolName":"Bash","isError":true,"result":{"content":[]}}"#,
+            ],
         )),
         EventKind::Command {
             command: "make".to_string(),
@@ -785,6 +793,23 @@ fn pi_messages_and_self_contained_tools_classify() {
             is_success: Some(false),
         }
     );
+
+    // The streaming update between start and end is a partial, and an end with no
+    // recorded start cannot be classified, so it is surfaced verbatim.
+    assert!(
+        single(
+            EventFormat::Pi,
+            r#"{"type":"tool_execution_update","toolCallId":"c2","toolName":"Bash"}"#
+        )
+        .is_empty()
+    );
+    assert!(matches!(
+        one(single(
+            EventFormat::Pi,
+            r#"{"type":"tool_execution_end","toolCallId":"x","toolName":"read","result":{"content":[]}}"#,
+        )),
+        EventKind::Unknown { .. }
+    ));
 }
 
 #[test]

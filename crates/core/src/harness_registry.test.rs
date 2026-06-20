@@ -13,40 +13,9 @@ fn stdout(text: &str) -> ExecOutput {
 }
 
 fn shape_for(slug: HarnessSlug) -> UsageShape {
-    // Reconstruct each descriptor purely to read its usage shape in tests.
-    match slug {
-        HarnessSlug::Claude => UsageShape {
-            input: &["input_tokens"],
-            cached: &["cache_read_input_tokens"],
-            cache_creation: &["cache_creation_input_tokens"],
-            output: &["output_tokens"],
-            reasoning: &[],
-            cost: &["total_cost_usd"],
-            input_includes_cache: false,
-            aggregation: Aggregation::Last,
-        },
-        HarnessSlug::Codex => UsageShape {
-            input: &["input_tokens"],
-            cached: &["cached_input_tokens"],
-            cache_creation: &[],
-            output: &["output_tokens"],
-            reasoning: &["reasoning_output_tokens"],
-            cost: &[],
-            input_includes_cache: true,
-            aggregation: Aggregation::Last,
-        },
-        HarnessSlug::Opencode => UsageShape {
-            input: &["input"],
-            cached: &["cache_read", "cacheRead"],
-            cache_creation: &["cache_write", "cacheWrite"],
-            output: &["output"],
-            reasoning: &["reasoning"],
-            cost: &[],
-            input_includes_cache: false,
-            aggregation: Aggregation::Sum,
-        },
-        _ => UsageShape::NONE,
-    }
+    // Read each harness's real usage shape straight from its adapter spec, so the
+    // tests exercise the shapes the registry actually ships rather than a copy.
+    adapter_spec(slug).usage
 }
 
 #[test]
@@ -101,15 +70,39 @@ fn harnesses_without_a_cost_field_report_no_cost() {
 }
 
 #[test]
-fn opencode_sums_per_step_deltas() {
+fn opencode_sums_per_step_deltas_and_reads_nested_cache() {
+    // OpenCode reports per-step usage under `part.tokens`, with cache reads and
+    // writes nested in a `cache` object. Usage is summed across `step_finish`
+    // events, and the nested cache read is the cached-input class.
     let stream = concat!(
-        r#"{"type":"step_finish","tokens":{"input":50,"output":10}}"#,
+        r#"{"type":"step_finish","part":{"tokens":{"input":50,"output":10,"cache":{"read":500,"write":0}}}}"#,
         "\n",
-        r#"{"type":"step_finish","tokens":{"input":30,"output":20}}"#,
+        r#"{"type":"step_finish","part":{"tokens":{"input":30,"output":20,"cache":{"read":700,"write":0}}}}"#,
     );
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Opencode));
     assert_eq!(usage.tokens.uncached_input, 80);
+    assert_eq!(usage.tokens.cached_input, 1200);
     assert_eq!(usage.tokens.output, 30);
+}
+
+#[test]
+fn pi_sums_per_message_usage_and_ignores_restated_turn_totals() {
+    // Pi reports per-message usage under `message.usage` on `message_end`, then
+    // restates the same block on `turn_end`. Only `message_end` is summed, so the
+    // restated turn total must not be double-counted, and `cacheRead` is the
+    // cached-input class held separately from the uncached `input`.
+    let stream = concat!(
+        r#"{"type":"message_end","message":{"role":"assistant","usage":{"input":1000,"output":50,"cacheRead":4000,"cacheWrite":0,"totalTokens":5050}}}"#,
+        "\n",
+        r#"{"type":"turn_end","message":{"role":"assistant","usage":{"input":1000,"output":50,"cacheRead":4000,"cacheWrite":0,"totalTokens":5050}}}"#,
+        "\n",
+        r#"{"type":"message_end","message":{"role":"assistant","usage":{"input":200,"output":30,"cacheRead":6000,"cacheWrite":0,"totalTokens":6230}}}"#,
+    );
+    let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Pi));
+    assert_eq!(usage.tokens.uncached_input, 1200); // 1000 + 200; turn_end ignored
+    assert_eq!(usage.tokens.cached_input, 10000); // 4000 + 6000
+    assert_eq!(usage.tokens.output, 80);
+    assert_eq!(usage.tokens.reasoning, 0);
 }
 
 #[test]

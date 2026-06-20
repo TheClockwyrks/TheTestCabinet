@@ -2,34 +2,36 @@
 title: Metrics
 ---
 
-Pi reports token usage on its JSON event stream. The harness layer reads the
-token fields the code looks for today out of that stream and produces the
-normalized [token classes](/components/core/metrics/#tokens). Aggregation is
-`Last`: each usage-bearing line replaces the running total rather than adding to
-it, so the final reported totals are the ones recorded.
+Pi reports token usage **per assistant message**, in a `usage` object under
+`message.usage` on each `message_end` event. The same usage block is restated on
+the surrounding `turn_end` (and streamed, all zeros, on `message_update`), so the
+harness layer reads usage from `message_end` alone and confines the search to the
+`message.usage` sub-object. Aggregation is `Sum`: each message's usage adds to
+the running total, so the recorded totals are the sum across every message of the
+run.
 
 ## Token classes
 
-As the code reads them today, the normalized classes are derived from these JSON
-keys (each class is read from the first of its candidate keys that is present):
+The normalized classes are derived from these keys within `message.usage`:
 
-| Token class | Pi keys |
-| ----------- | ------- |
-| Input | `input_tokens`, `inputTokens`, `input` |
-| Cached input | `cached_input_tokens`, `cacheReadTokens` |
-| Output | `output_tokens`, `outputTokens`, `output` |
-| Reasoning | `reasoning_output_tokens`, `reasoningTokens` |
+| Token class | Pi key |
+| ----------- | ------ |
+| Input | `input` |
+| Cached input | `cacheRead` |
+| Cache creation | `cacheWrite` |
+| Output | `output` |
 
-Pi's input is inclusive of cached reads (`input_includes_cache` is true), so the
-cached input is subtracted from it to yield the uncached input recorded as the
-[uncached input class](/components/core/metrics/#tokens). Pi has no
-cache-creation class. Reasoning is read from its own keys and tracked separately
-from the output keys, which already exclude it.
+Pi's `input` is the uncached prompt and does **not** include cached reads
+(`input_includes_cache` is false); the cache read count sits beside it under
+`cacheRead` and becomes the
+[cached input class](/components/core/metrics/#tokens). Any `cacheWrite` count is
+folded into the uncached input. Pi reports no separate reasoning class in its
+usage object, so reasoning is recorded as zero.
 
-These token field names are provider-shaped and best-effort: the names read for
-Pi (along with Kilo Code and OpenCode) are inferred from the underlying
-provider's usage shape and are still to be confirmed against real CLI output, so
-they may not match exactly what the harness emits today.
+These field names were confirmed against a real Pi run's recorded stream. Pi
+routes through OpenRouter, so its usage shape is still provider-dependent; the
+[`raw.jsonl` and `events.jsonl`](/components/core/run-records/#co-located-run-files)
+files a run records make it straightforward to re-verify them.
 
 ## Cost
 

@@ -12,9 +12,13 @@
 //! Every harness runs in the shared base run-container image and installs its
 //! own CLI at run time; the adapter only builds commands and parses output.
 //!
-//! Usage parsing is intentionally tolerant — it searches each harness's JSON
-//! event stream for known token fields — because several harnesses' exact field
-//! names are provider-shaped and must be confirmed against the real CLIs.
+//! Usage parsing is intentionally tolerant — by default it searches each
+//! harness's JSON event stream for known token fields — because several
+//! harnesses' exact field names are provider-shaped and must be confirmed
+//! against the real CLIs. A [`UsageShape`] can narrow that search to the
+//! specific event type and sub-object that carry the authoritative usage, which
+//! is required for harnesses that restate the same usage across several event
+//! types (Pi) or nest it under keys that would otherwise collide (OpenCode).
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -64,6 +68,18 @@ struct UsageShape {
     input_includes_cache: bool,
     /// How per-event numbers combine across the stream.
     aggregation: Aggregation,
+    /// The values of a record's top-level `type` field whose lines carry the
+    /// authoritative usage. When empty, every line is considered (the tolerant
+    /// default). When set, lines of any other type are skipped — this is how a
+    /// harness that restates the same usage across several event types (or buries
+    /// numbers in tool arguments) is read from exactly one event without
+    /// double-counting or misreading.
+    usage_events: &'static [&'static str],
+    /// The path to the usage object within a record. When empty, the token keys
+    /// are searched across the whole record (the tolerant default). When set, the
+    /// search is confined to the sub-object at this path, so a nested usage block
+    /// is read without colliding with same-named keys elsewhere in the record.
+    usage_path: &'static [&'static str],
 }
 
 impl UsageShape {
@@ -77,6 +93,8 @@ impl UsageShape {
         cost: &[],
         input_includes_cache: false,
         aggregation: Aggregation::Last,
+        usage_events: &[],
+        usage_path: &[],
     };
 }
 
@@ -180,9 +198,10 @@ impl AgentHarness for CliHarness {
             PricingModelId::AddPrefix(prefix) => format!("{prefix}{model_id}"),
             // Drop the harness's own provider prefix to recover the OpenRouter
             // slug; leave the ID alone when it isn't there.
-            PricingModelId::StripPrefix(prefix) => {
-                model_id.strip_prefix(prefix).unwrap_or(model_id).to_string()
-            }
+            PricingModelId::StripPrefix(prefix) => model_id
+                .strip_prefix(prefix)
+                .unwrap_or(model_id)
+                .to_string(),
         }
     }
 
@@ -477,6 +496,8 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 cost: &["total_cost_usd"],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
+                usage_events: &[],
+                usage_path: &[],
             },
             event_format: EventFormat::Claude,
         },
@@ -507,6 +528,8 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 cost: &[],
                 input_includes_cache: true,
                 aggregation: Aggregation::Last,
+                usage_events: &[],
+                usage_path: &[],
             },
             event_format: EventFormat::Codex,
         },
@@ -535,6 +558,8 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
+                usage_events: &[],
+                usage_path: &[],
             },
             event_format: EventFormat::Cline,
         },
@@ -581,6 +606,8 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Last,
+                usage_events: &[],
+                usage_path: &[],
             },
             event_format: EventFormat::Goose,
         },
@@ -608,6 +635,8 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
+                usage_events: &[],
+                usage_path: &[],
             },
             event_format: EventFormat::Kilo,
         },
@@ -627,14 +656,21 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 ]
             },
             usage: UsageShape {
+                // OpenCode reports per-step usage on its `step_finish` events,
+                // under `part.tokens`, with cache reads/writes nested one level
+                // deeper in a `cache` object (`cache.read`, `cache.write`). The
+                // search is confined to `part.tokens` so those bare `read`/`write`
+                // keys resolve to the cache counts and nothing else.
                 input: &["input"],
-                cached: &["cache_read", "cacheRead"],
-                cache_creation: &["cache_write", "cacheWrite"],
+                cached: &["read"],
+                cache_creation: &["write"],
                 output: &["output"],
                 reasoning: &["reasoning"],
                 cost: &[],
                 input_includes_cache: false,
                 aggregation: Aggregation::Sum,
+                usage_events: &["step_finish"],
+                usage_path: &["part", "tokens"],
             },
             event_format: EventFormat::Opencode,
         },
@@ -655,14 +691,22 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
                 ]
             },
             usage: UsageShape {
-                input: &["input_tokens", "inputTokens", "input"],
-                cached: &["cached_input_tokens", "cacheReadTokens"],
-                cache_creation: &[],
-                output: &["output_tokens", "outputTokens", "output"],
-                reasoning: &["reasoning_output_tokens", "reasoningTokens"],
+                // Pi reports usage per assistant message, under `message.usage`,
+                // on its `message_end` events. The same usage block is restated on
+                // the surrounding `turn_end` (and streamed, all-zero, on
+                // `message_update`), so usage is read from `message_end` alone and
+                // summed across the run. `input` is the uncached prompt; cache
+                // reads sit alongside it under `cacheRead`/`cacheWrite`.
+                input: &["input"],
+                cached: &["cacheRead"],
+                cache_creation: &["cacheWrite"],
+                output: &["output"],
+                reasoning: &[],
                 cost: &[],
-                input_includes_cache: true,
-                aggregation: Aggregation::Last,
+                input_includes_cache: false,
+                aggregation: Aggregation::Sum,
+                usage_events: &["message_end"],
+                usage_path: &["message", "usage"],
             },
             event_format: EventFormat::Pi,
         },
@@ -680,7 +724,28 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        let line_tokens = extract_tokens(&value, shape);
+        // When the shape names the events that carry usage, ignore every other
+        // line so usage restated across several event types is not double-counted.
+        if !shape.usage_events.is_empty() {
+            let event_type = value
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !shape.usage_events.contains(&event_type) {
+                continue;
+            }
+        }
+        // When the shape names where the usage object sits, read the token fields
+        // from that sub-object rather than searching the whole record.
+        let scope = if shape.usage_path.is_empty() {
+            &value
+        } else {
+            match dig(&value, shape.usage_path) {
+                Some(scope) => scope,
+                None => continue,
+            }
+        };
+        let line_tokens = extract_tokens(scope, shape);
         if line_tokens.total_input() == 0 && line_tokens.total_output() == 0 {
             continue;
         }
@@ -720,6 +785,16 @@ fn parse_reported_cost(output: &ExecOutput, shape: UsageShape) -> Option<f64> {
         }
     }
     reported
+}
+
+/// The sub-value reached by following `path` key by key, or `None` when any key
+/// along the way is missing. Used to confine a usage search to a nested block.
+fn dig<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    Some(current)
 }
 
 /// Extract the normalized token classes from one JSON event.

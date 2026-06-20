@@ -1068,12 +1068,46 @@ impl EventParser {
         }
         match event_type {
             // Lifecycle markers and partial deltas are not agent activity; the
-            // completed message and tool events below carry it.
-            "session" | "agent_start" | "agent_end" | "turn_start" | "turn_end"
-            | "message_start" | "message_update" => Vec::new(),
+            // completed message and tool events below carry it. A tool execution
+            // is split across events — the start carries the arguments, the end
+            // carries only the result — so the start is recorded and the end
+            // resolves it; the streaming update in between is a partial.
+            "session"
+            | "agent_start"
+            | "agent_end"
+            | "turn_start"
+            | "turn_end"
+            | "message_start"
+            | "message_update"
+            | "tool_execution_update" => Vec::new(),
             "message_end" => self.parse_pi_message(&value),
+            "tool_execution_start" => {
+                self.record_pi_tool(&value);
+                Vec::new()
+            }
             "tool_execution_end" => self.parse_pi_tool(&value),
             _ => vec![self.event(EventKind::Unknown { raw: value })],
+        }
+    }
+
+    /// Record a Pi `tool_execution_start`, whose `args` carry the tool input, so
+    /// the matching `tool_execution_end` — which carries only the result — can be
+    /// resolved into the operation the agent requested.
+    fn record_pi_tool(&mut self, value: &Value) {
+        let id = value.get("toolCallId").and_then(Value::as_str);
+        let name = lookup_str(value, &["toolName", "tool_name", "tool", "name"]);
+        if let (Some(id), Some(name)) = (id, name) {
+            let input = dig(
+                value,
+                &[&["args"], &["input"], &["arguments"], &["toolInput"]],
+            )
+            .cloned()
+            .unwrap_or(Value::Null);
+            self.pending_tools.push(PendingTool {
+                id: id.to_string(),
+                name: name.to_string(),
+                input,
+            });
         }
     }
 
@@ -1096,23 +1130,13 @@ impl EventParser {
         vec![self.event(EventKind::Agent { message: text })]
     }
 
-    /// Resolve a completed Pi `tool_execution_end` into its normalized event(s).
-    fn parse_pi_tool(&self, value: &Value) -> Vec<HarnessEvent> {
-        let name = lookup_str(value, &["toolName", "tool_name", "tool", "name"]);
-        let input = dig(
-            value,
-            &[&["input"], &["arguments"], &["args"], &["toolInput"]],
-        )
-        .cloned()
-        .unwrap_or(Value::Null);
+    /// Resolve a completed Pi `tool_execution_end` into its normalized event(s)
+    /// by pairing it with the `tool_execution_start` that recorded its input,
+    /// since the end event carries only the result.
+    fn parse_pi_tool(&mut self, value: &Value) -> Vec<HarnessEvent> {
+        let id = value.get("toolCallId").and_then(Value::as_str);
         let success = pi_tool_success(value);
-        let workspace = self.workspace.clone();
-        match name.and_then(|name| classify_pi_tool(name, &input, success, workspace.as_deref())) {
-            Some(kinds) if !kinds.is_empty() => {
-                kinds.into_iter().map(|kind| self.event(kind)).collect()
-            }
-            _ => vec![self.event(EventKind::Unknown { raw: value.clone() })],
-        }
+        self.resolve_pending_tool(id, success, value, classify_pi_tool)
     }
 }
 
@@ -2133,10 +2157,18 @@ fn step_tool_success(value: &Value) -> Option<bool> {
     }
 }
 
-/// Whether a Pi `tool_execution_end` reports success, from its status or error.
+/// Whether a Pi `tool_execution_end` reports success. Pi flags a failed call
+/// with an `isError` boolean on the end event; a completed call that carries a
+/// result and no error succeeded. A status/error field is honored as a fallback.
 fn pi_tool_success(value: &Value) -> Option<bool> {
+    if let Some(is_error) = value.get("isError").and_then(Value::as_bool) {
+        return Some(!is_error);
+    }
     if value.get("error").is_some_and(|error| !error.is_null()) {
         return Some(false);
+    }
+    if value.get("result").is_some() {
+        return Some(true);
     }
     match lookup_str(value, &["status", "state"]) {
         Some("completed" | "success" | "ok" | "done") => Some(true),
