@@ -6,7 +6,7 @@ Kilo Code emits its activity as `EventFormat::Kilo`. It is run with
 `kilo run --format json`, which writes a line-delimited JSON stream on standard
 output: each non-empty line is one complete JSON object carrying a top-level
 `type`. Kilo Code is built on the same OpenCode-style step stream as
-[OpenCode](/components/core/events/#opencode-event-mapping), so it shares that
+[OpenCode](/harnesses/opencode/events/), so it shares that
 stream's shape; the harness layer parses it and maps it onto the normalized
 [harness events](/components/core/events/). The session id is captured from a
 `sessionID`, `session_id`, or `sessionId` field.
@@ -64,7 +64,7 @@ tool names are matched case-insensitively:
 A `task` or `agent_manager` call only becomes an orchestration event when the
 spawned agent or session can be identified from the input; otherwise it falls
 through to an unknown event rather than guessing. Any other tool delegates to the
-[OpenCode tool mapping](/components/core/events/#opencode-event-mapping).
+[OpenCode tool mapping](/harnesses/opencode/events/#tool-mapping).
 
 ---
 
