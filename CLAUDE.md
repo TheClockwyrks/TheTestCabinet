@@ -86,10 +86,16 @@ When working on the tasks below, read the matching skill in
 authoring conventions:
 
 - **Writing code:** [`coding`](.claude/skills/coding/SKILL.md).
-- **Creating/revising a test case:**
-  [`authoring-a-test-case`](.claude/skills/authoring-a-test-case/SKILL.md).
+- **Creating/revising a test case** (pick by [test type](apps/docs/src/content/docs/testing/)):
+  [`authoring-an-end-to-end-test-case`](.claude/skills/authoring-an-end-to-end-test-case/SKILL.md)
+  for a playable game, or
+  [`authoring-an-asset-generation-test-case`](.claude/skills/authoring-an-asset-generation-test-case/SKILL.md)
+  for a sprite drawn with the `draw` tool.
 - **Adding a variant to an existing case:**
-  [`adding-a-variant`](.claude/skills/adding-a-variant/SKILL.md).
+  [`adding-an-end-to-end-variant`](.claude/skills/adding-an-end-to-end-variant/SKILL.md)
+  (a playable mode) or
+  [`adding-an-asset-generation-variant`](.claude/skills/adding-an-asset-generation-variant/SKILL.md)
+  (a brief variation against the shared target).
 
 ## Definitions & assets
 

@@ -1,14 +1,14 @@
 ---
-description: Read this skill before creating a new test case or version, or when authoring or revising a case's specification, prompt, reference mockups, or manifest under test-cases/. Covers how a test case is structured and how its specs should be written.
-name: authoring-a-test-case
+description: Read this skill before creating a new end-to-end test case or version (a playable game built from a spec), or when authoring or revising such a case's specification, prompt, reference mockups, or manifest under test-cases/. For an asset-generation case (drawing a sprite with the draw tool) use authoring-an-asset-generation-test-case instead.
+name: authoring-an-end-to-end-test-case
 ---
 
-# Authoring a Test Case
+# Authoring an End-to-End Test Case
 
-## What a test case is
+## What an end-to-end test case is
 
-A test case is a single game a model is asked to build. It is the primary
-material The Test Cabinet hands to a model, so authoring one is mostly an
+An end-to-end test case is a single game a model is asked to build. It is the
+primary material The Test Cabinet hands to a model, so authoring one is mostly an
 exercise in writing a precise, self-contained **specification**. Cases range
 from simple (Pong) to ones that exceed the best current models; they are meant to
 stay relevant as models improve, so aim high.
@@ -22,22 +22,20 @@ and every manifest field is documented in
 is the practical procedure and the spec-writing guidance that sit on top of it;
 it does not restate the schema.
 
-There are two [test types](../../../apps/docs/src/content/docs/testing/).
-**Most of this skill is the end-to-end procedure** — building a playable game.
-An **asset-generation** case is a different shape (the model draws a sprite one
-operation at a time instead of building a site); if you are authoring one, read
-**[Asset-generation cases](#asset-generation-cases)** below first — it states
-what carries over and what differs — then apply only the parts of the end-to-end
-procedure it points back to.
+This skill covers the **end-to-end** test type only. An **asset-generation** case
+— where the model draws a sprite one operation at a time with the `draw` tool
+instead of building a site — is a different shape with its own manifest; use the
+[`authoring-an-asset-generation-test-case`](../authoring-an-asset-generation-test-case/SKILL.md)
+skill for that.
 
 Scope of this skill vs. its sibling:
 
-- **This skill** — creating a *new* test case or version, and authoring or
-  revising its specification, prompt, references, and manifest.
-- [`adding-a-variant`](../adding-a-variant/SKILL.md) — adding a new variant
-  (mode/configuration) to an *existing* version. Its procedure for mode specs,
-  per-variant menu mockups, manifest registration, and validation is not
-  repeated here; follow it for variant work.
+- **This skill** — creating a *new* end-to-end test case or version, and authoring
+  or revising its specification, prompt, references, and manifest.
+- [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) —
+  adding a new variant (mode/configuration) to an *existing* version. Its
+  procedure for mode specs, per-variant menu mockups, manifest registration, and
+  validation is not repeated here; follow it for variant work.
 
 The worked example throughout is the `pong` case (`test-cases/pong/v1.0.0/`),
 whose in-game title is **Carom**. Read its files alongside this skill — a new
@@ -78,64 +76,6 @@ harness as the instruction; it is never written to the run's disk. The reference
 **source** is deliberately withheld so a model cannot copy the UI in place of
 building it from the spec.
 
-## Asset-generation cases
-
-An asset-generation case asks a model to **draw a small pixel sprite**, one
-recorded drawing operation at a time, against a fixed target — not to build a
-game. It is a separate [test type](../../../apps/docs/src/content/docs/testing/);
-read its docs before authoring one and follow them as the authority:
-
-- [`testing/asset-generation/overview.md`](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-  — what the type measures and why the **action log**, not the pixels on disk, is
-  the authoritative output;
-- [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
-  — every manifest field;
-- [`testing/asset-generation/evaluation.md`](../../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md)
-  — how fidelity and cheat-divergence are scored.
-
-The worked examples are `gloamfin` and `lanternjaw`
-(`test-cases/gloamfin/v1.0.0/`). Read one alongside the docs — a new asset-gen
-case should look like it.
-
-**What carries over from the end-to-end procedure** (apply those steps as
-written): choosing a slug/lineage and an immutable `vX.Y.Z` version (step 1); a
-short `prompt.hbs` that points at the seeded brief (step 4); the manifest's
-site-facing metadata and `[[variant]]` rules (step 6); the non-seeded
-`description.md`/`README.md` (step 9); and **Validating** (`npm run lint:specs`,
-force-re-ingest after editing, conventional commit).
-
-**What is different:**
-
-- **The manifest, not a `[build]`.** An asset-gen case declares
-  `type = "asset-generation"` (required — omitting it defaults to `end-to-end`,
-  which rejects the new tables) plus the `[canvas]` (the fixed image to draw on),
-  `[tool]` (the `draw` binary, its `operations` schema, and the `preview` path),
-  and `[output]` (where the `actions` log is collected) tables. It declares
-  **no `[build]` table and no `[[check]]`** — there is no site to build or load,
-  so those are rejected for this type. See the manifests doc for the exact shape.
-- **One self-contained brief, not a decomposed spec.** Instead of
-  `overview`/`playfield`/`physics`/`flow`, seed a single `specs/brief.md` that
-  describes *what to draw* (subject, silhouette, palette, framing) and *how the
-  tool behaves*. The same self-containment, *what-not-how*, and precise-values
-  rules from **Writing specifications** apply — pin the palette and the canvas
-  framing in exact terms.
-- **Seed the operations schema verbatim.** The `[tool]` `operations` JSON Schema
-  is seeded like a spec so the model knows the drawing vocabulary. It must be the
-  canonical schema the binary emits — copy it from `draw schema` and keep each
-  case's copy **byte-for-byte identical** so it never drifts from the binary.
-- **The target is rendered from a `draw` action log, not hand-pixeled.** Author
-  the target as its own action log and render it through the same binary
-  (`draw render --actions … --out reference/target.png`), keeping the action log
-  as the un-seeded source beside it (e.g. `reference/target.actions.json`). This
-  guarantees the goal is achievable within the operation set, so fidelity scoring
-  is fair. The rendered `target.png` is the single `[[reference]]` (`view =
-  "target"`), seeded as the visual goal — there are no per-view reference mockups
-  and no `reference/theme.css`.
-- **Review items and domains score the drawing.** Declare `[[domain]]`s (e.g.
-  `fidelity`) and `[[review_item]]`s that judge how faithfully the regenerated
-  sprite matches the target — silhouette, palette, framing — each pairing
-  `reference = "target"`. There is no proof-of-implementation step.
-
 ## Creating a new case — procedure
 
 ### 1. Choose the game and confirm it qualifies
@@ -150,7 +90,9 @@ Every case must (see *Design Requirements* in
   against a reference automatically;
 - either need **no assets** or **pre-provide** them — an end-to-end case is about
   *building the game*, so it never asks the model to produce art. (Generating an
-  asset is its own test type; see [Asset-generation cases](#asset-generation-cases).)
+  asset is its own test type; see the
+  [`authoring-an-asset-generation-test-case`](../authoring-an-asset-generation-test-case/SKILL.md)
+  skill.)
 
 Pick a **catalog slug** for the lineage (e.g. `pong`) and, separately, an
 original **in-game title** for the build (e.g. `Carom`). Pick a `version`
@@ -193,7 +135,7 @@ a `theme.css` that is the source of truth for the palette and field furniture
 at the logical viewport, per variant, under the git-ignored
 `reference/screenshots/`. Author the **source**; never seed it, never hand-create
 the screenshots. See [`reference/README.md`](../../../test-cases/pong/v1.0.0/reference/README.md)
-and step 4 of [`adding-a-variant`](../adding-a-variant/SKILL.md).
+and step 4 of [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md).
 
 ### 6. Write the manifest and declare variants
 
@@ -202,7 +144,7 @@ Author `test-case.toml` per the schema in
 `[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
 the default — usually `base`), any opt-in `[[check]]`, the common `[[proof]]`
 list (see step 7), and the common `[[review_item]]` list (see step 8). For
-additional variants follow [`adding-a-variant`](../adding-a-variant/SKILL.md). A
+additional variants follow [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). A
 `.hbs` source is rendered; anything else is seeded verbatim.
 
 ### 7. Declare proof of implementation
@@ -238,7 +180,7 @@ the easy-to-miss correctness behaviors that validation cannot judge. Each item i
 a stable `id`, a short `title` (a few words — the reviewer UI heads the item with
 it and a synthesized number), plus the `text` a reviewer reads, and optionally a
 `reference`/`proof` pairing (see step 7); a variant adds its own for the mode it
-introduces (see [`adding-a-variant`](../adding-a-variant/SKILL.md)). These
+introduces (see [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md)). These
 are **not seeded** — they restate requirements the seeded specs already state, so
 the model never receives the checklist. The reviewer records a verdict for each
 before a run can be published. Pong's items are the model; aim for a handful that

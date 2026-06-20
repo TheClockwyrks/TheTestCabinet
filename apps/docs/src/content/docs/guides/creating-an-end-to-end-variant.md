@@ -1,24 +1,30 @@
 ---
-title: Creating a Test Case Variant
+title: Creating an End-to-End Variant
 ---
 
-A test case version offers one or more [variants](/testing/end-to-end/overview/#variants),
-and a run selects exactly one. Every variant seeds the version's **common specs**
-plus its own **additive** specs, so a single case can describe several builds —
-the same game with or without an extra mode, say — without duplicating the shared
-specification. The chosen variant's slug is recorded in the run record, so every
-result is attributed to a specific build.
+An [end-to-end](/testing/end-to-end/overview/) test case version offers one or
+more [variants](/testing/end-to-end/overview/#variants), and a run selects exactly
+one. Every variant seeds the version's **common specs** plus its own **additive**
+specs, so a single case can describe several builds — the same game with or
+without an extra mode, say — without duplicating the shared specification. The
+chosen variant's slug is recorded in the run record, so every result is
+attributed to a specific build.
 
-This guide is the end-to-end procedure for adding a variant to an **existing**
-version. The authoritative rules live in
-[Test Cases](/testing/end-to-end/overview/) (see its *Variants* and
+This guide is the full procedure for adding a variant to an **existing**
+end-to-end version. The authoritative rules live in
+[End-to-End Tests](/testing/end-to-end/overview/) (see its *Variants* and
 *Self-Contained Specifications* sections); read them first. While doing the work,
-follow the `adding-a-variant` skill. The worked example is the **Gyre** variant
-of the `pong` case, in which the obstacles oscillate and rotate — read the
-existing `frenzy`, `multi`, and `gyre` mode specs alongside this guide.
+follow the `adding-an-end-to-end-variant` skill. The worked example is the
+**Gyre** variant of the `pong` case, in which the obstacles oscillate and rotate
+— read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this guide.
 
 To author a brand-new case rather than add a mode to one, see
-[Authoring a Test Case](/guides/authoring-a-test-case/).
+[Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/).
+To add a variant to an [asset-generation](/testing/asset-generation/overview/)
+case instead, see
+[Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/)
+— there a variant varies the drawing brief against a shared target, not a game
+mode.
 
 ## What a variant adds
 

@@ -1,11 +1,16 @@
 ---
-title: Author a Test Case
+title: Author an End-to-End Test Case
 ---
 
-Scaffold a new test case (or a new version of an existing one). This is the
-short version; [Authoring a Test Case](/guides/authoring-a-test-case/) covers
-spec-writing and the rules in full, and
-[Test Cases](/testing/end-to-end/overview/) is the authoritative schema.
+Scaffold a new [end-to-end](/testing/end-to-end/overview/) test case — a playable
+game built from a spec (or a new version of an existing one). This is the short
+version; [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/)
+covers spec-writing and the rules in full, and
+[End-to-End Tests](/testing/end-to-end/overview/) is the authoritative schema.
+
+Drawing a sprite rather than building a game? See
+[Author an Asset-Generation Test Case](/quickstarts/author-an-asset-generation-test-case/)
+instead — it is a different test type with a different manifest.
 
 ## Layout
 
@@ -41,8 +46,8 @@ test-cases/<slug>/<version>/
    `[build]` commands, the common `[[spec]]`/`[[reference]]` lists, at least one
    `[[variant]]`, and any opt-in `[[check]]`.
 
-The `authoring-a-test-case` skill is the practical procedure to follow while
-doing this; read it before you start. The `pong` case
+The `authoring-an-end-to-end-test-case` skill is the practical procedure to
+follow while doing this; read it before you start. The `pong` case
 (`test-cases/pong/v1.0.0/`) is the worked example a new case should resemble.
 
 ## Validate
@@ -57,5 +62,6 @@ the manifest resolves and the seeded set is self-contained.
 
 ## Next steps
 
-- [Create a Variant](/quickstarts/create-a-variant/) to add another mode.
+- [Create an End-to-End Variant](/quickstarts/create-an-end-to-end-variant/) to
+  add another mode.
 - [Run a Test Case](/quickstarts/run-a-test-case/) to exercise it end to end.

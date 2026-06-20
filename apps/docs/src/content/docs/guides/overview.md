@@ -17,10 +17,17 @@ guide when you are doing the task for the first time, or when you need to know
 - [First Time Setup](/guides/first-time-setup/) — install the toolchain,
   container runtime, run-container image, browser, and credentials, then make a
   first run.
-- [Authoring a Test Case](/guides/authoring-a-test-case/) — write a new case or
-  version: its specification, prompt, references, and manifest.
-- [Creating a Test Case Variant](/guides/creating-a-test-case-variant/) — add a
-  new playable mode to an existing version.
+- [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/)
+  — write a new playable-game case or version: its specification, prompt,
+  references, and manifest.
+- [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/)
+  — write a new sprite-drawing case or version: its brief, target, operations
+  schema, and manifest.
+- [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/) — add
+  a new playable mode to an existing end-to-end version.
+- [Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/)
+  — add a brief variation against the shared target of an asset-generation
+  version.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — play a
   finished run, read its validation signals, and write the required review.
 - [Publishing a Test Run Result](/guides/publishing-a-test-run-result/) — release

@@ -1,14 +1,20 @@
 ---
-title: Authoring a Test Case
+title: Authoring an End-to-End Test Case
 ---
 
-A test case is a single game a model is asked to build, so authoring one is
-mostly an exercise in writing a precise, **self-contained specification**. This
-guide is the end-to-end procedure. [Test Cases](/testing/end-to-end/overview/) is
-the authoritative schema — every manifest field, what is seeded, how templates
-render, and the rules enforced at resolution — and you should read it first.
-While doing the work, follow the `authoring-a-test-case` skill, which carries the
+An [end-to-end](/testing/end-to-end/overview/) test case is a single game a model
+is asked to build, so authoring one is mostly an exercise in writing a precise,
+**self-contained specification**. This guide is the full procedure.
+[End-to-End Tests](/testing/end-to-end/overview/) is the authoritative schema —
+every manifest field, what is seeded, how templates render, and the rules
+enforced at resolution — and you should read it first. While doing the work,
+follow the `authoring-an-end-to-end-test-case` skill, which carries the
 spec-writing guidance that sits on top of this guide.
+
+Authoring an [asset-generation](/testing/asset-generation/overview/) case — where
+the model draws a sprite with a drawing tool rather than building a game — is a
+different test type with its own manifest; see
+[Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/).
 
 The worked example throughout the project is the `pong` case
 (`test-cases/pong/v1.0.0/`), whose in-game title is **Carom**. Read its files
@@ -53,8 +59,9 @@ Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-
   produced game must stay a self-contained static build the gallery can embed;
 - be **specifiable precisely enough** that at least one view can be compared
   against a reference automatically;
-- either need **no assets** or **pre-provide** them — asset *generation* is not
-  what the suite measures.
+- either need **no assets** or **pre-provide** them — an end-to-end case is about
+  building the game, never producing its art (generating an asset is its own
+  [test type](/testing/asset-generation/overview/)).
 
 Pick a catalog **slug** for the lineage (e.g. `pong`) and a separate original
 **in-game title** for the build (e.g. `Carom`), then a `version` (`vX.Y.Z`).
@@ -126,7 +133,7 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
 - **Common `[[spec]]` and `[[reference]]`** lists — seeded for every variant. A
   `.hbs` source is rendered; anything else is seeded verbatim.
 - At least one **`[[variant]]`** (the first is the default — usually `base`); see
-  [Creating a Test Case Variant](/guides/creating-a-test-case-variant/).
+  [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/).
 - Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
   view's baseline must resolve for **every** variant.
 - A common **`[[review_item]]`** list — the major, observable requirements a
@@ -158,7 +165,7 @@ seeded set is self-contained. When the case is ready, exercise it end to end wit
 
 ## Next steps
 
-- [Creating a Test Case Variant](/guides/creating-a-test-case-variant/) — add
+- [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/) — add
   more modes.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — assess a
   run of your case.

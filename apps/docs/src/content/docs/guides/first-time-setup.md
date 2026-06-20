@@ -158,4 +158,7 @@ overrides the case's default cap for this invocation.
   is done.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — assess the
   run you just produced.
-- [Authoring a Test Case](/guides/authoring-a-test-case/) — write your own case.
+- [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/)
+  — write your own playable-game case (or
+  [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/)
+  to draw a sprite).

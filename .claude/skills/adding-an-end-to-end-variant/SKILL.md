@@ -1,18 +1,25 @@
 ---
-description: Read this skill before adding a new variant to an existing test case (a new playable mode/configuration registered in a version's test-case.toml).
-name: adding-a-variant
+description: Read this skill before adding a new variant (a playable mode/configuration) to an existing END-TO-END test case, registered in a version's test-case.toml. For a variant of an asset-generation case (a brief variation against the shared target) use adding-an-asset-generation-variant instead.
+name: adding-an-end-to-end-variant
 ---
 
-# Adding a Variant to a Test Case
+# Adding an End-to-End Variant
 
 ## What a variant is
 
-A test case version (`test-cases/<slug>/<version>/`) offers one or more
-**variants**, and a run selects exactly one. Every variant seeds the version's
-**common specs** plus its own **additive** specs, so a single case can describe
-several builds — for example the same game with or without an extra mode —
-without duplicating the shared specification. The chosen variant's slug is
+An end-to-end test case version (`test-cases/<slug>/<version>/`) offers one or
+more **variants**, and a run selects exactly one. Every variant seeds the
+version's **common specs** plus its own **additive** specs, so a single case can
+describe several builds — for example the same game with or without an extra mode
+— without duplicating the shared specification. The chosen variant's slug is
 recorded in the run record.
+
+This skill covers variants of **end-to-end** cases. For a variant of an
+[asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+case — which varies the drawing brief against a single shared target rather than
+adding a game mode — use the
+[`adding-an-asset-generation-variant`](../adding-an-asset-generation-variant/SKILL.md)
+skill instead.
 
 The authoritative schema for variants lives in
 [`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md) (see its *Variants* and

@@ -49,7 +49,10 @@ view  = "target"             # view slug
 media = "reference/target.png" # the target image (seeded as the goal; served as-is)
 
 # Variants. As with every test type, a case offers one or more and exactly one
-# runs per run — here typically a different subject to draw on the same canvas.
+# runs per run. Here a variant varies the BRIEF (an additive spec) the model
+# draws toward the case's single shared `target` — a tighter palette, an
+# operation budget, a required technique — NOT a different target image (a
+# variant may not declare its own reference; see below).
 [[variant]]
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
@@ -70,11 +73,15 @@ dest   = "specs/brief.md"
   reference, and must **not** declare a `[build]` table or any `[[check]]`.
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_seconds`, and the `[[spec]]` /
-  `[[variant]]` seeding rules behave exactly as they do for an
+  `[[variant]]` seeding rules behave as they do for an
   [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief and a
-  target, renders a prompt, and may offer variants. There is **no `[build]`
-  table** — an asset-generation run produces a recorded action log, not a static
-  site.
+  target, renders a prompt, and may offer variants. The one difference is
+  references: the `target` is a single **common** reference shared by every
+  variant, and a variant may **not** declare its own (unlike end-to-end, where a
+  variant can add references). So a variant here varies only the seeded brief — an
+  additive `[[spec]]` — that the model draws toward that same target. There is
+  **no `[build]` table** — an asset-generation run produces a recorded action log,
+  not a static site.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. Fixing the canvas keeps runs
   comparable, the same way an end-to-end build interface does.
