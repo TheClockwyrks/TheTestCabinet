@@ -92,14 +92,20 @@ fn image_defaults_to_published_namespace_on_latest() {
 }
 
 #[test]
-fn image_name_tracks_the_test_type() {
-    // The image NAME is chosen by test type; the registry/tag environment applies
-    // to both the same way.
-    assert_eq!(image_name_for(TestType::EndToEnd), BASE_IMAGE_NAME);
-    assert_eq!(
-        image_name_for(TestType::AssetGeneration),
-        ASSET_GEN_IMAGE_NAME
-    );
+fn image_spec_tracks_the_test_type() {
+    // Each test type maps to its own image name AND its own verbatim-override env
+    // var; there is no override spanning every test type.
+    let base = image_spec_for(TestType::EndToEnd);
+    assert_eq!(base.name, BASE_IMAGE_NAME);
+    assert_eq!(base.override_env, BASE_IMAGE_OVERRIDE_ENV);
+
+    let asset_gen = image_spec_for(TestType::AssetGeneration);
+    assert_eq!(asset_gen.name, ASSET_GEN_IMAGE_NAME);
+    assert_eq!(asset_gen.override_env, ASSET_GEN_IMAGE_OVERRIDE_ENV);
+
+    // The two override env vars are distinct, so pinning one leaves the other
+    // resolving from registry/tag.
+    assert_ne!(base.override_env, asset_gen.override_env);
 }
 
 #[test]
@@ -151,9 +157,9 @@ fn image_empty_registry_names_a_local_image() {
 
 #[test]
 fn explicit_image_override_wins_verbatim() {
-    // An explicit `TCAB_CONTAINER_IMAGE` takes precedence over registry/tag and is
-    // used verbatim (e.g. a pinned digest), trimmed of surrounding whitespace. It
-    // ignores the image name, so it applies regardless of test type.
+    // The test type's own image override (`TCAB_CONTAINER_IMAGE_BASE` /
+    // `TCAB_CONTAINER_IMAGE_ASSET_GEN`) takes precedence over registry/tag and is
+    // used verbatim (e.g. a pinned digest), trimmed of surrounding whitespace.
     assert_eq!(
         compose_run_image(
             BASE_IMAGE_NAME,

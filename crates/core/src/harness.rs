@@ -31,13 +31,39 @@ const BASE_IMAGE_NAME: &str = "test-cabinet-base";
 /// (see `containers/asset-gen/Dockerfile`).
 const ASSET_GEN_IMAGE_NAME: &str = "test-cabinet-asset-gen";
 
-/// The run-container image name for a [`TestType`]. End-to-end runs use the base
-/// image; asset-generation runs use the asset-generation image, which bakes in
-/// the `draw` binary an asset-generation run drives.
-fn image_name_for(test_type: TestType) -> &'static str {
+/// The environment variable that pins a verbatim override for the base (end-to-
+/// end) image, the per-test-type counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
+const BASE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE";
+/// The environment variable that pins a verbatim override for the
+/// asset-generation image.
+const ASSET_GEN_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ASSET_GEN";
+
+/// How to resolve the run-container image for one [`TestType`]: the composed
+/// image name, and the environment variable that pins a verbatim override for
+/// *that test type* specifically. There is deliberately no override that spans
+/// every test type — an end-to-end and an asset-generation run need different
+/// images, so a single override could only ever be right for one of them.
+struct ImageSpec {
+    /// The image name composed with the registry/tag, e.g. `test-cabinet-base`.
+    name: &'static str,
+    /// The env var pinning a verbatim reference for this test type's image.
+    override_env: &'static str,
+}
+
+/// The [`ImageSpec`] for a [`TestType`]. End-to-end runs use the base image;
+/// asset-generation runs use the asset-generation image, which bakes in the
+/// `draw` binary an asset-generation run drives. Each has its own override env
+/// var so a host can pin one test type's image without disturbing the other.
+fn image_spec_for(test_type: TestType) -> ImageSpec {
     match test_type {
-        TestType::EndToEnd => BASE_IMAGE_NAME,
-        TestType::AssetGeneration => ASSET_GEN_IMAGE_NAME,
+        TestType::EndToEnd => ImageSpec {
+            name: BASE_IMAGE_NAME,
+            override_env: BASE_IMAGE_OVERRIDE_ENV,
+        },
+        TestType::AssetGeneration => ImageSpec {
+            name: ASSET_GEN_IMAGE_NAME,
+            override_env: ASSET_GEN_IMAGE_OVERRIDE_ENV,
+        },
     }
 }
 
@@ -50,23 +76,27 @@ fn image_name_for(test_type: TestType) -> &'static str {
 /// none) resolves it the same way (see `docs/components/core/execution.md`).
 ///
 /// Precedence:
-/// 1. `TCAB_CONTAINER_IMAGE` — a full, verbatim reference. Set it to a
-///    `@sha256:…` digest to pin an exact image, or to point at a private build.
-///    It applies regardless of test type, so set it only when running a single
-///    test type (or use the per-run `container_image` override instead).
+/// 1. The test type's **own** image override — `TCAB_CONTAINER_IMAGE_BASE` for an
+///    end-to-end run, `TCAB_CONTAINER_IMAGE_ASSET_GEN` for an asset-generation
+///    run — a full, verbatim reference. Set it to a `@sha256:…` digest to pin an
+///    exact image, or to point at a private build. There is no override that
+///    applies to all test types: the images differ, so each is pinned on its own.
 /// 2. `{registry}/{name}:{tag}`, where `name` is the test type's image
 ///    ([`BASE_IMAGE_NAME`] or [`ASSET_GEN_IMAGE_NAME`]), `registry` is
 ///    `TCAB_CONTAINER_REGISTRY` (default [`DEFAULT_CONTAINER_REGISTRY`]) and `tag`
-///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). An explicitly
-///    empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local
-///    image (`{name}:{tag}`) for offline development.
+///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). The registry
+///    and tag are shared across test types but compose with the per-type name, so
+///    one setting still yields distinct images. An explicitly empty
+///    `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local image
+///    (`{name}:{tag}`) for offline development.
 ///
 /// The default with nothing set is the published image on the latest tag, e.g.
 /// `ghcr.io/theclockwyrks/test-cabinet-base:latest` for an end-to-end run.
 pub fn resolve_run_image(test_type: TestType) -> String {
+    let spec = image_spec_for(test_type);
     compose_run_image(
-        image_name_for(test_type),
-        std::env::var("TCAB_CONTAINER_IMAGE").ok(),
+        spec.name,
+        std::env::var(spec.override_env).ok(),
         std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
         std::env::var("TCAB_CONTAINER_TAG").ok(),
     )

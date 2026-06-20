@@ -32,8 +32,11 @@ example by deleting files.
   **own registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
   `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
   image named for the test type (`test-cabinet-base` or `test-cabinet-asset-gen`),
-  and a `TCAB_CONTAINER_IMAGE` override pins a verbatim reference for either — and
-  pulls it at run start (`--pull missing`). No backend is consulted, so a runner
+  and a **per-test-type** override pins a verbatim reference for one image without
+  touching the other (`TCAB_CONTAINER_IMAGE_BASE` for end-to-end,
+  `TCAB_CONTAINER_IMAGE_ASSET_GEN` for asset-generation; there is no override that
+  spans every test type, since the images differ) — and pulls it at run start
+  (`--pull missing`). No backend is consulted, so a runner
   resolves the image the same way against any backend or none. Whatever image
   actually runs is resolved to its registry digest where it has one and recorded
   in the [run record](/components/core/run-records/#environment), so a run still

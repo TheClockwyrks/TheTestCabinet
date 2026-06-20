@@ -12,7 +12,8 @@
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type from its own registry configuration
-# (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG / TCAB_CONTAINER_IMAGE; see
+# (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-test-type override
+# TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_ASSET_GEN; see
 # docs/components/core/execution.md). The backend plays no part in container
 # distribution, so this script never talks to it.
 #

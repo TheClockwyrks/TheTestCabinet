@@ -83,7 +83,8 @@ default a runner **pulls the image it needs from a container registry** (GHCR) t
 first time it is needed and pins the resolved digest in the run record; you do
 not have to build anything to make a first run. Each runner resolves the image
 from its own environment configuration (`TCAB_CONTAINER_REGISTRY`,
-`TCAB_CONTAINER_TAG`, or a full `TCAB_CONTAINER_IMAGE` override) — see
+`TCAB_CONTAINER_TAG`, or a per-test-type override —
+`TCAB_CONTAINER_IMAGE_BASE` / `TCAB_CONTAINER_IMAGE_ASSET_GEN`) — see
 [Execution](/components/core/execution/#containerization).
 
 To build the images locally instead — for offline development or while changing
