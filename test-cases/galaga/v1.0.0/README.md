@@ -1,0 +1,59 @@
+# Galaga — `v1.0.0` (Spectra)
+
+This is version `v1.0.0` of the **Galaga** test case. The implemented game is an
+original formation shooter titled **Spectra**: a resonator-fighter against a
+swarm of crystalline drones that fly in, assemble into a hovering formation, and
+dive-bomb you — where your cannon is tuned to one of two **spectral bands** and
+that band is also your shield, so every moment is a gamble over which band to be.
+
+`galaga` is the catalog slug for this lineage of formation-shooter cases;
+`Spectra` is the original in-game title. The case is inspired by classic
+formation-shooter arcade games but is not a clone of any of them — the name, look,
+two-band polarity combat, drones, and the Prism's spectral inversion are original
+to The Test Cabinet. Notably, it **drops** the genre's two most recognizable
+hooks: there is no tractor-beam capture of your ship and no side-by-side double
+fighter to rescue. Survival is about reading the field's two colors and flipping
+your band at the right instant, not about power-ups.
+
+## Why this case
+
+Spectra raises the bar above the catalog's easy paddle and grid cases. It still
+asks for a real, polished, rendered game with multiple screens and a HUD, but adds
+choreographed entrance and dive paths the model must design itself, a swaying
+formation, two-band polarity combat with a dual-use shield, a resonance/discharge
+economy, three distinct drone behaviors, challenge stages, and the Prism's
+field-flipping spectral inversion — a genuinely harder front-end task that should
+separate stronger builds from weaker ones.
+
+## Contents
+
+| Path                   | Seeded to run? | Purpose                                            |
+| ---------------------- | -------------- | -------------------------------------------------- |
+| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
+| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
+| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
+| `test-case.toml`       | No             | Manifest: specs, variants, checks, review items.   |
+| `README.md`            | No             | This overview.                                     |
+
+The specification is split across `specs/` by concern: `overview.md`,
+`playfield.md`, `polarity.md`, `controls.md`, `enemies.md`, `flow.md`, and the
+mode specs under `specs/modes/`. The common specs (everything except the
+variant-only mode specs) are seeded for every variant; each variant adds at most
+one extra mode spec. The case offers two variants — `base` (Sortie only) and
+`overload` (adds Overload, where a mismatched shot charges the drone toward a
+per-type overload instead of being wasted).
+
+This version has **no assets**: Spectra draws everything in code and the model
+designs its entrance choreography, formation layout, and dive paths, guided by
+the palette and measurements in the specs and by the seeded reference screenshots.
+
+The seeded specs and the rendered reference screenshots are copied into a run's
+repository. The reference *source* mockups are not seeded, so a model builds the
+UI from the specs and the screenshots rather than copying the mockup code.
+
+## Versioning
+
+This case follows semantic versioning per version folder
+(`test-cases/galaga/v1.0.0/`). Each version is self-contained and immutable once
+a run references it; design revisions land as new version folders.

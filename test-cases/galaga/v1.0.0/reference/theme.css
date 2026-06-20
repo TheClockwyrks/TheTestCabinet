@@ -1,0 +1,482 @@
+/*
+ * Spectra — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Spectra test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md and ../specs/playfield.md):
+ *   - 1280x720 stage; top HUD y[0,64], play field y[64,656], bottom HUD
+ *     y[656,720].
+ *   - Player ship lane at y=600; formation slots on a 64x48 grid centered on
+ *     x=640, rows at y = 140 + 48*r.
+ *
+ * Band visual language (../specs/overview.md): cyan reads as ROUND / ring
+ * forms, magenta reads as DIAMOND / angular forms, so the two bands are legible
+ * by shape as well as color. The polarity indicator carries the band glyph
+ * (cyan U+25CB ring, magenta U+25C7 diamond).
+ */
+
+:root {
+  --void: #05060f;        /* void background (also the stage background) */
+  --star: #283250;        /* faint starfield */
+  --raised: #0b1020;      /* panels / overlays */
+  --cyan: #34e2ff;        /* cyan band */
+  --magenta: #ff4ec7;     /* magenta band */
+  --ship: #eaf0fb;        /* player ship hull */
+  --resonance: #ffd86b;   /* resonance meter / discharge charge */
+  --discharge: #ffffff;   /* discharge burst */
+  --text: #e8eef7;        /* primary text */
+  --text-dim: #8893ad;    /* secondary text */
+  --text-faint: #4a5470;  /* tertiary / hints */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* The fixed logical stage. All coordinates in the mockups and the
+ * specification are expressed in these 1280x720 logical pixels. A faint
+ * starfield is baked into the background. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--void);
+  background-image: radial-gradient(1px 1px at 120px 180px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 340px 90px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 560px 240px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 780px 140px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 980px 300px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 1120px 200px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 220px 460px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 690px 520px, var(--star) 50%, transparent 50%),
+    radial-gradient(1px 1px at 1020px 560px, var(--star) 50%, transparent 50%);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The play field (y[64,656]); drones, ship, and bullets live here. */
+.field {
+  position: absolute;
+  left: 0;
+  top: 64px;
+  width: 1280px;
+  height: 592px;
+  overflow: hidden;
+}
+
+/* ---- Drones ------------------------------------------------------------ */
+/* Positioned with inline left/top at a stage pixel (the drone's top-left).
+ * Band by color; cyan reads round, magenta reads diamond. */
+
+.drone {
+  position: absolute;
+}
+
+/* Shard — small solid crystal (about 24px). */
+.shard {
+  width: 24px;
+  height: 24px;
+}
+.shard.cyan {
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 14px rgba(52, 226, 255, 0.8);
+}
+.shard.magenta {
+  background: var(--magenta);
+  transform: rotate(45deg);
+  box-shadow: 0 0 14px rgba(255, 78, 199, 0.8);
+}
+
+/* Flux — medium hollow ring/diamond (about 30px) in its current held band. */
+.flux {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+}
+.flux.cyan {
+  border: 4px solid var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 14px rgba(52, 226, 255, 0.6),
+    inset 0 0 8px rgba(52, 226, 255, 0.5);
+}
+.flux.magenta {
+  border: 4px solid var(--magenta);
+  transform: rotate(45deg);
+  box-shadow: 0 0 14px rgba(255, 78, 199, 0.6),
+    inset 0 0 8px rgba(255, 78, 199, 0.5);
+}
+/* A Flux mid-shimmer: settled on neither band (dashed, two-tone). */
+.flux.shimmer {
+  border: 4px dashed var(--text-dim);
+  border-radius: 40%;
+  box-shadow: 0 0 16px rgba(232, 238, 247, 0.35);
+}
+
+/* Prism — large boss (about 56px): an outer shell ring around an inner core,
+ * the two in opposite bands. Compose with a nested .core element. */
+.prism {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prism.shell-cyan {
+  border: 5px solid var(--cyan);
+  box-shadow: 0 0 22px rgba(52, 226, 255, 0.6),
+    inset 0 0 12px rgba(52, 226, 255, 0.35);
+}
+.prism.shell-magenta {
+  border: 5px solid var(--magenta);
+  box-shadow: 0 0 22px rgba(255, 78, 199, 0.6),
+    inset 0 0 12px rgba(255, 78, 199, 0.35);
+}
+.prism .core {
+  width: 22px;
+  height: 22px;
+}
+.prism .core.cyan {
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 14px rgba(52, 226, 255, 0.85);
+}
+.prism .core.magenta {
+  background: var(--magenta);
+  transform: rotate(45deg);
+  box-shadow: 0 0 14px rgba(255, 78, 199, 0.85);
+}
+
+/* A drone only entering / at distance can be drawn slightly faded. */
+.drone.faint {
+  opacity: 0.6;
+}
+
+/* ---- Player ship and bullets ------------------------------------------ */
+
+/* The fighter: a 40x28 triangle pointing up, hull-colored, with a core glow
+ * in the current band. Positioned by its top-left; center sits at the lane. */
+.ship {
+  position: absolute;
+  width: 40px;
+  height: 28px;
+  background: var(--ship);
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  filter: drop-shadow(0 0 6px rgba(234, 240, 251, 0.5));
+}
+.ship-core {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.ship-core.cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 16px rgba(52, 226, 255, 0.95);
+}
+.ship-core.magenta {
+  background: var(--magenta);
+  box-shadow: 0 0 16px rgba(255, 78, 199, 0.95);
+}
+
+/* Player bullet: a thin bar travelling up, in its band's color. */
+.pbullet {
+  position: absolute;
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+}
+.pbullet.cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 10px rgba(52, 226, 255, 0.9);
+}
+.pbullet.magenta {
+  background: var(--magenta);
+  box-shadow: 0 0 10px rgba(255, 78, 199, 0.9);
+}
+
+/* Enemy bullet: a short bar travelling down, in its band's color. */
+.ebullet {
+  position: absolute;
+  width: 6px;
+  height: 12px;
+  border-radius: 3px;
+}
+.ebullet.cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 10px rgba(52, 226, 255, 0.85);
+}
+.ebullet.magenta {
+  background: var(--magenta);
+  box-shadow: 0 0 10px rgba(255, 78, 199, 0.85);
+}
+
+/* ---- HUD --------------------------------------------------------------- */
+
+.hud-score {
+  position: absolute;
+  left: 40px;
+  top: 14px;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--text);
+}
+
+.stage-label {
+  position: absolute;
+  right: 40px;
+  top: 22px;
+  font-size: 20px;
+  letter-spacing: 6px;
+  color: var(--text-dim);
+}
+
+.lives {
+  position: absolute;
+  left: 40px;
+  bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.life {
+  width: 20px;
+  height: 16px;
+  background: var(--ship);
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  filter: drop-shadow(0 0 4px rgba(234, 240, 251, 0.45));
+}
+
+/* Resonance meter, centered in the bottom strip. */
+.resonance {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+}
+
+.resonance .bar {
+  width: 180px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(136, 147, 173, 0.18);
+  overflow: hidden;
+}
+
+.resonance .bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--resonance);
+  box-shadow: 0 0 8px rgba(255, 216, 107, 0.7);
+}
+
+/* When full, the meter reads "ready" and glows brighter. */
+.resonance.ready {
+  color: var(--resonance);
+}
+.resonance.ready .bar > span {
+  box-shadow: 0 0 16px rgba(255, 216, 107, 0.95);
+}
+
+/* Polarity indicator (current band), bottom-right. The swatch carries the band
+ * glyph; the label names the band. */
+.polarity {
+  position: absolute;
+  right: 36px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.polarity .swatch {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--void);
+  font-weight: 700;
+}
+.polarity.cyan .swatch {
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(52, 226, 255, 0.85);
+}
+.polarity.magenta .swatch {
+  background: var(--magenta);
+  border-radius: 6px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 16px rgba(255, 78, 199, 0.85);
+}
+/* Counter-rotate the glyph inside a rotated (diamond) swatch. */
+.polarity.magenta .swatch span {
+  transform: rotate(-45deg);
+}
+
+.polarity .label {
+  font-size: 22px;
+  letter-spacing: 6px;
+  font-weight: 700;
+}
+.polarity.cyan .label {
+  color: var(--cyan);
+}
+.polarity.magenta .label {
+  color: var(--magenta);
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* SPECTRA title: a cyan-to-magenta spectral gradient across the letters. */
+.title {
+  font-size: 120px;
+  font-weight: 700;
+  letter-spacing: 24px;
+  margin: 0 0 0 24px; /* compensate for trailing letter-spacing */
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(52, 226, 255, 0.3))
+    drop-shadow(0 0 22px rgba(255, 78, 199, 0.25));
+}
+
+.tagline {
+  font-size: 22px;
+  letter-spacing: 14px;
+  margin: 18px 0 64px 14px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.menu-item {
+  font-size: 30px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+}
+
+.menu-item.selected {
+  color: var(--text);
+}
+
+.menu-item.selected::before {
+  content: "\25B8  "; /* small right-pointing triangle */
+  color: var(--cyan);
+}
+
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--magenta);
+}
+
+.hint {
+  position: absolute;
+  bottom: 34px;
+  width: 100%;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: var(--text-faint);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 4, 10, 0.78);
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 56px 48px 48px;
+  text-align: center;
+  background: var(--raised);
+  border: 1px solid #1a2440;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.panel-eyebrow {
+  font-size: 18px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.panel-title {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  margin: 0 0 20px;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.panel-score {
+  font-size: 36px;
+  letter-spacing: 10px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.panel-stage {
+  font-size: 20px;
+  letter-spacing: 8px;
+  margin: 0 0 36px;
+  color: var(--text-dim);
+}
+
+/* Dimmed field furniture shown behind a menu or panel. */
+.dim {
+  opacity: 0.32;
+  filter: saturate(0.8);
+}

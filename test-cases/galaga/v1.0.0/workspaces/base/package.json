@@ -1,0 +1,9 @@
+{
+  "name": "spectra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spectra — a fixed-position formation shooter with two-band polarity combat that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

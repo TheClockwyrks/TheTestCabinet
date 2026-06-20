@@ -6,6 +6,7 @@
 # Test case titles / mode names.
 Carom
 Gyre
+Galaga
 
 # Spec and gameplay vocabulary.
 autoplay
@@ -23,5 +24,13 @@ bioluminescent
 cooldown
 Flarefish
 respawn
+respawns
 desaturated
 pacman
+teleporting
+dodgeable
+Capturable
+
+# Spectra (galaga) reference mockup class names.
+pbullet
+ebullet

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  Spectra — title / main menu reference mockup for the `base` variant.
+  Canonical view slug: title
+  Lists only the standard LAUNCH mode; the base variant seeds no extra mode.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title).
+  Objects in .field use field-local coordinates (top = stage y - 64).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Spectra — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of swarm and ship behind the menu. -->
+      <div class="field">
+        <div class="drone shard cyan dim" style="left: 150px; top: 80px"></div>
+        <div class="drone shard magenta dim" style="left: 214px; top: 80px"></div>
+        <div class="drone flux magenta dim" style="left: 120px; top: 130px"></div>
+        <div class="drone shard cyan dim" style="left: 200px; top: 134px"></div>
+
+        <div class="drone prism shell-cyan dim" style="left: 1040px; top: 90px">
+          <span class="core magenta"></span>
+        </div>
+        <div class="drone shard magenta dim" style="left: 1010px; top: 160px"></div>
+        <div class="drone shard cyan dim" style="left: 1090px; top: 160px"></div>
+
+        <div class="ship dim" style="left: 240px; top: 470px"></div>
+        <div class="ship-core cyan dim" style="left: 254px; top: 478px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">SPECTRA</h1>
+        <div class="tagline">TUNE TO SURVIVE</div>
+        <nav class="menu">
+          <div class="menu-item selected">LAUNCH</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>
