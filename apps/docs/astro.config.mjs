@@ -124,9 +124,89 @@ export default defineConfig({
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
-        // The supported coding-agent harnesses: each one's website and a few
-        // example model IDs, all on one page.
-        { label: "Harnesses", link: "/harnesses" },
+        // The supported coding-agent harnesses. The catalogue overview lists
+        // every harness; each harness then has its own Overview (website, model
+        // IDs, invocation), Events (raw → normalized event mapping), and Metrics
+        // (usage/cost extraction) pages.
+        {
+          label: "Harnesses",
+          collapsed: true,
+          items: [
+            "harnesses/overview",
+            {
+              label: "Anthropic Claude Code",
+              collapsed: true,
+              items: [
+                "harnesses/claude/overview",
+                "harnesses/claude/events",
+                "harnesses/claude/metrics",
+              ],
+            },
+            {
+              label: "OpenAI Codex",
+              collapsed: true,
+              items: [
+                "harnesses/codex/overview",
+                "harnesses/codex/events",
+                "harnesses/codex/metrics",
+              ],
+            },
+            {
+              label: "Cline",
+              collapsed: true,
+              items: [
+                "harnesses/cline/overview",
+                "harnesses/cline/events",
+                "harnesses/cline/metrics",
+              ],
+            },
+            {
+              label: "Goose",
+              collapsed: true,
+              items: [
+                "harnesses/goose/overview",
+                "harnesses/goose/events",
+                "harnesses/goose/metrics",
+              ],
+            },
+            {
+              label: "Pi",
+              collapsed: true,
+              items: [
+                "harnesses/pi/overview",
+                "harnesses/pi/events",
+                "harnesses/pi/metrics",
+              ],
+            },
+            {
+              label: "OpenCode",
+              collapsed: true,
+              items: [
+                "harnesses/opencode/overview",
+                "harnesses/opencode/events",
+                "harnesses/opencode/metrics",
+              ],
+            },
+            {
+              label: "Kilo Code",
+              collapsed: true,
+              items: [
+                "harnesses/kilo/overview",
+                "harnesses/kilo/events",
+                "harnesses/kilo/metrics",
+              ],
+            },
+            {
+              label: "Google Antigravity",
+              collapsed: true,
+              items: [
+                "harnesses/antigravity/overview",
+                "harnesses/antigravity/events",
+                "harnesses/antigravity/metrics",
+              ],
+            },
+          ],
+        },
         { label: "Terminology", link: "/terminology" },
         { label: "Roadmap", link: "/roadmap" },
         // End-user material: short task refreshers, then the detailed guides.
