@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  Meltdown — game-over reference mockup.
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Game over).
+  Shown when lives reach 0 (the reactor breaches); the Victory state uses the
+  same card layout with its own eyebrow/title and lives-remaining line.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Meltdown — Game Over</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim, frozen slice of the lost floor behind the overlay. -->
+      <div class="floor">
+        <div class="tower emitter h-trip dim" style="left: 360px; top: 360px">
+          <span class="glyph">&#9642;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower emitter h-hot dim" style="left: 280px; top: 280px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower rime dim" style="left: 640px; top: 240px">
+          <span class="glyph">&#10052;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="surge mote dim" style="left: 700px; top: 344px"></div>
+        <div class="surge hulk dim" style="left: 760px; top: 356px"></div>
+      </div>
+
+      <div class="overlay"></div>
+
+      <div class="card">
+        <p class="card-eyebrow">REACTOR BREACHED</p>
+        <h1 class="card-title">MELTDOWN</h1>
+        <p class="card-score">SCORE 18 640</p>
+        <p class="card-line">REACHED WAVE 14 / 20</p>
+        <div class="card-actions">
+          <div class="menu-item selected">PLAY AGAIN</div>
+          <div class="menu-item">MENU</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

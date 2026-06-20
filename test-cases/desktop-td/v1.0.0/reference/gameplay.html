@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<!--
+  Meltdown — in-match reference mockup (representative mid-wave frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  palette), ../specs/playfield.md (floor grid, portals, build panel),
+  ../specs/heat.md (heat-as-power, the redline trip, coupling),
+  ../specs/towers.md (the roster), and ../specs/creeps.md (the surge).
+
+  Floor objects use stage coordinates (the floor sits at stage 0,0). Towers fill
+  one 40px tile at left=40c, top=40r. The maze, heats, and surge positions are
+  one example moment, used for a soft palette/layout comparison, not a strict
+  pixel match.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Meltdown — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <div class="floor">
+        <!-- ===== Portals (two-tile openings at the edge midpoints) ===== -->
+        <div class="portal intake" style="left: 0; top: 320px; width: 40px; height: 80px">IN</div>
+        <div class="portal intake" style="left: 480px; top: 0; width: 80px; height: 40px">IN</div>
+        <div class="portal exhaust" style="left: 960px; top: 320px; width: 40px; height: 80px">OUT</div>
+        <div class="portal exhaust" style="left: 480px; top: 680px; width: 80px; height: 40px">OUT</div>
+
+        <!-- ===== Range ring of the selected tower (the Bloom at tile 10,12) ===== -->
+        <div class="range" style="left: 300px; top: 380px; width: 240px; height: 240px"></div>
+
+        <!-- ===== Towers — a player-built maze at a range of heats ===== -->
+        <!-- Cold Lance warmed by an adjacent Forge (heat-mover at work). -->
+        <div class="tower emitter h-cold" style="left: 120px; top: 120px">
+          <span class="glyph">&#9650;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower forge" style="left: 160px; top: 120px"><span class="glyph">&#9608;</span></div>
+
+        <!-- A white-hot core held under the redline by an adjacent Vent. -->
+        <div class="tower emitter h-warm" style="left: 240px; top: 240px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower emitter h-white" style="left: 280px; top: 240px">
+          <span class="glyph">&#9642;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower vent" style="left: 320px; top: 240px"><span class="glyph">&#9661;</span></div>
+        <div class="tower emitter h-hot" style="left: 240px; top: 280px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower emitter h-hot" style="left: 280px; top: 280px">
+          <span class="glyph">&#10047;</span><div class="heatbar"><span></span></div>
+        </div>
+
+        <!-- Wall emitters shaping the corridor. -->
+        <div class="tower emitter h-cold" style="left: 480px; top: 240px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower emitter h-warm" style="left: 480px; top: 280px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+
+        <!-- A tripped Stutter: offline, strobing red — a hole in the line. -->
+        <div class="tower emitter h-trip" style="left: 360px; top: 400px">
+          <span class="tag">OFFLINE</span>
+          <span class="glyph">&#9642;</span><div class="heatbar"><span></span></div>
+        </div>
+
+        <!-- Anti-air Flak engaging the flyer in the vertical corridor. -->
+        <div class="tower emitter h-warm" style="left: 520px; top: 360px">
+          <span class="glyph">&#9651;</span><div class="heatbar"><span></span></div>
+        </div>
+
+        <!-- A cryo Rime kept cold beside a Vent, away from the hot core. -->
+        <div class="tower rime" style="left: 640px; top: 200px">
+          <span class="glyph">&#10052;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower vent" style="left: 640px; top: 240px"><span class="glyph">&#9661;</span></div>
+
+        <!-- The selected Bloom (hot) and other downstream guns. -->
+        <div class="tower emitter h-hot" style="left: 400px; top: 480px">
+          <span class="glyph">&#10047;</span><div class="heatbar"><span></span></div>
+        </div>
+        <div class="tower emitter h-warm" style="left: 720px; top: 440px">
+          <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
+        </div>
+
+        <!-- ===== Shot tracers (a few, for liveliness) ===== -->
+        <div class="shot" style="left: 300px; top: 260px; width: 70px; background: var(--white); transform: rotate(16deg)"></div>
+        <div class="shot" style="left: 540px; top: 372px; width: 46px; background: var(--warm); transform: rotate(-8deg)"></div>
+
+        <!-- ===== Surge — ground units walking the maze ===== -->
+        <div class="surge mote" style="left: 70px; top: 336px">
+          <div class="bar"><span style="width: 80%"></span></div>
+        </div>
+        <div class="surge sprint" style="left: 118px; top: 344px">
+          <div class="bar"><span style="width: 100%"></span></div>
+        </div>
+        <div class="surge mote" style="left: 188px; top: 300px">
+          <div class="bar"><span style="width: 60%"></span></div>
+        </div>
+        <div class="surge hulk" style="left: 250px; top: 360px">
+          <div class="bar"><span style="width: 55%"></span></div>
+        </div>
+        <!-- A Swarm pack flooding the corridor toward the Bloom's splash. -->
+        <div class="surge swarm" style="left: 348px; top: 470px"><div class="bar"><span style="width: 100%"></span></div></div>
+        <div class="surge swarm" style="left: 366px; top: 478px"><div class="bar"><span style="width: 100%"></span></div></div>
+        <div class="surge swarm" style="left: 360px; top: 458px"><div class="bar"><span style="width: 90%"></span></div></div>
+        <div class="surge swarm" style="left: 382px; top: 466px"><div class="bar"><span style="width: 100%"></span></div></div>
+        <div class="surge swarm" style="left: 344px; top: 452px"><div class="bar"><span style="width: 80%"></span></div></div>
+
+        <!-- ===== Surge — flyers crossing straight over the maze ===== -->
+        <div class="surge drift" style="left: 506px; top: 348px">
+          <div class="bar"><span style="width: 70%"></span></div>
+        </div>
+        <div class="surge drift" style="left: 522px; top: 520px">
+          <div class="bar"><span style="width: 100%"></span></div>
+        </div>
+      </div>
+
+      <!-- ===================== Build panel ===================== -->
+      <div class="panel">
+        <div class="readouts">
+          <div class="readout"><div class="k">MONEY</div><div class="v money">286</div></div>
+          <div class="readout"><div class="k">LIVES</div><div class="v lives">17</div></div>
+          <div class="readout"><div class="k">WAVE</div><div class="v wave">7 / 20</div></div>
+        </div>
+
+        <div class="section-title">SHOP</div>
+        <div class="shop">
+          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">ARC</div><div class="ct">90</div></div>
+          <div class="shop-item"><div class="ico h-hot"></div><div class="nm">STUTTER</div><div class="ct">140</div></div>
+          <div class="shop-item"><div class="ico h-cold"></div><div class="nm">LANCE</div><div class="ct">210</div></div>
+          <div class="shop-item armed"><div class="ico h-hot"></div><div class="nm">BLOOM</div><div class="ct">240</div></div>
+          <div class="shop-item"><div class="ico rime"></div><div class="nm">RIME</div><div class="ct">150</div></div>
+          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">FLAK</div><div class="ct">170</div></div>
+          <div class="shop-item"><div class="ico forge"></div><div class="nm">FORGE</div><div class="ct">70</div></div>
+          <div class="shop-item"><div class="ico vent"></div><div class="nm">VENT</div><div class="ct">70</div></div>
+        </div>
+
+        <div class="inspector">
+          <div class="head">
+            <div class="nm">BLOOM</div>
+            <div class="lvl">LV II</div>
+          </div>
+          <div class="stat"><span>RANGE</span><b>3.5 tiles</b></div>
+          <div class="stat"><span>DAMAGE</span><b>26 (x2.3 heat)</b></div>
+          <div class="stat"><span>RATE</span><b>1.0 / s</b></div>
+          <div class="heatlabel">HEAT &mdash; 72%</div>
+          <div class="heatmeter"><span style="width: 72%"></span></div>
+          <div class="actions">
+            <div class="btn up">UPGRADE 432</div>
+            <div class="btn sell">SELL 285</div>
+          </div>
+        </div>
+
+        <div class="wave-controls">
+          <div class="send">SEND NEXT WAVE<span class="bonus">EARLY BONUS +9</span></div>
+          <div class="ctl-row">
+            <div class="ctl active">1x</div>
+            <div class="ctl">2x</div>
+            <div class="ctl">PAUSE</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

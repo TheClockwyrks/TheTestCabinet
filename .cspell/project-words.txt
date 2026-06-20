@@ -34,3 +34,19 @@ Capturable
 # Spectra (galaga) reference mockup class names.
 pbullet
 ebullet
+
+# Meltdown (desktop-td) domain terms.
+chokepoint
+cryo
+pathfinds
+pathing
+slowable
+strobing
+targetable
+unbuildable
+unitless
+
+# Meltdown (desktop-td) reference mockup class names.
+heatbar
+heatlabel
+heatmeter
