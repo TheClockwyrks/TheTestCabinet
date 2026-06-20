@@ -468,6 +468,12 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         // unreadable one is skipped (its validation result already records the gap).
         self.upload_proofs(&record, request.artifacts).await?;
 
+        // For an asset-generation run, upload the regenerated image, the final
+        // preview, the target, and the action log so the gallery's result view can
+        // show them for a published run (the same artifacts the worker/desktop
+        // serve locally before publish).
+        self.upload_assets(&record, request.artifacts).await?;
+
         Ok(PublishOutcome {
             source_repo,
             playable_build,
@@ -500,6 +506,38 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             let file = format!("{}.{}", proof.id, extension);
             self.backend
                 .publish_run_proof(&record.id, &file, bytes)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Upload an asset-generation run's media to the backend, keyed by run id: the
+    /// regenerated image, the model's final preview, the seeded target, and the
+    /// action log. Each is read from the collected implementation tree at its
+    /// recorded path and uploaded under a stable logical name the result view
+    /// requests (`regenerated.png`, `preview.png`, `target.png`, `actions.json`).
+    /// A no-op for any non-asset-generation run.
+    async fn upload_assets(
+        &self,
+        record: &RunRecord,
+        artifacts: &ArtifactCollection,
+    ) -> Result<()> {
+        let Some(asset) = &record.validation.asset else {
+            return Ok(());
+        };
+        let files = [
+            ("regenerated.png", &asset.regenerated_image),
+            ("preview.png", &asset.preview_image),
+            ("target.png", &asset.target_image),
+            ("actions.json", &asset.actions_log),
+        ];
+        for (name, rel) in files {
+            let path = artifacts.repo_path.join(rel);
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            self.backend
+                .publish_run_asset(&record.id, name, bytes)
                 .await?;
         }
         Ok(())

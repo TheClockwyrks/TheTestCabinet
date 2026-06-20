@@ -3,6 +3,7 @@ resolver = "2"
 members = [
 	"crates/core",
 	"crates/cli",
+	"crates/draw",
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",
@@ -49,6 +50,13 @@ tempfile = "3"
 # `png` crate is a small, pure-Rust decoder with no system dependencies, keeping
 # the workspace buildable on minimal hosts.
 png = "0.17"
+# JSON Schema generation for the `draw` binary's operation set
+# (`crates/draw`). The `draw schema` subcommand emits this so each
+# asset-generation test case can seed a verbatim copy as its `[tool].operations`
+# contract; a test asserts the copy never drifts from the enum. Pulled in only
+# behind `crates/draw`'s `cli` feature, so `crates/core` (which links the draw
+# library for image regeneration) never compiles it.
+schemars = "0.8"
 # Cross-platform PATH lookup for the container runtime binary. A hand-rolled
 # search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
 # that and the Unix case behind one API.

@@ -76,7 +76,10 @@ push_and_pin() {
 
 build_base() {
 	echo "==> building ${BASE_IMAGE}"
-	"$DOCKER" build -t "${BASE_IMAGE}" "${SCRIPT_DIR}/base"
+	# The build context is the repository root (not just `base/`) so the
+	# Dockerfile's first stage can compile the `draw` binary from `crates/`. A
+	# repo-root `.dockerignore` keeps the context lean (no target/, node_modules/).
+	"$DOCKER" build -t "${BASE_IMAGE}" -f "${SCRIPT_DIR}/base/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
 		local reference

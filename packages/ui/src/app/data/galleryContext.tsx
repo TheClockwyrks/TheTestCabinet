@@ -84,6 +84,36 @@ export interface GalleryDataInput {
    * Omitted by a host that serves no proof media.
    */
   proofMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one asset-generation run's media file
+   * (`regenerated.png`, `preview.png`, `target.png`, or `actions.json`), or null
+   * when the host cannot serve it. Each host wires its own source the same way it
+   * wires {@link proofMediaUrl}: the consoles point at the backend (published) or
+   * worker (produced) asset endpoint, the static site at the snapshot asset.
+   * Omitted by a host that serves no asset media.
+   */
+  assetMediaUrl?: (runId: string, file: string) => string | null;
+}
+
+/**
+ * An asset-generation run's result, resolved for display: the regenerated image
+ * (the scored output), the model's final preview, the seeded target, and the
+ * recorded action log — each as a loadable URL (or null when the host cannot
+ * serve it) — alongside the recorded fidelity and cheat-divergence signals.
+ */
+export interface AssetResultView {
+  regeneratedUrl: string | null;
+  previewUrl: string | null;
+  targetUrl: string | null;
+  actionsUrl: string | null;
+  /** Similarity of the regenerated image to the target, in `0..=1`. */
+  fidelity: number;
+  /** Divergence of the regenerated image from the preview, or null if unmeasured. */
+  cheatDivergence: number | null;
+  /** How many operations the recorded log holds. */
+  operationCount: number;
+  /** Detail about anything that could not be evaluated, or null. */
+  detail: string | null;
 }
 
 export interface GalleryData extends GalleryDataInput {
@@ -104,6 +134,12 @@ export interface GalleryData extends GalleryDataInput {
    */
   proofMediaFor(run: RunRecord): ProofMedia[];
   /**
+   * An asset-generation run's result resolved for display, or null when the run
+   * is not asset-generation (its `validation.asset` is absent). Media URLs are
+   * resolved via {@link assetMediaUrl}.
+   */
+  assetResultFor(run: RunRecord): AssetResultView | null;
+  /**
    * The scoring model for a run's subject: the effective (common + variant)
    * weighted checklist items and the case's scoring domains, resolved from the
    * catalog this host holds. Items and domains are empty when the case is not in
@@ -123,7 +159,7 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, proofMediaUrl, testCases } = value;
+    const { writeups, proofMediaUrl, assetMediaUrl, testCases } = value;
     return {
       ...value,
       findReview(runId, override) {
@@ -151,6 +187,22 @@ export function GalleryDataProvider({
               ? proofMediaUrl(run.id, `${proof.id}.${extensionFor(proof.dest)}`)
               : null,
         }));
+      },
+      assetResultFor(run) {
+        const asset = run.validation.asset;
+        if (!asset) return null;
+        const url = (file: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        return {
+          regeneratedUrl: url("regenerated.png"),
+          previewUrl: url("preview.png"),
+          targetUrl: url("target.png"),
+          actionsUrl: url("actions.json"),
+          fidelity: asset.targetFidelity,
+          cheatDivergence: asset.cheatDivergence,
+          operationCount: asset.operationCount,
+          detail: asset.detail,
+        };
       },
     };
   }, [value]);

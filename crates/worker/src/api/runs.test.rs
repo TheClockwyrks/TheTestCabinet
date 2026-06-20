@@ -107,6 +107,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
+            test_type: test_cabinet_core::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
@@ -130,6 +131,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
             build: None,
             checks: vec![],
             proofs: vec![],
+            asset: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

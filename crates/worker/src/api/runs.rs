@@ -14,7 +14,8 @@ use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
-    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_build_file, serve_proof_file,
+    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_asset_file, serve_build_file,
+    serve_proof_file,
 };
 use tokio::sync::broadcast::error::RecvError;
 use tracing::Instrument as _;
@@ -309,6 +310,21 @@ pub async fn proof_file(
     let run_dir = state.config.out_dir.join(&id);
     let served = serve_proof_file(&run_dir, &file)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no proof media `{file}`")))?;
+    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+}
+
+/// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
+/// final preview, target, or action log (`{file}` is `regenerated.png`,
+/// `preview.png`, `target.png`, or `actions.json`). Resolved from the run
+/// record's `validation.asset` via [`serve_asset_file`], the same resolver the
+/// desktop core serves these artifacts over its `tcab-asset://` scheme.
+pub async fn asset_file(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let run_dir = state.config.out_dir.join(&id);
+    let served = serve_asset_file(&run_dir, &file)
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
     Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
 }
 

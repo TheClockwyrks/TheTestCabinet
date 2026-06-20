@@ -1,0 +1,22 @@
+[
+  { "op": "fill_circle", "cx": 28, "cy": 38, "r": 18, "color": "#0e3a3a" },
+  { "op": "fill_circle", "cx": 44, "cy": 40, "r": 12, "color": "#0e3a3a" },
+  { "op": "fill_circle", "cx": 11, "cy": 38, "r": 7, "color": "#0e3a3a" },
+  { "op": "line", "x0": 3, "y0": 28, "x1": 11, "y1": 36, "color": "#0e3a3a" },
+  { "op": "line", "x0": 3, "y0": 50, "x1": 11, "y1": 40, "color": "#0e3a3a" },
+  { "op": "line", "x0": 4, "y0": 29, "x1": 4, "y1": 49, "color": "#0e3a3a" },
+  { "op": "fill_rect", "x": 40, "y": 41, "width": 17, "height": 6, "color": "#3a0a0a" },
+  { "op": "set_pixel", "x": 42, "y": 41, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 45, "y": 41, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 48, "y": 41, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 51, "y": 41, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 54, "y": 41, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 43, "y": 46, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 47, "y": 46, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 51, "y": 46, "color": "#cfeee6" },
+  { "op": "line", "x0": 47, "y0": 25, "x1": 53, "y1": 9, "color": "#0e3a3a" },
+  { "op": "fill_circle", "cx": 53, "cy": 8, "r": 6, "color": "#ffe08a" },
+  { "op": "fill_circle", "cx": 53, "cy": 8, "r": 3, "color": "#fff3c4" },
+  { "op": "fill_circle", "cx": 41, "cy": 33, "r": 2, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 41, "y": 33, "color": "#0e3a3a" }
+]

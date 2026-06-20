@@ -115,6 +115,63 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
     })
 }
 
+/// An asset-generation media file resolved from a run, ready to write to an HTTP
+/// or IPC response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedAssetFile {
+    /// The `Content-Type` to send, derived from the file extension.
+    pub content_type: &'static str,
+    /// The media bytes, served verbatim.
+    pub body: Vec<u8>,
+}
+
+/// Resolve and read one asset-generation artifact from a produced run's output
+/// directory, for serving to a reviewer (or the gallery) the same way
+/// [`serve_proof_file`] serves proof media.
+///
+/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
+/// `run-record.json` and its collected `implementation/` tree. `file` is a
+/// logical name with an extension — `regenerated.png`, `preview.png`,
+/// `target.png`, or `actions.json` — whose stem selects which recorded path in
+/// the run's `validation.asset` to read from `implementation/`. Returns `None`
+/// when the run record, its asset result, the named artifact, or the file is
+/// missing — the caller maps that to a 404. The desktop core serves the same
+/// artifacts over its `tcab-asset://` scheme from this resolver.
+pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
+    let stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
+
+    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
+    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+    let asset = record.validation.asset.as_ref()?;
+    let rel = match stem {
+        "regenerated" => &asset.regenerated_image,
+        "preview" => &asset.preview_image,
+        "target" => &asset.target_image,
+        "actions" => &asset.actions_log,
+        _ => return None,
+    };
+
+    let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
+    Some(ServedAssetFile {
+        content_type: asset_content_type(file),
+        body,
+    })
+}
+
+/// The `Content-Type` for an asset-generation artifact, by file extension: the
+/// regenerated/preview/target images are PNG, the action log is JSON.
+fn asset_content_type(file: &str) -> &'static str {
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("png") => "image/png",
+        Some("json") => "application/json",
+        _ => "application/octet-stream",
+    }
+}
+
 /// The `Content-Type` for a proof media file, by file extension — the image and
 /// video formats a proof's `dest` may name (see
 /// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back

@@ -1,0 +1,12 @@
+# Keep the run-container build context lean. The base image build (see
+# containers/base/Dockerfile) uses the repository root as its context so it can
+# compile the `draw` binary from crates/draw; everything below is irrelevant to
+# that build and would otherwise bloat the context or invalidate its cache.
+target/
+**/node_modules/
+**/dist/
+**/.astro/
+.git/
+tmp/
+# Per-run scratch and seeded repositories.
+runs/

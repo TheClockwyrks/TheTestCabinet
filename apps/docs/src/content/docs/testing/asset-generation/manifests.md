@@ -20,6 +20,7 @@ summary = "..."              # optional one- or two-sentence abstract for the si
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
+type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 
 # The image the model draws on.
 [canvas]
@@ -61,6 +62,12 @@ source = "specs/brief.hbs"
 dest   = "specs/brief.md"
 ```
 
+- `type = "asset-generation"` is the explicit test-type discriminator. It is
+  **required** for an asset-generation case; omitting it defaults to
+  `"end-to-end"`, which then rejects the `[canvas]`/`[tool]`/`[output]` tables.
+  Resolution validates the tables against the declared type: an asset-generation
+  case must declare `[canvas]`, `[tool]`, `[output]`, and exactly one `target`
+  reference, and must **not** declare a `[build]` table or any `[[check]]`.
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_seconds`, and the `[[spec]]` /
   `[[variant]]` seeding rules behave exactly as they do for an
@@ -72,15 +79,32 @@ dest   = "specs/brief.md"
   `height` in pixels and its initial `background`. Fixing the canvas keeps runs
   comparable, the same way an end-to-end build interface does.
 - The `[tool]` table describes the **drawing binary**. `binary` is the executable
-  available in the run environment; `operations` is the JSON Schema of the
-  brush/mutation operations it accepts; `preview` is the path the binary
-  re-renders the current image to after each call, so the model can read a real
-  image to see its progress. The binary is the **only** channel for drawing —
-  anything produced outside it is discarded (see
+  available in the run environment (the `draw` binary, baked into the shared
+  run-container image); `operations` is the JSON Schema of the brush/mutation
+  operations it accepts, **seeded into the run** (like a spec) so the model can
+  read it; `preview` is the path the binary re-renders the current image to after
+  each call, so the model can read a real image to see its progress. The binary is
+  the **only** channel for drawing — anything produced outside it is discarded
+  (see
   [Overview](/testing/asset-generation/overview/#why-the-actions-are-the-output)).
+  The seeded `operations` schema is the canonical one the binary emits (`draw
+  schema`); keep each case's copy verbatim so it never drifts from the binary.
 - The `[output]` table names the `actions` log the binary records and returns.
   This ordered list of operations is the **authoritative output**; The Test
   Cabinet regenerates the scored image from it.
 - Each `[[reference]]` names the **target** image the regenerated result is scored
   against. The target is seeded as the visual goal handed to the model, the same
-  way an end-to-end case seeds a reference screenshot.
+  way an end-to-end case seeds a reference screenshot. A convenient way to author
+  one without hand-pixeling is to write the target itself as an action log and
+  render it through the same `draw` binary (`draw render --actions … --out
+  target.png`), keeping the action log as the un-seeded source; this guarantees
+  the target is achievable within the operation set, so fidelity scoring is fair.
+
+:::caution[Re-ingest after editing]
+The test type and the `[canvas]`/`[tool]`/`[output]` tables are stored in the
+backend's immutable def store. Because they are newer fields, editing an
+already-ingested case (or adding a type to one) requires a **forced re-ingest**
+(`POST /ingest {"force": true}`) — otherwise the backend keeps serving the stale
+definition, in which the new fields default empty and the run is treated as
+end-to-end. New cases are unaffected.
+:::

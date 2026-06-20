@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::{render_prompt, render_spec};
-use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, Variant};
+use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
 /// spec so rendered prompts have something to list.
@@ -17,10 +17,14 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         root: PathBuf::from("/tmp/pong"),
         prompt_path,
         max_runtime_seconds: 1800,
-        build: BuildCommands {
+        test_type: TestType::EndToEnd,
+        build: Some(BuildCommands {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
-        },
+        }),
+        canvas: None,
+        tool: None,
+        output: None,
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),

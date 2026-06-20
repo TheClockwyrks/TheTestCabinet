@@ -7,6 +7,7 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use test_cabinet_core::TestType;
 
 use crate::error::ApiError;
 use crate::store::StoredManifest;
@@ -105,6 +106,34 @@ pub async fn put_run_proof(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/asset/{file}` — a published asset-generation run's media
+/// (`{file}` is `regenerated.png`, `preview.png`, `target.png`, or
+/// `actions.json`). The content type follows the extension.
+pub async fn run_asset(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_asset(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
+/// media, uploaded by the publisher alongside the run record.
+pub async fn put_run_asset(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_asset(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.
@@ -152,10 +181,24 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         summary: manifest.summary.clone(),
         description: manifest.description.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
-        build: BuildOut {
-            install: manifest.build.install.clone(),
-            build: manifest.build.build.clone(),
-        },
+        test_type: manifest.test_type,
+        build: manifest.build.as_ref().map(|build| BuildOut {
+            install: build.install.clone(),
+            build: build.build.clone(),
+        }),
+        canvas: manifest.canvas.as_ref().map(|canvas| CanvasOut {
+            width: canvas.width,
+            height: canvas.height,
+            background: canvas.background.clone(),
+        }),
+        tool: manifest.tool.as_ref().map(|tool| ToolOut {
+            binary: tool.binary.clone(),
+            operations: tool.operations.clone(),
+            preview: tool.preview.clone(),
+        }),
+        output: manifest.output.as_ref().map(|output| OutputOut {
+            actions: output.actions.clone(),
+        }),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         workspace: manifest.workspace.iter().map(workspace_out).collect(),
@@ -343,7 +386,15 @@ pub struct VersionResponse {
     summary: Option<String>,
     description: Option<String>,
     max_runtime_seconds: u64,
-    build: BuildOut,
+    test_type: TestType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    build: Option<BuildOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    canvas: Option<CanvasOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool: Option<ToolOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<OutputOut>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     workspace: Vec<WorkspaceOut>,
@@ -361,6 +412,28 @@ pub struct VersionResponse {
 struct BuildOut {
     install: String,
     build: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CanvasOut {
+    width: u32,
+    height: u32,
+    background: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolOut {
+    binary: String,
+    operations: String,
+    preview: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputOut {
+    actions: String,
 }
 
 #[derive(Serialize)]

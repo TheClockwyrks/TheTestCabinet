@@ -69,6 +69,12 @@ pub struct RunSubject {
     pub test_case_slug: String,
     /// The exact, immutable test case version.
     pub test_case_version: String,
+    /// The test type this case belongs to. Defaults to
+    /// [`TestType::EndToEnd`](crate::TestType) so records written before the
+    /// discriminator existed (all end-to-end) still deserialize. The UI branches
+    /// on this to choose how to present a run's result.
+    #[serde(default)]
+    pub test_type: crate::test_case::TestType,
     /// The variant of the test case that was run (for example `base`).
     pub variant: String,
     /// The agent harness slug.

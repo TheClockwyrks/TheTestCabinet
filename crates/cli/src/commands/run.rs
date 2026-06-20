@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    BrowserRenderer, BuildValidator, CliArtifactCollector, CliContainerRuntime,
-    DefaultHarnessRegistry, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
+    BrowserRenderer, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
+    DispatchValidator, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
     OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, ReferenceRenderer, RunRequest,
     TestCaseCatalog, materialize_version,
 };
@@ -119,7 +119,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         renderer,
-        validator: BuildValidator::new(screenshot_dir),
+        validator: DispatchValidator::new(screenshot_dir),
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir,

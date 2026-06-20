@@ -189,6 +189,14 @@ export interface WorkerClient {
    * so it implements this to return its custom proof URI scheme.
    */
   proofMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to load one of an asset-generation run's media files
+   * (`regenerated.png`, `preview.png`, `target.png`, `actions.json`) from, or
+   * null when this worker cannot serve it. Optional, mirroring
+   * {@link proofMediaUrl}: the Tauri worker implements it to return its custom
+   * `tcab-asset://` scheme.
+   */
+  assetMediaUrl?(runId: string, file: string): string | null;
 }
 
 // The reviewer's input when saving a review.

@@ -28,6 +28,11 @@ function buildStep(label: string, step: StepResult | null): Step {
 // run info.
 export function RunValidationSection({ run }: { run: RunRecord }) {
   const { validation } = run;
+  // An asset-generation run has no build or per-view checks; its validation is
+  // the regenerate-and-score result, surfaced as its own table.
+  if (validation.asset) {
+    return <AssetValidationTable run={run} />;
+  }
   // The required steps every run performs, in the order they run: install, then
   // build, then the overall load signal that depends on both.
   const steps: Step[] = [
@@ -101,6 +106,68 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
       ) : (
         <p className={styles.empty}>This test case declares no checks.</p>
       )}
+    </Panel>
+  );
+}
+
+// The validation widget for an asset-generation run: the run regenerated a
+// scorable image (the load signal), how faithfully it matched the target, and
+// whether the model drew outside the tool (cheat divergence). The images
+// themselves are shown on the Verdict tab; this is the recorded numbers.
+function AssetValidationTable({ run }: { run: RunRecord }) {
+  const { validation } = run;
+  const asset = validation.asset!;
+  const drewOutsideTool =
+    asset.cheatDivergence !== null && asset.cheatDivergence > 0.05;
+  return (
+    <Panel>
+      <table className={`${styles.checks} ${styles.section}`}>
+        <tbody>
+          <tr>
+            <th scope="row" className={styles.checkName}>
+              Regenerated
+            </th>
+            <td>
+              <span
+                className={validation.loaded ? styles.loaded : styles.notLoaded}
+              >
+                {validation.loaded ? "Yes" : "No"}
+              </span>
+            </td>
+            <td className={styles.secondary}>
+              {asset.operationCount} operations · {validation.detail ?? "—"}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row" className={styles.checkName}>
+              Fidelity to target
+            </th>
+            <td>{(asset.targetFidelity * 100).toFixed(1)}%</td>
+            <td className={styles.secondary}>{asset.detail ?? "—"}</td>
+          </tr>
+          <tr>
+            <th scope="row" className={styles.checkName}>
+              Cheat divergence
+            </th>
+            <td>
+              {asset.cheatDivergence === null ? (
+                <span className={styles.secondary}>—</span>
+              ) : (
+                <span
+                  className={drewOutsideTool ? styles.notLoaded : styles.loaded}
+                >
+                  {(asset.cheatDivergence * 100).toFixed(1)}%
+                </span>
+              )}
+            </td>
+            <td className={styles.secondary}>
+              {drewOutsideTool
+                ? "drew outside the tool"
+                : "matches recorded actions"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </Panel>
   );
 }

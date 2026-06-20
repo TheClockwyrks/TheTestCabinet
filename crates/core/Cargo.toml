@@ -23,6 +23,11 @@ tempfile = { workspace = true }
 reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
+# The drawing tool for asset-generation cases. Core links only the library (not
+# the `cli` feature's clap/serde_json/schemars) to regenerate the scored image
+# from a run's recorded action log through the exact same logic the in-container
+# binary used.
+test-cabinet-draw = { path = "../draw", default-features = false }
 http = { workspace = true }
 tracing = { workspace = true }
 # Propagation only — the library never pulls in the OTLP exporters/SDK (those

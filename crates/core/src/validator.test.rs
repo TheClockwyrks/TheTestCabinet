@@ -93,3 +93,165 @@ fn score_of_identical_pngs_is_one() {
 
     assert_eq!(score(&baseline, &capture).expect("score"), 1.0);
 }
+
+// --- asset-generation validation -------------------------------------------
+
+use super::AssetGenValidator;
+use crate::execution::ArtifactCollection;
+use crate::reference::RenderedReference;
+use crate::test_case::{CanvasSpec, MediaKind, OutputSpec, TestCaseVersion, TestType, ToolSpec};
+use crate::validation::Validator;
+
+/// A minimal asset-generation version drawing on a 4x4 transparent canvas.
+fn asset_version() -> TestCaseVersion {
+    TestCaseVersion {
+        slug: "sprite".to_string(),
+        version: "v1.0.0".to_string(),
+        name: "Sprite".to_string(),
+        difficulty: "medium".to_string(),
+        tags: Vec::new(),
+        summary: None,
+        description_path: None,
+        root: std::path::PathBuf::new(),
+        prompt_path: std::path::PathBuf::from("prompt.hbs"),
+        max_runtime_seconds: 1800,
+        test_type: TestType::AssetGeneration,
+        build: None,
+        canvas: Some(CanvasSpec {
+            width: 4,
+            height: 4,
+            background: "transparent".to_string(),
+        }),
+        tool: Some(ToolSpec {
+            binary: "draw".to_string(),
+            operations: std::path::PathBuf::from("schemas/operations.json"),
+            preview: std::path::PathBuf::from("canvas.png"),
+        }),
+        output: Some(OutputSpec {
+            actions: std::path::PathBuf::from("actions.json"),
+        }),
+        common_specs: Vec::new(),
+        common_workspace: Vec::new(),
+        init: None,
+        asset_paths: Vec::new(),
+        variants: Vec::new(),
+        common_references: Vec::new(),
+        common_proofs: Vec::new(),
+        checks: Vec::new(),
+        common_review_items: Vec::new(),
+        domains: Vec::new(),
+    }
+}
+
+/// An all-red 4x4 RGBA buffer — what `fill_background #ff0000` regenerates to.
+fn red_4x4() -> Vec<u8> {
+    [255u8, 0, 0, 255].repeat(16)
+}
+
+#[test]
+fn asset_validation_regenerates_scores_and_detects_no_cheating() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    // The model recorded one operation that fills the canvas red, and left a
+    // matching preview on disk (an honest run).
+    std::fs::write(
+        repo.join("actions.json"),
+        r##"[{"op":"fill_background","color":"#ff0000"}]"##,
+    )
+    .expect("actions");
+    write_png(&repo.join("canvas.png"), 4, 4, &red_4x4());
+    // The seeded target is also all red, so fidelity is perfect.
+    let target = dir.path().join("target.png");
+    write_png(&target, 4, 4, &red_4x4());
+
+    let references = vec![RenderedReference {
+        view: "target".to_string(),
+        kind: MediaKind::Image,
+        media_path: target,
+    }];
+    let summary = AssetGenValidator::new()
+        .validate(
+            &asset_version(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &references,
+            &[],
+        )
+        .expect("validate");
+
+    assert!(summary.loaded);
+    let asset = summary.asset.expect("asset result");
+    assert_eq!(asset.operation_count, 1);
+    assert_eq!(asset.target_fidelity, 1.0, "regenerated matches the target");
+    assert_eq!(
+        asset.cheat_divergence,
+        Some(0.0),
+        "preview matches regeneration"
+    );
+    assert!(
+        repo.join("regenerated.png").is_file(),
+        "the regenerated image is written into the tree for serving"
+    );
+}
+
+#[test]
+fn asset_validation_flags_drawing_outside_the_tool() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    // The log fills red, but the on-disk preview is blue — the model drew outside
+    // the recorded operations. Regeneration ignores the preview; divergence flags it.
+    std::fs::write(
+        repo.join("actions.json"),
+        r##"[{"op":"fill_background","color":"#ff0000"}]"##,
+    )
+    .expect("actions");
+    let blue = [0u8, 0, 255, 255].repeat(16);
+    write_png(&repo.join("canvas.png"), 4, 4, &blue);
+    let target = dir.path().join("target.png");
+    write_png(&target, 4, 4, &red_4x4());
+
+    let references = vec![RenderedReference {
+        view: "target".to_string(),
+        kind: MediaKind::Image,
+        media_path: target,
+    }];
+    let summary = AssetGenValidator::new()
+        .validate(
+            &asset_version(),
+            &ArtifactCollection { repo_path: repo },
+            &references,
+            &[],
+        )
+        .expect("validate");
+
+    let asset = summary.asset.expect("asset result");
+    assert_eq!(
+        asset.target_fidelity, 1.0,
+        "the regenerated image still matches the target"
+    );
+    let divergence = asset.cheat_divergence.expect("divergence measured");
+    assert!(
+        divergence > 0.5,
+        "blue-vs-red preview diverges strongly: {divergence}"
+    );
+}
+
+#[test]
+fn asset_validation_without_an_action_log_fails_to_load() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    let summary = AssetGenValidator::new()
+        .validate(
+            &asset_version(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
+        .expect("validate");
+    assert!(!summary.loaded, "no action log means nothing to score");
+    assert!(summary.asset.is_none());
+}

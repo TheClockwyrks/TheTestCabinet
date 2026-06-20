@@ -73,6 +73,9 @@ pub fn router(state: AppState) -> Router {
         // served from its collected implementation so a reviewer can see the
         // submitted evidence before the run is published.
         .route("/runs/{id}/proof/{file}", get(runs::proof_file))
+        // Serve an asset-generation run's regenerated image, final preview,
+        // target, and action log from its recorded `validation.asset`.
+        .route("/runs/{id}/asset/{file}", get(runs::asset_file))
         // Serve a produced run's playable build (the static output collected
         // beside its implementation) so a reviewer can play it before it is
         // published. `{id}` is the run-record id the produced-run list reports.

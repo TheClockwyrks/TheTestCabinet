@@ -15,6 +15,7 @@ fn sample_record() -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
+            test_type: crate::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
@@ -69,6 +70,7 @@ fn sample_record() -> RunRecord {
                 present: true,
                 detail: None,
             }],
+            asset: None,
         },
         links: RunLinks {
             source_repo: Some("https://example.com/repo".to_string()),
@@ -92,6 +94,7 @@ fn serializes_to_camel_case_contract() {
         "subject": {
             "testCaseSlug": "pong",
             "testCaseVersion": "v1.0.0",
+            "testType": "end-to-end",
             "variant": "base",
             "harnessSlug": "claude",
             "harnessVersion": "1.2.3",

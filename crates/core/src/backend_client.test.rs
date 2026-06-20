@@ -37,10 +37,14 @@ impl BackendClient for StubBackend {
             root: std::path::PathBuf::new(),
             prompt_path: std::path::PathBuf::from("prompt.hbs"),
             max_runtime_seconds: 1800,
-            build: BuildCommands {
+            test_type: crate::test_case::TestType::EndToEnd,
+            build: Some(BuildCommands {
                 install: "npm ci".to_string(),
                 build: "npm run build".to_string(),
-            },
+            }),
+            canvas: None,
+            tool: None,
+            output: None,
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
@@ -218,6 +222,7 @@ fn sample_record(id: &str) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
+            test_type: crate::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
@@ -251,6 +256,7 @@ fn sample_record(id: &str) -> RunRecord {
             build: None,
             checks: vec![],
             proofs: vec![],
+            asset: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

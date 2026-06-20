@@ -18,10 +18,14 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         summary: Some("A sample.".to_string()),
         description: None,
         max_runtime_seconds: 1800,
-        build: StoredBuild {
+        test_type: test_cabinet_core::TestType::EndToEnd,
+        build: Some(StoredBuild {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
-        },
+        }),
+        canvas: None,
+        tool: None,
+        output: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![StoredSpec {
             source: "specs/overview.hbs".to_string(),

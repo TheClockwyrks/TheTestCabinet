@@ -88,6 +88,48 @@ pub struct ProofResult {
     pub detail: Option<String>,
 }
 
+/// The result of regenerating and scoring an asset-generation run.
+///
+/// An asset-generation run's authoritative output is its recorded action log; the
+/// validator replays it through the same drawing logic the binary used (see
+/// `crate::validator::AssetGenValidator`) to produce the **regenerated** image,
+/// which is the scored output. Two signals come out of it, both recorded rather
+/// than gated (the same stance as end-to-end [checks](CheckResult)): the
+/// [fidelity](Self::target_fidelity) of the regenerated image against the seeded
+/// target, and the [divergence](Self::cheat_divergence) between the regenerated
+/// image and the pixels the model left on disk — a high divergence means the
+/// model drew outside the tool. Present only on an asset-generation run's
+/// [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetGenResult {
+    /// Run-root-relative path to the image regenerated from the action log — the
+    /// scored output of the run.
+    pub regenerated_image: String,
+    /// Run-root-relative path to the pixels the model left on disk (the tool's
+    /// `preview`), kept for the side-by-side comparison and the divergence signal.
+    pub preview_image: String,
+    /// Run-root-relative path to the seeded target the regenerated image is scored
+    /// against.
+    pub target_image: String,
+    /// Run-root-relative path to the recorded action log.
+    pub actions_log: String,
+    /// How many operations the log recorded.
+    pub operation_count: usize,
+    /// Similarity of the regenerated image to the target, in `0.0..=1.0` (1.0 is
+    /// identical). A recorded signal, not a pass/fail gate.
+    pub target_fidelity: f64,
+    /// Divergence between the regenerated image and the model's on-disk preview,
+    /// in `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside
+    /// the tool. `None` when the model left no readable preview to compare.
+    #[serde(default)]
+    pub cheat_divergence: Option<f64>,
+    /// Detail about anything that could not be evaluated (for example an action
+    /// log that named operations but produced no preview to compare).
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,6 +155,11 @@ pub struct ValidationSummary {
     /// missing proof does not change [`Self::loaded`].
     #[serde(default)]
     pub proofs: Vec<ProofResult>,
+    /// The regenerate-and-score result of an asset-generation run. `None` for an
+    /// end-to-end run, so an end-to-end summary serializes with no new field at
+    /// all and its shape is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset: Option<AssetGenResult>,
 }
 
 /// Runs validation over a produced implementation.

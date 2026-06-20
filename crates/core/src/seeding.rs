@@ -136,12 +136,76 @@ impl RepoSeeder for FsRepoSeeder {
                 .map_err(seed_err)?;
         }
 
+        // An asset-generation run draws through the `draw` binary. Seed the canvas
+        // config it reads, plus an empty action log and a blank starting preview,
+        // so the model can read the empty canvas before its first operation and
+        // its calls need no flags. Rendering the blank preview uses the same
+        // drawing library the binary and the validator use, so the starting state
+        // is exactly what an empty log regenerates to.
+        if test_case.test_type == crate::test_case::TestType::AssetGeneration {
+            seed_asset_tool(test_case, &repo)?;
+        }
+
         let initial_commit = init_repo(&repo)?;
         Ok(SeededRepo {
             path: repo,
             initial_commit,
         })
     }
+}
+
+/// Seed an asset-generation run's drawing scaffold into `repo`: the canvas
+/// config the `draw` binary reads, an empty action log, and a blank starting
+/// preview rendered from that empty log.
+fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()> {
+    let canvas_spec = test_case
+        .canvas
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("asset-generation case has no [canvas]".to_string()))?;
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("asset-generation case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("asset-generation case has no [output]".to_string()))?;
+
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let actions = output.actions.to_string_lossy().replace('\\', "/");
+    let config = serde_json::json!({
+        "width": canvas_spec.width,
+        "height": canvas_spec.height,
+        "background": canvas_spec.background,
+        "actions": actions,
+        "preview": preview,
+    });
+    write_file(
+        &repo.join(crate::test_case::ASSET_CONFIG_DEST),
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&config)
+                .map_err(|err| { Error::Seeding(format!("serializing canvas config: {err}")) })?
+        ),
+    )?;
+
+    write_file(&repo.join(&output.actions), "[]\n")?;
+
+    let background = test_cabinet_draw::Background::parse(&canvas_spec.background)
+        .map_err(|err| Error::Seeding(format!("invalid canvas background: {err}")))?;
+    let canvas = test_cabinet_draw::Canvas {
+        width: canvas_spec.width,
+        height: canvas_spec.height,
+        background,
+    };
+    let preview_path = repo.join(&tool.preview);
+    if let Some(parent) = preview_path.parent() {
+        fs::create_dir_all(parent).map_err(seed_err)?;
+    }
+    test_cabinet_draw::render(&canvas, &[])
+        .encode_png(&preview_path)
+        .map_err(seed_err)?;
+    Ok(())
 }
 
 /// Initialize a fresh git repository with a single commit and no remote, and

@@ -1,0 +1,96 @@
+name = "Lanternjaw"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "enemy"]
+summary = """
+Draw the Lanternjaw: an anglerfish-style deep-sea pursuer with a glowing lure, as \
+a 64x64 enemy sprite produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 2400
+type = "asset-generation"
+
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+[tool]
+binary = "draw"
+operations = "schemas/operations.json"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[reference]]
+view = "target"
+media = "reference/target.png"
+
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Lanternjaw target — its bulky \
+silhouette, the glowing lure, the toothed maw, and the dark deep-sea palette that \
+mark it as a lurking predator."""
+
+[[review_item]]
+id = "glowing-lure"
+title = "Glowing lure"
+text = """
+A bioluminescent lure glows on a stalk above the head — the brightest element of \
+the sprite, clearly the bait of an ambush predator. Its glow uses warm light \
+colors against the dark body."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "toothed-maw"
+title = "Toothed maw"
+text = """
+A wide, open maw lined with pale teeth sits at the front of the head — this is a \
+predator, not a grazer. The mouth and teeth read clearly against the dark body."""
+weight = 2
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "pursuer-read"
+title = "Reads as a pursuer"
+text = """
+The sprite reads as a bulky, forward-facing ENEMY chaser oriented in its \
+direction of travel, not as a passive background fish or a player avatar."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Deep-sea palette"
+text = """
+Uses the dark deep-sea palette from the brief (near-black body, dark maw, warm \
+glowing lure, pale teeth) with no out-of-palette colors and no halo of stray \
+pixels."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The creature fills most of the 64x64 frame, roughly centered with a small margin, \
+neither tiny in a corner nor clipped at an edge (the lure may rise toward the \
+top edge)."""
+weight = 1
+reference = "target"
+domain = "fidelity"

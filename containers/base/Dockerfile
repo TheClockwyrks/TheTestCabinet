@@ -21,6 +21,29 @@
 # into the container at run time, by running the harness's `install` command (see
 # `harnesses/README.md`); installing at run time is what lets a run always pick
 # up the harness's latest published version.
+#
+# It DOES bake in one Test Cabinet binary: `draw`, the drawing tool an
+# asset-generation run uses (see the asset-generation docs under
+# `apps/docs/src/content/docs/testing/asset-generation/`). Unlike a harness CLI,
+# `draw` is part of The Test Cabinet itself and its drawing logic must match the
+# orchestrator's, so it is compiled from this repo and baked in rather than
+# installed at run time. The orchestrator regenerates an asset-gen run's scored
+# image with the *same* library this binary uses; building both from one commit
+# keeps them in lockstep (a run records the orchestrator commit and the image
+# digest, so a mismatch is auditable). The build context is the repository root so
+# this stage can see `crates/` — see `containers/build.sh`.
+
+# --- Stage 1: compile the `draw` binary from this repository ----------------
+FROM docker.io/library/rust:1-bookworm AS draw-build
+WORKDIR /build
+# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
+# resolve the workspace graph; `-p test-cabinet-draw` compiles only `draw` and its
+# dependencies. The glibc target matches the bookworm runtime below — do not
+# statically link musl here.
+COPY . .
+RUN cargo build --release -p test-cabinet-draw --bin draw
+
+# --- Stage 2: the run image -------------------------------------------------
 FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
@@ -85,6 +108,11 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 # work as the unprivileged user.
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
+
+# Bake in the `draw` binary compiled in stage 1. `/usr/local/bin` is on PATH and
+# root-owned; the unprivileged run user only executes it, never writes it. An
+# asset-generation run invokes it as the model's drawing tool.
+COPY --from=draw-build /build/target/release/draw /usr/local/bin/draw
 
 USER node
 

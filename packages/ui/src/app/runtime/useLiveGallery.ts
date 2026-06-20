@@ -110,7 +110,12 @@ async function toTestCaseSummary(
       // The backend renders the prompt and serves the references; the seeded
       // spec bodies are fetched per file (see fetchSeededInputs).
       prompt: v.prompt,
-      seededInputs: await fetchSeededInputs(backend, info.slug, info.version, v.slug),
+      seededInputs: await fetchSeededInputs(
+        backend,
+        info.slug,
+        info.version,
+        v.slug,
+      ),
       referenceScreenshots: v.references.map((r) => ({
         view: r.view,
         kind: r.kind,
@@ -187,6 +192,23 @@ export function useLiveGallery(): GalleryDataInput {
       if (localIds.has(runId)) {
         if (workerClient?.proofMediaUrl) {
           return workerClient.proofMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // Asset-generation run media (regenerated/preview/target/actions) resolves the
+  // same way proof media does: the desktop transport supplies a custom-scheme
+  // resolver, the web worker/backend an HTTP endpoint.
+  const assetMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/asset/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        if (workerClient?.assetMediaUrl) {
+          return workerClient.assetMediaUrl(runId, file);
         }
         return workerUrl ? joinPath(workerUrl, path) : null;
       }
@@ -272,6 +294,7 @@ export function useLiveGallery(): GalleryDataInput {
     canExecute: true,
     fetchRunEvents,
     proofMediaUrl,
+    assetMediaUrl,
   };
 }
 

@@ -1,0 +1,15 @@
+[
+  { "op": "fill_circle", "cx": 30, "cy": 34, "r": 17, "color": "#176b63" },
+  { "op": "fill_circle", "cx": 44, "cy": 33, "r": 10, "color": "#176b63" },
+  { "op": "fill_circle", "cx": 14, "cy": 34, "r": 8, "color": "#176b63" },
+  { "op": "fill_circle", "cx": 30, "cy": 41, "r": 11, "color": "#2f9c8f" },
+  { "op": "line", "x0": 6, "y0": 22, "x1": 14, "y1": 32, "color": "#176b63" },
+  { "op": "line", "x0": 6, "y0": 46, "x1": 14, "y1": 36, "color": "#176b63" },
+  { "op": "line", "x0": 7, "y0": 23, "x1": 7, "y1": 45, "color": "#176b63" },
+  { "op": "stroke_circle", "cx": 30, "cy": 34, "r": 17, "color": "#0e3a3a" },
+  { "op": "fill_rect", "x": 49, "y": 33, "width": 5, "height": 2, "color": "#0e3a3a" },
+  { "op": "stroke_circle", "cx": 72, "cy": 33, "r": 13, "color": "#cfeee6" },
+  { "op": "stroke_circle", "cx": 72, "cy": 33, "r": 18, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 40, "y": 28, "color": "#cfeee6" },
+  { "op": "set_pixel", "x": 36, "y": 27, "color": "#cfeee6" }
+]

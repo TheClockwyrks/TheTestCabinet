@@ -6,14 +6,12 @@ import {
   worstRating,
   type ParsedWriteup,
 } from "../../../data/ratings";
-import {
-  useGalleryData,
-  type ReviewModel,
-} from "../../../data/galleryContext";
+import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
 import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
+import { AssetResultSection } from "./AssetResultSection";
 import styles from "./RunDetailPages.module.scss";
 
 // Map a verdict status to the row class that tints its marker.
@@ -42,31 +40,39 @@ export function RunVerdictPage() {
   const gallery = useGalleryData();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review }) =>
-        // A produced, not-yet-published run the active worker owns is reviewed
-        // and published here; published runs show their review read-only.
-        canExecute && localIds.has(run.id) ? (
-          <RunReviewEditor
-            runId={run.id}
-            subject={run.subject}
-            review={review}
-            onChanged={() => runtime.requestRefresh()}
-          />
-        ) : (
-          <Panel>
-            {review ? (
-              <PublishedVerdict
+      {({ run, review }) => (
+        <>
+          {/* For an asset-generation run, the generated asset and its fidelity /
+              cheat-divergence signals lead the verdict (it has no Play tab).
+              Renders nothing for other run types. */}
+          <AssetResultSection run={run} />
+          {
+            // A produced, not-yet-published run the active worker owns is reviewed
+            // and published here; published runs show their review read-only.
+            canExecute && localIds.has(run.id) ? (
+              <RunReviewEditor
+                runId={run.id}
+                subject={run.subject}
                 review={review}
-                model={gallery.reviewModelFor(run.subject)}
+                onChanged={() => runtime.requestRefresh()}
               />
             ) : (
-              <p className={styles.empty}>
-                No manual review has been written for this run yet.
-              </p>
-            )}
-          </Panel>
-        )
-      }
+              <Panel>
+                {review ? (
+                  <PublishedVerdict
+                    review={review}
+                    model={gallery.reviewModelFor(run.subject)}
+                  />
+                ) : (
+                  <p className={styles.empty}>
+                    No manual review has been written for this run yet.
+                  </p>
+                )}
+              </Panel>
+            )
+          }
+        </>
+      )}
     </RunDetailLayout>
   );
 }
@@ -84,14 +90,18 @@ function PublishedVerdict({
 }) {
   const overall = worstRating(review.ratings.map((r) => r.rating));
   const haveModel = model.items.length > 0;
-  const score = haveModel ? scoreChecklist(model.items, review.checklist) : null;
+  const score = haveModel
+    ? scoreChecklist(model.items, review.checklist)
+    : null;
 
   // Item metadata by id (title + weight + domain), for the breakdown.
   const itemsById = new Map(model.items.map((item) => [item.id, item]));
   // The reviewer's verdict by item id.
   const verdictById = new Map(review.checklist.map((v) => [v.id, v]));
   // A domain's rating by domain id.
-  const ratingByDomain = new Map(review.ratings.map((r) => [r.domain, r.rating]));
+  const ratingByDomain = new Map(
+    review.ratings.map((r) => [r.domain, r.rating]),
+  );
 
   // Group items by their domain (declared order), with un-domained items last.
   const groups: { id: string; name: string; itemIds: string[] }[] = [];
@@ -144,7 +154,10 @@ function PublishedVerdict({
               const rating = ratingByDomain.get(domain.id);
               return (
                 <li key={domain.id} className={styles.domainRow}>
-                  <span className={styles.domainName} title={domain.description}>
+                  <span
+                    className={styles.domainName}
+                    title={domain.description}
+                  >
                     {domain.name}
                   </span>
                   {rating && <RatingBadge rating={rating} />}

@@ -27,6 +27,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             subject: RunSubject {
                 test_case_slug: "pong".to_string(),
                 test_case_version: "v1.0.0".to_string(),
+                test_type: test_cabinet_core::TestType::EndToEnd,
                 variant: "base".to_string(),
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
@@ -79,10 +80,14 @@ fn manifest() -> StoredManifest {
         summary: Some("A duel.".to_string()),
         description: Some("## Carom".to_string()),
         max_runtime_seconds: 1800,
-        build: StoredBuild {
+        test_type: test_cabinet_core::TestType::EndToEnd,
+        build: Some(StoredBuild {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
-        },
+        }),
+        canvas: None,
+        tool: None,
+        output: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: vec![],

@@ -21,8 +21,9 @@ use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredDomain, StoredManifest,
-    StoredProof, StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCheck, StoredDomain,
+    StoredManifest, StoredOutput, StoredProof, StoredReference, StoredReviewItem, StoredSpec,
+    StoredTool, StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -280,10 +281,24 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         summary: resolved.summary.clone(),
         description,
         max_runtime_seconds: resolved.max_runtime_seconds,
-        build: StoredBuild {
-            install: resolved.build.install.clone(),
-            build: resolved.build.build.clone(),
-        },
+        test_type: resolved.test_type,
+        build: resolved.build.as_ref().map(|build| StoredBuild {
+            install: build.install.clone(),
+            build: build.build.clone(),
+        }),
+        canvas: resolved.canvas.as_ref().map(|canvas| StoredCanvas {
+            width: canvas.width,
+            height: canvas.height,
+            background: canvas.background.clone(),
+        }),
+        tool: resolved.tool.as_ref().map(|tool| StoredTool {
+            binary: tool.binary.clone(),
+            operations: tool.operations.to_string_lossy().replace('\\', "/"),
+            preview: tool.preview.to_string_lossy().replace('\\', "/"),
+        }),
+        output: resolved.output.as_ref().map(|output| StoredOutput {
+            actions: output.actions.to_string_lossy().replace('\\', "/"),
+        }),
         prompt_template,
         common_specs,
         workspace,

@@ -4701,6 +4701,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "test-cabinet-draw",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -4725,6 +4726,18 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "test-cabinet-draw"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "png 0.17.16",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

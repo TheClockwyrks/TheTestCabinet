@@ -29,6 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::TestType;
 
 use crate::error::{BackendError, Result};
 
@@ -69,8 +70,28 @@ pub struct StoredManifest {
     pub description: Option<String>,
     /// Per-case maximum harness runtime, in seconds.
     pub max_runtime_seconds: u64,
-    /// Build commands.
-    pub build: StoredBuild,
+    /// The test type. Defaulted to end-to-end for manifests stored before the
+    /// discriminator existed.
+    #[serde(default)]
+    pub test_type: TestType,
+    /// Build commands. `Some` for an end-to-end case, `None` for any other type
+    /// (an asset-generation case has no build). Defaulted for manifests stored
+    /// before it became optional; skipped when absent so an asset-generation
+    /// manifest carries no null build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<StoredBuild>,
+    /// The canvas an asset-generation case draws on. `Some` only for
+    /// asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canvas: Option<StoredCanvas>,
+    /// The drawing tool an asset-generation case exposes. `Some` only for
+    /// asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<StoredTool>,
+    /// Where an asset-generation run's action log is collected. `Some` only for
+    /// asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<StoredOutput>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the
@@ -117,6 +138,41 @@ pub struct StoredBuild {
     pub install: String,
     /// Static-build command.
     pub build: String,
+}
+
+/// The canvas of an asset-generation case persisted in a [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredCanvas {
+    /// Canvas width in pixels.
+    pub width: u32,
+    /// Canvas height in pixels.
+    pub height: u32,
+    /// Initial canvas state: `transparent` or a hex color.
+    pub background: String,
+}
+
+/// The drawing tool of an asset-generation case persisted in a [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredTool {
+    /// The drawing binary available in the run environment.
+    pub binary: String,
+    /// Run-workspace-relative path of the seeded operations JSON Schema. The
+    /// schema content travels as a common spec; this names where the model reads
+    /// it.
+    pub operations: String,
+    /// Run-workspace-relative path the binary re-renders the current image to.
+    pub preview: String,
+}
+
+/// The action-log output of an asset-generation case persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredOutput {
+    /// Run-workspace-relative path of the recorded action log.
+    pub actions: String,
 }
 
 /// A spec mapping persisted in a [`StoredManifest`].
@@ -464,6 +520,41 @@ impl DefinitionStore {
         let path = self.run_proof_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("proof `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run asset-generation media -------------------------------------
+
+    /// The directory a published asset-generation run's media is stored under.
+    pub fn run_asset_dir(&self, run_id: &str) -> PathBuf {
+        self.root.join("runs").join(run_id).join("asset")
+    }
+
+    /// Persist one asset media file for a run under `runs/<run_id>/asset/<file>`
+    /// (`file` is `regenerated.png`, `preview.png`, `target.png`, or
+    /// `actions.json`). Keyed by the run id a publish carries, so a re-publish
+    /// overwrites the identical bytes.
+    pub fn write_run_asset(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or asset file".to_string(),
+            ));
+        }
+        let dir = self.run_asset_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// Read one asset media file for a run.
+    pub fn read_run_asset(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or asset file".to_string(),
+            ));
+        }
+        let path = self.run_asset_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("asset `{run_id}/{file}` not stored")))
     }
 }
 

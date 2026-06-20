@@ -50,6 +50,19 @@ container at run time from the harness's [manifest](../harnesses/README.md), the
 same way and for the same reason a test case prepares its workspace with an init
 command.
 
+It does, however, bake in one Test Cabinet binary: **`draw`**, the drawing tool an
+[asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+run uses. Unlike a harness CLI, `draw` is part of The Test Cabinet itself and its
+drawing logic must match the orchestrator's — the orchestrator regenerates an
+asset-generation run's scored image from its action log through the *same* library
+this binary uses — so it is compiled from this repo (a multi-stage build in
+`base/Dockerfile`) and baked in rather than installed at run time. Because of this
+coupling, **build the image from the same commit as the orchestrator**: a run
+records both the orchestrator commit and the image digest, so a version mismatch
+(which would invalidate the cheat-divergence signal) is auditable after the fact.
+Building `draw` is why the image's build context is the repository root rather than
+`base/` (see `build.sh`).
+
 ## Building
 
 Run on a machine with Docker (or Podman) available:

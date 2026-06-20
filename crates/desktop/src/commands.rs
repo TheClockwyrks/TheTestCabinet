@@ -13,8 +13,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use test_cabinet_core::{
-    ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, BuildValidator,
-    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, Domain, DomainRating,
+    ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, CliArtifactCollector,
+    CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator, Domain, DomainRating,
     FsRepoSeeder, HarnessEvent, HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher,
     OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, PublishConfig, PublishRequest,
     PublishedRun, Publisher, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict,
@@ -507,7 +507,7 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         renderer,
-        validator: BuildValidator::new(screenshot_dir),
+        validator: DispatchValidator::new(screenshot_dir),
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir,

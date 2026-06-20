@@ -189,10 +189,14 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         root: PathBuf::from("/tmp/pong"),
         prompt_path: PathBuf::from("/tmp/pong/prompt.hbs"),
         max_runtime_seconds: seconds,
-        build: crate::test_case::BuildCommands {
+        test_type: crate::test_case::TestType::EndToEnd,
+        build: Some(crate::test_case::BuildCommands {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
-        },
+        }),
+        canvas: None,
+        tool: None,
+        output: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

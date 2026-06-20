@@ -64,6 +64,13 @@ pub fn router(state: AppState) -> Router {
             "/runs/{id}/proof/{file}",
             get(test_cases::run_proof).post(test_cases::put_run_proof),
         )
+        // A published asset-generation run's media (regenerated image, final
+        // preview, target, action log): uploaded by the publisher (POST) and
+        // served for the gallery's result view (GET).
+        .route(
+            "/runs/{id}/asset/{file}",
+            get(test_cases::run_asset).post(test_cases::put_run_asset),
+        )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.

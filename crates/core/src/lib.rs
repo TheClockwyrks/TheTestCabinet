@@ -66,8 +66,8 @@ pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
 pub use playable::{
-    BUILD_OUTPUTS, ServedBuildFile, ServedProofFile, find_build_output, serve_build_file,
-    serve_proof_file,
+    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
+    serve_asset_file, serve_build_file, serve_proof_file,
 };
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
@@ -86,13 +86,15 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    Check, CheckAction, Domain, MediaKind, ProofFile, ReferenceKind, ReferenceView, ReviewItem,
-    SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, Variant, WorkspaceFile,
+    CanvasSpec, Check, CheckAction, Domain, MediaKind, OutputSpec, ProofFile, ReferenceKind,
+    ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, TestType,
+    ToolSpec, Variant, WorkspaceFile,
 };
 pub use validation::{
-    CapturedView, CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
+    AssetGenResult, CapturedView, CheckResult, ProofResult, StepResult, ValidationSummary,
+    Validator,
 };
-pub use validator::BuildValidator;
+pub use validator::{AssetGenValidator, BuildValidator, DispatchValidator};
 
 /// What to run, with what, against which model.
 ///
@@ -755,6 +757,7 @@ where
             subject: RunSubject {
                 test_case_slug: test_case.slug.clone(),
                 test_case_version: test_case.version.clone(),
+                test_type: test_case.test_type,
                 variant: variant.slug.clone(),
                 harness_slug: request.harness,
                 harness_version: outcome.harness_version.clone(),

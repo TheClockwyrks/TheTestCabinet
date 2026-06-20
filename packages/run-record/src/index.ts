@@ -51,10 +51,19 @@ export interface RunTooling {
   testCabinetCommit: string | null;
 }
 
+/**
+ * The type of test case a run exercised. The result view branches on this to
+ * choose how to present a run. Defaults to `"end-to-end"` for records written
+ * before the discriminator existed.
+ */
+export type TestType = "end-to-end" | "asset-generation";
+
 /** Identifies what was run: the test case, the harness, and the model. */
 export interface RunSubject {
   testCaseSlug: string;
   testCaseVersion: string;
+  /** The test type this case belongs to. */
+  testType: TestType;
   /** The variant of the test case that was run (e.g. `"base"`). */
   variant: string;
   harnessSlug: HarnessSlug;
@@ -144,6 +153,39 @@ export interface StepResult {
   detail: string | null;
 }
 
+/**
+ * The regenerate-and-score result of an asset-generation run.
+ *
+ * The run's authoritative output is its recorded action log; the validator
+ * replays it through the same drawing logic the binary used to produce the
+ * **regenerated** image (the scored output), then derives two recorded signals:
+ * the fidelity of the regenerated image against the seeded target, and the
+ * divergence between the regenerated image and the pixels the model left on disk
+ * (a high divergence means the model drew outside the tool). All paths are
+ * run-root-relative and resolved to media URLs by the gallery host.
+ */
+export interface AssetGenResult {
+  /** Run-root-relative path to the image regenerated from the action log. */
+  regeneratedImage: string;
+  /** Run-root-relative path to the pixels the model left on disk. */
+  previewImage: string;
+  /** Run-root-relative path to the seeded target. */
+  targetImage: string;
+  /** Run-root-relative path to the recorded action log. */
+  actionsLog: string;
+  /** How many operations the log recorded. */
+  operationCount: number;
+  /** Similarity of the regenerated image to the target, in `0..=1`. */
+  targetFidelity: number;
+  /**
+   * Divergence between the regenerated image and the model's preview, in
+   * `0..=1` (0 is identical). Null when the model left no readable preview.
+   */
+  cheatDivergence: number | null;
+  /** Detail about anything that could not be evaluated, or null. */
+  detail: string | null;
+}
+
 /** Validation signals derived from running the produced artifact. */
 export interface RunValidation {
   loaded: boolean;
@@ -167,6 +209,11 @@ export interface RunValidation {
    * missing proof does not change `loaded`.
    */
   proofs: ProofResult[];
+  /**
+   * The regenerate-and-score result of an asset-generation run. Absent for an
+   * end-to-end run.
+   */
+  asset?: AssetGenResult;
 }
 
 /** Outbound links for a run. Either may be null when not published. */

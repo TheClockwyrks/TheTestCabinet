@@ -26,8 +26,9 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, Check, CheckAction, Domain, MediaKind, ProofFile, ReferenceKind, ReferenceView,
-    ReviewItem, SpecFile, TestCase, TestCaseVersion, Variant, WorkspaceFile,
+    BuildCommands, CanvasSpec, Check, CheckAction, Domain, MediaKind, OutputSpec, ProofFile,
+    ReferenceKind, ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseVersion, TestType,
+    ToolSpec, Variant, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -160,6 +161,17 @@ pub trait BackendClient: Send + Sync {
     /// Defaults to a no-op so a backend without proof support (or a test stub)
     /// stays valid; the HTTP client overrides it.
     async fn publish_run_proof(&self, _run_id: &str, _file: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Upload one asset-generation media file for a published run, served back to
+    /// the gallery's result view. `file` is `regenerated.png`, `preview.png`,
+    /// `target.png`, or `actions.json`. (`POST /runs/{id}/asset/{file}`)
+    /// Idempotent: identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without asset support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_asset(&self, _run_id: &str, _file: &str, _bytes: Vec<u8>) -> Result<()> {
         Ok(())
     }
 
@@ -584,6 +596,29 @@ impl BackendClient for HttpBackendClient {
         Ok(())
     }
 
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id, asset.file = %file),
+        err,
+    )]
+    async fn publish_run_asset(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/asset/{}", encode(run_id), encode(file)));
+        let content_type = content_type_for_file(file);
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
     async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
         let mut path = String::from("/runs");
         let mut query = Vec::new();
@@ -670,7 +705,16 @@ struct VersionBody {
     summary: Option<String>,
     description: Option<String>,
     max_runtime_seconds: u64,
-    build: BuildBody,
+    #[serde(default)]
+    test_type: TestType,
+    #[serde(default)]
+    build: Option<BuildBody>,
+    #[serde(default)]
+    canvas: Option<CanvasBody>,
+    #[serde(default)]
+    tool: Option<ToolBody>,
+    #[serde(default)]
+    output: Option<OutputBody>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     #[serde(default)]
@@ -713,10 +757,24 @@ impl VersionBody {
             root: PathBuf::new(),
             prompt_path: PathBuf::from("prompt.hbs"),
             max_runtime_seconds: self.max_runtime_seconds,
-            build: BuildCommands {
-                install: self.build.install,
-                build: self.build.build,
-            },
+            test_type: self.test_type,
+            build: self.build.map(|build| BuildCommands {
+                install: build.install,
+                build: build.build,
+            }),
+            canvas: self.canvas.map(|canvas| CanvasSpec {
+                width: canvas.width,
+                height: canvas.height,
+                background: canvas.background,
+            }),
+            tool: self.tool.map(|tool| ToolSpec {
+                binary: tool.binary,
+                operations: PathBuf::from(&tool.operations),
+                preview: PathBuf::from(&tool.preview),
+            }),
+            output: self.output.map(|output| OutputSpec {
+                actions: PathBuf::from(&output.actions),
+            }),
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,
@@ -838,6 +896,8 @@ fn content_type_for_file(file: &str) -> &'static str {
         "webp" => "image/webp",
         "gif" => "image/gif",
         "mp4" => "video/mp4",
+        // The asset-generation action log uploads through this same path.
+        "json" => "application/json",
         _ => "application/octet-stream",
     }
 }
@@ -846,6 +906,28 @@ fn content_type_for_file(file: &str) -> &'static str {
 struct BuildBody {
     install: String,
     build: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CanvasBody {
+    width: u32,
+    height: u32,
+    background: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolBody {
+    binary: String,
+    operations: String,
+    preview: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputBody {
+    actions: String,
 }
 
 #[derive(Deserialize)]

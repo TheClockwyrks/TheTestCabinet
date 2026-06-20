@@ -17,8 +17,10 @@ use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ProofFile, TestCaseVersion};
-use crate::validation::{CheckResult, ProofResult, StepResult, ValidationSummary, Validator};
+use crate::test_case::{MediaKind, ProofFile, TestCaseVersion, TestType};
+use crate::validation::{
+    AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
+};
 
 /// Candidate output directories a static build may produce.
 const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
@@ -58,6 +60,19 @@ impl Validator for BuildValidator {
         // every path, including an early return for a build that never loads.
         let proof_results = proof_results(proofs, repo);
 
+        // This validator builds a static site, which only an end-to-end case
+        // declares; the orchestrator never routes another type here. Guard the
+        // invariant rather than panicking so a misroute degrades to a clear failed
+        // load instead of a crash.
+        let Some(build_commands) = test_case.build.as_ref() else {
+            return Ok(failed_load(
+                "end-to-end validation requires a [build] table",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+
         if !repo.join("package.json").is_file() {
             return Ok(failed_load(
                 "no package.json found in the produced implementation",
@@ -70,12 +85,12 @@ impl Validator for BuildValidator {
         // The two required build steps run in order and are each reported in the
         // summary. Install runs first; if it fails the build step is never
         // reached, so it stays `None`.
-        let install = run_step(repo, &test_case.build.install);
+        let install = run_step(repo, &build_commands.install);
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
             return Ok(failed_load(&detail, Some(install), None, proof_results));
         }
-        let build = run_step(repo, &test_case.build.build);
+        let build = run_step(repo, &build_commands.build);
         if !build.succeeded {
             let detail = build.detail.clone().unwrap_or_default();
             return Ok(failed_load(
@@ -109,6 +124,7 @@ impl Validator for BuildValidator {
             build: Some(build),
             checks,
             proofs: proof_results,
+            asset: None,
         })
     }
 }
@@ -254,6 +270,248 @@ impl BuildValidator {
     }
 }
 
+/// A validator for asset-generation runs.
+///
+/// It ignores the build pipeline entirely. Instead it reads the run's recorded
+/// action log, replays it through the **same** drawing library the in-container
+/// binary used ([`test_cabinet_draw::render`]) to regenerate the scored image,
+/// scores that image against the seeded target (fidelity), and compares it to the
+/// pixels the model left on disk (cheat divergence). Both are recorded signals,
+/// not gates. The regenerated image is written into the produced tree so it is
+/// collected and served alongside the action log and preview.
+#[derive(Debug, Clone, Default)]
+pub struct AssetGenValidator;
+
+impl AssetGenValidator {
+    /// A new asset-generation validator. It keeps no state: every output is
+    /// derived from the run's own action log and written into the run's tree.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// The run-root-relative path the regenerated image is written to inside the
+/// produced tree. Chosen to not collide with the seeded canvas config, preview,
+/// action log, or operations schema.
+const REGENERATED_IMAGE: &str = "regenerated.png";
+
+impl Validator for AssetGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        // A case may still declare proofs; record their presence as for any type.
+        let proof_results = proof_results(proofs, repo);
+
+        // The orchestrator only routes asset-generation cases here, so the tables
+        // are present; guard the invariant rather than panicking.
+        let (Some(canvas_spec), Some(tool), Some(output)) = (
+            test_case.canvas.as_ref(),
+            test_case.tool.as_ref(),
+            test_case.output.as_ref(),
+        ) else {
+            return Ok(failed_load(
+                "asset-generation validation requires [canvas], [tool], and [output]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+
+        // The action log is the authoritative output. A run that produced none —
+        // or an unparseable one — has nothing to score, so it is a failed load.
+        let actions_path = repo.join(&output.actions);
+        let raw = match std::fs::read_to_string(&actions_path) {
+            Ok(raw) => raw,
+            Err(err) => {
+                return Ok(failed_load(
+                    &format!(
+                        "could not read action log `{}`: {err}",
+                        output.actions.display()
+                    ),
+                    None,
+                    None,
+                    proof_results,
+                ));
+            }
+        };
+        let operations: Vec<test_cabinet_draw::Operation> = match serde_json::from_str(&raw) {
+            Ok(operations) => operations,
+            Err(err) => {
+                return Ok(failed_load(
+                    &format!(
+                        "action log `{}` is not a valid operation log: {err}",
+                        output.actions.display()
+                    ),
+                    None,
+                    None,
+                    proof_results,
+                ));
+            }
+        };
+
+        // Regenerate the image from the log through the shared drawing library —
+        // the same logic the in-container binary used — and write it into the
+        // produced tree so it is collected and served.
+        let background = match test_cabinet_draw::Background::parse(&canvas_spec.background) {
+            Ok(background) => background,
+            Err(err) => {
+                return Ok(failed_load(
+                    &format!("invalid canvas background: {err}"),
+                    None,
+                    None,
+                    proof_results,
+                ));
+            }
+        };
+        let canvas = test_cabinet_draw::Canvas {
+            width: canvas_spec.width,
+            height: canvas_spec.height,
+            background,
+        };
+        let regenerated_path = repo.join(REGENERATED_IMAGE);
+        if let Err(err) =
+            test_cabinet_draw::render(&canvas, &operations).encode_png(&regenerated_path)
+        {
+            return Ok(failed_load(
+                &format!("could not write the regenerated image: {err}"),
+                None,
+                None,
+                proof_results,
+            ));
+        }
+
+        // Fidelity: score the regenerated image against the seeded target.
+        let target = references
+            .iter()
+            .find(|reference| reference.view == "target");
+        let mut notes: Vec<String> = Vec::new();
+        let target_fidelity = match target {
+            Some(target) if target.kind == MediaKind::Image => {
+                match score(&target.media_path, &regenerated_path) {
+                    Ok(similarity) => similarity,
+                    Err(err) => {
+                        notes.push(format!("could not score against the target: {err}"));
+                        0.0
+                    }
+                }
+            }
+            Some(_) => {
+                notes.push("the target reference is not an image".to_string());
+                0.0
+            }
+            None => {
+                notes.push("no target reference was provided".to_string());
+                0.0
+            }
+        };
+
+        // Cheat divergence: compare the regenerated image to the model's on-disk
+        // preview. A high value means the model drew outside the tool. Absent or
+        // unreadable preview leaves it unmeasured rather than failing the run.
+        let preview_path = repo.join(&tool.preview);
+        let cheat_divergence = if preview_path.is_file() {
+            match score(&preview_path, &regenerated_path) {
+                Ok(similarity) => Some(1.0 - similarity),
+                Err(err) => {
+                    notes.push(format!("could not compare against the preview: {err}"));
+                    None
+                }
+            }
+        } else {
+            notes.push("the model left no preview image to compare".to_string());
+            None
+        };
+
+        let target_image = target
+            .map(seeded_reference_rel)
+            .unwrap_or_else(|| "reference/target.png".to_string());
+
+        Ok(ValidationSummary {
+            // The run produced a scorable image: the load signal is positive.
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: Some(AssetGenResult {
+                regenerated_image: REGENERATED_IMAGE.to_string(),
+                preview_image: rel_string(&tool.preview),
+                target_image,
+                actions_log: rel_string(&output.actions),
+                operation_count: operations.len(),
+                target_fidelity,
+                cheat_divergence,
+                detail: (!notes.is_empty()).then(|| notes.join("; ")),
+            }),
+        })
+    }
+}
+
+/// Dispatches validation to the validator for the case's [`TestType`]. The
+/// orchestrator holds one validator, so this composes the per-type validators
+/// behind the single [`Validator`] interface and keeps the run pipeline unaware
+/// of the split.
+#[derive(Debug, Clone)]
+pub struct DispatchValidator {
+    build: BuildValidator,
+    asset: AssetGenValidator,
+}
+
+impl DispatchValidator {
+    /// Build the dispatcher, threading the screenshot scratch directory to the
+    /// end-to-end validator (the asset-generation validator keeps no scratch).
+    pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            build: BuildValidator::new(screenshot_dir),
+            asset: AssetGenValidator::new(),
+        }
+    }
+}
+
+impl Validator for DispatchValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        match test_case.test_type {
+            TestType::EndToEnd => self
+                .build
+                .validate(test_case, artifacts, references, proofs),
+            TestType::AssetGeneration => self
+                .asset
+                .validate(test_case, artifacts, references, proofs),
+        }
+    }
+}
+
+/// The run-root-relative path a reference is seeded to: `reference/<view>.<ext>`,
+/// where the extension comes from the reference's served media. Matches the
+/// seeding layout so the validator can name where the seeded target lives.
+fn seeded_reference_rel(reference: &RenderedReference) -> String {
+    let ext = reference
+        .media_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .unwrap_or_else(|| "png".to_string());
+    format!("reference/{}.{ext}", reference.view)
+}
+
+/// A run-root-relative path as a forward-slash string, matching how a
+/// [`ProofResult`]'s `dest` is recorded.
+fn rel_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 /// A validation summary for a build that never loaded, carrying whichever build
 /// steps had run by the point it failed and the proof-presence results (which are
 /// independent of the build).
@@ -270,6 +528,7 @@ fn failed_load(
         build,
         checks: Vec::new(),
         proofs,
+        asset: None,
     }
 }
 

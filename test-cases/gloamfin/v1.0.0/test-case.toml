@@ -1,0 +1,101 @@
+name = "Gloamfin"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "enemy"]
+summary = """
+Draw the Gloamfin: an eyeless deep-sea pursuer that hunts by echolocation, as a \
+64x64 enemy sprite produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 2400
+type = "asset-generation"
+
+# A 64x64 transparent canvas keeps every run comparable.
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call.
+[tool]
+binary = "draw"
+operations = "schemas/operations.json"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The visual goal the regenerated sprite is scored against. Served as-is.
+[[reference]]
+view = "target"
+media = "reference/target.png"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Gloamfin target — its \
+silhouette, the deep-sea palette, and the unmistakable read of an eyeless \
+predator that hunts without sight."""
+
+[[review_item]]
+id = "eyeless"
+title = "Eyeless head"
+text = """
+The sprite has no eyes at all — a smooth, blunt head reading clearly as a \
+creature that navigates without sight. A drawn eye is a failure for this case."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "pursuer-read"
+title = "Reads as a pursuer"
+text = """
+The sprite reads as a forward-facing ENEMY chaser — a body and blunt head \
+oriented in its direction of travel with a swept tail behind — not as a passive \
+background fish or a player avatar."""
+weight = 2
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "echo-cue"
+title = "Echolocation cue"
+text = """
+Some visual cue of echolocation is present — sonar-ripple arcs or pulses reading \
+as emanating from the head — distinguishing it from an ordinary fish."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Deep-sea palette"
+text = """
+Uses the cold deep-sea palette from the brief (abyssal teal body, lighter belly, \
+pale sonar accent) with no out-of-palette colors and no halo of stray pixels."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The creature fills most of the 64x64 frame, roughly centered with a small margin, \
+neither tiny in a corner nor clipped at an edge."""
+weight = 1
+reference = "target"
+domain = "fidelity"

@@ -20,6 +20,8 @@ WASD
 
 # Tooling.
 tcab
+
+# Fathom (pacman) reference mockup class names.
 bioluminescent
 cooldown
 Flarefish
@@ -50,3 +52,15 @@ unitless
 heatbar
 heatlabel
 heatmeter
+
+# Asset-generation: deep-sea pursuer sprites and the drawing tool.
+gloamfin
+lanternjaw
+anglerfish
+bioluminescent
+echolocation
+eyelessness
+abyssal
+rgba
+rrggbb
+rrggbbaa

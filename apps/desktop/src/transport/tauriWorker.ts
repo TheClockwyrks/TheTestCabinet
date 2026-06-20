@@ -93,7 +93,12 @@ export function createTauriWorker(): WorkerClient {
     // keeps a run-store, so persist the review there first, then publish by id —
     // the store is the core's system of record for a produced run's review.
     publish: async (id, review) => {
-      await api.saveReview(id, review.ratings, review.writeup, review.checklist);
+      await api.saveReview(
+        id,
+        review.ratings,
+        review.writeup,
+        review.checklist,
+      );
       return api.publishRun(id);
     },
 
@@ -103,5 +108,9 @@ export function createTauriWorker(): WorkerClient {
     // id then the requested `<proof-id>.<ext>` file.
     proofMediaUrl: (runId, file) =>
       `tcab-proof://localhost/${encodeURIComponent(runId)}/${encodeURIComponent(file)}`,
+    // Asset-generation run media is served over the desktop shell's
+    // `tcab-asset://` scheme (see `crates/desktop/src/asset.rs`), mirroring proofs.
+    assetMediaUrl: (runId, file) =>
+      `tcab-asset://localhost/${encodeURIComponent(runId)}/${encodeURIComponent(file)}`,
   };
 }

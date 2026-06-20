@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    ArtifactCollection, BrowserRenderer, BuildValidator, ReferenceRenderer, StepResult,
+    ArtifactCollection, BrowserRenderer, DispatchValidator, ReferenceRenderer, StepResult,
     TestCaseCatalog, Validator,
 };
 
@@ -46,7 +46,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     let artifacts = ArtifactCollection {
         repo_path: args.implementation,
     };
-    let validator = BuildValidator::new(crate::work_dir::staging_dir(None).join("screenshots"));
+    let validator = DispatchValidator::new(crate::work_dir::staging_dir(None).join("screenshots"));
     let summary = validator
         .validate(&test_case, &artifacts, &references, &proofs)
         .context("validation failed")?;
@@ -79,6 +79,24 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
                 let detail = proof.detail.as_deref().unwrap_or("missing");
                 println!("  proof {}: missing ({detail})", proof.id);
             }
+        }
+    }
+    if let Some(asset) = &summary.asset {
+        println!("  asset: {} operations regenerated", asset.operation_count);
+        println!("  target fidelity: {:.2}", asset.target_fidelity);
+        match asset.cheat_divergence {
+            Some(divergence) => println!(
+                "  cheat divergence: {divergence:.2}{}",
+                if divergence > 0.05 {
+                    " (drew outside the tool)"
+                } else {
+                    ""
+                }
+            ),
+            None => println!("  cheat divergence: unmeasured"),
+        }
+        if let Some(detail) = &asset.detail {
+            println!("  asset detail: {detail}");
         }
     }
 

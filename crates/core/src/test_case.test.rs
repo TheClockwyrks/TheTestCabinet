@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use super::{BuildCommands, TestCaseCatalog};
+use super::{BuildCommands, TestCaseCatalog, TestType};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -45,10 +45,131 @@ fn build_table_sets_the_commands() {
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
         version.build,
-        BuildCommands {
+        Some(BuildCommands {
             install: "pnpm install --frozen-lockfile".to_string(),
             build: "pnpm build".to_string(),
-        }
+        })
+    );
+    assert_eq!(version.test_type, TestType::EndToEnd);
+}
+
+// --- asset-generation resolution -------------------------------------------
+
+/// A complete, valid asset-generation manifest. Tests clone this and mutate one
+/// thing to exercise a single validation rule.
+const VALID_ASSET_MANIFEST: &str = "\
+name = \"Sprite\"\n\
+difficulty = \"medium\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n\
+[canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"draw\"\noperations = \"schemas/operations.json\"\npreview = \"canvas.png\"\n\
+[output]\nactions = \"actions.json\"\n\
+[[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[variant]]\nslug = \"base\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sprite is.\"\n";
+
+/// Write an asset-generation version with all the files a valid one needs
+/// (prompt, seeded brief, operations schema, target image) and the given
+/// manifest, then return the catalog.
+fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = dir.path().join("sprite/v1.0.0");
+    fs::create_dir_all(version.join("specs")).expect("specs dir");
+    fs::create_dir_all(version.join("schemas")).expect("schemas dir");
+    fs::create_dir_all(version.join("reference")).expect("reference dir");
+    fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
+    fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
+    fs::write(version.join("schemas/operations.json"), "{}").expect("schema");
+    fs::write(version.join("reference/target.png"), b"\x89PNG").expect("target");
+    fs::write(version.join("test-case.toml"), manifest).expect("manifest");
+    let catalog = TestCaseCatalog::new(dir.path());
+    (dir, catalog)
+}
+
+#[test]
+fn asset_generation_case_resolves_its_tables() {
+    let (_dir, catalog) = asset_catalog(VALID_ASSET_MANIFEST);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    assert_eq!(version.test_type, TestType::AssetGeneration);
+    assert!(version.build.is_none(), "asset-gen has no build");
+    let canvas = version.canvas.as_ref().expect("canvas");
+    assert_eq!((canvas.width, canvas.height), (64, 64));
+    let tool = version.tool.as_ref().expect("tool");
+    assert_eq!(tool.binary, "draw");
+    assert_eq!(
+        version.output.as_ref().expect("output").actions.to_str(),
+        Some("actions.json")
+    );
+    // The operations schema is seeded like any other spec so the model can read it.
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest.to_str() == Some("schemas/operations.json")),
+        "operations schema is seeded as a common spec"
+    );
+}
+
+#[test]
+fn asset_generation_rejects_a_build_table() {
+    let manifest = format!("{VALID_ASSET_MANIFEST}[build]\ninstall = \"x\"\nbuild = \"y\"\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [build] table on an asset-gen case is rejected");
+    assert!(format!("{err}").contains("no [build] table"), "got: {err}");
+}
+
+#[test]
+fn asset_generation_requires_canvas_tool_output() {
+    // Drop the [output] table: resolution must fail.
+    let manifest = VALID_ASSET_MANIFEST.replace("[output]\nactions = \"actions.json\"\n", "");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("missing [output] is rejected");
+    assert!(
+        format!("{err}").contains("[output] table is required"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn asset_generation_rejects_checks() {
+    let manifest = format!("{VALID_ASSET_MANIFEST}[[check]]\nview = \"target\"\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [[check]] on an asset-gen case is rejected");
+    assert!(format!("{err}").contains("no [[check]]"), "got: {err}");
+}
+
+#[test]
+fn asset_generation_requires_a_single_target_reference() {
+    // Rename the only reference's view away from `target`.
+    let manifest = VALID_ASSET_MANIFEST.replace("view = \"target\"", "view = \"goal\"");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a non-`target` reference is rejected");
+    assert!(format!("{err}").contains("view = \"target\""), "got: {err}");
+}
+
+#[test]
+fn end_to_end_rejects_asset_tables() {
+    // An end-to-end case (the default type) that declares a [canvas] is a mistake.
+    let (_dir, catalog) = catalog_with_manifest(
+        "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n[canvas]\nwidth = 8\nheight = 8",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("asset tables on an e2e case are rejected");
+    assert!(
+        format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
     );
 }
 
@@ -193,11 +314,10 @@ fn a_review_item_naming_an_undeclared_domain_is_rejected() {
 #[test]
 fn a_case_with_no_domains_is_rejected() {
     // `catalog_with_files` supplies the whole manifest, so we can omit domains.
-    let manifest = format!(
-        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[variant]]\nslug = \"base\"\n"
-    );
+        .to_string();
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -210,13 +330,12 @@ fn a_case_with_no_domains_is_rejected() {
 
 #[test]
 fn resolves_domains_with_humanized_default_names() {
-    let manifest = format!(
-        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[variant]]\nslug = \"base\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n\
          [[domain]]\nid = \"versus\"\nname = \"Versus Mode\"\ndescription = \"Two-player play.\"\n"
-    );
+        .to_string();
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(version.domains.len(), 2);

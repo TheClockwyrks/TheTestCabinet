@@ -24,6 +24,7 @@ fn sample_record() -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
+            test_type: crate::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
@@ -58,6 +59,7 @@ fn sample_record() -> RunRecord {
             build: None,
             checks: vec![],
             proofs: vec![],
+            asset: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

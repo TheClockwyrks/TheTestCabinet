@@ -48,12 +48,31 @@ struct Manifest {
     /// [`default_max_runtime_seconds`] when omitted so a run is never unbounded.
     #[serde(default = "default_max_runtime_seconds")]
     max_runtime_seconds: u64,
+    /// The test type this case belongs to. Defaults to
+    /// [`TestType::EndToEnd`] so every existing manifest — none of which declares
+    /// a `type` — keeps resolving unchanged. An asset-generation case declares
+    /// `type = "asset-generation"`. The type selects which of the tables below are
+    /// required and which are forbidden.
+    #[serde(default, rename = "type")]
+    test_type: TestType,
     /// The commands the validator runs to build the produced implementation as a
-    /// static site (the `[build]` table). **Required**: a case must state both
-    /// commands explicitly, so absence is rejected at resolution rather than
-    /// defaulted. Modeled as `Option` only to detect omission and report it.
+    /// static site (the `[build]` table). **Required for an end-to-end case** and
+    /// **forbidden for any other type**, so its presence is validated against
+    /// [`Self::test_type`] at resolution rather than defaulted.
     #[serde(default)]
     build: Option<ManifestBuild>,
+    /// The image an asset-generation case's model draws on (the `[canvas]`
+    /// table). Required for asset-generation, forbidden otherwise.
+    #[serde(default)]
+    canvas: Option<ManifestCanvas>,
+    /// The drawing tool an asset-generation case exposes (the `[tool]` table).
+    /// Required for asset-generation, forbidden otherwise.
+    #[serde(default)]
+    tool: Option<ManifestTool>,
+    /// Where an asset-generation run's recorded action log is collected (the
+    /// `[output]` table). Required for asset-generation, forbidden otherwise.
+    #[serde(default)]
+    output: Option<ManifestOutput>,
     /// Specs seeded for **every** variant. Each maps a `source` inside the
     /// version folder to a `dest` in the run's workspace. Declared as repeated
     /// `[[spec]]` tables.
@@ -119,6 +138,43 @@ struct ManifestBuild {
     install: String,
     /// Command that produces the static build (for example `npm run build`).
     build: String,
+}
+
+/// The `[canvas]` table of an asset-generation case: the fixed image the model
+/// draws on. Fixing it keeps runs comparable, the way an end-to-end build
+/// interface does.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestCanvas {
+    /// Canvas width in pixels.
+    width: u32,
+    /// Canvas height in pixels.
+    height: u32,
+    /// Initial canvas state: `transparent` or a hex color.
+    #[serde(default = "default_background")]
+    background: String,
+}
+
+/// The `[tool]` table of an asset-generation case: the drawing binary and the
+/// paths it reads and writes. The binary is the only channel for drawing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestTool {
+    /// The drawing binary available in the run environment (for example `draw`).
+    binary: String,
+    /// The JSON Schema of the operations the binary exposes, relative to the
+    /// version folder. Seeded into the run so the model can read it.
+    operations: PathBuf,
+    /// The run-workspace-relative path the binary re-renders the current image to
+    /// after each call, so the model can read its progress.
+    preview: PathBuf,
+}
+
+/// The `[output]` table of an asset-generation case: where the recorded action
+/// log — the authoritative output of the run — is collected.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestOutput {
+    /// The run-workspace-relative path of the ordered record of every operation
+    /// the model issued.
+    actions: PathBuf,
 }
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
@@ -272,6 +328,11 @@ struct ManifestDomain {
 /// The manifest file name expected in every version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
 
+/// The run-workspace-relative path the orchestrator seeds an asset-generation
+/// run's canvas configuration to. The `draw` binary reads it from here by
+/// default, so a model's `draw apply` calls need no canvas flags.
+pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
+
 /// A test case: a single game a model is asked to build, identified by a stable
 /// slug and offering one or more independently versioned revisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +342,26 @@ pub struct TestCase {
     pub slug: String,
     /// The versions available for this test case.
     pub versions: Vec<String>,
+}
+
+/// The type of a test case: which class of capability it measures and which
+/// manifest tables it declares.
+///
+/// Today two types exist in code: the original [`Self::EndToEnd`] (build a
+/// working program) and [`Self::AssetGeneration`] (drive a drawing tool toward a
+/// target image). The type is the explicit discriminator everything branches on
+/// — resolution, validation, the run record, and the UI — rather than being
+/// inferred from which tables a manifest happens to declare. It defaults to
+/// [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TestType {
+    /// Build a working program judged by running it (the only type until now).
+    #[default]
+    EndToEnd,
+    /// Produce a graphical asset by driving a drawing tool one operation at a
+    /// time; the recorded operations are the authoritative output.
+    AssetGeneration,
 }
 
 /// The kind of a piece of media — used for both reference media and proof
@@ -413,6 +494,45 @@ pub struct BuildCommands {
     pub install: String,
     /// Command that produces the static build.
     pub build: String,
+}
+
+/// The resolved `[canvas]` of an asset-generation case: the fixed image the
+/// model draws on. `background` is kept as the manifest string (validated to
+/// parse) so the resolved version stays serializable without depending on the
+/// drawing library's color type; the validator re-parses it when it regenerates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasSpec {
+    /// Canvas width in pixels.
+    pub width: u32,
+    /// Canvas height in pixels.
+    pub height: u32,
+    /// Initial canvas state: `transparent` or a hex color.
+    pub background: String,
+}
+
+/// The resolved `[tool]` of an asset-generation case: the drawing binary and the
+/// run-relative paths it reads and writes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolSpec {
+    /// The drawing binary available in the run environment.
+    pub binary: String,
+    /// The run-workspace-relative path of the seeded operations JSON Schema. The
+    /// schema is seeded as a common spec (see [`TestCaseVersion::common_specs`]),
+    /// so this names where the model reads it.
+    pub operations: PathBuf,
+    /// The run-workspace-relative path the binary re-renders the current image to.
+    pub preview: PathBuf,
+}
+
+/// The resolved `[output]` of an asset-generation case: where the recorded
+/// action log is collected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputSpec {
+    /// The run-workspace-relative path of the recorded action log.
+    pub actions: PathBuf,
 }
 
 /// A named build target of a test case.
@@ -640,9 +760,29 @@ pub struct TestCaseVersion {
     /// override it (see [`crate::RunRequest::max_runtime_override`]). Always
     /// positive, so a run is never unbounded.
     pub max_runtime_seconds: u64,
+    /// The test type this case belongs to, the discriminator validation and the
+    /// run record branch on.
+    #[serde(default)]
+    pub test_type: TestType,
     /// The commands the validator runs to build the produced implementation into
-    /// a served static site (from the manifest's `[build]` table).
-    pub build: BuildCommands,
+    /// a served static site (from the manifest's `[build]` table). `Some` for an
+    /// end-to-end case, `None` for any other type. Kept as a top-level optional
+    /// field (rather than nested under a type enum) so an end-to-end version's
+    /// serialized shape is unchanged apart from the new discriminator.
+    #[serde(default)]
+    pub build: Option<BuildCommands>,
+    /// The canvas an asset-generation case's model draws on. `Some` only for
+    /// asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canvas: Option<CanvasSpec>,
+    /// The drawing tool an asset-generation case exposes. `Some` only for
+    /// asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<ToolSpec>,
+    /// Where an asset-generation run's recorded action log is collected. `Some`
+    /// only for asset-generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<OutputSpec>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -863,20 +1003,40 @@ impl TestCaseCatalog {
             ));
         }
 
-        // The `[build]` table is required: a case must state exactly how its
-        // implementation is built rather than inheriting a default, so its absence
-        // is rejected here. The validator then runs the commands verbatim; a blank
-        // one would run nothing and silently skip a build step, so reject that too
-        // rather than letting a typo'd `[build]` table degrade the load check.
-        let build = manifest
-            .build
-            .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
-        if build.install.trim().is_empty() {
-            return Err(invalid("build.install must not be empty".to_string()));
-        }
-        if build.build.trim().is_empty() {
-            return Err(invalid("build.build must not be empty".to_string()));
-        }
+        // The test type selects which tables are required and which are
+        // forbidden. The `[build]` table is required for — and only for — an
+        // end-to-end case: it must state exactly how its implementation is built
+        // rather than inheriting a default, so absence is rejected here. The
+        // validator then runs the commands verbatim; a blank one would silently
+        // skip a build step, so reject that too. An asset-generation case has no
+        // build at all (it produces an action log, not a static site), so a
+        // `[build]` table on one is a mistake worth rejecting rather than ignoring.
+        let test_type = manifest.test_type;
+        let build = match test_type {
+            TestType::EndToEnd => {
+                let build = manifest
+                    .build
+                    .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
+                if build.install.trim().is_empty() {
+                    return Err(invalid("build.install must not be empty".to_string()));
+                }
+                if build.build.trim().is_empty() {
+                    return Err(invalid("build.build must not be empty".to_string()));
+                }
+                Some(BuildCommands {
+                    install: build.install,
+                    build: build.build,
+                })
+            }
+            TestType::AssetGeneration => {
+                if manifest.build.is_some() {
+                    return Err(invalid(
+                        "an asset-generation case declares no [build] table".to_string(),
+                    ));
+                }
+                None
+            }
+        };
 
         // Scoring domains: a reviewer rates each independently and the run's
         // overall rating is the worst across them, so a case must declare at least
@@ -936,6 +1096,95 @@ impl TestCaseCatalog {
         for spec in &manifest.specs {
             common_specs.push(resolve_spec(spec)?);
         }
+
+        // Resolve the asset-generation tables (`[canvas]`, `[tool]`, `[output]`).
+        // They are required for — and only for — an asset-generation case; on an
+        // end-to-end case they are a mistake. The operations schema the tool
+        // exposes is seeded like any other spec (appended to `common_specs`) so
+        // the model can read it, while the preview and action-log paths are
+        // run-relative destinations the binary writes (not seeded), validated only
+        // to stay inside the workspace.
+        let (canvas, tool, output) = match test_type {
+            TestType::EndToEnd => {
+                if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
+                {
+                    return Err(invalid(
+                        "[canvas], [tool], and [output] are only valid for an asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                (None, None, None)
+            }
+            TestType::AssetGeneration => {
+                let canvas = manifest
+                    .canvas
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [canvas] table is required".to_string()))?;
+                if canvas.width == 0 || canvas.height == 0 {
+                    return Err(invalid(
+                        "canvas width and height must be greater than zero".to_string(),
+                    ));
+                }
+                test_cabinet_draw::Background::parse(&canvas.background).map_err(|err| {
+                    invalid(format!("canvas background `{}`: {err}", canvas.background))
+                })?;
+
+                let tool = manifest
+                    .tool
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [tool] table is required".to_string()))?;
+                if tool.binary.trim().is_empty() {
+                    return Err(invalid("tool.binary must not be empty".to_string()));
+                }
+                // The operations schema is an authored file inside the version
+                // folder, seeded into the run at the same relative path so the
+                // model reads it as `schemas/operations.json`.
+                let operations_source = resolve_inside(&tool.operations, "tool operations")?;
+                if !operations_source.is_file() {
+                    return Err(invalid(format!(
+                        "tool operations `{}` does not exist",
+                        tool.operations.display()
+                    )));
+                }
+                if escapes_folder(&tool.preview) {
+                    return Err(invalid(format!(
+                        "tool preview `{}` escapes the run workspace",
+                        tool.preview.display()
+                    )));
+                }
+                common_specs.push(SpecFile {
+                    source_path: operations_source,
+                    dest: tool.operations.clone(),
+                });
+
+                let output = manifest
+                    .output
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [output] table is required".to_string()))?;
+                if escapes_folder(&output.actions) {
+                    return Err(invalid(format!(
+                        "output actions `{}` escapes the run workspace",
+                        output.actions.display()
+                    )));
+                }
+
+                (
+                    Some(CanvasSpec {
+                        width: canvas.width,
+                        height: canvas.height,
+                        background: canvas.background.clone(),
+                    }),
+                    Some(ToolSpec {
+                        binary: tool.binary.clone(),
+                        operations: tool.operations.clone(),
+                        preview: tool.preview.clone(),
+                    }),
+                    Some(OutputSpec {
+                        actions: output.actions.clone(),
+                    }),
+                )
+            }
+        };
 
         // Resolve a starter workspace directory into the list of files it seeds.
         // The directory must exist inside the version folder; each file's `dest`
@@ -1278,6 +1527,19 @@ impl TestCaseCatalog {
             for proof in common_proofs.iter().chain(proofs.iter()) {
                 claim(proof.dest.clone(), "proof")?;
             }
+            // For an asset-generation case the drawing binary writes the preview
+            // and the action log, and the orchestrator seeds the canvas config;
+            // none may collide with a seeded file. (The operations schema is
+            // already claimed above — it is seeded as a common spec.)
+            if let Some(tool) = &tool {
+                claim(tool.preview.clone(), "tool preview")?;
+            }
+            if let Some(output) = &output {
+                claim(output.actions.clone(), "action log")?;
+            }
+            if test_type == TestType::AssetGeneration {
+                claim(PathBuf::from(ASSET_CONFIG_DEST), "canvas config")?;
+            }
 
             let mut review_items = Vec::with_capacity(variant.review_items.len());
             for item in &variant.review_items {
@@ -1340,6 +1602,40 @@ impl TestCaseCatalog {
             });
         }
 
+        // An asset-generation case has no automated checks (it has no served
+        // build to drive); its single fidelity/divergence signal is computed by
+        // the validator from the regenerated image. Reject declared checks rather
+        // than silently ignoring them. Its one reference is the `target` the
+        // regenerated image is scored against: require exactly that — a single
+        // common static-image reference named `target` — so the fidelity baseline
+        // is unambiguous and there is no browser-rendered reference to render.
+        if test_type == TestType::AssetGeneration {
+            if !manifest.check.is_empty() {
+                return Err(invalid(
+                    "an asset-generation case declares no [[check]]".to_string(),
+                ));
+            }
+            let only_target = matches!(
+                common_references.as_slice(),
+                [single] if single.view == "target" && single.kind == ReferenceKind::Image
+            );
+            if !only_target {
+                return Err(invalid(
+                    "an asset-generation case must declare exactly one [[reference]] with \
+                     view = \"target\" and a static image `media`"
+                        .to_string(),
+                ));
+            }
+            if variants
+                .iter()
+                .any(|variant| !variant.references.is_empty())
+            {
+                return Err(invalid(
+                    "an asset-generation case declares no variant-specific references".to_string(),
+                ));
+            }
+        }
+
         // Every check must name a reference view that resolves for **every**
         // variant — either a common reference or one each variant declares — so
         // its baseline can always be rendered whichever variant runs. This keeps
@@ -1379,10 +1675,11 @@ impl TestCaseCatalog {
             root,
             prompt_path,
             max_runtime_seconds: manifest.max_runtime_seconds,
-            build: BuildCommands {
-                install: build.install,
-                build: build.build,
-            },
+            test_type,
+            build,
+            canvas,
+            tool,
+            output,
             common_specs,
             common_workspace,
             init: manifest.init,
@@ -1466,6 +1763,12 @@ fn version_key(version: &str) -> Vec<u64> {
 /// can override it per invocation.
 fn default_max_runtime_seconds() -> u64 {
     3600
+}
+
+/// The default `[canvas] background` applied when an asset-generation manifest
+/// omits it: a fully transparent canvas.
+fn default_background() -> String {
+    "transparent".to_string()
 }
 
 /// Recursively enumerate the files under a workspace directory into

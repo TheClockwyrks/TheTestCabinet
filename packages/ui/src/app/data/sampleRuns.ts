@@ -14,6 +14,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "pong",
       testCaseVersion: "v1.0.0",
+      testType: "end-to-end",
       variant: "base",
       harnessSlug: "codex",
       harnessVersion: "0.139.0",
@@ -41,8 +42,20 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "title", name: "Title", reached: true, similarity: 0.969, detail: null },
-        { view: "rally", name: "Rally", reached: true, similarity: 0.882, detail: null },
+        {
+          view: "title",
+          name: "Title",
+          reached: true,
+          similarity: 0.969,
+          detail: null,
+        },
+        {
+          view: "rally",
+          name: "Rally",
+          reached: true,
+          similarity: 0.882,
+          detail: null,
+        },
       ],
       proofs: [],
     },
@@ -59,6 +72,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "carom",
       testCaseVersion: "v1.2.0",
+      testType: "end-to-end",
       variant: "frenzy",
       harnessSlug: "claude",
       harnessVersion: "2.1.0",
@@ -87,9 +101,27 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "menu", name: "Menu", reached: true, similarity: 0.941, detail: null },
-        { view: "match", name: "Match", reached: true, similarity: 0.873, detail: null },
-        { view: "spin", name: "Spin", reached: true, similarity: 0.79, detail: null },
+        {
+          view: "menu",
+          name: "Menu",
+          reached: true,
+          similarity: 0.941,
+          detail: null,
+        },
+        {
+          view: "match",
+          name: "Match",
+          reached: true,
+          similarity: 0.873,
+          detail: null,
+        },
+        {
+          view: "spin",
+          name: "Spin",
+          reached: true,
+          similarity: 0.79,
+          detail: null,
+        },
       ],
       proofs: [],
     },
@@ -106,6 +138,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "phalanx",
       testCaseVersion: "v0.9.0",
+      testType: "end-to-end",
       variant: "base",
       harnessSlug: "opencode",
       harnessVersion: "0.42.1",
@@ -133,7 +166,13 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "wave", name: "Wave", reached: true, similarity: 0.704, detail: null },
+        {
+          view: "wave",
+          name: "Wave",
+          reached: true,
+          similarity: 0.704,
+          detail: null,
+        },
         {
           view: "game-over",
           name: "Game Over",
@@ -157,6 +196,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "serpentine",
       testCaseVersion: "v1.0.0",
+      testType: "end-to-end",
       variant: "multi",
       harnessSlug: "goose",
       harnessVersion: "1.5.2",
@@ -185,7 +225,13 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "board", name: "Board", reached: true, similarity: 0.915, detail: null },
+        {
+          view: "board",
+          name: "Board",
+          reached: true,
+          similarity: 0.915,
+          detail: null,
+        },
       ],
       proofs: [],
     },
@@ -202,6 +248,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "brickfall",
       testCaseVersion: "v0.4.0",
+      testType: "end-to-end",
       variant: "base",
       harnessSlug: "cline",
       harnessVersion: "3.2.0",
@@ -252,6 +299,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "cascade",
       testCaseVersion: "v1.1.0",
+      testType: "end-to-end",
       variant: "frenzy",
       harnessSlug: "kilo",
       harnessVersion: "0.7.4",
@@ -279,7 +327,13 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "well", name: "Well", reached: true, similarity: 0.86, detail: null },
+        {
+          view: "well",
+          name: "Well",
+          reached: true,
+          similarity: 0.86,
+          detail: null,
+        },
         {
           view: "line-clear",
           name: "Line Clear",
@@ -303,6 +357,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "belt",
       testCaseVersion: "v0.8.0",
+      testType: "end-to-end",
       variant: "base",
       harnessSlug: "antigravity",
       harnessVersion: null,
@@ -357,6 +412,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "pong",
       testCaseVersion: "v1.0.0",
+      testType: "end-to-end",
       variant: "frenzy",
       harnessSlug: "pi",
       harnessVersion: "0.3.1",
@@ -385,7 +441,13 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "title", name: "Title", reached: true, similarity: 0.844, detail: null },
+        {
+          view: "title",
+          name: "Title",
+          reached: true,
+          similarity: 0.844,
+          detail: null,
+        },
       ],
       proofs: [],
     },
@@ -402,6 +464,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "carom",
       testCaseVersion: "v1.2.0",
+      testType: "end-to-end",
       variant: "base",
       harnessSlug: "codex",
       harnessVersion: "0.139.0",
@@ -429,8 +492,20 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "menu", name: "Menu", reached: true, similarity: 0.92, detail: null },
-        { view: "match", name: "Match", reached: true, similarity: 0.851, detail: null },
+        {
+          view: "menu",
+          name: "Menu",
+          reached: true,
+          similarity: 0.92,
+          detail: null,
+        },
+        {
+          view: "match",
+          name: "Match",
+          reached: true,
+          similarity: 0.851,
+          detail: null,
+        },
       ],
       proofs: [],
     },
@@ -447,6 +522,7 @@ export const sampleRuns: RunRecord[] = [
     subject: {
       testCaseSlug: "carom",
       testCaseVersion: "v1.2.0",
+      testType: "end-to-end",
       variant: "multi",
       harnessSlug: "goose",
       harnessVersion: "1.5.2",
@@ -475,14 +551,33 @@ export const sampleRuns: RunRecord[] = [
       install: { command: "npm ci", succeeded: true, detail: null },
       build: { command: "npm run build", succeeded: true, detail: null },
       checks: [
-        { view: "menu", name: "Menu", reached: true, similarity: 0.889, detail: null },
-        { view: "match", name: "Match", reached: true, similarity: 0.812, detail: null },
-        { view: "spin", name: "Spin", reached: true, similarity: 0.741, detail: null },
+        {
+          view: "menu",
+          name: "Menu",
+          reached: true,
+          similarity: 0.889,
+          detail: null,
+        },
+        {
+          view: "match",
+          name: "Match",
+          reached: true,
+          similarity: 0.812,
+          detail: null,
+        },
+        {
+          view: "spin",
+          name: "Spin",
+          reached: true,
+          similarity: 0.741,
+          detail: null,
+        },
       ],
       proofs: [],
     },
     links: {
-      sourceRepo: "https://github.com/the-test-cabinet/sample-carom-goose-multi",
+      sourceRepo:
+        "https://github.com/the-test-cabinet/sample-carom-goose-multi",
       playableBuild: "https://builds.testcabinet.ai/sample-carom-goose-multi/",
     },
     status: { state: "completed", detail: null },

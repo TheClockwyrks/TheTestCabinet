@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
-    BuildValidator, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
+    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator,
     FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, Orchestrator,
     PrerenderedReferenceRenderer, RunRecord, RunRequest, TestCaseCatalog, materialize_version,
 };
@@ -115,7 +115,7 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
-        validator: BuildValidator::new(screenshot_dir),
+        validator: DispatchValidator::new(screenshot_dir),
         // The worker only runs; publishing is a separate, explicit operation
         // reached through the publish endpoint.
         publisher: NoopPublisher,

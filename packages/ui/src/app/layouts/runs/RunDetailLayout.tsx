@@ -72,9 +72,14 @@ export function RunDetailLayout({
     ? worstRating(review.ratings.map((r) => r.rating))
     : null;
 
+  // An asset-generation run produces a static asset, not a playable build, so it
+  // has no Play tab; its result is shown on the Verdict tab instead.
+  const isAssetGen = run.subject.testType === "asset-generation";
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
-    { key: "play", label: "Play", to: routes.runPlay(run.id) },
+    ...(isAssetGen
+      ? []
+      : [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]),
     { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
     { key: "proof", label: "Proof", to: routes.runProof(run.id) },
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },

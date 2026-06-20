@@ -1,0 +1,42 @@
+[package]
+name = "test-cabinet-draw"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The drawing tool for asset-generation test cases. The library is the single
+# source of the drawing logic: the `draw` binary uses it in the run container to
+# turn the model's operations into pixels, and `crates/core` links the same
+# library to regenerate the scored image from the recorded action log. One
+# implementation means the in-container preview and the post-run regeneration can
+# never diverge — which is what makes cheat detection meaningful.
+[lib]
+name = "test_cabinet_draw"
+path = "src/lib.rs"
+
+# The CLI the model invokes inside the run container. Gated behind the `cli`
+# feature (on by default) so that `crates/core`, which depends on this crate with
+# `default-features = false`, links only the pure drawing library and never pulls
+# in clap, serde_json, or schemars.
+[[bin]]
+name = "draw"
+path = "src/bin/draw.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:serde_json", "dep:schemars"]
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+# Pure-Rust PNG encoder for the rendered image, matching the decoder the
+# validator already uses so an encoded image round-trips through it cleanly.
+png = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

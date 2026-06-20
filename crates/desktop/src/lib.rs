@@ -12,6 +12,7 @@
 //! invoked both by the binary (`src/main.rs`) and, on mobile targets, by the
 //! generated platform entry point.
 
+mod asset;
 mod commands;
 mod config;
 mod events;
@@ -86,6 +87,11 @@ pub fn run() {
         // (see `proof`). Each file is read from the run's collected tree per request.
         .register_uri_scheme_protocol(proof::SCHEME, |_app, request| {
             proof::handle_request(&request)
+        })
+        // Serve asset-generation runs' media (regenerated image, target, final
+        // preview, action log) to the webview for an unpublished run (see `asset`).
+        .register_uri_scheme_protocol(asset::SCHEME, |_app, request| {
+            asset::handle_request(&request)
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
