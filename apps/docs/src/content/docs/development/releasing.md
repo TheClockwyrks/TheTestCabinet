@@ -77,7 +77,7 @@ Per-run builds are served from Cloudflare Pages at their own `pages.dev`
 subdomain root (see [Site Hosting](/components/site/overview/#hosting) and
 [Results](/components/core/results/#publishing)); serving each at a root rather
 than a subpath keeps it playable exactly as the test case's
-[build interface](/components/core/test-cases/#design-requirements) requires.
+[build interface](/testing/end-to-end/overview/#design-requirements) requires.
 
 ## Gallery (Cloudflare Pages, one-time)
 

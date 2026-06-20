@@ -7,13 +7,13 @@
 //! variant. Rendering through Handlebars keeps absolute container paths out of
 //! the specifications themselves — they come from The Test Cabinet, not the
 //! authored spec — and lets a case word its own instruction. See
-//! `docs/test-cases.md#prompt-template`.
+//! `docs/testing/end-to-end/overview.md#prompt-template`.
 //!
 //! A spec whose source is a Handlebars template (a `.hbs` extension) is rendered
 //! the same way at seed time, so a spec can state facts that depend on the
 //! selected variant — for example which configuration this build is — without
 //! the authored text having to hedge about what a run "may" contain. A spec with
-//! any other extension is seeded verbatim. See `docs/test-cases.md#spec-templates`.
+//! any other extension is seeded verbatim. See `docs/testing/end-to-end/overview.md#spec-templates`.
 
 use std::path::Path;
 
@@ -27,7 +27,7 @@ use crate::test_case::{TestCaseVersion, Variant};
 ///
 /// These are the only variables a template may reference (rendering runs in
 /// strict mode, so an unknown reference is an error). They are documented for
-/// authors in `docs/test-cases.md#prompt-template`.
+/// authors in `docs/testing/end-to-end/overview.md#prompt-template`.
 #[derive(Debug, Serialize)]
 struct PromptContext<'a> {
     /// Absolute in-container path of the run workspace, where the seeded
@@ -48,7 +48,7 @@ struct PromptContext<'a> {
 /// what lets a specification stay free of container paths. A spec template sees
 /// only the selected variant and the version. These are the only variables it
 /// may reference (rendering runs in strict mode); they are documented for
-/// authors in `docs/test-cases.md#spec-templates`.
+/// authors in `docs/testing/end-to-end/overview.md#spec-templates`.
 #[derive(Debug, Serialize)]
 struct SpecContext<'a> {
     /// The exact test case version string (for example `v1.0.0`).

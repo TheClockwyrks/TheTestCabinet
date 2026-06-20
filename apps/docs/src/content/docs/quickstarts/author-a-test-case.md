@@ -5,7 +5,7 @@ title: Author a Test Case
 Scaffold a new test case (or a new version of an existing one). This is the
 short version; [Authoring a Test Case](/guides/authoring-a-test-case/) covers
 spec-writing and the rules in full, and
-[Test Cases](/components/core/test-cases/) is the authoritative schema.
+[Test Cases](/testing/end-to-end/overview/) is the authoritative schema.
 
 ## Layout
 
@@ -30,7 +30,7 @@ test-cases/<slug>/<version>/
    **screens** every other spec leans on.
 3. Decompose the spec into focused, seeded files that cross-reference each other
    **by name** (overview, playfield, physics, flow, plus mode specs). Keep them
-   [self-contained](/components/core/test-cases/#self-contained-specifications):
+   [self-contained](/testing/end-to-end/overview/#self-contained-specifications):
    no links outside the seeded set, no dependence on the reference source.
 4. Write `prompt.hbs` using only the documented template variables
    (`{{workspace}}`, `{{variant.*}}`, `{{#each specs}}`) — it renders in strict

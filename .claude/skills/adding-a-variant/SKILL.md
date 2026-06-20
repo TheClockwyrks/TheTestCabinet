@@ -15,7 +15,7 @@ without duplicating the shared specification. The chosen variant's slug is
 recorded in the run record.
 
 The authoritative schema for variants lives in
-[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md) (see its *Variants* and
+[`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md) (see its *Variants* and
 *Self-Contained Specifications* sections). Read it before starting; this skill is
 the practical procedure that sits on top of it.
 
@@ -138,7 +138,7 @@ review_item = [
 ]
 ```
 
-Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/test-cases.md`):
+Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/testing/end-to-end/overview.md`):
 
 - `spec` entries are **additive** on top of the common specs. Within one variant,
   no two seeded specs (common + own) may share a `dest`.
@@ -210,7 +210,7 @@ Force-re-ingest overwrites the stored version in place and is for
 while that version is unpublished; once a published run references the version
 it is immutable and a variant change requires a **new version** instead. See
 [`development/running.md`](../../../apps/docs/src/content/docs/development/running.md)
-and [`test-cases.md`](../../../apps/docs/src/content/docs/components/core/test-cases.md).
+and [`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md).
 
 ### 8. Commit
 

@@ -2,7 +2,7 @@
 title: Create a Variant
 ---
 
-Add a new playable [variant](/components/core/test-cases/#variants) (a
+Add a new playable [variant](/testing/end-to-end/overview/#variants) (a
 mode/configuration) to an existing version. The full procedure, including the
 self-containment rules, is in
 [Creating a Test Case Variant](/guides/creating-a-test-case-variant/); the

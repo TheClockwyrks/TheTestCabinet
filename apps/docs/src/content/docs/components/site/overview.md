@@ -13,7 +13,7 @@ reading their metrics and, above all, by playing them.
 The site is a fully **static** site with no backend, no accounts, and no database
 of its own. This keeps it cheap, durable, and trivially public, and mirrors the
 constraint placed on the games themselves (see
-[Test Cases](/components/core/test-cases/#design-requirements)). Any
+[Test Cases](/testing/end-to-end/overview/#design-requirements)). Any
 interactivity, such as filtering, is handled client-side. The built bundle is
 deployed to **Cloudflare Pages**, served at the project's custom domain
 ([testcabinet.ai](https://testcabinet.ai)). Cloudflare builds it directly from
@@ -40,7 +40,7 @@ backend. A backend deploy hook triggers a rebuild whenever the snapshot changes.
 
 The site presents published runs as a gallery that can be browsed by test case,
 model, and agent harness. Each run is attributed to the
-[variant](/components/core/test-cases/#variants) of the case it built, taken
+[variant](/testing/end-to-end/overview/#variants) of the case it built, taken
 from its [run record](/components/core/run-records/#subject). For each run it
 surfaces:
 

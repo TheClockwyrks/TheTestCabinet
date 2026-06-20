@@ -49,7 +49,7 @@ whether its store is ready.
 ### `POST /ingest`
 
 Trigger a scan of the repository checkout the backend ingests from. New or
-changed [test case versions](/components/core/test-cases/) are copied into the
+changed [test case versions](/testing/end-to-end/overview/) are copied into the
 backend's store, with each reference mockup rendered to a screenshot during
 ingest (see [Reference Rendering](#reference-rendering)). The scan is
 synchronous and reports what changed; an already-ingested, unchanged version is
@@ -69,7 +69,7 @@ The request body is optional JSON:
 exists for **development** iteration on a version no run has been published
 against; a version that published runs reference is immutable and must be
 revised by adding a new version, not re-ingested (see
-[Test Cases](/components/core/test-cases/)).
+[Test Cases](/testing/end-to-end/overview/)).
 
 Container images are **not** part of this API at all — they are distributed
 through a container registry and resolved by each runner directly from its own
@@ -80,7 +80,7 @@ The backend neither stores nor serves image references.
 
 These endpoints are how a runner resolves the definition it needs to seed and
 validate a run. They mirror the catalog and version model described in
-[Test Cases](/components/core/test-cases/), sourced from the backend's store
+[Test Cases](/testing/end-to-end/overview/), sourced from the backend's store
 rather than a local checkout.
 
 ### `GET /test-cases`

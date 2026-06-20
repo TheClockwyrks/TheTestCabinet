@@ -95,8 +95,12 @@ authoring conventions:
 
 - **Test cases:** [`test-cases/`](test-cases/) — each case is versioned
   (e.g. `test-cases/pong/v1.0.0/`) with its `test-case.toml` manifest, specs,
-  prompt, and reference mockups. The manifest format is documented at
-  [`components/core/test-cases.md`](apps/docs/src/content/docs/components/core/test-cases.md).
+  prompt, and reference mockups. The test types and their manifest formats are
+  documented under
+  [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
+  [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
+  manifest format is at
+  [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
 - **Models:** [`models/`](models/) — one `<model>.toml` + `<model>.md` per
   model. Add with `scripts/add-model.mjs`.
 - **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness

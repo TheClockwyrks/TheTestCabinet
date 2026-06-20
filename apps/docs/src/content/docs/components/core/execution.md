@@ -38,10 +38,10 @@ example by deleting files.
 
 Each run must be seeded into its own newly created git repository that contains
 the data a model needs to build the game: the selected variant's
-[workspace](/components/core/test-cases/#workspace) starter files, the specs of
+[workspace](/testing/end-to-end/overview/#workspace) starter files, the specs of
 the selected variant, the test case's assets, and the rendered reference
 screenshots that serve as visual targets. A run selects exactly one
-[variant](/components/core/test-cases/#variants), and the variant's specs are
+[variant](/testing/end-to-end/overview/#variants), and the variant's specs are
 seeded at their declared `dest` paths — the common specs plus that variant's own
 — rather than as a single specification at the repository root.
 
@@ -51,7 +51,7 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   possibility.
 - The seeded repository must begin from a clean initial commit with no upstream
   remote and no history beyond that commit.
-- The selected variant's [workspace](/components/core/test-cases/#workspace)
+- The selected variant's [workspace](/testing/end-to-end/overview/#workspace)
   starter files are seeded into the repository **root** first, before the specs,
   so the specification and reference screenshots land on top of a baseline
   project. They are copied verbatim. Resolution rejects any collision between a
@@ -61,7 +61,7 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   **rendered** with the selected variant and version while seeding, and the
   result lands at the spec's `dest`; every other spec is copied verbatim. This
   lets a spec state per-variant facts directly instead of hedging about what a run
-  might contain. See [Spec templates](/components/core/test-cases/#spec-templates).
+  might contain. See [Spec templates](/testing/end-to-end/overview/#spec-templates).
 - A test case's **reference screenshots are seeded** as visual targets so the
   model can see what each screen should look like. The reference **source**
   mockups are **not** seeded: handing over the mockup HTML/CSS would let a model
@@ -72,11 +72,11 @@ seeded at their declared `dest` paths — the common specs plus that variant's o
   these harness docs or to any file outside the seeded repository, because none
   of them exist inside the container. They may, however, point at the seeded
   reference screenshots. See
-  [Test Cases](/components/core/test-cases/#self-contained-specifications).
+  [Test Cases](/testing/end-to-end/overview/#self-contained-specifications).
 - The prompt is **not seeded** to disk. It is rendered from the version's
   `prompt.hbs` template — with the run's in-container workspace path and the
   selected variant's seeded spec paths — and handed directly to the harness as
-  its instruction. See [Prompt template](/components/core/test-cases/#prompt-template).
+  its instruction. See [Prompt template](/testing/end-to-end/overview/#prompt-template).
 
 The seeded repository is normally created on the host, copied into the run
 container, and torn down as part of a run, so its contents are never visible on
@@ -111,7 +111,7 @@ harness's most recently published version.
 
 ## Init
 
-A test case may declare an [init command](/components/core/test-cases/#init) that
+A test case may declare an [init command](/testing/end-to-end/overview/#init) that
 runs **inside the run container** once the seeded repository is mounted and the
 harness CLI is installed, and before the harness session begins. It is where a
 case prepares the workspace it shipped — typically installing its dependencies —

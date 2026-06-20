@@ -105,7 +105,7 @@ Schema: [`snapshot/run.schema.json`](https://docs.testcabinet.ai/schema/snapshot
 
 ## `cases/<slug>/<version>.json` — case metadata
 
-The site-facing slice of a [test case version](/components/core/test-cases/):
+The site-facing slice of a [test case version](/testing/end-to-end/overview/):
 what the gallery shows to frame a run — name, difficulty, tags,
 summary/description, variant labels, the declared checks (without their action
 lists), and a `references` array naming each rendered reference baseline by its

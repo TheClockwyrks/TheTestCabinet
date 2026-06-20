@@ -20,7 +20,7 @@ Like every other runner, the worker re-implements none of a run's behavior. It
 translates HTTP requests into core calls and streams the results back:
 
 - It accepts a request to run a test case — a version, a
-  [variant](/components/core/test-cases/#variants), a
+  [variant](/testing/end-to-end/overview/#variants), a
   [harness](/components/core/harnesses/), and a model — and drives the run
   through the core.
 - It surfaces the run's live [harness events](/components/core/events/) over the

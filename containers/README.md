@@ -36,9 +36,9 @@ root.
 
 The base image deliberately does **not** install the Playwright npm package or
 the Chromium browser binary. A test case that needs a browser provides Playwright
-as a dependency in its [workspace](/components/core/test-cases/#workspace) (for
+as a dependency in its [workspace](/testing/end-to-end/overview/#workspace) (for
 example a `package.json` pinning `playwright`) and installs it with the case's
-[init command](/components/core/test-cases/#init) (`npm install` then
+[init command](/testing/end-to-end/overview/#init) (`npm install` then
 `npx playwright install chromium`). This keeps browser tooling a visible,
 project-local dependency a model installs and uses through its own project,
 rather than a global tool a model has to know is already on the machine. Only the

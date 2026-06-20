@@ -4,7 +4,7 @@ title: Review a Run
 
 Every published run carries a hand-written [review](/components/core/results/#reviews)
 — a writeup and a rating, plus a verdict on each of the case's
-[reviewer-checklist](/components/core/test-cases/#manifest) items — authored after
+[reviewer-checklist](/testing/end-to-end/manifests/) items — authored after
 playing the build. Publishing refuses a run without one. The full workflow is in
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
 

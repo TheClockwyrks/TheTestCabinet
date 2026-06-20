@@ -15,8 +15,8 @@ window. See [Architecture](/components/architecture/).
 The core owns everything that happens during a run, and defines the data
 contracts the rest of the system is built around:
 
-- **[Test cases](/components/core/test-cases/)** — resolving a test case version
-  and its selected [variant](/components/core/test-cases/#variants), and reading
+- **[Test cases](/testing/end-to-end/overview/)** — resolving a test case version
+  and its selected [variant](/testing/end-to-end/overview/#variants), and reading
   the `test-case.toml` manifest that says what gets seeded, rendered, and checked.
 - **[Execution](/components/core/execution/)** — seeding a fresh git repository,
   running the harness inside an isolated container, and collecting the produced

@@ -25,7 +25,7 @@ further remote [workers](/components/worker/overview/).
 ## What it does
 
 - **Run test cases.** Configure a run — choosing a test case version, a
-  [variant](/components/core/test-cases/#variants), a
+  [variant](/testing/end-to-end/overview/#variants), a
   [harness](/components/core/harnesses/), and a model — and launch it, watching
   the live [harness event](/components/core/events/) stream as it progresses.
 - **Track runs in progress.** Return to any still-executing run from the Runs
@@ -35,7 +35,7 @@ further remote [workers](/components/worker/overview/).
   links to the finished run, and opening it dismisses the alert. Notifications
   are pushed from the runner (no polling): a remote worker streams them over SSE,
   the built-in local worker over a Tauri event.
-- **Read the specs.** Browse the [specification](/components/core/test-cases/) a
+- **Read the specs.** Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was actually asked for.
 - **Review runs.** Record a [review](/components/core/results/#reviews) — the

@@ -53,7 +53,7 @@ affect playability.
 
 A test case version may declare a **reviewer checklist** — a list of items the
 case author marked as things every reviewer must explicitly check (see the
-manifest's [`review_item`s](/components/core/test-cases/#manifest)). The checklist
+manifest's [`review_item`s](/testing/end-to-end/manifests/)). The checklist
 is the case's guarantee that the major requirements are verified by hand rather
 than left to whatever a reviewer happens to notice; it is **not** seeded into the
 run, so it never reaches the model.

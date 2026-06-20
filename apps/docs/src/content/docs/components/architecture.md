@@ -89,7 +89,7 @@ At a high level, launching a run must:
 - Select a test case version, an agent harness, and a model, resolving the
   version from the [backend](/components/backend/overview/).
 - Seed a fresh git repository with the selected
-  [variant](/components/core/test-cases/#variants)'s data.
+  [variant](/testing/end-to-end/overview/#variants)'s data.
 - Start a container and invoke the agent harness against the seeded repository.
 - Surface the harness's activity as a live stream of
   [harness events](/components/core/events/) while the run is in progress.

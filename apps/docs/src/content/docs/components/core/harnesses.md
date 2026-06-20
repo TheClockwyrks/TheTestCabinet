@@ -44,7 +44,7 @@ The run container ships **no agent harness**. The selected harness's CLI is
 installed into the running container at run time, just before the session, by
 running the manifest's `install` command — typically `npm install -g …` or a
 curl-piped installer. This is the same mechanism a test case uses to prepare its
-workspace with an [init command](/components/core/test-cases/#init), and it runs
+workspace with an [init command](/testing/end-to-end/overview/#init), and it runs
 just before init does (see [Harness install](/components/core/execution/#harness-install)).
 
 Installing at run time, rather than baking each harness into a container image,

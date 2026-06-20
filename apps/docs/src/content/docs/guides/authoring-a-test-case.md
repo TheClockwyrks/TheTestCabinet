@@ -4,7 +4,7 @@ title: Authoring a Test Case
 
 A test case is a single game a model is asked to build, so authoring one is
 mostly an exercise in writing a precise, **self-contained specification**. This
-guide is the end-to-end procedure. [Test Cases](/components/core/test-cases/) is
+guide is the end-to-end procedure. [Test Cases](/testing/end-to-end/overview/) is
 the authoritative schema — every manifest field, what is seeded, how templates
 render, and the rules enforced at resolution — and you should read it first.
 While doing the work, follow the `authoring-a-test-case` skill, which carries the
@@ -45,7 +45,7 @@ from the spec.
 
 ### 1. Choose the game and confirm it qualifies
 
-Every case must (see [Design Requirements](/components/core/test-cases/#design-requirements)):
+Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-requirements)):
 
 - be **inspired by but not a clone** of an existing game — original name, look,
   and assets;
@@ -86,7 +86,7 @@ This is the substance of the work. Two rules dominate:
   own: no links outside it, no common spec referencing a variant-only spec, and
   no dependence on the reference **source** mockups (you may point at the seeded
   **screenshots**). See
-  [Self-Contained Specifications](/components/core/test-cases/#self-contained-specifications).
+  [Self-Contained Specifications](/testing/end-to-end/overview/#self-contained-specifications).
 - **Be precise and testable.** Every visual detail a model needs — palette,
   layout, measurements, screen contents — must be written into the spec in real
   numbers; the screenshots illustrate the target, they do not replace it. Vague
@@ -100,7 +100,7 @@ documented variables — `{{workspace}}`, `{{variant.slug}}`/`{{variant.name}}`/
 `{{variant.description}}`, and `{{#each specs}}` — and any other reference is a
 render error. Keep run-specific detail (container paths, which variant) in the
 prompt, never in the specs, which is exactly why the prompt carries `/work` and a
-spec never does. See [Prompt template](/components/core/test-cases/#prompt-template).
+spec never does. See [Prompt template](/testing/end-to-end/overview/#prompt-template).
 
 ### 5. Author the reference mockups
 
@@ -113,7 +113,7 @@ hand-create the screenshots.
 
 ### 6. Write the manifest and declare variants
 
-Author `test-case.toml` per the [schema](/components/core/test-cases/#manifest):
+Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
 
 - **Metadata** — `name`, `difficulty` (`easy`/`medium`/`hard`), and `tags` are
   all required (`tags` may be empty); they are site-facing and have no bearing on

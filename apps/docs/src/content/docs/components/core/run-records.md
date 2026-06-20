@@ -31,7 +31,7 @@ A run record must capture at least the following.
 ### Subject
 
 - The test case slug and the exact test case version that was run.
-- The slug of the [variant](/components/core/test-cases/#variants) that was run
+- The slug of the [variant](/testing/end-to-end/overview/#variants) that was run
   — exactly one variant runs per run, and recording it attributes the result to
   a specific build of the case.
 - The agent harness slug and, where available, the harness version.

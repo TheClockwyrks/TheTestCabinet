@@ -132,7 +132,7 @@ Forced re-ingest overwrites the stored version in place and is a
 **development-only** convenience for iterating on a version no run has been
 published against. Once a published run references a version it is immutable —
 revise by creating a **new version** instead, never by editing and re-ingesting
-the published one (see [Test Cases](/components/core/test-cases/)).
+the published one (see [Test Cases](/testing/end-to-end/overview/)).
 
 ## 3. Start the worker
 

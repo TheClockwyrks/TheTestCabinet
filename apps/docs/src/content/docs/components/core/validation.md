@@ -55,7 +55,7 @@ targets.
 
 A test case can ask the build to produce **proof of implementation** — a
 screenshot or short `.mp4` written to a known path as evidence that a feature
-works (see [`[[proof]]`](/components/core/test-cases/#manifest)). Validation does
+works (see [`[[proof]]`](/testing/end-to-end/manifests/)). Validation does
 not judge a proof's contents; it records, for each declared proof, whether the
 file turned up in the produced tree and is non-empty. A proof that the build did
 not produce is recorded as **missing** rather than failing the run.

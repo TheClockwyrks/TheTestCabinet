@@ -36,7 +36,7 @@ Concretely, the backend holds:
   then holds the canonical copy a runner resolves at run time. The repository is
   the editing source; the backend is the distribution source. The on-disk format
   is unchanged by this — publishing caches a version, it does not transform it.
-  See [Test Cases](/components/core/test-cases/#catalog-layout).
+  See [Test Cases](/testing/end-to-end/overview/#catalog-layout).
 - **Run results.** The published [run records](/components/core/run-records/),
   with their links to each run's public source repository and playable build.
   This is the system of record for published runs, persisted in a relational

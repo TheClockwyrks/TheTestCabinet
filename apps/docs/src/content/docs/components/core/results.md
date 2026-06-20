@@ -48,7 +48,7 @@ automated — the component already holds the built output, so it uploads that
 directory directly to Cloudflare Pages (`wrangler pages deploy <dir>
 --branch=<run-id>`), which serves it at its own `pages.dev` subdomain root and
 needs no manual step. Serving at a root rather than a subpath is what keeps a
-build playable exactly as the test case's [build interface](/components/core/test-cases/#design-requirements)
+build playable exactly as the test case's [build interface](/testing/end-to-end/overview/#design-requirements)
 and the [load check](/components/core/validation/#load-check) already require.
 Releasing per-run artifacts has no shared state — each run is its own repository
 and its own build — so each operator does it directly and holds the credentials
@@ -93,7 +93,7 @@ record.
 The **checklist** records a verdict — **pass**, **fail**, or **na** (not
 applicable), with an optional note — for each reviewer checklist item the test
 case version declares (see the version manifest's
-[`review_item`s](/components/core/test-cases/#manifest)). It guarantees coverage,
+[`review_item`s](/testing/end-to-end/manifests/)). It guarantees coverage,
 not a score: every declared item must carry a verdict before a run can be
 published, so a reviewer cannot silently skip a requirement the case author
 called out. The verdicts are recorded faithfully but the rating stays the

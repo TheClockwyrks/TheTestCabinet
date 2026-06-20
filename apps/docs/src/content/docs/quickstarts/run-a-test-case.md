@@ -34,7 +34,7 @@ From a source checkout, substitute `cargo run -p test-cabinet-cli -- run …` fo
 `tcab run …`.
 
 - `--variant` is **required**: a run targets exactly one
-  [variant](/components/core/test-cases/#variants).
+  [variant](/testing/end-to-end/overview/#variants).
 - `--model` is passed to the harness unchanged; it is opaque to The Test Cabinet.
 - `--max-runtime <seconds>` overrides the case's `max_runtime_seconds` for this
   invocation only.

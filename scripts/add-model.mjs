@@ -127,7 +127,7 @@ function renderToml({ name, provider, slug, descriptionFile }) {
 # Site-facing metadata for a single model: how it is named, who provides it, how
 # it maps onto OpenRouter for pricing, and which model IDs identify it in run
 # records. This file has no bearing on how a run is executed; see
-# \`docs/test-cases.md\` for the test case catalog it mirrors.
+# \`docs/testing/end-to-end/overview.md\` for the test case catalog it mirrors.
 
 # Human-readable display name.
 name = ${JSON.stringify(name)}

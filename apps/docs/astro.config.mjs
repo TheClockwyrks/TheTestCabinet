@@ -174,7 +174,6 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "components/core/overview",
-                "components/core/test-cases",
                 "components/core/execution",
                 "components/core/harnesses",
                 "components/core/events",
@@ -337,6 +336,54 @@ export default defineConfig({
                 "harnesses/antigravity/overview",
                 "harnesses/antigravity/events",
                 "harnesses/antigravity/metrics",
+              ],
+            },
+          ],
+        },
+        // The test types The Test Cabinet evaluates models and harnesses with.
+        // Each type gets an Overview (what it is, how it works), Manifests (its
+        // `test-case.toml` schema), and Evaluation (how a run is scored). The
+        // domain material that used to live under Core's "Test Cases" page now
+        // sits under End to End, the only type implemented today.
+        {
+          label: "Testing",
+          collapsed: true,
+          items: [
+            "testing/overview",
+            {
+              label: "End to End",
+              collapsed: true,
+              items: [
+                "testing/end-to-end/overview",
+                "testing/end-to-end/manifests",
+                "testing/end-to-end/evaluation",
+              ],
+            },
+            {
+              label: "Adversarial",
+              collapsed: true,
+              items: [
+                "testing/adversarial/overview",
+                "testing/adversarial/manifests",
+                "testing/adversarial/evaluation",
+              ],
+            },
+            {
+              label: "Asset Generation",
+              collapsed: true,
+              items: [
+                "testing/asset-generation/overview",
+                "testing/asset-generation/manifests",
+                "testing/asset-generation/evaluation",
+              ],
+            },
+            {
+              label: "Performance",
+              collapsed: true,
+              items: [
+                "testing/performance/overview",
+                "testing/performance/manifests",
+                "testing/performance/evaluation",
               ],
             },
           ],

@@ -1,6 +1,6 @@
 //! Test case catalog: slugs, versions, and resolution.
 //!
-//! See `docs/test-cases.md`. Test cases live under a top-level `test-cases/`
+//! See `docs/testing/end-to-end/overview.md`. Test cases live under a top-level `test-cases/`
 //! folder laid out as `test-cases/<slug>/<version>/`. Each version is
 //! self-contained and immutable.
 
@@ -16,7 +16,7 @@ use crate::error::{Error, Result};
 /// This is the machine-readable declaration of what a version contains: the
 /// specification and assets that are seeded, the reference views (rendered to
 /// screenshots and seeded as visual targets), and the opt-in validation checks.
-/// See `docs/test-cases.md#manifest`.
+/// See `docs/testing/end-to-end/manifests.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Manifest {
     /// Human-readable display name, surfaced on the site.

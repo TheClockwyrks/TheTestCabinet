@@ -73,7 +73,7 @@ releases three things (see [Results](/components/core/results/#publishing) and
 - **Playable build** — the built implementation is deployed to Cloudflare Pages
   under a per-run branch alias and served at its own `<run-id>.<project>.pages.dev`
   root, which is what keeps it playable exactly as the test case's
-  [build interface](/components/core/test-cases/#design-requirements) and the
+  [build interface](/testing/end-to-end/overview/#design-requirements) and the
   [load check](/components/core/validation/#load-check) already require.
 - **Gallery** — the run record, with its source and build links filled in, plus
   the run's review, is submitted to the [backend](/components/backend/overview/),

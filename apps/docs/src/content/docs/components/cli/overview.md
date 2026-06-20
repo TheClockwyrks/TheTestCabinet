@@ -19,7 +19,7 @@ compatible runtime) on the machine it runs on. See
 including:
 
 - **`run`** — execute a test case: resolve a version and
-  [variant](/components/core/test-cases/#variants), seed the repository, drive
+  [variant](/testing/end-to-end/overview/#variants), seed the repository, drive
   the selected [harness](/components/core/harnesses/) in a container while
   printing the live [event stream](/components/core/events/), then validate and
   write the [run record](/components/core/run-records/). A run's per-invocation
@@ -28,7 +28,7 @@ including:
   for a chosen variant and leave the result on disk, so the exact inputs a
   harness would receive can be inspected without launching a container.
 - **`prompt`** — render and print the
-  [prompt](/components/core/test-cases/#prompt-template) a run would hand the
+  [prompt](/testing/end-to-end/overview/#prompt-template) a run would hand the
   harness for a given variant, without seeding or launching anything.
 - **`validate`** — run [validation](/components/core/validation/) over a
   produced implementation.

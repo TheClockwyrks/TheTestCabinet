@@ -13,9 +13,12 @@ exercise in writing a precise, self-contained **specification**. Cases range
 from simple (Pong) to ones that exceed the best current models; they are meant to
 stay relevant as models improve, so aim high.
 
-The authoritative schema — every manifest field, what is seeded, how templates
+The authoritative schema for end-to-end cases — what is seeded, how templates
 render, the rules enforced at resolution — lives in
-[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md). **Read it first.** This skill
+[`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md),
+and every manifest field is documented in
+[`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md).
+**Read them first.** This skill
 is the practical procedure and the spec-writing guidance that sit on top of it;
 it does not restate the schema.
 
@@ -72,7 +75,7 @@ building it from the spec.
 ### 1. Choose the game and confirm it qualifies
 
 Every case must (see *Design Requirements* in
-[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md)):
+[`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md)):
 
 - be **inspired by but not a clone of** an existing game — original name, look,
   and assets;
@@ -128,7 +131,7 @@ and step 4 of [`adding-a-variant`](../adding-a-variant/SKILL.md).
 ### 6. Write the manifest and declare variants
 
 Author `test-case.toml` per the schema in
-[`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md): metadata, the common
+[`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md): metadata, the common
 `[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
 the default — usually `base`), any opt-in `[[check]]`, the common `[[proof]]`
 list (see step 7), and the common `[[review_item]]` list (see step 8). For
@@ -205,7 +208,7 @@ source. The seeded set must be complete and consistent **on its own**:
 
 If you can read a variant's seeded set top to bottom with no dangling reference
 and no contradiction, it is well-formed. (Full statement: *Self-Contained
-Specifications* in [`apps/docs/src/content/docs/test-cases.md`](../../../apps/docs/src/content/docs/test-cases.md).)
+Specifications* in [`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md).)
 
 ### Specify *what*, not *how*
 
@@ -323,7 +326,7 @@ development**, while iterating on a version no run has been published against.
 Once a published run references a version it is **immutable**: revise by
 creating a **new version** (bump `vX.Y.Z`), never by editing and re-ingesting
 the published one. See
-[`test-cases.md`](../../../apps/docs/src/content/docs/components/core/test-cases.md)
+[`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md)
 and [`development/running.md`](../../../apps/docs/src/content/docs/development/running.md).
 (`tcab validate` reads the local checkout directly, so it is not affected by the
 store being stale.)

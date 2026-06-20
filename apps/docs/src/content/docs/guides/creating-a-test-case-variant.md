@@ -2,7 +2,7 @@
 title: Creating a Test Case Variant
 ---
 
-A test case version offers one or more [variants](/components/core/test-cases/#variants),
+A test case version offers one or more [variants](/testing/end-to-end/overview/#variants),
 and a run selects exactly one. Every variant seeds the version's **common specs**
 plus its own **additive** specs, so a single case can describe several builds —
 the same game with or without an extra mode, say — without duplicating the shared
@@ -11,7 +11,7 @@ result is attributed to a specific build.
 
 This guide is the end-to-end procedure for adding a variant to an **existing**
 version. The authoritative rules live in
-[Test Cases](/components/core/test-cases/) (see its *Variants* and
+[Test Cases](/testing/end-to-end/overview/) (see its *Variants* and
 *Self-Contained Specifications* sections); read them first. While doing the work,
 follow the `adding-a-variant` skill. The worked example is the **Gyre** variant
 of the `pong` case, in which the obstacles oscillate and rotate — read the
