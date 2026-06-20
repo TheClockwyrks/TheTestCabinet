@@ -1364,6 +1364,18 @@ fn default_max_runtime_seconds() -> u64 {
 /// here but never distributed, so a backend-driven run would fail to fetch it.
 /// Keeping the two in lockstep means a workspace seeds the same set locally and
 /// remotely.
+/// Render a relative path with forward slashes so a workspace file's dest is
+/// stable across hosts (a Windows `\` separator would otherwise leak into the
+/// run-relative dest and the serialized manifest).
+fn forward_slash_path(rel: &Path) -> PathBuf {
+    PathBuf::from(
+        rel.components()
+            .filter_map(|component| component.as_os_str().to_str())
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+}
+
 fn collect_workspace_files(
     base: &Path,
     dir: &Path,
@@ -1378,9 +1390,13 @@ fn collect_workspace_files(
         if entry.file_type()?.is_dir() {
             collect_workspace_files(base, &path, out)?;
         } else {
+            // Normalize the dest to forward slashes so the seeded path — and the
+            // serialized manifest — are stable regardless of the host that
+            // resolved the workspace; otherwise a Windows host's `\` separator
+            // would leak into the run-relative dest.
             let dest = path
                 .strip_prefix(base)
-                .map(Path::to_path_buf)
+                .map(forward_slash_path)
                 .unwrap_or_else(|_| path.clone());
             out.push(WorkspaceFile {
                 source_path: path,
