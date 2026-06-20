@@ -178,6 +178,27 @@ fn openrouter_routed_harnesses_pass_model_ids_through() {
 }
 
 #[test]
+fn opencode_and_kilo_strip_their_openrouter_provider_prefix() {
+    let registry = DefaultHarnessRegistry::new();
+    for slug in [HarnessSlug::Opencode, HarnessSlug::Kilo] {
+        let harness = registry.get(slug).expect("harness is registered");
+        // OpenCode and Kilo Code report the slug under their `openrouter/`
+        // provider id; the price lookup needs the bare OpenRouter slug.
+        assert_eq!(
+            harness.pricing_model_id("openrouter/anthropic/claude-opus-4.8"),
+            "anthropic/claude-opus-4.8",
+            "{slug:?} should strip its openrouter/ provider prefix"
+        );
+        // A bare slug without the prefix is left untouched.
+        assert_eq!(
+            harness.pricing_model_id("anthropic/claude-opus-4.8"),
+            "anthropic/claude-opus-4.8",
+            "{slug:?} should leave an unprefixed slug alone"
+        );
+    }
+}
+
+#[test]
 fn parses_a_version_line() {
     assert_eq!(
         parse_version("claude 1.2.3 (build 9)"),

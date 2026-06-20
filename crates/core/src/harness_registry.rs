@@ -96,15 +96,28 @@ struct HarnessManifest {
     install: String,
 }
 
+/// How a harness's model ID is mapped onto the OpenRouter catalog ID used for
+/// the comparable-cost lookup. See [`AgentHarness::pricing_model_id`].
+#[derive(Clone, Copy)]
+enum PricingModelId {
+    /// The harness already reports OpenRouter IDs; use the model ID unchanged.
+    Passthrough,
+    /// Prepend this provider prefix to a provider-native ID — for example
+    /// `openai/` for Codex's bare `gpt-5.5` — unless the ID already carries it.
+    AddPrefix(&'static str),
+    /// Strip this provider prefix the harness prepends — for example
+    /// `openrouter/` for OpenCode and Kilo Code's
+    /// `openrouter/anthropic/claude-opus-4.8` — leaving the bare OpenRouter slug.
+    StripPrefix(&'static str),
+}
+
 /// The imperative half of an adapter: how a harness's CLI is invoked
 /// non-interactively and how its output is interpreted. This is code rather than
 /// manifest configuration. Merged with a [`HarnessManifest`] by [`descriptor`].
 struct AdapterSpec {
-    /// Prefix prepended to the model ID to form the OpenRouter catalog ID used
-    /// for the comparable-cost lookup, when the harness takes a provider-native
-    /// model ID rather than an OpenRouter one. `None` passes the ID through
-    /// unchanged. See [`AgentHarness::pricing_model_id`].
-    pricing_model_prefix: Option<&'static str>,
+    /// How the harness's model ID is mapped onto the OpenRouter catalog ID for
+    /// the comparable-cost lookup. See [`AgentHarness::pricing_model_id`].
+    pricing_model: PricingModelId,
     api_key_env: Option<&'static str>,
     /// The variable the key is injected into inside the container, when it
     /// differs from `api_key_env`. `None` reuses `api_key_env` on both sides.
@@ -127,7 +140,7 @@ pub struct CliHarness {
     /// Command that installs the CLI into the run container at run time, from
     /// the manifest.
     install: String,
-    pricing_model_prefix: Option<&'static str>,
+    pricing_model: PricingModelId,
     api_key_env: Option<&'static str>,
     container_key_env: Option<&'static str>,
     session_args: fn(model: &str, prompt: &str) -> Vec<String>,
@@ -158,10 +171,18 @@ impl AgentHarness for CliHarness {
     }
 
     fn pricing_model_id(&self, model_id: &str) -> String {
-        match self.pricing_model_prefix {
+        match self.pricing_model {
+            PricingModelId::Passthrough => model_id.to_string(),
             // Already an OpenRouter-style ID; don't double-prefix.
-            Some(prefix) if !model_id.starts_with(prefix) => format!("{prefix}{model_id}"),
-            _ => model_id.to_string(),
+            PricingModelId::AddPrefix(prefix) if model_id.starts_with(prefix) => {
+                model_id.to_string()
+            }
+            PricingModelId::AddPrefix(prefix) => format!("{prefix}{model_id}"),
+            // Drop the harness's own provider prefix to recover the OpenRouter
+            // slug; leave the ID alone when it isn't there.
+            PricingModelId::StripPrefix(prefix) => {
+                model_id.strip_prefix(prefix).unwrap_or(model_id).to_string()
+            }
         }
     }
 
@@ -410,7 +431,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         name: manifest.name,
         binary: manifest.binary,
         install: manifest.install,
-        pricing_model_prefix: spec.pricing_model_prefix,
+        pricing_model: spec.pricing_model,
         api_key_env: spec.api_key_env,
         container_key_env: spec.container_key_env,
         session_args: spec.session_args,
@@ -427,7 +448,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
 fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
     match slug {
         HarnessSlug::Claude => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("ANTHROPIC_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
@@ -460,7 +481,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Claude,
         },
         HarnessSlug::Codex => AdapterSpec {
-            pricing_model_prefix: Some("openai/"),
+            pricing_model: PricingModelId::AddPrefix("openai/"),
             api_key_env: Some("OPENAI_API_KEY"),
             // `codex exec` authenticates only from `CODEX_API_KEY`; it ignores
             // `OPENAI_API_KEY`, so the key the user exports as `OPENAI_API_KEY`
@@ -490,7 +511,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Codex,
         },
         HarnessSlug::Cline => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
@@ -518,7 +539,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Cline,
         },
         HarnessSlug::Antigravity => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::Passthrough,
             // Antigravity only supports Google-account auth; with no API-key mode
             // it cannot participate in The Test Cabinet's API-key-only runs.
             api_key_env: None,
@@ -534,7 +555,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Generic,
         },
         HarnessSlug::Goose => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
@@ -564,7 +585,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Goose,
         },
         HarnessSlug::Kilo => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::StripPrefix("openrouter/"),
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
@@ -591,7 +612,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Kilo,
         },
         HarnessSlug::Opencode => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::StripPrefix("openrouter/"),
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
@@ -618,7 +639,7 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Opencode,
         },
         HarnessSlug::Pi => AdapterSpec {
-            pricing_model_prefix: None,
+            pricing_model: PricingModelId::Passthrough,
             api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             session_args: |model, prompt| {
