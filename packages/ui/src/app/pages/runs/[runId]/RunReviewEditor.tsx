@@ -242,42 +242,48 @@ export function RunReviewEditor({
             </span>
             <span className={styles.checklistText}>{item.text}</span>
 
-            {(item.reference || item.proof) && (
-              <div className={styles.mediaPanes}>
-                <figure className={styles.mediaPane}>
-                  <figcaption className={styles.mediaPaneLabel}>
-                    Expected
-                  </figcaption>
-                  {expected ? (
+            {/* Expected reference beside submitted proof. Each pane shows only
+                when that side exists — an item may declare just a proof (e.g. a
+                video clip with no still that depicts it), so it takes the full
+                width rather than reserving an empty Expected column. */}
+            {(expected || item.proof) && (
+              <div
+                className={`${styles.mediaPanes}${
+                  expected && item.proof ? "" : ` ${styles.mediaPanesSingle}`
+                }`}
+              >
+                {expected && (
+                  <figure className={styles.mediaPane}>
+                    <figcaption className={styles.mediaPaneLabel}>
+                      Expected
+                    </figcaption>
                     <MediaView
                       kind={expected.kind}
                       url={expected.url}
                       alt={`Expected ${item.reference}`}
                     />
-                  ) : (
-                    <p className={styles.mediaMissing}>
-                      No reference available.
-                    </p>
-                  )}
-                </figure>
-                <figure className={styles.mediaPane}>
-                  <figcaption className={styles.mediaPaneLabel}>
-                    Submitted
-                  </figcaption>
-                  {submitted && submitted.present && submitted.url ? (
-                    <MediaView
-                      kind={submitted.kind}
-                      url={submitted.url}
-                      alt={`Submitted ${item.proof}`}
-                    />
-                  ) : (
-                    <p className={styles.mediaMissing}>
-                      {submitted && !submitted.present
-                        ? "The agent did not submit this proof."
-                        : "Proof media is not available here."}
-                    </p>
-                  )}
-                </figure>
+                  </figure>
+                )}
+                {item.proof && (
+                  <figure className={styles.mediaPane}>
+                    <figcaption className={styles.mediaPaneLabel}>
+                      Submitted
+                    </figcaption>
+                    {submitted && submitted.present && submitted.url ? (
+                      <MediaView
+                        kind={submitted.kind}
+                        url={submitted.url}
+                        alt={`Submitted ${item.proof}`}
+                      />
+                    ) : (
+                      <p className={styles.mediaMissing}>
+                        {submitted && !submitted.present
+                          ? "The agent did not submit this proof."
+                          : "Proof media is not available here."}
+                      </p>
+                    )}
+                  </figure>
+                )}
               </div>
             )}
 

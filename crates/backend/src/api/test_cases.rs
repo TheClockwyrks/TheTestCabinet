@@ -113,7 +113,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         view: r.view.clone(),
         kind: r.kind,
         media_url: format!(
-            "/test-cases/{}/{}/references/{scope}/{}.{}",
+            "/test-cases/{}/versions/{}/references/{scope}/{}.{}",
             manifest.slug, manifest.version, r.view, r.extension
         ),
     };

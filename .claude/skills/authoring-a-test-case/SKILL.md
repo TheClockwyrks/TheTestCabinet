@@ -153,10 +153,12 @@ build writes a file the validator never checks, or vice versa. Validation record
 each proof present/missing (informational; never fails the run). Then **pair**
 proofs with the checklist: on a `[[review_item]]`, set `reference` to a reference
 view (the expected target) and `proof` to a proof id (the submitted media) so the
-reviewer compares the two side by side. Prefer giving a proof whatever reference
-best shows the same screen; where a proof is requested, provide a matching
-reference image (or a static-`media` reference video) wherever you can. Pong and
-Coil are the model.
+reviewer compares the two side by side. The two are independent: pair a proof
+with a reference whenever a still meaningfully depicts the same screen, but leave
+`reference` off when none does — a video proof (a rally or combo clip) whose pace
+or timing no still captures stands alone, and the reviewer UI shows it full
+width. Don't force a mismatched still onto such a proof, and don't add a
+reference *just* to fill the pane. Pong and Coil are the model.
 
 ### 8. Declare the reviewer checklist
 

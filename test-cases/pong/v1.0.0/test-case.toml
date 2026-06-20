@@ -243,7 +243,9 @@ text = "Hitting the center of a stationary paddle sends the ball straight across
 id = "paddle-speed"
 title = "Rally acceleration"
 text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually rather than jumping to full speed; ball and paddle motion read at the spec's pace, not noticeably fast or sluggish."
-reference = "gameplay"
+# A video proof with no still that meaningfully depicts the expected pace, so the
+# rally clip stands alone — the reviewer judges it against the spec, not a
+# side-by-side reference. The review UI shows a proof-only item full width.
 proof = "rally"
 
 [[review_item]]

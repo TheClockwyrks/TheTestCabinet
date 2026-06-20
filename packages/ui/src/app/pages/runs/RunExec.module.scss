@@ -465,6 +465,12 @@
   }
 }
 
+// One side only (e.g. a proof-only item): the single pane takes the full width
+// rather than leaving an empty half.
+.mediaPanesSingle {
+  grid-template-columns: 1fr;
+}
+
 .mediaPane {
   margin: 0;
   display: flex;

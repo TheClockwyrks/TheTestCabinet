@@ -180,7 +180,7 @@ fn variant_reference_shots(
         view: r.view.clone(),
         kind: r.kind.media_kind(),
         url: format!(
-            "{base}/test-cases/{}/{}/references/{scope}/{}.{}",
+            "{base}/test-cases/{}/versions/{}/references/{scope}/{}.{}",
             v.slug,
             v.version,
             r.view,

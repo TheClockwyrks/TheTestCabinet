@@ -231,7 +231,9 @@ text = "Eating pellets in quick succession raises the combo multiplier by one pe
 id = "combo-window"
 title = "Combo window"
 text = "The 2.4-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
-reference = "gameplay"
+# A video proof with no still that meaningfully depicts the combo window timing,
+# so the clip stands alone — the reviewer judges it against the spec, not a
+# side-by-side reference. The review UI shows a proof-only item full width.
 proof = "combo"
 
 [[review_item]]

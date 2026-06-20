@@ -257,8 +257,11 @@ proof = "title"              # optional: a proof id whose SUBMITTED media is sho
   reference and the submitted proof with its check: the optional `reference` names
   a reference view (shown as the **expected** target) and the optional `proof`
   names a proof id (whose **submitted** media is shown), so the reviewer compares
-  the target against the evidence before judging. Each must resolve for the
-  item's variant or resolution is rejected. See
+  the target against the evidence before judging. The two are independent — an
+  item may declare just a `proof` with no `reference` (a video clip with no still
+  that meaningfully depicts it, say); the reviewer UI then shows that one side
+  full width rather than reserving an empty pane. Each named id must resolve for
+  the item's variant or resolution is rejected. See
   [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 
 ## Prompt template
