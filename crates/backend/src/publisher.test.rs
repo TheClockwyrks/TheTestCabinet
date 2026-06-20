@@ -2,7 +2,7 @@ use super::*;
 use tempfile::TempDir;
 
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::Rating;
+use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -62,7 +62,10 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
     db.publish(
         &record("r1"),
         &StoredReview {
-            rating: Rating::Great,
+            ratings: vec![DomainRating {
+                domain: "gameplay".to_string(),
+                rating: Rating::Great,
+            }],
             writeup: "ok".to_string(),
             checklist: vec![],
         },
@@ -98,7 +101,10 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
         db.publish(
             &record(&format!("r{i}")),
             &StoredReview {
-                rating: Rating::Great,
+                ratings: vec![DomainRating {
+                    domain: "gameplay".to_string(),
+                    rating: Rating::Great,
+                }],
                 writeup: "ok".to_string(),
                 checklist: vec![],
             },

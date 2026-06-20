@@ -57,8 +57,13 @@ interface SnapshotReviewVerdict {
   note?: string;
 }
 
-interface SnapshotReview {
+interface SnapshotDomainRating {
+  domain: string;
   rating: string;
+}
+
+interface SnapshotReview {
+  ratings: SnapshotDomainRating[];
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
 }
@@ -95,8 +100,14 @@ interface SnapshotCaseFile {
     description: string | null;
     // The variant's prompt, rendered by the backend as a real run receives it.
     prompt: string;
+    // The variant's own reviewer checklist items (additive to the common ones).
+    reviewItems?: SnapshotReviewItem[];
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
+  // Reviewer checklist items shared by every variant, with point weights.
+  commonReviewItems?: SnapshotReviewItem[];
+  // The case's scoring domains.
+  domains?: SnapshotDomain[];
   // Optional: reference screenshots exposed as snapshot-relative keys. The
   // contract permits emitting these per case; when present we resolve them to
   // absolute URLs so the References tab can show baselines.
@@ -108,6 +119,22 @@ interface SnapshotCaseFile {
     kind?: "rendered" | "image" | "video";
     key: string; // snapshot-relative object key
   }>;
+}
+
+interface SnapshotReviewItem {
+  id: string;
+  title: string;
+  text: string;
+  reference?: string | null;
+  proof?: string | null;
+  weight: number;
+  domain?: string | null;
+}
+
+interface SnapshotDomain {
+  id: string;
+  name: string;
+  description: string;
 }
 
 // ---- The shape the app consumes (mirrors src/data/testCases.ts) -------------
@@ -132,6 +159,22 @@ interface AssembledReference {
   url: string;
 }
 
+interface AssembledReviewItem {
+  id: string;
+  title: string;
+  text: string;
+  reference: string | null;
+  proof: string | null;
+  weight: number;
+  domain: string | null;
+}
+
+interface AssembledDomain {
+  id: string;
+  name: string;
+  description: string;
+}
+
 interface AssembledVariant {
   slug: string;
   name: string;
@@ -139,6 +182,7 @@ interface AssembledVariant {
   prompt: string;
   seededInputs: never[];
   referenceScreenshots: AssembledReference[];
+  reviewItems: AssembledReviewItem[];
 }
 
 interface AssembledTestCase {
@@ -151,6 +195,7 @@ interface AssembledTestCase {
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
+  domains: AssembledDomain[];
 }
 
 const EMPTY: AssembledSnapshot = {
@@ -173,21 +218,21 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-// Reconstruct a writeup's `---\nrating: …\n---\n\n<body>` framing from a review,
-// so the existing `parseWriteup` path is unchanged on the site side. Checklist
-// verdicts are re-emitted as the same `review.<id>: <status> [note]` frontmatter
-// lines the authored writeup.md uses, so `parseWriteup` recovers them too.
+// Reconstruct a writeup's `---\nrating.<domain>: …\n---\n\n<body>` framing from a
+// review, so the existing `parseWriteup` path is unchanged on the site side.
+// Per-domain ratings become `rating.<domain>: <tier>` lines and checklist
+// verdicts become `review.<id>: <status> [note]` lines, both of which
+// `parseWriteup` recovers.
 function frameWriteup(review: SnapshotReview): string {
   const body = review.writeup ?? "";
-  const verdicts = (review.checklist ?? [])
-    .map((v) => {
-      const note = (v.note ?? "").replace(/\s+/g, " ").trim();
-      return `review.${v.id}: ${v.status}${note ? ` ${note}` : ""}`;
-    })
-    .join("\n");
-  const frontmatter = verdicts
-    ? `rating: ${review.rating}\n${verdicts}`
-    : `rating: ${review.rating}`;
+  const ratings = (review.ratings ?? []).map(
+    (r) => `rating.${r.domain}: ${r.rating}`,
+  );
+  const verdicts = (review.checklist ?? []).map((v) => {
+    const note = (v.note ?? "").replace(/\s+/g, " ").trim();
+    return `review.${v.id}: ${v.status}${note ? ` ${note}` : ""}`;
+  });
+  const frontmatter = [...ratings, ...verdicts].join("\n");
   return `---\n${frontmatter}\n---\n\n${body}`;
 }
 
@@ -202,12 +247,27 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   const commonRefs = refs.filter(
     (r) => r.variant == null || r.variant === "_common",
   );
+  const commonItems = file.commonReviewItems ?? [];
   const variants: AssembledVariant[] = file.variants.map((variant) => {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
       view: r.view,
       kind: (r.kind === "video" ? "video" : "image") as "image" | "video",
       url: joinUrl(base, r.key),
+    }));
+    // The common checklist items apply to every variant; the variant's own
+    // follow. Each carries the point weight used to score runs.
+    const reviewItems: AssembledReviewItem[] = [
+      ...commonItems,
+      ...(variant.reviewItems ?? []),
+    ].map((item) => ({
+      id: item.id,
+      title: item.title,
+      text: item.text,
+      reference: item.reference ?? null,
+      proof: item.proof ?? null,
+      weight: item.weight,
+      domain: item.domain ?? null,
     }));
     return {
       slug: variant.slug,
@@ -216,6 +276,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       prompt: variant.prompt,
       seededInputs: [],
       referenceScreenshots,
+      reviewItems,
     };
   });
   return {
@@ -228,6 +289,11 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    domains: (file.domains ?? []).map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+    })),
   };
 }
 

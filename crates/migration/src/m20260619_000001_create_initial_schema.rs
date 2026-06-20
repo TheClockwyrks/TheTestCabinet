@@ -91,7 +91,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Review::Rating).string().not_null())
+                    .col(
+                        ColumnDef::new(Review::Ratings)
+                            .text()
+                            .not_null()
+                            .default("[]"),
+                    )
                     .col(ColumnDef::new(Review::Writeup).text().not_null())
                     .col(
                         ColumnDef::new(Review::Checklist)
@@ -204,7 +209,7 @@ enum Run {
 enum Review {
     Table,
     RunId,
-    Rating,
+    Ratings,
     Writeup,
     Checklist,
 }

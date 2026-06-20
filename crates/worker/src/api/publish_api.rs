@@ -18,8 +18,9 @@ use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
-    ArtifactCollection, BackendPublisher, HttpBackendClient, PublishConfig, PublishRequest,
-    Publisher, Rating, RunRecord, SystemCommandRunner, Writeup, find_build_output, read_event_log,
+    ArtifactCollection, BackendPublisher, DomainRating, HttpBackendClient, PublishConfig,
+    PublishRequest, Publisher, RunRecord, SystemCommandRunner, Writeup, find_build_output,
+    read_event_log,
 };
 
 use crate::api::AppState;
@@ -32,8 +33,9 @@ pub struct PublishBody {
     /// The id of a run this worker previously produced. Its record and collected
     /// implementation are loaded from the worker's output directory.
     pub run_id: String,
-    /// The reviewer's quality rating (`flawless` | `great` | `scuffed` | `broken`).
-    pub rating: String,
+    /// The reviewer's quality rating for each of the case's scoring domains. Each
+    /// rating is one of `flawless` | `great` | `scuffed` | `broken`.
+    pub ratings: Vec<DomainRating>,
     /// The writeup prose shown before the playable build (markdown body).
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items.
@@ -66,20 +68,21 @@ pub async fn publish(
     State(state): State<AppState>,
     Json(body): Json<PublishBody>,
 ) -> Result<Json<PublishAck>, ApiError> {
-    // Validate the review up front: publishing refuses a run without one.
-    let rating = Rating::parse(&body.rating).ok_or_else(|| {
-        ApiError::unprocessable(format!(
-            "`rating` must be one of flawless|great|scuffed|broken, got `{}`",
-            body.rating
-        ))
-    })?;
+    // Validate the review up front: publishing refuses a run without one. The
+    // rating tiers themselves are validated by deserialization; here we only
+    // require that at least one domain was rated and the writeup is non-empty.
+    if body.ratings.is_empty() {
+        return Err(ApiError::unprocessable(
+            "`ratings` must rate at least one domain (a run cannot be published without a review)",
+        ));
+    }
     if body.writeup.trim().is_empty() {
         return Err(ApiError::unprocessable(
             "`writeup` must not be empty (a run cannot be published without a review)",
         ));
     }
     let writeup = Writeup {
-        rating,
+        ratings: body.ratings,
         body: body.writeup.trim().to_string(),
         checklist: body.checklist,
     };

@@ -172,7 +172,17 @@ fn print_plan(
     build_dir: Option<&Path>,
 ) {
     println!("  {}", record.id);
-    println!("    rating: {}", writeup.rating.as_str());
+    let overall = writeup
+        .overall_rating()
+        .map(|rating| rating.as_str())
+        .unwrap_or("—");
+    let per_domain = writeup
+        .ratings
+        .iter()
+        .map(|domain| format!("{}={}", domain.domain, domain.rating.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!("    rating: {overall} (worst of {per_domain})");
     println!("    repo:   {}", config.repo_url(record));
     match build_dir {
         Some(dir) => println!(

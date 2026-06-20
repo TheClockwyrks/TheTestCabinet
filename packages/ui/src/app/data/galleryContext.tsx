@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -7,7 +7,19 @@ import type {
 } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import { extensionFor } from "./proofMedia";
-import type { TestCaseSummary } from "./testCases";
+import type {
+  DomainSummary,
+  ReviewItemSummary,
+  TestCaseSummary,
+} from "./testCases";
+
+/** The scoring model for a run: the variant's weighted checklist items and the
+ * case's scoring domains, resolved from the catalog. Both empty when the case is
+ * not in the catalog this host holds. */
+export interface ReviewModel {
+  items: ReviewItemSummary[];
+  domains: DomainSummary[];
+}
 
 // The gallery's data source, injected by the host app. The same routed UI lives
 // in `@test-cabinet/ui`, but its data differs per app: the static site builds
@@ -91,6 +103,14 @@ export interface GalleryData extends GalleryDataInput {
    * be served. Empty when the run declares no proofs.
    */
   proofMediaFor(run: RunRecord): ProofMedia[];
+  /**
+   * The scoring model for a run's subject: the effective (common + variant)
+   * weighted checklist items and the case's scoring domains, resolved from the
+   * catalog this host holds. Items and domains are empty when the case is not in
+   * the catalog. Lets the verdict page and the leaderboard score a run from its
+   * review verdicts and per-domain ratings.
+   */
+  reviewModelFor(subject: RunSubject): ReviewModel;
 }
 
 const GalleryDataContext = createContext<GalleryData | null>(null);
@@ -103,12 +123,22 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, proofMediaUrl } = value;
+    const { writeups, proofMediaUrl, testCases } = value;
     return {
       ...value,
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      reviewModelFor(subject) {
+        const testCase = testCases.find((c) => c.slug === subject.testCaseSlug);
+        const variant = testCase?.variants.find(
+          (v) => v.slug === subject.variant,
+        );
+        return {
+          items: variant?.reviewItems ?? [],
+          domains: testCase?.domains ?? [],
+        };
       },
       proofMediaFor(run) {
         return run.validation.proofs.map((proof) => ({

@@ -23,11 +23,11 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::review::{Rating, ReviewVerdict};
+use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 use test_cabinet_entities::{review, run, run_link, snapshot_state};
 
-use crate::error::{BackendError, Result};
+use crate::error::Result;
 
 /// A published run as stored: the full record, its review, and its links. This
 /// is the shape `GET /runs/{id}` and the snapshot's per-run file are built from.
@@ -52,8 +52,9 @@ pub struct StoredRun {
 /// A run's review as stored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReview {
-    /// The quality rating.
-    pub rating: Rating,
+    /// The reviewer's per-domain ratings. The run's overall rating is the worst
+    /// across them.
+    pub ratings: Vec<DomainRating>,
     /// The markdown writeup body.
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items. Stored as
@@ -154,6 +155,7 @@ impl Db {
         let mut record = record.clone();
         record.links = links.clone();
         let record_json = serde_json::to_string(&record)?;
+        let ratings_json = serde_json::to_string(&review.ratings)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
 
         let txn = self.conn.begin().await?;
@@ -208,14 +210,14 @@ impl Db {
 
         review::Entity::insert(review::ActiveModel {
             run_id: Set(record.id.clone()),
-            rating: Set(review.rating.as_str().to_string()),
+            ratings: Set(ratings_json),
             writeup: Set(review.writeup.clone()),
             checklist: Set(checklist_json),
         })
         .on_conflict(
             OnConflict::column(review::Column::RunId)
                 .update_columns([
-                    review::Column::Rating,
+                    review::Column::Ratings,
                     review::Column::Writeup,
                     review::Column::Checklist,
                 ])
@@ -389,7 +391,7 @@ fn stored_run_query() -> Select<run::Entity> {
     run::Entity::find()
         .select_only()
         .column(run::Column::RecordJson)
-        .column(review::Column::Rating)
+        .column(review::Column::Ratings)
         .column(review::Column::Writeup)
         .column(run_link::Column::SourceRepo)
         .column(run_link::Column::PlayableBuild)
@@ -404,7 +406,7 @@ fn stored_run_query() -> Select<run::Entity> {
 #[derive(FromQueryResult)]
 struct StoredRunRow {
     record_json: String,
-    rating: String,
+    ratings: String,
     writeup: String,
     source_repo: Option<String>,
     playable_build: Option<String>,
@@ -417,17 +419,12 @@ impl StoredRunRow {
     /// Parse the JSON-backed columns into the in-memory [`StoredRun`].
     fn into_stored_run(self) -> Result<StoredRun> {
         let record: RunRecord = serde_json::from_str(&self.record_json)?;
-        let rating = Rating::parse(&self.rating).ok_or_else(|| {
-            BackendError::BadRequest(format!(
-                "stored review has invalid rating `{}`",
-                self.rating
-            ))
-        })?;
+        let ratings: Vec<DomainRating> = serde_json::from_str(&self.ratings)?;
         let checklist: Vec<ReviewVerdict> = serde_json::from_str(&self.checklist)?;
         Ok(StoredRun {
             record,
             review: StoredReview {
-                rating,
+                ratings,
                 writeup: self.writeup,
                 checklist,
             },

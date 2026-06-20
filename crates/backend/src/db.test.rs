@@ -1,5 +1,6 @@
 use super::*;
 use test_cabinet_core::metrics::RunMetrics;
+use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -41,7 +42,10 @@ fn record(id: &str) -> RunRecord {
 fn review() -> StoredReview {
     use test_cabinet_core::review::VerdictStatus;
     StoredReview {
-        rating: Rating::Great,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
         writeup: "Plays well.".to_string(),
         checklist: vec![ReviewVerdict {
             id: "ball-spin".to_string(),
@@ -74,7 +78,7 @@ async fn publish_then_get_round_trips_with_links_populated() {
     assert!(outcome.newly_published);
 
     let stored = db.get_run("r1").await.unwrap().unwrap();
-    assert_eq!(stored.review.rating, Rating::Great);
+    assert_eq!(stored.review.ratings, review().ratings);
     // The checklist verdicts round-trip through the JSON column.
     assert_eq!(stored.review.checklist, review().checklist);
     // The stored record carries the resolved links, even though the submitted
@@ -129,7 +133,10 @@ async fn republish_is_idempotent_and_keeps_first_published_at() {
     .unwrap();
 
     let updated_review = StoredReview {
-        rating: Rating::Flawless,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Flawless,
+        }],
         writeup: "Even better on a second look.".to_string(),
         checklist: vec![],
     };
@@ -146,7 +153,7 @@ async fn republish_is_idempotent_and_keeps_first_published_at() {
     assert!(!outcome.newly_published);
 
     let stored = db.get_run("r1").await.unwrap().unwrap();
-    assert_eq!(stored.review.rating, Rating::Flawless);
+    assert_eq!(stored.review.ratings, updated_review.ratings);
     // published_at is preserved from the first publish.
     assert_eq!(stored.published_at, "2026-06-17T21:40:00Z");
     assert_eq!(db.run_count().await.unwrap(), 1);

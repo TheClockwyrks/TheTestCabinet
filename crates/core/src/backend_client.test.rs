@@ -71,6 +71,7 @@ impl BackendClient for StubBackend {
             common_proofs: vec![],
             checks: vec![],
             common_review_items: vec![],
+            domains: vec![],
         })
     }
     async fn artifact(
@@ -261,13 +262,17 @@ fn sample_record(id: &str) -> RunRecord {
 
 #[tokio::test]
 async fn list_runs_parses_page_cursor_links_and_review() {
-    // The backend names the cursor `nextBefore`, serves the review tier as a
-    // string, and serves the resolved links separately from the record blob.
+    // The backend names the cursor `nextBefore`, serves the review's per-domain
+    // ratings, and serves the resolved links separately from the record blob.
     let record = serde_json::to_value(sample_record("run-1")).expect("serialize");
     let body = serde_json::json!({
         "runs": [{
             "record": record,
-            "review": { "rating": "great", "writeup": "Plays well.", "checklist": [] },
+            "review": {
+                "ratings": [{ "domain": "gameplay", "rating": "great" }],
+                "writeup": "Plays well.",
+                "checklist": [],
+            },
             "links": {
                 "sourceRepo": "https://example.com/repo",
                 "playableBuild": "https://abc.pages.dev",
@@ -286,7 +291,13 @@ async fn list_runs_parses_page_cursor_links_and_review() {
     assert_eq!(page.runs.len(), 1);
     let run = &page.runs[0];
     assert_eq!(run.record.id, "run-1");
-    assert_eq!(run.review.rating, "great");
+    assert_eq!(
+        run.review.ratings,
+        vec![crate::review::DomainRating {
+            domain: "gameplay".to_string(),
+            rating: crate::review::Rating::Great,
+        }]
+    );
     // The separately-served links win and are merged onto the record blob (whose
     // own links were empty), so both views agree.
     assert_eq!(
@@ -304,7 +315,11 @@ async fn read_run_parses_a_single_stored_run() {
     let record = serde_json::to_value(sample_record("run-9")).expect("serialize");
     let body = serde_json::json!({
         "record": record,
-        "review": { "rating": "scuffed", "writeup": "Janky.", "checklist": [] },
+        "review": {
+            "ratings": [{ "domain": "gameplay", "rating": "scuffed" }],
+            "writeup": "Janky.",
+            "checklist": [],
+        },
         "links": { "sourceRepo": null, "playableBuild": null },
     });
     let base = serve_once(body.to_string()).await;
@@ -315,7 +330,13 @@ async fn read_run_parses_a_single_stored_run() {
         .expect("read run");
 
     assert_eq!(run.record.id, "run-9");
-    assert_eq!(run.review.rating, "scuffed");
+    assert_eq!(
+        run.review.ratings,
+        vec![crate::review::DomainRating {
+            domain: "gameplay".to_string(),
+            rating: crate::review::Rating::Scuffed,
+        }]
+    );
     assert_eq!(run.review.writeup, "Janky.");
     assert!(run.links.source_repo.is_none());
 }

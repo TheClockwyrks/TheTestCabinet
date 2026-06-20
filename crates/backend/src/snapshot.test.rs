@@ -1,7 +1,7 @@
 use super::*;
 use tempfile::TempDir;
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::Rating;
+use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -53,7 +53,10 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             },
         },
         review: StoredReview {
-            rating: Rating::Great,
+            ratings: vec![DomainRating {
+                domain: "gameplay".to_string(),
+                rating: Rating::Great,
+            }],
             writeup: "Plays well.".to_string(),
             checklist: vec![],
         },
@@ -108,6 +111,11 @@ fn manifest() -> StoredManifest {
             actions: vec![],
         }],
         common_review_items: vec![],
+        domains: vec![crate::store::StoredDomain {
+            id: "gameplay".to_string(),
+            name: "Gameplay".to_string(),
+            description: "Core gameplay.".to_string(),
+        }],
     }
 }
 
@@ -201,7 +209,8 @@ fn per_run_file_embeds_full_record_review_and_links() {
         parsed["record"]["links"]["playableBuild"],
         "https://abc.pages.dev"
     );
-    assert_eq!(parsed["review"]["rating"], "great");
+    assert_eq!(parsed["review"]["ratings"][0]["domain"], "gameplay");
+    assert_eq!(parsed["review"]["ratings"][0]["rating"], "great");
     assert_eq!(parsed["review"]["writeup"], "Plays well.");
 }
 

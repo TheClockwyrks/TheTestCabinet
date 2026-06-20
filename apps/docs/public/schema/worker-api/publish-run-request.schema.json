@@ -5,17 +5,20 @@
   "description": "The body of the worker's POST /publish: which finished run to publish, and its hand-written review. A worker keeps no review store, so the review is sent inline. The worker loads the run's record and collected implementation from its output directory, then runs the full publish — release the source repo, deploy the build, and submit the record + review + resolved links to the backend — exactly as a local `tcab publish` does. Idempotent on the run id. A missing or invalid rating is a `422`; an unknown run is a `404`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["runId", "rating", "writeup"],
+  "required": ["runId", "ratings", "writeup"],
   "properties": {
     "runId": {
       "type": "string",
       "description": "The id of a run this worker previously produced. Its record and collected implementation are loaded from the worker's output directory.",
       "minLength": 1
     },
-    "rating": {
-      "type": "string",
-      "description": "The reviewer's one-glance quality verdict. Never aggregated or used to rank.",
-      "enum": ["flawless", "great", "scuffed", "broken"]
+    "ratings": {
+      "type": "array",
+      "description": "The reviewer's quality rating for each of the test case's declared scoring domains. The run's overall rating is the worst across them.",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/DomainRating"
+      }
     },
     "writeup": {
       "type": "string",

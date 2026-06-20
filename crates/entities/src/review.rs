@@ -8,7 +8,10 @@ pub struct Model {
     /// The run this review belongs to (FK to `run.id`); also the primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub run_id: String,
-    pub rating: String,
+    /// The reviewer's per-domain ratings as a JSON array of `{domain, rating}`.
+    /// The run's overall rating is the worst across them.
+    #[sea_orm(column_type = "Text")]
+    pub ratings: String,
     #[sea_orm(column_type = "Text")]
     pub writeup: String,
     /// The reviewer's checklist verdicts as a JSON array.

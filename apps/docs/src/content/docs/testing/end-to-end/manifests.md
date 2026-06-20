@@ -49,7 +49,7 @@ workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for th
 # `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
 reference = [{ view = "title", path = "reference/menu-base.html" }]
 # ADDITIVE reviewer checklist items on top of the common ones (see below); same
-# `{ id, title, text }` shape as a `[[review_item]]`. Lets a mode-only item be
+# `{ id, title, text, weight }` shape as a `[[review_item]]`. Lets a mode-only item be
 # checked only when this variant runs.
 review_item = []
 
@@ -88,8 +88,17 @@ actions = []                 # actions to drive the build into the view (empty =
 id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
 title = "Paddle spin"        # short heading shown above the item (numbered) in the reviewer UI
 text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
+weight = 1                   # points this item is worth toward the score (required, > 0)
 reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
 proof = "title"              # optional: a proof id whose SUBMITTED media is shown
+domain = "single-player"     # optional: the scoring domain this item rolls up to
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's OVERALL rating is the WORST across them. At least one is required.
+[[domain]]
+id = "single-player"         # stable slug, recorded with the per-domain rating
+name = "Single Player"       # display name (optional; default humanizes the id)
+description = "Solo play against the AI opponent." # what the reviewer is rating (required)
 ```
 
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
@@ -178,22 +187,38 @@ proof = "title"              # optional: a proof id whose SUBMITTED media is sho
 - Each `[[review_item]]` declares a **common** reviewer checklist item — one a
   person must explicitly check when reviewing any variant — by a stable `id`
   (recorded with the verdict), a short `title` shown above the item in the
-  reviewer UI, and the `text` a reviewer reads. A variant may declare
-  **additive** items through its own `review_item` array (same
-  `{ id, title, text }` shape); see [Variants](/testing/end-to-end/overview/#variants).
-  Review items are
+  reviewer UI, the `text` a reviewer reads, and a `weight`: the number of points
+  the item is worth toward the run's **score**. A variant may declare
+  **additive** items through its own `review_item` array (same shape); see
+  [Variants](/testing/end-to-end/overview/#variants). Review items are
   reporter-side material: like the reference *source* and a case's
   `description`, they are **never seeded** into a run, so the model never
   receives the checklist. They restate observable requirements the seeded
   specification already states, so withholding them hides nothing. An item id
   must be unique within a variant's effective set (common plus that variant's
-  own); a collision is rejected at resolution. An item may also pair an expected
-  reference and the submitted proof with its check: the optional `reference` names
-  a reference view (shown as the **expected** target) and the optional `proof`
-  names a proof id (whose **submitted** media is shown), so the reviewer compares
-  the target against the evidence before judging. The two are independent — an
-  item may declare just a `proof` with no `reference` (a video clip with no still
-  that meaningfully depicts it, say); the reviewer UI then shows that one side
-  full width rather than reserving an empty pane. Each named id must resolve for
-  the item's variant or resolution is rejected. See
+  own); a collision is rejected at resolution. `weight` is **required** and must
+  be greater than zero — a `pass` verdict earns the item's weight and a `fail`
+  earns none, and the run's score is the earned weight over the total declared
+  weight (verdicts are binary; there is no "not applicable"). An item may also
+  carry an optional `domain` naming the scoring domain it rolls up to (it must be
+  a declared `[[domain]]`); a general item that applies to every mode omits it.
+  An item may also pair an expected reference and the submitted proof with its
+  check: the optional `reference` names a reference view (shown as the
+  **expected** target) and the optional `proof` names a proof id (whose
+  **submitted** media is shown), so the reviewer compares the target against the
+  evidence before judging. The two are independent — an item may declare just a
+  `proof` with no `reference` (a video clip with no still that meaningfully
+  depicts it, say); the reviewer UI then shows that one side full width rather
+  than reserving an empty pane. Each named id must resolve for the item's variant
+  or resolution is rejected. See
   [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
+- Each `[[domain]]` declares a **scoring domain** the reviewer rates
+  independently — for example a game's `single-player` and `versus` modes — by a
+  stable `id` (recorded with the per-domain rating), an optional `name`
+  (defaulting to a humanized `id`), and a required `description` telling the
+  reviewer what they are rating. At least one domain is **required**. The run's
+  **overall rating** is the *worst* rating across all of a case's domains, so a
+  flawless mode cannot mask a broken one. Domains are case-level (not
+  variant-scoped); review items may roll up to one through their optional
+  `domain`. See
+  [Evaluation](/testing/end-to-end/evaluation/#scoring).

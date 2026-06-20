@@ -71,9 +71,9 @@ per-run file. Each summary carries the run's id and timestamps, its
 [subject](/components/core/run-records/#subject) and
 [metrics](/components/core/metrics/) verbatim from the
 [run record](/components/core/run-records/), the denormalized case name for
-cards, the `validationLoaded` signal, the run state, the review `rating` (a
-per-run badge, never aggregated), and the links. The site fetches full records
-lazily, per run page.
+cards, the `validationLoaded` signal, the run state, the review `rating` (the
+run's overall rating — the worst across its scoring domains — shown as a per-run
+badge), and the links. The site fetches full records lazily, per run page.
 
 Schema: [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
 
@@ -91,7 +91,13 @@ fetches. Raw harness output is never published.
 {
   "schemaVersion": 1,
   "record": { "…": "full RunRecord, links populated" },
-  "review": { "rating": "great", "writeup": "Plays well, but the AI paddle…" },
+  "review": {
+    "ratings": [
+      { "domain": "single-player", "rating": "great" },
+      { "domain": "versus", "rating": "scuffed" }
+    ],
+    "writeup": "Plays well, but the AI paddle…"
+  },
   "links": {
     "sourceRepo": "https://github.com/…",
     "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"

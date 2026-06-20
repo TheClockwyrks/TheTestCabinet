@@ -48,6 +48,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 text: "The base variant lists only the standard modes.".to_string(),
                 reference: None,
                 proof: None,
+                weight: 1,
+                domain: None,
             }],
         }],
         common_references: vec![StoredReference {
@@ -63,6 +65,13 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             text: "Swinging a paddle imparts spin on the ball.".to_string(),
             reference: None,
             proof: None,
+            weight: 2,
+            domain: Some("single-player".to_string()),
+        }],
+        domains: vec![StoredDomain {
+            id: "single-player".to_string(),
+            name: "Single Player".to_string(),
+            description: "Solo play.".to_string(),
         }],
     }
 }

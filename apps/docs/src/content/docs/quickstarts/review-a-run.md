@@ -3,9 +3,11 @@ title: Review a Run
 ---
 
 Every published run carries a hand-written [review](/components/core/results/#reviews)
-— a writeup and a rating, plus a verdict on each of the case's
-[reviewer-checklist](/testing/end-to-end/manifests/) items — authored after
-playing the build. Publishing refuses a run without one. The full workflow is in
+— a writeup, a rating for each scoring [domain](/terminology/#domain), and a
+verdict on each of the case's [reviewer-checklist](/testing/end-to-end/manifests/)
+items — authored after playing the build. The verdicts and the items' point
+weights produce the run's [score](/terminology/#score). Publishing refuses a run
+without a review. The full workflow is in
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
 
 ## Review in a console
@@ -15,14 +17,17 @@ The [Tauri desktop app](/components/tauri/overview/) and the
 finished run, play its build, then fill in the review editor:
 
 - Work the **reviewer checklist** — one item at a time, with a rail of every item
-  alongside (answered items marked done) so you can move freely. Each item gets a
-  verdict (**pass** / **fail** / **na**), optionally with a note. When the item
-  pairs them, the question shows the case's **expected** reference beside the
-  agent's **submitted** [proof of implementation](/components/core/validation/#proofs)
-  — image or video — so you compare the target against the evidence before judging.
-  The console will not let you save the review or publish the run until every item
-  has a verdict (the **completeness gate**).
-- Pick the **rating** and write the prose **writeup**.
+  alongside (answered items marked done) so you can move freely. Each item shows
+  its point **weight** and gets a binary verdict (**pass** / **fail**), optionally
+  with a note. When the item pairs them, the question shows the case's
+  **expected** reference beside the agent's **submitted**
+  [proof of implementation](/components/core/validation/#proofs) — image or video
+  — so you compare the target against the evidence before judging. The console
+  will not let you save the review or publish the run until every item has a
+  verdict and every domain is rated (the **completeness gate**).
+- Pick a **rating** for each scoring **domain** and write the prose **writeup**.
+  The run's overall rating is the worst across the domains; its score is the
+  weight of the passed items over the total.
 
 Every run also has a **Proof** tab listing all the proof media the build
 submitted (and any it didn't), browsable independent of the checklist.
@@ -32,21 +37,23 @@ The console writes the review to `runs/<id>/writeup.md` for you.
 ## Review by hand
 
 The review file is also hand-editable. Create `runs/<id>/writeup.md` beside the
-run's `run-record.json`, with the rating in YAML frontmatter and any checklist
-verdicts as `review.<id>: <status> [note]` lines:
+run's `run-record.json`, with a `rating.<domain>:` line per scoring domain in
+YAML frontmatter and any checklist verdicts as `review.<id>: <status> [note]`
+lines:
 
 ```markdown
 ---
-rating: great
+rating.single-player: flawless
+rating.versus: scuffed
 review.ball-spin: pass
 review.obstacle-bank: fail ball clips the top obstacle corner
 ---
 
-Movement and collision feel right. The pause menu doesn't restore keyboard
-focus, but it doesn't block play.
+Single player feels right. Versus has a serve bug that resets the score, so it's
+playable but scuffed.
 ```
 
-The rating must be one of:
+Each domain's rating must be one of:
 
 - **flawless** — to spec, no noticeable bugs.
 - **great** — to spec; minor issues that don't impact playability.
@@ -55,8 +62,8 @@ The rating must be one of:
 - **broken** — doesn't follow the spec, or is unplayable.
 
 The body must not be empty, and a run cannot be published while any declared
-checklist item is missing its verdict. The rating is a per-run signal, never
-aggregated or ranked.
+domain is unrated or any declared checklist item is missing its verdict. The
+run's overall rating is the worst across its domains.
 
 ## Preview the build
 
@@ -68,7 +75,8 @@ one exists:
 npm run dev -w @test-cabinet/site
 ```
 
-The rating badge and writeup preview exactly as they will once live.
+The overall rating badge, score, and writeup preview exactly as they will once
+live.
 
 ## Next step
 

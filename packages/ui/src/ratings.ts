@@ -1,10 +1,11 @@
-// Implementation ratings: the reviewer's subjective quality tier for a finished
-// run, assigned by hand while playing the build. A rating is curatorial — it
-// rides in a run's review, never in the run record, and is shown per run but
-// never aggregated or used to rank (the gallery is not a leaderboard).
+// Implementation ratings: the reviewer's subjective quality tier for one of a
+// test case's scoring domains, assigned by hand while playing the build. A run is
+// rated per domain; its overall rating is the worst across them. Each review item
+// carries a point weight, and the run's score is the weight of its passed items
+// over the total declared weight.
 //
-// This mirrors the `Rating` enum in the Rust core (crates/core/src/review.rs);
-// keep the tiers in lockstep.
+// This mirrors the `Rating` enum and scoring helpers in the Rust core
+// (crates/core/src/review.rs); keep the tiers and logic in lockstep.
 
 /** A quality tier, ordered best to worst. */
 export type Rating = "flawless" | "great" | "scuffed" | "broken";
@@ -52,14 +53,39 @@ export function isRating(value: string): value is Rating {
   return (RATINGS as readonly string[]).includes(value);
 }
 
+/**
+ * The worst (lowest) rating among `ratings`, or null when empty. A run's overall
+ * rating is the worst across its domains — a flawless mode cannot mask a broken
+ * one. Mirrors `Rating::worst` in the Rust core.
+ */
+export function worstRating(ratings: readonly Rating[]): Rating | null {
+  let worst: Rating | null = null;
+  let worstRank = -1;
+  for (const rating of ratings) {
+    const rank = RATINGS.indexOf(rating);
+    if (rank > worstRank) {
+      worstRank = rank;
+      worst = rating;
+    }
+  }
+  return worst;
+}
+
+/** A reviewer's quality rating for one of a case's scoring domains. */
+export interface DomainRating {
+  /** The declared domain's stable id. */
+  domain: string;
+  /** The reviewer's rating for this domain. */
+  rating: Rating;
+}
+
 /** A reviewer's verdict on one declared checklist item. */
-export type VerdictStatus = "pass" | "fail" | "na";
+export type VerdictStatus = "pass" | "fail";
 
 /** Display metadata for a verdict status. */
 export const VERDICT_META: Record<VerdictStatus, { label: string }> = {
   pass: { label: "Pass" },
   fail: { label: "Fail" },
-  na: { label: "N/A" },
 };
 
 /** A reviewer's recorded verdict on one declared checklist item. */
@@ -74,5 +100,40 @@ export interface ReviewVerdict {
 
 /** Narrowing type guard for {@link VerdictStatus}. */
 export function isVerdictStatus(value: string): value is VerdictStatus {
-  return value === "pass" || value === "fail" || value === "na";
+  return value === "pass" || value === "fail";
+}
+
+/** A run's numeric score: the point weight earned over the total available. */
+export interface Score {
+  /** The weight of the items the reviewer marked `pass`. */
+  earned: number;
+  /** The total weight of every declared item — the points available. */
+  total: number;
+}
+
+/** The minimal shape {@link scoreChecklist} needs from a declared review item. */
+export interface WeightedItem {
+  id: string;
+  weight: number;
+}
+
+/**
+ * Score a run by combining the case's declared `items` (which carry the point
+ * weights) with the reviewer's `verdicts`: an item earns its weight when marked
+ * `pass` and none when marked `fail`. The total is the sum of every item's
+ * weight. Mirrors `score` in the Rust core.
+ */
+export function scoreChecklist(
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): Score {
+  let earned = 0;
+  let total = 0;
+  for (const item of items) {
+    total += item.weight;
+    if (verdicts.some((v) => v.id === item.id && v.status === "pass")) {
+      earned += item.weight;
+    }
+  }
+  return { earned, total };
 }

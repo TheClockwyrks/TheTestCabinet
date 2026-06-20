@@ -137,7 +137,7 @@ description = "Classic plus Wrap mode, where the board edges wrap into tunnels."
 spec = [{ source = "specs/modes/wrap.md", dest = "specs/modes/wrap.md" }]
 reference = [{ view = "title", path = "reference/menu-wrap.html" }]
 review_item = [
-  { id = "wrap-tunnels", title = "Wrapping edges", text = "In Wrap the four perimeter edges are open tunnels, not solid walls: a snake that leaves one edge reappears on the opposite edge of the same row or column, there is no wall death, and only the snake's own body can end the round." },
+  { id = "wrap-tunnels", title = "Wrapping edges", text = "In Wrap the four perimeter edges are open tunnels, not solid walls: a snake that leaves one edge reappears on the opposite edge of the same row or column, there is no wall death, and only the snake's own body can end the round.", weight = 1 },
 ]
 
 [[variant]]
@@ -147,7 +147,7 @@ description = "Classic plus Maze mode, with fixed fatal interior obstacles."
 spec = [{ source = "specs/modes/maze.md", dest = "specs/modes/maze.md" }]
 reference = [{ view = "title", path = "reference/menu-maze.html" }]
 review_item = [
-  { id = "maze-obstacles", title = "Fatal obstacles", text = "A Maze match adds fixed interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell." },
+  { id = "maze-obstacles", title = "Fatal obstacles", text = "A Maze match adds fixed interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell.", weight = 1 },
 ]
 
 [[variant]]
@@ -157,7 +157,7 @@ description = "Classic plus Feast mode, with a periodic, time-limited bonus orb.
 spec = [{ source = "specs/modes/feast.md", dest = "specs/modes/feast.md" }]
 reference = [{ view = "title", path = "reference/menu-feast.html" }]
 review_item = [
-  { id = "feast-bonus-orb", title = "Bonus orb", text = "A Feast match periodically shows a single time-limited bonus orb alongside the ordinary pellet (first at 8 s, staying 6 s, blinking faster in its final 2 seconds before it despawns). Eating it scores 50 x M and counts as a combo eat, but does not grow the snake or replace the pellet." },
+  { id = "feast-bonus-orb", title = "Bonus orb", text = "A Feast match periodically shows a single time-limited bonus orb alongside the ordinary pellet (first at 8 s, staying 6 s, blinking faster in its final 2 seconds before it despawns). Eating it scores 50 x M and counts as a combo eat, but does not grow the snake or replace the pellet.", weight = 1 },
 ]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
@@ -214,23 +214,35 @@ name = "Title Screen"
 reference = "title"
 actions = []
 
+# Scoring domain. A reviewer rates each declared domain independently and the
+# run's overall rating is the WORST across them; every case must declare at least
+# one. Coil is a single-player game, so it has one domain covering the whole
+# experience. The point checklist below is scored globally.
+[[domain]]
+id = "gameplay"
+name = "Gameplay"
+description = "The single-player snake game: movement, scoring, collisions, and presentation."
+
 # Reviewer checklist items, common to every variant. These are the major,
 # observable requirements a reviewer must explicitly check by playing the build —
 # the things validation cannot judge and that are easy to miss at a glance. They
 # are reporter-side material: never seeded into a run, so the model never sees the
 # checklist; each one restates a requirement the seeded specification already
 # states. A variant adds its own items (see the `review_item` arrays above) for
-# the mode it introduces. The reviewer records a pass/fail/na verdict for each
-# before the run can be published; the final rating stays the reviewer's call.
+# the mode it introduces. Each item is worth `weight` points toward the run's
+# score; the reviewer records a pass/fail verdict for each before the run can be
+# published. The domain rating stays the reviewer's call.
 [[review_item]]
 id = "combo-multiplier"
 title = "Combo multiplier"
 text = "Eating pellets in quick succession raises the combo multiplier by one per pellet (capped at x5) while the combo window is open; a pellet eaten after the window has lapsed resets the multiplier to 1. Each pellet scores 10 x M using the updated multiplier."
+weight = 1
 
 [[review_item]]
 id = "combo-window"
 title = "Combo window"
 text = "The 2.4-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
+weight = 1
 # A video proof with no still that meaningfully depicts the combo window timing,
 # so the clip stands alone — the reviewer judges it against the spec, not a
 # side-by-side reference. The review UI shows a proof-only item full width.
@@ -240,36 +252,43 @@ proof = "combo"
 id = "fixed-tick"
 title = "Constant tick rate"
 text = "The snake advances exactly one cell per tick at a constant 8 ticks per second; it never speeds up as it grows or as the score rises, and rendering stays smooth and independent of the fixed simulation tick."
+weight = 1
 
 [[review_item]]
 id = "turning-rules"
 title = "Turning and reversal"
 text = "A turn takes effect on the next tick and only perpendicular to the current direction; a reversal back into the neck is ignored, and at most one turn is applied per tick, so a rapid double-press (e.g. down then left while moving right) can never fold the snake onto itself."
+weight = 1
 
 [[review_item]]
 id = "tail-follow"
 title = "Tail-follow rule"
 text = "On a normal tick the head may safely enter the cell the tail is vacating, so the snake can chase its own tail; but on a growth tick — when the tail does not retract — moving the head into any body cell, including the current tail cell, is fatal."
+weight = 1
 
 [[review_item]]
 id = "collision-immediate"
 title = "Immediate death"
 text = "The head entering a wall cell or any solid body cell ends the round immediately, with no grace frames, forgiveness window, or second chance."
+weight = 1
 
 [[review_item]]
 id = "growth-spawn"
 title = "Growth and pellet spawn"
 text = "Eating a pellet grows the snake by exactly one cell and immediately spawns exactly one new pellet at a random valid cell — never on a wall, the snake, an obstacle, or another pellet/orb — so exactly one pellet is on the board at any time."
+weight = 1
 
 [[review_item]]
 id = "high-score"
 title = "Persistent high score"
 text = "The BEST score persists across sessions via localStorage with no backend, is shown on the title screen and during play, and updates live the instant the current score passes it; nothing other than the high score persists between sessions."
+weight = 1
 
 [[review_item]]
 id = "states-complete"
 title = "Game states"
 text = "Every game state is reachable and behaves correctly: title menu, how-to-play, playing, pause (resume/restart/quit to menu, with the tick frozen while paused), and game-over (play again/menu) showing the final score and BEST."
+weight = 1
 reference = "title"
 proof = "title"
 
@@ -277,6 +296,7 @@ proof = "title"
 id = "board-cleared"
 title = "Board-cleared win"
 text = "If the snake grows to fill every interior cell, the round ends cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — without the game crashing or attempting an impossible pellet placement."
+weight = 1
 reference = "game-over"
 proof = "game-over"
 
@@ -284,10 +304,12 @@ proof = "game-over"
 id = "fits-window"
 title = "Window fit"
 text = "The entire 1280x720 stage — the whole board, every wall, the full HUD, and every menu item — stays visible, fitted, and centered at any window size and pixel density, including on load before any input, letterboxed with the background color and never clipped."
+weight = 1
 
 [[review_item]]
 id = "crisp-grid"
 title = "Crisp grid and snake"
 text = "Cells render as crisp, un-blurred squares on the faintly gridded board, and the snake's brighter head is always distinguishable from its dimmer body segments."
+weight = 1
 reference = "gameplay"
 proof = "gameplay"

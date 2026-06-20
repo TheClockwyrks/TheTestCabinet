@@ -1,6 +1,15 @@
 import { Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
-import { RATING_META, VERDICT_META } from "../../../data/ratings";
-import { useGalleryData } from "../../../data/galleryContext";
+import {
+  RATING_META,
+  VERDICT_META,
+  scoreChecklist,
+  worstRating,
+  type ParsedWriteup,
+} from "../../../data/ratings";
+import {
+  useGalleryData,
+  type ReviewModel,
+} from "../../../data/galleryContext";
 import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -11,17 +20,26 @@ import styles from "./RunDetailPages.module.scss";
 const VERDICT_CLASS = {
   pass: styles.verdictPass,
   fail: styles.verdictFail,
-  na: styles.verdictNa,
 } as const;
 
+// The id used to group review items that belong to no declared domain.
+const GENERAL = "__general__";
+
+// Format a point weight as `1 pt` / `2 pts`.
+function pts(weight: number): string {
+  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
+}
+
 // The Verdict tab (`/runs/:runId`): the run's hand-written, post-implementation
-// review — its quality rating and the reviewer's writeup. This is the default
-// tab so a visitor reads the verdict before launching the (possibly broken)
-// build on the Play tab.
+// review — its overall rating and score, the per-domain ratings, the reviewer's
+// writeup, and the per-item checklist breakdown. This is the default tab so a
+// visitor reads the verdict before launching the (possibly broken) build on the
+// Play tab.
 export function RunVerdictPage() {
   const { canExecute } = useGalleryData();
   const { localIds } = useRuns();
   const runtime = useRunsRuntime();
+  const gallery = useGalleryData();
   return (
     <RunDetailLayout tab="verdict">
       {({ run, review }) =>
@@ -35,50 +53,177 @@ export function RunVerdictPage() {
             onChanged={() => runtime.requestRefresh()}
           />
         ) : (
-        <Panel>
-          {review ? (
-            <>
-              {review.rating && (
-                <p className={styles.verdict}>
-                  <RatingBadge rating={review.rating} />
-                  <span className={styles.verdictLabel}>
-                    {RATING_META[review.rating].description}
-                  </span>
-                </p>
-              )}
-              <Markdown className={styles.writeupBody}>{review.body}</Markdown>
-              {review.checklist.length > 0 && (
-                <div className={styles.checklist}>
-                  <h2 className={styles.checklistHeading}>Reviewer checklist</h2>
-                  <ul className={styles.checklistItems}>
-                    {review.checklist.map((verdict) => (
-                      <li
-                        key={verdict.id}
-                        className={`${styles.verdictRow} ${VERDICT_CLASS[verdict.status]}`}
-                      >
-                        <span className={styles.verdictStatus}>
-                          {VERDICT_META[verdict.status].label}
-                        </span>
-                        <span className={styles.verdictItem}>
-                          {verdict.id}
-                          {verdict.note && (
-                            <span className={styles.verdictNote}> — {verdict.note}</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className={styles.empty}>
-              No manual review has been written for this run yet.
-            </p>
-          )}
-        </Panel>
+          <Panel>
+            {review ? (
+              <PublishedVerdict
+                review={review}
+                model={gallery.reviewModelFor(run.subject)}
+              />
+            ) : (
+              <p className={styles.empty}>
+                No manual review has been written for this run yet.
+              </p>
+            )}
+          </Panel>
         )
       }
     </RunDetailLayout>
+  );
+}
+
+// The read-only verdict: overall rating + score up front, the per-domain ratings,
+// the writeup prose, and the checklist broken down by domain. The scoring model
+// (item weights + domains) is resolved from the catalog; when it is unavailable
+// (a case not in this host's catalog) the score and weights are simply omitted.
+function PublishedVerdict({
+  review,
+  model,
+}: {
+  review: ParsedWriteup;
+  model: ReviewModel;
+}) {
+  const overall = worstRating(review.ratings.map((r) => r.rating));
+  const haveModel = model.items.length > 0;
+  const score = haveModel ? scoreChecklist(model.items, review.checklist) : null;
+
+  // Item metadata by id (title + weight + domain), for the breakdown.
+  const itemsById = new Map(model.items.map((item) => [item.id, item]));
+  // The reviewer's verdict by item id.
+  const verdictById = new Map(review.checklist.map((v) => [v.id, v]));
+  // A domain's rating by domain id.
+  const ratingByDomain = new Map(review.ratings.map((r) => [r.domain, r.rating]));
+
+  // Group items by their domain (declared order), with un-domained items last.
+  const groups: { id: string; name: string; itemIds: string[] }[] = [];
+  const groupIndex = new Map<string, number>();
+  const ensureGroup = (id: string, name: string): number => {
+    let index = groupIndex.get(id);
+    if (index === undefined) {
+      index = groups.length;
+      groups.push({ id, name, itemIds: [] });
+      groupIndex.set(id, index);
+    }
+    return index;
+  };
+  for (const domain of model.domains) ensureGroup(domain.id, domain.name);
+  for (const item of model.items) {
+    const id = item.domain ?? GENERAL;
+    const name =
+      model.domains.find((d) => d.id === item.domain)?.name ?? "General";
+    groups[ensureGroup(id, name)]!.itemIds.push(item.id);
+  }
+
+  return (
+    <>
+      {/* Overall rating (worst across domains) and score (earned / total pts). */}
+      <div className={styles.verdictHeader}>
+        {overall && (
+          <p className={styles.verdict}>
+            <RatingBadge rating={overall} />
+            <span className={styles.verdictLabel}>
+              {RATING_META[overall].description}
+            </span>
+          </p>
+        )}
+        {score && (
+          <p className={styles.score}>
+            <span className={styles.scoreValue}>
+              {score.earned} / {score.total}
+            </span>{" "}
+            <span className={styles.scoreUnit}>pts</span>
+          </p>
+        )}
+      </div>
+
+      {/* Per-domain ratings: the reviewer's call for each mode the case declares. */}
+      {model.domains.length > 0 && (
+        <div className={styles.domains}>
+          <h2 className={styles.checklistHeading}>Domains</h2>
+          <ul className={styles.domainList}>
+            {model.domains.map((domain) => {
+              const rating = ratingByDomain.get(domain.id);
+              return (
+                <li key={domain.id} className={styles.domainRow}>
+                  <span className={styles.domainName} title={domain.description}>
+                    {domain.name}
+                  </span>
+                  {rating && <RatingBadge rating={rating} />}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <Markdown className={styles.writeupBody}>{review.body}</Markdown>
+
+      {/* The reviewer's per-item checklist, grouped by domain. */}
+      {review.checklist.length > 0 && (
+        <div className={styles.checklist}>
+          <h2 className={styles.checklistHeading}>Reviewer checklist</h2>
+          {groups
+            .filter((group) => group.itemIds.length > 0)
+            .map((group) => (
+              <div key={group.id} className={styles.breakdownGroup}>
+                {groups.length > 1 && (
+                  <h3 className={styles.breakdownGroupHeading}>{group.name}</h3>
+                )}
+                <ul className={styles.checklistItems}>
+                  {group.itemIds.map((itemId) => (
+                    <ChecklistRow
+                      key={itemId}
+                      itemId={itemId}
+                      item={itemsById.get(itemId)}
+                      verdict={verdictById.get(itemId)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          {/* A run reviewed before the catalog carried weights (or against a case
+              this host lacks) has verdicts but no grouped items; list them flat. */}
+          {!haveModel &&
+            review.checklist.length > 0 &&
+            review.checklist.every((v) => !itemsById.has(v.id)) && (
+              <ul className={styles.checklistItems}>
+                {review.checklist.map((verdict) => (
+                  <ChecklistRow
+                    key={verdict.id}
+                    itemId={verdict.id}
+                    item={undefined}
+                    verdict={verdict}
+                  />
+                ))}
+              </ul>
+            )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ChecklistRow({
+  itemId,
+  item,
+  verdict,
+}: {
+  itemId: string;
+  item: { title: string; weight: number } | undefined;
+  verdict: { status: "pass" | "fail"; note?: string } | undefined;
+}) {
+  if (!verdict) return null;
+  const label = item ? `${item.title} (${pts(item.weight)})` : itemId;
+  return (
+    <li className={`${styles.verdictRow} ${VERDICT_CLASS[verdict.status]}`}>
+      <span className={styles.verdictStatus}>
+        {VERDICT_META[verdict.status].label}
+      </span>
+      <span className={styles.verdictItem}>
+        {label}
+        {verdict.note && (
+          <span className={styles.verdictNote}> — {verdict.note}</span>
+        )}
+      </span>
+    </li>
   );
 }

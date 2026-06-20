@@ -58,6 +58,9 @@ export interface VariantInfo {
   // Rendered reference screenshots (common first, then the variant's own), or
   // empty for a locally-resolved checkout with no backend to serve baselines.
   references: ReferenceShot[];
+  // The reviewer checklist items for this variant (common first, then the
+  // variant's own), carrying their point weights.
+  reviewItems: ReviewItem[];
 }
 
 export interface VersionInfo {
@@ -68,6 +71,8 @@ export interface VersionInfo {
   tags: string[];
   summary: string | null;
   variants: VariantInfo[];
+  // The case's scoring domains (case-level).
+  domains: Domain[];
   maxRuntimeSeconds: number;
 }
 
@@ -86,17 +91,34 @@ export interface Specification {
 
 export type Rating = "flawless" | "great" | "scuffed" | "broken";
 
-export type VerdictStatus = "pass" | "fail" | "na";
+export type VerdictStatus = "pass" | "fail";
+
+// A reviewer's rating for one of the case's scoring domains.
+export interface DomainRating {
+  domain: string;
+  rating: Rating;
+}
+
+// A scoring domain a case declares; rated independently, the run's overall rating
+// is the worst across them.
+export interface Domain {
+  id: string;
+  name: string;
+  description: string;
+}
 
 // A reviewer checklist item a test case declares (its stable id, a short title,
-// and the prose a reviewer reads). Surfaced so the reviewer works through every
-// major item. The UI prefixes a synthesized number to the title at display time.
+// the prose a reviewer reads, and the points it is worth). Surfaced so the
+// reviewer works through every major item. The UI prefixes a synthesized number
+// to the title at display time.
 export interface ReviewItem {
   id: string;
   title: string;
   text: string;
   reference?: string | null;
   proof?: string | null;
+  weight: number;
+  domain?: string | null;
 }
 
 // A reviewer's verdict on one declared checklist item. `note` is omitted when
@@ -108,7 +130,7 @@ export interface ReviewVerdict {
 }
 
 export interface ReviewDocument {
-  rating: Rating;
+  ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
 }
@@ -212,10 +234,10 @@ export const readReviewItems = (slug: string, version: string, variant: string) 
   invoke<ReviewItem[]>("read_review_items", { slug, version, variant });
 export const saveReview = (
   id: string,
-  rating: Rating,
+  ratings: DomainRating[],
   writeup: string,
   checklist: ReviewVerdict[],
-) => invoke<void>("save_review", { id, rating, writeup, checklist });
+) => invoke<void>("save_review", { id, ratings, writeup, checklist });
 export const publishRun = (id: string) =>
   invoke<PublishResult>("publish_run", { id });
 

@@ -6,13 +6,13 @@
 // reads them from context (see context.tsx).
 import type {
   BackendIdentity,
+  DomainRating,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
   Model,
   ProgressCallback,
   PublishResult,
-  Rating,
   ReviewItem,
   ReviewVerdict,
   RunEventStreams,
@@ -193,7 +193,8 @@ export interface WorkerClient {
 
 // The reviewer's input when saving a review.
 export interface ReviewDocumentInput {
-  rating: Rating;
+  // The reviewer's rating for each of the case's scoring domains.
+  ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
 }

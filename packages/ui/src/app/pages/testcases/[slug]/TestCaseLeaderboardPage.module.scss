@@ -1,0 +1,63 @@
+@use "../../../styles/tokens" as t;
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}
+
+// A dense, column-aligned board mirroring the run log's treatment: rank, model,
+// score, rating. Unlike the run log this is genuinely ranked — top score first.
+.board {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 8rem 6rem;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-xs 0;
+  border-bottom: 1px solid t.$color-border;
+}
+
+.head {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  color: t.$color-text-muted;
+  border-bottom-color: t.$color-text-muted;
+}
+
+.rank {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.model {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scoreValue {
+  font-weight: 700;
+}
+
+.scoreUnit {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.none {
+  color: t.$color-text-muted;
+}

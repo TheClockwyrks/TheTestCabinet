@@ -103,6 +103,11 @@ pub struct StoredManifest {
     /// existed.
     #[serde(default)]
     pub common_review_items: Vec<StoredReviewItem>,
+    /// The case's scoring domains (case-level, not variant-scoped). A reviewer
+    /// rates each independently; the run's overall rating is the worst across
+    /// them. Defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub domains: Vec<StoredDomain>,
 }
 
 /// Build commands persisted in a [`StoredManifest`].
@@ -237,6 +242,25 @@ pub struct StoredReviewItem {
     /// Optional proof id paired with this item as the submitted media.
     #[serde(default)]
     pub proof: Option<String>,
+    /// How many points the item is worth toward the run's score. Always greater
+    /// than zero.
+    pub weight: u32,
+    /// The scoring domain (by id) the item belongs to, or `None` for a general
+    /// item that belongs to no single domain.
+    #[serde(default)]
+    pub domain: Option<String>,
+}
+
+/// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each
+/// independently; the run's overall rating is the worst across them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredDomain {
+    /// Stable slug identifying the domain; recorded with the per-domain rating.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// A brief description of what the domain covers, shown to the reviewer.
+    pub description: String,
 }
 
 /// A check persisted in a [`StoredManifest`].

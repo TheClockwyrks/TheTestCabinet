@@ -2,67 +2,80 @@
 // mirroring the `Rating` enum in the Rust core, crates/core/src/review.rs) so the
 // gallery, the web console, and the desktop app all share one definition. This
 // module re-exports it and keeps the site-only writeup frontmatter parser, which
-// splits a writeup's rating + checklist verdicts from its prose body.
+// splits a writeup's per-domain ratings + checklist verdicts from its prose body.
 //
 // A rating is curatorial: it rides in the frontmatter of a run's writeup (see
-// writeups.ts), NOT in the run record. The site shows it per run; it is never
-// aggregated or used to rank runs (the gallery is not a leaderboard).
+// writeups.ts), NOT in the run record. A run is rated per scoring domain; its
+// overall rating is the worst across them, and its score is the weight of its
+// passed checklist items over the total declared weight.
 export {
   type Rating,
   RATINGS,
   type RatingMeta,
   RATING_META,
   isRating,
+  worstRating,
+  type DomainRating,
   type VerdictStatus,
   VERDICT_META,
   type ReviewVerdict,
+  type Score,
+  type WeightedItem,
+  scoreChecklist,
 } from "@test-cabinet/ui";
 
 import {
   isRating,
   isVerdictStatus,
-  type Rating,
+  type DomainRating,
   type ReviewVerdict,
 } from "@test-cabinet/ui";
 
-/** A writeup split into its rating, its checklist verdicts, and its prose body. */
+/** A writeup split into its per-domain ratings, its checklist verdicts, and its prose body. */
 export interface ParsedWriteup {
-  /** The rating from the frontmatter, or null when none was authored. */
-  rating: Rating | null;
+  /** The per-domain ratings from the frontmatter, in order. Empty when none was authored. */
+  ratings: DomainRating[];
   /** The reviewer's checklist verdicts, in frontmatter order. Empty when none. */
   checklist: ReviewVerdict[];
   /** The Markdown body with the frontmatter stripped. */
   body: string;
 }
 
-// Mirrors the parser in the Rust core: an opening `---` fence, a `rating` key,
-// and a closing `---` line, with the body following. Lenient by design — a
-// malformed writeup simply yields no rating here; the publish gate is what
-// actually refuses to release a run without a valid one.
+// Mirrors the parser in the Rust core: an opening `---` fence, one or more
+// `rating.<domain>` keys, and a closing `---` line, with the body following.
+// Lenient by design — a malformed writeup simply yields no ratings here; the
+// publish gate is what actually refuses to release a run without valid ones.
 const FRONTMATTER = /^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
-/** Split a writeup's frontmatter rating and checklist verdicts from its body. */
+/** Split a writeup's frontmatter ratings and checklist verdicts from its body. */
 export function parseWriteup(raw: string): ParsedWriteup {
   const withoutBom = raw.replace(/^﻿/, "");
   const match = FRONTMATTER.exec(withoutBom);
   if (!match) {
-    return { rating: null, checklist: [], body: raw.trim() };
+    return { ratings: [], checklist: [], body: raw.trim() };
   }
   const [, frontmatter, body] = match;
-  const rating = readRating(frontmatter ?? "");
+  const ratings = readRatings(frontmatter ?? "");
   const checklist = readChecklist(frontmatter ?? "");
-  return { rating, checklist, body: (body ?? "").trim() };
+  return { ratings, checklist, body: (body ?? "").trim() };
 }
 
-function readRating(frontmatter: string): Rating | null {
+// Mirrors the Rust parser: each `rating.<domain>: <tier>` line, in order. A line
+// with an unknown tier is skipped (lenient, like the checklist parse).
+function readRatings(frontmatter: string): DomainRating[] {
+  const ratings: DomainRating[] = [];
   for (const line of frontmatter.split(/\r?\n/)) {
     const separator = line.indexOf(":");
     if (separator === -1) continue;
-    if (line.slice(0, separator).trim() !== "rating") continue;
+    const key = line.slice(0, separator).trim();
+    if (!key.startsWith("rating.")) continue;
+    const domain = key.slice("rating.".length).trim();
+    if (!domain) continue;
     const value = line.slice(separator + 1).trim().toLowerCase();
-    return isRating(value) ? value : null;
+    if (!isRating(value)) continue;
+    ratings.push({ domain, rating: value });
   }
-  return null;
+  return ratings;
 }
 
 // Mirrors the Rust parser: each `review.<id>: <status> [note]` line, in order.

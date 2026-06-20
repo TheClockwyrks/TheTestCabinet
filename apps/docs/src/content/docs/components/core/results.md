@@ -5,8 +5,9 @@ title: Results
 A run's value is in its output: the implementation a model produced, together
 with the metrics describing how it got there. The Test Cabinet publishes both so
 that anyone can inspect, clone, and play the result. The final product is
-released as it is, including any bugs and flaws, rather than being reduced to
-graphs or a single percentage.
+released as it is, including any bugs and flaws: a run's score and review *frame*
+the playable build rather than standing in for it, so a number never replaces
+seeing the implementation run.
 
 ## Generated Code
 
@@ -79,31 +80,36 @@ checked before any code is pushed, and a sweep is never left half published.
 
 Every published run carries a hand-written **review**: a short
 [writeup](/components/site/overview/#implementation-writeups) the site shows
-before the playable build, together with a **rating** that records the
-reviewer's overall assessment and a **checklist** of verdicts on the items the
-test case asked the reviewer to check.
+before the playable build, together with a **rating per scoring domain** and a
+**checklist** of verdicts on the items the test case asked the reviewer to
+check. The verdicts and the items' point weights together produce the run's
+numeric **score**.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the
-[run record](/components/core/run-records/) contract. The rating and the
-checklist verdicts travel with the writeup (in its frontmatter), not in the
+[run record](/components/core/run-records/) contract. The per-domain ratings and
+the checklist verdicts travel with the writeup (in its frontmatter), not in the
 record. Publishing makes the review available to the site alongside the run
 record.
 
-The **checklist** records a verdict — **pass**, **fail**, or **na** (not
-applicable), with an optional note — for each reviewer checklist item the test
-case version declares (see the version manifest's
-[`review_item`s](/testing/end-to-end/manifests/)). It guarantees coverage,
-not a score: every declared item must carry a verdict before a run can be
-published, so a reviewer cannot silently skip a requirement the case author
-called out. The verdicts are recorded faithfully but the rating stays the
-reviewer's own call — the checklist informs it, it does not compute it.
+The **checklist** records a binary verdict — **pass** or **fail**, with an
+optional note — for each reviewer checklist item the test case version declares
+(see the version manifest's
+[`review_item`s](/testing/end-to-end/manifests/)). Every declared item must carry
+a verdict before a run can be published, so a reviewer cannot silently skip a
+requirement the case author called out. Each item is worth a **weight** in
+points: a `pass` earns the item's weight and a `fail` earns none, and the run's
+**score** is the earned weight over the total declared weight.
 
-The rating is one of four hand-assigned tiers — **flawless**, **great**,
-**scuffed**, or **broken**, in descending order of fidelity to the spec. What
-each tier means is reviewer judgment rather than anything a run emits, so the
-criteria for choosing one live with the review workflow; see
+A case declares one or more **scoring domains** (for example a game's
+single-player and versus modes); the reviewer assigns one of four tiers —
+**flawless**, **great**, **scuffed**, or **broken**, in descending order of
+fidelity to the spec — to each. The run's **overall rating** is the *worst*
+across its domains, so a flawless mode cannot mask a broken one. What each tier
+means is reviewer judgment rather than anything a run emits, so the criteria for
+choosing one live with the review workflow; see
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).
 
-The rating is a subjective, per-run signal. It is shown alongside a run but is
-never aggregated or used to rank runs (see [Site](/components/site/overview/)).
+The overall rating and the score are shown together on the run, the per-domain
+ratings break the rating down, and each test case's
+[leaderboard](/components/site/overview/#leaderboard) ranks models by score.

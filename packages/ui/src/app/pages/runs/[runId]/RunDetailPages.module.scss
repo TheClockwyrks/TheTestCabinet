@@ -206,8 +206,76 @@
   }
 }
 
-.verdictNa {
-  .verdictStatus {
-    color: t.$color-text-muted;
+// The headline row: the overall rating badge beside the numeric score.
+.verdictHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: t.$space-md;
+
+  // The rating headline keeps its own bottom margin; pull the row together.
+  .verdict {
+    margin-bottom: 0;
   }
+}
+
+.score {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.scoreValue {
+  font-size: t.$font-md;
+  font-weight: 700;
+}
+
+.scoreUnit {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The per-domain ratings block, between the headline and the writeup.
+.domains {
+  margin-top: t.$space-md;
+}
+
+.domainList {
+  list-style: none;
+  margin: t.$space-sm 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.domainRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  font-size: t.$font-sm;
+  border-left: 3px solid t.$color-border;
+  padding: t.$space-xs 0 t.$space-xs t.$space-md;
+}
+
+.domainName {
+  color: t.$color-text;
+}
+
+// A checklist breakdown group (one per scoring domain).
+.breakdownGroup {
+  margin-top: t.$space-md;
+
+  &:first-of-type {
+    margin-top: t.$space-sm;
+  }
+}
+
+.breakdownGroupHeading {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 t.$space-xs;
 }

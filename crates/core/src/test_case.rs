@@ -101,6 +101,12 @@ struct Manifest {
     /// verified by hand. Declared as repeated `[[review_item]]` tables.
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// Scoring domains the reviewer rates independently — for example a game's
+    /// single-player and versus modes. The run's overall rating is the **worst**
+    /// rating across all of them. At least one must be declared. Declared as
+    /// repeated `[[domain]]` tables.
+    #[serde(default, rename = "domain")]
+    domains: Vec<ManifestDomain>,
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -240,6 +246,27 @@ struct ManifestReviewItem {
     /// this item. Must name a proof that resolves for the item's variant.
     #[serde(default)]
     proof: Option<String>,
+    /// How many points this item is worth toward the run's score (an academic
+    /// test's per-question marks). **Required** and must be greater than zero.
+    weight: u32,
+    /// Optional scoring domain this item belongs to. Must name a declared
+    /// `[[domain]]`. `None` for a general item that belongs to no single domain.
+    #[serde(default)]
+    domain: Option<String>,
+}
+
+/// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
+/// rates independently.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestDomain {
+    /// Stable slug identifying this domain; recorded with the reviewer's
+    /// per-domain rating.
+    id: String,
+    /// Human-readable display name. Defaults to a humanized form of `id`.
+    name: Option<String>,
+    /// A brief description of what the domain covers, shown to the reviewer so
+    /// they know what they are rating. **Required**.
+    description: String,
 }
 
 /// The manifest file name expected in every version folder.
@@ -540,6 +567,35 @@ pub struct ReviewItem {
     /// Optional proof id whose **submitted** media is shown to the reviewer for
     /// this item. `None` when the item has no paired proof.
     pub proof: Option<String>,
+    /// How many points this item is worth toward the run's score. Always greater
+    /// than zero. A run earns this item's weight when the reviewer marks it
+    /// `pass`, and none when they mark it `fail`; the run's score is the earned
+    /// weight over the total declared weight (see [`crate::review::score`]).
+    pub weight: u32,
+    /// The scoring [`Domain`] this item belongs to (by id), or `None` for a
+    /// general item that belongs to no single domain. Used to group the score
+    /// breakdown by domain in the reviewer and verdict UIs.
+    pub domain: Option<String>,
+}
+
+/// A scoring domain a test case declares.
+///
+/// A reviewer rates each domain independently (for example a game's
+/// single-player and versus modes), and the run's overall rating is the **worst**
+/// rating across all of them — a flawless mode cannot mask a broken one. A case
+/// declares at least one domain. Review items may be grouped under a domain (see
+/// [`ReviewItem::domain`]) to break the score down per domain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Domain {
+    /// Stable slug identifying this domain; recorded with the reviewer's
+    /// per-domain rating.
+    pub id: String,
+    /// Human-readable display name, surfaced in the reviewer and verdict UIs.
+    pub name: String,
+    /// A brief description of what the domain covers, shown to the reviewer so
+    /// they know what they are rating.
+    pub description: String,
 }
 
 // `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
@@ -621,6 +677,11 @@ pub struct TestCaseVersion {
     /// [`Self::review_items_for`]. **Not** seeded — reporter-side material a
     /// reviewer works through after playing a build.
     pub common_review_items: Vec<ReviewItem>,
+    /// The scoring domains this case declares, in declared order. A reviewer
+    /// rates each independently; the run's overall rating is the worst across
+    /// them. At least one is always present. Unlike review items, domains are
+    /// case-level rather than variant-scoped.
+    pub domains: Vec<Domain>,
 }
 
 impl TestCaseVersion {
@@ -815,6 +876,37 @@ impl TestCaseCatalog {
         }
         if build.build.trim().is_empty() {
             return Err(invalid("build.build must not be empty".to_string()));
+        }
+
+        // Scoring domains: a reviewer rates each independently and the run's
+        // overall rating is the worst across them, so a case must declare at least
+        // one. Ids must be unique (each keys a recorded per-domain rating) and a
+        // description is required so the reviewer knows what they are rating.
+        if manifest.domains.is_empty() {
+            return Err(invalid(
+                "at least one [[domain]] must be declared".to_string(),
+            ));
+        }
+        let mut domains: Vec<Domain> = Vec::with_capacity(manifest.domains.len());
+        for domain in &manifest.domains {
+            if domain.id.trim().is_empty() {
+                return Err(invalid("domain `id` must not be empty".to_string()));
+            }
+            if domain.description.trim().is_empty() {
+                return Err(invalid(format!(
+                    "domain `{}` has empty `description`",
+                    domain.id
+                )));
+            }
+            if domains.iter().any(|resolved| resolved.id == domain.id) {
+                return Err(invalid(format!("duplicate domain id `{}`", domain.id)));
+            }
+            let name = domain.name.clone().unwrap_or_else(|| humanize(&domain.id));
+            domains.push(Domain {
+                id: domain.id.clone(),
+                name,
+                description: domain.description.clone(),
+            });
         }
 
         // Resolve one spec mapping: the source must exist inside the version
@@ -1029,12 +1121,33 @@ impl TestCaseCatalog {
                     item.id
                 )));
             }
+            // The weight is the item's point value toward the score; a zero-weight
+            // item could never affect the score, which is never intended, so it is
+            // rejected rather than silently scored as nothing.
+            if item.weight == 0 {
+                return Err(invalid(format!(
+                    "review_item `{}` must have a `weight` greater than zero",
+                    item.id
+                )));
+            }
+            // An item's domain, when declared, must name a domain the case
+            // declares so its points roll up to a real per-domain score.
+            if let Some(domain) = &item.domain
+                && !domains.iter().any(|resolved| &resolved.id == domain)
+            {
+                return Err(invalid(format!(
+                    "review_item `{}` names domain `{}`, which is not declared",
+                    item.id, domain
+                )));
+            }
             Ok(ReviewItem {
                 id: item.id.clone(),
                 title: item.title.clone(),
                 text: item.text.clone(),
                 reference: item.reference.clone(),
                 proof: item.proof.clone(),
+                weight: item.weight,
+                domain: item.domain.clone(),
             })
         };
 
@@ -1279,6 +1392,7 @@ impl TestCaseCatalog {
             common_proofs,
             checks,
             common_review_items,
+            domains,
         })
     }
 

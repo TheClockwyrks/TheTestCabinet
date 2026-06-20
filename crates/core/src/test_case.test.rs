@@ -16,7 +16,8 @@ fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCa
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
     let manifest = format!(
         "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n{manifest_extra}\n\
-         [[variant]]\nslug = \"base\"\n"
+         [[variant]]\nslug = \"base\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     );
     fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
     let catalog = TestCaseCatalog::new(dir.path());
@@ -90,10 +91,11 @@ fn resolves_common_and_variant_review_items() {
         "[[review_item]]\n\
          id = \"ball-spin\"\n\
          title = \"Paddle spin\"\n\
-         text = \"Swinging a paddle imparts spin on the ball.\"\n\n\
+         text = \"Swinging a paddle imparts spin on the ball.\"\n\
+         weight = 1\n\n\
          [[variant]]\n\
          slug = \"frenzy\"\n\
-         review_item = [{ id = \"frenzy-escalation\", title = \"Frenzy escalation\", text = \"Ball speed escalates uncapped.\" }]",
+         review_item = [{ id = \"frenzy-escalation\", title = \"Frenzy escalation\", text = \"Ball speed escalates uncapped.\", weight = 1 }]",
     ));
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
 
@@ -117,10 +119,11 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
         "[[review_item]]\n\
          id = \"dup\"\n\
          title = \"A common item\"\n\
-         text = \"A common item.\"\n\n\
+         text = \"A common item.\"\n\
+         weight = 1\n\n\
          [[variant]]\n\
          slug = \"frenzy\"\n\
-         review_item = [{ id = \"dup\", title = \"Collides\", text = \"Collides with the common id.\" }]",
+         review_item = [{ id = \"dup\", title = \"Collides\", text = \"Collides with the common id.\", weight = 1 }]",
     ));
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -134,7 +137,7 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
 #[test]
 fn a_review_item_with_empty_text_is_rejected() {
     let (_dir, catalog) = catalog_with_manifest(&build_and(
-        "[[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"\"",
+        "[[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"\"\nweight = 1",
     ));
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -148,7 +151,7 @@ fn a_review_item_with_empty_text_is_rejected() {
 #[test]
 fn a_review_item_with_empty_title_is_rejected() {
     let (_dir, catalog) = catalog_with_manifest(&build_and(
-        "[[review_item]]\nid = \"x\"\ntitle = \"\"\ntext = \"Some prose.\"",
+        "[[review_item]]\nid = \"x\"\ntitle = \"\"\ntext = \"Some prose.\"\nweight = 1",
     ));
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -157,6 +160,71 @@ fn a_review_item_with_empty_title_is_rejected() {
         format!("{err}").contains("has empty `title`"),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn a_review_item_with_zero_weight_is_rejected() {
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"Some prose.\"\nweight = 0",
+    ));
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a zero-weight review item is rejected");
+    assert!(
+        format!("{err}").contains("`weight` greater than zero"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_review_item_naming_an_undeclared_domain_is_rejected() {
+    let (_dir, catalog) = catalog_with_manifest(&build_and(
+        "[[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"Some prose.\"\nweight = 1\ndomain = \"nope\"",
+    ));
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an undeclared domain reference is rejected");
+    assert!(
+        format!("{err}").contains("names domain `nope`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_case_with_no_domains_is_rejected() {
+    // `catalog_with_files` supplies the whole manifest, so we can omit domains.
+    let manifest = format!(
+        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[variant]]\nslug = \"base\"\n"
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a case with no domains is rejected");
+    assert!(
+        format!("{err}").contains("at least one [[domain]]"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn resolves_domains_with_humanized_default_names() {
+    let manifest = format!(
+        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[variant]]\nslug = \"base\"\n\
+         [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n\
+         [[domain]]\nid = \"versus\"\nname = \"Versus Mode\"\ndescription = \"Two-player play.\"\n"
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.domains.len(), 2);
+    // The first domain has no `name`, so it is humanized from its id.
+    assert_eq!(version.domains[0].id, "single-player");
+    assert_eq!(version.domains[0].name, "Single Player");
+    // The second supplies an explicit name.
+    assert_eq!(version.domains[1].name, "Versus Mode");
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
@@ -193,7 +261,8 @@ fn manifest_with(body: &str, after_build: &str) -> String {
         "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          {body}\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
-         {after_build}"
+         {after_build}\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     )
 }
 

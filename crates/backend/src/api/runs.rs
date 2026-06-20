@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::review::{Rating, ReviewVerdict};
+use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 
 use crate::db::{StoredReview, StoredRun};
@@ -39,14 +39,14 @@ pub async fn publish(
     State(state): State<AppState>,
     Json(request): Json<PublishRequest>,
 ) -> Result<Response, ApiError> {
-    // §1.4 validation gate (422 on failure): the rating must be a valid tier and
-    // the writeup must be non-empty — publishing refuses a run without a review.
-    let rating = Rating::parse(&request.review.rating).ok_or_else(|| {
-        ApiError::unprocessable(format!(
-            "review.rating must be one of flawless, great, scuffed, broken (got `{}`)",
-            request.review.rating
-        ))
-    })?;
+    // §1.4 validation gate (422 on failure): at least one domain must be rated
+    // (the rating tiers are validated by deserialization) and the writeup must be
+    // non-empty — publishing refuses a run without a review.
+    if request.review.ratings.is_empty() {
+        return Err(ApiError::unprocessable(
+            "review.ratings must rate at least one domain — publishing refuses a run without a review",
+        ));
+    }
     if request.review.writeup.trim().is_empty() {
         return Err(ApiError::unprocessable(
             "review.writeup must be non-empty — publishing refuses a run without a review",
@@ -69,7 +69,7 @@ pub async fn publish(
     }
 
     let review = StoredReview {
-        rating,
+        ratings: request.review.ratings,
         writeup: request.review.writeup.trim().to_string(),
         checklist: request.review.checklist,
     };
@@ -204,7 +204,7 @@ fn stored_run_out(run: &StoredRun) -> StoredRunOut {
     StoredRunOut {
         record: run.record.clone(),
         review: ReviewOut {
-            rating: run.review.rating.as_str(),
+            ratings: run.review.ratings.clone(),
             writeup: run.review.writeup.clone(),
             checklist: run.review.checklist.clone(),
         },
@@ -230,7 +230,8 @@ pub struct PublishRequest {
 
 #[derive(Deserialize)]
 struct ReviewIn {
-    rating: String,
+    #[serde(default)]
+    ratings: Vec<DomainRating>,
     writeup: String,
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
@@ -275,7 +276,7 @@ pub struct StoredRunOut {
 
 #[derive(Serialize)]
 struct ReviewOut {
-    rating: &'static str,
+    ratings: Vec<DomainRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
 }

@@ -228,6 +228,9 @@ build = "npm run build"
 [[spec]]
 source = "overview.md"
 dest = "specs/overview.md"
+[[domain]]
+id = "gameplay"
+description = "Core gameplay."
 "#;
 
 #[test]

@@ -57,7 +57,7 @@
         },
         "rating": {
           "type": "string",
-          "description": "The review rating — a per-run badge, never aggregated.",
+          "description": "The run's overall rating — the worst across its per-domain ratings — shown as a per-run badge.",
           "enum": ["flawless", "great", "scuffed", "broken"]
         },
         "links": {

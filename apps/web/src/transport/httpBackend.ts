@@ -10,6 +10,7 @@ import type {
 } from "@test-cabinet/ui/client";
 import type {
   BackendIdentity,
+  Domain,
   HarnessEvent,
   Model,
   ProgressCallback,
@@ -85,6 +86,8 @@ interface ResolvedVersion {
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
+  // The case's scoring domains (case-level).
+  domains?: Domain[];
   variants: {
     slug: string;
     name: string;
@@ -164,6 +167,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         summary: r.summary,
         description: r.description,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
+        domains: r.domains ?? [],
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,
@@ -182,6 +186,12 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             kind: ref.kind === "video" ? "video" : "image",
             url: joinUrl(baseUrl, ref.mediaUrl),
           })),
+          // The common checklist items apply to every variant; the variant's own
+          // follow. They carry the point weights used to score runs.
+          reviewItems: [
+            ...(r.commonReviewItems ?? []),
+            ...(v.reviewItems ?? []),
+          ],
         })),
       };
     },

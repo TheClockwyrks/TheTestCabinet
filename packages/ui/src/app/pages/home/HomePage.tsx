@@ -7,7 +7,7 @@ import { RatingBadge } from "@test-cabinet/ui";
 import { RunLog } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";
-import type { Rating } from "../../data/ratings";
+import { type Rating, worstRating } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
@@ -30,7 +30,10 @@ export function HomePage() {
   const featured = recent[0];
   const rest = recent.slice(1);
   const featuredRating = featured
-    ? (findReview(featured.id, localWriteups)?.rating ?? null)
+    ? (worstRating(
+        findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
+          [],
+      ) ?? null)
     : null;
 
   return (

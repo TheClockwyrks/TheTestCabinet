@@ -112,7 +112,7 @@ impl SnapshotBuilder {
                     schema_version: SCHEMA_VERSION,
                     record: &run.record,
                     review: ReviewOut {
-                        rating: run.review.rating.as_str(),
+                        ratings: &run.review.ratings,
                         writeup: &run.review.writeup,
                         checklist: &run.review.checklist,
                     },
@@ -187,7 +187,7 @@ impl SnapshotBuilder {
             metrics: &record.metrics,
             validation_loaded: record.validation.loaded,
             state: state_str(record.status.state),
-            rating: run.review.rating.as_str(),
+            rating: overall_rating_str(&run.review.ratings),
             links: LinksOut {
                 source_repo: run.links.source_repo.as_deref(),
                 playable_build: run.links.playable_build.as_deref(),
@@ -455,7 +455,9 @@ struct RunProofOut {
 
 #[derive(Serialize)]
 struct ReviewOut<'a> {
-    rating: &'static str,
+    /// The reviewer's rating for each scoring domain. The run's overall rating is
+    /// the worst across them.
+    ratings: &'a [test_cabinet_core::review::DomainRating],
     writeup: &'a str,
     checklist: &'a [test_cabinet_core::review::ReviewVerdict],
 }
@@ -483,6 +485,13 @@ struct CaseMetadata<'a> {
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
     references: Vec<CaseReferenceOut>,
+    /// Reviewer checklist items shared by every variant, carrying their point
+    /// weights so the site can compute run scores. A variant's own items ride on
+    /// [`CaseVariantOut::review_items`].
+    common_review_items: Vec<CaseReviewItemOut<'a>>,
+    /// The case's scoring domains, rated independently; the overall rating is the
+    /// worst across them.
+    domains: Vec<CaseDomainOut<'a>>,
 }
 
 /// A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -507,6 +516,32 @@ struct CaseVariantOut<'a> {
     /// The variant's prompt, rendered as a real run receives it, so the public
     /// gallery's Specifications tab shows the instruction the model was handed.
     prompt: String,
+    /// Reviewer checklist items additive to the common ones, with their point
+    /// weights, surfaced only when this variant is selected.
+    review_items: Vec<CaseReviewItemOut<'a>>,
+}
+
+/// A reviewer checklist item exposed in case metadata, carrying its point weight
+/// and optional scoring domain so the site can compute and break down run scores.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CaseReviewItemOut<'a> {
+    id: &'a str,
+    title: &'a str,
+    text: &'a str,
+    reference: Option<&'a str>,
+    proof: Option<&'a str>,
+    weight: u32,
+    domain: Option<&'a str>,
+}
+
+/// A scoring domain exposed in case metadata.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CaseDomainOut<'a> {
+    id: &'a str,
+    name: &'a str,
+    description: &'a str,
 }
 
 #[derive(Serialize)]
@@ -556,6 +591,7 @@ fn case_metadata<'a>(
                 name: &v.name,
                 description: v.description.as_deref(),
                 prompt,
+                review_items: v.review_items.iter().map(case_review_item_out).collect(),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;
@@ -580,7 +616,35 @@ fn case_metadata<'a>(
             })
             .collect(),
         references,
+        common_review_items: manifest
+            .common_review_items
+            .iter()
+            .map(case_review_item_out)
+            .collect(),
+        domains: manifest
+            .domains
+            .iter()
+            .map(|domain| CaseDomainOut {
+                id: &domain.id,
+                name: &domain.name,
+                description: &domain.description,
+            })
+            .collect(),
     })
+}
+
+/// Map a stored reviewer checklist item to its case-metadata wire shape, carrying
+/// its point weight and optional domain.
+fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItemOut<'_> {
+    CaseReviewItemOut {
+        id: &item.id,
+        title: &item.title,
+        text: &item.text,
+        reference: item.reference.as_deref(),
+        proof: item.proof.as_deref(),
+        weight: item.weight,
+        domain: item.domain.as_deref(),
+    }
 }
 
 /// The wire string for a run state.
@@ -591,6 +655,15 @@ fn state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
         RunState::Failed => "failed",
         RunState::Unevaluable => "unevaluable",
     }
+}
+
+/// The run's overall rating — the worst across its per-domain ratings — as a wire
+/// token. Falls back to `broken` for the (publish-gated, so unreachable) case of
+/// no ratings, so the runs index always carries a tier.
+fn overall_rating_str(ratings: &[test_cabinet_core::review::DomainRating]) -> &'static str {
+    test_cabinet_core::review::Rating::worst(ratings.iter().map(|domain| domain.rating))
+        .map(|rating| rating.as_str())
+        .unwrap_or("broken")
 }
 
 #[cfg(test)]

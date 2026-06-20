@@ -190,6 +190,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
             .iter()
             .map(review_item_out)
             .collect(),
+        domains: manifest.domains.iter().map(domain_out).collect(),
     })
 }
 
@@ -231,6 +232,17 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
         text: item.text.clone(),
         reference: item.reference.clone(),
         proof: item.proof.clone(),
+        weight: item.weight,
+        domain: item.domain.clone(),
+    }
+}
+
+/// Map a stored scoring domain to its wire shape.
+fn domain_out(domain: &crate::store::StoredDomain) -> DomainOut {
+    DomainOut {
+        id: domain.id.clone(),
+        name: domain.name.clone(),
+        description: domain.description.clone(),
     }
 }
 
@@ -342,6 +354,7 @@ pub struct VersionResponse {
     common_proofs: Vec<ProofOut>,
     checks: Vec<CheckOut>,
     common_review_items: Vec<ReviewItemOut>,
+    domains: Vec<DomainOut>,
 }
 
 #[derive(Serialize)]
@@ -392,6 +405,16 @@ struct ReviewItemOut {
     text: String,
     reference: Option<String>,
     proof: Option<String>,
+    weight: u32,
+    domain: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DomainOut {
+    id: String,
+    name: String,
+    description: String,
 }
 
 #[derive(Serialize)]

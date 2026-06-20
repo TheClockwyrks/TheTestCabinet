@@ -9,8 +9,9 @@ check, to compare an implementation against a reference baseline.
 Full automated validation is **not** a goal. It is not expected that an entire
 implementation can be assessed automatically. Validation produces signals that
 are surfaced on the [site](/components/site/overview/); it is not a pass/fail
-gate and it does not produce a ranking. The real evaluation is a person playing
-the implementation.
+gate and it does not produce the run's score. The scoring evaluation is a person
+playing the implementation and writing its [review](/components/core/results/#reviews)
+— the score and the per-domain ratings come from there, not from validation.
 
 ## Load Check
 

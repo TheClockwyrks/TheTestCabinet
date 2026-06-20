@@ -13,7 +13,9 @@
     "difficulty",
     "tags",
     "variants",
-    "checks"
+    "checks",
+    "commonReviewItems",
+    "domains"
   ],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
@@ -36,7 +38,12 @@
         "properties": {
           "slug": { "type": "string" },
           "name": { "type": "string" },
-          "description": { "type": ["string", "null"] }
+          "description": { "type": ["string", "null"] },
+          "reviewItems": {
+            "type": "array",
+            "description": "Reviewer checklist items additive to the common ones, surfaced only when this variant is selected. Carry their point weights so the site can score and break down runs.",
+            "items": { "$ref": "#/$defs/ReviewItem" }
+          }
         }
       }
     },
@@ -73,6 +80,50 @@
             "description": "Snapshot-relative object key of the reference media."
           }
         }
+      }
+    },
+    "commonReviewItems": {
+      "type": "array",
+      "description": "Reviewer checklist items shared by every variant, with their point weights so the site can compute run scores.",
+      "items": { "$ref": "#/$defs/ReviewItem" }
+    },
+    "domains": {
+      "type": "array",
+      "description": "The case's scoring domains. A reviewer rates each independently; the run's overall rating is the worst across them.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Domain" }
+    }
+  },
+  "$defs": {
+    "ReviewItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "text", "weight"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "text": { "type": "string" },
+        "reference": { "type": ["string", "null"] },
+        "proof": { "type": ["string", "null"] },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Points this item is worth toward the run's score: a pass earns this weight, a fail earns none."
+        },
+        "domain": {
+          "type": ["string", "null"],
+          "description": "Optional scoring domain (by id) this item belongs to, or null for a general item."
+        }
+      }
+    },
+    "Domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
       }
     }
   }

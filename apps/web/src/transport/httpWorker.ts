@@ -212,7 +212,7 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       // inline alongside the run id (`components/worker/overview.md`).
       const ack = await postJson<PublishAck>(baseUrl, "/publish", {
         runId: id,
-        rating: review.rating,
+        ratings: review.ratings,
         writeup: review.writeup,
         checklist: review.checklist,
       });

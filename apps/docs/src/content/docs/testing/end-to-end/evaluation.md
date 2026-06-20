@@ -4,11 +4,11 @@ title: Evaluation
 
 An end-to-end run is scored in two stages: an automated **validation** pass that
 catches gross failures cheaply, followed by a hand-written **review** by a person
-who actually plays the build. Neither stage produces a ranking. The final product
-is published as it is — bugs and all — framed by the reviewer's assessment rather
-than reduced to a single percentage. This split is deliberate: an open-ended game
-cannot be graded reliably by machine, so automation is used only for the signals
-it can produce honestly, and the real judgement is human.
+who actually plays the build. The review is where the run gets its numbers: a
+**score** in points and a quality **rating** per scoring domain. Automation
+cannot grade an open-ended game reliably, so it is used only for the signals it
+can produce honestly (does it build, does it load, does it match a reference),
+and the scoring judgement is human.
 
 The mechanism behind each stage is documented under Core —
 [Validation](/components/core/validation/) for the automated pass and
@@ -59,18 +59,28 @@ The real evaluation is the [review](/components/core/results/#reviews): a person
 plays the finished build and writes it up. A review carries three things:
 
 - A short **writeup** the site shows before the playable build.
-- A **rating** — one of four hand-assigned tiers, **flawless**, **great**,
-  **scuffed**, or **broken**, in descending order of fidelity to the spec. The
-  rating is the reviewer's own call; it is a subjective, per-run signal, shown
-  alongside a run but never aggregated or used to rank runs.
-- A **checklist** of verdicts — **pass**, **fail**, or **na**, with an optional
+- A **rating per scoring domain** — one of four hand-assigned tiers, **flawless**,
+  **great**, **scuffed**, or **broken**, in descending order of fidelity to the
+  spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) the case
+  declares. The run's **overall rating** is the *worst* across its domains, so a
+  flawless mode cannot mask a broken one.
+- A **checklist** of binary verdicts — **pass** or **fail**, with an optional
   note — one for each [`[[review_item]]`](/testing/end-to-end/manifests/) the
-  case version declares. The checklist guarantees coverage, not a score: every
-  declared item must carry a verdict before a run can be published, so a reviewer
-  cannot silently skip a requirement the author called out. The verdicts inform
-  the rating; they do not compute it.
+  case version declares. Every declared item must carry a verdict before a run
+  can be published, so a reviewer cannot silently skip a requirement the author
+  called out.
+
+## Scoring
+
+Each `[[review_item]]` carries a point **weight**. A `pass` earns the item's
+weight and a `fail` earns none, so the run's **score** is the earned weight over
+the total declared weight — `scored / total` points, like an academic test. The
+score and the overall rating are shown together on the run, and each test case's
+[leaderboard](/components/site/overview/#leaderboard) ranks the models that have
+scored runs of it by points (each model's best run).
 
 Publishing refuses a run with no review, so every published end-to-end
-implementation is framed by a human assessment rather than dropped onto the site
-as raw output. For how a reviewer arrives at the rating and works the checklist,
-see [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
+implementation is both scored and framed by a human assessment rather than
+dropped onto the site as raw output. For how a reviewer arrives at the per-domain
+ratings and works the checklist, see
+[Reviewing Test Run Results](/guides/reviewing-test-run-results/).

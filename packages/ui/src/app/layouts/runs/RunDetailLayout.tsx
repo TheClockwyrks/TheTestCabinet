@@ -4,7 +4,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
-import type { ParsedWriteup } from "../../data/ratings";
+import { type ParsedWriteup, worstRating } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
@@ -66,6 +66,11 @@ export function RunDetailLayout({
   const { subject } = run;
   const isLocal = localIds.has(run.id);
   const review = findReview(run.id, localWriteups);
+  // The headline badge shows the run's overall rating — the worst across its
+  // per-domain ratings.
+  const overallRating = review
+    ? worstRating(review.ratings.map((r) => r.rating))
+    : null;
 
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
@@ -85,7 +90,7 @@ export function RunDetailLayout({
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
             {subject.testCaseSlug}
-            {review?.rating && <RatingBadge rating={review.rating} />}
+            {overallRating && <RatingBadge rating={overallRating} />}
             {isLocal && <UnpublishedTag />}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>

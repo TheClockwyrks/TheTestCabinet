@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { RatingBadge } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { UnpublishedTag } from "./UnpublishedTag";
-import type { Rating } from "../data/ratings";
+import { type Rating, worstRating } from "../data/ratings";
 import { useFindReview } from "../data/writeups";
 import {
   formatSlug,
@@ -83,7 +83,12 @@ export function RunLog({
           key={run.id}
           run={run}
           local={localIds.has(run.id)}
-          rating={findReview(run.id, localWriteups)?.rating ?? null}
+          rating={
+            worstRating(
+              findReview(run.id, localWriteups)?.ratings.map((r) => r.rating) ??
+                [],
+            ) ?? null
+          }
           showCase={showCase}
           showModel={showModel}
         />

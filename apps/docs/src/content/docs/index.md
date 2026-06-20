@@ -2,12 +2,13 @@
 title: The Test Cabinet
 ---
 
-The Test Cabinet is an evaluation suite for AI models and harnesses. It does not
-attempt to be a purely objective-based benchmark that gives a single numeric
-score per model/harness combination, but instead relies on a reviewer running
-the final implementation and comparing it against the specs. Implementations are
-then assigned a final score based on how well the implementation matches the
-specs and whether bugs are present.
+The Test Cabinet is an evaluation suite for AI models and harnesses. Rather than
+a purely automated benchmark, it relies on a reviewer running the final
+implementation and comparing it against the specs. Each run is then assigned a
+numeric **score** — the points its checklist earned out of the points available —
+and a quality **rating** for each of the case's scoring domains, so a flawless
+mode can't mask a broken one. Each test case has a per-variant **leaderboard**
+ranking models by score.
 
 Test cases used by The Test Cabinet are very different from existing benchmarks
 like SWE Bench Pro. The Test Cabinet's tests do not attempt to be small-scale;

@@ -3,9 +3,12 @@ title: Metrics
 ---
 
 Every run records a small set of metrics describing how much it cost to produce.
-These are the numbers surfaced on the [site](/components/site/overview/). The
-Test Cabinet does not reduce runs to a single score; the metrics exist to let
-viewers understand the resources a run consumed, not to rank implementations.
+These are the numbers surfaced on the [site](/components/site/overview/). They
+measure the *resources* a run consumed — distinct from the run's quality
+[score and rating](/components/core/results/#reviews), which come from the review.
+The metrics exist to let viewers understand a run's cost, not to rank
+implementations; the per-case [leaderboard](/components/site/overview/#leaderboard)
+ranks by score, never by cost or tokens.
 
 ## Run Time
 

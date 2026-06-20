@@ -19,6 +19,30 @@ export interface SeededInput {
   url?: string;
 }
 
+/** A reviewer checklist item a case declares for a variant, with the point weight
+ * that contributes to a run's score and the optional scoring domain it rolls up
+ * to. Carried on every host so the verdict page and the leaderboard can score
+ * runs without a live backend. */
+export interface ReviewItemSummary {
+  id: string;
+  title: string;
+  text: string;
+  reference?: string | null;
+  proof?: string | null;
+  /** Points this item is worth: a pass earns this weight, a fail earns none. */
+  weight: number;
+  /** Scoring domain (by id) this item belongs to, or null for a general item. */
+  domain?: string | null;
+}
+
+/** A scoring domain a case declares. A reviewer rates each independently; a run's
+ * overall rating is the worst across them. */
+export interface DomainSummary {
+  id: string;
+  name: string;
+  description: string;
+}
+
 /** A reference used as a visual target for a view: a rendered mockup or static
  * image (`kind: "image"`) or a static clip (`kind: "video"`). */
 export interface ReferenceScreenshot {
@@ -47,6 +71,10 @@ export interface VariantSummary {
   seededInputs: SeededInput[];
   /** Rendered reference screenshots that are visual targets for this variant. */
   referenceScreenshots: ReferenceScreenshot[];
+  /** The reviewer checklist items for this variant (common + the variant's own),
+   * carrying the point weights that produce a run's score. Empty when the host
+   * could not resolve them. */
+  reviewItems: ReviewItemSummary[];
 }
 
 /** One test case in the catalog, across all of its published versions. */
@@ -67,4 +95,8 @@ export interface TestCaseSummary {
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
+  /** The case's scoring domains (case-level). A reviewer rates each domain
+   * independently; a run's overall rating is the worst across them. At least one
+   * is present when the host could resolve the catalog. */
+  domains: DomainSummary[];
 }

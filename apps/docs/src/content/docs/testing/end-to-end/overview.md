@@ -261,7 +261,7 @@ checked view must be supplied either commonly or by **every** variant.
 ### Variant-specific reviewer checklist items
 
 A variant may likewise declare **variant-specific reviewer checklist items**
-through a `review_item` array of `{ id, title, text }` tables, additive on top of the
+through a `review_item` array of `{ id, title, text, weight }` tables, additive on top of the
 common `[[review_item]]` list just as `spec` and `reference` are additive. This
 lets a mode-only requirement be checked only when the variant that adds the mode
 runs — for example an item about an extra mode's escalating speed rides along

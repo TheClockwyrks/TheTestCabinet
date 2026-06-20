@@ -33,6 +33,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         common_proofs: vec![],
         checks: vec![],
         common_review_items: vec![],
+        domains: vec![],
     }
 }
 

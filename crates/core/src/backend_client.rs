@@ -26,7 +26,7 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, Check, CheckAction, MediaKind, ProofFile, ReferenceKind, ReferenceView,
+    BuildCommands, Check, CheckAction, Domain, MediaKind, ProofFile, ReferenceKind, ReferenceView,
     ReviewItem, SpecFile, TestCase, TestCaseVersion, Variant, WorkspaceFile,
 };
 
@@ -81,12 +81,13 @@ pub struct PublishedRun {
     pub links: RunLinks,
 }
 
-/// A review as the backend serves it on the read side: the rating tier token, the
-/// prose body, and the reviewer's verdicts on the case's checklist items.
+/// A review as the backend serves it on the read side: the per-domain ratings,
+/// the prose body, and the reviewer's verdicts on the case's checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedReview {
-    /// One of `flawless | great | scuffed | broken`.
-    pub rating: String,
+    /// The reviewer's rating for each of the case's scoring domains. The run's
+    /// overall rating is the worst across them.
+    pub ratings: Vec<crate::review::DomainRating>,
     /// The review prose.
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items.
@@ -527,7 +528,7 @@ impl BackendClient for HttpBackendClient {
         let body = PublishBody {
             record,
             review: ReviewBody {
-                rating: review.rating.as_str(),
+                ratings: &review.ratings,
                 writeup: &review.body,
                 checklist: &review.checklist,
             },
@@ -684,6 +685,10 @@ struct VersionBody {
     checks: Vec<CheckBody>,
     #[serde(default)]
     common_review_items: Vec<ReviewItemBody>,
+    /// The case's scoring domains. Deserialized straight into [`Domain`] — the
+    /// wire shape (`id`, `name`, `description`) matches it field for field.
+    #[serde(default)]
+    domains: Vec<Domain>,
 }
 
 impl VersionBody {
@@ -757,6 +762,7 @@ impl VersionBody {
                 .into_iter()
                 .map(review_item_from)
                 .collect(),
+            domains: self.domains,
         }
     }
 }
@@ -791,6 +797,8 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         text: item.text,
         reference: item.reference,
         proof: item.proof,
+        weight: item.weight,
+        domain: item.domain,
     }
 }
 
@@ -893,6 +901,9 @@ struct ReviewItemBody {
     reference: Option<String>,
     #[serde(default)]
     proof: Option<String>,
+    weight: u32,
+    #[serde(default)]
+    domain: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -935,7 +946,8 @@ struct PublishBody<'a> {
 
 #[derive(serde::Serialize)]
 struct ReviewBody<'a> {
-    rating: &'a str,
+    /// The reviewer's rating for each scoring domain.
+    ratings: &'a [crate::review::DomainRating],
     writeup: &'a str,
     /// The reviewer's verdicts on the case's declared checklist items.
     checklist: &'a [crate::review::ReviewVerdict],
@@ -974,7 +986,10 @@ struct StoredRunBody {
 
 #[derive(Deserialize)]
 struct ReviewOutBody {
-    rating: String,
+    /// The reviewer's rating for each scoring domain. Deserialized straight into
+    /// [`crate::review::DomainRating`] — the wire shape matches it.
+    #[serde(default)]
+    ratings: Vec<crate::review::DomainRating>,
     writeup: String,
     #[serde(default)]
     checklist: Vec<crate::review::ReviewVerdict>,
@@ -1009,7 +1024,7 @@ fn stored_run_from(body: StoredRunBody) -> PublishedRun {
     PublishedRun {
         record,
         review: PublishedReview {
-            rating: body.review.rating,
+            ratings: body.review.ratings,
             writeup: body.review.writeup,
             checklist: body.review.checklist,
         },

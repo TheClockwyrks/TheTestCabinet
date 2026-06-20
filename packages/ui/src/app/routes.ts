@@ -10,6 +10,8 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}/inputs`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
+  testCaseLeaderboard: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/leaderboard`,
   testCaseMetrics: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/metrics`,
   models: (): string => "/models",
@@ -68,6 +70,7 @@ export const routePatterns = {
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
   testCaseRuns: "/test-cases/:slug/runs",
+  testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
   models: "/models",
   modelDetail: "/models/:modelId",

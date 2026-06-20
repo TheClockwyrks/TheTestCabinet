@@ -77,14 +77,17 @@ pub use publish::{
     read_event_log, run_slug,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
-pub use review::{Rating, ReviewVerdict, VerdictStatus, Writeup, missing_verdicts, parse_writeup};
+pub use review::{
+    DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup, missing_ratings,
+    missing_verdicts, parse_writeup, score,
+};
 pub use run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    Check, CheckAction, MediaKind, ProofFile, ReferenceKind, ReferenceView, ReviewItem, SpecFile,
-    TestCase, TestCaseCatalog, TestCaseVersion, Variant, WorkspaceFile,
+    Check, CheckAction, Domain, MediaKind, ProofFile, ReferenceKind, ReferenceView, ReviewItem,
+    SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, Variant, WorkspaceFile,
 };
 pub use validation::{
     CapturedView, CheckResult, ProofResult, StepResult, ValidationSummary, Validator,

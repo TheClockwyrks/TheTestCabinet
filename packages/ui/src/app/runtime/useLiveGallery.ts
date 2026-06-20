@@ -116,6 +116,15 @@ async function toTestCaseSummary(
         kind: r.kind,
         url: r.url,
       })),
+      reviewItems: v.reviewItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        text: item.text,
+        reference: item.reference ?? null,
+        proof: item.proof ?? null,
+        weight: item.weight,
+        domain: item.domain ?? null,
+      })),
     })),
   );
   return {
@@ -128,6 +137,11 @@ async function toTestCaseSummary(
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
     variants,
+    domains: info.domains.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+    })),
   };
 }
 

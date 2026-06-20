@@ -26,14 +26,19 @@ interface VerdictDraft {
   note: string;
 }
 
-const STATUSES: VerdictStatus[] = ["pass", "fail", "na"];
+const STATUSES: VerdictStatus[] = ["pass", "fail"];
 
-// The rating criteria, surfaced in a hover tooltip beside the Rating label so a
-// reviewer is reminded what each tier means without leaving the form. Built from
-// the shared RATING_META so it stays in lockstep with the tiers themselves.
+// The rating criteria, surfaced in a hover tooltip beside each domain's Rating
+// label so a reviewer is reminded what each tier means without leaving the form.
+// Built from the shared RATING_META so it stays in lockstep with the tiers.
 const RATING_CRITERIA = RATINGS.map(
   (rt) => `${RATING_META[rt].label} — ${RATING_META[rt].description}`,
 ).join("\n\n");
+
+/** Format a point weight as `1 pt` / `2 pts`. */
+function pts(weight: number): string {
+  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
+}
 
 // The editable Verdict mode for a produced, not-yet-published run that the active
 // worker owns: rate it, work the case's declared checklist one item at a time,
@@ -62,7 +67,13 @@ export function RunReviewEditor({
   // the run's case identity — the worker doesn't serve the catalog.
   const { client: backend } = useBackend();
   const gallery = useGalleryData();
-  const [rating, setRating] = useState<Rating>(review?.rating ?? "great");
+  // The case's scoring domains, rated independently; the run's overall rating is
+  // the worst across them. Resolved from the catalog the host holds.
+  const domains = useMemo(
+    () => gallery.reviewModelFor(subject).domains,
+    [gallery, subject],
+  );
+  const [ratings, setRatings] = useState<Record<string, Rating>>({});
   const [writeup, setWriteup] = useState(review?.body ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
@@ -129,7 +140,19 @@ export function RunReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend, subject.testCaseSlug, subject.testCaseVersion, subject.variant]);
 
+  // Seed each domain's rating from any prior review, defaulting to "great" so a
+  // domain always carries a value (the reviewer adjusts it down where warranted).
+  useEffect(() => {
+    const prior = new Map((review?.ratings ?? []).map((r) => [r.domain, r.rating]));
+    const seeded: Record<string, Rating> = {};
+    for (const domain of domains) seeded[domain.id] = prior.get(domain.id) ?? "great";
+    setRatings(seeded);
+    // Seed only when the domain set changes; `review` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domains]);
+
   const allAddressed = items.every((item) => verdicts[item.id]?.status);
+  const allRated = domains.every((domain) => ratings[domain.id]);
   const answeredCount = items.filter((i) => verdicts[i.id]?.status).length;
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
@@ -164,7 +187,10 @@ export function RunReviewEditor({
     setMessage(null);
     try {
       const result = await client.publish(runId, {
-        rating,
+        ratings: domains.map((domain) => ({
+          domain: domain.id,
+          rating: ratings[domain.id] ?? "great",
+        })),
         writeup,
         checklist: buildChecklist(),
       });
@@ -225,7 +251,9 @@ export function RunReviewEditor({
                       <span className={styles.itemNavMark} aria-hidden="true">
                         {answered ? "✓" : index + 1}
                       </span>
-                      <span className={styles.itemNavTitle}>{it.title}</span>
+                      <span className={styles.itemNavTitle}>
+                        {it.title} ({pts(it.weight)})
+                      </span>
                     </button>
                   </li>
                 );
@@ -238,7 +266,7 @@ export function RunReviewEditor({
           <div className={styles.questionPanel}>
             <span className={styles.checklistTitle}>
               <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
-              {item.title}
+              {item.title} ({pts(item.weight)})
             </span>
             <span className={styles.checklistText}>{item.text}</span>
 
@@ -347,9 +375,11 @@ export function RunReviewEditor({
         />
       </label>
 
-      <label className={`${styles.field} ${styles.fieldStacked}`}>
-        <span className={styles.fieldLabel}>
-          Rating
+      {/* One rating per scoring domain — the reviewer rates each independently and
+          the run's overall rating is the worst across them. */}
+      <fieldset className={styles.ratings}>
+        <legend className={styles.fieldLabel}>
+          Ratings
           <span
             className={styles.help}
             role="img"
@@ -358,28 +388,44 @@ export function RunReviewEditor({
           >
             ?
           </span>
-        </span>
-        <select
-          className={styles.select}
-          value={rating}
-          onChange={(e) => isRating(e.target.value) && setRating(e.target.value)}
-        >
-          {RATINGS.map((rt) => (
-            <option key={rt} value={rt}>
-              {rt}
-            </option>
-          ))}
-        </select>
-      </label>
+        </legend>
+        {domains.map((domain) => (
+          <label
+            key={domain.id}
+            className={`${styles.field} ${styles.fieldStacked}`}
+          >
+            <span className={styles.fieldLabel} title={domain.description}>
+              {domain.name}
+            </span>
+            <select
+              className={styles.select}
+              value={ratings[domain.id] ?? "great"}
+              onChange={(e) =>
+                isRating(e.target.value) &&
+                setRatings((prev) => ({
+                  ...prev,
+                  [domain.id]: e.target.value as Rating,
+                }))
+              }
+            >
+              {RATINGS.map((rt) => (
+                <option key={rt} value={rt}>
+                  {rt}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </fieldset>
 
       <div className={styles.actions}>
         <button
           className={styles.primary}
           onClick={onPublish}
-          disabled={busy || !writeup.trim() || !allAddressed}
+          disabled={busy || !writeup.trim() || !allAddressed || !allRated}
           title={
-            !writeup.trim() || !allAddressed
-              ? "Write a review and give every checklist item a verdict before publishing"
+            !writeup.trim() || !allAddressed || !allRated
+              ? "Write a review, rate every domain, and give every checklist item a verdict before publishing"
               : undefined
           }
         >

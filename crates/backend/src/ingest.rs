@@ -21,8 +21,8 @@ use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredManifest, StoredProof,
-    StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCheck, StoredDomain, StoredManifest,
+    StoredProof, StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -311,6 +311,15 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             .iter()
             .map(stored_review_item)
             .collect(),
+        domains: resolved
+            .domains
+            .iter()
+            .map(|domain| StoredDomain {
+                id: domain.id.clone(),
+                name: domain.name.clone(),
+                description: domain.description.clone(),
+            })
+            .collect(),
     })
 }
 
@@ -322,6 +331,8 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         text: item.text.clone(),
         reference: item.reference.clone(),
         proof: item.proof.clone(),
+        weight: item.weight,
+        domain: item.domain.clone(),
     }
 }
 

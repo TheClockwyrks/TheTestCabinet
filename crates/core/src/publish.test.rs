@@ -11,7 +11,7 @@ use crate::backend_client::{
 };
 use crate::event::{EventKind, HarnessEvent};
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::review::Rating;
+use crate::review::{DomainRating, Rating};
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
 use crate::test_case::{TestCase, TestCaseVersion};
 use crate::validation::ValidationSummary;
@@ -69,7 +69,10 @@ fn sample_record() -> RunRecord {
 
 fn sample_writeup() -> Writeup {
     Writeup {
-        rating: Rating::Great,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
         body: "Plays well; the pause menu doesn't restore focus.".to_string(),
         checklist: vec![],
     }

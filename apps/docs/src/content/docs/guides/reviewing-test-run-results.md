@@ -2,11 +2,14 @@
 title: Reviewing Test Run Results
 ---
 
-The Test Cabinet does not reduce a run to a single number. Its real evaluation is
-a person playing the produced implementation and judging how well it matches the
-spec (see the [home page](/) and [Review](/terminology/#review) terminology).
-This guide covers assessing a finished run: reading its automated signals,
-playing the build, and writing the **review** that publishing requires.
+The Test Cabinet's real evaluation is a person playing the produced
+implementation and judging how well it matches the spec — automation only catches
+gross failures cheaply (see the [home page](/) and
+[Review](/terminology/#review) terminology). That judgement is what produces a
+run's numbers: a per-[domain](/terminology/#domain) **rating** and a numeric
+**[score](/terminology/#score)** in points. This guide covers assessing a
+finished run: reading its automated signals, playing the build, and writing the
+**review** that publishing requires.
 
 A review is **curatorial** — authored separately by a person after playing the
 build, not emitted by the run — and it is deliberately not part of the
@@ -22,11 +25,12 @@ produced implementation. The record summarizes
 build, whether the implementation **loaded** in a headless browser, and a
 similarity signal for each declared [check](/components/core/validation/#checks).
 
-Treat these as signals, not a grade. Validation exists to catch gross failures
+Treat these as signals, not the score. Validation exists to catch gross failures
 cheaply and to compare a few deterministic views against their baselines; it is
-**not** a pass/fail gate and it does not rank runs. A run that fails to load is
-the clearest possible negative signal, but a clean load says only that the page
-rendered — the assessment is still yours to make by playing it.
+**not** a pass/fail gate and it does not produce the run's score — that comes from
+the review you write. A run that fails to load is the clearest possible negative
+signal, but a clean load says only that the page rendered — the assessment is
+still yours to make by playing it.
 
 ## Play the build
 
@@ -60,40 +64,44 @@ run, so it never reaches the model.
 
 In the [desktop app](/components/tauri/overview/) and the
 [web console](/components/web/overview/) the items for the run's variant appear
-in the review editor, and each must be given a verdict before the review can be
-saved or the run published:
+in the review editor — each showing its point **weight** — and each must be given
+a binary verdict before the review can be saved or the run published:
 
-- **pass** — checked, and the build satisfies it.
-- **fail** — checked, and the build does not satisfy it.
-- **na** — the item does not apply to this build.
+- **pass** — checked, and the build satisfies it. Earns the item's weight.
+- **fail** — checked, and the build does not satisfy it. Earns none of it.
 
-Add a short note alongside a verdict to record what you observed. The checklist
-guarantees coverage, not a score — the rating below remains your own call.
+Add a short note alongside a verdict to record what you observed. The verdicts and
+the items' weights produce the run's **score** — the earned weight over the total
+declared weight. The per-domain ratings below remain your own call.
 
 ## Write the review
 
-Create `runs/<id>/writeup.md`, beside the run's `run-record.json`, with the
-rating in YAML frontmatter and a non-empty body. Checklist verdicts, when the
-case declares items, follow the rating as `review.<id>: <status> [note]` lines:
+Create `runs/<id>/writeup.md`, beside the run's `run-record.json`, with a rating
+for each scoring domain in YAML frontmatter and a non-empty body. Each domain's
+rating is a `rating.<domain>:` line; checklist verdicts, when the case declares
+items, follow as `review.<id>: <status> [note]` lines:
 
 ```markdown
 ---
-rating: great
+rating.single-player: flawless
+rating.versus: scuffed
 review.ball-spin: pass
 review.obstacle-bank: fail ball clips the top obstacle corner
 ---
 
-Movement and collision feel right. The pause menu doesn't restore keyboard
-focus, but it doesn't block play.
+Single player feels right. Versus has a serve bug that resets the score, so it's
+playable but scuffed.
 ```
 
-The consoles write this file for you, including the checklist lines; the
-format is documented here because the file is also hand-editable. A run cannot be
-published while any declared checklist item is missing its verdict.
+The consoles write this file for you, including the rating and checklist lines;
+the format is documented here because the file is also hand-editable. A run
+cannot be published while any declared domain is unrated or any declared
+checklist item is missing its verdict.
 
 The **writeup** is the short prose the site shows before the playable build. The
-**rating** travels with it in the frontmatter (not in the run record) and must be
-exactly one of four hand-assigned tiers:
+**ratings** travel with it in the frontmatter (not in the run record). You rate
+each declared [domain](/terminology/#domain) independently, choosing one of four
+hand-assigned tiers per domain:
 
 - **flawless** — implemented to spec with no noticeable bugs.
 - **great** — to spec; may have minor issues so long as they don't impact
@@ -103,10 +111,10 @@ exactly one of four hand-assigned tiers:
 - **broken** — doesn't follow the spec, or has bugs severe enough to render the
   game unplayable.
 
-The rating is a subjective, per-run signal shown alongside the run; it is never
-aggregated or used to rank runs. With the dev server still running, the rating
-badge and writeup preview on the run's page exactly as they will once live, so
-you can confirm the framing before publishing.
+The run's **overall rating** is the *worst* across its domains, so a flawless
+mode cannot mask a broken one. With the dev server still running, the overall
+rating badge, the score, and the writeup preview on the run's page exactly as
+they will once live, so you can confirm the framing before publishing.
 
 ## Next step
 

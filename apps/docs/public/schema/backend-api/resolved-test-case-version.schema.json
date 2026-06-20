@@ -20,7 +20,8 @@
     "commonReferences",
     "commonProofs",
     "checks",
-    "commonReviewItems"
+    "commonReviewItems",
+    "domains"
   ],
   "properties": {
     "slug": { "type": "string" },
@@ -74,6 +75,12 @@
       "type": "array",
       "description": "Reviewer checklist items shared by every variant. Reporter-side material (not seeded): the reviewer must record a verdict for each before a run can be published.",
       "items": { "$ref": "#/$defs/ReviewItem" }
+    },
+    "domains": {
+      "type": "array",
+      "description": "The case's scoring domains (case-level, not variant-scoped). A reviewer rates each independently; the run's overall rating is the worst across them. At least one is always present.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Domain" }
     }
   },
   "$defs": {
@@ -192,8 +199,8 @@
     "ReviewItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "text"],
-      "description": "A reviewer checklist item a test case declares: something a reviewer must explicitly check after playing the build. Not seeded into the run.",
+      "required": ["id", "title", "text", "weight"],
+      "description": "A reviewer checklist item a test case declares: something a reviewer must explicitly check after playing the build. Not seeded into the run. Worth `weight` points toward the run's score.",
       "properties": {
         "id": {
           "type": "string",
@@ -214,6 +221,35 @@
         "proof": {
           "type": ["string", "null"],
           "description": "Optional proof id whose submitted media is shown for this item."
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many points this item is worth toward the run's score: a pass earns this weight, a fail earns none, and the total available is the sum over the variant's effective checklist."
+        },
+        "domain": {
+          "type": ["string", "null"],
+          "description": "Optional scoring domain (by id) this item belongs to, or null for a general item that belongs to no single domain."
+        }
+      }
+    },
+    "Domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "description": "A scoring domain a reviewer rates independently. The run's overall rating is the worst across all of a case's domains.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable slug identifying the domain; recorded with the reviewer's per-domain rating."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable display name."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of what the domain covers, shown to the reviewer so they know what they are rating."
         }
       }
     },

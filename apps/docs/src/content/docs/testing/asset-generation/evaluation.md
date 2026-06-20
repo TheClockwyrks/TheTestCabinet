@@ -24,7 +24,7 @@ The regenerated image is compared against the case's
 **similarity signal** — how close the drawing came to the goal. As with
 end-to-end [checks](/testing/end-to-end/evaluation/#checks), this is a recorded
 signal rather than a pass/fail gate: a faithful sprite scores well, a vague one
-scores poorly, and the number is surfaced rather than used to rank.
+scores poorly, and the number is surfaced as recorded context for the reviewer.
 
 ## Cheat detection
 

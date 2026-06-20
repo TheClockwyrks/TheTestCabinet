@@ -3,9 +3,14 @@
 // item) both produce and consume these. Fields are camelCase to match both the
 // backend HTTP API and the run-record contract.
 import type { MediaKind, RunRecord } from "@test-cabinet/run-record";
-import type { Rating, ReviewVerdict, VerdictStatus } from "../ratings";
+import type {
+  DomainRating,
+  Rating,
+  ReviewVerdict,
+  VerdictStatus,
+} from "../ratings";
 
-export type { Rating, ReviewVerdict, VerdictStatus };
+export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
 export type { MediaKind };
 
 // --- Catalog (served by the backend) ---
@@ -53,6 +58,9 @@ export interface VariantInfo {
   // Rendered reference screenshots for this variant (common first, then the
   // variant's own), resolved to loadable URLs. Empty when none are served.
   references: ReferenceShot[];
+  // The reviewer checklist items for this variant (common first, then the
+  // variant's own), carrying their point weights. Used to score runs.
+  reviewItems: ReviewItem[];
 }
 
 export interface VersionInfo {
@@ -65,6 +73,9 @@ export interface VersionInfo {
   // The site-facing Markdown description, when the source carries it.
   description?: string | null;
   variants: VariantInfo[];
+  // The case's scoring domains (case-level). A reviewer rates each independently;
+  // a run's overall rating is the worst across them.
+  domains: Domain[];
   maxRuntimeSeconds: number;
 }
 
@@ -95,10 +106,26 @@ export interface ReviewItem {
   // item declares no pairing.
   reference?: string | null;
   proof?: string | null;
+  // Points this item is worth toward the run's score: a pass earns this weight, a
+  // fail earns none.
+  weight: number;
+  // Optional scoring domain (by id) this item belongs to, or null/undefined for a
+  // general item that belongs to no single domain.
+  domain?: string | null;
+}
+
+// A scoring domain a test case declares; a reviewer rates each independently and
+// the run's overall rating is the worst across them.
+export interface Domain {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface ReviewDocument {
-  rating: Rating;
+  // The reviewer's rating for each of the case's scoring domains. The run's
+  // overall rating is the worst across them.
+  ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
 }

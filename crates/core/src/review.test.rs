@@ -1,13 +1,35 @@
-//! Tests for parsing a run's `writeup.md` into a rating and body, and rendering
-//! the canonical file back out.
+//! Tests for parsing a run's `writeup.md` into per-domain ratings and a body,
+//! rendering the canonical file back out, and scoring a run.
 
 use super::*;
+use crate::test_case::{Domain, ReviewItem};
+
+/// A review item with the given id and weight, in no domain — the common shape
+/// for these tests.
+fn item(id: &str, weight: u32) -> ReviewItem {
+    ReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("Check {id}."),
+        reference: None,
+        proof: None,
+        weight,
+        domain: None,
+    }
+}
 
 #[test]
 fn parses_rating_and_body() {
-    let raw = "---\nrating: great\n---\n\nMovement feels right.\nThe pause menu is rough.\n";
+    let raw =
+        "---\nrating.gameplay: great\n---\n\nMovement feels right.\nThe pause menu is rough.\n";
     let writeup = parse_writeup(raw).expect("parse");
-    assert_eq!(writeup.rating, Rating::Great);
+    assert_eq!(
+        writeup.ratings,
+        vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }]
+    );
     assert_eq!(
         writeup.body,
         "Movement feels right.\nThe pause menu is rough."
@@ -23,14 +45,30 @@ fn every_tier_round_trips_through_its_token() {
 
 #[test]
 fn rating_token_is_case_and_whitespace_insensitive() {
-    let raw = "---\nrating:   Broken \n---\n\nUnplayable.\n";
-    assert_eq!(parse_writeup(raw).expect("parse").rating, Rating::Broken);
+    let raw = "---\nrating.gameplay:   Broken \n---\n\nUnplayable.\n";
+    assert_eq!(
+        parse_writeup(raw).expect("parse").overall_rating(),
+        Some(Rating::Broken)
+    );
 }
 
 #[test]
 fn tolerates_a_bom_and_leading_blank_lines() {
-    let raw = "\u{feff}\n\n---\nrating: flawless\n---\n\nSpotless.\n";
-    assert_eq!(parse_writeup(raw).expect("parse").rating, Rating::Flawless);
+    let raw = "\u{feff}\n\n---\nrating.gameplay: flawless\n---\n\nSpotless.\n";
+    assert_eq!(
+        parse_writeup(raw).expect("parse").overall_rating(),
+        Some(Rating::Flawless)
+    );
+}
+
+#[test]
+fn overall_rating_is_the_worst_across_domains() {
+    let raw =
+        "---\nrating.single-player: flawless\nrating.versus: scuffed\n---\n\nVersus is rough.\n";
+    let writeup = parse_writeup(raw).expect("parse");
+    assert_eq!(writeup.ratings.len(), 2);
+    // The overall rating is the worst across the two domains.
+    assert_eq!(writeup.overall_rating(), Some(Rating::Scuffed));
 }
 
 #[test]
@@ -42,7 +80,7 @@ fn rejects_a_missing_frontmatter_block() {
 
 #[test]
 fn rejects_an_unterminated_frontmatter_block() {
-    let err = parse_writeup("---\nrating: great\n\nbody with no closing fence\n")
+    let err = parse_writeup("---\nrating.gameplay: great\n\nbody with no closing fence\n")
         .expect_err("unterminated");
     assert!(err.to_string().contains("not closed"));
 }
@@ -55,37 +93,62 @@ fn rejects_a_missing_rating() {
 
 #[test]
 fn rejects_an_unknown_rating() {
-    let err = parse_writeup("---\nrating: amazing\n---\n\nBody.\n").expect_err("unknown rating");
+    let err =
+        parse_writeup("---\nrating.gameplay: amazing\n---\n\nBody.\n").expect_err("unknown rating");
     assert!(err.to_string().contains("amazing"));
 }
 
 #[test]
 fn rejects_an_empty_body() {
-    let err = parse_writeup("---\nrating: great\n---\n\n   \n").expect_err("empty body");
+    let err = parse_writeup("---\nrating.gameplay: great\n---\n\n   \n").expect_err("empty body");
     assert!(err.to_string().contains("body"));
 }
 
 #[test]
 fn renders_a_canonical_file_that_reparses() {
     let writeup = Writeup {
-        rating: Rating::Scuffed,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Scuffed,
+        }],
         body: "Plays, but the score resets on pause.".to_string(),
         checklist: vec![],
     };
     let file = writeup.to_file_string();
     assert_eq!(
         file,
-        "---\nrating: scuffed\n---\n\nPlays, but the score resets on pause.\n"
+        "---\nrating.gameplay: scuffed\n---\n\nPlays, but the score resets on pause.\n"
     );
     assert_eq!(parse_writeup(&file).expect("reparse"), writeup);
 }
 
 #[test]
+fn renders_multiple_domain_ratings_in_order() {
+    let writeup = Writeup {
+        ratings: vec![
+            DomainRating {
+                domain: "single-player".to_string(),
+                rating: Rating::Flawless,
+            },
+            DomainRating {
+                domain: "versus".to_string(),
+                rating: Rating::Broken,
+            },
+        ],
+        body: "Single player is great; versus is broken.".to_string(),
+        checklist: vec![],
+    };
+    let file = writeup.to_file_string();
+    assert!(file.contains("rating.single-player: flawless\n"));
+    assert!(file.contains("rating.versus: broken\n"));
+    assert_eq!(parse_writeup(&file).expect("reparse"), writeup);
+}
+
+#[test]
 fn parses_checklist_verdicts_with_and_without_notes() {
-    let raw = "---\nrating: great\n\
+    let raw = "---\nrating.gameplay: great\n\
                review.ball-spin: pass\n\
                review.bank-shot: fail ball clips the top obstacle\n\
-               review.frenzy: na\n\
                ---\n\nPlays well.\n";
     let writeup = parse_writeup(raw).expect("parse");
     assert_eq!(
@@ -101,11 +164,6 @@ fn parses_checklist_verdicts_with_and_without_notes() {
                 status: VerdictStatus::Fail,
                 note: Some("ball clips the top obstacle".to_string()),
             },
-            ReviewVerdict {
-                id: "frenzy".to_string(),
-                status: VerdictStatus::NotApplicable,
-                note: None,
-            },
         ]
     );
 }
@@ -113,7 +171,10 @@ fn parses_checklist_verdicts_with_and_without_notes() {
 #[test]
 fn a_writeup_with_verdicts_round_trips() {
     let writeup = Writeup {
-        rating: Rating::Scuffed,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Scuffed,
+        }],
         body: "Bank shots are off.".to_string(),
         checklist: vec![
             ReviewVerdict {
@@ -136,7 +197,10 @@ fn a_writeup_with_verdicts_round_trips() {
 fn a_note_with_a_stray_newline_is_normalized_to_one_line() {
     // A note must never break the frontmatter block: newlines collapse to spaces.
     let writeup = Writeup {
-        rating: Rating::Broken,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Broken,
+        }],
         body: "Unplayable.".to_string(),
         checklist: vec![ReviewVerdict {
             id: "load".to_string(),
@@ -155,32 +219,27 @@ fn a_note_with_a_stray_newline_is_normalized_to_one_line() {
 
 #[test]
 fn an_unrecognized_verdict_status_is_rejected() {
-    let raw = "---\nrating: great\nreview.x: maybe\n---\n\nBody.\n";
+    let raw = "---\nrating.gameplay: great\nreview.x: maybe\n---\n\nBody.\n";
     let err = parse_writeup(raw).expect_err("bad status");
-    assert!(err.to_string().contains("pass, fail, or na"));
+    assert!(err.to_string().contains("pass or fail"));
+}
+
+#[test]
+fn na_is_no_longer_a_valid_verdict() {
+    // Verdicts are binary now; `na` must be rejected so every item counts toward
+    // the score one way or the other.
+    let raw = "---\nrating.gameplay: great\nreview.x: na\n---\n\nBody.\n";
+    assert!(parse_writeup(raw).is_err());
 }
 
 #[test]
 fn missing_verdicts_reports_unaddressed_items() {
-    use crate::test_case::ReviewItem;
-    let items = vec![
-        ReviewItem {
-            id: "ball-spin".to_string(),
-            title: "Paddle spin".to_string(),
-            text: "Spin curves the ball.".to_string(),
-            reference: None,
-            proof: None,
-        },
-        ReviewItem {
-            id: "bank-shot".to_string(),
-            title: "Bank shots".to_string(),
-            text: "Obstacles enable bank shots.".to_string(),
-            reference: None,
-            proof: None,
-        },
-    ];
+    let items = vec![item("ball-spin", 1), item("bank-shot", 1)];
     let writeup = Writeup {
-        rating: Rating::Great,
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
         body: "Body.".to_string(),
         checklist: vec![ReviewVerdict {
             id: "ball-spin".to_string(),
@@ -216,4 +275,69 @@ fn missing_verdicts_reports_unaddressed_items() {
         ..writeup
     };
     assert!(missing_verdicts(&items, &complete).is_empty());
+}
+
+#[test]
+fn missing_ratings_reports_unrated_domains() {
+    let domains = vec![
+        Domain {
+            id: "single-player".to_string(),
+            name: "Single Player".to_string(),
+            description: "Solo play.".to_string(),
+        },
+        Domain {
+            id: "versus".to_string(),
+            name: "Versus".to_string(),
+            description: "Two-player play.".to_string(),
+        },
+    ];
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "single-player".to_string(),
+            rating: Rating::Great,
+        }],
+        body: "Body.".to_string(),
+        checklist: vec![],
+    };
+    assert_eq!(
+        missing_ratings(&domains, &writeup),
+        vec!["versus".to_string()]
+    );
+}
+
+#[test]
+fn score_sums_the_weight_of_passed_items() {
+    let items = vec![item("a", 2), item("b", 3), item("c", 1)];
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
+        body: "Body.".to_string(),
+        checklist: vec![
+            ReviewVerdict {
+                id: "a".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "b".to_string(),
+                status: VerdictStatus::Fail,
+                note: None,
+            },
+            ReviewVerdict {
+                id: "c".to_string(),
+                status: VerdictStatus::Pass,
+                note: None,
+            },
+        ],
+    };
+    // a (2) and c (1) pass; b (3) fails. Earned 3 of 6 total.
+    assert_eq!(
+        score(&items, &writeup),
+        Score {
+            earned: 3,
+            total: 6
+        }
+    );
 }

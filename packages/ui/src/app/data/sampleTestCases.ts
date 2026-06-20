@@ -41,6 +41,11 @@ export const sampleTestCases: TestCaseSummary[] = [
           { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/base/reference/gameplay.png" },
           { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/base/reference/game-over.png" },
         ],
+        reviewItems: [
+          { id: "ball-spin", title: "Paddle spin", text: "A swinging paddle curves the ball's flight.", weight: 1 },
+          { id: "scoring", title: "Scoring", text: "A ball crossing a goal edge scores for the opposite side.", weight: 1 },
+          { id: "ai-beatable", title: "Beatable AI", text: "The AI opponent is competent but clearly beatable.", weight: 1, domain: "single-player" },
+        ],
       },
       {
         slug: "frenzy",
@@ -69,6 +74,12 @@ export const sampleTestCases: TestCaseSummary[] = [
           { view: "title", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/title.png" },
           { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/gameplay.png" },
           { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/frenzy/reference/game-over.png" },
+        ],
+        reviewItems: [
+          { id: "ball-spin", title: "Paddle spin", text: "A swinging paddle curves the ball's flight.", weight: 1 },
+          { id: "scoring", title: "Scoring", text: "A ball crossing a goal edge scores for the opposite side.", weight: 1 },
+          { id: "ai-beatable", title: "Beatable AI", text: "The AI opponent is competent but clearly beatable.", weight: 1, domain: "single-player" },
+          { id: "frenzy-escalation", title: "Frenzy escalation", text: "Ball speed escalates uncapped each hit.", weight: 1 },
         ],
       },
       {
@@ -99,7 +110,17 @@ export const sampleTestCases: TestCaseSummary[] = [
           { view: "gameplay", kind: "image", url: "/catalog/carom/v1.0.0/multi/reference/gameplay.png" },
           { view: "game-over", kind: "image", url: "/catalog/carom/v1.0.0/multi/reference/game-over.png" },
         ],
+        reviewItems: [
+          { id: "ball-spin", title: "Paddle spin", text: "A swinging paddle curves the ball's flight.", weight: 1 },
+          { id: "scoring", title: "Scoring", text: "A ball crossing a goal edge scores for the opposite side.", weight: 1 },
+          { id: "ai-beatable", title: "Beatable AI", text: "The AI opponent is competent but clearly beatable.", weight: 1, domain: "single-player" },
+          { id: "multi-two-balls", title: "Two balls in play", text: "Two balls share the field, scored independently.", weight: 1 },
+        ],
       },
+    ],
+    domains: [
+      { id: "single-player", name: "Single Player", description: "Solo play against the AI opponent." },
+      { id: "versus", name: "Versus", description: "Two-player local play, no AI." },
     ],
   },
   {
@@ -131,6 +152,10 @@ export const sampleTestCases: TestCaseSummary[] = [
           { view: "wave", kind: "image", url: "/catalog/phalanx/v0.9.0/base/reference/wave.png" },
           { view: "game-over", kind: "image", url: "/catalog/phalanx/v0.9.0/base/reference/game-over.png" },
         ],
+        reviewItems: [
+          { id: "wave-pacing", title: "Wave pacing", text: "Waves escalate at a fair, readable pace.", weight: 1 },
+          { id: "collision", title: "Tight collision", text: "Shots and invaders collide precisely.", weight: 1 },
+        ],
       },
       {
         slug: "frenzy",
@@ -154,7 +179,14 @@ export const sampleTestCases: TestCaseSummary[] = [
           { view: "wave", kind: "image", url: "/catalog/phalanx/v0.9.0/frenzy/reference/wave.png" },
           { view: "game-over", kind: "image", url: "/catalog/phalanx/v0.9.0/frenzy/reference/game-over.png" },
         ],
+        reviewItems: [
+          { id: "wave-pacing", title: "Wave pacing", text: "Waves escalate at a fair, readable pace.", weight: 1 },
+          { id: "collision", title: "Tight collision", text: "Shots and invaders collide precisely.", weight: 1 },
+        ],
       },
+    ],
+    domains: [
+      { id: "gameplay", name: "Gameplay", description: "The single-player wave campaign." },
     ],
   },
 ];

@@ -93,7 +93,7 @@ export function createTauriWorker(): WorkerClient {
     // keeps a run-store, so persist the review there first, then publish by id —
     // the store is the core's system of record for a produced run's review.
     publish: async (id, review) => {
-      await api.saveReview(id, review.rating, review.writeup, review.checklist);
+      await api.saveReview(id, review.ratings, review.writeup, review.checklist);
       return api.publishRun(id);
     },
 

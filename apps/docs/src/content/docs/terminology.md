@@ -13,6 +13,15 @@ system of record for published run results.
 The term "catalog" is used to refer to The Test Cabinet's full set of test
 cases.
 
+## Domain
+
+A scoring domain is a facet of a test case the reviewer rates independently —
+for example a game's single-player and versus modes. A case declares one or more
+domains; the reviewer assigns a [rating](#rating) to each while playing the
+build, and the run's **overall rating** is the *worst* across them, so a flawless
+mode cannot mask a broken one. A [review item](#reviewer-checklist) may roll up
+to a domain, or stay general when it applies to every mode.
+
 ## Harness
 
 In the context of The Test Cabinet, "harness" can refer to two elements:
@@ -23,6 +32,12 @@ In the context of The Test Cabinet, "harness" can refer to two elements:
 The Test Cabinet handles running other harnesses. It does not directly hit LLM
 APIs or implement an agentic loop. That responsibility lies entirely with the
 agentic harnesses that The Test Cabinet uses to run the tests.
+
+## Leaderboard
+
+Each test case has a per-variant leaderboard ranking the models that have scored
+runs of it. A model appears once, represented by its best-scoring run; the
+ranking is by [score](#score) (points), not by rating.
 
 ## Model
 
@@ -35,6 +50,12 @@ harness takes.
 run record to The Test Cabinet's [backend](/components/backend/overview/), from
 which a public snapshot is exported for the website. Test runs exist only locally
 until published.
+
+## Rating
+
+A rating is the reviewer's subjective quality tier for one [domain](#domain) of a
+run — one of `flawless`, `great`, `scuffed`, or `broken`. A run carries one
+rating per domain; its **overall rating** is the worst across them.
 
 ## Reporters
 
@@ -49,17 +70,18 @@ All test cases are manually reviewed after the implementation is complete. This
 allows the reviewer to assess how well a model matched the spec, check for any
 bugs, and otherwise provide non-automated feedback about the run result. Reviews
 are slightly subjective since games don't map cleanly to a rigid grading scale.
-A review carries a rating, a prose writeup, and a verdict on each
-[reviewer-checklist](#reviewer-checklist) item the case declares.
+A review carries a per-domain [rating](#rating), a prose writeup, and a verdict on
+each [reviewer-checklist](#reviewer-checklist) item the case declares. The
+verdicts and item [weights](#score) together produce the run's numeric score.
 
 ## Reviewer Checklist
 
 A test case may declare a reviewer checklist: a list of major, observable
 requirements that every reviewer must explicitly verify by playing the build.
-The [consoles](#web-console) present it as a guided review with a completeness
-gate — every item needs a verdict (pass / fail / na) before a review can be
-saved or the run published. The checklist is reporter-side and is never seeded,
-so it never reaches the model.
+Each item carries a point **weight**. The [consoles](#web-console) present it as a
+guided review with a completeness gate — every item needs a binary verdict (pass
+/ fail) before a review can be saved or the run published. The checklist is
+reporter-side and is never seeded, so it never reaches the model.
 
 ## Run Records
 
@@ -73,6 +95,14 @@ The term "runner" is used to refer to any The Test Cabinet component that is
 capable of running test cases — the [CLI](/components/cli/overview/), a
 [worker](#worker), the desktop app's built-in local worker, and the
 [core](/components/core/overview/) they all build on.
+
+## Score
+
+A run's score is its earned points over the points available: each
+[reviewer-checklist](#reviewer-checklist) item is worth a `weight`, a `pass`
+earns that weight and a `fail` earns none, and the total is the sum of every
+declared item's weight. It is shown on the run alongside the per-domain
+[ratings](#rating) and is what the per-case [leaderboard](#leaderboard) ranks on.
 
 ## Snapshot
 

@@ -2,15 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
   "title": "Review",
-  "description": "A run's hand-written review: a quality rating plus a markdown writeup. Authored separately from the machine-generated run record and required for a run to be published.",
+  "description": "A run's hand-written review: a per-domain quality rating plus a markdown writeup. Authored separately from the machine-generated run record and required for a run to be published. The run's overall rating is the worst across its domain ratings; the run's score is the point weight of its passed checklist items over the total declared weight.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["rating", "writeup"],
+  "required": ["ratings", "writeup"],
   "properties": {
-    "rating": {
-      "type": "string",
-      "description": "The reviewer's one-glance verdict. Never aggregated or used to rank.",
-      "enum": ["flawless", "great", "scuffed", "broken"]
+    "ratings": {
+      "type": "array",
+      "description": "The reviewer's quality rating for each of the test case's declared scoring domains (see the version manifest's domains). One entry per declared domain; publishing refuses a run whose review leaves any declared domain unrated. The overall rating shown for the run is the worst across these.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/DomainRating" }
     },
     "writeup": {
       "type": "string",
@@ -24,6 +25,24 @@
     }
   },
   "$defs": {
+    "DomainRating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "rating"],
+      "description": "A reviewer's quality rating for one of the case's scoring domains.",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "The declared scoring domain's stable id.",
+          "minLength": 1
+        },
+        "rating": {
+          "type": "string",
+          "description": "The reviewer's verdict for this domain.",
+          "enum": ["flawless", "great", "scuffed", "broken"]
+        }
+      }
+    },
     "ReviewVerdict": {
       "type": "object",
       "additionalProperties": false,
@@ -37,8 +56,8 @@
         },
         "status": {
           "type": "string",
-          "description": "The verdict: pass (satisfied), fail (not satisfied), or na (does not apply to this build).",
-          "enum": ["pass", "fail", "na"]
+          "description": "The verdict: pass (satisfied, earns the item's weight) or fail (not satisfied, earns none).",
+          "enum": ["pass", "fail"]
         },
         "note": {
           "type": "string",

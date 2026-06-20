@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use test_cabinet_core::{
     ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, BuildValidator,
-    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, FsRepoSeeder, HarnessEvent,
-    HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher, OpenRouterPrices,
-    Orchestrator, PrerenderedReferenceRenderer, PublishConfig, PublishRequest, PublishedRun,
-    Publisher, Rating, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict, RunRecord,
-    RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog, TestCaseVersion, Writeup,
-    find_build_output, implementation_dir, materialize_version, missing_verdicts, parse_writeup,
-    read_event_log, render_prompt,
+    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, Domain, DomainRating,
+    FsRepoSeeder, HarnessEvent, HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher,
+    OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, PublishConfig, PublishRequest,
+    PublishedRun, Publisher, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict,
+    RunRecord, RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog, TestCaseVersion,
+    Writeup, find_build_output, implementation_dir, materialize_version, missing_ratings,
+    missing_verdicts, parse_writeup, read_event_log, render_prompt,
 };
 
 use crate::config;
@@ -112,6 +112,9 @@ pub struct VariantInfo {
     /// resolved to backend URLs. Empty for a locally-resolved checkout, which has
     /// no rendered baselines without a backend to serve them.
     pub references: Vec<ReferenceShot>,
+    /// The reviewer checklist items for this variant (common first, then the
+    /// variant's own), carrying their point weights so the gallery can score runs.
+    pub review_items: Vec<ReviewItem>,
 }
 
 /// A resolved test-case version's site-facing framing, enough to configure a run
@@ -126,6 +129,9 @@ pub struct VersionInfo {
     pub tags: Vec<String>,
     pub summary: Option<String>,
     pub variants: Vec<VariantInfo>,
+    /// The case's scoring domains (case-level). A reviewer rates each
+    /// independently; a run's overall rating is the worst across them.
+    pub domains: Vec<Domain>,
     pub max_runtime_seconds: u64,
 }
 
@@ -151,6 +157,7 @@ impl VersionInfo {
                     references: reference_base
                         .map(|base| variant_reference_shots(base, v, variant))
                         .unwrap_or_default(),
+                    review_items: v.review_items_for(variant),
                 })
             })
             .collect::<CmdResult<Vec<_>>>()?;
@@ -162,6 +169,7 @@ impl VersionInfo {
             tags: v.tags.clone(),
             summary: v.summary.clone(),
             variants,
+            domains: v.domains.clone(),
             max_runtime_seconds: v.max_runtime_seconds,
         })
     }
@@ -588,13 +596,15 @@ pub struct StoredRun {
     pub review: Option<ReviewDocument>,
 }
 
-/// A review as the webview reads/writes it: the rating token, the prose body, and
-/// the reviewer's verdicts on the case's declared checklist items.
+/// A review as the webview reads/writes it: the per-domain ratings, the prose
+/// body, and the reviewer's verdicts on the case's declared checklist items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewDocument {
-    /// One of `flawless | great | scuffed | broken`.
-    pub rating: String,
+    /// The reviewer's rating for each scoring domain. The run's overall rating is
+    /// the worst across them.
+    #[serde(default)]
+    pub ratings: Vec<DomainRating>,
     pub writeup: String,
     /// The reviewer's verdicts on the declared checklist items. Empty for a case
     /// that declares none.
@@ -765,7 +775,7 @@ fn published_to_stored(run: PublishedRun) -> StoredRun {
         id: run.record.id.clone(),
         record: Box::new(run.record),
         review: Some(ReviewDocument {
-            rating: run.review.rating,
+            ratings: run.review.ratings,
             writeup: run.review.writeup,
             checklist: run.review.checklist,
         }),
@@ -800,22 +810,19 @@ pub async fn read_review_items(
 /// requirement the case author marked as something to check. The rating itself
 /// stays entirely the reviewer's call.
 #[tauri::command]
-#[tracing::instrument(skip_all, fields(%id, %rating))]
+#[tracing::instrument(skip_all, fields(%id))]
 pub async fn save_review(
     id: String,
-    rating: String,
+    ratings: Vec<DomainRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
 ) -> CmdResult<()> {
-    let rating = Rating::parse(&rating).ok_or_else(|| {
-        format!("rating must be one of flawless, great, scuffed, broken (got `{rating}`)")
-    })?;
     let body = writeup.trim();
     if body.is_empty() {
         return Err("the writeup body must not be empty".to_string());
     }
     let review = Writeup {
-        rating,
+        ratings,
         body: body.to_string(),
         checklist,
     };
@@ -825,17 +832,25 @@ pub async fn save_review(
         return Err(format!("no run `{id}` found to review"));
     }
 
-    // Gate: every declared checklist item must have a verdict before the review
-    // is saved. This is what guarantees a reviewer addresses each major item the
-    // case author called out.
+    // Gate: every declared checklist item must have a verdict, and every scoring
+    // domain must be rated, before the review is saved. This guarantees a reviewer
+    // addresses each major item the case author called out and scores every mode.
     let record = load_record(&record_path)?;
-    let items = review_items_for_record(&record).await?;
+    let (items, domains) = review_model_for_record(&record).await?;
     let missing = missing_verdicts(&items, &review);
     if !missing.is_empty() {
         return Err(format!(
             "the review is missing a verdict for {} checklist item(s): {}",
             missing.len(),
             missing.join(", ")
+        ));
+    }
+    let unrated = missing_ratings(&domains, &review);
+    if !unrated.is_empty() {
+        return Err(format!(
+            "the review is missing a rating for {} domain(s): {}",
+            unrated.len(),
+            unrated.join(", ")
         ));
     }
 
@@ -873,19 +888,18 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
     let record_path = run_dir.join("run-record.json");
     let record = load_record(&record_path)?;
 
-    let writeup = read_review_beside(&record_path)
+    let stored = read_review_beside(&record_path)
         .ok_or_else(|| format!("run `{id}` has no review; write one before publishing"))?;
     let writeup = Writeup {
-        rating: Rating::parse(&writeup.rating)
-            .ok_or_else(|| format!("stored review has an invalid rating `{}`", writeup.rating))?,
-        body: writeup.writeup,
-        checklist: writeup.checklist,
+        ratings: stored.ratings,
+        body: stored.writeup,
+        checklist: stored.checklist,
     };
 
-    // Re-gate at publish: the checklist must be complete even if the stored
-    // `writeup.md` was hand-edited after the in-app save gate. A run is not
-    // releasable until every declared item has a verdict.
-    let items = review_items_for_record(&record).await?;
+    // Re-gate at publish: the checklist must be complete and every domain rated
+    // even if the stored `writeup.md` was hand-edited after the in-app save gate.
+    // A run is not releasable until every declared item has a verdict.
+    let (items, domains) = review_model_for_record(&record).await?;
     let missing = missing_verdicts(&items, &writeup);
     if !missing.is_empty() {
         return Err(format!(
@@ -893,6 +907,14 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
              item(s): {}",
             missing.len(),
             missing.join(", ")
+        ));
+    }
+    let unrated = missing_ratings(&domains, &writeup);
+    if !unrated.is_empty() {
+        return Err(format!(
+            "run `{id}` cannot be published: its review is missing a rating for {} domain(s): {}",
+            unrated.len(),
+            unrated.join(", ")
         ));
     }
 
@@ -949,17 +971,18 @@ fn read_review_beside(record_path: &Path) -> Option<ReviewDocument> {
     let text = std::fs::read_to_string(&path).ok()?;
     let parsed = parse_writeup(&text).ok()?;
     Some(ReviewDocument {
-        rating: parsed.rating.as_str().to_string(),
+        ratings: parsed.ratings,
         writeup: parsed.body,
         checklist: parsed.checklist,
     })
 }
 
-/// Resolve the reviewer checklist items a run must be judged against: the items
-/// the run's selected variant declares (common + variant-specific). Resolves the
-/// run's exact version (from the backend when configured, else the local
-/// checkout) so the reporter shows the same items the case authored.
-async fn review_items_for_record(record: &RunRecord) -> CmdResult<Vec<ReviewItem>> {
+/// Resolve the review model a run must be judged against: the reviewer checklist
+/// items the run's selected variant declares (common + variant-specific) and the
+/// case's scoring domains. Resolves the run's exact version (from the backend when
+/// configured, else the local checkout) so the reporter shows the same items and
+/// domains the case authored.
+async fn review_model_for_record(record: &RunRecord) -> CmdResult<(Vec<ReviewItem>, Vec<Domain>)> {
     let resolved = resolve_version_inner(
         &record.subject.test_case_slug,
         &record.subject.test_case_version,
@@ -968,5 +991,5 @@ async fn review_items_for_record(record: &RunRecord) -> CmdResult<Vec<ReviewItem
     let variant = resolved
         .variant(&record.subject.variant)
         .map_err(|e| err("selecting variant", e))?;
-    Ok(resolved.review_items_for(variant))
+    Ok((resolved.review_items_for(variant), resolved.domains.clone()))
 }

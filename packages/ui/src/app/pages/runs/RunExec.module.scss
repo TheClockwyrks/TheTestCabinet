@@ -38,6 +38,23 @@
   margin-top: t.$space-md;
 }
 
+// The per-domain ratings block: a borderless fieldset grouping one rating select
+// per scoring domain beneath a single "Ratings" legend.
+.ratings {
+  border: 0;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+
+  // The per-domain fields already carry their own top gap from `.fieldStacked`;
+  // the legend provides the heading, so drop the first field's extra margin.
+  .fieldStacked {
+    margin-top: 0;
+  }
+}
+
 // The "?" affordance beside a field label: a small circular badge whose native
 // `title` carries the help text (matching the rest of the app's tooltip pattern).
 .help {
