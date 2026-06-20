@@ -1,7 +1,9 @@
-# The single run-container image for The Test Cabinet.
+# The base run-container image for The Test Cabinet.
 #
-# Every run — whatever harness it drives — executes in this one image. It
-# provides the common toolchain a run needs and nothing harness specific:
+# This is the image an end-to-end run executes in, and the foundation the
+# asset-generation image extends (see `containers/asset-gen/Dockerfile`, which is
+# `FROM` this image plus the baked-in `draw` binary). It provides the common
+# toolchain a run needs and nothing harness specific:
 #   - git, because every run executes inside a fresh git repository that is
 #     seeded on the host and mounted in.
 #   - a Node.js build toolchain, because the test cases ask the model to build
@@ -22,28 +24,12 @@
 # `harnesses/README.md`); installing at run time is what lets a run always pick
 # up the harness's latest published version.
 #
-# It DOES bake in one Test Cabinet binary: `draw`, the drawing tool an
-# asset-generation run uses (see the asset-generation docs under
-# `apps/docs/src/content/docs/testing/asset-generation/`). Unlike a harness CLI,
-# `draw` is part of The Test Cabinet itself and its drawing logic must match the
-# orchestrator's, so it is compiled from this repo and baked in rather than
-# installed at run time. The orchestrator regenerates an asset-gen run's scored
-# image with the *same* library this binary uses; building both from one commit
-# keeps them in lockstep (a run records the orchestrator commit and the image
-# digest, so a mismatch is auditable). The build context is the repository root so
-# this stage can see `crates/` — see `containers/build.sh`.
+# It also bakes in NO Test Cabinet binary. The `draw` tool an asset-generation run
+# uses is baked into the separate asset-generation image, which is built `FROM`
+# this base — see `containers/asset-gen/Dockerfile`. Keeping `draw` out of the base
+# is deliberate: an end-to-end run never touches it, so the binary (and the Rust
+# toolchain that compiles it) does not belong in the image every run shares.
 
-# --- Stage 1: compile the `draw` binary from this repository ----------------
-FROM docker.io/library/rust:1-bookworm AS draw-build
-WORKDIR /build
-# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
-# resolve the workspace graph; `-p test-cabinet-draw` compiles only `draw` and its
-# dependencies. The glibc target matches the bookworm runtime below — do not
-# statically link musl here.
-COPY . .
-RUN cargo build --release -p test-cabinet-draw --bin draw
-
-# --- Stage 2: the run image -------------------------------------------------
 FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
@@ -108,11 +94,6 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 # work as the unprivileged user.
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
-
-# Bake in the `draw` binary compiled in stage 1. `/usr/local/bin` is on PATH and
-# root-owned; the unprivileged run user only executes it, never writes it. An
-# asset-generation run invokes it as the model's drawing tool.
-COPY --from=draw-build /build/target/release/draw /usr/local/bin/draw
 
 USER node
 

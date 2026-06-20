@@ -13,6 +13,7 @@ use crate::event::{EventSink, HarnessEvent};
 use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
+use crate::test_case::TestType;
 
 /// The default registry/namespace the run-container image is published under,
 /// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
@@ -21,13 +22,28 @@ use crate::run_record::HarnessSlug;
 const DEFAULT_CONTAINER_REGISTRY: &str = "ghcr.io/theclockwyrks";
 /// The default image tag, used when `TCAB_CONTAINER_TAG` is unset.
 const DEFAULT_CONTAINER_TAG: &str = "latest";
-/// The name of the single, shared run-container image. Every harness runs in
-/// this one base image and installs its CLI into the container at run time (see
-/// [`AgentHarness::install_command`]); there is no longer a per-harness image.
+/// The name of the base run-container image, used by every end-to-end run. A
+/// harness installs its CLI into this image at run time (see
+/// [`AgentHarness::install_command`]); there is no per-harness image.
 const BASE_IMAGE_NAME: &str = "test-cabinet-base";
+/// The name of the asset-generation run-container image, used by every
+/// asset-generation run. It is the base image plus the baked-in `draw` binary
+/// (see `containers/asset-gen/Dockerfile`).
+const ASSET_GEN_IMAGE_NAME: &str = "test-cabinet-asset-gen";
 
-/// Resolve the run-container image reference, from the environment. Every run —
-/// whatever harness it drives — executes in this single shared base image; the
+/// The run-container image name for a [`TestType`]. End-to-end runs use the base
+/// image; asset-generation runs use the asset-generation image, which bakes in
+/// the `draw` binary an asset-generation run drives.
+fn image_name_for(test_type: TestType) -> &'static str {
+    match test_type {
+        TestType::EndToEnd => BASE_IMAGE_NAME,
+        TestType::AssetGeneration => ASSET_GEN_IMAGE_NAME,
+    }
+}
+
+/// Resolve the run-container image reference for a run's [`TestType`], from the
+/// environment. The image is selected by test type — end-to-end runs use the
+/// base image, asset-generation runs use the asset-generation image — and the
 /// harness's CLI is installed into the container at run time rather than baked
 /// into a per-harness image. The runner pulls the image directly from a registry
 /// — it does **not** ask any backend, so a runner pointed at any backend (or
@@ -36,28 +52,33 @@ const BASE_IMAGE_NAME: &str = "test-cabinet-base";
 /// Precedence:
 /// 1. `TCAB_CONTAINER_IMAGE` — a full, verbatim reference. Set it to a
 ///    `@sha256:…` digest to pin an exact image, or to point at a private build.
-/// 2. `{registry}/test-cabinet-base:{tag}`, where `registry` is
+///    It applies regardless of test type, so set it only when running a single
+///    test type (or use the per-run `container_image` override instead).
+/// 2. `{registry}/{name}:{tag}`, where `name` is the test type's image
+///    ([`BASE_IMAGE_NAME`] or [`ASSET_GEN_IMAGE_NAME`]), `registry` is
 ///    `TCAB_CONTAINER_REGISTRY` (default [`DEFAULT_CONTAINER_REGISTRY`]) and `tag`
 ///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). An explicitly
 ///    empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local
-///    image (`test-cabinet-base:{tag}`) for offline development.
+///    image (`{name}:{tag}`) for offline development.
 ///
-/// The default with nothing set is the published image on the latest tag:
-/// `ghcr.io/theclockwyrks/test-cabinet-base:latest`.
-pub fn resolve_base_image() -> String {
-    compose_base_image(
+/// The default with nothing set is the published image on the latest tag, e.g.
+/// `ghcr.io/theclockwyrks/test-cabinet-base:latest` for an end-to-end run.
+pub fn resolve_run_image(test_type: TestType) -> String {
+    compose_run_image(
+        image_name_for(test_type),
         std::env::var("TCAB_CONTAINER_IMAGE").ok(),
         std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
         std::env::var("TCAB_CONTAINER_TAG").ok(),
     )
 }
 
-/// The pure core of [`resolve_base_image`], taking the three environment values
-/// directly so the precedence and composition can be tested without touching
-/// process-global state. `None` is an unset variable; `Some("")` is an
-/// explicitly empty one — for the registry those differ (unset → default
+/// The pure core of [`resolve_run_image`], taking the image name and the three
+/// environment values directly so the precedence and composition can be tested
+/// without touching process-global state. `None` is an unset variable; `Some("")`
+/// is an explicitly empty one — for the registry those differ (unset → default
 /// namespace; empty → no registry prefix at all).
-fn compose_base_image(
+fn compose_run_image(
+    name: &str,
     explicit: Option<String>,
     registry: Option<String>,
     tag: Option<String>,
@@ -80,9 +101,9 @@ fn compose_base_image(
         .unwrap_or_else(|| DEFAULT_CONTAINER_TAG.to_string());
 
     if registry.is_empty() {
-        format!("{BASE_IMAGE_NAME}:{tag}")
+        format!("{name}:{tag}")
     } else {
-        format!("{registry}/{BASE_IMAGE_NAME}:{tag}")
+        format!("{registry}/{name}:{tag}")
     }
 }
 

@@ -66,7 +66,7 @@ pub use execution::{
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
-    resolve_base_image,
+    resolve_run_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
@@ -126,9 +126,9 @@ pub struct RunRequest {
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
     /// An explicit per-run override for the run-container image: a full, pullable
-    /// reference the runtime pulls. `None` — the usual case — resolves the shared
-    /// base image from the environment via
-    /// [`resolve_base_image`](crate::harness::resolve_base_image), which consults
+    /// reference the runtime pulls. `None` — the usual case — resolves the image
+    /// for the run's test type from the environment via
+    /// [`resolve_run_image`](crate::harness::resolve_run_image), which consults
     /// no backend. Whatever image actually runs is recorded (resolved to its
     /// registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
@@ -293,14 +293,16 @@ where
         let auth_mode = auth.mode();
 
         // The image is the run's explicit per-run override when it carries one,
-        // else the single shared base image resolved from the environment (a
-        // registry reference, resolved without any backend). Every harness runs
-        // in this base image and installs its CLI into the container below; there
-        // is no per-harness image.
+        // else the image for the test case's test type, resolved from the
+        // environment (a registry reference, resolved without any backend):
+        // end-to-end runs use the base image, asset-generation runs use the
+        // asset-generation image (the base plus the baked-in `draw` binary). The
+        // selected harness's CLI is installed into the container below either way;
+        // there is no per-harness image.
         let image = request
             .container_image
             .clone()
-            .unwrap_or_else(resolve_base_image);
+            .unwrap_or_else(|| resolve_run_image(test_case.test_type));
         tracing::Span::current().record("container.image", image.as_str());
 
         // Pull the base image up front so the run fails fast with a clear error

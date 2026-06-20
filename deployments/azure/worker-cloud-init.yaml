@@ -66,12 +66,16 @@ runcmd:
   - chmod +x /usr/local/bin/tcab-worker
   - mkdir -p /var/lib/test-cabinet
 
-  # ── Run container image ──
-  # Pull the single base image every run executes in from your registry. The
-  # worker resolves it per its TCAB_CONTAINER_REGISTRY configuration (see
-  # containers/README.md); a run installs the selected harness's CLI into it at
-  # run time, so there is no per-harness image to pull.
+  # ── Run container images ──
+  # Pre-pull the run-container images from your registry to warm the cache: the
+  # base image (end-to-end runs) and the asset-generation image (asset-generation
+  # runs, the base plus the baked-in `draw` tool). The worker resolves the one a
+  # run needs by test type per its TCAB_CONTAINER_REGISTRY configuration (see
+  # containers/README.md); a run installs the selected harness's CLI into the
+  # image at run time, so neither is a per-harness image. Drop the asset-gen pull
+  # if this worker only runs end-to-end cases.
   - docker pull <registry>/test-cabinet-base:latest
+  - docker pull <registry>/test-cabinet-asset-gen:latest
 
   # ── Private network (Tailscale) ──
   - curl -fsSL https://tailscale.com/install.sh | sh

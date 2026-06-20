@@ -73,22 +73,26 @@ container's unprivileged run user cannot write the working tree.)
 
 ## 3. The run-container image
 
-Every run executes inside a **single shared base image**; the
-[agent harness](/components/core/harnesses/) you drive is installed into that
-container at run time, so there is no per-harness image to build or pull. By
-default a runner **pulls the base image from a container registry** (GHCR) the
+Every run executes inside a run-container image selected by the test case's
+[test type](/testing/): an [end-to-end](/testing/end-to-end/) run uses the **base
+image**, an [asset-generation](/testing/asset-generation/overview/) run uses the
+**asset-generation image** (the base plus the baked-in `draw` tool). The
+[agent harness](/components/core/harnesses/) you drive is installed into the
+container at run time, so neither is a per-harness image to build or pull. By
+default a runner **pulls the image it needs from a container registry** (GHCR) the
 first time it is needed and pins the resolved digest in the run record; you do
 not have to build anything to make a first run. Each runner resolves the image
 from its own environment configuration (`TCAB_CONTAINER_REGISTRY`,
 `TCAB_CONTAINER_TAG`, or a full `TCAB_CONTAINER_IMAGE` override) — see
 [Execution](/components/core/execution/#containerization).
 
-To build the image locally instead — for offline development or while changing
-it — set `TCAB_CONTAINER_REGISTRY=` (empty) so the runner uses the locally-tagged
-build, and build from the `containers/` directory (see its `README.md`):
+To build the images locally instead — for offline development or while changing
+them — set `TCAB_CONTAINER_REGISTRY=` (empty) so the runner uses the
+locally-tagged builds, and build from the `containers/` directory (see its
+`README.md`):
 
 ```sh
-cd containers && DOCKER=podman ./build.sh   # builds the base image
+cd containers && DOCKER=podman ./build.sh   # builds the base + asset-gen images
 ```
 
 The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,

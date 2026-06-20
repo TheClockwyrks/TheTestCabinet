@@ -78,27 +78,59 @@ fn usage_carries_normalized_token_classes() {
 
 #[test]
 fn image_defaults_to_published_namespace_on_latest() {
-    // Nothing set: the published GHCR base image on the latest tag. Every harness
-    // shares this one image.
+    // Nothing set: the published GHCR image for the test type, on the latest tag.
+    // End-to-end runs resolve the base image; asset-generation runs resolve the
+    // asset-generation image (the base plus the baked-in `draw` binary).
     assert_eq!(
-        compose_base_image(None, None, None),
+        compose_run_image(BASE_IMAGE_NAME, None, None, None),
         "ghcr.io/theclockwyrks/test-cabinet-base:latest"
+    );
+    assert_eq!(
+        compose_run_image(ASSET_GEN_IMAGE_NAME, None, None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-asset-gen:latest"
+    );
+}
+
+#[test]
+fn image_name_tracks_the_test_type() {
+    // The image NAME is chosen by test type; the registry/tag environment applies
+    // to both the same way.
+    assert_eq!(image_name_for(TestType::EndToEnd), BASE_IMAGE_NAME);
+    assert_eq!(
+        image_name_for(TestType::AssetGeneration),
+        ASSET_GEN_IMAGE_NAME
     );
 }
 
 #[test]
 fn image_applies_registry_and_tag_overrides() {
     assert_eq!(
-        compose_base_image(
+        compose_run_image(
+            BASE_IMAGE_NAME,
             None,
             Some("registry.example.com/team".to_string()),
             Some("v2".to_string()),
         ),
         "registry.example.com/team/test-cabinet-base:v2"
     );
+    // The same registry/tag carries the asset-generation image too.
+    assert_eq!(
+        compose_run_image(
+            ASSET_GEN_IMAGE_NAME,
+            None,
+            Some("registry.example.com/team".to_string()),
+            Some("v2".to_string()),
+        ),
+        "registry.example.com/team/test-cabinet-asset-gen:v2"
+    );
     // A trailing slash on the registry is normalized away.
     assert_eq!(
-        compose_base_image(None, Some("registry.example.com/team/".to_string()), None),
+        compose_run_image(
+            BASE_IMAGE_NAME,
+            None,
+            Some("registry.example.com/team/".to_string()),
+            None
+        ),
         "registry.example.com/team/test-cabinet-base:latest"
     );
 }
@@ -106,19 +138,25 @@ fn image_applies_registry_and_tag_overrides() {
 #[test]
 fn image_empty_registry_names_a_local_image() {
     // An explicitly empty registry (distinct from unset) drops the prefix, naming
-    // a local image for offline development.
+    // a local image for offline development — for either test type's image.
     assert_eq!(
-        compose_base_image(None, Some(String::new()), None),
+        compose_run_image(BASE_IMAGE_NAME, None, Some(String::new()), None),
         "test-cabinet-base:latest"
+    );
+    assert_eq!(
+        compose_run_image(ASSET_GEN_IMAGE_NAME, None, Some(String::new()), None),
+        "test-cabinet-asset-gen:latest"
     );
 }
 
 #[test]
 fn explicit_image_override_wins_verbatim() {
     // An explicit `TCAB_CONTAINER_IMAGE` takes precedence over registry/tag and is
-    // used verbatim (e.g. a pinned digest), trimmed of surrounding whitespace.
+    // used verbatim (e.g. a pinned digest), trimmed of surrounding whitespace. It
+    // ignores the image name, so it applies regardless of test type.
     assert_eq!(
-        compose_base_image(
+        compose_run_image(
+            BASE_IMAGE_NAME,
             Some("  ghcr.io/me/custom-base@sha256:abc  ".to_string()),
             Some("registry.example.com".to_string()),
             Some("v9".to_string()),
@@ -127,7 +165,7 @@ fn explicit_image_override_wins_verbatim() {
     );
     // A blank explicit value is ignored, falling through to the defaults.
     assert_eq!(
-        compose_base_image(Some("   ".to_string()), None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-base:latest"
+        compose_run_image(ASSET_GEN_IMAGE_NAME, Some("   ".to_string()), None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-asset-gen:latest"
     );
 }
