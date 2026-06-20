@@ -18,8 +18,8 @@ openrouter_slug = "deepseek/deepseek-v4-flash"
 # Site-facing prose, relative to this catalog directory.
 description = "deepseek-v4-flash.md"
 
-# The model ID strings as they appear in run records (`subject.modelId`), used to
-# map a run back to this model. This defaults to the OpenRouter slug, which is
-# what OpenRouter-routed harnesses report; edit it when a harness reports a bare
-# id instead (Claude Code and Codex do).
-model_ids = ["deepseek/deepseek-v4-flash"]
+# The model ID strings as they appear in run records (`subject.modelId`), used
+# to map a run back to this model. The OpenRouter slug is what OpenRouter-routed
+# harnesses report unchanged; OpenCode/Kilo Code prefix it with their
+# `openrouter/` provider id.
+model_ids = ["deepseek/deepseek-v4-flash", "openrouter/deepseek/deepseek-v4-flash"]

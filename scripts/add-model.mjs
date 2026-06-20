@@ -13,6 +13,11 @@
 // `docs/harnesses.md`). The native ID is the part after the `/`, with Anthropic's
 // `X.Y` version dots rewritten to the `X-Y` dashes Claude Code reports.
 //
+// Every entry also lists the OpenRouter slug prefixed with `openrouter/`: OpenCode
+// and Kilo Code route through OpenRouter but report the slug under their own
+// `openrouter/` provider id (e.g. `openrouter/anthropic/claude-opus-4.8`), so
+// without this form their runs would map to no model at all.
+//
 // The site-facing `<slug>.md` description is *not* generated here — it is written
 // by hand. A placeholder stub is created only when one does not already exist, so
 // the catalog resolves; existing prose is never overwritten.
@@ -73,36 +78,43 @@ function splitName(displayName, slug) {
  * The model IDs a run record may identify this model by, and the comment that
  * explains them. Codex and Claude Code report a provider-native ID, so OpenAI and
  * Anthropic entries list both that native ID and the OpenRouter slug; every other
- * harness routes through OpenRouter and reports the slug alone.
+ * harness routes through OpenRouter and reports the slug. Every entry also lists
+ * the slug under OpenCode/Kilo Code's `openrouter/` provider prefix.
  */
 function modelIdsFor(slug) {
   const [prefix, ...rest] = slug.split("/");
   const tail = rest.join("/");
+  // OpenCode and Kilo Code route through OpenRouter but report the slug under
+  // their own `openrouter/` provider id, e.g. `openrouter/anthropic/claude-opus-4.8`.
+  const openrouterId = `openrouter/${slug}`;
   if (prefix === "openai") {
     return {
-      ids: [tail, slug],
+      ids: [tail, slug, openrouterId],
       comment:
         "# The model ID strings as they appear in run records (`subject.modelId`), used\n" +
         "# to map a run back to this model. Codex reports the bare OpenAI id; the\n" +
-        "# OpenRouter slug (with the `openai/` prefix) is listed too for the price lookup.",
+        "# OpenRouter slug (with the `openai/` prefix) is what OpenRouter-routed harnesses\n" +
+        "# report, and OpenCode/Kilo Code prefix that slug with their `openrouter/` provider id.",
     };
   }
   if (prefix === "anthropic") {
     return {
-      ids: [tail.replace(/\./g, "-"), slug],
+      ids: [tail.replace(/\./g, "-"), slug, openrouterId],
       comment:
         "# The model ID strings as they appear in run records (`subject.modelId`), used\n" +
         "# to map a run back to this model. Claude Code reports the bare Anthropic id\n" +
         "# (version dashes, e.g. `claude-opus-4-8`); the OpenRouter slug (dotted, e.g.\n" +
-        "# `anthropic/claude-opus-4.8`) is listed too for the price lookup.",
+        "# `anthropic/claude-opus-4.8`) is what OpenRouter-routed harnesses report, and\n" +
+        "# OpenCode/Kilo Code prefix that slug with their `openrouter/` provider id.",
     };
   }
   return {
-    ids: [slug],
+    ids: [slug, openrouterId],
     comment:
       "# The model ID strings as they appear in run records (`subject.modelId`), used\n" +
-      "# to map a run back to this model. This is the OpenRouter slug, which the\n" +
-      "# OpenRouter-routed harnesses report unchanged.",
+      "# to map a run back to this model. The OpenRouter slug is what OpenRouter-routed\n" +
+      "# harnesses report unchanged; OpenCode/Kilo Code prefix it with their\n" +
+      "# `openrouter/` provider id.",
   };
 }
 

@@ -6,7 +6,7 @@
 # `docs/test-cases.md` for the test case catalog it mirrors.
 
 # Human-readable display name.
-name = "GPT-5.4 mini"
+name = "GPT-5.4 Mini"
 
 # The provider that serves the model.
 provider = "OpenAI"
@@ -20,5 +20,6 @@ description = "gpt-5.4-mini.md"
 
 # The model ID strings as they appear in run records (`subject.modelId`), used
 # to map a run back to this model. Codex reports the bare OpenAI id; the
-# OpenRouter slug (with the `openai/` prefix) is listed too for the price lookup.
-model_ids = ["gpt-5.4-mini", "openai/gpt-5.4-mini"]
+# OpenRouter slug (with the `openai/` prefix) is what OpenRouter-routed harnesses
+# report, and OpenCode/Kilo Code prefix that slug with their `openrouter/` provider id.
+model_ids = ["gpt-5.4-mini", "openai/gpt-5.4-mini", "openrouter/openai/gpt-5.4-mini"]

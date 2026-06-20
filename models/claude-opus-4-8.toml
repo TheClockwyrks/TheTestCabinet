@@ -21,5 +21,6 @@ description = "claude-opus-4-8.md"
 # The model ID strings as they appear in run records (`subject.modelId`), used
 # to map a run back to this model. Claude Code reports the bare Anthropic id
 # (version dashes, e.g. `claude-opus-4-8`); the OpenRouter slug (dotted, e.g.
-# `anthropic/claude-opus-4.8`) is listed too for the price lookup.
-model_ids = ["claude-opus-4-8", "anthropic/claude-opus-4.8"]
+# `anthropic/claude-opus-4.8`) is what OpenRouter-routed harnesses report, and
+# OpenCode/Kilo Code prefix that slug with their `openrouter/` provider id.
+model_ids = ["claude-opus-4-8", "anthropic/claude-opus-4.8", "openrouter/anthropic/claude-opus-4.8"]
