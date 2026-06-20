@@ -124,6 +124,9 @@ export default defineConfig({
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
+        // The supported coding-agent harnesses: each one's website and a few
+        // example model IDs, all on one page.
+        { label: "Harnesses", link: "/harnesses" },
         { label: "Terminology", link: "/terminology" },
         { label: "Roadmap", link: "/roadmap" },
         // End-user material: short task refreshers, then the detailed guides.
