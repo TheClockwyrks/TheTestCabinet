@@ -17,7 +17,9 @@ const TOKEN_TICKS = "~s";
 
 // Value accessors for the two metric widgets. Module-level so their identity is
 // stable across renders (the widgets memoize their chart data on them).
-const tokensValue = (run: RunRecord): number => totalTokens(run.metrics);
+// Null for a harness that doesn't report every token class; such runs are then
+// excluded from the token chart rather than charted with an incomplete total.
+const tokensValue = (run: RunRecord): number | null => totalTokens(run.metrics);
 const costValue = (run: RunRecord): number => run.metrics.cost.comparable;
 
 // The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions

@@ -17,14 +17,17 @@ normalized [token classes](/components/core/metrics/#tokens):
 | Uncached input | `input_tokens` (plus `cache_creation_input_tokens`) |
 | Cached input | `cache_read_input_tokens` |
 | Output | `output_tokens` |
-| Reasoning | not reported separately |
+| Reasoning | _(not reported → `null`)_ |
 
 Claude Code reports input as **already excluding** cached reads
 (`input_includes_cache` is false), so `input_tokens` is taken as uncached input
 directly, with no subtraction. Cache-creation tokens
 (`cache_creation_input_tokens`) are billed as input rather than cache reads, so
 they are folded into the uncached-input class. Claude Code does not break out
-reasoning tokens, so the reasoning class is zero.
+reasoning tokens, so the reasoning class is `null` (not determinable) rather than
+zero — a Claude Code run therefore has no meaningful
+[token total](/components/core/metrics/#tokens) and is excluded from token
+comparisons.
 
 ## Cost
 

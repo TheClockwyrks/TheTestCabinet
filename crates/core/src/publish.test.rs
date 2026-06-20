@@ -41,10 +41,10 @@ fn sample_record() -> RunRecord {
         metrics: RunMetrics {
             run_time_seconds: 258.4,
             tokens: TokenCounts {
-                uncached_input: 41403,
-                cached_input: 940416,
-                output: 28733,
-                reasoning: 7974,
+                uncached_input: Some(41403),
+                cached_input: Some(940416),
+                output: Some(28733),
+                reasoning: Some(7974),
             },
             cost: Cost {
                 comparable: 0.2667,

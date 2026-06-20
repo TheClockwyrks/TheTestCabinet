@@ -142,12 +142,18 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         status_label(&record.status.state)
     );
     let tokens = &record.metrics.tokens;
+    // A class the harness does not report shows as `n/a` rather than a misleading
+    // zero; a total that folds in such a class is itself `n/a`.
+    let count = |value: Option<u64>| match value {
+        Some(count) => count.to_string(),
+        None => "n/a".to_string(),
+    };
     println!(
         "  tokens:  {} input ({} cached) / {} output ({} reasoning)",
-        tokens.total_input(),
-        tokens.cached_input,
-        tokens.output,
-        tokens.reasoning,
+        count(tokens.total_input()),
+        count(tokens.cached_input),
+        count(tokens.output),
+        count(tokens.reasoning),
     );
     println!(
         "  cost:    ${:.4} comparable",

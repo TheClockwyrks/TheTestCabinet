@@ -13,22 +13,24 @@ carries them wins.
 | Normalized class | Goose JSON key |
 | ---------------- | -------------- |
 | Uncached input | `input_tokens` |
-| Cached input | _(none read)_ |
+| Cached input | _(not reported → `null`)_ |
 | Output | `output_tokens` |
-| Reasoning | _(none read)_ |
+| Reasoning | _(not reported → `null`)_ |
 
 This is the whole of what Goose reports: its `complete` event carries only
 `input_tokens`, `output_tokens`, and `total_tokens` (where `total` is exactly
 `input + output`). There is no cache or reasoning breakdown anywhere in the
 stream — not on `complete`, and not on the per-message records — so cached input
-and reasoning are recorded as 0. This is a limitation of Goose's reporting, not a
-parsing gap: even when Goose drives a cache-backed model and emits extensive
-reasoning (its `thinking` blocks, surfaced as
-[reasoning](/components/core/events/#reasoning) events in the
+and reasoning are recorded as `null` (not determinable) rather than `0`. This is a
+limitation of Goose's reporting, not a parsing gap: even when Goose drives a
+cache-backed model and emits extensive reasoning (its `thinking` blocks, surfaced
+as [reasoning](/components/core/events/#reasoning) events in the
 [event stream](./events/)), those reads and reasoning tokens are folded into the
-flat `input_tokens`/`output_tokens` totals and cannot be separated out. Input is
-not treated as cache-inclusive (`input_includes_cache = false`), so nothing is
-subtracted from it.
+flat `input_tokens`/`output_tokens` totals and cannot be separated out. Because
+the cached and reasoning classes are unknown, a Goose run carries no meaningful
+[token total](/components/core/metrics/#tokens) and is excluded from token
+comparisons. Input is not treated as cache-inclusive
+(`input_includes_cache = false`), so nothing is subtracted from it.
 
 ## Cost
 

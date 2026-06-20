@@ -137,10 +137,10 @@ fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8]
         metrics: RunMetrics {
             run_time_seconds: 1.0,
             tokens: TokenCounts {
-                uncached_input: 0,
-                cached_input: 0,
-                output: 0,
-                reasoning: 0,
+                uncached_input: Some(0),
+                cached_input: Some(0),
+                output: Some(0),
+                reasoning: Some(0),
             },
             cost: Cost {
                 comparable: 0.0,

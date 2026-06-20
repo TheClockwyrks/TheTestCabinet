@@ -3,10 +3,36 @@
 
 import type { RunMetrics } from "@test-cabinet/run-record";
 
-// Sum of every token category — the headline token figure shown on a card.
-export function totalTokens(metrics: RunMetrics): number {
+// Add two nullable token counts. Null when either is unknown, so a partial sum is
+// never presented as if it were complete.
+export function sumTokens(
+  a: number | null,
+  b: number | null,
+): number | null {
+  return a === null || b === null ? null : a + b;
+}
+
+// Sum of every token category — the headline token figure shown on a card. Null
+// when any category is unreported (a harness that does not break out, say,
+// reasoning tokens cannot have a meaningful total), so such runs are excluded from
+// token comparisons rather than charted with an understated total.
+export function totalTokens(metrics: RunMetrics): number | null {
   const { uncachedInput, cachedInput, output, reasoning } = metrics.tokens;
-  return uncachedInput + cachedInput + output + reasoning;
+  return sumTokens(
+    sumTokens(uncachedInput, cachedInput),
+    sumTokens(output, reasoning),
+  );
+}
+
+// A token count for display, or an em dash when the harness did not report it.
+export function formatTokenCount(value: number | null): string {
+  return value === null ? "—" : formatInteger(value);
+}
+
+// A compact token total for a card, or an em dash when it cannot be determined.
+export function formatTokenTotal(metrics: RunMetrics): string {
+  const total = totalTokens(metrics);
+  return total === null ? "—" : formatCompact(total);
 }
 
 // Turn a kebab-case slug ("space-invaders") into a display title

@@ -63,12 +63,18 @@ export interface RunSubject {
   modelId: string;
 }
 
-/** Token counts, broken out by accounting category. All integers. */
+/**
+ * Token counts, broken out by accounting category. Each is an integer, or `null`
+ * when the harness does not report that category at all — `null` means "could not
+ * be determined", which is distinct from `0` ("reported, and was zero"). A
+ * consumer aggregating across categories should treat a `null` as missing rather
+ * than zero, so a partial total is never compared as if it were complete.
+ */
 export interface TokenMetrics {
-  uncachedInput: number;
-  cachedInput: number;
-  output: number;
-  reasoning: number;
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+  reasoning: number | null;
 }
 
 /** Cost figures in USD. */

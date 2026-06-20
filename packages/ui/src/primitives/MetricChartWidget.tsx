@@ -22,8 +22,13 @@ interface MetricChartWidgetProps {
   title: string;
   /** The runs to chart, already scoped to one case + variant and sorted. */
   runs: RunRecord[];
-  /** Pulls the charted value out of a run (token total, cost, …). */
-  value: (run: RunRecord) => number;
+  /**
+   * Pulls the charted value out of a run (token total, cost, …). A run for which
+   * the value is `null` — the metric could not be determined for that run's
+   * harness — is excluded from the chart entirely rather than plotted as zero, so
+   * an incomplete figure never distorts the comparison.
+   */
+  value: (run: RunRecord) => number | null;
   /** Unit shown on the y axis, e.g. "tokens" or "USD". */
   unit: string;
   /** d3 tick format for the y axis; pass a compact format for large counts. */
@@ -69,40 +74,51 @@ export function MetricChartWidget({
 }
 
 // Builds one labeled bar per run. Labels prefer the model id, disambiguating
-// with the harness slug when the same model ran the variant more than once.
+// with the harness slug when the same model ran the variant more than once. Runs
+// whose value is unknown (`null`) are dropped so they don't appear as zero bars.
 function runBars(
   runs: RunRecord[],
-  value: (run: RunRecord) => number,
+  value: (run: RunRecord) => number | null,
 ): BarPoint[] {
   const counts = new Map<string, number>();
   for (const run of runs) {
     counts.set(run.subject.modelId, (counts.get(run.subject.modelId) ?? 0) + 1);
   }
-  return runs.map((run) => ({
-    label:
-      (counts.get(run.subject.modelId) ?? 0) > 1
-        ? `${run.subject.modelId} · ${run.subject.harnessSlug}`
-        : run.subject.modelId,
-    value: value(run),
-  }));
+  return runs.flatMap((run) => {
+    const v = value(run);
+    if (v === null) return [];
+    return [
+      {
+        label:
+          (counts.get(run.subject.modelId) ?? 0) > 1
+            ? `${run.subject.modelId} · ${run.subject.harnessSlug}`
+            : run.subject.modelId,
+        value: v,
+      },
+    ];
+  });
 }
 
 // Builds one bar per model: the mean of `value` across that model's runs, i.e.
-// the average per run. Models keep their first-seen order.
+// the average per run. Models keep their first-seen order. Runs whose value is
+// unknown (`null`) are excluded from the mean; a model with no known values gets
+// no bar at all rather than a misleading zero.
 function meanBars(
   runs: RunRecord[],
-  value: (run: RunRecord) => number,
+  value: (run: RunRecord) => number | null,
 ): BarPoint[] {
   const totals = new Map<string, { sum: number; count: number }>();
   const order: string[] = [];
   for (const run of runs) {
+    const v = value(run);
+    if (v === null) continue;
     const model = run.subject.modelId;
     const entry = totals.get(model);
     if (entry) {
-      entry.sum += value(run);
+      entry.sum += v;
       entry.count += 1;
     } else {
-      totals.set(model, { sum: value(run), count: 1 });
+      totals.set(model, { sum: v, count: 1 });
       order.push(model);
     }
   }

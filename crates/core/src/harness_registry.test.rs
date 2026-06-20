@@ -22,20 +22,21 @@ fn shape_for(slug: HarnessSlug) -> UsageShape {
 fn claude_counts_cache_creation_as_uncached_input() {
     let line = r#"{"type":"result","usage":{"input_tokens":100,"cache_read_input_tokens":40,"cache_creation_input_tokens":10,"output_tokens":25}}"#;
     let usage = parse_usage(&stdout(line), shape_for(HarnessSlug::Claude));
-    assert_eq!(usage.tokens.uncached_input, 110); // 100 input + 10 cache creation
-    assert_eq!(usage.tokens.cached_input, 40);
-    assert_eq!(usage.tokens.output, 25);
-    assert_eq!(usage.tokens.reasoning, 0);
+    assert_eq!(usage.tokens.uncached_input, Some(110)); // 100 input + 10 cache creation
+    assert_eq!(usage.tokens.cached_input, Some(40));
+    assert_eq!(usage.tokens.output, Some(25));
+    // Claude Code declares no reasoning key, so reasoning is unknown, not zero.
+    assert_eq!(usage.tokens.reasoning, None);
 }
 
 #[test]
 fn codex_subtracts_cached_from_inclusive_input_and_keeps_reasoning() {
     let line = r#"{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":200,"reasoning_output_tokens":80}}"#;
     let usage = parse_usage(&stdout(line), shape_for(HarnessSlug::Codex));
-    assert_eq!(usage.tokens.uncached_input, 400); // 1000 - 600 cached
-    assert_eq!(usage.tokens.cached_input, 600);
-    assert_eq!(usage.tokens.output, 200);
-    assert_eq!(usage.tokens.reasoning, 80);
+    assert_eq!(usage.tokens.uncached_input, Some(400)); // 1000 - 600 cached
+    assert_eq!(usage.tokens.cached_input, Some(600));
+    assert_eq!(usage.tokens.output, Some(200));
+    assert_eq!(usage.tokens.reasoning, Some(80));
 }
 
 #[test]
@@ -46,8 +47,8 @@ fn claude_takes_the_last_cumulative_event() {
         r#"{"type":"result","usage":{"input_tokens":100,"output_tokens":25}}"#,
     );
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Claude));
-    assert_eq!(usage.tokens.uncached_input, 100);
-    assert_eq!(usage.tokens.output, 25);
+    assert_eq!(usage.tokens.uncached_input, Some(100));
+    assert_eq!(usage.tokens.output, Some(25));
 }
 
 #[test]
@@ -80,9 +81,9 @@ fn opencode_sums_per_step_deltas_and_reads_nested_cache() {
         r#"{"type":"step_finish","part":{"tokens":{"input":30,"output":20,"cache":{"read":700,"write":0}}}}"#,
     );
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Opencode));
-    assert_eq!(usage.tokens.uncached_input, 80);
-    assert_eq!(usage.tokens.cached_input, 1200);
-    assert_eq!(usage.tokens.output, 30);
+    assert_eq!(usage.tokens.uncached_input, Some(80));
+    assert_eq!(usage.tokens.cached_input, Some(1200));
+    assert_eq!(usage.tokens.output, Some(30));
 }
 
 #[test]
@@ -100,10 +101,10 @@ fn kilo_sums_per_step_deltas_and_reads_nested_cache() {
         r#"{"type":"step_finish","part":{"tokens":{"input":402,"output":378,"reasoning":0,"cache":{"read":70016,"write":0}},"cost":0.0047}}"#,
     );
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Kilo));
-    assert_eq!(usage.tokens.uncached_input, 11375); // 10973 + 402
-    assert_eq!(usage.tokens.cached_input, 70144); // 128 + 70016
-    assert_eq!(usage.tokens.output, 419); // 41 + 378
-    assert_eq!(usage.tokens.reasoning, 17);
+    assert_eq!(usage.tokens.uncached_input, Some(11375)); // 10973 + 402
+    assert_eq!(usage.tokens.cached_input, Some(70144)); // 128 + 70016
+    assert_eq!(usage.tokens.output, Some(419)); // 41 + 378
+    assert_eq!(usage.tokens.reasoning, Some(17));
 }
 
 #[test]
@@ -120,10 +121,29 @@ fn pi_sums_per_message_usage_and_ignores_restated_turn_totals() {
         r#"{"type":"message_end","message":{"role":"assistant","usage":{"input":200,"output":30,"cacheRead":6000,"cacheWrite":0,"totalTokens":6230}}}"#,
     );
     let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Pi));
-    assert_eq!(usage.tokens.uncached_input, 1200); // 1000 + 200; turn_end ignored
-    assert_eq!(usage.tokens.cached_input, 10000); // 4000 + 6000
-    assert_eq!(usage.tokens.output, 80);
-    assert_eq!(usage.tokens.reasoning, 0);
+    assert_eq!(usage.tokens.uncached_input, Some(1200)); // 1000 + 200; turn_end ignored
+    assert_eq!(usage.tokens.cached_input, Some(10000)); // 4000 + 6000
+    assert_eq!(usage.tokens.output, Some(80));
+    // Pi declares no reasoning key, so reasoning is unknown, not zero.
+    assert_eq!(usage.tokens.reasoning, None);
+}
+
+#[test]
+fn goose_reports_neither_cache_nor_reasoning_as_unknown_not_zero() {
+    // Goose's `complete` event carries only flat input/output totals; it declares
+    // no cache or reasoning keys, so those classes are unknown (`None`) rather than
+    // a misleading zero, while the reported classes are `Some`.
+    let line =
+        r#"{"type":"complete","input_tokens":368956,"output_tokens":20801,"total_tokens":389757}"#;
+    let usage = parse_usage(&stdout(line), shape_for(HarnessSlug::Goose));
+    assert_eq!(usage.tokens.uncached_input, Some(368956));
+    assert_eq!(usage.tokens.output, Some(20801));
+    assert_eq!(usage.tokens.cached_input, None);
+    assert_eq!(usage.tokens.reasoning, None);
+    // A total that folds in an unknown class is itself unknown, so a run whose
+    // breakdown is incomplete is excluded from totals rather than under-counted.
+    assert_eq!(usage.tokens.total_input(), None); // cached unknown
+    assert_eq!(usage.tokens.total_output(), None); // reasoning unknown
 }
 
 #[test]

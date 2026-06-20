@@ -6,10 +6,9 @@ import { UnpublishedTag } from "./UnpublishedTag";
 import type { Rating } from "../data/ratings";
 import { useFindReview } from "../data/writeups";
 import {
-  formatCompact,
   formatSlug,
+  formatTokenTotal,
   formatUsd,
-  totalTokens,
 } from "../format";
 import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
@@ -183,7 +182,7 @@ function RunRow({
         </span>
       )}
       <span className={styles.num} data-label="Tokens">
-        {formatCompact(totalTokens(metrics))}
+        {formatTokenTotal(metrics)}
       </span>
       <span className={styles.num} data-label="Cost">
         {formatUsd(metrics.cost.comparable)}

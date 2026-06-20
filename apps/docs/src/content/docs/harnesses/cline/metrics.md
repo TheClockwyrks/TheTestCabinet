@@ -18,7 +18,7 @@ The raw JSON keys map onto the normalized classes as follows:
 | Cached input | `cacheReadTokens` |
 | Cache creation | `cacheWriteTokens` |
 | Output | `outputTokens` |
-| Reasoning | — (not reported) |
+| Reasoning | _(not reported → `null`)_ |
 
 Cline's `inputTokens` does not already include the cached reads
 (`input_includes_cache` is false), so the value is taken as uncached input
@@ -26,11 +26,14 @@ directly. Cache-creation tokens (`cacheWriteTokens`) are billed as input and are
 folded into the uncached input class.
 
 Cline does not break out a reasoning-token count in its usage totals, so the
-reasoning class is always 0 — even for a model that reasons. This is independent
-of the [event stream](./events/), which does surface reasoning *content* as
-[reasoning](/components/core/events/#reasoning) events when Cline reports it as a
-distinct block; some models instead fold their reasoning into the visible text,
-and in neither case is a separate reasoning token count available.
+reasoning class is `null` (not determinable) rather than `0` — even for a model
+that reasons — and a Cline run therefore carries no meaningful
+[token total](/components/core/metrics/#tokens) and is excluded from token
+comparisons. This is independent of the [event stream](./events/), which does
+surface reasoning *content* as [reasoning](/components/core/events/#reasoning)
+events when Cline reports it as a distinct block; some models instead fold their
+reasoning into the visible text, and in neither case is a separate reasoning token
+count available.
 
 ## Cost
 

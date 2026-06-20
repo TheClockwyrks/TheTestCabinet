@@ -20,13 +20,17 @@ The normalized classes are derived from these keys within `message.usage`:
 | Cached input | `cacheRead` |
 | Cache creation | `cacheWrite` |
 | Output | `output` |
+| Reasoning | _(not reported → `null`)_ |
 
 Pi's `input` is the uncached prompt and does **not** include cached reads
 (`input_includes_cache` is false); the cache read count sits beside it under
 `cacheRead` and becomes the
 [cached input class](/components/core/metrics/#tokens). Any `cacheWrite` count is
 folded into the uncached input. Pi reports no separate reasoning class in its
-usage object, so reasoning is recorded as zero.
+usage object, so reasoning is recorded as `null` (not determinable) rather than
+zero — a Pi run therefore has no meaningful
+[token total](/components/core/metrics/#tokens) and is excluded from token
+comparisons.
 
 These field names were confirmed against a real Pi run's recorded stream. Pi
 routes through OpenRouter, so its usage shape is still provider-dependent; the

@@ -12,11 +12,10 @@ import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
 import {
-  formatCompact,
   formatRunTime,
   formatSlug,
+  formatTokenTotal,
   formatUsd,
-  totalTokens,
 } from "../../format";
 import styles from "./HomePage.module.scss";
 
@@ -118,7 +117,7 @@ function FeaturedRun({
       </p>
 
       <dl className={styles.stats}>
-        <Stat label="Tokens" value={formatCompact(totalTokens(metrics))} />
+        <Stat label="Tokens" value={formatTokenTotal(metrics)} />
         <Stat label="Cost" value={formatUsd(metrics.cost.comparable)} />
         <Stat label="Time" value={formatRunTime(metrics.runTimeSeconds)} />
         <Stat

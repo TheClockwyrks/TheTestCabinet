@@ -722,9 +722,53 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
     }
 }
 
+/// Raw per-class token totals, before the shape's per-class presence is applied.
+///
+/// Usage is accumulated here as plain integers; whether each class is actually
+/// reported by the harness — and so becomes `Some` rather than `None` in the
+/// final [`TokenCounts`] — is decided once, from the shape, in [`UsageShape::finalize`].
+#[derive(Debug, Clone, Copy, Default)]
+struct RawCounts {
+    uncached_input: u64,
+    cached_input: u64,
+    output: u64,
+    reasoning: u64,
+}
+
+impl RawCounts {
+    fn total_input(&self) -> u64 {
+        self.uncached_input + self.cached_input
+    }
+
+    fn total_output(&self) -> u64 {
+        self.output + self.reasoning
+    }
+}
+
+impl UsageShape {
+    /// Whether this shape reports input usage at all: it does when it names input
+    /// keys, or cache-creation keys (which fold into the uncached input class).
+    fn reports_input(&self) -> bool {
+        !self.input.is_empty() || !self.cache_creation.is_empty()
+    }
+
+    /// Apply this shape's per-class presence to accumulated raw totals: a class
+    /// the shape declares keys for becomes `Some` (even when the total is zero, so
+    /// a genuine zero is distinguished from an unreported class); a class with no
+    /// keys becomes `None`, marking it as not determinable for this harness.
+    fn finalize(&self, raw: RawCounts) -> TokenCounts {
+        TokenCounts {
+            uncached_input: self.reports_input().then_some(raw.uncached_input),
+            cached_input: (!self.cached.is_empty()).then_some(raw.cached_input),
+            output: (!self.output.is_empty()).then_some(raw.output),
+            reasoning: (!self.reasoning.is_empty()).then_some(raw.reasoning),
+        }
+    }
+}
+
 /// Parse normalized usage out of a harness's command output.
 fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
-    let mut tokens = TokenCounts::default();
+    let mut raw = RawCounts::default();
     for line in output.stdout.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -759,16 +803,18 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
             continue;
         }
         match shape.aggregation {
-            Aggregation::Last => tokens = line_tokens,
+            Aggregation::Last => raw = line_tokens,
             Aggregation::Sum => {
-                tokens.uncached_input += line_tokens.uncached_input;
-                tokens.cached_input += line_tokens.cached_input;
-                tokens.output += line_tokens.output;
-                tokens.reasoning += line_tokens.reasoning;
+                raw.uncached_input += line_tokens.uncached_input;
+                raw.cached_input += line_tokens.cached_input;
+                raw.output += line_tokens.output;
+                raw.reasoning += line_tokens.reasoning;
             }
         }
     }
-    Usage { tokens }
+    Usage {
+        tokens: shape.finalize(raw),
+    }
 }
 
 /// Parse the harness's self-reported run cost (USD) out of its command output.
@@ -806,8 +852,9 @@ fn dig<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
     Some(current)
 }
 
-/// Extract the normalized token classes from one JSON event.
-fn extract_tokens(value: &Value, shape: UsageShape) -> TokenCounts {
+/// Extract the raw per-class token totals from one JSON event. Presence (`Some`
+/// vs `None`) is applied later, from the shape, in [`UsageShape::finalize`].
+fn extract_tokens(value: &Value, shape: UsageShape) -> RawCounts {
     let sum = |keys: &[&str]| keys.iter().filter_map(|k| find_u64(value, k)).sum::<u64>();
 
     let raw_input = sum(shape.input);
@@ -819,7 +866,7 @@ fn extract_tokens(value: &Value, shape: UsageShape) -> TokenCounts {
         raw_input
     };
 
-    TokenCounts {
+    RawCounts {
         uncached_input: uncached_base + cache_creation,
         cached_input: cached,
         output: sum(shape.output),

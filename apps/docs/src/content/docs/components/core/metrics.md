@@ -32,6 +32,15 @@ following normalized token classes:
   tokens but are tracked separately because they are not useful output to a
   reader.
 
+Each class is **optional**: a class is `null` when the harness does not report it
+at all. `null` means "could not be determined" and is deliberately distinct from
+`0` ("reported, and was zero") — for example a harness that folds reasoning into
+its output total, and so never reports a reasoning figure, records `null` for
+reasoning rather than `0`. A consumer that aggregates across classes must treat
+`null` as missing rather than zero: a total that folds in an unknown class is
+itself unknown, so such a run is excluded from token comparisons rather than
+charted with an understated total.
+
 The [agent harness layer](/components/core/harnesses/#usage-reporting) is
 responsible for producing these normalized values from each harness's raw
 reporting.

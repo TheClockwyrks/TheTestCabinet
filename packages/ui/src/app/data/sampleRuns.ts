@@ -76,7 +76,8 @@ export const sampleRuns: RunRecord[] = [
         uncachedInput: 88210,
         cachedInput: 1840221,
         output: 73904,
-        reasoning: 41880,
+        // Claude Code does not break out reasoning tokens.
+        reasoning: null,
       },
       cost: { comparable: 1.842, actual: 1.79 },
     },
@@ -171,9 +172,10 @@ export const sampleRuns: RunRecord[] = [
       runTimeSeconds: 552,
       tokens: {
         uncachedInput: 51002,
-        cachedInput: 612480,
+        // Goose reports no cache or reasoning breakdown.
+        cachedInput: null,
         output: 38770,
-        reasoning: 19044,
+        reasoning: null,
       },
       cost: { comparable: 0.612, actual: 0.64 },
     },
@@ -217,7 +219,8 @@ export const sampleRuns: RunRecord[] = [
         uncachedInput: 34880,
         cachedInput: 410220,
         output: 21044,
-        reasoning: 8800,
+        // Cline does not report a reasoning-token count.
+        reasoning: null,
       },
       cost: { comparable: 0.331, actual: 0.331 },
     },
@@ -314,10 +317,11 @@ export const sampleRuns: RunRecord[] = [
     metrics: {
       runTimeSeconds: 1727,
       tokens: {
-        uncachedInput: 77410,
-        cachedInput: 880200,
-        output: 52900,
-        reasoning: 0,
+        uncachedInput: null,
+        cachedInput: null,
+        output: null,
+        // Antigravity reports no usage at all.
+        reasoning: null,
       },
       cost: { comparable: 0.704, actual: 0.704 },
     },
@@ -370,7 +374,8 @@ export const sampleRuns: RunRecord[] = [
         uncachedInput: 29110,
         cachedInput: 305400,
         output: 18220,
-        reasoning: 6010,
+        // Pi reports no separate reasoning class.
+        reasoning: null,
       },
       cost: { comparable: 0.119, actual: 0.119 },
     },
@@ -457,9 +462,10 @@ export const sampleRuns: RunRecord[] = [
       runTimeSeconds: 1308,
       tokens: {
         uncachedInput: 95110,
-        cachedInput: 1980040,
+        // Goose reports no cache or reasoning breakdown.
+        cachedInput: null,
         output: 81230,
-        reasoning: 0,
+        reasoning: null,
       },
       cost: { comparable: 1.553, actual: 1.553 },
     },

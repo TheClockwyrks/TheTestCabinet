@@ -11,13 +11,15 @@ usage is reported, no cost is derived for a run.
 
 | Normalized class | Antigravity source |
 | ---------------- | ------------------ |
-| Uncached input | _(none read — always 0)_ |
-| Cached input | _(none read — always 0)_ |
-| Output | _(none read — always 0)_ |
-| Reasoning | _(none read — always 0)_ |
+| Uncached input | _(not reported → `null`)_ |
+| Cached input | _(not reported → `null`)_ |
+| Output | _(not reported → `null`)_ |
+| Reasoning | _(not reported → `null`)_ |
 
-`UsageShape::NONE` declares no JSON keys for any class, so the usage parser finds
-nothing to read and all four classes stay at their default of 0.
+`UsageShape::NONE` declares no JSON keys for any class, so the usage parser has
+nothing to read and every class is `null` (not determinable) rather than `0`. In
+practice this is moot — Antigravity has no API-key mode, so it never produces a
+run to record usage for.
 
 ## Cost
 

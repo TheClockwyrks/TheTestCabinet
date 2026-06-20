@@ -125,6 +125,10 @@ Every invocation must return normalized usage data so that runs are comparable
 across harnesses regardless of how each harness reports its own numbers. The
 agent harness layer is responsible for translating each harness's raw output into
 the normalized token classes defined in [Metrics](/components/core/metrics/#tokens).
+A class a harness does not report is left `null` (not determinable) rather than
+`0`, so a class the harness genuinely reports as zero stays distinguishable from
+one it never reports — only the classes whose JSON keys a harness's usage shape
+declares are filled in; the rest are `null`.
 
 An invocation must also surface any **exact run cost the harness reports for
 itself**. A harness that drives a single provider directly through an API key may

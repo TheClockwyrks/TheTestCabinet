@@ -56,10 +56,10 @@ fn invocation_serializes_camel_case() {
 fn usage_carries_normalized_token_classes() {
     let usage = Usage {
         tokens: crate::metrics::TokenCounts {
-            uncached_input: 10,
-            cached_input: 5,
-            output: 3,
-            reasoning: 2,
+            uncached_input: Some(10),
+            cached_input: Some(5),
+            output: Some(3),
+            reasoning: Some(2),
         },
     };
     let value = serde_json::to_value(usage).expect("serialize");

@@ -14,28 +14,42 @@ use serde::{Deserialize, Serialize};
 ///   excludes them, and
 /// - reasoning tokens must be subtracted from output so [`Self::output`]
 ///   excludes them.
+///
+/// Each class is optional: `None` means the harness does **not** report that
+/// class at all (the value could not be determined), which is distinct from
+/// `Some(0)` (the harness reports the class and it was zero). Keeping the two
+/// apart matters for any consumer that aggregates across classes — a total that
+/// folds in an unknown class would be misleading, so such totals are themselves
+/// reported as unknown rather than silently treating the gap as zero.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCounts {
-    /// Input tokens that were **not** served from the provider's cache.
-    pub uncached_input: u64,
-    /// Input tokens served from the provider's cache (billed at a lower rate).
-    pub cached_input: u64,
-    /// Non-reasoning output tokens.
-    pub output: u64,
-    /// Internal reasoning tokens (billed as output, tracked separately).
-    pub reasoning: u64,
+    /// Input tokens that were **not** served from the provider's cache, or `None`
+    /// when the harness does not report input usage.
+    pub uncached_input: Option<u64>,
+    /// Input tokens served from the provider's cache (billed at a lower rate), or
+    /// `None` when the harness does not break cached reads out.
+    pub cached_input: Option<u64>,
+    /// Non-reasoning output tokens, or `None` when the harness does not report
+    /// output usage.
+    pub output: Option<u64>,
+    /// Internal reasoning tokens (billed as output, tracked separately), or `None`
+    /// when the harness does not break reasoning out — note that a harness which
+    /// folds reasoning into `output` reports `None` here, not `Some(0)`.
+    pub reasoning: Option<u64>,
 }
 
 impl TokenCounts {
-    /// Total input tokens across cached and uncached classes.
-    pub fn total_input(&self) -> u64 {
-        self.uncached_input + self.cached_input
+    /// Total input tokens across the cached and uncached classes, or `None` when
+    /// either class is unknown (so a partial total is never presented as a whole).
+    pub fn total_input(&self) -> Option<u64> {
+        Some(self.uncached_input? + self.cached_input?)
     }
 
-    /// Total output tokens across reasoning and non-reasoning classes.
-    pub fn total_output(&self) -> u64 {
-        self.output + self.reasoning
+    /// Total output tokens across the reasoning and non-reasoning classes, or
+    /// `None` when either class is unknown.
+    pub fn total_output(&self) -> Option<u64> {
+        Some(self.output? + self.reasoning?)
     }
 }
 
@@ -72,11 +86,15 @@ pub struct Cost {
 impl Cost {
     /// Compute the comparable cost from token counts and listed prices.
     ///
-    /// Reasoning tokens are priced at the output rate.
+    /// Reasoning tokens are priced at the output rate. An unknown class
+    /// (`None`) contributes nothing to the cost: its tokens are either genuinely
+    /// absent or already folded into another class that is priced here (for
+    /// example a harness that reports reasoning only inside its `output` total).
     pub fn comparable_from(counts: &TokenCounts, prices: &TokenPrices) -> f64 {
-        counts.uncached_input as f64 * prices.uncached_input
-            + counts.cached_input as f64 * prices.cached_input
-            + counts.total_output() as f64 * prices.output
+        let output = counts.output.unwrap_or(0) + counts.reasoning.unwrap_or(0);
+        counts.uncached_input.unwrap_or(0) as f64 * prices.uncached_input
+            + counts.cached_input.unwrap_or(0) as f64 * prices.cached_input
+            + output as f64 * prices.output
     }
 }
 
