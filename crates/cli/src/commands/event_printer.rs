@@ -1,10 +1,11 @@
-//! A live [`EventSink`] that prints normalized harness events to the terminal as
-//! they arrive.
+//! A live [`EventSink`] that prints normalized events to the terminal as they
+//! arrive.
 //!
 //! This is what turns a run from a silent wait into a visible stream: each piece
-//! of harness activity is rendered on its own line as the harness produces it,
-//! and a harness's own diagnostics and errors surface immediately rather than
-//! only as a single line once the run fails.
+//! of activity — the orchestrator's own setup and teardown stages as well as the
+//! harness's work — is rendered on its own line as it happens, and a harness's
+//! own diagnostics and errors surface immediately rather than only as a single
+//! line once the run fails.
 //!
 //! Each event type's label is colored so the stream is easy to scan. The colors
 //! are emitted unconditionally; the [`anstream`] macros used to write the lines
@@ -32,6 +33,7 @@ const SEARCH: Style = fg(AnsiColor::Magenta);
 const LIST: Style = fg(AnsiColor::BrightBlue);
 const SKILL: Style = fg(AnsiColor::BrightMagenta);
 const SUBAGENT: Style = fg(AnsiColor::BrightCyan);
+const SYSTEM: Style = fg(AnsiColor::White);
 const UNKNOWN: Style = fg(AnsiColor::BrightBlack);
 const WARNING: Style = fg(AnsiColor::Yellow).bold();
 const ERROR: Style = fg(AnsiColor::Red).bold();
@@ -93,6 +95,7 @@ fn render(event: &HarnessEvent) -> String {
             "subagent",
             &orchestration_text(*action, subagent_name.as_deref()),
         ),
+        EventKind::System { message, .. } => labeled(SYSTEM, "system", message),
         EventKind::Unknown { raw } => labeled(UNKNOWN, "·", &raw.to_string()),
         EventKind::Warning { message, .. } => labeled(WARNING, "warn", message),
         EventKind::Error { message, .. } => labeled(ERROR, "error", message),

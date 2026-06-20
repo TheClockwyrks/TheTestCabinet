@@ -1,9 +1,17 @@
 import type { HarnessEvent } from "../../client/types";
 
-// A short, representative slice of harness activity used to preview the live
-// event-feed styles in the Appearance settings. It spans several event types so
-// each per-type color shows, with fixed timestamps so the preview is stable.
+// A short, representative slice of a run's event stream used to preview the live
+// event-feed styles in the Appearance settings. It spans several event types —
+// including an orchestrator system event — so each per-type color shows, with
+// fixed timestamps so the preview is stable.
 export const SAMPLE_FEED_EVENTS: HarnessEvent[] = [
+  {
+    timestamp: "2026-06-18T12:12:58Z",
+    type: "system",
+    stage: "pull_image",
+    status: "started",
+    message: "Pulling the run-container image",
+  },
   {
     timestamp: "2026-06-18T12:13:00Z",
     type: "agent",

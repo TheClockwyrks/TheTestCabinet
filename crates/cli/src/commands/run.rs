@@ -125,9 +125,11 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         output_dir,
     };
 
-    // Print harness activity live as the run proceeds, rather than waiting in
-    // silence for the run to finish.
-    println!("\nharness activity:");
+    // Print the run's activity live as it proceeds, rather than waiting in
+    // silence for the run to finish. The feed covers both the orchestrator's own
+    // setup/teardown stages and the harness's activity, so it is the "event
+    // feed" rather than only harness activity.
+    println!("\nevent feed:");
     let mut events = PrintingEventSink;
     let record = orchestrator
         .run_resolved(&request, &test_case, &mut events)

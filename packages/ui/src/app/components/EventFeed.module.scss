@@ -68,6 +68,9 @@
   &[data-event-type="orchestration"] {
     --event-color: var(--ttc-event-orchestration);
   }
+  &[data-event-type="system"] {
+    --event-color: var(--ttc-event-system);
+  }
   &[data-event-type="warning"] {
     --event-color: var(--ttc-event-warning);
   }

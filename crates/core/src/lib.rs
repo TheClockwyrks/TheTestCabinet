@@ -52,7 +52,7 @@ pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
 pub use event::{
     EventFormat, EventKind, EventParser, EventSink, HarnessEvent, NoopEventSink,
-    OrchestrationAction,
+    OrchestrationAction, SystemStage, SystemStatus,
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerHandle, ContainerRuntime, ContainerSpec,
@@ -297,14 +297,27 @@ where
         // Pull the base image up front so the run fails fast with a clear error
         // on an unreachable registry, and so its digest can be resolved below. It
         // is idempotent: an image already present, including a local build, is
-        // left untouched (the same `--pull missing` policy `start` uses).
-        self.runtime
-            .pull(&image)
-            .await
-            .map_err(|err| Error::HarnessUnavailable {
+        // left untouched (the same `--pull missing` policy `start` uses). This is
+        // often the longest wait before any harness activity, so it is bracketed
+        // by system events to show the run is making progress.
+        events.emit(&HarnessEvent::system(
+            SystemStage::PullImage,
+            SystemStatus::Started,
+        ));
+        if let Err(err) = self.runtime.pull(&image).await {
+            events.emit(&HarnessEvent::system(
+                SystemStage::PullImage,
+                SystemStatus::Failed,
+            ));
+            return Err(Error::HarnessUnavailable {
                 slug: slug.as_str().to_string(),
                 detail: err.to_string(),
-            })?;
+            });
+        }
+        events.emit(&HarnessEvent::system(
+            SystemStage::PullImage,
+            SystemStatus::Completed,
+        ));
 
         let mut secrets = BTreeMap::new();
         // The key is read from the host's `api_key_env` but injected into the
@@ -319,7 +332,24 @@ where
             network_enabled: true,
         };
 
-        let handle = self.runtime.start(&spec).await?;
+        events.emit(&HarnessEvent::system(
+            SystemStage::StartContainer,
+            SystemStatus::Started,
+        ));
+        let handle = match self.runtime.start(&spec).await {
+            Ok(handle) => handle,
+            Err(err) => {
+                events.emit(&HarnessEvent::system(
+                    SystemStage::StartContainer,
+                    SystemStatus::Failed,
+                ));
+                return Err(err);
+            }
+        };
+        events.emit(&HarnessEvent::system(
+            SystemStage::StartContainer,
+            SystemStatus::Completed,
+        ));
 
         // Record the exact image bytes the run used. When the image was launched
         // by a mutable tag, resolve it to the registry digest now that it is
@@ -352,12 +382,20 @@ where
         // non-zero exit or a timeout aborts the run — a broken install would only
         // waste a harness session — and the container is torn down first.
         if let Some(install) = harness.install_command() {
+            events.emit(&HarnessEvent::system(
+                SystemStage::InstallHarness,
+                SystemStatus::Started,
+            ));
             // A non-login shell so the command runs with the container's own
             // environment (its `PATH` already carries the npm global prefix and
             // the user-level bin dirs); a login shell could reset `PATH` from
             // `/etc/profile` and drop them.
             let command = vec!["sh".to_string(), "-c".to_string(), install.to_string()];
             if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
+                events.emit(&HarnessEvent::system(
+                    SystemStage::InstallHarness,
+                    SystemStatus::Failed,
+                ));
                 let _ = self.runtime.stop(&handle).await;
                 return Err(match err {
                     SetupError::TimedOut => Error::HarnessInstallTimedOut {
@@ -371,12 +409,33 @@ where
                     SetupError::Runtime(err) => err,
                 });
             }
+            events.emit(&HarnessEvent::system(
+                SystemStage::InstallHarness,
+                SystemStatus::Completed,
+            ));
         }
 
         // Confirm the install produced a working CLI, capturing the version for
         // the run record. A failed probe aborts the run before a session is spent.
-        let availability = harness.probe(&self.runtime, &handle).await?;
+        events.emit(&HarnessEvent::system(
+            SystemStage::ProbeHarness,
+            SystemStatus::Started,
+        ));
+        let availability = match harness.probe(&self.runtime, &handle).await {
+            Ok(availability) => availability,
+            Err(err) => {
+                events.emit(&HarnessEvent::system(
+                    SystemStage::ProbeHarness,
+                    SystemStatus::Failed,
+                ));
+                return Err(err);
+            }
+        };
         if !availability.available {
+            events.emit(&HarnessEvent::system(
+                SystemStage::ProbeHarness,
+                SystemStatus::Failed,
+            ));
             let _ = self.runtime.stop(&handle).await;
             return Err(Error::HarnessUnavailable {
                 slug: slug.as_str().to_string(),
@@ -385,6 +444,10 @@ where
                     .unwrap_or_else(|| "harness is unavailable".to_string()),
             });
         }
+        events.emit(&HarnessEvent::system(
+            SystemStage::ProbeHarness,
+            SystemStatus::Completed,
+        ));
 
         // Run the test case's init command, if any, now that the seeded workspace
         // is mounted at the working directory. This is where a case installs its
@@ -394,8 +457,16 @@ where
         // non-zero exit or a timeout aborts the run — a broken setup would only
         // waste a harness session — and the container is torn down first.
         if let Some(init) = &test_case.init {
+            events.emit(&HarnessEvent::system(
+                SystemStage::InitTestCase,
+                SystemStatus::Started,
+            ));
             let command = vec!["sh".to_string(), "-c".to_string(), init.clone()];
             if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
+                events.emit(&HarnessEvent::system(
+                    SystemStage::InitTestCase,
+                    SystemStatus::Failed,
+                ));
                 let _ = self.runtime.stop(&handle).await;
                 return Err(match err {
                     SetupError::TimedOut => Error::InitTimedOut {
@@ -405,6 +476,10 @@ where
                     SetupError::Runtime(err) => err,
                 });
             }
+            events.emit(&HarnessEvent::system(
+                SystemStage::InitTestCase,
+                SystemStatus::Completed,
+            ));
         }
 
         let invocation = HarnessInvocation {
@@ -622,9 +697,19 @@ where
             .execute(test_case, &variant, &seeded, request, events)
             .await?;
 
-        // Collect the working tree, then always tear the container down.
+        // Collect the working tree, then always tear the container down. The
+        // teardown is bracketed by system events so the feed shows the run
+        // wrapping up rather than going quiet once the harness session ends.
+        events.emit(&HarnessEvent::system(
+            SystemStage::Teardown,
+            SystemStatus::Started,
+        ));
         let artifacts = self.collector.collect(&handle).await;
         let _ = self.runtime.stop(&handle).await;
+        events.emit(&HarnessEvent::system(
+            SystemStage::Teardown,
+            SystemStatus::Completed,
+        ));
         let artifacts = artifacts?;
 
         let run_time_seconds = timer.elapsed().as_secs_f64();

@@ -31,6 +31,7 @@ export function eventDetail(e: HarnessEvent): string {
       return String(e.action ?? "");
     case "error":
     case "warning":
+    case "system":
       return e.message ?? "";
     default:
       return JSON.stringify(e.raw ?? e);

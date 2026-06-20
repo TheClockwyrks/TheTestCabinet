@@ -306,6 +306,39 @@ fn unset_optional_fields_are_omitted_when_serialized() {
 }
 
 #[test]
+fn system_events_carry_a_stage_status_and_default_message() {
+    // The orchestrator's lifecycle events derive a human readable message from
+    // the stage and status, carry no session id, and serialize with the stage
+    // and status as snake_case slugs inline.
+    let event = HarnessEvent::system(SystemStage::PullImage, SystemStatus::Started);
+    assert_eq!(event.session_id, None);
+    assert_eq!(
+        event.kind,
+        EventKind::System {
+            stage: SystemStage::PullImage,
+            status: SystemStatus::Started,
+            message: "Pulling the run-container image".to_string(),
+        }
+    );
+    let value = serde_json::to_value(&event).expect("serialize");
+    assert_eq!(value["type"], "system");
+    assert_eq!(value["stage"], "pull_image");
+    assert_eq!(value["status"], "started");
+    assert_eq!(value["message"], "Pulling the run-container image");
+
+    // A failed teardown gets its own message, distinct from the started one.
+    let failed = HarnessEvent::system(SystemStage::Teardown, SystemStatus::Failed);
+    assert_eq!(
+        failed.kind,
+        EventKind::System {
+            stage: SystemStage::Teardown,
+            status: SystemStatus::Failed,
+            message: "Failed to tear down the run container".to_string(),
+        }
+    );
+}
+
+#[test]
 fn claude_assistant_text_becomes_an_agent_message() {
     let kind = one(claude(
         r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Let me look at the physics."}]}}"#,

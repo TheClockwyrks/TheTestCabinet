@@ -34,6 +34,29 @@ pub struct HarnessEvent {
     pub kind: EventKind,
 }
 
+impl HarnessEvent {
+    /// Build a [system lifecycle event](EventKind::System) for `stage` at
+    /// `status`, stamped with the current time and carrying the stage's default
+    /// description as its message.
+    ///
+    /// Unlike every other event these originate in the orchestrator rather than
+    /// being translated from harness output, so they carry no harness session
+    /// id. They report the setup and teardown work around a harness session so a
+    /// caller sees progress during steps that can take a while instead of a
+    /// silent wait before the harness produces its first event.
+    pub fn system(stage: SystemStage, status: SystemStatus) -> Self {
+        HarnessEvent {
+            timestamp: now_timestamp(),
+            session_id: None,
+            kind: EventKind::System {
+                stage,
+                status,
+                message: stage.describe(status),
+            },
+        }
+    }
+}
+
 /// The normalized event types, discriminated by the `type` field.
 ///
 /// Variant tags are the discriminator slugs defined in `docs/events.md`
@@ -159,6 +182,20 @@ pub enum EventKind {
         #[serde(skip_serializing_if = "Option::is_none")]
         code: Option<String>,
     },
+    /// A run lifecycle stage reported by the orchestrator itself, rather than
+    /// translated from harness output. These mark the setup and teardown steps
+    /// that bracket a harness session — pulling the image, starting the
+    /// container, installing the harness, preparing the test case, and tearing
+    /// down — so a caller sees what is happening during steps that can take a
+    /// while instead of a silent wait before the harness's first event.
+    System {
+        /// The setup or teardown stage this event reports on.
+        stage: SystemStage,
+        /// Whether the stage is beginning, finished, or failed.
+        status: SystemStatus,
+        /// A human readable description of the stage and its status.
+        message: String,
+    },
     /// Harness output that could not be classified as any other type.
     Unknown {
         /// The original, unclassified harness output.
@@ -176,6 +213,68 @@ pub enum OrchestrationAction {
     SubagentCompleted,
     /// A subagent failed.
     SubagentFailed,
+}
+
+/// The setup and teardown stages of a run that the orchestrator reports as
+/// [`EventKind::System`] events, in the order they occur around a harness
+/// session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemStage {
+    /// Pulling the run-container image.
+    PullImage,
+    /// Starting the run container.
+    StartContainer,
+    /// Installing the harness's CLI into the running container.
+    InstallHarness,
+    /// Confirming the installed harness CLI is usable.
+    ProbeHarness,
+    /// Running the test case's init command to prepare the workspace.
+    InitTestCase,
+    /// Collecting artifacts and stopping the container after the session.
+    Teardown,
+}
+
+/// The point a [`SystemStage`] has reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemStatus {
+    /// The stage has begun.
+    Started,
+    /// The stage finished successfully.
+    Completed,
+    /// The stage failed; the run will not proceed past it.
+    Failed,
+}
+
+impl SystemStage {
+    /// A human readable description of this stage at the given status, used as
+    /// the default message for a [system event](HarnessEvent::system).
+    fn describe(self, status: SystemStatus) -> String {
+        use SystemStage::*;
+        use SystemStatus::*;
+        let phrase = match (self, status) {
+            (PullImage, Started) => "Pulling the run-container image",
+            (PullImage, Completed) => "Run-container image ready",
+            (PullImage, Failed) => "Failed to pull the run-container image",
+            (StartContainer, Started) => "Starting the run container",
+            (StartContainer, Completed) => "Run container started",
+            (StartContainer, Failed) => "Failed to start the run container",
+            (InstallHarness, Started) => "Installing the harness CLI",
+            (InstallHarness, Completed) => "Harness CLI installed",
+            (InstallHarness, Failed) => "Failed to install the harness CLI",
+            (ProbeHarness, Started) => "Checking the harness is ready",
+            (ProbeHarness, Completed) => "Harness ready",
+            (ProbeHarness, Failed) => "Harness is unavailable",
+            (InitTestCase, Started) => "Preparing the test case workspace",
+            (InitTestCase, Completed) => "Test case workspace ready",
+            (InitTestCase, Failed) => "Failed to prepare the test case workspace",
+            (Teardown, Started) => "Tearing down the run container",
+            (Teardown, Completed) => "Run container torn down",
+            (Teardown, Failed) => "Failed to tear down the run container",
+        };
+        phrase.to_string()
+    }
 }
 
 /// Receives [`HarnessEvent`]s as they are produced during an invocation.
