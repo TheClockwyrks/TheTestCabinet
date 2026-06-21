@@ -15,9 +15,9 @@ what the SDK does, not because you have to write it by hand.
 
 ## `world` — the observation (input)
 
-Each tick you receive a `World` for your colony. Fully observable in v1 — there is
-no fog; you see the whole board, both teams, every cache, and every active jelly.
-The authoritative schema is `schemas/world.json`; the shape is:
+Each tick you receive a `World` for your colony. Fully observable in v1 —
+there is no fog; you see the whole board, both teams, every cache, and every
+active jelly. The authoritative schema is `schemas/world.json`; the shape is:
 
 ```jsonc
 {
@@ -32,14 +32,19 @@ The authoritative schema is `schemas/world.json`; the shape is:
   "score": { "red": 7, "blue": 5 },          // banked points
   "seeds_remaining": { "red_half": 13, "blue_half": 11 }, // sweep progress
   "my_agents": [                  // ALWAYS your three agents, ids 0..3
-    { "id": 0, "x": 14, "y": 8, "role": "raider",  "carrying": 4, "immune_ticks": 0,  "can_move_this_tick": false },
-    { "id": 1, "x": 6,  "y": 2, "role": "soldier", "carrying": 0, "immune_ticks": 0,  "can_move_this_tick": true  },
-    { "id": 2, "x": 9,  "y": 11,"role": "raider",  "carrying": 0, "immune_ticks": 12, "can_move_this_tick": true  }
+    { "id": 0, "x": 14, "y": 8, "role": "raider", "carrying": 4,
+      "immune_ticks": 0, "can_move_this_tick": false },
+    { "id": 1, "x": 6, "y": 2, "role": "soldier", "carrying": 0,
+      "immune_ticks": 0, "can_move_this_tick": true },
+    { "id": 2, "x": 9, "y": 11, "role": "raider", "carrying": 0,
+      "immune_ticks": 12, "can_move_this_tick": true }
   ],
   "enemies": [                    // the opposing colony's three agents (no cadence)
-    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0, "immune_ticks": 0 }
+    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0,
+      "immune_ticks": 0 }
   ],
-  "seeds": [ [18,3], [21,9] ],    // EVERY uneaten cache, incl. dropped recoverable ones
+  // EVERY uneaten cache, incl. dropped recoverable ones:
+  "seeds": [ [18,3], [21,9] ],
   "jelly": [ { "x": 24, "y": 1, "active": true } ]  // active royal-jelly nodes
 }
 ```
@@ -86,8 +91,8 @@ ordinary bugs are forgiven, not match-ending.
 - **Schema-invalid output is a forfeit.** Missing the `moves` array, naming an
   agent you do not own, omitting or duplicating an owned agent, an unknown `dir`,
   or malformed JSON — your controller **loses the match**. The SDK's helper builds
-  a structurally valid `moves` list for you (exactly your three ids, once each), so
-  use it and you cannot trip this.
+  a structurally valid `moves` list for you (exactly your three ids, once each),
+  so use it and you cannot trip this.
 - **A well-formed but blocked move is clamped, not punished.** A move into a wall,
   off the board, or submitted for an agent whose carry-weight cadence stalls it
   this tick is applied as **Stop**. Ordinary pathfinding bugs cost you tempo, not
@@ -110,15 +115,16 @@ things, all of which the SDK and `rustc` provide automatically:
   out of your memory at that location.
 
 The host **reuses one wasm instance for the whole match**, so your module globals
-and statics **persist across ticks** — you may build up working memory (an explored
-map, a plan in flight, a per-agent assignment) and carry it forward, exactly like a
-stateful agent. (The sandbox limits in `specs/sandbox.md` still apply every tick.)
+and statics **persist across ticks** — you may build up working memory (an
+explored map, a plan in flight, a per-agent assignment) and carry it forward,
+exactly like a stateful agent. (The sandbox limits in `specs/sandbox.md` still
+apply every tick.)
 
 ## Writing your controller
 
-You do not implement the ABI by hand. The seeded workspace ships a controller SDK
-(`foray-controller-sdk`) that owns `alloc`, `tick`, the JSON decode/encode, and a
-legal-action builder. You write **one function** and one macro call:
+You do not implement the ABI by hand. The seeded workspace ships a controller
+SDK (`foray-controller-sdk`) that owns `alloc`, `tick`, the JSON decode/encode,
+and a legal-action builder. You write **one function** and one macro call:
 
 ```rust
 use foray_controller_sdk::controller;

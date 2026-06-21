@@ -13,8 +13,8 @@ baseline has not done the work. You may read their source freely; you are expect
 **not** to copy it.
 
 > The references intentionally ignore parts of the ruleset. A controller that
-> imitates one inherits its weakness. Treat them as opponents to dismantle, not as
-> a starting architecture.
+> imitates one inherits its weakness. Treat them as opponents to dismantle, not
+> as a starting architecture.
 
 ## The baselines
 
@@ -28,11 +28,11 @@ it overwhelmingly, and one that does not has a bug.
 ### `greedy-raider` — all offence, no sense
 
 Sends **every** agent to forage: each one beelines (shortest path) to the
-**nearest enemy seed cache**, eats whatever it reaches, and only heads home when it
-can carry no more or is boxed out. It **never defends** and **ignores carry
-weight** — it over-loads and crawls home. Its two weaknesses are the two lessons of
-the case: leaving your own caches completely undefended, and turning heavy raiders
-into easy tags. A competent defender shreds it.
+**nearest enemy seed cache**, eats whatever it reaches, and only heads home when
+it can carry no more or is boxed out. It **never defends** and **ignores carry
+weight** — it over-loads and crawls home. Its two weaknesses are the two lessons
+of the case: leaving your own caches completely undefended, and turning heavy
+raiders into easy tags. A competent defender shreds it.
 
 ### `border-soldier` — a token balance
 
@@ -56,8 +56,8 @@ The three span the obvious failure space on purpose — pure noise (`random`), p
 greed (`greedy-raider`), and rigid role-splitting (`border-soldier`) — so you can
 see what losing looks like from three directions without being handed a winning
 shape. The real strategy space — balancing offence against defence tick by tick,
-timing a bank against carry weight, and spending jelly to run a heavy load home —
-is left entirely for you to discover.
+timing a bank against carry weight, and spending jelly to run a heavy load home
+— is left entirely for you to discover.
 
 ## Iterating locally
 

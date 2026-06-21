@@ -7,12 +7,13 @@ The game is a territorial maze-raiding contest between two ant colonies on a
 mirror-symmetric maze. Every agent is both attacker and defender — a **soldier**
 that tags intruders on its own half and a **raider** that eats and banks the
 enemy's seed caches on theirs, its role flipping the instant it crosses the border.
-Foray descends from the classic UC Berkeley "Pacman Capture-the-Flag" contest but
-changes the two levers every published strategy leans on, so a model cannot win by
-reciting one: a raider's speed **degrades with its load** (carry weight), making
-*when to break off and bank* a real decision, and eating **royal jelly** grants the
-eater tag-immunity rather than making defenders edible (the inverted capsule) — the
-risky tool that lets a slow, laden raider punch home through a defended border.
+Foray descends from the classic UC Berkeley "Pacman Capture-the-Flag" contest
+but changes the two levers every published strategy leans on, so a model cannot
+win by reciting one: a raider's speed **degrades with its load** (carry weight),
+making *when to break off and bank* a real decision, and eating **royal jelly**
+grants the eater tag-immunity rather than making defenders edible (the inverted
+capsule) — the risky tool that lets a slow, laden raider punch home through a
+defended border.
 
 A run compiles the model's controller to a wasm module and plays **one canonical
 match** against a committed baseline opponent (`border-soldier`), recording the

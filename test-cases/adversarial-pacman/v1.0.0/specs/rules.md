@@ -31,10 +31,10 @@ Three fixtures sit on the board:
 - **Nests** — each colony has a spawn nest against its back wall. Agents start
   there and respawn there.
 - **Seed caches** — the scorable resource: small piles of seeds spread across each
-  colony's home half, mirrored between the halves (about **20 caches per half** on
-  the shipped map). A cache is consumed when a raider eats it.
-- **Royal jelly nodes** — a small number of power nodes per half (**2 per half** on
-  the shipped map). See [Royal jelly](#royal-jelly).
+  colony's home half, mirrored between the halves (about **20 caches per half**
+  on the shipped map). A cache is consumed when a raider eats it.
+- **Royal jelly nodes** — a small number of power nodes per half (**2 per half**
+  on the shipped map). See [Royal jelly](#royal-jelly--the-inverted-capsule).
 
 Each side fields **three agents** (ids `0`, `1`, `2`). The agents are **not
 typed** — every one is both an attacker and a defender depending on where it
@@ -56,8 +56,8 @@ crossing the border flips it. Your three agents are interchangeable; the
 controller chooses who pushes across to raid and who stays home to defend, and may
 change that assignment every tick.
 
-The observation gives each agent's current `role` directly, so you never derive it
-yourself — but understanding *why* it flips is the heart of the game.
+The observation gives each agent's current `role` directly, so you never derive
+it yourself — but understanding *why* it flips is the heart of the game.
 
 ## Eating, carrying, banking
 
@@ -112,15 +112,16 @@ score and your vulnerability**: *when to break off and bank* is a real, continuo
 decision, not an afterthought. A controller that over-loads will bleed seeds to
 defenders.
 
-The observation tells you, per owned agent, whether it `can_move_this_tick` under
-this cadence — you never re-derive it. A move you submit for an agent that is
-stalling this tick is simply a no-op.
+The observation tells you, per owned agent, whether it `can_move_this_tick`
+under this cadence — you never re-derive it. A move you submit for an agent that
+is stalling this tick is simply a no-op.
 
 ### Royal jelly — the inverted capsule
 
-Eating a **royal jelly** node grants **the eater** **tag-immunity** for a window of
-**`J = 40` ticks** (a scent-mask / adrenal surge). An immune raider **cannot be
-tagged**, so jelly is how you punch a heavy load home through a defended border.
+Eating a **royal jelly** node grants **the eater** **tag-immunity** for a window
+of **`J = 40` ticks** (a scent-mask / adrenal surge). An immune raider **cannot
+be tagged**, so jelly is how you punch a heavy load home through a defended
+border.
 
 Jelly does **not** make soldiers edible, and there is no "hunt the scared
 defenders" phase — this is the inverse of the classic power-capsule. Jelly is the
