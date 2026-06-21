@@ -22,9 +22,10 @@ To author a brand-new case rather than add a mode to one, see
 [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/).
 To add a variant to an [asset-generation](/testing/asset-generation/overview/)
 case instead, see
-[Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/)
-— there a variant varies the drawing brief against a shared target, not a game
-mode.
+[Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/) or
+[Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
+(pick by the case's `asset_kind`) — there a variant varies the drawing brief
+against a shared target, not a game mode.
 
 ## What a variant adds
 

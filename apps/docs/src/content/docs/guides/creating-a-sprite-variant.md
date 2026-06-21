@@ -1,25 +1,30 @@
 ---
-title: Creating an Asset-Generation Variant
+title: Creating a Single-Sprite Variant
 ---
 
-An [asset-generation](/testing/asset-generation/overview/) test case version
-offers one or more [variants](/testing/end-to-end/overview/#variants), and a run
-selects exactly one. Every variant seeds the version's **common specs** (the
-brief and the operations schema) plus its own **additive** specs. The chosen
-variant's slug is recorded in the run record, so every result is attributed to a
-specific build.
+A single-sprite [asset-generation](/testing/asset-generation/overview/) test case
+(`asset_kind = "sprite"`, the default) draws **one sprite onto the whole canvas**
+toward a fixed target. Its version offers one or more
+[variants](/testing/end-to-end/overview/#variants), and a run selects exactly one.
+Every variant seeds the version's **common specs** (the brief and the operations
+schema) plus its own **additive** specs. The chosen variant's slug is recorded in
+the run record, so every result is attributed to a specific build.
 
 This guide is the full procedure for adding a variant to an **existing**
-asset-generation version. The authoritative rules live in
+single-sprite asset-generation version. The authoritative rules live in
 [Manifests](/testing/asset-generation/manifests/); read them first. While doing
-the work, follow the `adding-an-asset-generation-variant` skill.
+the work, follow the `adding-a-sprite-variant` skill.
 
-To author a brand-new case, see
+For a **sprite-sheet** case (`asset_kind = "sprite-sheet"`) — one whose `[sheet]`
+table tiles the canvas into a grid of animation frames — see
+[Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
+instead, where a variant also shares the frame grid and named sequences. To author
+a brand-new case, see
 [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/).
 To add a mode to an [end-to-end](/testing/end-to-end/overview/) case instead, see
 [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/).
 
-## What an asset-generation variant can (and cannot) change
+## What a single-sprite variant can (and cannot) change
 
 This is the one place asset-generation variants differ sharply from end-to-end
 ones. Resolution requires **exactly one common `target` reference** and

@@ -25,9 +25,12 @@ API key.
   — scaffold a new sprite-drawing case or version.
 - [Create an End-to-End Variant](/quickstarts/create-an-end-to-end-variant/) —
   add a new playable mode to an existing end-to-end version.
-- [Create an Asset-Generation Variant](/quickstarts/create-an-asset-generation-variant/)
-  — add a brief variation against the shared target of an asset-generation
-  version.
+- [Create a Single-Sprite Variant](/quickstarts/create-a-sprite-variant/)
+  — add a brief variation against the shared target of a single-sprite
+  asset-generation version (`asset_kind = "sprite"`).
+- [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
+  — add a brief variation against the shared target sheet of a sprite-sheet
+  asset-generation version (`asset_kind = "sprite-sheet"`).
 - [Review a Run](/quickstarts/review-a-run/) — write the required review for a
   finished run.
 - [Publish a Run](/quickstarts/publish-a-run/) — release a reviewed run to

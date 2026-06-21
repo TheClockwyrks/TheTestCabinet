@@ -25,9 +25,12 @@ guide when you are doing the task for the first time, or when you need to know
   schema, and manifest.
 - [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/) — add
   a new playable mode to an existing end-to-end version.
-- [Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/)
-  — add a brief variation against the shared target of an asset-generation
-  version.
+- [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/)
+  — add a brief variation against the shared target of a single-sprite
+  asset-generation version (`asset_kind = "sprite"`).
+- [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
+  — add a brief variation against the shared target sheet of a sprite-sheet
+  asset-generation version (`asset_kind = "sprite-sheet"`).
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — play a
   finished run, read its validation signals, and write the required review.
 - [Publishing a Test Run Result](/guides/publishing-a-test-run-result/) — release

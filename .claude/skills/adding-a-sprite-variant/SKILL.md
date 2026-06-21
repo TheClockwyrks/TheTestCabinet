@@ -1,22 +1,27 @@
 ---
-description: Read this skill before adding a new variant to an existing ASSET-GENERATION test case — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the case's single shared target, registered in a version's test-case.toml. For a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant instead.
-name: adding-an-asset-generation-variant
+description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the case's single shared target sprite, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+name: adding-a-sprite-variant
 ---
 
-# Adding an Asset-Generation Variant
+# Adding a Single-Sprite Variant
 
-## What an asset-generation variant is
+## What a single-sprite variant is
 
-An [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-test case version offers one or more **variants**, and a run selects exactly one.
-Every variant seeds the version's **common specs** (the brief and the operations
-schema) plus its own **additive** specs. The chosen variant's slug is recorded in
-the run record.
+A single-sprite [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+test case (`asset_kind = "sprite"`, the default) draws **one sprite onto the whole
+canvas** toward a fixed target. Its version offers one or more **variants**, and a
+run selects exactly one. Every variant seeds the version's **common specs** (the
+brief and the operations schema) plus its own **additive** specs. The chosen
+variant's slug is recorded in the run record.
 
-This skill covers variants of **asset-generation** cases. For a variant of an
-end-to-end case — a playable mode with its own menu and rules — use the
-[`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill.
-To author a brand-new case, use
+This skill covers variants of **single-sprite** asset-generation cases. For a
+variant of a **sprite-sheet** case — one whose `[sheet]` table tiles the canvas
+into a grid of animation frames — use the
+[`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) skill,
+where a variant also shares the frame grid and named sequences. For a variant of an
+**end-to-end** case — a playable mode with its own menu and rules — use the
+[`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
+author a brand-new case, use
 [`authoring-an-asset-generation-test-case`](../authoring-an-asset-generation-test-case/SKILL.md).
 
 The authoritative schema lives in

@@ -78,6 +78,8 @@ self-contained.
 
 ## Next steps
 
-- [Create an Asset-Generation Variant](/quickstarts/create-an-asset-generation-variant/)
-  to add a brief variation against the same target.
+- [Create a Single-Sprite Variant](/quickstarts/create-a-sprite-variant/) or
+  [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
+  (pick by the case's `asset_kind`) to add a brief variation against the same
+  target.
 - [Run a Test Case](/quickstarts/run-a-test-case/) to exercise it end to end.

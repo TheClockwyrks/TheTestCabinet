@@ -13,8 +13,10 @@ so you describe only the delta — never duplicate the shared specification.
 
 Adding a variant to an [asset-generation](/testing/asset-generation/overview/)
 case instead? See
-[Create an Asset-Generation Variant](/quickstarts/create-an-asset-generation-variant/)
-— there a variant varies the drawing brief, not a game mode.
+[Create a Single-Sprite Variant](/quickstarts/create-a-sprite-variant/) or
+[Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
+(pick by the case's `asset_kind`) — there a variant varies the drawing brief, not
+a game mode.
 
 ## Steps
 

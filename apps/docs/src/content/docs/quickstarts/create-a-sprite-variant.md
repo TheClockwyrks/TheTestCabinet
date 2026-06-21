@@ -1,12 +1,13 @@
 ---
-title: Create an Asset-Generation Variant
+title: Create a Single-Sprite Variant
 ---
 
 Add a new [variant](/testing/end-to-end/overview/#variants) to an existing
-[asset-generation](/testing/asset-generation/overview/) version. The full
+single-sprite [asset-generation](/testing/asset-generation/overview/) version
+(`asset_kind = "sprite"`, the default — one sprite on the whole canvas). The full
 procedure is in
-[Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/);
-the `adding-an-asset-generation-variant` skill is the hands-on guide to follow.
+[Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/);
+the `adding-a-sprite-variant` skill is the hands-on guide to follow.
 
 The key constraint: an asset-generation case has **exactly one common `target`**
 reference and resolution **forbids per-variant references**. So a variant cannot
@@ -14,7 +15,9 @@ change the target image — it varies the **brief** (an additive spec) the model
 draws toward that same shared target: a tighter palette, a stricter operation
 budget, an added stylistic rule.
 
-Adding a mode to an [end-to-end](/testing/end-to-end/overview/) case instead? See
+For a **sprite-sheet** case (`asset_kind = "sprite-sheet"`) instead? See
+[Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/).
+Adding a mode to an [end-to-end](/testing/end-to-end/overview/) case? See
 [Create an End-to-End Variant](/quickstarts/create-an-end-to-end-variant/).
 
 ## Steps

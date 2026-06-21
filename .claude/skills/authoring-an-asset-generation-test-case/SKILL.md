@@ -28,8 +28,12 @@ them as the authority:
 This skill covers the **asset-generation** test type only. For an **end-to-end**
 case — building a playable game from a spec — use the
 [`authoring-an-end-to-end-test-case`](../authoring-an-end-to-end-test-case/SKILL.md)
-skill. To add a variant to an existing asset-generation version, use
-[`adding-an-asset-generation-variant`](../adding-an-asset-generation-variant/SKILL.md).
+skill. To add a variant to an existing asset-generation version, use the skill
+matching its `asset_kind`:
+[`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) for a
+single-sprite case or
+[`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) for a
+sprite-sheet case.
 
 An asset-generation case draws **either a single sprite or a sprite sheet** (a
 grid of animation frames), chosen by the manifest's `asset_kind` field. This is a
@@ -163,8 +167,12 @@ Author `test-case.toml` per the
 - **One common `[[reference]]`** — `view = "target"` with a static-image `media`
   pointing at `target.png`. Resolution requires **exactly one** and forbids a
   variant from declaring its own.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); see
-  [`adding-an-asset-generation-variant`](../adding-an-asset-generation-variant/SKILL.md).
+- At least one **`[[variant]]`** (the first is the default — usually `base`); to
+  add more, see
+  [`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) (single sprite)
+  or
+  [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md)
+  (sprite sheet).
 - **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain (e.g.
   `fidelity`) and the reviewer checklist judging how faithfully the regenerated
   sprite matches the target (silhouette, palette, framing). Each item typically

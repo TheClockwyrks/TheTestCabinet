@@ -118,8 +118,11 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/):
   **authoritative output** the scored image is regenerated from.
 - **One common `[[reference]]`** — `view = "target"` pointing at `target.png`.
   Exactly one is required, and a variant may **not** declare its own.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); see
-  [Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/).
+- At least one **`[[variant]]`** (the first is the default — usually `base`); to
+  add more, see
+  [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/) or
+  [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/),
+  per the case's `asset_kind`.
 - **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain (e.g.
   `fidelity`) and the reviewer checklist that judges how faithfully the
   regenerated sprite matches the target. Each item typically pairs
@@ -153,7 +156,8 @@ exercise it end to end with [Run a Test Case](/quickstarts/run-a-test-case/).
 
 ## Next steps
 
-- [Creating an Asset-Generation Variant](/guides/creating-an-asset-generation-variant/)
-  — add a brief variation against the same target.
+- [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/) or
+  [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
+  (per the case's `asset_kind`) — add a brief variation against the same target.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — assess a run
   of your case.

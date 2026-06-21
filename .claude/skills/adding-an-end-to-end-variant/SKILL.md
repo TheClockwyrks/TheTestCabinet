@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant (a playable mode/configuration) to an existing END-TO-END test case, registered in a version's test-case.toml. For a variant of an asset-generation case (a brief variation against the shared target) use adding-an-asset-generation-variant instead.
+description: Read this skill before adding a new variant (a playable mode/configuration) to an existing END-TO-END test case, registered in a version's test-case.toml. For a variant of an asset-generation case (a brief variation against the shared target) use adding-a-sprite-variant (single-sprite case) or adding-a-sprite-sheet-variant (sprite-sheet case) instead.
 name: adding-an-end-to-end-variant
 ---
 
@@ -17,9 +17,11 @@ recorded in the run record.
 This skill covers variants of **end-to-end** cases. For a variant of an
 [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
 case — which varies the drawing brief against a single shared target rather than
-adding a game mode — use the
-[`adding-an-asset-generation-variant`](../adding-an-asset-generation-variant/SKILL.md)
-skill instead.
+adding a game mode — use the skill matching the case's `asset_kind`:
+[`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) for a
+single-sprite case, or
+[`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) for a
+sprite-sheet case.
 
 The authoritative schema for variants lives in
 [`testing/end-to-end/overview.md`](../../../apps/docs/src/content/docs/testing/end-to-end/overview.md) (see its *Variants* and

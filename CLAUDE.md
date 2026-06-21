@@ -104,9 +104,12 @@ authoring conventions:
   for a sprite drawn with the `draw` tool.
 - **Adding a variant to an existing case:**
   [`adding-an-end-to-end-variant`](.claude/skills/adding-an-end-to-end-variant/SKILL.md)
-  (a playable mode) or
-  [`adding-an-asset-generation-variant`](.claude/skills/adding-an-asset-generation-variant/SKILL.md)
-  (a brief variation against the shared target).
+  (a playable mode), or — for an asset-generation case, picked by its
+  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md) —
+  [`adding-a-sprite-variant`](.claude/skills/adding-a-sprite-variant/SKILL.md)
+  (a single-sprite case) or
+  [`adding-a-sprite-sheet-variant`](.claude/skills/adding-a-sprite-sheet-variant/SKILL.md)
+  (a sprite-sheet case); both are a brief variation against the shared target.
 
 ## Definitions & assets
 
