@@ -4,7 +4,7 @@
 // here match the serde DTOs those commands return (camelCase). Tauri's `invoke`
 // is imported lazily so the bundle still loads in a plain browser (where the
 // commands are absent) for development; `isTauri` gates the calls.
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord, TestType } from "@test-cabinet/run-record";
 import type { InProgressRun, RunNotification } from "@test-cabinet/ui/client";
 
 export function isTauri(): boolean {
@@ -70,6 +70,9 @@ export interface VersionInfo {
   difficulty: string;
   tags: string[];
   summary: string | null;
+  // The case's test type. Drives type-specific UI affordances — notably the
+  // run-launch orchestrator selector, offered only for "end-to-end".
+  testType: TestType;
   variants: VariantInfo[];
   // The case's scoring domains (case-level).
   domains: Domain[];
@@ -147,6 +150,9 @@ export interface LaunchConfig {
   variant: string;
   harness: string;
   modelId: string;
+  // The built-in orchestrator slug that conducts the harness sessions. Defaults
+  // to "one-shot"; a non-default orchestrator is accepted only for end-to-end.
+  orchestrator: string;
   maxRuntimeOverride: number | null;
 }
 

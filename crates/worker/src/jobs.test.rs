@@ -212,6 +212,7 @@ fn record_with_id(id: &str) -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
+            orchestrator_slug: "one-shot".to_string(),
             model_id: "claude-sonnet-4-5".to_string(),
         },
         tooling: RunTooling::current(),

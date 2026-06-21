@@ -81,8 +81,22 @@ pub struct RunSubject {
     pub harness_slug: HarnessSlug,
     /// The harness version, where it could be determined.
     pub harness_version: Option<String>,
+    /// The resolved slug of the orchestrator that conducted the harness sessions
+    /// (for example `one-shot` or `ralph`). For an external `--orchestrator-dir`
+    /// this is the directory's own manifest slug, not the request's. Defaults to
+    /// `one-shot` so records written before orchestrator selection existed — and
+    /// hand-written fixtures — still deserialize. See
+    /// [orchestrators](crate::OrchestratorCatalog).
+    #[serde(default = "default_orchestrator_slug")]
+    pub orchestrator_slug: String,
     /// The model ID passed to the harness, treated as an opaque string.
     pub model_id: String,
+}
+
+/// The default orchestrator slug for records that predate orchestrator selection:
+/// every such run was a single, one-shot harness session.
+fn default_orchestrator_slug() -> String {
+    crate::orchestrator::ONE_SHOT_SLUG.to_string()
 }
 
 /// Provenance for the Test Cabinet build that orchestrated a run.

@@ -79,6 +79,13 @@ export interface RunSubject {
   harnessSlug: HarnessSlug;
   /** Null when the harness does not report a version. */
   harnessVersion: string | null;
+  /**
+   * The resolved slug of the orchestrator that conducted the harness sessions
+   * (e.g. `"one-shot"` or `"ralph"`). For an external orchestrator directory
+   * this is the directory's own manifest slug. Defaults to `"one-shot"` for
+   * records written before orchestrator selection existed.
+   */
+  orchestratorSlug: string;
   modelId: string;
 }
 

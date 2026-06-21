@@ -120,7 +120,7 @@ pub trait Publisher: Send + Sync {
 ///
 /// Publishing releases generated code to public repositories and is a distinct,
 /// explicit operation from running a test case. This stand-in lets a run-only
-/// [`crate::Orchestrator`] be constructed without wiring real publishing; any
+/// [`crate::RunEngine`] be constructed without wiring real publishing; any
 /// attempt to publish through it returns a clear error.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoopPublisher;

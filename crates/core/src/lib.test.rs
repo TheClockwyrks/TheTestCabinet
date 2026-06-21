@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage, copy_tree,
-    init_failure_detail, with_runtime_cap, write_run_streams,
+    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage,
+    copy_tree, init_failure_detail, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
 
@@ -226,6 +226,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         variant: "base".to_string(),
         harness: HarnessSlug::Claude,
         model_id: "some-model".to_string(),
+        orchestrator: OrchestratorSelection::default(),
         max_runtime_override,
         container_image: None,
     }

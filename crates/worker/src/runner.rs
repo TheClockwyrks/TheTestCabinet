@@ -1,9 +1,9 @@
 //! Driving a submitted run through the core, backend-driven.
 //!
 //! This is the worker's entire run translation: it assembles the same
-//! [`Orchestrator`] a local `tcab run` does — only always sourced from the
+//! [`RunEngine`] a local `tcab run` does — only always sourced from the
 //! backend (a worker has no local `test-cases/` checkout) — and calls
-//! [`Orchestrator::run_resolved`], relaying the live events to the submitting
+//! [`RunEngine::run_resolved`], relaying the live events to the submitting
 //! job. It re-implements **none** of a run's behavior; the record it produces is
 //! the one core writes, identical to a local run's.
 //!
@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
     CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator,
-    FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, Orchestrator,
-    PrerenderedReferenceRenderer, RunRecord, RunRequest, TestCaseCatalog, materialize_version,
+    FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, OrchestratorCatalog,
+    PrerenderedReferenceRenderer, RunEngine, RunRecord, RunRequest, TestCaseCatalog,
+    materialize_version,
 };
 
 use std::sync::Arc;
@@ -107,7 +108,7 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
     // The base image resolves from the environment inside the orchestrator (a
     // registry reference, no backend involved); the request carries no explicit
     // per-run override.
-    let orchestrator = Orchestrator {
+    let orchestrator = RunEngine {
         // `run_resolved` does not consult the catalog (the version is resolved
         // above), but the struct still carries one; a worker has no checkout, so
         // point it at a placeholder that is never read.
@@ -116,6 +117,7 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
         collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
+        orchestrators: OrchestratorCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
         validator: DispatchValidator::new(screenshot_dir),
         // The worker only runs; publishing is a separate, explicit operation

@@ -21,6 +21,7 @@ pub mod harness;
 pub mod harness_registry;
 pub mod metrics;
 pub mod models;
+pub mod orchestrator;
 pub mod playable;
 pub mod preview;
 pub mod pricing;
@@ -75,6 +76,10 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
+pub use orchestrator::{
+    BUILT_IN_SLUGS, ONE_SHOT_SLUG, Orchestrator, OrchestratorCatalog, OrchestratorManifest,
+    OrchestratorSelection,
+};
 pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
     serve_asset_file, serve_build_file, serve_proof_file,
@@ -111,7 +116,7 @@ pub use validator::{AssetGenValidator, BuildValidator, DispatchValidator};
 
 /// What to run, with what, against which model.
 ///
-/// This is the user-facing description of a run; the [`Orchestrator`] turns it
+/// This is the user-facing description of a run; the [`RunEngine`] turns it
 /// into a [`RunRecord`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunRequest {
@@ -126,6 +131,13 @@ pub struct RunRequest {
     pub harness: HarnessSlug,
     /// The opaque model ID to pass to the harness.
     pub model_id: String,
+    /// Which orchestrator conducts the harness sessions: a built-in by slug or an
+    /// external `--orchestrator-dir`. Defaults to `one-shot` (a single session,
+    /// reproducing the original single-session behaviour exactly). Selection is
+    /// limited to the [end-to-end](crate::TestType::EndToEnd) test type; any other
+    /// test type rejects a non-default orchestrator. The resolved slug is recorded
+    /// on the run as [`RunSubject::orchestrator_slug`](crate::RunSubject).
+    pub orchestrator: OrchestratorSelection,
     /// Optional override for the maximum harness runtime, in seconds. `None`
     /// uses the resolved test case's `max_runtime_seconds` default; `Some`
     /// replaces it for this run (for example `tcab run --max-runtime`). Either
@@ -157,7 +169,7 @@ impl RunRequest {
 /// repo seeder, container runtime, harness registry, validator, and publisher —
 /// and sequences them: resolve, seed, execute, collect metrics, validate, write
 /// record, publish.
-pub struct Orchestrator<S, R, C, V, P>
+pub struct RunEngine<S, R, C, V, P>
 where
     S: RepoSeeder,
     R: ContainerRuntime,
@@ -175,6 +187,9 @@ where
     pub collector: C,
     /// Looks up harness implementations by slug.
     pub harnesses: Box<dyn HarnessRegistry>,
+    /// Resolves the orchestrator that drives the run's harness sessions. The
+    /// built-in orchestrators are embedded, so this is stateless.
+    pub orchestrators: OrchestratorCatalog,
     /// Renders reference mockups to screenshots for seeding and validation.
     pub renderer: Box<dyn ReferenceRenderer>,
     /// Runs the validation pass.
@@ -187,7 +202,7 @@ where
     pub output_dir: PathBuf,
 }
 
-impl<S, R, C, V, P> Orchestrator<S, R, C, V, P>
+impl<S, R, C, V, P> RunEngine<S, R, C, V, P>
 where
     S: RepoSeeder,
     R: ContainerRuntime,
@@ -274,12 +289,14 @@ where
         ),
         err,
     )]
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &self,
         test_case: &TestCaseVersion,
         variant: &Variant,
         seeded: &SeededRepo,
         request: &RunRequest,
+        orchestrator: &Orchestrator,
         events: &mut dyn EventSink,
         host_gateway: bool,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment)> {
@@ -525,17 +542,36 @@ where
             ));
         }
 
-        let invocation = HarnessInvocation {
+        // Render the base prompt (the goal). The orchestrator that drives the
+        // harness sessions was resolved by the caller and passed in. The runner is
+        // handed the base prompt as `TCAB_PROMPT` and wraps it with its own
+        // protocol before each session.
+        let base_prompt = render_prompt(test_case, variant)?;
+
+        // The deadline a multi-session runner checks to stop gracefully: epoch
+        // seconds after which the run's maximum runtime is exhausted (run start +
+        // max_runtime). The hard cap below is the backstop.
+        let deadline_epoch = unix_now().saturating_add(max_runtime);
+
+        // Drive the orchestrator's runner inside the container, bounded by
+        // `max_runtime` exactly as a single session was. The runner writes the
+        // `tcab-session` wrapper and runs the harness's sessions through the same
+        // streaming translation a direct invocation uses; on timeout the future is
+        // dropped (cancelling the in-flight exec) and the `Err` arm below tears the
+        // container down, just as it does for any other harness failure. For a
+        // one-shot run this produces exactly what a direct `invoke` would.
+        let drive = orchestrator::drive_orchestrator(
+            &self.runtime,
+            &handle,
+            harness,
+            orchestrator,
             slug,
-            model_id: request.model_id.clone(),
-            prompt: render_prompt(test_case, variant)?,
-        };
-        // The harness session is bounded by `max_runtime` (computed above). On
-        // timeout the session future is dropped (cancelling the in-flight exec)
-        // and the same `Err` arm below tears the container down, just as it does
-        // for any other harness failure.
-        let invoke = harness.invoke(&self.runtime, &handle, &invocation, events);
-        match with_runtime_cap(invoke, max_runtime, slug).await {
+            &request.model_id,
+            &base_prompt,
+            deadline_epoch,
+            events,
+        );
+        match with_runtime_cap(drive, max_runtime, slug).await {
             Ok(mut outcome) => {
                 outcome.harness_version = availability.version;
                 Ok((handle, outcome, environment))
@@ -713,6 +749,26 @@ where
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
+        // Orchestrator selection is limited to the end-to-end test type for now:
+        // other test types build a single artifact in one pass and always run
+        // one-shot. Reject any non-default orchestrator (a non-one-shot built-in
+        // slug, or an external `--orchestrator-dir`, which is by definition not
+        // one-shot) for any other test type. This fails fast — before any
+        // container is started — so a misconfigured request never burns setup.
+        let orchestrator_requested =
+            request.orchestrator.slug != ONE_SHOT_SLUG || request.orchestrator.dir.is_some();
+        if orchestrator_requested && test_case.test_type != TestType::EndToEnd {
+            return Err(Error::OrchestratorUnsupportedForTestType {
+                slug: request.orchestrator.slug.clone(),
+                test_type: test_case.test_type,
+            });
+        }
+        // Resolve the orchestrator once up front so its manifest's authoritative
+        // slug is what the run record attributes the run to (an external dir
+        // records its manifest's slug, not the empty request slug). Resolving here
+        // also surfaces an unknown slug or unreadable directory before any setup.
+        let orchestrator = self.orchestrators.resolve(&request.orchestrator)?;
+
         // Select the variant up front so its specs are what gets seeded and its
         // slug is what the run record attributes the run to.
         let variant = test_case.variant(&request.variant)?.clone();
@@ -781,6 +837,7 @@ where
                 &variant,
                 &seeded,
                 request,
+                &orchestrator,
                 events,
                 live.is_some(),
             )
@@ -845,6 +902,7 @@ where
                 variant: variant.slug.clone(),
                 harness_slug: request.harness,
                 harness_version: outcome.harness_version.clone(),
+                orchestrator_slug: orchestrator.manifest.slug.clone(),
                 model_id: request.model_id.clone(),
             },
             tooling: RunTooling::current(),
@@ -982,6 +1040,12 @@ where
             seconds,
         }),
     }
+}
+
+/// The current time as whole epoch seconds, used to compute the run's deadline
+/// (run start + maximum runtime) handed to an orchestrator's runner.
+fn unix_now() -> u64 {
+    OffsetDateTime::now_utc().unix_timestamp().max(0) as u64
 }
 
 /// Collect a fixed list of string slices into the owned `Vec<String>` the

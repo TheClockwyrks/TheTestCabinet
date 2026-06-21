@@ -3,7 +3,7 @@
 //! See `apps/docs/src/content/docs/components/worker/overview.md`. The worker is
 //! effectively the [CLI](test_cabinet_core) with a web API in front of it: it
 //! accepts a run request (a version, a variant, a harness, and a model), drives
-//! it through [`test_cabinet_core::Orchestrator`], and streams the run's live
+//! it through [`test_cabinet_core::RunEngine`], and streams the run's live
 //! [harness events](test_cabinet_core::HarnessEvent) back to the caller. It
 //! produces the same [run record](test_cabinet_core::RunRecord) a local run would
 //! and can publish on the same terms.

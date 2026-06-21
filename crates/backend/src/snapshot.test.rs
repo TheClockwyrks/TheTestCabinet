@@ -31,6 +31,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 variant: "base".to_string(),
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
+                orchestrator_slug: "one-shot".to_string(),
                 model_id: "claude-sonnet-4-5".to_string(),
             },
             tooling: RunTooling::default(),

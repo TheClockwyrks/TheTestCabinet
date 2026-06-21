@@ -196,6 +196,28 @@ pub enum Error {
     #[error("review error: {0}")]
     Review(String),
 
+    /// An orchestrator could not be resolved (an unknown built-in slug, or an
+    /// external `--orchestrator-dir` whose manifest or runner could not be read
+    /// or parsed). The detail names the slug or directory and what was wrong.
+    #[error("orchestrator error: {0}")]
+    Orchestrator(String),
+
+    /// A non-default orchestrator was requested for a test type that does not
+    /// support orchestrator selection. For now selection is limited to the
+    /// end-to-end test type; every other type always runs `one-shot`. The run is
+    /// refused before any container is started.
+    #[error(
+        "orchestrator `{slug}` is not supported for the {test_type} test type \
+         (orchestrator selection is limited to end-to-end test cases; other test \
+         types always run one-shot)"
+    )]
+    OrchestratorUnsupportedForTestType {
+        /// The requested orchestrator slug (empty for an external directory).
+        slug: String,
+        /// The test type that does not support orchestrator selection.
+        test_type: crate::test_case::TestType,
+    },
+
     /// Failed to (de)serialize a value, typically the run record.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),

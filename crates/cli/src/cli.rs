@@ -38,6 +38,9 @@ pub enum Command {
     /// List supported harnesses and their availability.
     Harnesses(HarnessesArgs),
 
+    /// List the built-in orchestrators and what each one does.
+    Orchestrators(OrchestratorsArgs),
+
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
     Seed(SeedArgs),
@@ -124,6 +127,20 @@ pub struct RunArgs {
     #[arg(long, value_name = "SECONDS")]
     pub max_runtime: Option<u64>,
 
+    /// Built-in orchestrator that conducts the harness sessions (for example
+    /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Ignored
+    /// when `--orchestrator-dir` is given. Selection is limited to end-to-end test
+    /// cases; other test types always run `one-shot`. See `tcab orchestrators`.
+    #[arg(long, value_name = "SLUG", default_value = "one-shot")]
+    pub orchestrator: String,
+
+    /// Directory of an external orchestrator to use instead of a built-in: an
+    /// `orchestrator.toml` plus the runner it names. When set, the directory's own
+    /// manifest slug is authoritative and `--orchestrator` is ignored. This is the
+    /// supported way to run an orchestration strategy not shipped in the repo.
+    #[arg(long, value_name = "DIR")]
+    pub orchestrator_dir: Option<std::path::PathBuf>,
+
     /// Directory to write the run record and collected artifacts into.
     #[arg(long, value_name = "DIR")]
     pub out_dir: Option<std::path::PathBuf>,
@@ -185,6 +202,14 @@ pub struct PublishArgs {
 /// Arguments for `tcab harnesses`.
 #[derive(Debug, Args)]
 pub struct HarnessesArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Arguments for `tcab orchestrators`.
+#[derive(Debug, Args)]
+pub struct OrchestratorsArgs {
     /// Emit the listing as JSON instead of a human-readable table.
     #[arg(long)]
     pub json: bool,

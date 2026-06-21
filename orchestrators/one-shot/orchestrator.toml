@@ -1,0 +1,25 @@
+# One-shot orchestrator definition.
+#
+# An orchestrator decides how a test case's harness sessions are conducted. This
+# one runs a single harness session and drives it to completion, reproducing the
+# original single-session behaviour exactly. See `orchestrators/README.md` and
+# the design doc at
+# `apps/docs/src/content/docs/components/core/orchestrators.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name (for a built-in) and is authoritative for an external directory.
+slug = "one-shot"
+
+# Human-readable name, shown in the catalogue.
+name = "One-shot"
+
+# What this strategy does, for display.
+description = "A single harness session driven to completion."
+
+# The runner entrypoint, relative to this directory. It runs inside the run
+# container, reads the runner environment contract, and invokes `tcab-session`.
+runner = "runner.sh"
+
+# This strategy reads no parameters. A multi-session strategy declares a
+# `[params]` table here; each entry is exposed to the runner as
+# `TCAB_PARAM_<KEY>` (the key upper-cased).

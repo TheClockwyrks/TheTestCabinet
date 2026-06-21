@@ -42,6 +42,7 @@ fn valid_body() -> SubmitBody {
         variant: "base".to_string(),
         harness: test_cabinet_core::HarnessSlug::Claude,
         model: "claude-sonnet-4-5".to_string(),
+        orchestrator: None,
         max_runtime_seconds: None,
     }
 }
@@ -111,6 +112,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
+            orchestrator_slug: "one-shot".to_string(),
             model_id: "claude-haiku-4-5".to_string(),
         },
         tooling: RunTooling::default(),

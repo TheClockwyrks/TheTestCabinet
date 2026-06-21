@@ -61,6 +61,7 @@
         "variant",
         "harnessSlug",
         "harnessVersion",
+        "orchestratorSlug",
         "modelId"
       ],
       "properties": {
@@ -70,6 +71,7 @@
         "variant": { "type": "string" },
         "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
         "harnessVersion": { "type": ["string", "null"] },
+        "orchestratorSlug": { "type": "string" },
         "modelId": { "type": "string" }
       }
     },

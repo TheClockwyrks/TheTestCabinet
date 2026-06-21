@@ -214,6 +214,23 @@ impl AgentHarness for CliHarness {
         }
     }
 
+    fn session_argv(&self, model_id: &str, prompt: &str) -> Vec<String> {
+        let mut argv = vec![self.binary.clone()];
+        argv.extend((self.session_args)(model_id, prompt));
+        argv
+    }
+
+    fn event_format(&self) -> EventFormat {
+        self.event_format
+    }
+
+    fn parse_session_usage(&self, output: &ExecOutput) -> (Usage, Option<f64>) {
+        (
+            parse_usage(output, self.usage),
+            parse_reported_cost(output, self.usage),
+        )
+    }
+
     async fn probe(
         &self,
         runtime: &dyn ContainerRuntime,
@@ -264,28 +281,19 @@ impl AgentHarness for CliHarness {
         invocation: &HarnessInvocation,
         events: &mut dyn EventSink,
     ) -> Result<HarnessOutcome> {
-        let mut command = vec![self.binary.to_string()];
-        command.extend((self.session_args)(
-            &invocation.model_id,
-            &invocation.prompt,
-        ));
+        let command = self.session_argv(&invocation.model_id, &invocation.prompt);
 
-        // Translate each output line into normalized events as it streams, while
-        // recording the raw lines and the translated events so the run can be
-        // persisted. The translator reborrows `events`; once its fields are taken
-        // and it is dropped, `events` is free again to report a terminal failure.
-        let mut translator = StreamingTranslator {
-            parser: EventParser::new(self.event_format),
-            events: &mut *events,
-            raw: Vec::new(),
-            recorded: Vec::new(),
-        };
-        let output = runtime
-            .exec_streamed(container, &command, &mut translator)
+        // Run the session, translating each output line into normalized events as
+        // it streams while recording the raw lines and the translated events so the
+        // run can be persisted. The same streaming machinery drives an
+        // orchestrator's runner (see [`run_streamed_translation`]), so the two
+        // paths translate output identically.
+        let Streamed {
+            output,
+            raw_output,
+            translated_events,
+        } = run_streamed_translation(runtime, container, &command, self.event_format, events)
             .await?;
-        let raw_output = std::mem::take(&mut translator.raw);
-        let translated_events = std::mem::take(&mut translator.recorded);
-        drop(translator);
 
         if output.exit_code != 0 {
             let detail = failure_detail(&output);
@@ -337,6 +345,54 @@ impl OutputSink for StreamingTranslator<'_> {
             self.recorded.push(event);
         }
     }
+}
+
+/// The result of running a command through [`run_streamed_translation`]: the
+/// captured output plus the recorded raw lines and translated events.
+pub(crate) struct Streamed {
+    /// The full captured output once the command finished.
+    pub output: ExecOutput,
+    /// Every raw line seen, in arrival order, tagged with its stream.
+    pub raw_output: Vec<RawOutputLine>,
+    /// Every translated event, in the order produced.
+    pub translated_events: Vec<HarnessEvent>,
+}
+
+/// Run `command` inside the container, translating each output line into
+/// normalized events (in `format`) as it streams and emitting them to `events`,
+/// while recording both the raw lines and the translated events.
+///
+/// This is the shared streaming-translation seam: a harness's direct
+/// [`invoke`](AgentHarness::invoke) runs the session command through it, and an
+/// [orchestrator](crate::orchestrator) runs its runner script through it, so a
+/// session's output is translated into events identically whichever path drives
+/// it.
+pub(crate) async fn run_streamed_translation(
+    runtime: &dyn ContainerRuntime,
+    container: &ContainerHandle,
+    command: &[String],
+    format: EventFormat,
+    events: &mut dyn EventSink,
+) -> Result<Streamed> {
+    // The translator reborrows `events`; once its fields are taken and it is
+    // dropped, `events` is free again for the caller to report a terminal failure.
+    let mut translator = StreamingTranslator {
+        parser: EventParser::new(format),
+        events: &mut *events,
+        raw: Vec::new(),
+        recorded: Vec::new(),
+    };
+    let output = runtime
+        .exec_streamed(container, command, &mut translator)
+        .await?;
+    let raw_output = std::mem::take(&mut translator.raw);
+    let translated_events = std::mem::take(&mut translator.recorded);
+    drop(translator);
+    Ok(Streamed {
+        output,
+        raw_output,
+        translated_events,
+    })
 }
 
 /// Build a detailed failure message from a harness invocation that exited non

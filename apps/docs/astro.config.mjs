@@ -184,6 +184,7 @@ export default defineConfig({
                 "components/core/overview",
                 "components/core/execution",
                 "components/core/harnesses",
+                "components/core/orchestrators",
                 "components/core/events",
                 "components/core/metrics",
                 "components/core/validation",
@@ -355,6 +356,19 @@ export default defineConfig({
                 "harnesses/antigravity/metrics",
               ],
             },
+          ],
+        },
+        // The built-in orchestrators — the data-driven strategies that decide how
+        // a run's harness sessions are conducted (single-session vs multi-session).
+        // The catalogue overview lists every orchestrator; each built-in then has
+        // its own page. The contract they implement lives under Core.
+        {
+          label: "Orchestrators",
+          collapsed: true,
+          items: [
+            "orchestrators/overview",
+            "orchestrators/one-shot",
+            "orchestrators/ralph",
           ],
         },
         // The test types The Test Cabinet evaluates models and harnesses with.

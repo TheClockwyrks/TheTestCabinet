@@ -22,6 +22,7 @@ import type {
   SpecDocument,
   StoredRun,
   TestCase,
+  TestType,
   VersionInfo,
 } from "@test-cabinet/ui/client";
 import type { RunRecord } from "@test-cabinet/run-record";
@@ -82,6 +83,7 @@ interface ResolvedVersion {
   summary: string | null;
   description: string | null;
   maxRuntimeSeconds: number;
+  testType: TestType;
   commonSpecs?: SpecDescriptor[];
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
@@ -167,6 +169,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         summary: r.summary,
         description: r.description,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
+        testType: r.testType,
         domains: r.domains ?? [],
         variants: r.variants.map((v) => ({
           slug: v.slug,

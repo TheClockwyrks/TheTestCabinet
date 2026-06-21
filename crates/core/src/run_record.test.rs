@@ -19,6 +19,7 @@ fn sample_record() -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
+            orchestrator_slug: "one-shot".to_string(),
             model_id: "anthropic/claude-opus-4".to_string(),
         },
         tooling: RunTooling {
@@ -100,6 +101,7 @@ fn serializes_to_camel_case_contract() {
             "variant": "base",
             "harnessSlug": "claude",
             "harnessVersion": "1.2.3",
+            "orchestratorSlug": "one-shot",
             "modelId": "anthropic/claude-opus-4"
         },
         "tooling": {
@@ -155,6 +157,20 @@ fn round_trips_through_json() {
     let json = serde_json::to_string(&record).expect("serialize");
     let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(record, parsed);
+}
+
+#[test]
+fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
+    // A record written before orchestrator selection existed omits the field;
+    // it must still deserialize, defaulting the slug to the original behaviour.
+    let mut value = serde_json::to_value(sample_record()).expect("serialize");
+    value["subject"]
+        .as_object_mut()
+        .unwrap()
+        .remove("orchestratorSlug");
+
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.subject.orchestrator_slug, "one-shot");
 }
 
 #[test]

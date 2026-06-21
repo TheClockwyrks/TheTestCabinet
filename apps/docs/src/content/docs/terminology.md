@@ -44,6 +44,17 @@ ranking is by [score](#score) (points), not by rating.
 Models are the large language models that determine the actions an agentic
 harness takes.
 
+## Orchestrator
+
+An orchestrator decides how a run's [harness](#harness) sessions are conducted —
+how many sessions to drive, what each is told, and when the work is done — while
+the harness still owns each individual session. It is distinct from the
+agentic harness (which performs the work of a single session) and from the
+[runner](#runners)/[reporter](#reporters) component terms (which name The Test
+Cabinet components that execute and report runs): an orchestrator is selected per
+run, defaults to `one-shot` (a single session), and is harness-agnostic. See
+[Orchestrators](/orchestrators/overview/).
+
 ## Publishing
 
 "Publishing" refers to releasing an implementation to GitHub and uploading its

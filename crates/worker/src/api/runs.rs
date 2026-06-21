@@ -14,8 +14,8 @@ use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
-    HarnessSlug, RunRecord, RunRequest, find_build_output, serve_asset_file, serve_build_file,
-    serve_proof_file,
+    HarnessSlug, ONE_SHOT_SLUG, OrchestratorSelection, RunRecord, RunRequest, find_build_output,
+    serve_asset_file, serve_build_file, serve_proof_file,
 };
 use tokio::sync::broadcast::error::RecvError;
 use tracing::Instrument as _;
@@ -43,6 +43,12 @@ pub struct SubmitBody {
     pub harness: HarnessSlug,
     /// Opaque model id passed to the harness.
     pub model: String,
+    /// Built-in orchestrator slug that conducts the harness sessions (e.g.
+    /// `one-shot` or `ralph`). Omit for the `one-shot` default. A worker resolves
+    /// built-in orchestrators only — it has no access to a submitter's local
+    /// directory, so there is no external-directory equivalent here.
+    #[serde(default)]
+    pub orchestrator: Option<String>,
     /// Optional override for the maximum harness runtime, in seconds.
     #[serde(default)]
     pub max_runtime_seconds: Option<u64>,
@@ -89,6 +95,14 @@ pub async fn submit(
         variant: body.variant,
         harness: body.harness,
         model_id: body.model,
+        // A worker resolves built-in orchestrators only (no local directory), so
+        // it never carries an external `dir`. Default to `one-shot` when unset.
+        orchestrator: OrchestratorSelection {
+            slug: body
+                .orchestrator
+                .unwrap_or_else(|| ONE_SHOT_SLUG.to_string()),
+            dir: None,
+        },
         max_runtime_override: body.max_runtime_seconds,
         // The base image resolves from the environment in the orchestrator (see
         // `drive_run`), not from the backend; no explicit per-run override.
@@ -159,7 +173,7 @@ pub struct ProducedRun {
 /// `GET /runs` — list the runs this worker has produced.
 ///
 /// Enumerates the worker's output directory, where each finished run wrote a
-/// `{run_id}/run-record.json` (see `Orchestrator::write_record`), and returns
+/// `{run_id}/run-record.json` (see `RunEngine::write_record`), and returns
 /// them as produced runs, newest first by finish time. The consoles read this to
 /// surface produced-but-unpublished runs in the gallery; without it a freshly
 /// finished run can't be found by id on its detail page (and the runs index shows

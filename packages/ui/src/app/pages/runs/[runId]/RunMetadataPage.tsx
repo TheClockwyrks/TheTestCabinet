@@ -1,5 +1,6 @@
 import { MetricTile } from "@test-cabinet/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
+import { BUILT_IN_ORCHESTRATORS } from "../../../data/orchestrators";
 import { RunValidationSection } from "./RunValidationSection";
 import styles from "./RunDetailPages.module.scss";
 
@@ -45,6 +46,11 @@ export function RunMetadataPage() {
                   }
                 />
                 <MetricTile
+                  label="Orchestrator"
+                  value={formatOrchestrator(subject.orchestratorSlug)}
+                  title={subject.orchestratorSlug}
+                />
+                <MetricTile
                   label="Test Cabinet commit"
                   value={
                     tooling.testCabinetCommit
@@ -68,6 +74,15 @@ export function RunMetadataPage() {
         );
       }}
     </RunDetailLayout>
+  );
+}
+
+// The human-readable name for the run's orchestrator, mapping a built-in slug to
+// its display name. An external orchestrator (run via `--orchestrator-dir`, not
+// in the built-in catalogue) shows its raw slug verbatim.
+function formatOrchestrator(slug: string): string {
+  return (
+    BUILT_IN_ORCHESTRATORS.find((o) => o.slug === slug)?.displayName ?? slug
   );
 }
 

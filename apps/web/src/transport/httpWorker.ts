@@ -112,6 +112,7 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
         variant: config.variant,
         harness: config.harness,
         model: config.modelId,
+        orchestrator: config.orchestrator,
         ...(config.maxRuntimeOverride != null
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),

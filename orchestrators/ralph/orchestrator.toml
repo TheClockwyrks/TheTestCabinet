@@ -1,0 +1,32 @@
+# Ralph orchestrator definition.
+#
+# The simplest multi-session strategy. Each session is told to resume from a
+# progress file, make some progress toward the goal, update the progress file,
+# and create a marker file once the whole implementation is done. The runner
+# re-runs sessions until that marker file appears (or the run's deadline is
+# reached). See `orchestrators/README.md` and the design doc at
+# `apps/docs/src/content/docs/components/core/orchestrators.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name (for a built-in).
+slug = "ralph"
+
+# Human-readable name, shown in the catalogue.
+name = "Ralph Loop"
+
+# What this strategy does, for display.
+description = "Re-runs a harness session, resuming from a progress file, until the implementation signals completion with a marker file."
+
+# The runner entrypoint, relative to this directory.
+runner = "runner.sh"
+
+# Parameters the runner reads, each exposed as `TCAB_PARAM_<KEY>` (key
+# upper-cased) and resolved relative to the workspace. Both live under a
+# dot-directory so the orchestrator's scratch is easy to keep out of the
+# collected implementation.
+[params]
+# The progress file the session records to and resumes from across sessions.
+status_file = ".tcab/ralph/progress.md"
+# The marker file a session creates once the entire goal is complete; its
+# appearance ends the loop.
+marker_file = ".tcab/ralph/done"

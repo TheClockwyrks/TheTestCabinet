@@ -349,7 +349,7 @@ impl JobRegistry {
 /// An [`EventSink`](test_cabinet_core::EventSink) that records each event onto a
 /// [`Job`], so the orchestrator's live events become the job's streamed events.
 ///
-/// `Orchestrator::run_resolved` takes `&mut dyn EventSink` and emits events as
+/// `RunEngine::run_resolved` takes `&mut dyn EventSink` and emits events as
 /// the harness runs; forwarding them through this sink is the whole of the
 /// HTTP-to-core translation for the live stream — the worker re-implements none
 /// of the event taxonomy, it just relays what core produces.

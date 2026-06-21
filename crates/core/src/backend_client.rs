@@ -198,7 +198,7 @@ pub trait BackendClient: Send + Sync {
 /// [`TestCaseVersion`] whose path fields point inside `store_dir`, together with
 /// the [`RenderedReference`]s for `variant` (the common references plus that
 /// variant's own). Pair the returned references with a
-/// [`PrerenderedReferenceRenderer`] so [`crate::Orchestrator::run`] reuses them
+/// [`PrerenderedReferenceRenderer`] so [`crate::RunEngine::run`] reuses them
 /// rather than re-rendering from mockup HTML the runner never receives.
 pub async fn materialize_version(
     client: &dyn BackendClient,
@@ -317,7 +317,7 @@ pub async fn materialize_version(
 /// backend, rather than rendering mockup HTML the runner never receives.
 ///
 /// Pair it with [`materialize_version`]'s returned references so
-/// [`crate::Orchestrator::run`] — which calls `render_references` — reuses the
+/// [`crate::RunEngine::run`] — which calls `render_references` — reuses the
 /// backend's screenshots as both the seeded visual targets and the validation
 /// baselines.
 #[derive(Debug, Clone, Default)]
@@ -342,7 +342,7 @@ impl crate::reference::ReferenceRenderer for PrerenderedReferenceRenderer {
     ) -> Result<Vec<RenderedReference>> {
         // Return only the views this variant declares, matching the on-disk set
         // the backend rendered for it; a view the backend did not render is
-        // simply absent, which `Orchestrator::run` then reports as incomplete.
+        // simply absent, which `RunEngine::run` then reports as incomplete.
         let wanted: std::collections::HashSet<String> = test_case
             .references_for(variant)
             .into_iter()

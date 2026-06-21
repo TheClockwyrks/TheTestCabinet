@@ -539,6 +539,24 @@ pub enum TestType {
     Adversarial,
 }
 
+impl TestType {
+    /// The kebab-case wire identifier for this test type, matching the
+    /// `serde(rename_all = "kebab-case")` representation used everywhere else.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndToEnd => "end-to-end",
+            Self::AssetGeneration => "asset-generation",
+            Self::Adversarial => "adversarial",
+        }
+    }
+}
+
+impl std::fmt::Display for TestType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Within an asset-generation case, the shape of the asset the model draws.
 ///
 /// A case is **either** a single sprite or a sprite sheet — never both, and not a
@@ -1122,7 +1140,7 @@ pub struct TestCaseVersion {
     pub common_workspace: Vec<WorkspaceFile>,
     /// The command run inside the run container once the workspace and specs are
     /// seeded and before the harness starts (the manifest's `init`). `None` when
-    /// the case declares no init step. See [`crate::Orchestrator::execute`].
+    /// the case declares no init step. See [`crate::RunEngine::execute`].
     pub init: Option<String>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,

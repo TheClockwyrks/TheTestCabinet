@@ -59,6 +59,44 @@ fn run_parses_required_arguments() {
             // Omitting --max-runtime leaves the override unset, so the run uses
             // the test case's own default cap.
             assert!(args.max_runtime.is_none());
+            // Omitting --orchestrator defaults to the single-session one-shot
+            // orchestrator, with no external directory.
+            assert_eq!(args.orchestrator, "one-shot");
+            assert!(args.orchestrator_dir.is_none());
+        }
+        other => panic!("expected a run command, got {other:?}"),
+    }
+}
+
+#[test]
+fn run_accepts_an_orchestrator_selection() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "run",
+        "--test-case",
+        "pong",
+        "--version",
+        "1.0.0",
+        "--variant",
+        "base",
+        "--harness",
+        "claude",
+        "--model",
+        "some-model-id",
+        "--orchestrator",
+        "ralph",
+        "--orchestrator-dir",
+        "/tmp/my-orchestrator",
+    ])
+    .expect("a run invocation with orchestrator selection should parse");
+
+    match cli.command {
+        Command::Run(args) => {
+            assert_eq!(args.orchestrator, "ralph");
+            assert_eq!(
+                args.orchestrator_dir,
+                Some(std::path::PathBuf::from("/tmp/my-orchestrator"))
+            );
         }
         other => panic!("expected a run command, got {other:?}"),
     }
@@ -352,5 +390,16 @@ fn harnesses_parses_with_json_flag() {
     match cli.command {
         Command::Harnesses(args) => assert!(args.json),
         other => panic!("expected a harnesses command, got {other:?}"),
+    }
+}
+
+#[test]
+fn orchestrators_parses_with_json_flag() {
+    let cli = Cli::try_parse_from(["tcab", "orchestrators", "--json"])
+        .expect("the orchestrators subcommand should parse");
+
+    match cli.command {
+        Command::Orchestrators(args) => assert!(args.json),
+        other => panic!("expected an orchestrators command, got {other:?}"),
     }
 }

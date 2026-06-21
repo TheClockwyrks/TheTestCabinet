@@ -58,15 +58,11 @@ A harness invocation must be given at least:
 - The prompt, which is the initial instruction handed to the harness. For a test
   case this directs the harness to build the game from the seeded specification.
 
-A run corresponds to a single harness session driven to completion. The
-harness's own agent loop performs the work of the run; orchestrating multiple
-chained sessions is out of scope for now.
-
-This reflects a deliberate scoping decision: The Test Cabinet currently measures
-what the supported harnesses can do out of the box, driving each through a
-single session with no additional orchestration layered on top. Multi-session
-orchestration is a planned future capability, but it is intentionally excluded
-so that early results reflect the harnesses' own unaided behavior.
+A harness session is one unit of work: the harness's own agent loop is handed a
+prompt and driven to completion. How many sessions a run drives, and how they
+chain, is decided by the run's [orchestrator](/components/core/orchestrators/),
+which owns the loop around the harness while the harness layer owns each
+individual session. A run defaults to a single session (`one-shot`).
 
 ## Availability
 

@@ -22,6 +22,7 @@ fn record(id: &str) -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
+            orchestrator_slug: "one-shot".to_string(),
             model_id: "m".to_string(),
         },
         tooling: RunTooling::default(),

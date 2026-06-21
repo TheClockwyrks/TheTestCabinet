@@ -6,8 +6,8 @@ use anyhow::Context;
 use test_cabinet_core::{
     BrowserRenderer, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
     DispatchValidator, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
-    OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, ReferenceRenderer, RunRequest,
-    TestCaseCatalog, materialize_version,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, PrerenderedReferenceRenderer,
+    ReferenceRenderer, RunEngine, RunRequest, TestCaseCatalog, materialize_version,
 };
 
 use crate::cli::RunArgs;
@@ -20,7 +20,7 @@ use crate::commands::event_printer::PrintingEventSink;
 /// materialized to disk and the backend's rendered references are reused as the
 /// seeded visual targets and validation baselines. With no backend configured the
 /// command falls back to the local `test-cases/` checkout, preserving the
-/// offline development path. Either way it assembles the core [`Orchestrator`]
+/// offline development path. Either way it assembles the core [`RunEngine`]
 /// from concrete seams and drives the run to completion, then reports the record.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
@@ -30,6 +30,13 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         variant: args.variant,
         harness,
         model_id: args.model,
+        // An external `--orchestrator-dir` takes precedence over the built-in
+        // `--orchestrator` slug (its own manifest slug is authoritative); with no
+        // directory, the named built-in (defaulting to `one-shot`) is resolved.
+        orchestrator: OrchestratorSelection {
+            slug: args.orchestrator,
+            dir: args.orchestrator_dir,
+        },
         max_runtime_override: args.max_runtime,
         // No explicit per-run image override: the orchestrator resolves the
         // shared base image from the environment (a registry reference).
@@ -63,6 +70,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     match request.max_runtime_override {
         Some(seconds) => println!("  cap:     {seconds}s max runtime (override)"),
         None => println!("  cap:     test case default max runtime"),
+    }
+    match &request.orchestrator.dir {
+        Some(dir) => println!("  orch:    external dir {}", dir.display()),
+        None => println!("  orch:    {}", request.orchestrator.slug),
     }
     println!("  output:  {}", output_dir.display());
     println!("  staging: {}", work_dir.display());
@@ -110,7 +121,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         }
     };
 
-    let orchestrator = Orchestrator {
+    let orchestrator = RunEngine {
         // The catalog is unused by `run_resolved` (the version is resolved above)
         // but the struct still carries one; point it at the local checkout.
         catalog: TestCaseCatalog::new(catalog_root()),
@@ -118,6 +129,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
+        orchestrators: OrchestratorCatalog::new(),
         renderer,
         validator: DispatchValidator::new(screenshot_dir),
         publisher: NoopPublisher,

@@ -3,6 +3,10 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
+import {
+  BUILT_IN_ORCHESTRATORS,
+  DEFAULT_ORCHESTRATOR_SLUG,
+} from "../../data/orchestrators";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -33,6 +37,11 @@ export function NewRunPage() {
   // Harnesses are a fixed, code-defined catalog (not backend-served): default to
   // the first and let the picker choose among them.
   const [harness, setHarness] = useState(harnesses[0]?.slug ?? "");
+  // The orchestrator that conducts the harness sessions. Selectable only for the
+  // end-to-end test type (the selector below is hidden otherwise); every other
+  // test type always submits the default `one-shot`. Built-in slugs only — the
+  // worker has no access to a submitter's local orchestrator directory.
+  const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
   const [modelId, setModelId] = useState("");
   const [maxRuntime, setMaxRuntime] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
@@ -53,6 +62,14 @@ export function NewRunPage() {
   }, [backend]);
 
   const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
+  // Orchestrator selection is limited to the end-to-end test type; other types
+  // always run one-shot, so the selector is hidden and one-shot is submitted.
+  const isEndToEnd = sel.versionInfo?.testType === "end-to-end";
+  // Whatever the picker holds, only an end-to-end case may carry a non-default
+  // orchestrator — otherwise the run is one-shot no matter what was last chosen.
+  const submittedOrchestrator = isEndToEnd
+    ? orchestrator
+    : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
   const canLaunch = Boolean(
     worker &&
@@ -76,6 +93,7 @@ export function NewRunPage() {
         variant: sel.variant,
         harness,
         modelId,
+        orchestrator: submittedOrchestrator,
         maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
       });
       runtime.track({
@@ -175,6 +193,26 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
+        {isEndToEnd && (
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Orchestrator</span>
+            <select
+              className={styles.select}
+              value={orchestrator}
+              onChange={(e) => setOrchestrator(e.target.value)}
+              title={
+                BUILT_IN_ORCHESTRATORS.find((o) => o.slug === orchestrator)
+                  ?.description
+              }
+            >
+              {BUILT_IN_ORCHESTRATORS.map((o) => (
+                <option key={o.slug} value={o.slug} title={o.description}>
+                  {o.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Model</span>
           <input

@@ -2,7 +2,7 @@
 // The HTTP transport (apps/web) and the Tauri transport (apps/desktop, a later
 // item) both produce and consume these. Fields are camelCase to match both the
 // backend HTTP API and the run-record contract.
-import type { MediaKind, RunRecord } from "@test-cabinet/run-record";
+import type { MediaKind, RunRecord, TestType } from "@test-cabinet/run-record";
 import type {
   DomainRating,
   Rating,
@@ -11,7 +11,7 @@ import type {
 } from "../ratings";
 
 export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
-export type { MediaKind };
+export type { MediaKind, TestType };
 
 // --- Catalog (served by the backend) ---
 
@@ -70,6 +70,9 @@ export interface VersionInfo {
   difficulty: string;
   tags: string[];
   summary: string | null;
+  // The case's test type. Drives type-specific UI affordances — notably the
+  // run-launch orchestrator selector, which is offered only for "end-to-end".
+  testType: TestType;
   // The site-facing Markdown description, when the source carries it.
   description?: string | null;
   variants: VariantInfo[];
@@ -155,6 +158,10 @@ export interface LaunchConfig {
   variant: string;
   harness: string;
   modelId: string;
+  // The built-in orchestrator slug that conducts the harness sessions. Defaults
+  // to "one-shot" (a single session); a non-default orchestrator is accepted
+  // only for the end-to-end test type.
+  orchestrator: string;
   maxRuntimeOverride: number | null;
 }
 

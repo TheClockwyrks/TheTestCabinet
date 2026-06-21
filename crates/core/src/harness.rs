@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::SubscriptionSpec;
 use crate::error::Result;
-use crate::event::{EventSink, HarnessEvent};
-use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
+use crate::event::{EventFormat, EventSink, HarnessEvent};
+use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 use crate::test_case::{AssetKind, TestType};
@@ -304,6 +304,36 @@ pub trait AgentHarness: Send + Sync {
     fn pricing_model_id(&self, model_id: &str) -> String {
         model_id.to_string()
     }
+
+    /// The full command line — the CLI binary followed by the harness's exact
+    /// non-interactive session arguments — that drives a single session for
+    /// `model_id` against `prompt`.
+    ///
+    /// This is the single source of truth for how a session is invoked. The
+    /// direct [`invoke`](AgentHarness::invoke) path runs it directly; an
+    /// [orchestrator](crate::orchestrator) renders it into the in-container
+    /// `tcab-session` wrapper (with the prompt left as a substitutable argument)
+    /// so a runner script can invoke a session without knowing any
+    /// harness-specific detail.
+    fn session_argv(&self, model_id: &str, prompt: &str) -> Vec<String>;
+
+    /// How this harness's raw output is translated into normalized
+    /// [events](crate::event). An orchestrator builds its own
+    /// [`EventParser`](crate::event::EventParser) for the runner's streamed
+    /// output from this, so the harness's activity is translated exactly as it is
+    /// on the direct [`invoke`](AgentHarness::invoke) path.
+    fn event_format(&self) -> EventFormat;
+
+    /// Parse one session's normalized usage and self-reported cost out of its
+    /// captured output, exactly as [`invoke`](AgentHarness::invoke) does.
+    ///
+    /// An orchestrator segments the runner's combined output into per-session
+    /// slices (delimited by the `tcab-session` wrapper's sentinels) and calls
+    /// this on each slice, then sums the per-session usage into the run's totals.
+    /// For a single session the result equals what `invoke` produces. The
+    /// returned cost is the harness's own exact charge when it reports one (see
+    /// [`HarnessOutcome::reported_cost`]), otherwise `None`.
+    fn parse_session_usage(&self, output: &ExecOutput) -> (Usage, Option<f64>);
 
     /// Confirm the harness's CLI is installed in an already-started run
     /// container and can be invoked, for example via `--version`, capturing its

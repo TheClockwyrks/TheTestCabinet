@@ -16,11 +16,12 @@ use test_cabinet_core::{
     ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, CliArtifactCollector,
     CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator, Domain, DomainRating,
     FsRepoSeeder, HarnessEvent, HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher,
-    OpenRouterPrices, Orchestrator, PrerenderedReferenceRenderer, PublishConfig, PublishRequest,
-    PublishedRun, Publisher, RawOutputLine, ReferenceRenderer, ReviewItem, ReviewVerdict,
-    RunRecord, RunRequest, SystemCommandRunner, TestCase, TestCaseCatalog, TestCaseVersion,
-    Writeup, find_build_output, implementation_dir, materialize_version, missing_ratings,
-    missing_verdicts, parse_writeup, read_event_log, render_prompt,
+    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, PrerenderedReferenceRenderer,
+    PublishConfig, PublishRequest, PublishedRun, Publisher, RawOutputLine, ReferenceRenderer,
+    ReviewItem, ReviewVerdict, RunEngine, RunRecord, RunRequest, SystemCommandRunner, TestCase,
+    TestCaseCatalog, TestCaseVersion, TestType, Writeup, find_build_output, implementation_dir,
+    materialize_version, missing_ratings, missing_verdicts, parse_writeup, read_event_log,
+    render_prompt,
 };
 
 use crate::config;
@@ -130,6 +131,9 @@ pub struct VersionInfo {
     pub difficulty: String,
     pub tags: Vec<String>,
     pub summary: Option<String>,
+    /// The case's test type. The webview offers the run-launch orchestrator
+    /// selector only for `end-to-end`; other types always run `one-shot`.
+    pub test_type: TestType,
     pub variants: Vec<VariantInfo>,
     /// The case's scoring domains (case-level). A reviewer rates each
     /// independently; a run's overall rating is the worst across them.
@@ -170,6 +174,7 @@ impl VersionInfo {
             difficulty: v.difficulty.clone(),
             tags: v.tags.clone(),
             summary: v.summary.clone(),
+            test_type: v.test_type,
             variants,
             domains: v.domains.clone(),
             max_runtime_seconds: v.max_runtime_seconds,
@@ -397,8 +402,19 @@ pub struct LaunchConfig {
     /// The harness slug (one of [`HarnessSlug`]'s wire tokens).
     pub harness: String,
     pub model_id: String,
+    /// The built-in orchestrator slug that conducts the harness sessions. The
+    /// webview offers this only for the end-to-end test type; other types always
+    /// submit `one-shot`. A local run resolves built-in orchestrators only (no
+    /// `--orchestrator-dir` directory). Defaults to `one-shot` when omitted.
+    #[serde(default = "default_orchestrator")]
+    pub orchestrator: String,
     /// Optional override for the run's maximum runtime, in seconds.
     pub max_runtime_override: Option<u64>,
+}
+
+/// The default orchestrator slug for a launch that omits one (a single session).
+fn default_orchestrator() -> String {
+    OrchestratorSelection::default().slug
 }
 
 /// The terminal outcome of a launched run, delivered on the run's `done` channel.
@@ -433,6 +449,7 @@ fn parse_harness(slug: &str) -> CmdResult<HarnessSlug> {
     variant = %config.variant,
     harness = %config.harness,
     model_id = %config.model_id,
+    orchestrator = %config.orchestrator,
 ))]
 pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<String> {
     let harness = parse_harness(&config.harness)?;
@@ -449,6 +466,11 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
         variant: config.variant.clone(),
         harness,
         model_id: config.model_id.clone(),
+        // The webview selects a built-in orchestrator by slug (no local directory);
+        // it surfaces the selector only for end-to-end and otherwise submits the
+        // default `one-shot`. Core re-validates that a non-default orchestrator is
+        // only used for the end-to-end test type.
+        orchestrator: OrchestratorSelection::builtin(config.orchestrator.clone()),
         max_runtime_override: config.max_runtime_override,
         // Filled in from the backend below when one is configured; a local run
         // falls back to the harness's locally-built image.
@@ -502,12 +524,13 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
             }
         };
 
-    let orchestrator = Orchestrator {
+    let orchestrator = RunEngine {
         catalog: TestCaseCatalog::new(config::catalog_root()),
         seeder: FsRepoSeeder::new(seed_dir),
         collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
+        orchestrators: OrchestratorCatalog::new(),
         renderer,
         validator: DispatchValidator::new(screenshot_dir),
         publisher: NoopPublisher,

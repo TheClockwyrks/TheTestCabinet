@@ -234,6 +234,7 @@ fn sample_record(id: &str) -> RunRecord {
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
+            orchestrator_slug: "one-shot".to_string(),
             model_id: "anthropic/claude-opus-4".to_string(),
         },
         tooling: RunTooling {
