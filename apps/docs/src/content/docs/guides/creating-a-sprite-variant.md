@@ -16,9 +16,10 @@ single-sprite asset-generation version. The authoritative rules live in
 the work, follow the `adding-a-sprite-variant` skill.
 
 For a **sprite-sheet** case (`asset_kind = "sprite-sheet"`) — one whose `[sheet]`
-table tiles the canvas into a grid of animation frames — see
+table declares a set of animation frames, each a separate file — see
 [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
-instead, where a variant also shares the frame grid and named sequences. To author
+instead, where a variant also shares the per-frame targets and named sequences. To
+author
 a brand-new case, see
 [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/).
 To add a mode to an [end-to-end](/testing/end-to-end/overview/) case instead, see

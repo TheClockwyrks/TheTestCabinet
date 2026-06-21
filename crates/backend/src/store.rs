@@ -166,13 +166,11 @@ pub struct StoredCanvas {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredTool {
-    /// The drawing binary available in the run environment.
+    /// The drawing binary available in the run environment (`draw` or
+    /// `draw-sheet`).
     pub binary: String,
-    /// Run-workspace-relative path of the seeded operations JSON Schema. The
-    /// schema content travels as a common spec; this names where the model reads
-    /// it.
-    pub operations: String,
-    /// Run-workspace-relative path the binary re-renders the current image to.
+    /// Run-workspace-relative path the binary re-renders the current image to (a
+    /// `{frame}` template for a sprite sheet).
     pub preview: String,
 }
 

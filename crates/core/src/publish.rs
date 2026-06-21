@@ -511,12 +511,14 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         Ok(())
     }
 
-    /// Upload an asset-generation run's media to the backend, keyed by run id: the
-    /// regenerated image, the model's final preview, the seeded target, and the
-    /// action log. Each is read from the collected implementation tree at its
-    /// recorded path and uploaded under a stable logical name the result view
-    /// requests (`regenerated.png`, `preview.png`, `target.png`, `actions.json`).
-    /// A no-op for any non-asset-generation run.
+    /// Upload an asset-generation run's media to the backend, keyed by run id: for
+    /// each frame, the regenerated image, the model's final preview, the seeded
+    /// target, and the action log. Each is read from the collected implementation
+    /// tree at its recorded path and uploaded under the stable logical name the
+    /// result view requests — `regenerated.png`/`preview.png`/`target.png`/
+    /// `actions.json` for a single sprite (its one frame), and the per-frame
+    /// `regenerated-<index>.png` (etc.) for a sprite sheet. A no-op for any
+    /// non-asset-generation run.
     async fn upload_assets(
         &self,
         record: &RunRecord,
@@ -525,20 +527,30 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         let Some(asset) = &record.validation.asset else {
             return Ok(());
         };
-        let files = [
-            ("regenerated.png", &asset.regenerated_image),
-            ("preview.png", &asset.preview_image),
-            ("target.png", &asset.target_image),
-            ("actions.json", &asset.actions_log),
-        ];
-        for (name, rel) in files {
-            let path = artifacts.repo_path.join(rel);
-            let Ok(bytes) = std::fs::read(&path) else {
-                continue;
+        let is_sheet = asset.sheet.is_some();
+        for frame in &asset.frames {
+            // A single sprite serves under bare names; a sheet suffixes each frame
+            // with `-<index>`, matching `playable::serve_asset_file`.
+            let suffix = if is_sheet {
+                format!("-{}", frame.index)
+            } else {
+                String::new()
             };
-            self.backend
-                .publish_run_asset(&record.id, name, bytes)
-                .await?;
+            let files = [
+                (format!("regenerated{suffix}.png"), &frame.regenerated_image),
+                (format!("preview{suffix}.png"), &frame.preview_image),
+                (format!("target{suffix}.png"), &frame.target_image),
+                (format!("actions{suffix}.json"), &frame.actions_log),
+            ];
+            for (name, rel) in files {
+                let path = artifacts.repo_path.join(rel);
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                self.backend
+                    .publish_run_asset(&record.id, &name, bytes)
+                    .await?;
+            }
         }
         Ok(())
     }

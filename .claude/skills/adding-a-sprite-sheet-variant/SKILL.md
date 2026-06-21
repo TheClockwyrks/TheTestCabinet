@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant to an existing SPRITE-SHEET asset-generation test case (asset_kind = "sprite-sheet") — a brief variation (tighter palette, operation budget, drawing technique, cross-frame consistency) the model draws toward the case's single shared target sheet and fixed [sheet] frame grid, registered in a version's test-case.toml. For a variant of a single-sprite case (asset_kind = "sprite") use adding-a-sprite-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+description: Read this skill before adding a new variant to an existing SPRITE-SHEET asset-generation test case (asset_kind = "sprite-sheet") — a brief variation (tighter palette, operation budget, drawing technique, cross-frame consistency) the model draws toward the case's shared per-frame targets and fixed [sheet] frames and sequences, registered in a version's test-case.toml. For a variant of a single-sprite case (asset_kind = "sprite") use adding-a-sprite-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
 name: adding-a-sprite-sheet-variant
 ---
 
@@ -8,12 +8,13 @@ name: adding-a-sprite-sheet-variant
 ## What a sprite-sheet variant is
 
 A sprite-sheet [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-test case (`asset_kind = "sprite-sheet"`) draws a **grid of animation frames** that
-tiles the canvas, described by a `[sheet]` table and one or more named
-`[[sheet.sequence]]` animations, toward a fixed target sheet. Its version offers one
-or more **variants**, and a run selects exactly one. Every variant seeds the
-version's **common specs** (the brief and the operations schema) plus its own
-**additive** specs. The chosen variant's slug is recorded in the run record.
+test case (`asset_kind = "sprite-sheet"`) draws a **set of animation frames**, each
+its own separate file, described by a `[sheet]` table (the declared
+`[[sheet.frame]]` entries and one or more named `[[sheet.sequence]]` animations),
+each toward its own per-frame target. Its version offers one or more **variants**,
+and a run selects exactly one. Every variant seeds the version's **common specs**
+(the brief) plus its own **additive** specs. The chosen variant's slug is recorded
+in the run record.
 
 This skill covers variants of **sprite-sheet** asset-generation cases. For a variant
 of a **single-sprite** case — one sprite drawn onto the whole canvas, with no
@@ -28,38 +29,38 @@ The authoritative schema lives in
 [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md);
 read it before starting — including the `[sheet]` rules.
 
-## The defining constraint: a variant shares the target *and* the sheet
+## The defining constraint: a variant shares the targets *and* the sheet
 
 This is where asset-generation variants differ sharply from end-to-end ones.
-Resolution requires **exactly one common `target` reference** and **forbids
-per-variant references**. A variant therefore **cannot change the target image** —
-every variant of a case is scored against the same sheet.
+Resolution **forbids per-variant references** and per-variant `[sheet]` tables. A
+variant therefore **cannot change the target images** — every variant of a case is
+scored against the same per-frame targets.
 
 For a sprite sheet, two more things are fixed at the **version level** and a variant
 cannot touch them:
 
 - the **`asset_kind`** itself — a variant cannot turn a sheet into a single sprite
   (or vice versa);
-- the **`[sheet]` layout** — the frame grid (`frame_width`, `frame_height`,
-  `columns`, `rows`) and the named `[[sheet.sequence]]` animations are version-level
-  metadata that travel with the one shared target, so every variant animates the
-  same frames at the same fps.
+- the **`[sheet]` layout** — the declared `[[sheet.frame]]` entries (each frame's
+  index and per-frame target) and the named `[[sheet.sequence]]` animations are
+  version-level metadata, so every variant draws the same frames toward the same
+  targets and animates them at the same fps.
 
-What a variant *can* do is vary the **brief** the model draws toward that shared
-target sheet, via an additive spec:
+What a variant *can* do is vary the **brief** the model draws toward those shared
+per-frame targets, via an additive spec:
 
 - a **tighter palette** (a subset of the base colors), applied across every frame;
-- a **stricter operation budget** (fewer operations allowed for the whole sheet);
+- a **stricter operation budget** (fewer operations allowed across all frames);
 - a **required technique** (flat fills only; no dithering; left/right symmetry
   between mirrored directions);
 - a **cross-frame consistency** rule the animation makes observable (e.g. a fixed
   silhouette height across a walk cycle, or a two-frame economy on a "tell").
 
-Scoring stays exactly the same as the base: the regenerated **whole sheet** is
-compared to the **whole target sheet** — fidelity is one number over the entire
-image, not per frame or per sequence. The sequences only drive the review UI's
-animated playback. If you need a genuinely different subject, a different grid, or
-different sequences, that is a new **case** (or a new version), not a variant.
+Scoring stays exactly the same as the base: each regenerated **frame** is compared
+to its own target — **per frame**, with no whole-sheet aggregate. The sequences only
+drive the review UI's animated playback. If you need a genuinely different subject, a
+different set of frames, or different sequences, that is a new **case** (or a new
+version), not a variant.
 
 ## Procedure
 
@@ -84,8 +85,8 @@ Create `specs/<slug>.md`, stated as a **delta** against the common brief:
 - state the added or tightened constraint with **precise, testable** terms (exact
   colors, an operation cap, the technique required), and say whether it applies to
   every frame, to a named sequence, or across frames;
-- reaffirm it draws toward the **same** `target` sheet and the **same** `[sheet]`
-  grid and sequences — neither the goal image nor the frame layout changes.
+- reaffirm it draws toward the **same** per-frame targets and the **same** `[sheet]`
+  frames and sequences — neither the goal images nor the frame layout changes.
 
 A variant spec **may** reference the common specs freely (always seeded) but must
 **not** reference another variant's spec.
@@ -97,8 +98,8 @@ variation makes checkable that the base does not — for a sheet this can be som
 the **animation** reveals (e.g. "the walk sequences keep a constant silhouette
 height across all frames" or "uses flat fills only, with no gradients or
 dithering"). Each item is reporter-side (never seeded), carries a stable `id` unique
-within the variant's effective set, and typically pairs `reference = "target"` and a
-scoring `domain`.
+within the variant's effective set, and a scoring `domain`. A sheet has no single
+`target` reference, so its items carry just the `domain` (no `reference`).
 
 ### 4. Register the variant in `test-case.toml`
 
@@ -113,7 +114,7 @@ name = "Flat Shading"
 description = "Same sheet, drawn with flat fills only — no gradients or dithering, across every frame."
 spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
 review_item = [
-  { id = "flat-fills", title = "Flat fills only", text = "Every frame is filled with flat colors — no gradients or dithering in any cell.", reference = "target", domain = "fidelity" },
+  { id = "flat-fills", title = "Flat fills only", text = "Every frame is filled with flat colors — no gradients or dithering in any cell.", domain = "fidelity" },
 ]
 ```
 
@@ -122,12 +123,12 @@ Rules enforced at resolution:
 - `spec` entries are **additive** on the common specs; within one variant, no two
   seeded specs (common + own) may share a `dest`.
 - **No `reference` entry** — a variant-specific reference is rejected for this test
-  type, because the `target` is shared by every variant.
-- **No per-variant `[sheet]` / `asset_kind`** — the sheet layout and asset kind are
-  version-level; a variant cannot redeclare them.
+  type, because the targets are shared by every variant.
+- **No per-variant `[sheet]` / `asset_kind`** — the sheet's frames, targets, and
+  sequences, and the asset kind, are version-level; a variant cannot redeclare them.
 - `review_item` entries are additive on the common ones; an item `id` must be
-  unique within the variant's effective set, and any paired `reference` must be the
-  common `target` (the only reference that exists).
+  unique within the variant's effective set. A sheet declares no `target` reference,
+  so a sheet variant's items carry no `reference`.
 
 Also update the human-readable comment in the manifest that enumerates the variants
 so the list stays accurate.
@@ -152,7 +153,8 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Read the seeded output to confirm the new variant's brief is self-contained against
-the shared target sheet, and that it leaves the `[sheet]` grid and sequences intact.
+the shared per-frame targets, and that it leaves the `[sheet]` frames and sequences
+intact.
 
 A backend-driven run resolves its definition from the backend's store, which skips
 a version it already holds — so after adding the variant, **force a re-ingest** or

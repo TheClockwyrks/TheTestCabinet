@@ -18,7 +18,6 @@ use crate::color::Rgba;
 /// **replace** the pixels they touch rather than alpha-compositing, keeping
 /// regeneration an exact, order-only function of the log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "cli", derive(schemars::JsonSchema))]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Operation {
     /// Flood the entire canvas with one color, discarding everything drawn so

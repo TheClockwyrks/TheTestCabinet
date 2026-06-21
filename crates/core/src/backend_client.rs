@@ -790,7 +790,6 @@ impl VersionBody {
             }),
             tool: self.tool.map(|tool| ToolSpec {
                 binary: tool.binary,
-                operations: PathBuf::from(&tool.operations),
                 preview: PathBuf::from(&tool.preview),
             }),
             output: self.output.map(|output| OutputSpec {
@@ -1002,7 +1001,6 @@ struct CanvasBody {
 #[serde(rename_all = "camelCase")]
 struct ToolBody {
     binary: String,
-    operations: String,
     preview: String,
 }
 

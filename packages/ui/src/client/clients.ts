@@ -190,9 +190,10 @@ export interface WorkerClient {
    */
   proofMediaUrl?(runId: string, file: string): string | null;
   /**
-   * The URL to load one of an asset-generation run's media files
-   * (`regenerated.png`, `preview.png`, `target.png`, `actions.json`) from, or
-   * null when this worker cannot serve it. Optional, mirroring
+   * The URL to load one of an asset-generation run's media files — a single
+   * sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a
+   * sprite sheet's per-frame `regenerated-<index>.png` (etc.) — or null when this
+   * worker cannot serve it. Optional, mirroring
    * {@link proofMediaUrl}: the Tauri worker implements it to return its custom
    * `tcab-asset://` scheme.
    */

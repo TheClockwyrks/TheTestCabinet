@@ -1,0 +1,51 @@
+[
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 9,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 8,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 12,
+    "cy": 21,
+    "r": 4,
+    "color": "#ffb199"
+  },
+  {
+    "op": "fill_rect",
+    "x": 15,
+    "y": 23,
+    "width": 2,
+    "height": 3,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "stroke_circle",
+    "cx": 16,
+    "cy": 12,
+    "r": 10,
+    "color": "#ffd166"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 12,
+    "r": 2,
+    "color": "#ffd166"
+  },
+  {
+    "op": "set_pixel",
+    "x": 16,
+    "y": 12,
+    "color": "#ffffff"
+  }
+]

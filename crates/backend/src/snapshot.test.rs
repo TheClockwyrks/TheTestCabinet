@@ -5,7 +5,7 @@ use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::{AssetGenResult, ValidationSummary};
+use test_cabinet_core::validation::{AssetFrameResult, AssetGenResult, ValidationSummary};
 
 use crate::db::StoredReview;
 use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
@@ -77,15 +77,19 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
     let mut run = stored_run(id, published_at);
     run.record.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
     run.record.validation.asset = Some(AssetGenResult {
-        regenerated_image: "regenerated.png".to_string(),
-        preview_image: "preview.png".to_string(),
-        target_image: "target.png".to_string(),
-        actions_log: "actions.json".to_string(),
-        operation_count: 3,
-        target_fidelity: 0.9,
-        cheat_divergence: Some(0.05),
-        detail: None,
+        frames: vec![AssetFrameResult {
+            index: 0,
+            regenerated_image: "regenerated.png".to_string(),
+            preview_image: "preview.png".to_string(),
+            target_image: "target.png".to_string(),
+            actions_log: "actions.json".to_string(),
+            operation_count: 3,
+            target_fidelity: 0.9,
+            cheat_divergence: Some(0.05),
+            detail: None,
+        }],
         sheet: None,
+        detail: None,
     });
     run
 }

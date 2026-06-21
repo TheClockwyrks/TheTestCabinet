@@ -399,6 +399,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "testing/asset-generation/overview",
+                "testing/asset-generation/binaries",
                 "testing/asset-generation/manifests",
                 "testing/asset-generation/evaluation",
               ],

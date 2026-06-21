@@ -47,9 +47,9 @@ The fighter reads, at a glance, as a **sleek arrowhead ship pointing up**:
 Build the sprite up in sensible layers — lay down the hull arrowhead, then the
 wings and tail, then the cyan core and its ring glyph, then the engine glows.
 Because the ship is symmetric, you may draw the left half and use
-`mirror_horizontal` with `axis_x = 32` to complete the right. Consult
-`schemas/operations.json` for the available operations (filling and stroking
-circles and rectangles, lines, single pixels, flood fill, and the horizontal
-mirror) and their exact parameters. Call `draw` once per operation and read
-`canvas.png` between calls to judge your progress against this brief and the
-target.
+`draw mirror-horizontal --axis-x 32` to complete the right. Run `draw --help`
+for the available operations (filling and stroking circles and rectangles,
+lines, single pixels, flood fill, and the horizontal mirror) and `draw
+<operation> --help` for each one's exact flags. Call `draw` once per operation
+and read `canvas.png` between calls to judge your progress against this brief
+and the target.

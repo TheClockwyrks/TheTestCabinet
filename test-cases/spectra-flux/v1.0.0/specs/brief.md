@@ -45,8 +45,8 @@ The Flux reads, at a glance, as a **drone flickering between two bands**:
 
 Build the sprite up in sensible layers — lay down the body, paint one half
 cyan and the other magenta, add the white rim, then overlay the ring and
-diamond glyphs and the shimmer flecks. Consult `schemas/operations.json` for
-the available operations (filling and stroking circles and rectangles, lines,
-single pixels, flood fill, and a horizontal mirror) and their exact
-parameters. Call `draw` once per operation and read `canvas.png` between calls
-to judge your progress against this brief and the target.
+diamond glyphs and the shimmer flecks. Run `draw --help` for the available
+operations (filling and stroking circles and rectangles, lines, single pixels,
+flood fill, and a horizontal mirror) and `draw <operation> --help` for each
+one's exact flags. Call `draw` once per operation and read `canvas.png` between
+calls to judge your progress against this brief and the target.

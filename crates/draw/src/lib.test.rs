@@ -1,6 +1,5 @@
 //! Unit tests for the drawing library: each operation rasterizes as expected,
-//! everything clips at the canvas edge, the wire form round-trips, and the
-//! generated operations schema covers every operation.
+//! everything clips at the canvas edge, and the wire form round-trips.
 
 use super::*;
 use crate::color::Background;
@@ -267,38 +266,4 @@ fn rendered_image_encodes_to_a_decodable_png() {
     assert_eq!((info.width, info.height), (5, 5));
     assert_eq!(info.color_type, png::ColorType::Rgba);
     assert_eq!(&buf[0..4], &OPAQUE_RED.0, "first pixel is the fill color");
-}
-
-#[test]
-fn operations_schema_covers_every_operation() {
-    let schema = operations_schema_string();
-    for tag in [
-        "fill_background",
-        "set_pixel",
-        "fill_rect",
-        "stroke_rect",
-        "line",
-        "fill_circle",
-        "stroke_circle",
-        "flood_fill",
-        "mirror_horizontal",
-    ] {
-        assert!(schema.contains(tag), "schema is missing `{tag}`");
-    }
-    // It must be valid JSON.
-    serde_json::from_str::<serde_json::Value>(&schema).expect("schema is valid JSON");
-}
-
-#[test]
-fn committed_schema_matches_the_generated_one() {
-    // `operations.schema.json` is the canonical artifact each asset-generation
-    // test case seeds verbatim as its `[tool].operations` contract. If this fails
-    // the operation set changed: regenerate with `draw schema --out
-    // crates/draw/operations.schema.json` and re-copy it into every case.
-    let committed = include_str!("../operations.schema.json");
-    assert_eq!(
-        operations_schema_string(),
-        committed,
-        "operations.schema.json is stale; regenerate it with `draw schema`"
-    );
 }

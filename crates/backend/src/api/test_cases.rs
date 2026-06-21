@@ -193,7 +193,6 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         }),
         tool: manifest.tool.as_ref().map(|tool| ToolOut {
             binary: tool.binary.clone(),
-            operations: tool.operations.clone(),
             preview: tool.preview.clone(),
         }),
         output: manifest.output.as_ref().map(|output| OutputOut {
@@ -431,7 +430,6 @@ struct CanvasOut {
 #[serde(rename_all = "camelCase")]
 struct ToolOut {
     binary: String,
-    operations: String,
     preview: String,
 }
 

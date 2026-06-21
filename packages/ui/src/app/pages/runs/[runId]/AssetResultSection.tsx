@@ -1,10 +1,15 @@
 import { Panel } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { useGalleryData } from "../../../data/galleryContext";
+import {
+  useGalleryData,
+  type AssetFrameView,
+  type AssetResultView,
+} from "../../../data/galleryContext";
+import type { AssetSheet } from "@test-cabinet/run-record";
 import { SpriteSheetPlayer } from "./SpriteSheetPlayer";
 import styles from "./RunDetailPages.module.scss";
 
-// 64x64 sprites are tiny; scale them up with crisp (nearest-neighbor) sampling so
+// Small sprites are tiny; scale them up with crisp (nearest-neighbor) sampling so
 // individual pixels stay sharp rather than blurring.
 const SPRITE: React.CSSProperties = {
   width: 160,
@@ -34,32 +39,56 @@ function Sprite({ url, label }: { url: string | null; label: string }) {
   );
 }
 
-/**
- * The asset-generation result, shown at the top of the Verdict tab for an
- * asset-generation run: the regenerated image (the scored output) beside the
- * target it was scored against and the model's final on-disk preview, plus the
- * fidelity and cheat-divergence signals and a link to the recorded action log.
- *
- * Renders nothing for a non-asset-generation run (its `validation.asset` is
- * absent), so it is safe to mount unconditionally.
- */
-export function AssetResultSection({ run }: { run: RunRecord }) {
-  const gallery = useGalleryData();
-  const asset = gallery.assetResultFor(run);
-  if (!asset) return null;
-  // A sprite-sheet run carries the frame grid + named sequences; a single-sprite
-  // run does not, and shows only the static panes above.
-  const sheet = asset.sheet;
-
-  // A high divergence means the model put pixels on the canvas outside the
-  // recorded operations — a sign it tried to bypass the drawing tool. It is an
-  // informational flag, never a gate (only the regenerated image is scored).
+/** The fidelity / divergence / operations readout for one frame. */
+function FrameSignals({ frame }: { frame: AssetFrameView }) {
   const drewOutsideTool =
-    asset.cheatDivergence !== null && asset.cheatDivergence > 0.05;
-
+    frame.cheatDivergence !== null && frame.cheatDivergence > 0.05;
   return (
-    <Panel>
-      <h2 className={styles.section}>Generated asset</h2>
+    <dl
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto 1fr",
+        gap: "4px 16px",
+        marginTop: 16,
+      }}
+    >
+      <dt>Fidelity to target</dt>
+      <dd>{(frame.fidelity * 100).toFixed(1)}%</dd>
+
+      <dt>Cheat divergence</dt>
+      <dd>
+        {frame.cheatDivergence === null ? (
+          <span className={styles.secondary}>unmeasured</span>
+        ) : (
+          <span className={drewOutsideTool ? styles.notLoaded : styles.loaded}>
+            {(frame.cheatDivergence * 100).toFixed(1)}%
+            {drewOutsideTool
+              ? " — drew outside the tool"
+              : " — matches recorded actions"}
+          </span>
+        )}
+      </dd>
+
+      <dt>Operations recorded</dt>
+      <dd>
+        {frame.operationCount}
+        {frame.actionsUrl ? (
+          <>
+            {" — "}
+            <a href={frame.actionsUrl} target="_blank" rel="noreferrer">
+              action log
+            </a>
+          </>
+        ) : null}
+      </dd>
+    </dl>
+  );
+}
+
+/** A single sprite: the static three-pane comparison plus its signals. */
+function SpriteResult({ frame }: { frame: AssetFrameView }) {
+  return (
+    <>
       <div
         style={{
           display: "flex",
@@ -68,95 +97,132 @@ export function AssetResultSection({ run }: { run: RunRecord }) {
           justifyContent: "center",
         }}
       >
-        <Sprite url={asset.regeneratedUrl} label="Regenerated (scored)" />
-        <Sprite url={asset.targetUrl} label="Target" />
-        <Sprite url={asset.previewUrl} label="Model's preview" />
+        <Sprite url={frame.regeneratedUrl} label="Regenerated (scored)" />
+        <Sprite url={frame.targetUrl} label="Target" />
+        <Sprite url={frame.previewUrl} label="Model's preview" />
       </div>
+      <FrameSignals frame={frame} />
+    </>
+  );
+}
 
-      {sheet ? (
-        <div style={{ marginTop: 24 }}>
-          <h3 className={styles.section}>Animated sequences</h3>
-          <p className={styles.secondary}>
-            Each named animation from the sprite sheet, played from the regenerated
-            output beside the target so the motion can be compared frame for frame.
-          </p>
-          {sheet.sequences.map((sequence) => (
-            <figure key={sequence.slug} style={{ margin: "0 0 20px" }}>
-              <figcaption style={{ marginBottom: 8, fontWeight: 600 }}>
-                {sequence.name}
-                <span className={styles.secondary}>
-                  {" "}
-                  — {sequence.frames.length}{" "}
-                  {sequence.frames.length === 1 ? "frame" : "frames"} @{" "}
-                  {sequence.fps} fps
-                </span>
-              </figcaption>
-              <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                <SpriteSheetPlayer
-                  url={asset.regeneratedUrl}
-                  label="Regenerated"
-                  frameWidth={sheet.frameWidth}
-                  frameHeight={sheet.frameHeight}
-                  columns={sheet.columns}
-                  frames={sequence.frames}
-                  fps={sequence.fps}
-                />
-                <SpriteSheetPlayer
-                  url={asset.targetUrl}
-                  label="Target"
-                  frameWidth={sheet.frameWidth}
-                  frameHeight={sheet.frameHeight}
-                  columns={sheet.columns}
-                  frames={sequence.frames}
-                  fps={sequence.fps}
-                />
-              </div>
-            </figure>
-          ))}
-        </div>
-      ) : null}
+/** A sprite sheet: each named sequence animated regenerated-vs-target, then the
+ * per-frame fidelity/divergence breakdown (a sheet has no aggregate score). */
+function SheetResult({
+  asset,
+  sheet,
+}: {
+  asset: AssetResultView;
+  sheet: AssetSheet;
+}) {
+  const frameByIndex = new Map(asset.frames.map((f) => [f.index, f]));
+  const urls = (indices: number[], pick: (f: AssetFrameView) => string | null) =>
+    indices.map((i) => {
+      const frame = frameByIndex.get(i);
+      return frame ? pick(frame) : null;
+    });
 
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "4px 16px",
-          marginTop: 16,
-        }}
-      >
-        <dt>Fidelity to target</dt>
-        <dd>{(asset.fidelity * 100).toFixed(1)}%</dd>
-
-        <dt>Cheat divergence</dt>
-        <dd>
-          {asset.cheatDivergence === null ? (
-            <span className={styles.secondary}>unmeasured</span>
-          ) : (
-            <span
-              className={drewOutsideTool ? styles.notLoaded : styles.loaded}
-            >
-              {(asset.cheatDivergence * 100).toFixed(1)}%
-              {drewOutsideTool
-                ? " — drew outside the tool"
-                : " — matches recorded actions"}
+  return (
+    <>
+      <h3 className={styles.section}>Animated sequences</h3>
+      <p className={styles.secondary}>
+        Each named animation, played from the regenerated frames beside the target
+        frames so the motion can be compared frame for frame.
+      </p>
+      {sheet.sequences.map((sequence) => (
+        <figure key={sequence.slug} style={{ margin: "0 0 20px" }}>
+          <figcaption style={{ marginBottom: 8, fontWeight: 600 }}>
+            {sequence.name}
+            <span className={styles.secondary}>
+              {" "}
+              — {sequence.frames.length}{" "}
+              {sequence.frames.length === 1 ? "frame" : "frames"} @ {sequence.fps}{" "}
+              fps
             </span>
-          )}
-        </dd>
+          </figcaption>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+            <SpriteSheetPlayer
+              label="Regenerated"
+              frameUrls={urls(sequence.frames, (f) => f.regeneratedUrl)}
+              frameWidth={sheet.frameWidth}
+              frameHeight={sheet.frameHeight}
+              fps={sequence.fps}
+            />
+            <SpriteSheetPlayer
+              label="Target"
+              frameUrls={urls(sequence.frames, (f) => f.targetUrl)}
+              frameWidth={sheet.frameWidth}
+              frameHeight={sheet.frameHeight}
+              fps={sequence.fps}
+            />
+          </div>
+        </figure>
+      ))}
 
-        <dt>Operations recorded</dt>
-        <dd>
-          {asset.operationCount}
-          {asset.actionsUrl ? (
-            <>
-              {" — "}
-              <a href={asset.actionsUrl} target="_blank" rel="noreferrer">
-                action log
-              </a>
-            </>
-          ) : null}
-        </dd>
-      </dl>
+      <h3 className={styles.section}>Per-frame fidelity</h3>
+      <p className={styles.secondary}>
+        Every frame is scored independently against its own target; there is no
+        whole-sheet aggregate.
+      </p>
+      <table className={styles.checks}>
+        <tbody>
+          {asset.frames.map((frame) => {
+            const drewOutsideTool =
+              frame.cheatDivergence !== null && frame.cheatDivergence > 0.05;
+            return (
+              <tr key={frame.index}>
+                <th scope="row" className={styles.checkName}>
+                  Frame {frame.index}
+                </th>
+                <td>{(frame.fidelity * 100).toFixed(1)}%</td>
+                <td className={styles.secondary}>
+                  {frame.operationCount} ops
+                  {frame.cheatDivergence === null
+                    ? ""
+                    : ` · divergence ${(frame.cheatDivergence * 100).toFixed(
+                        1,
+                      )}%${drewOutsideTool ? " (drew outside the tool)" : ""}`}
+                  {frame.actionsUrl ? (
+                    <>
+                      {" · "}
+                      <a href={frame.actionsUrl} target="_blank" rel="noreferrer">
+                        log
+                      </a>
+                    </>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
 
+/**
+ * The asset-generation result, shown at the top of the Verdict tab for an
+ * asset-generation run. A single sprite shows the regenerated image beside its
+ * target and the model's preview, plus the fidelity and cheat-divergence signals;
+ * a sprite sheet animates each named sequence (regenerated vs target) from its
+ * per-frame images and lists each frame's independent score.
+ *
+ * Renders nothing for a non-asset-generation run (its `validation.asset` is
+ * absent), so it is safe to mount unconditionally.
+ */
+export function AssetResultSection({ run }: { run: RunRecord }) {
+  const gallery = useGalleryData();
+  const asset = gallery.assetResultFor(run);
+  if (!asset) return null;
+
+  return (
+    <Panel>
+      <h2 className={styles.section}>Generated asset</h2>
+      {asset.sheet ? (
+        <SheetResult asset={asset} sheet={asset.sheet} />
+      ) : asset.frames[0] ? (
+        <SpriteResult frame={asset.frames[0]} />
+      ) : null}
       {asset.detail ? <p className={styles.secondary}>{asset.detail}</p> : null}
     </Panel>
   );

@@ -12,6 +12,8 @@
 
 use std::path::Path;
 
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod color;
 pub mod ops;
 
@@ -118,27 +120,6 @@ pub fn render(canvas: &Canvas, operations: &[Operation]) -> ImageBuffer {
         operation.apply(&mut image);
     }
     image
-}
-
-/// The JSON Schema describing the operation set, as a pretty-printed string.
-///
-/// Emitted by `draw schema` and seeded verbatim as each asset-generation case's
-/// `[tool].operations` contract. Generated from [`Operation`] via `schemars`, so
-/// it cannot drift from the actual operations the binary accepts.
-#[cfg(feature = "cli")]
-pub fn operations_schema() -> serde_json::Value {
-    let schema = schemars::schema_for!(Operation);
-    serde_json::to_value(schema).expect("the operations schema serializes to JSON")
-}
-
-/// The operations schema as the canonical pretty-printed string that is seeded
-/// into test cases and compared against in tests.
-#[cfg(feature = "cli")]
-pub fn operations_schema_string() -> String {
-    let mut text = serde_json::to_string_pretty(&operations_schema())
-        .expect("the operations schema serializes to JSON");
-    text.push('\n');
-    text
 }
 
 #[cfg(test)]

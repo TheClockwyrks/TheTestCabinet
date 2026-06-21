@@ -18,15 +18,15 @@ After each call the binary re-renders the current image to `canvas.png` and
 appends the operation to `actions.json`. A blank starting canvas and an empty log
 are already in place at `{{workspace}}`.
 
-Each call applies one operation passed as JSON:
+Each operation is an ordinary subcommand with flags, for example:
 
 ```
-draw apply --json '{"op":"fill_circle","cx":32,"cy":28,"r":5,"color":"#34e2ff"}'
+draw fill-circle --cx 32 --cy 28 --r 5 --color "#34e2ff"
 ```
 
-Read `schemas/operations.json` for the exact operations and their parameters, and
-**read `canvas.png` after your calls** to see your progress and decide what to do
-next.
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
 
 ## What to read first
 
@@ -38,7 +38,7 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the canvas, the palette, the form of the fighter, and
-how to work the tool; `schemas/operations.json` is the exact operation contract.
+how to work the tool. Run `draw --help` for the exact operation contract.
 
 ## What to deliver
 

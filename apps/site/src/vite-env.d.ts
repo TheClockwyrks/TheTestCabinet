@@ -20,7 +20,8 @@ declare module "virtual:tcab-snapshot" {
   export const proofMediaUrls: Record<string, Record<string, string>>;
   /**
    * Resolved asset-generation media URLs, keyed by run id then by served file name
-   * (`regenerated.png`, `preview.png`, `target.png`, `actions.json`).
+   * — a single sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json`
+   * or a sprite sheet's per-frame `regenerated-<index>.png` (etc.).
    */
   export const assetMediaUrls: Record<string, Record<string, string>>;
 }

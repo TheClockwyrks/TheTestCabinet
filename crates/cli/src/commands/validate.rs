@@ -82,18 +82,34 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         }
     }
     if let Some(asset) = &summary.asset {
-        println!("  asset: {} operations regenerated", asset.operation_count);
-        println!("  target fidelity: {:.2}", asset.target_fidelity);
-        match asset.cheat_divergence {
-            Some(divergence) => println!(
-                "  cheat divergence: {divergence:.2}{}",
-                if divergence > 0.05 {
-                    " (drew outside the tool)"
-                } else {
-                    ""
+        let kind = if asset.sheet.is_some() {
+            "sprite sheet"
+        } else {
+            "sprite"
+        };
+        println!("  asset: {} ({} frame(s))", kind, asset.frames.len());
+        for frame in &asset.frames {
+            // A single sprite has one frame (index 0); label per frame so a sheet's
+            // independent scores are each visible.
+            let label = if asset.sheet.is_some() {
+                format!("frame {}", frame.index)
+            } else {
+                "sprite".to_string()
+            };
+            println!(
+                "    {label}: {} operations, fidelity {:.2}{}",
+                frame.operation_count,
+                frame.target_fidelity,
+                match frame.cheat_divergence {
+                    Some(divergence) if divergence > 0.05 =>
+                        format!(", divergence {divergence:.2} (drew outside the tool)"),
+                    Some(divergence) => format!(", divergence {divergence:.2}"),
+                    None => ", divergence unmeasured".to_string(),
                 }
-            ),
-            None => println!("  cheat divergence: unmeasured"),
+            );
+            if let Some(detail) = &frame.detail {
+                println!("      {detail}");
+            }
         }
         if let Some(detail) = &asset.detail {
             println!("  asset detail: {detail}");

@@ -90,51 +90,69 @@ pub struct ProofResult {
 
 /// The result of regenerating and scoring an asset-generation run.
 ///
-/// An asset-generation run's authoritative output is its recorded action log; the
-/// validator replays it through the same drawing logic the binary used (see
-/// `crate::validator::AssetGenValidator`) to produce the **regenerated** image,
-/// which is the scored output. Two signals come out of it, both recorded rather
-/// than gated (the same stance as end-to-end [checks](CheckResult)): the
-/// [fidelity](Self::target_fidelity) of the regenerated image against the seeded
-/// target, and the [divergence](Self::cheat_divergence) between the regenerated
-/// image and the pixels the model left on disk — a high divergence means the
-/// model drew outside the tool. Present only on an asset-generation run's
-/// [`ValidationSummary`].
+/// An asset-generation run's authoritative output is its recorded action log(s);
+/// the validator replays each through the same drawing logic the binary used (see
+/// `crate::validator::AssetGenValidator`) to produce the **regenerated** image(s),
+/// which are the scored output. A single sprite produces one [frame](AssetFrameResult);
+/// a sprite sheet produces one per declared frame, each its own separate file and
+/// each scored independently — there is no whole-sheet aggregate. Present only on
+/// an asset-generation run's [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetGenResult {
-    /// Run-root-relative path to the image regenerated from the action log — the
-    /// scored output of the run.
+    /// The per-frame results: exactly one for a single sprite (frame index 0), one
+    /// per declared frame for a sprite sheet, in declared order.
+    pub frames: Vec<AssetFrameResult>,
+    /// The sprite-sheet frame dimensions and named sequences, when the case draws a
+    /// sprite sheet (`asset_kind = "sprite-sheet"`). Carried into the run record so
+    /// the review UI can play the named animations from the per-frame images,
+    /// without a separate catalog lookup. `None` for a single-sprite case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    /// Detail about anything that could not be evaluated at the run level, or
+    /// `None`. Per-frame detail lives on each [`AssetFrameResult`].
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The regenerate-and-score result for one frame of an asset-generation run.
+///
+/// For a single sprite this is the whole run's one frame (index 0); for a sprite
+/// sheet there is one per declared frame, each a completely separate file. Two
+/// signals come out of each, both recorded rather than gated (the same stance as
+/// end-to-end [checks](CheckResult)): the [fidelity](Self::target_fidelity) of the
+/// regenerated image against this frame's seeded target, and the
+/// [divergence](Self::cheat_divergence) between it and the pixels the model left
+/// on disk — a high divergence means the model drew outside the tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetFrameResult {
+    /// The frame index this result records under: `0` for a single sprite, the
+    /// declared `[[sheet.frame]]` index for a sprite sheet.
+    pub index: u32,
+    /// Run-root-relative path to the image regenerated from this frame's action
+    /// log — the scored output for this frame.
     pub regenerated_image: String,
-    /// Run-root-relative path to the pixels the model left on disk (the tool's
+    /// Run-root-relative path to the pixels the model left on disk (this frame's
     /// `preview`), kept for the side-by-side comparison and the divergence signal.
     pub preview_image: String,
-    /// Run-root-relative path to the seeded target the regenerated image is scored
-    /// against.
+    /// Run-root-relative path to the seeded target this frame is scored against.
     pub target_image: String,
-    /// Run-root-relative path to the recorded action log.
+    /// Run-root-relative path to this frame's recorded action log.
     pub actions_log: String,
-    /// How many operations the log recorded.
+    /// How many operations this frame's log recorded.
     pub operation_count: usize,
-    /// Similarity of the regenerated image to the target, in `0.0..=1.0` (1.0 is
+    /// Similarity of the regenerated frame to its target, in `0.0..=1.0` (1.0 is
     /// identical). A recorded signal, not a pass/fail gate.
     pub target_fidelity: f64,
-    /// Divergence between the regenerated image and the model's on-disk preview,
+    /// Divergence between the regenerated frame and the model's on-disk preview,
     /// in `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside
     /// the tool. `None` when the model left no readable preview to compare.
     #[serde(default)]
     pub cheat_divergence: Option<f64>,
-    /// Detail about anything that could not be evaluated (for example an action
-    /// log that named operations but produced no preview to compare).
+    /// Detail about anything that could not be evaluated for this frame.
     #[serde(default)]
     pub detail: Option<String>,
-    /// The sprite-sheet frame grid and named sequences, when the case draws a
-    /// sprite sheet (`asset_kind = "sprite-sheet"`). Carried into the run record so
-    /// the review UI can slice the regenerated and target images into the named
-    /// animations and play them back, without a separate catalog lookup. `None` for
-    /// a single-sprite case.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sheet: Option<SheetSpec>,
 }
 
 /// Which side a match outcome is reported from, for an adversarial run.

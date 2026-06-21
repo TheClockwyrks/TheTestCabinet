@@ -11,32 +11,92 @@ max_runtime_seconds = 3600
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
-# A 128x128 transparent canvas, tiled into a 4x4 grid of 32x32 frames (one frame
-# per maze tile), keeps every run comparable.
+# Each frame is its own 32x32 transparent canvas (a separate file). Fixing the
+# frame size keeps every run comparable.
 [canvas]
-width = 128
-height = 128
+width = 32
+height = 32
 background = "transparent"
 
-# The drawing tool. `draw` is the only way to make a mark; it records every
-# operation to the action log and re-renders the preview after each call.
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
 [tool]
-binary = "draw"
-operations = "schemas/operations.json"
-preview = "canvas.png"
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
 
-# The recorded action log — the authoritative output the score is regenerated
-# from.
+# The recorded action logs — one per frame, the authoritative output each frame's
+# score is regenerated from.
 [output]
-actions = "actions.json"
+actions = "frames/{frame}.actions.json"
 
-# The frame grid and the named animation sequences a reviewer plays back. Frames
-# are numbered row-major from the top-left (frame i is at column i % 4, row i / 4).
+# The frames the model draws — each a separate 32x32 file with its own target —
+# and the named animation sequences a reviewer plays back.
 [sheet]
-frame_width = 32
-frame_height = 32
-columns = 4
-rows = 4
+
+[[sheet.frame]]
+index = 0
+target = "reference/frames/0.png"
+
+[[sheet.frame]]
+index = 1
+target = "reference/frames/1.png"
+
+[[sheet.frame]]
+index = 2
+target = "reference/frames/2.png"
+
+[[sheet.frame]]
+index = 3
+target = "reference/frames/3.png"
+
+[[sheet.frame]]
+index = 4
+target = "reference/frames/4.png"
+
+[[sheet.frame]]
+index = 5
+target = "reference/frames/5.png"
+
+[[sheet.frame]]
+index = 6
+target = "reference/frames/6.png"
+
+[[sheet.frame]]
+index = 7
+target = "reference/frames/7.png"
+
+[[sheet.frame]]
+index = 8
+target = "reference/frames/8.png"
+
+[[sheet.frame]]
+index = 9
+target = "reference/frames/9.png"
+
+[[sheet.frame]]
+index = 10
+target = "reference/frames/10.png"
+
+[[sheet.frame]]
+index = 11
+target = "reference/frames/11.png"
+
+[[sheet.frame]]
+index = 12
+target = "reference/frames/12.png"
+
+[[sheet.frame]]
+index = 13
+target = "reference/frames/13.png"
+
+[[sheet.frame]]
+index = 14
+target = "reference/frames/14.png"
+
+[[sheet.frame]]
+index = 15
+target = "reference/frames/15.png"
 
 [[sheet.sequence]]
 slug = "walk-down"
@@ -68,11 +128,6 @@ name = "Lure bob"
 frames = [8, 9, 10, 11, 12, 13]
 fps = 6
 
-# The visual goal the regenerated sheet is scored against. Served as-is.
-[[reference]]
-view = "target"
-media = "reference/target.png"
-
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
@@ -99,7 +154,6 @@ Every frame shows a dangling lure-light leading the head — a small glowing amb
 bulb on a thin stalk, the brightest element of the sprite against the dark body. \
 It is the bait of an ambush predator and the creature's defining feature."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -111,7 +165,6 @@ down, up, left, and right — each with its bulky head (and the lure ahead of it
 leading its direction of travel and a forked tail trailing behind, not the same \
 blob repeated."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -122,7 +175,6 @@ The tell frames (row 2 into row 3) show the dangling lure bobbing and its amber 
 glow pulsing — bigger and brighter, then easing back — across the frames, so \
 playing them reads as the lure beckoning."""
 weight = 2
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -133,7 +185,6 @@ Uses the Lure's palette from the brief (dark slate body, lighter underside, near
 black outline/maw, amber lure glow, bright lure core) with no out-of-palette \
 colors and no halo of stray pixels."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -144,5 +195,4 @@ Each creature fills most of its own 32x32 frame cell, centered with a small \
 margin, neither tiny in a corner nor spilling across the grid lines into the \
 neighboring frame."""
 weight = 1
-reference = "target"
 domain = "fidelity"

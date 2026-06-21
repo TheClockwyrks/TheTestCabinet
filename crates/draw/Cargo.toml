@@ -15,18 +15,25 @@ publish.workspace = true
 name = "test_cabinet_draw"
 path = "src/lib.rs"
 
-# The CLI the model invokes inside the run container. Gated behind the `cli`
-# feature (on by default) so that `crates/core`, which depends on this crate with
+# The CLIs the model invokes inside the run container: `draw` for a single
+# sprite, `draw-sheet` for a sprite sheet (one separate file per frame). Both
+# share this crate's library and its `cli` module. Gated behind the `cli` feature
+# (on by default) so that `crates/core`, which depends on this crate with
 # `default-features = false`, links only the pure drawing library and never pulls
-# in clap, serde_json, or schemars.
+# in clap or serde_json.
 [[bin]]
 name = "draw"
 path = "src/bin/draw.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "draw-sheet"
+path = "src/bin/draw-sheet.rs"
+required-features = ["cli"]
+
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:serde_json", "dep:schemars"]
+cli = ["dep:clap", "dep:serde_json"]
 
 [dependencies]
 serde = { workspace = true }
@@ -36,7 +43,6 @@ thiserror = { workspace = true }
 png = { workspace = true }
 clap = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

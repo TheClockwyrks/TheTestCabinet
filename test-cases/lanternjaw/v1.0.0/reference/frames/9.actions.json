@@ -1,0 +1,64 @@
+[
+  {
+    "op": "fill_circle",
+    "cx": 17,
+    "cy": 18,
+    "r": 9,
+    "color": "#0e1622"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 17,
+    "cy": 18,
+    "r": 8,
+    "color": "#243042"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 13,
+    "cy": 21,
+    "r": 4,
+    "color": "#3a4a60"
+  },
+  {
+    "op": "fill_rect",
+    "x": 16,
+    "y": 24,
+    "width": 3,
+    "height": 3,
+    "color": "#0e1622"
+  },
+  {
+    "op": "line",
+    "x0": 13,
+    "y0": 26,
+    "x1": 11,
+    "y1": 29,
+    "color": "#ffd166"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 11,
+    "cy": 29,
+    "r": 3,
+    "color": "#ffd166"
+  },
+  {
+    "op": "set_pixel",
+    "x": 11,
+    "y": 29,
+    "color": "#fff3c4"
+  },
+  {
+    "op": "set_pixel",
+    "x": 11,
+    "y": 28,
+    "color": "#fff3c4"
+  },
+  {
+    "op": "set_pixel",
+    "x": 10,
+    "y": 29,
+    "color": "#fff3c4"
+  }
+]

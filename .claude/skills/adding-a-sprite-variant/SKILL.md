@@ -11,14 +11,15 @@ A single-sprite [asset-generation](../../../apps/docs/src/content/docs/testing/a
 test case (`asset_kind = "sprite"`, the default) draws **one sprite onto the whole
 canvas** toward a fixed target. Its version offers one or more **variants**, and a
 run selects exactly one. Every variant seeds the version's **common specs** (the
-brief and the operations schema) plus its own **additive** specs. The chosen
-variant's slug is recorded in the run record.
+brief) plus its own **additive** specs. The chosen variant's slug is recorded in the
+run record.
 
 This skill covers variants of **single-sprite** asset-generation cases. For a
-variant of a **sprite-sheet** case — one whose `[sheet]` table tiles the canvas
-into a grid of animation frames — use the
+variant of a **sprite-sheet** case — one whose `[sheet]` table declares a set of
+animation frames, each a separate file — use the
 [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) skill,
-where a variant also shares the frame grid and named sequences. For a variant of an
+where a variant also shares the per-frame targets and named sequences. For a variant
+of an
 **end-to-end** case — a playable mode with its own menu and rules — use the
 [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
 author a brand-new case, use

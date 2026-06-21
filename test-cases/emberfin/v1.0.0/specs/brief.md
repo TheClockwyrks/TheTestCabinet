@@ -6,33 +6,32 @@ pursuer**, a predator that is blind between flares and hunts only in the light
 of its own **flare** — a bright bloom it telegraphs with a charge-up glow.
 Everything below describes the *enemy* — never the player character.
 
-## The canvas and the frame grid
+## The frames
 
-- The canvas is **128×128 pixels**, transparent background. Origin is the
-  top-left; `x` increases to the right, `y` increases downward.
-- It is a **sprite sheet**: a **4×4 grid of 32×32 frame cells**. Frame cell
-  `(col, row)` (each `0–3`) occupies `x` in `[32·col, 32·col+32)` and `y` in
-  `[32·row, 32·row+32)`. Draw each frame **inside its own cell** — keep a
-  pixel or two of margin so a swimming creature never spills across a grid
-  line into its neighbor (a flare bloom may reach toward the cell edges).
-- Frames are numbered **row-major** from the top-left: frame `0` is `(0,0)`,
-  frame `3` is `(3,0)`, frame `4` is `(0,1)`, … frame `15` is `(3,3)`.
+- Each frame is its own **32×32-pixel** image with a transparent background.
+  Origin is the top-left of the frame; `x` increases to the right, `y`
+  increases downward. Coordinates are **within the frame** (0–31) — there is no
+  shared sheet to offset into.
+- You choose which frame an operation draws into with `--frame <index>`. The
+  sheet has **16 frames, numbered 0–15**. Keep a pixel or two of margin so a
+  swimming creature sits inside its frame, neither tiny in a corner nor clipped
+  at the edge (a flare bloom may reach toward the frame edges).
 
 ## What goes in each frame
 
 The sheet holds **four-direction movement** (two frames per direction, a small
 swim cycle) and a **flare** animation in three beats:
 
-| Frames | Cells | Contents |
-| --- | --- | --- |
-| 0, 1 | row 0, cols 0–1 | **swim down** — two frames (the tail flicks between them) |
-| 2, 3 | row 0, cols 2–3 | **swim up** — two frames |
-| 4, 5 | row 1, cols 0–1 | **swim left** — two frames |
-| 6, 7 | row 1, cols 2–3 | **swim right** — two frames |
-| 8, 9, 10 | row 2, cols 0–2 | **flare charge-up** — the organ glow grows |
-| 11 | row 2, col 3 | **flare bloom** begins |
-| 12, 13 | row 3, cols 0–1 | **flare bloom** continues (peak) |
-| 14, 15 | row 3, cols 2–3 | **flare fade** — back to the dim organ |
+| Frames | Contents |
+| --- | --- |
+| 0, 1 | **swim down** — two frames (the tail flicks between them) |
+| 2, 3 | **swim up** — two frames |
+| 4, 5 | **swim left** — two frames |
+| 6, 7 | **swim right** — two frames |
+| 8, 9, 10 | **flare charge-up** — the organ glow grows |
+| 11 | **flare bloom** begins |
+| 12, 13 | **flare bloom** continues (peak) |
+| 14, 15 | **flare fade** — back to the dim organ |
 
 In each **movement** frame the creature faces its direction of travel: the
 **head leads** (points the way it swims) and a **forked tail trails** behind,
@@ -82,11 +81,12 @@ off-palette colors and anti-aliased fringes count against you):
 ## Working the tool
 
 Build each frame up in sensible layers — a dark rim, then the body teardrop,
-then the belly, tail, and the flare organ — and place every operation inside
-the correct cell by offsetting its coordinates by `(32·col, 32·row)`. Consult
-`schemas/operations.json` for the available operations (filling and stroking
-circles and rectangles, lines, single pixels, flood fill, and a horizontal
-mirror) and their exact parameters. Call `draw` once per operation and read
-`canvas.png` between calls to judge your progress against this brief and the
-target. A good order is to finish one direction's two frames, check them, then
-do the others, and finish with the flare charge-up, bloom, and fade frames.
+then the belly, tail, and the flare organ — drawing into the frame you select
+with `--frame <index>`, using plain in-frame coordinates (0–31). Run `draw-sheet
+--help` for the available operations (filling and stroking circles and
+rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
+once per operation and read `frames/<index>.png` between calls to judge that
+frame against this brief and its target. A good order is to finish one
+direction's two frames, check them, then do the others, and finish with the
+flare charge-up, bloom, and fade frames.

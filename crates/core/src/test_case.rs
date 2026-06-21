@@ -255,16 +255,17 @@ struct ManifestCanvas {
 }
 
 /// The `[tool]` table of an asset-generation case: the drawing binary and the
-/// paths it reads and writes. The binary is the only channel for drawing.
+/// path it re-renders the current image to. The binary is the only channel for
+/// drawing; its `--help` is the contract, so no operations schema is seeded.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestTool {
-    /// The drawing binary available in the run environment (for example `draw`).
+    /// The drawing binary available in the run environment: `draw` for a single
+    /// sprite, `draw-sheet` for a sprite sheet.
     binary: String,
-    /// The JSON Schema of the operations the binary exposes, relative to the
-    /// version folder. Seeded into the run so the model can read it.
-    operations: PathBuf,
     /// The run-workspace-relative path the binary re-renders the current image to
-    /// after each call, so the model can read its progress.
+    /// after each call, so the model can read its progress. For a sprite sheet it
+    /// is a `{frame}` template (for example `frames/{frame}.png`), since every
+    /// frame is a separate file.
     preview: PathBuf,
 }
 
@@ -273,30 +274,41 @@ struct ManifestTool {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestOutput {
     /// The run-workspace-relative path of the ordered record of every operation
-    /// the model issued.
+    /// the model issued. For a sprite sheet it is a `{frame}` template (for
+    /// example `frames/{frame}.actions.json`): every frame records its own log.
     actions: PathBuf,
 }
 
-/// The `[sheet]` table of a sprite-sheet asset-generation case: the frame grid the
-/// model draws its animation frames into, and the named sequences a reviewer
-/// plays back. The grid tiles the `[canvas]`: `columns * frame_width` must equal
-/// the canvas width and `rows * frame_height` its height. Frames are numbered
-/// row-major from the top-left (frame `i` occupies column `i % columns`, row
-/// `i / columns`).
+/// The `[sheet]` table of a sprite-sheet asset-generation case: the frames the
+/// model draws — each a completely separate file the size of the `[canvas]` — and
+/// the named sequences a reviewer plays back.
+///
+/// A sheet declares its frames explicitly (each with the index it is written to);
+/// the number of frames is just how many are declared. A sequence plays an ordered
+/// list of those indices.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestSheet {
-    /// Width of one frame cell in pixels.
-    frame_width: u32,
-    /// Height of one frame cell in pixels.
-    frame_height: u32,
-    /// Number of frame columns across the sheet.
-    columns: u32,
-    /// Number of frame rows down the sheet.
-    rows: u32,
+    /// The frames this sheet declares, as repeated `[[sheet.frame]]` tables. At
+    /// least one is required; indices must be unique.
+    #[serde(default, rename = "frame")]
+    frames: Vec<ManifestSheetFrame>,
     /// The named animation sequences, declared as repeated `[[sheet.sequence]]`
     /// tables. At least one is required.
     #[serde(default)]
     sequence: Vec<ManifestSheetSequence>,
+}
+
+/// A single `[[sheet.frame]]` entry: one frame of the sheet, the index it is
+/// written to, and the per-frame target image it is drawn toward.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestSheetFrame {
+    /// The frame index this frame is written to (passed as `draw-sheet --frame`).
+    /// Unique within the sheet; sequences reference these indices.
+    index: u32,
+    /// The per-frame target image, relative to the version folder. Seeded as this
+    /// frame's visual goal and the baseline its regenerated frame is scored
+    /// against.
+    target: PathBuf,
 }
 
 /// A single `[[sheet.sequence]]` entry: one named animation a reviewer can play
@@ -473,9 +485,25 @@ struct ManifestDomain {
 const MANIFEST_FILE: &str = "test-case.toml";
 
 /// The run-workspace-relative path the orchestrator seeds an asset-generation
-/// run's canvas configuration to. The `draw` binary reads it from here by
-/// default, so a model's `draw apply` calls need no canvas flags.
+/// run's canvas configuration to. The drawing binary reads it from here by
+/// default, so a model's drawing operations need no canvas flags.
 pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
+
+/// The placeholder a sprite-sheet case's preview and action-log paths must carry,
+/// replaced by the frame index to give every frame its own separate file (for
+/// example `frames/{frame}.png` → `frames/3.png`). Shared by manifest validation,
+/// seeding, and the validator so they resolve the same per-frame paths.
+pub const FRAME_TOKEN: &str = "{frame}";
+
+/// Substitute the [`FRAME_TOKEN`] in a sprite-sheet path template with a frame
+/// index, yielding that frame's concrete run-relative path.
+pub fn frame_path(template: &Path, index: u32) -> PathBuf {
+    PathBuf::from(
+        template
+            .to_string_lossy()
+            .replace(FRAME_TOKEN, &index.to_string()),
+    )
+}
 
 /// A test case: a single game a model is asked to build, identified by a stable
 /// slug and offering one or more independently versioned revisions.
@@ -691,13 +719,11 @@ pub struct CanvasSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolSpec {
-    /// The drawing binary available in the run environment.
+    /// The drawing binary available in the run environment (`draw` or
+    /// `draw-sheet`).
     pub binary: String,
-    /// The run-workspace-relative path of the seeded operations JSON Schema. The
-    /// schema is seeded as a common spec (see [`TestCaseVersion::common_specs`]),
-    /// so this names where the model reads it.
-    pub operations: PathBuf,
     /// The run-workspace-relative path the binary re-renders the current image to.
+    /// A `{frame}` template for a sprite sheet (one preview per frame).
     pub preview: PathBuf,
 }
 
@@ -770,22 +796,21 @@ pub struct ReplaySpec {
     pub renderer: PathBuf,
 }
 
-/// The resolved `[sheet]` of a sprite-sheet case: the frame grid the model draws
-/// its frames into and the named sequences a reviewer plays back. The grid tiles
-/// the [`CanvasSpec`]; resolution validates that `columns * frame_width` equals the
-/// canvas width and `rows * frame_height` its height, so a frame's pixel rectangle
-/// is `(frame % columns) * frame_width, (frame / columns) * frame_height`.
+/// The resolved `[sheet]` of a sprite-sheet case: the frames the model draws —
+/// each a separate file the size of one [`CanvasSpec`] — and the named sequences a
+/// reviewer plays back. The frame dimensions are the canvas dimensions; the
+/// declared frame indices and the sequences that reference them drive per-frame
+/// scoring and animated playback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SheetSpec {
-    /// Width of one frame cell in pixels.
+    /// Width of one frame in pixels (the canvas width).
     pub frame_width: u32,
-    /// Height of one frame cell in pixels.
+    /// Height of one frame in pixels (the canvas height).
     pub frame_height: u32,
-    /// Number of frame columns across the sheet.
-    pub columns: u32,
-    /// Number of frame rows down the sheet.
-    pub rows: u32,
+    /// The declared frame indices, in declared order. At least one is present and
+    /// all are unique.
+    pub frames: Vec<u32>,
     /// The named animation sequences, in declared order. At least one is present.
     pub sequences: Vec<SheetSequence>,
 }
@@ -1447,12 +1472,14 @@ impl TestCaseCatalog {
 
         // Resolve the asset-generation tables (`[canvas]`, `[tool]`, `[output]`).
         // They are required for — and only for — an asset-generation case; on an
-        // end-to-end case they are a mistake. The operations schema the tool
-        // exposes is seeded like any other spec (appended to `common_specs`) so
-        // the model can read it, while the preview and action-log paths are
-        // run-relative destinations the binary writes (not seeded), validated only
-        // to stay inside the workspace.
-        let (canvas, tool, output, sheet) = match test_type {
+        // end-to-end case they are a mistake. No operations schema is seeded — the
+        // drawing binary's `--help` is the contract. The preview and action-log
+        // paths are run-relative destinations the binary writes (not seeded),
+        // validated only to stay inside the workspace; for a sprite sheet they are
+        // `{frame}` templates, since every frame is a separate file. A sprite
+        // sheet's per-frame targets are collected here as synthesized references
+        // (`target-<index>`) so each is seeded and scored like any other reference.
+        let (canvas, tool, output, sheet, sheet_targets) = match test_type {
             TestType::EndToEnd | TestType::Adversarial => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
@@ -1472,7 +1499,7 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                (None, None, None, None)
+                (None, None, None, None, Vec::new())
             }
             TestType::AssetGeneration => {
                 let canvas = manifest
@@ -1495,26 +1522,12 @@ impl TestCaseCatalog {
                 if tool.binary.trim().is_empty() {
                     return Err(invalid("tool.binary must not be empty".to_string()));
                 }
-                // The operations schema is an authored file inside the version
-                // folder, seeded into the run at the same relative path so the
-                // model reads it as `schemas/operations.json`.
-                let operations_source = resolve_inside(&tool.operations, "tool operations")?;
-                if !operations_source.is_file() {
-                    return Err(invalid(format!(
-                        "tool operations `{}` does not exist",
-                        tool.operations.display()
-                    )));
-                }
                 if escapes_folder(&tool.preview) {
                     return Err(invalid(format!(
                         "tool preview `{}` escapes the run workspace",
                         tool.preview.display()
                     )));
                 }
-                common_specs.push(SpecFile {
-                    source_path: operations_source,
-                    dest: tool.operations.clone(),
-                });
 
                 let output = manifest
                     .output
@@ -1527,12 +1540,37 @@ impl TestCaseCatalog {
                     )));
                 }
 
+                // The preview and action-log paths must be `{frame}` templates for
+                // a sprite sheet (one file per frame) and plain paths for a single
+                // sprite. Validating this here keeps the seeded config, the binary,
+                // and the validator agreeing on where each frame's files live.
+                let is_sheet = manifest.asset_kind == AssetKind::SpriteSheet;
+                for (label, path) in [
+                    ("tool.preview", &tool.preview),
+                    ("output.actions", &output.actions),
+                ] {
+                    let has_token = path.to_string_lossy().contains(FRAME_TOKEN);
+                    if is_sheet && !has_token {
+                        return Err(invalid(format!(
+                            "{label} `{}` must contain `{FRAME_TOKEN}` for a sprite-sheet case \
+                             (one file per frame)",
+                            path.display()
+                        )));
+                    }
+                    if !is_sheet && has_token {
+                        return Err(invalid(format!(
+                            "{label} `{}` must not contain `{FRAME_TOKEN}` for a single-sprite case",
+                            path.display()
+                        )));
+                    }
+                }
+
                 // The `[sheet]` table is required for — and only for — a
                 // sprite-sheet case. A single-sprite case draws one image onto the
-                // whole canvas and declares no grid; a sprite-sheet case tiles the
-                // canvas into a frame grid (validated to match the canvas exactly)
-                // and the named sequences a reviewer plays back.
-                let sheet = match manifest.asset_kind {
+                // whole canvas and declares no frames; a sprite-sheet case declares
+                // its frames (each with the index it is written to and a per-frame
+                // target) and the named sequences a reviewer plays back.
+                let (sheet, sheet_targets) = match manifest.asset_kind {
                     AssetKind::Sprite => {
                         if manifest.sheet.is_some() {
                             return Err(invalid(
@@ -1541,7 +1579,7 @@ impl TestCaseCatalog {
                                     .to_string(),
                             ));
                         }
-                        None
+                        (None, Vec::new())
                     }
                     AssetKind::SpriteSheet => {
                         let sheet = manifest.sheet.as_ref().ok_or_else(|| {
@@ -1551,7 +1589,28 @@ impl TestCaseCatalog {
                                     .to_string(),
                             )
                         })?;
-                        Some(resolve_sheet(sheet, canvas, &invalid)?)
+                        let (resolved, targets) =
+                            resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?;
+                        // Each declared frame's target becomes a synthesized static
+                        // reference `target-<index>`, seeded as that frame's visual
+                        // goal and the baseline its regenerated frame is scored
+                        // against.
+                        let mut target_refs = Vec::with_capacity(targets.len());
+                        for (index, rel) in targets {
+                            let source_path = resolve_inside(&rel, "sheet frame target")?;
+                            if !source_path.is_file() {
+                                return Err(invalid(format!(
+                                    "sheet frame {index} target `{}` does not exist",
+                                    rel.display()
+                                )));
+                            }
+                            target_refs.push(ReferenceView {
+                                view: format!("target-{index}"),
+                                kind: ReferenceKind::Image,
+                                source_path,
+                            });
+                        }
+                        (Some(resolved), target_refs)
                     }
                 };
 
@@ -1563,13 +1622,13 @@ impl TestCaseCatalog {
                     }),
                     Some(ToolSpec {
                         binary: tool.binary.clone(),
-                        operations: tool.operations.clone(),
                         preview: tool.preview.clone(),
                     }),
                     Some(OutputSpec {
                         actions: output.actions.clone(),
                     }),
                     sheet,
+                    sheet_targets,
                 )
             }
         };
@@ -1878,6 +1937,10 @@ impl TestCaseCatalog {
         for reference in &manifest.reference {
             common_references.push(resolve_reference(reference)?);
         }
+        // A sprite sheet's per-frame targets are declared on `[[sheet.frame]]`, not
+        // as `[[reference]]` tables; synthesize them as common references so they
+        // are seeded and scored exactly like a single sprite's `target`.
+        common_references.extend(sheet_targets);
 
         // Resolve one reviewer checklist item: its id, title, and text must all be
         // non-empty, since the id keys a recorded verdict, the title heads the item
@@ -2058,13 +2121,22 @@ impl TestCaseCatalog {
             }
             // For an asset-generation case the drawing binary writes the preview
             // and the action log, and the orchestrator seeds the canvas config;
-            // none may collide with a seeded file. (The operations schema is
-            // already claimed above — it is seeded as a common spec.)
-            if let Some(tool) = &tool {
-                claim(tool.preview.clone(), "tool preview")?;
-            }
-            if let Some(output) = &output {
-                claim(output.actions.clone(), "action log")?;
+            // none may collide with a seeded file. A sprite sheet writes one
+            // preview and one log per declared frame, so each frame's resolved path
+            // is claimed.
+            if let (Some(tool), Some(output)) = (&tool, &output) {
+                match &sheet {
+                    Some(sheet) => {
+                        for &index in &sheet.frames {
+                            claim(frame_path(&tool.preview, index), "tool preview")?;
+                            claim(frame_path(&output.actions, index), "action log")?;
+                        }
+                    }
+                    None => {
+                        claim(tool.preview.clone(), "tool preview")?;
+                        claim(output.actions.clone(), "action log")?;
+                    }
+                }
             }
             if test_type == TestType::AssetGeneration {
                 claim(PathBuf::from(ASSET_CONFIG_DEST), "canvas config")?;
@@ -2132,28 +2204,43 @@ impl TestCaseCatalog {
         }
 
         // An asset-generation case has no automated checks (it has no served
-        // build to drive); its single fidelity/divergence signal is computed by
-        // the validator from the regenerated image. Reject declared checks rather
-        // than silently ignoring them. Its one reference is the `target` the
-        // regenerated image is scored against: require exactly that — a single
-        // common static-image reference named `target` — so the fidelity baseline
-        // is unambiguous and there is no browser-rendered reference to render.
+        // build to drive); its fidelity/divergence signals are computed by the
+        // validator from the regenerated image(s). Reject declared checks rather
+        // than silently ignoring them. Its targets are the references the
+        // regenerated image is scored against: a single sprite declares exactly one
+        // `target`; a sprite sheet declares its targets per frame on
+        // `[[sheet.frame]]` (synthesized above as `target-<index>`), so it must not
+        // declare a `[[reference]]` of its own. Either way there is no
+        // browser-rendered reference to render.
         if test_type == TestType::AssetGeneration {
             if !manifest.check.is_empty() {
                 return Err(invalid(
                     "an asset-generation case declares no [[check]]".to_string(),
                 ));
             }
-            let only_target = matches!(
-                common_references.as_slice(),
-                [single] if single.view == "target" && single.kind == ReferenceKind::Image
-            );
-            if !only_target {
-                return Err(invalid(
-                    "an asset-generation case must declare exactly one [[reference]] with \
-                     view = \"target\" and a static image `media`"
-                        .to_string(),
-                ));
+            match manifest.asset_kind {
+                AssetKind::Sprite => {
+                    let only_target = matches!(
+                        common_references.as_slice(),
+                        [single] if single.view == "target" && single.kind == ReferenceKind::Image
+                    );
+                    if !only_target {
+                        return Err(invalid(
+                            "a single-sprite case must declare exactly one [[reference]] with \
+                             view = \"target\" and a static image `media`"
+                                .to_string(),
+                        ));
+                    }
+                }
+                AssetKind::SpriteSheet => {
+                    if !manifest.reference.is_empty() {
+                        return Err(invalid(
+                            "a sprite-sheet case declares no [[reference]]; its targets are the \
+                             per-frame `target` paths on [[sheet.frame]]"
+                                .to_string(),
+                        ));
+                    }
+                }
             }
             if variants
                 .iter()
@@ -2319,45 +2406,46 @@ fn default_background() -> String {
     "transparent".to_string()
 }
 
-/// Resolve and validate a sprite-sheet case's `[sheet]` table against its
-/// `[canvas]`.
+/// Resolve and validate a sprite-sheet case's `[sheet]` table.
 ///
-/// The frame grid must tile the canvas exactly — `columns * frame_width` equals
-/// the canvas width and `rows * frame_height` its height — with every dimension
-/// positive, so a frame's pixel rectangle is unambiguous. Each sequence must carry
-/// a unique non-empty slug, name at least one frame, reference only valid cells
-/// (`< columns * rows`), and run at a positive rate. `invalid` is the resolver's
-/// error constructor, threaded in so messages carry the case's slug and version.
+/// A sheet declares its frames explicitly — each with the index it is written to
+/// (unique) and a per-frame target — and the frame dimensions are the canvas
+/// dimensions (`frame_width`/`frame_height`). Each sequence must carry a unique
+/// non-empty slug, name at least one frame, reference only **declared** frame
+/// indices, and run at a positive rate. Returns the resolved [`SheetSpec`]
+/// alongside the `(index, target)` pairs the caller turns into seeded references.
+/// `invalid` is the resolver's error constructor, threaded in so messages carry
+/// the case's slug and version.
 fn resolve_sheet(
     sheet: &ManifestSheet,
-    canvas: &ManifestCanvas,
+    frame_width: u32,
+    frame_height: u32,
     invalid: &impl Fn(String) -> Error,
-) -> Result<SheetSpec> {
-    if sheet.frame_width == 0 || sheet.frame_height == 0 || sheet.columns == 0 || sheet.rows == 0 {
+) -> Result<(SheetSpec, Vec<(u32, PathBuf)>)> {
+    if sheet.frames.is_empty() {
         return Err(invalid(
-            "sheet frame_width, frame_height, columns, and rows must all be greater than zero"
-                .to_string(),
+            "a [sheet] must declare at least one [[sheet.frame]]".to_string(),
         ));
     }
-    let grid_width = sheet
-        .columns
-        .checked_mul(sheet.frame_width)
-        .ok_or_else(|| invalid("sheet columns * frame_width overflows".to_string()))?;
-    let grid_height = sheet
-        .rows
-        .checked_mul(sheet.frame_height)
-        .ok_or_else(|| invalid("sheet rows * frame_height overflows".to_string()))?;
-    if grid_width != canvas.width || grid_height != canvas.height {
-        return Err(invalid(format!(
-            "sheet grid {grid_width}x{grid_height} (columns*frame_width x rows*frame_height) must \
-             equal the canvas {}x{}",
-            canvas.width, canvas.height
-        )));
+    let mut frames: Vec<u32> = Vec::with_capacity(sheet.frames.len());
+    let mut targets: Vec<(u32, PathBuf)> = Vec::with_capacity(sheet.frames.len());
+    for frame in &sheet.frames {
+        if frames.contains(&frame.index) {
+            return Err(invalid(format!(
+                "duplicate sheet frame index {}",
+                frame.index
+            )));
+        }
+        if escapes_folder(&frame.target) {
+            return Err(invalid(format!(
+                "sheet frame {} target `{}` escapes the version folder",
+                frame.index,
+                frame.target.display()
+            )));
+        }
+        frames.push(frame.index);
+        targets.push((frame.index, frame.target.clone()));
     }
-    let cell_count = sheet
-        .columns
-        .checked_mul(sheet.rows)
-        .ok_or_else(|| invalid("sheet columns * rows overflows".to_string()))?;
 
     if sheet.sequence.is_empty() {
         return Err(invalid(
@@ -2386,12 +2474,11 @@ fn resolve_sheet(
                 sequence.slug
             )));
         }
-        if let Some(&frame) = sequence.frames.iter().find(|&&frame| frame >= cell_count) {
+        if let Some(&frame) = sequence.frames.iter().find(|frame| !frames.contains(frame)) {
             return Err(invalid(format!(
-                "sheet sequence `{}` references frame {frame}, but the grid has {cell_count} \
-                 frames (0..={})",
-                sequence.slug,
-                cell_count - 1
+                "sheet sequence `{}` references frame {frame}, which is not a declared \
+                 [[sheet.frame]]",
+                sequence.slug
             )));
         }
         if !(sequence.fps.is_finite() && sequence.fps > 0.0) {
@@ -2412,13 +2499,15 @@ fn resolve_sheet(
         });
     }
 
-    Ok(SheetSpec {
-        frame_width: sheet.frame_width,
-        frame_height: sheet.frame_height,
-        columns: sheet.columns,
-        rows: sheet.rows,
-        sequences,
-    })
+    Ok((
+        SheetSpec {
+            frame_width,
+            frame_height,
+            frames,
+            sequences,
+        },
+        targets,
+    ))
 }
 
 /// Recursively enumerate the files under a workspace directory into

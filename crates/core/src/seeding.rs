@@ -187,13 +187,29 @@ fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()
 
     let preview = tool.preview.to_string_lossy().replace('\\', "/");
     let actions = output.actions.to_string_lossy().replace('\\', "/");
-    let config = serde_json::json!({
+
+    let background = test_cabinet_draw::Background::parse(&canvas_spec.background)
+        .map_err(|err| Error::Seeding(format!("invalid canvas background: {err}")))?;
+    let canvas = test_cabinet_draw::Canvas {
+        width: canvas_spec.width,
+        height: canvas_spec.height,
+        background,
+    };
+
+    // The config the binary reads. For a sprite sheet the `actions`/`preview`
+    // values are `{frame}` templates and the config lists the declared frames, so
+    // `draw-sheet init` and every operation resolve each frame's separate files;
+    // for a single sprite they are plain paths.
+    let mut config = serde_json::json!({
         "width": canvas_spec.width,
         "height": canvas_spec.height,
         "background": canvas_spec.background,
         "actions": actions,
         "preview": preview,
     });
+    if let Some(sheet) = &test_case.sheet {
+        config["frames"] = serde_json::json!(sheet.frames);
+    }
     write_file(
         &repo.join(crate::test_case::ASSET_CONFIG_DEST),
         &format!(
@@ -203,22 +219,36 @@ fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()
         ),
     )?;
 
-    write_file(&repo.join(&output.actions), "[]\n")?;
-
-    let background = test_cabinet_draw::Background::parse(&canvas_spec.background)
-        .map_err(|err| Error::Seeding(format!("invalid canvas background: {err}")))?;
-    let canvas = test_cabinet_draw::Canvas {
-        width: canvas_spec.width,
-        height: canvas_spec.height,
-        background,
+    // Seed each frame's empty action log and blank starting preview, rendered from
+    // the empty log through the same drawing library the binary and validator use,
+    // so the run starts from a known, empty state. A single sprite is one frame; a
+    // sprite sheet is one per declared frame.
+    let frame_indices: Vec<u32> = match &test_case.sheet {
+        Some(sheet) => sheet.frames.clone(),
+        None => vec![0],
     };
-    let preview_path = repo.join(&tool.preview);
-    if let Some(parent) = preview_path.parent() {
-        fs::create_dir_all(parent).map_err(seed_err)?;
+    for index in frame_indices {
+        let (actions_rel, preview_rel) = match &test_case.sheet {
+            Some(_) => (
+                crate::test_case::frame_path(&output.actions, index),
+                crate::test_case::frame_path(&tool.preview, index),
+            ),
+            None => (output.actions.clone(), tool.preview.clone()),
+        };
+        let actions_path = repo.join(&actions_rel);
+        if let Some(parent) = actions_path.parent() {
+            fs::create_dir_all(parent).map_err(seed_err)?;
+        }
+        write_file(&actions_path, "[]\n")?;
+
+        let preview_path = repo.join(&preview_rel);
+        if let Some(parent) = preview_path.parent() {
+            fs::create_dir_all(parent).map_err(seed_err)?;
+        }
+        test_cabinet_draw::render(&canvas, &[])
+            .encode_png(&preview_path)
+            .map_err(seed_err)?;
     }
-    test_cabinet_draw::render(&canvas, &[])
-        .encode_png(&preview_path)
-        .map_err(seed_err)?;
     Ok(())
 }
 

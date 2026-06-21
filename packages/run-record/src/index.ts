@@ -166,58 +166,74 @@ export interface StepResult {
 /**
  * The regenerate-and-score result of an asset-generation run.
  *
- * The run's authoritative output is its recorded action log; the validator
- * replays it through the same drawing logic the binary used to produce the
- * **regenerated** image (the scored output), then derives two recorded signals:
- * the fidelity of the regenerated image against the seeded target, and the
- * divergence between the regenerated image and the pixels the model left on disk
- * (a high divergence means the model drew outside the tool). All paths are
- * run-root-relative and resolved to media URLs by the gallery host.
+ * The run's authoritative output is its recorded action log(s); the validator
+ * replays each through the same drawing logic the binary used to produce the
+ * **regenerated** image (the scored output). A single sprite has one
+ * {@link AssetFrameResult} (index 0); a sprite sheet has one per declared frame,
+ * each a completely separate file scored independently — there is no whole-sheet
+ * aggregate. All paths are run-root-relative and resolved to media URLs by the
+ * gallery host.
  */
 export interface AssetGenResult {
-  /** Run-root-relative path to the image regenerated from the action log. */
-  regeneratedImage: string;
-  /** Run-root-relative path to the pixels the model left on disk. */
-  previewImage: string;
-  /** Run-root-relative path to the seeded target. */
-  targetImage: string;
-  /** Run-root-relative path to the recorded action log. */
-  actionsLog: string;
-  /** How many operations the log recorded. */
-  operationCount: number;
-  /** Similarity of the regenerated image to the target, in `0..=1`. */
-  targetFidelity: number;
   /**
-   * Divergence between the regenerated image and the model's preview, in
-   * `0..=1` (0 is identical). Null when the model left no readable preview.
+   * The per-frame results: exactly one for a single sprite (index 0), one per
+   * declared frame for a sprite sheet, in declared order.
    */
-  cheatDivergence: number | null;
-  /** Detail about anything that could not be evaluated, or null. */
-  detail: string | null;
+  frames: AssetFrameResult[];
   /**
-   * The sprite-sheet frame grid and named sequences, present only when the case
-   * draws a sprite sheet (`asset_kind = "sprite-sheet"`). Lets a reviewer slice
-   * the regenerated and target images into the named animations and play them
-   * back. Absent for a single-sprite case.
+   * The sprite-sheet frame dimensions and named sequences, present only when the
+   * case draws a sprite sheet (`asset_kind = "sprite-sheet"`). Lets a reviewer
+   * play the named animations from the per-frame images. Absent for a
+   * single-sprite case.
    */
   sheet?: AssetSheet;
+  /** Detail about anything that could not be evaluated at the run level, or null. */
+  detail: string | null;
 }
 
 /**
- * The frame grid of a sprite-sheet asset and the named animations played from
- * it. The grid tiles the canvas exactly, so frame `i` occupies the pixel
- * rectangle `((i % columns) * frameWidth, (i / columns) * frameHeight,
- * frameWidth, frameHeight)`.
+ * The regenerate-and-score result for one frame of an asset-generation run: a
+ * single sprite's one frame, or one frame of a sprite sheet (a separate file).
+ * Carries the fidelity of the regenerated image against this frame's target and
+ * the divergence between it and the pixels the model left on disk (a high
+ * divergence means the model drew outside the tool).
+ */
+export interface AssetFrameResult {
+  /** The frame index: `0` for a single sprite, the declared index for a sheet. */
+  index: number;
+  /** Run-root-relative path to the image regenerated from this frame's log. */
+  regeneratedImage: string;
+  /** Run-root-relative path to the pixels the model left on disk for this frame. */
+  previewImage: string;
+  /** Run-root-relative path to this frame's seeded target. */
+  targetImage: string;
+  /** Run-root-relative path to this frame's recorded action log. */
+  actionsLog: string;
+  /** How many operations this frame's log recorded. */
+  operationCount: number;
+  /** Similarity of the regenerated frame to its target, in `0..=1`. */
+  targetFidelity: number;
+  /**
+   * Divergence between the regenerated frame and the model's preview, in `0..=1`
+   * (0 is identical). Null when the model left no readable preview.
+   */
+  cheatDivergence: number | null;
+  /** Detail about anything that could not be evaluated for this frame, or null. */
+  detail: string | null;
+}
+
+/**
+ * The frame dimensions of a sprite-sheet asset and the named animations played
+ * from it. Every frame is a separate image of `frameWidth × frameHeight`; a
+ * sequence plays an ordered list of the declared frame indices.
  */
 export interface AssetSheet {
-  /** Width of one frame cell in pixels. */
+  /** Width of one frame in pixels. */
   frameWidth: number;
-  /** Height of one frame cell in pixels. */
+  /** Height of one frame in pixels. */
   frameHeight: number;
-  /** Number of frame columns across the sheet. */
-  columns: number;
-  /** Number of frame rows down the sheet. */
-  rows: number;
+  /** The declared frame indices, in declared order. */
+  frames: number[];
   /** The named animation sequences, in declared order. */
   sequences: AssetSheetSequence[];
 }

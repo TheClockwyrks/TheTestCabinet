@@ -20,7 +20,8 @@ use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
 use crate::test_case::{MediaKind, ProofFile, TestCaseVersion, TestType};
 use crate::validation::{
-    AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
+    AssetFrameResult, AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary,
+    Validator,
 };
 
 /// Candidate output directories a static build may produce.
@@ -274,28 +275,36 @@ impl BuildValidator {
 
 /// A validator for asset-generation runs.
 ///
-/// It ignores the build pipeline entirely. Instead it reads the run's recorded
-/// action log, replays it through the **same** drawing library the in-container
-/// binary used ([`test_cabinet_draw::render`]) to regenerate the scored image,
-/// scores that image against the seeded target (fidelity), and compares it to the
-/// pixels the model left on disk (cheat divergence). Both are recorded signals,
-/// not gates. The regenerated image is written into the produced tree so it is
-/// collected and served alongside the action log and preview.
+/// It ignores the build pipeline entirely. Instead it reads each recorded action
+/// log, replays it through the **same** drawing library the in-container binary
+/// used ([`test_cabinet_draw::render`]) to regenerate the scored image, scores
+/// that image against the seeded target (fidelity), and compares it to the pixels
+/// the model left on disk (cheat divergence). Both are recorded signals, not
+/// gates. A single sprite has one log, one regenerated image, one target; a sprite
+/// sheet has one of each **per declared frame** — every frame a separate file,
+/// scored independently with no whole-sheet aggregate. The regenerated image(s)
+/// are written into the produced tree so they are collected and served.
 #[derive(Debug, Clone, Default)]
 pub struct AssetGenValidator;
 
 impl AssetGenValidator {
     /// A new asset-generation validator. It keeps no state: every output is
-    /// derived from the run's own action log and written into the run's tree.
+    /// derived from the run's own action log(s) and written into the run's tree.
     pub fn new() -> Self {
         Self
     }
 }
 
-/// The run-root-relative path the regenerated image is written to inside the
-/// produced tree. Chosen to not collide with the seeded canvas config, preview,
-/// action log, or operations schema.
-const REGENERATED_IMAGE: &str = "regenerated.png";
+/// The per-frame plan the validator regenerates and scores: where this frame's
+/// recorded log and preview live, where its regenerated image is written, and the
+/// reference view that is its target.
+struct FramePlan {
+    index: u32,
+    actions_rel: PathBuf,
+    preview_rel: PathBuf,
+    regenerated_rel: String,
+    target_view: String,
+}
 
 impl Validator for AssetGenValidator {
     fn validate(
@@ -324,41 +333,6 @@ impl Validator for AssetGenValidator {
             ));
         };
 
-        // The action log is the authoritative output. A run that produced none —
-        // or an unparseable one — has nothing to score, so it is a failed load.
-        let actions_path = repo.join(&output.actions);
-        let raw = match std::fs::read_to_string(&actions_path) {
-            Ok(raw) => raw,
-            Err(err) => {
-                return Ok(failed_load(
-                    &format!(
-                        "could not read action log `{}`: {err}",
-                        output.actions.display()
-                    ),
-                    None,
-                    None,
-                    proof_results,
-                ));
-            }
-        };
-        let operations: Vec<test_cabinet_draw::Operation> = match serde_json::from_str(&raw) {
-            Ok(operations) => operations,
-            Err(err) => {
-                return Ok(failed_load(
-                    &format!(
-                        "action log `{}` is not a valid operation log: {err}",
-                        output.actions.display()
-                    ),
-                    None,
-                    None,
-                    proof_results,
-                ));
-            }
-        };
-
-        // Regenerate the image from the log through the shared drawing library —
-        // the same logic the in-container binary used — and write it into the
-        // produced tree so it is collected and served.
         let background = match test_cabinet_draw::Background::parse(&canvas_spec.background) {
             Ok(background) => background,
             Err(err) => {
@@ -375,66 +349,43 @@ impl Validator for AssetGenValidator {
             height: canvas_spec.height,
             background,
         };
-        let regenerated_path = repo.join(REGENERATED_IMAGE);
-        if let Err(err) =
-            test_cabinet_draw::render(&canvas, &operations).encode_png(&regenerated_path)
-        {
-            return Ok(failed_load(
-                &format!("could not write the regenerated image: {err}"),
-                None,
-                None,
-                proof_results,
-            ));
+
+        // One frame for a single sprite (index 0); one per declared frame for a
+        // sheet, each with its own log, preview, regenerated image, and target.
+        let plans: Vec<FramePlan> = match test_case.sheet.as_ref() {
+            None => vec![FramePlan {
+                index: 0,
+                actions_rel: output.actions.clone(),
+                preview_rel: tool.preview.clone(),
+                regenerated_rel: "regenerated.png".to_string(),
+                target_view: "target".to_string(),
+            }],
+            Some(sheet) => sheet
+                .frames
+                .iter()
+                .map(|&index| FramePlan {
+                    index,
+                    actions_rel: crate::test_case::frame_path(&output.actions, index),
+                    preview_rel: crate::test_case::frame_path(&tool.preview, index),
+                    regenerated_rel: format!("regenerated/{index}.png"),
+                    target_view: format!("target-{index}"),
+                })
+                .collect(),
+        };
+
+        let mut frames = Vec::with_capacity(plans.len());
+        for plan in &plans {
+            match score_frame(repo, &canvas, references, plan) {
+                Ok(frame) => frames.push(frame),
+                // A frame whose log is missing, unparseable, or unrenderable has
+                // nothing to score: the run produced no scorable output, so it is a
+                // failed load rather than a partial result.
+                Err(detail) => return Ok(failed_load(&detail, None, None, proof_results)),
+            }
         }
 
-        // Fidelity: score the regenerated image against the seeded target.
-        let target = references
-            .iter()
-            .find(|reference| reference.view == "target");
-        let mut notes: Vec<String> = Vec::new();
-        let target_fidelity = match target {
-            Some(target) if target.kind == MediaKind::Image => {
-                match score(&target.media_path, &regenerated_path) {
-                    Ok(similarity) => similarity,
-                    Err(err) => {
-                        notes.push(format!("could not score against the target: {err}"));
-                        0.0
-                    }
-                }
-            }
-            Some(_) => {
-                notes.push("the target reference is not an image".to_string());
-                0.0
-            }
-            None => {
-                notes.push("no target reference was provided".to_string());
-                0.0
-            }
-        };
-
-        // Cheat divergence: compare the regenerated image to the model's on-disk
-        // preview. A high value means the model drew outside the tool. Absent or
-        // unreadable preview leaves it unmeasured rather than failing the run.
-        let preview_path = repo.join(&tool.preview);
-        let cheat_divergence = if preview_path.is_file() {
-            match score(&preview_path, &regenerated_path) {
-                Ok(similarity) => Some(1.0 - similarity),
-                Err(err) => {
-                    notes.push(format!("could not compare against the preview: {err}"));
-                    None
-                }
-            }
-        } else {
-            notes.push("the model left no preview image to compare".to_string());
-            None
-        };
-
-        let target_image = target
-            .map(seeded_reference_rel)
-            .unwrap_or_else(|| "reference/target.png".to_string());
-
         Ok(ValidationSummary {
-            // The run produced a scorable image: the load signal is positive.
+            // The run produced scorable image(s): the load signal is positive.
             loaded: true,
             detail: None,
             install: None,
@@ -442,22 +393,113 @@ impl Validator for AssetGenValidator {
             checks: Vec::new(),
             proofs: proof_results,
             asset: Some(AssetGenResult {
-                regenerated_image: REGENERATED_IMAGE.to_string(),
-                preview_image: rel_string(&tool.preview),
-                target_image,
-                actions_log: rel_string(&output.actions),
-                operation_count: operations.len(),
-                target_fidelity,
-                cheat_divergence,
-                detail: (!notes.is_empty()).then(|| notes.join("; ")),
-                // Carry the sprite-sheet layout (when this case draws one) into the
-                // run record so the review UI can play the named sequences out of
-                // the regenerated and target images directly.
+                frames,
+                // Carry the sprite-sheet frame dims and sequences (when this case
+                // draws one) into the run record so the review UI can play the named
+                // sequences from the per-frame images directly.
                 sheet: test_case.sheet.clone(),
+                detail: None,
             }),
             adversarial: None,
         })
     }
+}
+
+/// Regenerate and score one frame. Returns `Err` with a fatal reason when the
+/// frame's action log cannot be read, parsed, or rendered — the caller maps that
+/// to a failed load. Non-fatal gaps (a missing target or preview) are recorded in
+/// the frame's `detail` instead.
+fn score_frame(
+    repo: &Path,
+    canvas: &test_cabinet_draw::Canvas,
+    references: &[RenderedReference],
+    plan: &FramePlan,
+) -> std::result::Result<AssetFrameResult, String> {
+    let actions_path = repo.join(&plan.actions_rel);
+    let raw = std::fs::read_to_string(&actions_path).map_err(|err| {
+        format!(
+            "could not read action log `{}`: {err}",
+            plan.actions_rel.display()
+        )
+    })?;
+    let operations: Vec<test_cabinet_draw::Operation> =
+        serde_json::from_str(&raw).map_err(|err| {
+            format!(
+                "action log `{}` is not a valid operation log: {err}",
+                plan.actions_rel.display()
+            )
+        })?;
+
+    // Regenerate the image from the log through the shared drawing library — the
+    // same logic the in-container binary used — and write it into the produced
+    // tree so it is collected and served.
+    let regenerated_path = repo.join(&plan.regenerated_rel);
+    if let Some(parent) = regenerated_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
+    }
+    test_cabinet_draw::render(canvas, &operations)
+        .encode_png(&regenerated_path)
+        .map_err(|err| format!("could not write the regenerated image: {err}"))?;
+
+    let mut notes: Vec<String> = Vec::new();
+
+    // Fidelity: score the regenerated frame against its seeded target.
+    let target = references
+        .iter()
+        .find(|reference| reference.view == plan.target_view);
+    let target_fidelity = match target {
+        Some(target) if target.kind == MediaKind::Image => {
+            match score(&target.media_path, &regenerated_path) {
+                Ok(similarity) => similarity,
+                Err(err) => {
+                    notes.push(format!("could not score against the target: {err}"));
+                    0.0
+                }
+            }
+        }
+        Some(_) => {
+            notes.push("the target reference is not an image".to_string());
+            0.0
+        }
+        None => {
+            notes.push("no target reference was provided".to_string());
+            0.0
+        }
+    };
+
+    // Cheat divergence: compare the regenerated frame to the model's on-disk
+    // preview. A high value means the model drew outside the tool. Absent or
+    // unreadable preview leaves it unmeasured rather than failing the run.
+    let preview_path = repo.join(&plan.preview_rel);
+    let cheat_divergence = if preview_path.is_file() {
+        match score(&preview_path, &regenerated_path) {
+            Ok(similarity) => Some(1.0 - similarity),
+            Err(err) => {
+                notes.push(format!("could not compare against the preview: {err}"));
+                None
+            }
+        }
+    } else {
+        notes.push("the model left no preview image to compare".to_string());
+        None
+    };
+
+    let target_image = target
+        .map(seeded_reference_rel)
+        .unwrap_or_else(|| format!("reference/{}.png", plan.target_view));
+
+    Ok(AssetFrameResult {
+        index: plan.index,
+        regenerated_image: plan.regenerated_rel.clone(),
+        preview_image: rel_string(&plan.preview_rel),
+        target_image,
+        actions_log: rel_string(&plan.actions_rel),
+        operation_count: operations.len(),
+        target_fidelity,
+        cheat_divergence,
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    })
 }
 
 /// Dispatches validation to the validator for the case's [`TestType`]. The

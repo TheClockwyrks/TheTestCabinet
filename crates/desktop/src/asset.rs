@@ -22,8 +22,9 @@ use crate::config;
 
 /// The custom URI scheme an asset-generation run's media is served under. The
 /// webview loads a file at `tcab-asset://localhost/{id}/{file}` where `{file}` is
-/// `regenerated.png`, `preview.png`, `target.png`, or `actions.json` (the URL the
-/// desktop worker transport builds — see `tauriWorker.ts`).
+/// a single sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json`
+/// or a sprite sheet's per-frame `regenerated-<index>.png` (etc.) — the URL the
+/// desktop worker transport builds (see `tauriWorker.ts`).
 pub const SCHEME: &str = "tcab-asset";
 
 /// Handle a `tcab-asset://` request: resolve `/{id}/{file}` to that run's asset

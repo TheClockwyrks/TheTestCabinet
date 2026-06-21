@@ -293,7 +293,6 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         }),
         tool: resolved.tool.as_ref().map(|tool| StoredTool {
             binary: tool.binary.clone(),
-            operations: tool.operations.to_string_lossy().replace('\\', "/"),
             preview: tool.preview.to_string_lossy().replace('\\', "/"),
         }),
         output: resolved.output.as_ref().map(|output| StoredOutput {

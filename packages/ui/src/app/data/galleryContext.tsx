@@ -90,9 +90,10 @@ export interface GalleryDataInput {
    */
   proofMediaUrl?: (runId: string, file: string) => string | null;
   /**
-   * Resolve the loadable URL for one asset-generation run's media file
-   * (`regenerated.png`, `preview.png`, `target.png`, or `actions.json`), or null
-   * when the host cannot serve it. Each host wires its own source the same way it
+   * Resolve the loadable URL for one asset-generation run's media file — a single
+   * sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json`, or a
+   * sprite sheet's per-frame `regenerated-<index>.png` (etc.) — or null when the
+   * host cannot serve it. Each host wires its own source the same way it
    * wires {@link proofMediaUrl}: the consoles point at the backend (published) or
    * worker (produced) asset endpoint, the static site at the snapshot asset.
    * Omitted by a host that serves no asset media.
@@ -101,12 +102,14 @@ export interface GalleryDataInput {
 }
 
 /**
- * An asset-generation run's result, resolved for display: the regenerated image
- * (the scored output), the model's final preview, the seeded target, and the
- * recorded action log — each as a loadable URL (or null when the host cannot
+ * One frame of an asset-generation run, resolved for display: the regenerated
+ * image (the scored output), the model's final preview, the seeded target, and
+ * the recorded action log — each as a loadable URL (or null when the host cannot
  * serve it) — alongside the recorded fidelity and cheat-divergence signals.
  */
-export interface AssetResultView {
+export interface AssetFrameView {
+  /** The frame index: `0` for a single sprite, the declared index for a sheet. */
+  index: number;
   regeneratedUrl: string | null;
   previewUrl: string | null;
   targetUrl: string | null;
@@ -119,10 +122,22 @@ export interface AssetResultView {
   operationCount: number;
   /** Detail about anything that could not be evaluated, or null. */
   detail: string | null;
+}
+
+/**
+ * An asset-generation run's result, resolved for display: one frame for a single
+ * sprite, one per declared frame for a sprite sheet (each a separate image,
+ * scored independently).
+ */
+export interface AssetResultView {
+  /** The per-frame results, in declared order. */
+  frames: AssetFrameView[];
+  /** Detail about anything that could not be evaluated at the run level, or null. */
+  detail: string | null;
   /**
-   * The sprite-sheet frame grid and named sequences, present only when the case
-   * draws a sprite sheet. The regenerated and target images are then full sheets
-   * the UI slices into the named animations; absent for a single-sprite run.
+   * The sprite-sheet frame dimensions and named sequences, present only when the
+   * case draws a sprite sheet. The UI plays the named animations from the
+   * per-frame images; absent for a single-sprite run.
    */
   sheet: AssetSheet | null;
 }
@@ -244,14 +259,25 @@ export function GalleryDataProvider({
         if (!asset) return null;
         const url = (file: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        // A single sprite serves under bare names (its one frame); a sheet
+        // suffixes each frame with `-<index>`, matching the published layout.
+        const isSheet = !!asset.sheet;
+        const frames: AssetFrameView[] = asset.frames.map((frame) => {
+          const suffix = isSheet ? `-${frame.index}` : "";
+          return {
+            index: frame.index,
+            regeneratedUrl: url(`regenerated${suffix}.png`),
+            previewUrl: url(`preview${suffix}.png`),
+            targetUrl: url(`target${suffix}.png`),
+            actionsUrl: url(`actions${suffix}.json`),
+            fidelity: frame.targetFidelity,
+            cheatDivergence: frame.cheatDivergence,
+            operationCount: frame.operationCount,
+            detail: frame.detail,
+          };
+        });
         return {
-          regeneratedUrl: url("regenerated.png"),
-          previewUrl: url("preview.png"),
-          targetUrl: url("target.png"),
-          actionsUrl: url("actions.json"),
-          fidelity: asset.targetFidelity,
-          cheatDivergence: asset.cheatDivergence,
-          operationCount: asset.operationCount,
+          frames,
           detail: asset.detail,
           sheet: asset.sheet ?? null,
         };

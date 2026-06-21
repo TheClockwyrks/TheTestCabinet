@@ -16,10 +16,10 @@ height = 64
 background = "transparent"
 
 # The drawing tool. `draw` is the only way to make a mark; it records every
-# operation to the action log and re-renders the preview after each call.
+# operation to the action log and re-renders the preview after each call. Run
+# `draw --help` to see the operations; no operations schema is seeded.
 [tool]
 binary = "draw"
-operations = "schemas/operations.json"
 preview = "canvas.png"
 
 # The recorded action log — the authoritative output the score is regenerated

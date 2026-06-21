@@ -17,7 +17,6 @@ background = "transparent"
 
 [tool]
 binary = "draw"
-operations = "schemas/operations.json"
 preview = "canvas.png"
 
 [output]

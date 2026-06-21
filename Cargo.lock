@@ -5119,7 +5119,6 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "png 0.17.16",
- "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

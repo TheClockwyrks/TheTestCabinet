@@ -41,9 +41,9 @@ The Shard reads, at a glance, as a **faceted magenta crystal**:
 ## Working the tool
 
 Build the sprite up in sensible layers — lay down the magenta diamond body,
-then the diamond glyph outline, then the white facet glints. Consult
-`schemas/operations.json` for the available operations (filling and stroking
-circles and rectangles, lines, single pixels, flood fill, and a horizontal
-mirror) and their exact parameters. Call `draw` once per operation and read
-`canvas.png` between calls to judge your progress against this brief and the
-target.
+then the diamond glyph outline, then the white facet glints. Run `draw --help`
+for the available operations (filling and stroking circles and rectangles,
+lines, single pixels, flood fill, and a horizontal mirror) and `draw
+<operation> --help` for each one's exact flags. Call `draw` once per operation
+and read `canvas.png` between calls to judge your progress against this brief
+and the target.

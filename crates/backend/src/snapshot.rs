@@ -294,10 +294,12 @@ impl SnapshotBuilder {
     ///
     /// The asset-media plumbing is test-type-agnostic — an `assetMedia[]` entry is
     /// just a `{ file, key }` pair the result view fetches over `/asset/{file}` —
-    /// so this branches on the run's type to pick the fixed set of served names:
+    /// so this branches on the run's type to pick the served names:
     ///
-    /// - An **asset-generation** run exports the result view's images and log
-    ///   (`regenerated.png`, `preview.png`, `target.png`, `actions.json`).
+    /// - An **asset-generation** run exports the result view's images and log. A
+    ///   single sprite serves under bare names (`regenerated.png`, `preview.png`,
+    ///   `target.png`, `actions.json`); a sprite sheet suffixes each frame with
+    ///   `-<index>` (`regenerated-<index>.png`, etc.).
     /// - An **adversarial** run exports its browser-playable `replay.json`, which
     ///   the replay player loads through the foray-core wasm renderer (the renderer
     ///   itself ships with the UI/site bundle, not per run, so nothing else is
@@ -308,20 +310,35 @@ impl SnapshotBuilder {
     fn run_assets(&self, run: &StoredRun, prefix: &str) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
-        let files: &[&str] = if run.record.validation.asset.is_some() {
-            &[
-                "regenerated.png",
-                "preview.png",
-                "target.png",
-                "actions.json",
-            ]
+        let files: Vec<String> = if let Some(asset) = run.record.validation.asset.as_ref() {
+            // A single sprite serves under bare names; a sheet suffixes each frame
+            // with `-<index>`, matching `playable::serve_asset_file` and the publisher.
+            let is_sheet = asset.sheet.is_some();
+            asset
+                .frames
+                .iter()
+                .flat_map(|frame| {
+                    let suffix = if is_sheet {
+                        format!("-{}", frame.index)
+                    } else {
+                        String::new()
+                    };
+                    [
+                        format!("regenerated{suffix}.png"),
+                        format!("preview{suffix}.png"),
+                        format!("target{suffix}.png"),
+                        format!("actions{suffix}.json"),
+                    ]
+                })
+                .collect()
         } else if run.record.validation.adversarial.is_some() {
-            &["replay.json"]
+            vec!["replay.json".to_string()]
         } else {
             return (metas, objects);
         };
         let run_id = &run.record.id;
-        for &file in files {
+        for file in &files {
+            let file = file.as_str();
             let Ok(bytes) = self.store.read_run_asset(run_id, file) else {
                 continue;
             };
@@ -517,8 +534,10 @@ struct RunProofOut {
 }
 
 /// An asset-generation media file exposed in a per-run document. `file` is the
-/// stable served name the result view requests (`regenerated.png`, `preview.png`,
-/// `target.png`, or `actions.json`); `key` is its snapshot-relative object key.
+/// stable served name the result view requests — a single sprite's
+/// `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a sprite sheet's
+/// per-frame `regenerated-<index>.png` (etc.); `key` is its snapshot-relative
+/// object key.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunAssetOut {

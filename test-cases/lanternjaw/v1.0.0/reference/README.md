@@ -1,28 +1,30 @@
-# Lanternjaw — reference target
+# Lanternjaw — reference targets
 
-`target.png` is the visual goal the regenerated sheet is scored against. It is
-a 128×128 RGBA sprite sheet (a 4×4 grid of 32×32 frames), **seeded into the
-run** as the target and served as-is. The review UI also slices it into the
-named sequences (`[sheet.sequence]` in `test-case.toml`) and plays them as
-animations.
+`frames/<index>.png` are the per-frame visual goals the regenerated sheet is
+scored against — one **32×32 RGBA** image per declared `[[sheet.frame]]` in
+`test-case.toml`. Each is **seeded into the run** as that frame's target and
+served as-is. The review UI plays the named sequences (`[[sheet.sequence]]`)
+from these per-frame images as animations, and scores each frame independently
+(there is no whole-sheet aggregate).
 
 ## Source is not seeded
 
-The target was authored as an ordered list of drawing operations in
-`target.actions.json` and rendered through the **same `draw` binary** the
-model uses. That source action log is **harness-side only** — it is never
-seeded into a run, so a model cannot copy it. Authoring the target with the
-drawing tool itself guarantees the goal is achievable within the operation
-set, so fidelity scoring is fair.
+Each frame was authored as an ordered list of drawing operations in
+`frames/<index>.actions.json` and rendered through the **same drawing library**
+`draw-sheet` and the validator use. Those source action logs are
+**harness-side only** — they are never seeded into a run, so a model cannot copy
+them. Authoring each target with the drawing tool itself guarantees the goal is
+achievable within the operation set, so fidelity scoring is fair.
 
-## Regenerating the target
+## Regenerating a target
 
 From the repository root, with the `draw` binary built (`cargo build -p
-test-cabinet-draw --bin draw`):
+test-cabinet-draw --bin draw`), render one frame's log to its target (each
+frame is its own 32×32 image):
 
 ```
 target/debug/draw render \
-  --actions test-cases/lanternjaw/v1.0.0/reference/target.actions.json \
-  --out     test-cases/lanternjaw/v1.0.0/reference/target.png \
-  --width 128 --height 128 --background transparent
+  --actions test-cases/lanternjaw/v1.0.0/reference/frames/0.actions.json \
+  --out     test-cases/lanternjaw/v1.0.0/reference/frames/0.png \
+  --width 32 --height 32 --background transparent
 ```

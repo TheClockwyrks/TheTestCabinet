@@ -110,15 +110,16 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
   );
 }
 
-// The validation widget for an asset-generation run: the run regenerated a
-// scorable image (the load signal), how faithfully it matched the target, and
-// whether the model drew outside the tool (cheat divergence). The images
-// themselves are shown on the Verdict tab; this is the recorded numbers.
+// The validation widget for an asset-generation run: the run regenerated
+// scorable image(s) (the load signal), how faithfully each matched its target,
+// and whether the model drew outside the tool (cheat divergence). A single sprite
+// is one frame; a sprite sheet scores each frame independently, so each is a row.
+// The images themselves are shown on the Verdict tab; this is the recorded
+// numbers.
 function AssetValidationTable({ run }: { run: RunRecord }) {
   const { validation } = run;
   const asset = validation.asset!;
-  const drewOutsideTool =
-    asset.cheatDivergence !== null && asset.cheatDivergence > 0.05;
+  const isSheet = !!asset.sheet;
   return (
     <Panel>
       <table className={`${styles.checks} ${styles.section}`}>
@@ -135,37 +136,39 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
               </span>
             </td>
             <td className={styles.secondary}>
-              {asset.operationCount} operations · {validation.detail ?? "—"}
+              {isSheet
+                ? `${asset.frames.length} frames`
+                : `${asset.frames[0]?.operationCount ?? 0} operations`}{" "}
+              · {validation.detail ?? "—"}
             </td>
           </tr>
-          <tr>
-            <th scope="row" className={styles.checkName}>
-              Fidelity to target
-            </th>
-            <td>{(asset.targetFidelity * 100).toFixed(1)}%</td>
-            <td className={styles.secondary}>{asset.detail ?? "—"}</td>
-          </tr>
-          <tr>
-            <th scope="row" className={styles.checkName}>
-              Cheat divergence
-            </th>
-            <td>
-              {asset.cheatDivergence === null ? (
-                <span className={styles.secondary}>—</span>
-              ) : (
-                <span
-                  className={drewOutsideTool ? styles.notLoaded : styles.loaded}
-                >
-                  {(asset.cheatDivergence * 100).toFixed(1)}%
-                </span>
-              )}
-            </td>
-            <td className={styles.secondary}>
-              {drewOutsideTool
-                ? "drew outside the tool"
-                : "matches recorded actions"}
-            </td>
-          </tr>
+          {asset.frames.map((frame) => {
+            const drewOutsideTool =
+              frame.cheatDivergence !== null && frame.cheatDivergence > 0.05;
+            const label = isSheet ? `Frame ${frame.index}` : "Fidelity to target";
+            return (
+              <tr key={frame.index}>
+                <th scope="row" className={styles.checkName}>
+                  {label}
+                </th>
+                <td>{(frame.targetFidelity * 100).toFixed(1)}%</td>
+                <td className={styles.secondary}>
+                  {frame.cheatDivergence === null ? (
+                    frame.detail ?? "—"
+                  ) : (
+                    <span
+                      className={
+                        drewOutsideTool ? styles.notLoaded : styles.loaded
+                      }
+                    >
+                      divergence {(frame.cheatDivergence * 100).toFixed(1)}%
+                      {drewOutsideTool ? " — drew outside the tool" : ""}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </Panel>

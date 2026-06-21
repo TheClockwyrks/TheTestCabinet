@@ -1,0 +1,45 @@
+[
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 9,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 8,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 12,
+    "cy": 21,
+    "r": 4,
+    "color": "#ffb199"
+  },
+  {
+    "op": "fill_rect",
+    "x": 15,
+    "y": 23,
+    "width": 2,
+    "height": 3,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 12,
+    "r": 5,
+    "color": "#ffd166"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 12,
+    "r": 4,
+    "color": "#ffffff"
+  }
+]

@@ -19,9 +19,11 @@ asset *is* the task.
 
 The model is given an **isolated environment** containing a **drawing binary** it
 can call. The binary is the only way to make a mark: it exposes a set of editing
-operations — brushes and other image mutations — and the model produces the asset
-by **calling the binary repeatedly**, one operation at a time, until it decides
-the image is finished and returns.
+operations — brushes and other image mutations, as ordinary CLI subcommands — and
+the model produces the asset by **calling the binary repeatedly**, one operation
+at a time, until it decides the image is finished and returns. The binary's
+`--help` is the contract (a case seeds no operations schema); see
+[The drawing binaries](/testing/asset-generation/draw-tool/).
 
 Two properties make this work as a benchmark:
 
@@ -63,15 +65,20 @@ than scored.
 
 A case declares, with its `asset_kind`, whether the model draws a **single
 sprite** (one image on the whole canvas — the default) or a **sprite sheet** (a
-grid of animation frames drawn onto one larger canvas). A sprite-sheet case adds a
-`[sheet]` table naming the frame grid and the **animation sequences** — ordered
-lists of frames, each with a playback rate — so the review UI can play the named
-animations back from the regenerated and target sheets and a reviewer can judge a
-sheet by its motion, not just its static pixels. The shape is a property of the
-whole version, not a variant: a case is either a single sprite or a sprite sheet.
-Scoring is the same either way — the regenerated whole image is compared to the
-whole target.
+set of animation frames). A sprite sheet's frames are **completely separate
+files** — each its own canvas, drawn with the [`draw-sheet`
+binary](/testing/asset-generation/draw-tool/) and a required `--frame <index>` —
+not regions of one larger image. A sprite-sheet case adds a `[sheet]` table that
+declares its **frames** (each with the index it is written to and its own target)
+and the **animation sequences** — ordered lists of frame indices, each with a
+playback rate — so the review UI can play the named animations back from the
+per-frame regenerated and target images and a reviewer can judge a sheet by its
+motion, not just its static pixels. The shape is a property of the whole version,
+not a variant: a case is either a single sprite or a sprite sheet. A single sprite
+is scored as one image against one target; a sprite sheet is scored **per frame**,
+each frame against its own target, with no whole-sheet aggregate.
 
-See [Manifests](/testing/asset-generation/manifests/) for how a case declares its
-target, canvas, `asset_kind`, the `[sheet]` grid and sequences, and the operations
-the binary exposes.
+See [The drawing binaries](/testing/asset-generation/draw-tool/) for how the model
+draws, and [Manifests](/testing/asset-generation/manifests/) for how a case
+declares its targets, canvas, `asset_kind`, and the `[sheet]` frames and
+sequences.

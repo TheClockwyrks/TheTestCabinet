@@ -45,8 +45,8 @@ The Prism reads, at a glance, as a **two-band boss — a shell around a core**:
 Build the sprite up in sensible layers — lay down the outer cyan disc, carve
 the dark gap to leave a thick cyan ring, fill the magenta core, then add the
 white rim highlights, the core's diamond glyph, and the shell's ring ticks.
-Consult `schemas/operations.json` for the available operations (filling and
-stroking circles and rectangles, lines, single pixels, flood fill, and a
-horizontal mirror) and their exact parameters. Call `draw` once per operation
-and read `canvas.png` between calls to judge your progress against this brief
-and the target.
+Run `draw --help` for the available operations (filling and stroking circles
+and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw <operation> --help` for each one's exact flags. Call `draw` once per
+operation and read `canvas.png` between calls to judge your progress against
+this brief and the target.

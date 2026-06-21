@@ -65,7 +65,7 @@ tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
 type = \"asset-generation\"\n\
 [canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
-[tool]\nbinary = \"draw\"\noperations = \"schemas/operations.json\"\npreview = \"canvas.png\"\n\
+[tool]\nbinary = \"draw\"\npreview = \"canvas.png\"\n\
 [output]\nactions = \"actions.json\"\n\
 [[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
@@ -73,18 +73,20 @@ type = \"asset-generation\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the sprite is.\"\n";
 
 /// Write an asset-generation version with all the files a valid one needs
-/// (prompt, seeded brief, operations schema, target image) and the given
-/// manifest, then return the catalog.
+/// (prompt, seeded brief, the single-sprite target image, and the per-frame
+/// targets a sprite sheet declares) and the given manifest, then return the
+/// catalog. No operations schema is written — the binary's `--help` is the
+/// contract.
 fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
-    fs::create_dir_all(version.join("schemas")).expect("schemas dir");
-    fs::create_dir_all(version.join("reference")).expect("reference dir");
+    fs::create_dir_all(version.join("reference/frames")).expect("reference dir");
     fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
     fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
-    fs::write(version.join("schemas/operations.json"), "{}").expect("schema");
     fs::write(version.join("reference/target.png"), b"\x89PNG").expect("target");
+    fs::write(version.join("reference/frames/0.png"), b"\x89PNG").expect("frame 0");
+    fs::write(version.join("reference/frames/1.png"), b"\x89PNG").expect("frame 1");
     fs::write(version.join("test-case.toml"), manifest).expect("manifest");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
@@ -104,13 +106,13 @@ fn asset_generation_case_resolves_its_tables() {
         version.output.as_ref().expect("output").actions.to_str(),
         Some("actions.json")
     );
-    // The operations schema is seeded like any other spec so the model can read it.
+    // No operations schema is seeded — the binary's `--help` is the contract.
     assert!(
-        version
+        !version
             .common_specs
             .iter()
             .any(|spec| spec.dest.to_str() == Some("schemas/operations.json")),
-        "operations schema is seeded as a common spec"
+        "no operations schema is seeded"
     );
 }
 
@@ -161,8 +163,10 @@ fn asset_generation_requires_a_single_target_reference() {
 
 // --- sprite-sheet resolution -----------------------------------------------
 
-/// A complete, valid sprite-sheet manifest: a 64x64 canvas tiled into a 2x2 grid
-/// of 32x32 frames with one named sequence. Tests clone this and mutate one thing.
+/// A complete, valid sprite-sheet manifest: a 32x32 frame canvas, two declared
+/// frames (each with its own target), and one named sequence over them. Tests
+/// clone this and mutate one thing. The preview/actions paths are `{frame}`
+/// templates since every frame is a separate file.
 const VALID_SHEET_MANIFEST: &str = "\
 name = \"Sheet\"\n\
 difficulty = \"medium\"\n\
@@ -170,15 +174,22 @@ tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
 type = \"asset-generation\"\n\
 asset_kind = \"sprite-sheet\"\n\
-[canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
-[tool]\nbinary = \"draw\"\noperations = \"schemas/operations.json\"\npreview = \"canvas.png\"\n\
-[output]\nactions = \"actions.json\"\n\
-[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
+[canvas]\nwidth = 32\nheight = 32\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"draw-sheet\"\npreview = \"frames/{frame}.png\"\n\
+[output]\nactions = \"frames/{frame}.actions.json\"\n\
+[sheet]\n\
+[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
+[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n\
 [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
-[[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
 [[variant]]\nslug = \"base\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the sheet is.\"\n";
+
+/// The `[sheet]` block of [`VALID_SHEET_MANIFEST`], for tests that delete it.
+const SHEET_BLOCK: &str = "[sheet]\n\
+[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
+[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n\
+[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n";
 
 #[test]
 fn sprite_sheet_resolves_its_sheet_table() {
@@ -186,15 +197,10 @@ fn sprite_sheet_resolves_its_sheet_table() {
     let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
     assert_eq!(version.asset_kind, AssetKind::SpriteSheet);
     let sheet = version.sheet.as_ref().expect("sheet");
-    assert_eq!(
-        (
-            sheet.frame_width,
-            sheet.frame_height,
-            sheet.columns,
-            sheet.rows
-        ),
-        (32, 32, 2, 2)
-    );
+    // Frame dimensions are the canvas dimensions; the frame count is just how many
+    // frames are declared.
+    assert_eq!((sheet.frame_width, sheet.frame_height), (32, 32));
+    assert_eq!(sheet.frames, vec![0, 1]);
     assert_eq!(sheet.sequences.len(), 1);
     let sequence = &sheet.sequences[0];
     assert_eq!(sequence.slug, "walk-right");
@@ -202,6 +208,21 @@ fn sprite_sheet_resolves_its_sheet_table() {
     assert_eq!(sequence.name, "Walk Right");
     assert_eq!(sequence.frames, vec![0, 1]);
     assert_eq!(sequence.fps, 4.0);
+    // Each declared frame's target is synthesized as a `target-<index>` reference.
+    assert!(
+        version
+            .common_references
+            .iter()
+            .any(|r| r.view == "target-0"),
+        "frame 0 target is a synthesized reference"
+    );
+    assert!(
+        version
+            .common_references
+            .iter()
+            .any(|r| r.view == "target-1"),
+        "frame 1 target is a synthesized reference"
+    );
 }
 
 #[test]
@@ -218,10 +239,7 @@ fn single_sprite_defaults_asset_kind() {
 fn sprite_kind_rejects_a_sheet_table() {
     // A single-sprite case (the default kind) that declares a [sheet] table is a
     // mistake.
-    let manifest = format!(
-        "{VALID_ASSET_MANIFEST}[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
-         [[sheet.sequence]]\nslug = \"x\"\nframes = [0]\nfps = 2.0\n"
-    );
+    let manifest = format!("{VALID_ASSET_MANIFEST}{SHEET_BLOCK}");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -234,11 +252,7 @@ fn sprite_kind_rejects_a_sheet_table() {
 
 #[test]
 fn sprite_sheet_requires_a_sheet_table() {
-    let manifest = VALID_SHEET_MANIFEST.replace(
-        "[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
-         [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n",
-        "",
-    );
+    let manifest = VALID_SHEET_MANIFEST.replace(SHEET_BLOCK, "");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -247,26 +261,64 @@ fn sprite_sheet_requires_a_sheet_table() {
 }
 
 #[test]
-fn sprite_sheet_rejects_grid_mismatch() {
-    // 3 columns of 32px is 96px wide, not the canvas's 64px.
-    let manifest = VALID_SHEET_MANIFEST.replace("columns = 2", "columns = 3");
+fn sprite_sheet_rejects_a_sheet_with_no_frames() {
+    // Drop both [[sheet.frame]] entries but keep a sequence: a sheet must declare
+    // its frames.
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
+         [[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n",
+        "",
+    );
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a grid that does not tile the canvas is rejected");
-    assert!(format!("{err}").contains("must"), "got: {err}");
-    assert!(format!("{err}").contains("canvas"), "got: {err}");
+        .expect_err("a [sheet] with no frames is rejected");
+    assert!(
+        format!("{err}").contains("at least one [[sheet.frame]]"),
+        "got: {err}"
+    );
 }
 
 #[test]
-fn sprite_sheet_rejects_out_of_range_frame() {
-    // The 2x2 grid has cells 0..=3; frame 4 does not exist.
+fn sprite_sheet_rejects_duplicate_frame_index() {
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n",
+        "[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/1.png\"\n",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("two frames with the same index are rejected");
+    assert!(
+        format!("{err}").contains("duplicate sheet frame index 0"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn sprite_sheet_rejects_a_missing_frame_target() {
+    // Point a frame at a target file that does not exist.
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "target = \"reference/frames/1.png\"",
+        "target = \"reference/frames/missing.png\"",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a frame target that does not exist is rejected");
+    assert!(format!("{err}").contains("does not exist"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_undeclared_sequence_frame() {
+    // The sheet declares frames 0 and 1; frame 4 is not declared.
     let manifest = VALID_SHEET_MANIFEST.replace("frames = [0, 1]", "frames = [0, 4]");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a frame index outside the grid is rejected");
+        .expect_err("a sequence frame that is not a declared frame is rejected");
     assert!(format!("{err}").contains("frame 4"), "got: {err}");
+    assert!(format!("{err}").contains("not a declared"), "got: {err}");
 }
 
 #[test]
@@ -294,7 +346,7 @@ fn sprite_sheet_rejects_duplicate_sequence_slug() {
     let manifest = VALID_SHEET_MANIFEST.replace(
         "[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n",
         "[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
-         [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [2, 3]\nfps = 4.0\n",
+         [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [1, 0]\nfps = 4.0\n",
     );
     let err = asset_catalog(&manifest)
         .1

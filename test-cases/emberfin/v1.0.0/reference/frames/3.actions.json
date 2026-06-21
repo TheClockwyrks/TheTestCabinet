@@ -1,0 +1,96 @@
+[
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 11,
+    "r": 9,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 7,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "line",
+    "x0": 16,
+    "y0": 24,
+    "x1": 11,
+    "y1": 30,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "line",
+    "x0": 16,
+    "y0": 24,
+    "x1": 21,
+    "y1": 30,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 11,
+    "r": 8,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 16,
+    "cy": 18,
+    "r": 6,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 12,
+    "cy": 11,
+    "r": 4,
+    "color": "#ffb199"
+  },
+  {
+    "op": "line",
+    "x0": 16,
+    "y0": 23,
+    "x1": 12,
+    "y1": 29,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "line",
+    "x0": 16,
+    "y0": 23,
+    "x1": 20,
+    "y1": 29,
+    "color": "#ff7a59"
+  },
+  {
+    "op": "set_pixel",
+    "x": 16,
+    "y": 4,
+    "color": "#ffb199"
+  },
+  {
+    "op": "fill_rect",
+    "x": 18,
+    "y": 5,
+    "width": 1,
+    "height": 3,
+    "color": "#5a1e14"
+  },
+  {
+    "op": "fill_circle",
+    "cx": 21,
+    "cy": 18,
+    "r": 2,
+    "color": "#ffd166"
+  },
+  {
+    "op": "set_pixel",
+    "x": 21,
+    "y": 18,
+    "color": "#ffffff"
+  }
+]

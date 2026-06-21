@@ -314,8 +314,9 @@ pub async fn proof_file(
 }
 
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
-/// final preview, target, or action log (`{file}` is `regenerated.png`,
-/// `preview.png`, `target.png`, or `actions.json`). Resolved from the run
+/// final preview, target, or action log. `{file}` is a single sprite's
+/// `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a sprite
+/// sheet's per-frame `regenerated-<index>.png` (etc.). Resolved from the run
 /// record's `validation.asset` via [`serve_asset_file`], the same resolver the
 /// desktop core serves these artifacts over its `tcab-asset://` scheme.
 pub async fn asset_file(

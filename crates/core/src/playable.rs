@@ -131,14 +131,23 @@ pub struct ServedAssetFile {
 ///
 /// `run_dir` is the run's output directory (`<out>/<id>`), holding its
 /// `run-record.json` and its collected `implementation/` tree. `file` is a
-/// logical name with an extension — `regenerated.png`, `preview.png`,
-/// `target.png`, or `actions.json` — whose stem selects which recorded path in
-/// the run's `validation.asset` to read from `implementation/`. Returns `None`
-/// when the run record, its asset result, the named artifact, or the file is
-/// missing — the caller maps that to a 404. The desktop core serves the same
-/// artifacts over its `tcab-asset://` scheme from this resolver.
+/// logical name with an extension whose kind selects which recorded path in the
+/// run's `validation.asset` frame to read from `implementation/`:
+///
+/// - a single sprite uses `regenerated.png`, `preview.png`, `target.png`, or
+///   `actions.json` (its one frame, index 0);
+/// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`,
+///   `target-<index>.png`, or `actions-<index>.json` (one per declared frame).
+///
+/// The flat `<kind>-<index>` spelling keeps each artifact a single path segment so
+/// it routes through the one-segment `/asset/{file}` endpoints unchanged.
+///
+/// Returns `None` when the run record, its asset result, the named frame, the
+/// artifact, or the file is missing — the caller maps that to a 404. The desktop
+/// core serves the same artifacts over its `tcab-asset://` scheme from this
+/// resolver.
 pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
-    let stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
+    let (kind, frame) = parse_asset_request(file)?;
 
     let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
     let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
@@ -148,15 +157,21 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     // path the asset-gen media use, so the asset-media plumbing stays
     // test-type-agnostic.
     let rel: &str = if let Some(asset) = record.validation.asset.as_ref() {
-        match stem {
-            "regenerated" => &asset.regenerated_image,
-            "preview" => &asset.preview_image,
-            "target" => &asset.target_image,
-            "actions" => &asset.actions_log,
+        // A frame index selects that frame for a sheet; its absence selects the
+        // one frame of a single sprite.
+        let frame_result = match frame {
+            Some(index) => asset.frames.iter().find(|f| f.index == index)?,
+            None => asset.frames.first()?,
+        };
+        match kind {
+            "regenerated" => &frame_result.regenerated_image,
+            "preview" => &frame_result.preview_image,
+            "target" => &frame_result.target_image,
+            "actions" => &frame_result.actions_log,
             _ => return None,
         }
     } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
-        match stem {
+        match kind {
             "replay" => &adversarial.replay_json,
             _ => return None,
         }
@@ -169,6 +184,20 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         content_type: asset_content_type(file),
         body,
     })
+}
+
+/// Parse an asset request into its kind and optional frame index: `regenerated.png`
+/// → `("regenerated", None)`; `actions-3.json` → `("actions", Some(3))`. The kind
+/// names (`regenerated`/`preview`/`target`/`actions`) carry no `-`, so a trailing
+/// `-<digits>` is unambiguously a frame index.
+fn parse_asset_request(file: &str) -> Option<(&str, Option<u32>)> {
+    let stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
+    if let Some((kind, index)) = stem.rsplit_once('-')
+        && let Ok(index) = index.parse::<u32>()
+    {
+        return Some((kind, Some(index)));
+    }
+    Some((stem, None))
 }
 
 /// The `Content-Type` for an asset-generation artifact, by file extension: the

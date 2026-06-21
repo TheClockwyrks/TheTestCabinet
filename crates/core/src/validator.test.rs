@@ -127,7 +127,6 @@ fn asset_version() -> TestCaseVersion {
         }),
         tool: Some(ToolSpec {
             binary: "draw".to_string(),
-            operations: std::path::PathBuf::from("schemas/operations.json"),
             preview: std::path::PathBuf::from("canvas.png"),
         }),
         output: Some(OutputSpec {
@@ -193,10 +192,14 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
 
     assert!(summary.loaded);
     let asset = summary.asset.expect("asset result");
-    assert_eq!(asset.operation_count, 1);
-    assert_eq!(asset.target_fidelity, 1.0, "regenerated matches the target");
+    // A single sprite is one frame (index 0).
+    assert_eq!(asset.frames.len(), 1);
+    let frame = &asset.frames[0];
+    assert_eq!(frame.index, 0);
+    assert_eq!(frame.operation_count, 1);
+    assert_eq!(frame.target_fidelity, 1.0, "regenerated matches the target");
     assert_eq!(
-        asset.cheat_divergence,
+        frame.cheat_divergence,
         Some(0.0),
         "preview matches regeneration"
     );
@@ -209,32 +212,51 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
 }
 
 #[test]
-fn asset_validation_carries_the_sheet_layout_into_the_result() {
+fn asset_validation_scores_each_sheet_frame_independently() {
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = dir.path().join("impl");
-    std::fs::create_dir_all(&repo).expect("repo");
-    std::fs::write(
-        repo.join("actions.json"),
-        r##"[{"op":"fill_background","color":"#ff0000"}]"##,
-    )
-    .expect("actions");
-    write_png(&repo.join("canvas.png"), 4, 4, &red_4x4());
-    let target = dir.path().join("target.png");
-    write_png(&target, 4, 4, &red_4x4());
-    let references = vec![RenderedReference {
-        view: "target".to_string(),
-        kind: MediaKind::Image,
-        media_path: target,
-    }];
+    std::fs::create_dir_all(repo.join("frames")).expect("frames dir");
+    let red_2x2 = || [255u8, 0, 0, 255].repeat(4);
+    // Two declared frames, each with its own recorded log and matching preview.
+    for index in [0u32, 1] {
+        std::fs::write(
+            repo.join(format!("frames/{index}.actions.json")),
+            r##"[{"op":"fill_background","color":"#ff0000"}]"##,
+        )
+        .expect("frame actions");
+        write_png(&repo.join(format!("frames/{index}.png")), 2, 2, &red_2x2());
+    }
+    // One target per frame, found by the synthesized `target-<index>` view.
+    let mut references = Vec::new();
+    for index in [0u32, 1] {
+        let target = dir.path().join(format!("target-{index}.png"));
+        write_png(&target, 2, 2, &red_2x2());
+        references.push(RenderedReference {
+            view: format!("target-{index}"),
+            kind: MediaKind::Image,
+            media_path: target,
+        });
+    }
 
-    // A 4x4 canvas tiled into a 2x2 grid of 2x2 frames, with one named sequence.
+    // The canvas is one frame (2x2); the sheet declares two frames and a sequence.
     let mut version = asset_version();
     version.asset_kind = AssetKind::SpriteSheet;
+    version.canvas = Some(CanvasSpec {
+        width: 2,
+        height: 2,
+        background: "transparent".to_string(),
+    });
+    version.tool = Some(ToolSpec {
+        binary: "draw-sheet".to_string(),
+        preview: std::path::PathBuf::from("frames/{frame}.png"),
+    });
+    version.output = Some(OutputSpec {
+        actions: std::path::PathBuf::from("frames/{frame}.actions.json"),
+    });
     version.sheet = Some(SheetSpec {
         frame_width: 2,
         frame_height: 2,
-        columns: 2,
-        rows: 2,
+        frames: vec![0, 1],
         sequences: vec![SheetSequence {
             slug: "walk-right".to_string(),
             name: "Walk Right".to_string(),
@@ -254,10 +276,22 @@ fn asset_validation_carries_the_sheet_layout_into_the_result() {
         )
         .expect("validate");
     let asset = summary.asset.expect("asset result");
+    // One result per declared frame, each scored against its own target with its
+    // regenerated image written under `regenerated/<index>.png`.
+    assert_eq!(asset.frames.len(), 2);
+    for (frame, index) in asset.frames.iter().zip([0u32, 1]) {
+        assert_eq!(frame.index, index);
+        assert_eq!(frame.target_fidelity, 1.0);
+        assert_eq!(frame.cheat_divergence, Some(0.0));
+        assert!(
+            repo.join(format!("regenerated/{index}.png")).is_file(),
+            "frame {index} regenerated image is written"
+        );
+    }
     // The sprite-sheet layout rides into the run record so the review UI can play
-    // the named sequences from the regenerated and target images directly.
+    // the named sequences from the per-frame images directly.
     let sheet = asset.sheet.expect("sheet carried into result");
-    assert_eq!((sheet.columns, sheet.rows), (2, 2));
+    assert_eq!(sheet.frames, vec![0, 1]);
     assert_eq!(sheet.sequences.len(), 1);
     assert_eq!(sheet.sequences[0].slug, "walk-right");
     assert_eq!(sheet.sequences[0].frames, vec![0, 1]);
@@ -295,11 +329,12 @@ fn asset_validation_flags_drawing_outside_the_tool() {
         .expect("validate");
 
     let asset = summary.asset.expect("asset result");
+    let frame = &asset.frames[0];
     assert_eq!(
-        asset.target_fidelity, 1.0,
+        frame.target_fidelity, 1.0,
         "the regenerated image still matches the target"
     );
-    let divergence = asset.cheat_divergence.expect("divergence measured");
+    let divergence = frame.cheat_divergence.expect("divergence measured");
     assert!(
         divergence > 0.5,
         "blue-vs-red preview diverges strongly: {divergence}"

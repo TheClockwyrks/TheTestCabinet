@@ -75,24 +75,6 @@ impl<'de> Deserialize<'de> for Rgba {
     }
 }
 
-#[cfg(feature = "cli")]
-impl schemars::JsonSchema for Rgba {
-    fn schema_name() -> String {
-        "Rgba".to_string()
-    }
-
-    fn json_schema(_generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
-        // A color is a hex string on the wire; describe it as such so the seeded
-        // operations schema documents the exact spelling to the model.
-        serde_json::from_value(serde_json::json!({
-            "type": "string",
-            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-            "description": "Color as `#rrggbb` or `#rrggbbaa` hex.",
-        }))
-        .expect("static Rgba schema is valid")
-    }
-}
-
 /// The initial state of the canvas before any operation runs: either fully
 /// transparent or flooded with a single color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

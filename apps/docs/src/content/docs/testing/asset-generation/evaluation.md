@@ -26,14 +26,16 @@ end-to-end [checks](/testing/end-to-end/evaluation/#checks), this is a recorded
 signal rather than a pass/fail gate: a faithful sprite scores well, a vague one
 scores poorly, and the number is surfaced as recorded context for the reviewer.
 
-For a **sprite sheet** this is unchanged: the regenerated **whole sheet** is
-scored against the **whole target sheet** — fidelity is one number over the entire
-image, not per frame or per sequence. The `[sheet]` table's named
-[sequences](/testing/asset-generation/manifests/) do not enter scoring; they are
-surfaced to the reviewer and **played back as live animations** in the review UI
-(both the regenerated sheet and the target, sliced into each named sequence) so a
-person can judge the motion the sheet encodes — a separate, human assessment
-alongside the recorded fidelity number.
+For a **sprite sheet** each frame is its own separate file, so scoring is **per
+frame**: every regenerated frame is compared to its own
+[per-frame target](/testing/asset-generation/manifests/) and carries its own
+fidelity and cheat-divergence numbers. There is **no whole-sheet aggregate** — the
+run surfaces the frames' independent scores rather than one number. The `[sheet]`
+table's named [sequences](/testing/asset-generation/manifests/) do not enter
+scoring; they are surfaced to the reviewer and **played back as live animations**
+in the review UI (the regenerated frames beside the target frames, in each named
+sequence's order) so a person can judge the motion the sheet encodes — a separate,
+human assessment alongside the recorded per-frame numbers.
 
 ## Cheat detection
 

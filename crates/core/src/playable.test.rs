@@ -103,6 +103,25 @@ fn traversal_outside_the_build_is_refused() {
 }
 
 #[test]
+fn asset_request_parses_bare_names_and_per_frame_names() {
+    // A single sprite uses bare names (its one frame, index 0); a sprite sheet
+    // suffixes each frame with `-<index>`.
+    assert_eq!(
+        parse_asset_request("regenerated.png"),
+        Some(("regenerated", None))
+    );
+    assert_eq!(parse_asset_request("actions.json"), Some(("actions", None)));
+    assert_eq!(
+        parse_asset_request("target-3.png"),
+        Some(("target", Some(3)))
+    );
+    assert_eq!(
+        parse_asset_request("preview-12.png"),
+        Some(("preview", Some(12)))
+    );
+}
+
+#[test]
 fn missing_file_is_none() {
     let dir = impl_with_build("dist", &[("index.html", "<html></html>")]);
     let build = dir.path().join("implementation").join("dist");
