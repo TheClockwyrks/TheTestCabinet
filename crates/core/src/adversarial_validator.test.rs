@@ -12,7 +12,7 @@ use foray_core::state::{Ended, Score};
 use super::{AdversarialValidator, ended_to, summarize};
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
-    BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
+    AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
 };
 use crate::validation::{AdversarialOutcome, AdversarialTeam, Validator};
 
@@ -54,6 +54,8 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         }),
         r#match: None,
         replay: None,
+        asset_kind: AssetKind::Sprite,
+        sheet: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

@@ -1,18 +1,21 @@
 name = "Gloamfin"
-difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "enemy"]
+difficulty = "hard"
+tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
-Draw the Gloamfin: an eyeless deep-sea pursuer that hunts by echolocation, as a \
-64x64 enemy sprite produced one drawing operation at a time."""
+Draw the Gloamfin: the Listener, an eyeless deep-sea predator that hunts by \
+sound, as a 128x128 sprite sheet — four-direction movement plus a sonar-pulse \
+animation, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_seconds = 3600
 type = "asset-generation"
+asset_kind = "sprite-sheet"
 
-# A 64x64 transparent canvas keeps every run comparable.
+# A 128x128 transparent canvas, tiled into a 4x4 grid of 32x32 frames (one frame
+# per maze tile), keeps every run comparable.
 [canvas]
-width = 64
-height = 64
+width = 128
+height = 128
 background = "transparent"
 
 # The drawing tool. `draw` is the only way to make a mark; it records every
@@ -27,7 +30,45 @@ preview = "canvas.png"
 [output]
 actions = "actions.json"
 
-# The visual goal the regenerated sprite is scored against. Served as-is.
+# The frame grid and the named animation sequences a reviewer plays back. Frames
+# are numbered row-major from the top-left (frame i is at column i % 4, row i / 4).
+[sheet]
+frame_width = 32
+frame_height = 32
+columns = 4
+rows = 4
+
+[[sheet.sequence]]
+slug = "walk-down"
+name = "Swim — down"
+frames = [0, 1]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-up"
+name = "Swim — up"
+frames = [2, 3]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-left"
+name = "Swim — left"
+frames = [4, 5]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-right"
+name = "Swim — right"
+frames = [6, 7]
+fps = 4
+
+[[sheet.sequence]]
+slug = "sonar-pulse"
+name = "Sonar pulse"
+frames = [8, 9, 10, 11, 12, 13]
+fps = 8
+
+# The visual goal the regenerated sheet is scored against. Served as-is.
 [[reference]]
 view = "target"
 media = "reference/target.png"
@@ -45,57 +86,62 @@ name = "Base"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sprite matches the Gloamfin target — its \
-silhouette, the deep-sea palette, and the unmistakable read of an eyeless \
-predator that hunts without sight."""
+How faithfully the regenerated sheet matches the Gloamfin target — its eyeless \
+silhouette, the cold violet palette, the four readable swim directions, and the \
+sonar-pulse animation that marks it as the predator that hunts by sound."""
 
 [[review_item]]
 id = "eyeless"
 title = "Eyeless head"
 text = """
-The sprite has no eyes at all — a smooth, blunt head reading clearly as a \
-creature that navigates without sight. A drawn eye is a failure for this case."""
+Every frame's creature has no eyes at all — a smooth, blunt head reading clearly \
+as a predator that navigates without sight. A drawn eye is a failure for this \
+case."""
 weight = 3
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
-id = "pursuer-read"
-title = "Reads as a pursuer"
+id = "four-directions"
+title = "Four readable directions"
 text = """
-The sprite reads as a forward-facing ENEMY chaser — a body and blunt head \
-oriented in its direction of travel with a swept tail behind — not as a passive \
-background fish or a player avatar."""
+The movement frames read as the creature swimming in four distinct directions — \
+down (rows 0), up, left, and right — each with its blunt head leading its \
+direction of travel and a forked tail trailing behind, not the same blob \
+repeated."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "sonar-tell"
+title = "Sonar-pulse animation"
+text = """
+The tell frames (row 2 into row 3) show a pale sonar pulse — concentric rings in \
+the sonar accent color emanating from the body and expanding frame to frame — the \
+signature of a creature that 'sees' by sound."""
 weight = 2
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
-id = "echo-cue"
-title = "Echolocation cue"
-text = """
-Some visual cue of echolocation is present — sonar-ripple arcs or pulses reading \
-as emanating from the head — distinguishing it from an ordinary fish."""
-weight = 1
-reference = "target"
-domain = "fidelity"
-
-[[review_item]]
 id = "palette"
-title = "Deep-sea palette"
+title = "Cold violet palette"
 text = """
-Uses the cold deep-sea palette from the brief (abyssal teal body, lighter belly, \
-pale sonar accent) with no out-of-palette colors and no halo of stray pixels."""
+Uses the Listener's cold palette from the brief (violet body, lighter violet \
+underside, dark outline, pale sonar accent) with no out-of-palette colors and no \
+halo of stray pixels."""
 weight = 1
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
 id = "framing"
-title = "Canvas framing"
+title = "Frame framing"
 text = """
-The creature fills most of the 64x64 frame, roughly centered with a small margin, \
-neither tiny in a corner nor clipped at an edge."""
+Each creature fills most of its own 32x32 frame cell, centered with a small \
+margin, neither tiny in a corner nor spilling across the grid lines into the \
+neighboring frame."""
 weight = 1
 reference = "target"
 domain = "fidelity"

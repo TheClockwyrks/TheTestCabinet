@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ProofFile, TestCaseVersion};
+use crate::test_case::{MediaKind, ProofFile, SheetSpec, TestCaseVersion};
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +128,13 @@ pub struct AssetGenResult {
     /// log that named operations but produced no preview to compare).
     #[serde(default)]
     pub detail: Option<String>,
+    /// The sprite-sheet frame grid and named sequences, when the case draws a
+    /// sprite sheet (`asset_kind = "sprite-sheet"`). Carried into the run record so
+    /// the review UI can slice the regenerated and target images into the named
+    /// animations and play them back, without a separate catalog lookup. `None` for
+    /// a single-sprite case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
 }
 
 /// Which side a match outcome is reported from, for an adversarial run.

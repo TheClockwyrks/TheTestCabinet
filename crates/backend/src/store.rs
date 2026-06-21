@@ -29,7 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::TestType;
+use test_cabinet_core::{AssetKind, SheetSpec, TestType};
 
 use crate::error::{BackendError, Result};
 
@@ -92,6 +92,16 @@ pub struct StoredManifest {
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<StoredOutput>,
+    /// The asset shape (single sprite vs sprite sheet). Defaulted to
+    /// [`AssetKind::Sprite`] for manifests stored before the discriminator existed.
+    #[serde(default)]
+    pub asset_kind: AssetKind,
+    /// The sprite-sheet frame grid and named sequences. `Some` only for a
+    /// sprite-sheet case. Reuses the core [`SheetSpec`] verbatim — its serialized
+    /// shape is the wire shape the runner deserializes — so the layout survives a
+    /// backend-driven run without a mapping step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the

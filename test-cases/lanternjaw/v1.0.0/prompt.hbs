@@ -1,13 +1,14 @@
-Draw the **Lanternjaw**, a 64x64 enemy sprite, using only the drawing tool.
+Draw the **Lanternjaw**, a 128x128 **sprite sheet** of a deep-sea enemy, using
+only the drawing tool.
 
-The Lanternjaw is a **non-playable pursuer** in a deep-sea maze-chase game — an
-anglerfish-style ambush predator that lures and hunts the player with the glowing
-light on its head. You are drawing the *enemy*, never the player.
+The Lanternjaw is **the Lure**: a **non-playable pursuer** in a deep-sea
+maze-chase game — an anglerfish-style ambush predator that hunts the player by
+light with a dangling lure-light. You are drawing the *enemy*, never the player.
 
 ## How drawing works
 
 The only way to make a mark is the `draw` binary already on your `PATH`. It is
-the sole channel: you build the sprite by calling it **one operation at a time**,
+the sole channel: you build the sheet by calling it **one operation at a time**,
 and the ordered list of operations you issue — recorded to `actions.json` — is
 the **authoritative output that is scored**, not the pixels on disk. An image
 produced any other way (writing a PNG directly, editing `canvas.png` by hand) is
@@ -20,7 +21,7 @@ are already in place at `{{workspace}}`.
 Each call applies one operation passed as JSON:
 
 ```
-draw apply --json '{"op":"fill_circle","cx":28,"cy":38,"r":18,"color":"#0e3a3a"}'
+draw apply --json '{"op":"fill_circle","cx":20,"cy":17,"r":8,"color":"#243042"}'
 ```
 
 Read `schemas/operations.json` for the exact operations and their parameters, and
@@ -36,13 +37,14 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the canvas, the palette, the form of the Lanternjaw,
-and how to work the tool; `schemas/operations.json` is the exact operation
-contract.
+`specs/brief.md` describes the canvas, the **4×4 frame grid** and which frame
+holds which pose, the form and palette of the Lanternjaw, and how to work the
+tool; `schemas/operations.json` is the exact operation contract.
 
 ## What to deliver
 
-Build the Lanternjaw sprite up operation by operation until the image in
-`canvas.png` matches the brief — its bulky silhouette, the glowing lure on its
-stalk, the toothed maw, and the dark deep-sea palette of a lurking predator. When
-you are satisfied, stop: the recorded `actions.json` is your finished submission.
+Build the Lanternjaw sprite sheet up operation by operation until the image in
+`canvas.png` matches the brief and the target: a dark anglerfish predator with a
+glowing amber lure drawn in each of its 32×32 frame cells — swimming down, up,
+left, and right (two frames each), and the lure-bob animation. When you are
+satisfied, stop: the recorded `actions.json` is your finished submission.

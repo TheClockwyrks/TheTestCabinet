@@ -1,0 +1,50 @@
+Draw the **Emberfin**, a 128x128 **sprite sheet** of a deep-sea enemy, using only
+the drawing tool.
+
+The Emberfin is **the Flarefish**: a **non-playable pursuer** in a deep-sea
+maze-chase game — a predator that is blind between flares and hunts in the light
+of its own flare. You are drawing the *enemy*, never the player.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is
+the sole channel: you build the sheet by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is
+the **authoritative output that is scored**, not the pixels on disk. An image
+produced any other way (writing a PNG directly, editing `canvas.png` by hand) is
+discarded and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each call applies one operation passed as JSON:
+
+```
+draw apply --json '{"op":"fill_circle","cx":16,"cy":20,"r":8,"color":"#ff7a59"}'
+```
+
+Read `schemas/operations.json` for the exact operations and their parameters, and
+**read `canvas.png` after your calls** to see your progress and decide what to do
+next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the canvas, the **4×4 frame grid** and which frame
+holds which pose, the form and palette of the Emberfin, and how to work the tool;
+`schemas/operations.json` is the exact operation contract.
+
+## What to deliver
+
+Build the Emberfin sprite sheet up operation by operation until the image in
+`canvas.png` matches the brief and the target: an orange flare-making predator
+drawn in each of its 32×32 frame cells — swimming down, up, left, and right (two
+frames each), and the charge-up-to-flare-bloom animation. When you are satisfied,
+stop: the recorded `actions.json` is your finished submission.

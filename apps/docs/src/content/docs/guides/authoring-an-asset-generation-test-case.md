@@ -17,9 +17,14 @@ cheat-divergence are scored). While doing the work, follow the
 Building a playable game instead is a different test type with its own manifest;
 see [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/).
 
-The worked examples are the `gloamfin` and `lanternjaw` cases
-(`test-cases/gloamfin/v1.0.0/`). Read one alongside this guide; a new case should
-look like it.
+A case draws **either a single sprite or a sprite sheet** (a grid of animation
+frames), chosen by the manifest's `asset_kind` field — a version-level choice, not
+a variant. The worked examples: the `spectra-fighter`, `spectra-shard`,
+`spectra-flux`, and `spectra-prism` cases are **single sprites**
+(`asset_kind = "sprite"`, the default); the `gloamfin`, `lanternjaw`, and
+`emberfin` cases are **sprite sheets** (`asset_kind = "sprite-sheet"`, with a
+`[sheet]` table of named animation sequences). Read the one matching the kind you
+are authoring alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
 

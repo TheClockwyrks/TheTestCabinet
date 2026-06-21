@@ -194,6 +194,44 @@ export interface AssetGenResult {
   cheatDivergence: number | null;
   /** Detail about anything that could not be evaluated, or null. */
   detail: string | null;
+  /**
+   * The sprite-sheet frame grid and named sequences, present only when the case
+   * draws a sprite sheet (`asset_kind = "sprite-sheet"`). Lets a reviewer slice
+   * the regenerated and target images into the named animations and play them
+   * back. Absent for a single-sprite case.
+   */
+  sheet?: AssetSheet;
+}
+
+/**
+ * The frame grid of a sprite-sheet asset and the named animations played from
+ * it. The grid tiles the canvas exactly, so frame `i` occupies the pixel
+ * rectangle `((i % columns) * frameWidth, (i / columns) * frameHeight,
+ * frameWidth, frameHeight)`.
+ */
+export interface AssetSheet {
+  /** Width of one frame cell in pixels. */
+  frameWidth: number;
+  /** Height of one frame cell in pixels. */
+  frameHeight: number;
+  /** Number of frame columns across the sheet. */
+  columns: number;
+  /** Number of frame rows down the sheet. */
+  rows: number;
+  /** The named animation sequences, in declared order. */
+  sequences: AssetSheetSequence[];
+}
+
+/** One named animation within an {@link AssetSheet}. */
+export interface AssetSheetSequence {
+  /** Stable slug naming the sequence (e.g. `walk-right`). */
+  slug: string;
+  /** Human-readable display name. */
+  name: string;
+  /** The ordered row-major frame indices this sequence plays. */
+  frames: number[];
+  /** Playback rate in frames per second. */
+  fps: number;
 }
 
 /**

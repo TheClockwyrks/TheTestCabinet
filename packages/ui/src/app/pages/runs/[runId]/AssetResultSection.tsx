@@ -1,6 +1,7 @@
 import { Panel } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
+import { SpriteSheetPlayer } from "./SpriteSheetPlayer";
 import styles from "./RunDetailPages.module.scss";
 
 // 64x64 sprites are tiny; scale them up with crisp (nearest-neighbor) sampling so
@@ -46,6 +47,9 @@ export function AssetResultSection({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
   const asset = gallery.assetResultFor(run);
   if (!asset) return null;
+  // A sprite-sheet run carries the frame grid + named sequences; a single-sprite
+  // run does not, and shows only the static panes above.
+  const sheet = asset.sheet;
 
   // A high divergence means the model put pixels on the canvas outside the
   // recorded operations — a sign it tried to bypass the drawing tool. It is an
@@ -68,6 +72,49 @@ export function AssetResultSection({ run }: { run: RunRecord }) {
         <Sprite url={asset.targetUrl} label="Target" />
         <Sprite url={asset.previewUrl} label="Model's preview" />
       </div>
+
+      {sheet ? (
+        <div style={{ marginTop: 24 }}>
+          <h3 className={styles.section}>Animated sequences</h3>
+          <p className={styles.secondary}>
+            Each named animation from the sprite sheet, played from the regenerated
+            output beside the target so the motion can be compared frame for frame.
+          </p>
+          {sheet.sequences.map((sequence) => (
+            <figure key={sequence.slug} style={{ margin: "0 0 20px" }}>
+              <figcaption style={{ marginBottom: 8, fontWeight: 600 }}>
+                {sequence.name}
+                <span className={styles.secondary}>
+                  {" "}
+                  — {sequence.frames.length}{" "}
+                  {sequence.frames.length === 1 ? "frame" : "frames"} @{" "}
+                  {sequence.fps} fps
+                </span>
+              </figcaption>
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                <SpriteSheetPlayer
+                  url={asset.regeneratedUrl}
+                  label="Regenerated"
+                  frameWidth={sheet.frameWidth}
+                  frameHeight={sheet.frameHeight}
+                  columns={sheet.columns}
+                  frames={sequence.frames}
+                  fps={sequence.fps}
+                />
+                <SpriteSheetPlayer
+                  url={asset.targetUrl}
+                  label="Target"
+                  frameWidth={sheet.frameWidth}
+                  frameHeight={sheet.frameHeight}
+                  columns={sheet.columns}
+                  frames={sequence.frames}
+                  fps={sequence.fps}
+                />
+              </div>
+            </figure>
+          ))}
+        </div>
+      ) : null}
 
       <dl
         style={{

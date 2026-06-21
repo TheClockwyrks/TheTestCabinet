@@ -53,14 +53,17 @@ test-cases/<slug>/<version>/
 5. Write `prompt.hbs` using only the documented template variables
    (`{{variant.*}}`, `{{#each specs}}`) — it renders in strict mode.
 6. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
-   `type = "asset-generation"`, the `[canvas]`/`[tool]`/`[output]` tables, the one
-   common `[[reference]]` named `target`, at least one `[[variant]]`, and the
-   `[[domain]]`/`[[review_item]]`s that score the drawing. There is **no
-   `[build]`** and **no `[[check]]`**.
+   `type = "asset-generation"`, `asset_kind` (`"sprite"` — the default — or
+   `"sprite-sheet"`), the `[canvas]`/`[tool]`/`[output]` tables, the one common
+   `[[reference]]` named `target`, at least one `[[variant]]`, and the
+   `[[domain]]`/`[[review_item]]`s that score the drawing. A sprite-sheet case also
+   declares a `[sheet]` table (the frame grid and named `[[sheet.sequence]]`
+   animations). There is **no `[build]`** and **no `[[check]]`**.
 
 The `authoring-an-asset-generation-test-case` skill is the practical procedure to
-follow; read it before you start. The `gloamfin` and `lanternjaw` cases
-(`test-cases/gloamfin/v1.0.0/`) are the worked examples a new case should resemble.
+follow; read it before you start. The single-sprite worked examples are the
+`spectra-*` cases; the sprite-sheet worked examples are `gloamfin`, `lanternjaw`,
+and `emberfin` — read the one matching the kind you are authoring.
 
 ## Validate
 

@@ -1,0 +1,160 @@
+name = "Emberfin"
+difficulty = "hard"
+tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+summary = """
+Draw the Emberfin: the Flarefish, a deep-sea predator that hunts in the light of \
+its own flare, as a 128x128 sprite sheet — four-direction movement plus a \
+charge-up-to-flare-bloom animation, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 3600
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# A 128x128 transparent canvas, tiled into a 4x4 grid of 32x32 frames (one frame
+# per maze tile), keeps every run comparable.
+[canvas]
+width = 128
+height = 128
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call.
+[tool]
+binary = "draw"
+operations = "schemas/operations.json"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The frame grid and the named animation sequences a reviewer plays back. Frames
+# are numbered row-major from the top-left (frame i is at column i % 4, row i / 4).
+[sheet]
+frame_width = 32
+frame_height = 32
+columns = 4
+rows = 4
+
+[[sheet.sequence]]
+slug = "walk-down"
+name = "Swim — down"
+frames = [0, 1]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-up"
+name = "Swim — up"
+frames = [2, 3]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-left"
+name = "Swim — left"
+frames = [4, 5]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-right"
+name = "Swim — right"
+frames = [6, 7]
+fps = 4
+
+[[sheet.sequence]]
+slug = "flare-charge"
+name = "Flare — charge-up"
+frames = [8, 9, 10]
+fps = 6
+
+[[sheet.sequence]]
+slug = "flare-bloom"
+name = "Flare — bloom"
+frames = [11, 12, 13]
+fps = 8
+
+[[sheet.sequence]]
+slug = "flare-fade"
+name = "Flare — fade"
+frames = [14, 15]
+fps = 6
+
+# The visual goal the regenerated sheet is scored against. Served as-is.
+[[reference]]
+view = "target"
+media = "reference/target.png"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Emberfin target — its orange \
+silhouette and flare organ, the four readable swim directions, and the \
+charge-up-to-flare-bloom animation that marks it as the predator that hunts in \
+its own light."""
+
+[[review_item]]
+id = "flare-organ"
+title = "Flare organ"
+text = """
+Every frame's creature carries a bright flare organ on its body — a warm glowing \
+spot — so it reads as the flare-maker even between flares. It is the brightest \
+fixed element of the sprite against the orange body."""
+weight = 2
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "four-directions"
+title = "Four readable directions"
+text = """
+The movement frames read as the creature swimming in four distinct directions — \
+down, up, left, and right — each with its head leading its direction of travel \
+and a forked tail trailing behind, not the same blob repeated."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "flare-animation"
+title = "Charge-to-bloom animation"
+text = """
+The tell frames read as a flare in three beats: a charge-up glow that grows \
+(frames 8–10), a bright radial bloom of expanding rings peaking toward white \
+(frames 11–13), then a fade back toward the dim organ (frames 14–15). Playing \
+them reads unmistakably as a flare going off."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Orange-and-flare palette"
+text = """
+Uses the Flarefish's palette from the brief (orange body, lighter underside, dark \
+outline, warm flare glow, bright flare peak) with no out-of-palette colors and no \
+halo of stray pixels."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Frame framing"
+text = """
+Each creature fills most of its own 32x32 frame cell, centered with a small \
+margin; the flare bloom may reach toward the cell edges, but a swimming body \
+never spills across the grid lines into the neighboring frame."""
+weight = 1
+reference = "target"
+domain = "fidelity"

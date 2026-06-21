@@ -26,10 +26,10 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
-    OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec,
-    SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec, Variant,
-    WorkspaceFile,
+    AssetKind, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec,
+    MediaKind, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
+    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec,
+    Variant, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -726,6 +726,15 @@ struct VersionBody {
     r#match: Option<MatchBody>,
     #[serde(default)]
     replay: Option<ReplayBody>,
+    /// The asset shape (sprite vs sprite sheet). Defaults to
+    /// [`AssetKind::Sprite`], matching a store that predates the field.
+    #[serde(default)]
+    asset_kind: AssetKind,
+    /// The sprite-sheet grid and sequences. Deserialized straight into
+    /// [`SheetSpec`] — the wire shape matches it field for field — so a
+    /// backend-driven sprite-sheet run carries the same layout a local one does.
+    #[serde(default)]
+    sheet: Option<SheetSpec>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     #[serde(default)]
@@ -808,6 +817,8 @@ impl VersionBody {
             replay: self.replay.map(|replay| ReplaySpec {
                 renderer: PathBuf::from(&replay.renderer),
             }),
+            asset_kind: self.asset_kind,
+            sheet: self.sheet,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,

@@ -31,9 +31,21 @@ case — building a playable game from a spec — use the
 skill. To add a variant to an existing asset-generation version, use
 [`adding-an-asset-generation-variant`](../adding-an-asset-generation-variant/SKILL.md).
 
-The worked examples are the `gloamfin` and `lanternjaw` cases
-(`test-cases/gloamfin/v1.0.0/`). Read one alongside this skill — a new case should
-look like it.
+An asset-generation case draws **either a single sprite or a sprite sheet** (a
+grid of animation frames), chosen by the manifest's `asset_kind` field. This is a
+property of the whole version, **not** a variant — a case is one or the other,
+never both. The worked examples:
+
+- **Single sprite** (`asset_kind = "sprite"`, the default): the `spectra-fighter`,
+  `spectra-shard`, `spectra-flux`, and `spectra-prism` cases — one 64×64 sprite
+  each.
+- **Sprite sheet** (`asset_kind = "sprite-sheet"`): the `gloamfin`, `lanternjaw`,
+  and `emberfin` cases — a 128×128 sheet of 32×32 frames with four-direction
+  movement and a signature "tell" animation, declared as named sequences the
+  review UI plays back.
+
+Read the one matching the kind you are authoring alongside this skill — a new case
+should look like it.
 
 ## Anatomy of a test case version
 
@@ -96,7 +108,8 @@ Do **not** hand-pixel the target. Author it as its own action log and render it
 through the **same** binary, keeping the log as the un-seeded source beside it:
 
 ```sh
-draw render --actions reference/target.actions.json --out reference/target.png
+draw render --actions reference/target.actions.json --out reference/target.png \
+  --width <canvas width> --height <canvas height> --background transparent
 ```
 
 Rendering the goal through the tool guarantees it is achievable within the
@@ -104,13 +117,21 @@ operation set, so the fidelity baseline is fair. The rendered `target.png` is th
 single `[[reference]]` (`view = "target"`); there are no per-view reference mockups
 and no `reference/theme.css`.
 
+For a **sprite sheet** the target is the full sheet: author every frame in its
+grid cell (offset each operation by `(frame_width·col, frame_height·row)`) and
+render at the sheet's `--width`/`--height`. Author and check one frame (or one
+direction) at a time against the cell before filling the rest, and make sure the
+frames each named `[[sheet.sequence]]` references actually animate cleanly — the
+sequences are what a reviewer watches.
+
 ### 5. Write `prompt.hbs`
 
 A short instruction that points the model at the seeded brief and operations schema
 and restates the hard requirements (draw only through the tool; return when
 finished). It renders in **strict mode**, so use only the documented template
 variables (`{{variant.*}}`, `{{#each specs}}`) — any other reference is an error.
-Model it on `gloamfin`'s `prompt.hbs`.
+Model it on an existing case's `prompt.hbs` (e.g. `spectra-shard` for a single
+sprite, `gloamfin` for a sheet — a sheet's prompt also explains the frame grid).
 
 ### 6. Write the manifest
 
@@ -121,12 +142,24 @@ Author `test-case.toml` per the
   `description`, `prompt`, `max_runtime_seconds`.
 - **`type = "asset-generation"`** — required. Omitting it defaults to `end-to-end`,
   which then rejects the tables below.
+- **`asset_kind`** — `"sprite"` (the default; omit it) or `"sprite-sheet"`. For a
+  sprite sheet, also declare the **`[sheet]`** table (below). `asset_kind` is a
+  version-level choice, not a variant.
 - **`[canvas]`** — the fixed `width`, `height`, and `background`. Fixing the canvas
-  keeps runs comparable.
+  keeps runs comparable. For a sprite sheet this is the **full sheet** size (e.g.
+  `128×128` for a 4×4 grid of 32×32 frames).
 - **`[tool]`** — `binary = "draw"`, the seeded `operations` schema, and the
   `preview` path the binary re-renders to after each call.
 - **`[output]`** — the `actions` log the binary records; this ordered list is the
   **authoritative output** the scored image is regenerated from.
+- **`[sheet]`** — **sprite sheets only.** The frame grid (`frame_width`,
+  `frame_height`, `columns`, `rows`) that tiles the `[canvas]` exactly
+  (`columns*frame_width == canvas width`, `rows*frame_height == canvas height`),
+  plus one or more **`[[sheet.sequence]]`** entries — each a `slug`, optional
+  `name`, an ordered `frames` list of row-major frame indices, and an `fps`. Frames
+  are numbered row-major from the top-left. The sequences are what the review UI
+  animates (regenerated vs target); they do not enter scoring, which stays
+  whole-sheet. Omit this table entirely for a single sprite.
 - **One common `[[reference]]`** — `view = "target"` with a static-image `media`
   pointing at `target.png`. Resolution requires **exactly one** and forbids a
   variant from declaring its own.

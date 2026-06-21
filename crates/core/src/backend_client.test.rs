@@ -51,6 +51,8 @@ impl BackendClient for StubBackend {
             simulation: None,
             r#match: None,
             replay: None,
+            asset_kind: crate::test_case::AssetKind::Sprite,
+            sheet: None,
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),

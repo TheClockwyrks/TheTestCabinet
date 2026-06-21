@@ -55,6 +55,19 @@ struct Manifest {
     /// required and which are forbidden.
     #[serde(default, rename = "type")]
     test_type: TestType,
+    /// Within an asset-generation case, whether the model draws a single sprite or
+    /// a sprite sheet (a grid of animation frames). Defaults to
+    /// [`AssetKind::Sprite`] so existing single-sprite manifests — none of which
+    /// declares `asset_kind` — keep resolving unchanged. A sprite-sheet case
+    /// declares `asset_kind = "sprite-sheet"` and a `[sheet]` table. Only valid for
+    /// an asset-generation case; an explicit value on any other type is rejected.
+    #[serde(default)]
+    asset_kind: AssetKind,
+    /// The frame grid and named animation sequences of a sprite-sheet case (the
+    /// `[sheet]` table). Required for — and only for — `asset_kind =
+    /// "sprite-sheet"`; forbidden otherwise.
+    #[serde(default)]
+    sheet: Option<ManifestSheet>,
     /// The commands the validator runs to build the produced implementation as a
     /// static site (the `[build]` table). **Required for an end-to-end case** and
     /// **forbidden for any other type**, so its presence is validated against
@@ -264,6 +277,50 @@ struct ManifestOutput {
     actions: PathBuf,
 }
 
+/// The `[sheet]` table of a sprite-sheet asset-generation case: the frame grid the
+/// model draws its animation frames into, and the named sequences a reviewer
+/// plays back. The grid tiles the `[canvas]`: `columns * frame_width` must equal
+/// the canvas width and `rows * frame_height` its height. Frames are numbered
+/// row-major from the top-left (frame `i` occupies column `i % columns`, row
+/// `i / columns`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestSheet {
+    /// Width of one frame cell in pixels.
+    frame_width: u32,
+    /// Height of one frame cell in pixels.
+    frame_height: u32,
+    /// Number of frame columns across the sheet.
+    columns: u32,
+    /// Number of frame rows down the sheet.
+    rows: u32,
+    /// The named animation sequences, declared as repeated `[[sheet.sequence]]`
+    /// tables. At least one is required.
+    #[serde(default)]
+    sequence: Vec<ManifestSheetSequence>,
+}
+
+/// A single `[[sheet.sequence]]` entry: one named animation a reviewer can play
+/// back, as an ordered list of row-major frame indices and a playback rate.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestSheetSequence {
+    /// Stable slug naming this sequence (for example `walk-right`).
+    slug: String,
+    /// Human-readable display name. Defaults to a humanized form of `slug`.
+    #[serde(default)]
+    name: Option<String>,
+    /// The ordered row-major frame indices this sequence plays. Must be non-empty
+    /// and every index must be a valid cell (`< columns * rows`).
+    frames: Vec<u32>,
+    /// Playback rate in frames per second. Must be greater than zero.
+    fps: f64,
+}
+
+// `ManifestSheet` derives `Eq` (so the parent `Manifest` can), but a sequence's
+// `fps` is the only float. It is an exact TOML literal, only ever compared, never
+// arithmetic'd — so a manual `Eq` is sound, matching how `CheckAction` treats its
+// float coordinates.
+impl Eq for ManifestSheetSequence {}
+
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
 /// array): a `source` file inside the version folder seeded to a `dest` path in
 /// the run's workspace.
@@ -456,6 +513,25 @@ pub enum TestType {
     /// match outcome is the authoritative result. See
     /// `docs/testing/adversarial/`.
     Adversarial,
+}
+
+/// Within an asset-generation case, the shape of the asset the model draws.
+///
+/// A case is **either** a single sprite or a sprite sheet — never both, and not a
+/// per-variant choice: it is a property of the whole version, chosen by the
+/// `asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a
+/// `[sheet]` table (the frame grid and the named animation sequences). Defaults to
+/// [`Self::Sprite`] so a manifest that predates the discriminator — and every
+/// non-asset-generation case — resolves unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AssetKind {
+    /// One sprite drawn onto the whole canvas (the original asset-generation shape).
+    #[default]
+    Sprite,
+    /// A grid of animation frames drawn onto the canvas, sliced into the named
+    /// sequences the `[sheet]` table declares.
+    SpriteSheet,
 }
 
 /// The kind of a piece of media — used for both reference media and proof
@@ -693,6 +769,49 @@ pub struct ReplaySpec {
     /// The run-workspace-relative path the renderer is seeded to.
     pub renderer: PathBuf,
 }
+
+/// The resolved `[sheet]` of a sprite-sheet case: the frame grid the model draws
+/// its frames into and the named sequences a reviewer plays back. The grid tiles
+/// the [`CanvasSpec`]; resolution validates that `columns * frame_width` equals the
+/// canvas width and `rows * frame_height` its height, so a frame's pixel rectangle
+/// is `(frame % columns) * frame_width, (frame / columns) * frame_height`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SheetSpec {
+    /// Width of one frame cell in pixels.
+    pub frame_width: u32,
+    /// Height of one frame cell in pixels.
+    pub frame_height: u32,
+    /// Number of frame columns across the sheet.
+    pub columns: u32,
+    /// Number of frame rows down the sheet.
+    pub rows: u32,
+    /// The named animation sequences, in declared order. At least one is present.
+    pub sequences: Vec<SheetSequence>,
+}
+
+/// A resolved named animation sequence within a [`SheetSpec`]: an ordered list of
+/// row-major frame indices played at [`Self::fps`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SheetSequence {
+    /// Stable slug naming this sequence (for example `walk-right`).
+    pub slug: String,
+    /// Human-readable display name, surfaced in the review UI.
+    pub name: String,
+    /// The ordered row-major frame indices this sequence plays. Non-empty, every
+    /// index a valid cell.
+    pub frames: Vec<u32>,
+    /// Playback rate in frames per second. Always greater than zero.
+    pub fps: f64,
+}
+
+// `SheetSequence` carries an `fps: f64`, so it cannot derive `Eq` (and neither can
+// the structs that own it). The fps originates as an exact TOML literal validated
+// to be finite and positive at resolution, and is only ever compared or rendered,
+// never used as a hash key, so a manual `Eq` is sound — matching how `CheckAction`
+// treats its float coordinates above.
+impl Eq for SheetSequence {}
 
 /// A named build target of a test case.
 ///
@@ -963,6 +1082,15 @@ pub struct TestCaseVersion {
     /// `Some` only for adversarial.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replay: Option<ReplaySpec>,
+    /// Whether an asset-generation case draws a single sprite or a sprite sheet.
+    /// Defaults to [`AssetKind::Sprite`]; meaningful only for asset-generation
+    /// (always `Sprite` for any other type).
+    #[serde(default)]
+    pub asset_kind: AssetKind,
+    /// The frame grid and named sequences of a sprite-sheet case. `Some` only when
+    /// [`Self::asset_kind`] is [`AssetKind::SpriteSheet`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -1324,7 +1452,7 @@ impl TestCaseCatalog {
         // the model can read it, while the preview and action-log paths are
         // run-relative destinations the binary writes (not seeded), validated only
         // to stay inside the workspace.
-        let (canvas, tool, output) = match test_type {
+        let (canvas, tool, output, sheet) = match test_type {
             TestType::EndToEnd | TestType::Adversarial => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
@@ -1333,7 +1461,18 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                (None, None, None)
+                // `asset_kind` and the `[sheet]` table only mean something inside an
+                // asset-generation case. An explicit `asset_kind = "sprite-sheet"`
+                // or a `[sheet]` table on an end-to-end case is a mistake worth
+                // rejecting rather than silently ignoring.
+                if manifest.asset_kind != AssetKind::Sprite || manifest.sheet.is_some() {
+                    return Err(invalid(
+                        "`asset_kind` and the [sheet] table are only valid for an \
+                         asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                (None, None, None, None)
             }
             TestType::AssetGeneration => {
                 let canvas = manifest
@@ -1388,6 +1527,34 @@ impl TestCaseCatalog {
                     )));
                 }
 
+                // The `[sheet]` table is required for — and only for — a
+                // sprite-sheet case. A single-sprite case draws one image onto the
+                // whole canvas and declares no grid; a sprite-sheet case tiles the
+                // canvas into a frame grid (validated to match the canvas exactly)
+                // and the named sequences a reviewer plays back.
+                let sheet = match manifest.asset_kind {
+                    AssetKind::Sprite => {
+                        if manifest.sheet.is_some() {
+                            return Err(invalid(
+                                "a single-sprite case (asset_kind = \"sprite\") declares no \
+                                 [sheet] table"
+                                    .to_string(),
+                            ));
+                        }
+                        None
+                    }
+                    AssetKind::SpriteSheet => {
+                        let sheet = manifest.sheet.as_ref().ok_or_else(|| {
+                            invalid(
+                                "a sprite-sheet case (asset_kind = \"sprite-sheet\") requires a \
+                                 [sheet] table"
+                                    .to_string(),
+                            )
+                        })?;
+                        Some(resolve_sheet(sheet, canvas, &invalid)?)
+                    }
+                };
+
                 (
                     Some(CanvasSpec {
                         width: canvas.width,
@@ -1402,6 +1569,7 @@ impl TestCaseCatalog {
                     Some(OutputSpec {
                         actions: output.actions.clone(),
                     }),
+                    sheet,
                 )
             }
         };
@@ -2058,6 +2226,8 @@ impl TestCaseCatalog {
             simulation,
             r#match,
             replay,
+            asset_kind: manifest.asset_kind,
+            sheet,
             common_specs,
             common_workspace,
             init: manifest.init,
@@ -2147,6 +2317,108 @@ fn default_max_runtime_seconds() -> u64 {
 /// omits it: a fully transparent canvas.
 fn default_background() -> String {
     "transparent".to_string()
+}
+
+/// Resolve and validate a sprite-sheet case's `[sheet]` table against its
+/// `[canvas]`.
+///
+/// The frame grid must tile the canvas exactly — `columns * frame_width` equals
+/// the canvas width and `rows * frame_height` its height — with every dimension
+/// positive, so a frame's pixel rectangle is unambiguous. Each sequence must carry
+/// a unique non-empty slug, name at least one frame, reference only valid cells
+/// (`< columns * rows`), and run at a positive rate. `invalid` is the resolver's
+/// error constructor, threaded in so messages carry the case's slug and version.
+fn resolve_sheet(
+    sheet: &ManifestSheet,
+    canvas: &ManifestCanvas,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<SheetSpec> {
+    if sheet.frame_width == 0 || sheet.frame_height == 0 || sheet.columns == 0 || sheet.rows == 0 {
+        return Err(invalid(
+            "sheet frame_width, frame_height, columns, and rows must all be greater than zero"
+                .to_string(),
+        ));
+    }
+    let grid_width = sheet
+        .columns
+        .checked_mul(sheet.frame_width)
+        .ok_or_else(|| invalid("sheet columns * frame_width overflows".to_string()))?;
+    let grid_height = sheet
+        .rows
+        .checked_mul(sheet.frame_height)
+        .ok_or_else(|| invalid("sheet rows * frame_height overflows".to_string()))?;
+    if grid_width != canvas.width || grid_height != canvas.height {
+        return Err(invalid(format!(
+            "sheet grid {grid_width}x{grid_height} (columns*frame_width x rows*frame_height) must \
+             equal the canvas {}x{}",
+            canvas.width, canvas.height
+        )));
+    }
+    let cell_count = sheet
+        .columns
+        .checked_mul(sheet.rows)
+        .ok_or_else(|| invalid("sheet columns * rows overflows".to_string()))?;
+
+    if sheet.sequence.is_empty() {
+        return Err(invalid(
+            "a [sheet] must declare at least one [[sheet.sequence]]".to_string(),
+        ));
+    }
+    let mut sequences: Vec<SheetSequence> = Vec::with_capacity(sheet.sequence.len());
+    for sequence in &sheet.sequence {
+        if sequence.slug.trim().is_empty() {
+            return Err(invalid(
+                "sheet sequence `slug` must not be empty".to_string(),
+            ));
+        }
+        if sequences
+            .iter()
+            .any(|resolved| resolved.slug == sequence.slug)
+        {
+            return Err(invalid(format!(
+                "duplicate sheet sequence slug `{}`",
+                sequence.slug
+            )));
+        }
+        if sequence.frames.is_empty() {
+            return Err(invalid(format!(
+                "sheet sequence `{}` declares no frames",
+                sequence.slug
+            )));
+        }
+        if let Some(&frame) = sequence.frames.iter().find(|&&frame| frame >= cell_count) {
+            return Err(invalid(format!(
+                "sheet sequence `{}` references frame {frame}, but the grid has {cell_count} \
+                 frames (0..={})",
+                sequence.slug,
+                cell_count - 1
+            )));
+        }
+        if !(sequence.fps.is_finite() && sequence.fps > 0.0) {
+            return Err(invalid(format!(
+                "sheet sequence `{}` must declare an fps greater than zero",
+                sequence.slug
+            )));
+        }
+        let name = sequence
+            .name
+            .clone()
+            .unwrap_or_else(|| humanize(&sequence.slug));
+        sequences.push(SheetSequence {
+            slug: sequence.slug.clone(),
+            name,
+            frames: sequence.frames.clone(),
+            fps: sequence.fps,
+        });
+    }
+
+    Ok(SheetSpec {
+        frame_width: sheet.frame_width,
+        frame_height: sheet.frame_height,
+        columns: sheet.columns,
+        rows: sheet.rows,
+        sequences,
+    })
 }
 
 /// Recursively enumerate the files under a workspace directory into

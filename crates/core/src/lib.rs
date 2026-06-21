@@ -95,10 +95,10 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind, OutputSpec,
-    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SimulationSpec,
-    SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant,
-    WorkspaceFile,
+    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
+    OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec,
+    SheetSequence, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion,
+    TestType, ToolSpec, Variant, WorkspaceFile,
 };
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,

@@ -21,8 +21,10 @@ description = "description.md" # optional site-facing prose (relative path; NOT 
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
+asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (a frame grid)
 
-# The image the model draws on.
+# The image the model draws on. For a sprite sheet this is the FULL sheet, tiled
+# into the [sheet] grid below.
 [canvas]
 width  = 64                  # canvas width in pixels (required)
 height = 64                  # canvas height in pixels (required)
@@ -40,6 +42,22 @@ preview    = "canvas.png"              # where the binary writes the current ima
 # This action log — not the pixels on disk — is the authoritative output.
 [output]
 actions = "actions.json"     # the ordered record of every operation the model issued (required)
+
+# Only for asset_kind = "sprite-sheet": the frame grid the model draws its
+# animation frames into, and the named sequences a reviewer plays back. The grid
+# tiles the [canvas] exactly (columns*frame_width == canvas width, rows*frame_height
+# == canvas height). Frames are numbered row-major from the top-left.
+[sheet]
+frame_width  = 32            # width of one frame cell in pixels (required)
+frame_height = 32            # height of one frame cell in pixels (required)
+columns      = 4             # frame columns across the sheet (required)
+rows         = 4             # frame rows down the sheet (required)
+
+[[sheet.sequence]]           # >=1 required; one named animation the UI plays back
+slug   = "walk-right"        # stable slug (required, unique within the sheet)
+name   = "Walk Right"        # display name (optional; default humanizes the slug)
+frames = [6, 7]              # ordered row-major frame indices (required, non-empty, each < columns*rows)
+fps    = 4                   # playback rate in frames per second (required, > 0)
 
 # The reference the REGENERATED image is scored against. Same `{ view, media }`
 # shape as an end-to-end static reference; the source target is seeded as the
@@ -71,6 +89,26 @@ dest   = "specs/brief.md"
   Resolution validates the tables against the declared type: an asset-generation
   case must declare `[canvas]`, `[tool]`, `[output]`, and exactly one `target`
   reference, and must **not** declare a `[build]` table or any `[[check]]`.
+- `asset_kind` chooses the **shape** of the asset within an asset-generation
+  case: `"sprite"` (the default — one sprite drawn onto the whole canvas) or
+  `"sprite-sheet"` (a grid of animation frames). It is a property of the whole
+  version, **not** a variant axis — a case is either a single sprite or a sprite
+  sheet, never both, and a variant cannot change it. `asset_kind` (and the
+  `[sheet]` table) are only valid for an asset-generation case; an explicit value
+  on any other type is rejected.
+- The `[sheet]` table is **required for — and only for — `asset_kind =
+  "sprite-sheet"`**. It declares the frame grid (`frame_width`, `frame_height`,
+  `columns`, `rows`) that tiles the `[canvas]`, plus one or more
+  `[[sheet.sequence]]` entries. Resolution validates that `columns * frame_width`
+  equals the canvas width and `rows * frame_height` its height (so every frame's
+  pixel rectangle is unambiguous), that each sequence has a unique non-empty
+  `slug`, at least one `frames` index, every index `< columns * rows`, and
+  `fps > 0`. A sprite sheet still has exactly one full-sheet `target` reference;
+  the `[sheet]` table is metadata describing how to slice and animate that one
+  image. Scoring is unchanged — the regenerated **whole sheet** is compared to the
+  **whole target sheet**; the named sequences are surfaced to the reviewer and
+  played back as live animations in the review UI (the sheet layout travels in the
+  run record so the verdict page can animate from the run alone).
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_seconds`, and the `[[spec]]` /
   `[[variant]]` seeding rules behave as they do for an

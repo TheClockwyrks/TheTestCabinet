@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type {
   AdversarialResult,
+  AssetSheet,
   RunRecord,
   RunSubject,
 } from "@test-cabinet/run-record";
@@ -118,6 +119,12 @@ export interface AssetResultView {
   operationCount: number;
   /** Detail about anything that could not be evaluated, or null. */
   detail: string | null;
+  /**
+   * The sprite-sheet frame grid and named sequences, present only when the case
+   * draws a sprite sheet. The regenerated and target images are then full sheets
+   * the UI slices into the named animations; absent for a single-sprite run.
+   */
+  sheet: AssetSheet | null;
 }
 
 /**
@@ -246,6 +253,7 @@ export function GalleryDataProvider({
           cheatDivergence: asset.cheatDivergence,
           operationCount: asset.operationCount,
           detail: asset.detail,
+          sheet: asset.sheet ?? null,
         };
       },
       replayResultFor(run) {

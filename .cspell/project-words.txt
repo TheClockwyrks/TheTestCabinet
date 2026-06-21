@@ -56,6 +56,7 @@ heatmeter
 # Asset-generation: deep-sea pursuer sprites and the drawing tool.
 gloamfin
 lanternjaw
+emberfin
 anglerfish
 bioluminescent
 echolocation

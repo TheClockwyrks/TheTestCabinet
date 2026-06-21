@@ -450,6 +450,10 @@ impl Validator for AssetGenValidator {
                 target_fidelity,
                 cheat_divergence,
                 detail: (!notes.is_empty()).then(|| notes.join("; ")),
+                // Carry the sprite-sheet layout (when this case draws one) into the
+                // run record so the review UI can play the named sequences out of
+                // the regenerated and target images directly.
+                sheet: test_case.sheet.clone(),
             }),
             adversarial: None,
         })

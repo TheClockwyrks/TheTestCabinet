@@ -99,7 +99,10 @@ fn score_of_identical_pngs_is_one() {
 use super::AssetGenValidator;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{CanvasSpec, MediaKind, OutputSpec, TestCaseVersion, TestType, ToolSpec};
+use crate::test_case::{
+    AssetKind, CanvasSpec, MediaKind, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
+    TestType, ToolSpec,
+};
 use crate::validation::Validator;
 
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
@@ -135,6 +138,8 @@ fn asset_version() -> TestCaseVersion {
         simulation: None,
         r#match: None,
         replay: None,
+        asset_kind: AssetKind::Sprite,
+        sheet: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,
@@ -199,6 +204,63 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
         repo.join("regenerated.png").is_file(),
         "the regenerated image is written into the tree for serving"
     );
+    // A single-sprite case carries no sheet layout.
+    assert!(asset.sheet.is_none());
+}
+
+#[test]
+fn asset_validation_carries_the_sheet_layout_into_the_result() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    std::fs::write(
+        repo.join("actions.json"),
+        r##"[{"op":"fill_background","color":"#ff0000"}]"##,
+    )
+    .expect("actions");
+    write_png(&repo.join("canvas.png"), 4, 4, &red_4x4());
+    let target = dir.path().join("target.png");
+    write_png(&target, 4, 4, &red_4x4());
+    let references = vec![RenderedReference {
+        view: "target".to_string(),
+        kind: MediaKind::Image,
+        media_path: target,
+    }];
+
+    // A 4x4 canvas tiled into a 2x2 grid of 2x2 frames, with one named sequence.
+    let mut version = asset_version();
+    version.asset_kind = AssetKind::SpriteSheet;
+    version.sheet = Some(SheetSpec {
+        frame_width: 2,
+        frame_height: 2,
+        columns: 2,
+        rows: 2,
+        sequences: vec![SheetSequence {
+            slug: "walk-right".to_string(),
+            name: "Walk Right".to_string(),
+            frames: vec![0, 1],
+            fps: 4.0,
+        }],
+    });
+
+    let summary = AssetGenValidator::new()
+        .validate(
+            &version,
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &references,
+            &[],
+        )
+        .expect("validate");
+    let asset = summary.asset.expect("asset result");
+    // The sprite-sheet layout rides into the run record so the review UI can play
+    // the named sequences from the regenerated and target images directly.
+    let sheet = asset.sheet.expect("sheet carried into result");
+    assert_eq!((sheet.columns, sheet.rows), (2, 2));
+    assert_eq!(sheet.sequences.len(), 1);
+    assert_eq!(sheet.sequences[0].slug, "walk-right");
+    assert_eq!(sheet.sequences[0].frames, vec![0, 1]);
 }
 
 #[test]
@@ -304,6 +366,8 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         }),
         r#match: None,
         replay: None,
+        asset_kind: AssetKind::Sprite,
+        sheet: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

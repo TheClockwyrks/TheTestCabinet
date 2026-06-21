@@ -1,0 +1,94 @@
+name = "Spectra Shard"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "enemy"]
+summary = """
+Draw the Spectra Shard: the fixed-band crystalline drone for a two-band formation \
+shooter, as a 64x64 enemy sprite produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 2400
+type = "asset-generation"
+
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+[tool]
+binary = "draw"
+operations = "schemas/operations.json"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[reference]]
+view = "target"
+media = "reference/target.png"
+
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Spectra Shard target — its \
+faceted crystalline silhouette, the magenta band with its diamond glyph, and the \
+neon Spectra palette that marks it as an enemy drone."""
+
+[[review_item]]
+id = "crystalline"
+title = "Faceted crystal"
+text = """
+The sprite reads as a small, angular **crystalline drone** — a faceted diamond \
+shape, not a round blob or a soft creature. Its geometry is sharp and deliberate."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "band-glyph"
+title = "Magenta band with diamond glyph"
+text = """
+The drone is the magenta band, carrying the magenta band's DIAMOND motif (a \
+diamond outline), so its spectral band reads by shape as well as color — the \
+colorblind-safe convention the game uses everywhere a band appears."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "enemy-read"
+title = "Reads as an enemy drone"
+text = """
+The sprite reads as one of the swarm's enemy drones — a compact, hostile crystal \
+— not as the player's ship or a friendly object."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Spectra palette"
+text = """
+Uses only the Spectra colors from the brief (magenta band, white highlight) with \
+no out-of-palette colors and no halo of stray pixels."""
+weight = 1
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The drone fills most of the 64x64 frame, roughly centered with a small margin, \
+neither tiny in a corner nor clipped at an edge."""
+weight = 1
+reference = "target"
+domain = "fidelity"

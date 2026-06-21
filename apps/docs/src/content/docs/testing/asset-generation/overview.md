@@ -59,5 +59,19 @@ both, the model is held to a constrained channel — a controller contract there
 drawing tool here — and anything produced outside that channel is discarded rather
 than scored.
 
+## Single sprites and sprite sheets
+
+A case declares, with its `asset_kind`, whether the model draws a **single
+sprite** (one image on the whole canvas — the default) or a **sprite sheet** (a
+grid of animation frames drawn onto one larger canvas). A sprite-sheet case adds a
+`[sheet]` table naming the frame grid and the **animation sequences** — ordered
+lists of frames, each with a playback rate — so the review UI can play the named
+animations back from the regenerated and target sheets and a reviewer can judge a
+sheet by its motion, not just its static pixels. The shape is a property of the
+whole version, not a variant: a case is either a single sprite or a sprite sheet.
+Scoring is the same either way — the regenerated whole image is compared to the
+whole target.
+
 See [Manifests](/testing/asset-generation/manifests/) for how a case declares its
-target, canvas, and the operations the binary exposes.
+target, canvas, `asset_kind`, the `[sheet]` grid and sequences, and the operations
+the binary exposes.

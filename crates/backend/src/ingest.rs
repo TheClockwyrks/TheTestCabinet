@@ -299,6 +299,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         output: resolved.output.as_ref().map(|output| StoredOutput {
             actions: output.actions.to_string_lossy().replace('\\', "/"),
         }),
+        asset_kind: resolved.asset_kind,
+        sheet: resolved.sheet.clone(),
         prompt_template,
         common_specs,
         workspace,

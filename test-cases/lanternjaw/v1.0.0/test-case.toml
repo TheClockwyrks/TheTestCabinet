@@ -1,31 +1,79 @@
 name = "Lanternjaw"
-difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "enemy"]
+difficulty = "hard"
+tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
-Draw the Lanternjaw: an anglerfish-style deep-sea pursuer with a glowing lure, as \
-a 64x64 enemy sprite produced one drawing operation at a time."""
+Draw the Lanternjaw: the Lure, an anglerfish-style deep-sea predator that hunts \
+by light with a dangling lure-light, as a 128x128 sprite sheet — four-direction \
+movement plus a lure-bob animation, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_seconds = 3600
 type = "asset-generation"
+asset_kind = "sprite-sheet"
 
+# A 128x128 transparent canvas, tiled into a 4x4 grid of 32x32 frames (one frame
+# per maze tile), keeps every run comparable.
 [canvas]
-width = 64
-height = 64
+width = 128
+height = 128
 background = "transparent"
 
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call.
 [tool]
 binary = "draw"
 operations = "schemas/operations.json"
 preview = "canvas.png"
 
+# The recorded action log — the authoritative output the score is regenerated
+# from.
 [output]
 actions = "actions.json"
 
+# The frame grid and the named animation sequences a reviewer plays back. Frames
+# are numbered row-major from the top-left (frame i is at column i % 4, row i / 4).
+[sheet]
+frame_width = 32
+frame_height = 32
+columns = 4
+rows = 4
+
+[[sheet.sequence]]
+slug = "walk-down"
+name = "Swim — down"
+frames = [0, 1]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-up"
+name = "Swim — up"
+frames = [2, 3]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-left"
+name = "Swim — left"
+frames = [4, 5]
+fps = 4
+
+[[sheet.sequence]]
+slug = "walk-right"
+name = "Swim — right"
+frames = [6, 7]
+fps = 4
+
+[[sheet.sequence]]
+slug = "lure-bob"
+name = "Lure bob"
+frames = [8, 9, 10, 11, 12, 13]
+fps = 6
+
+# The visual goal the regenerated sheet is scored against. Served as-is.
 [[reference]]
 view = "target"
 media = "reference/target.png"
 
+# The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
 dest = "specs/brief.md"
@@ -38,59 +86,63 @@ name = "Base"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sprite matches the Lanternjaw target — its bulky \
-silhouette, the glowing lure, the toothed maw, and the dark deep-sea palette that \
-mark it as a lurking predator."""
+How faithfully the regenerated sheet matches the Lanternjaw target — its bulky \
+dark silhouette, the dangling amber lure-light, the four readable swim \
+directions, and the lure-bob animation that marks it as the predator that hunts \
+by light."""
 
 [[review_item]]
-id = "glowing-lure"
-title = "Glowing lure"
+id = "dangling-lure"
+title = "Dangling lure-light"
 text = """
-A bioluminescent lure glows on a stalk above the head — the brightest element of \
-the sprite, clearly the bait of an ambush predator. Its glow uses warm light \
-colors against the dark body."""
+Every frame shows a dangling lure-light leading the head — a small glowing amber \
+bulb on a thin stalk, the brightest element of the sprite against the dark body. \
+It is the bait of an ambush predator and the creature's defining feature."""
 weight = 3
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
-id = "toothed-maw"
-title = "Toothed maw"
+id = "four-directions"
+title = "Four readable directions"
 text = """
-A wide, open maw lined with pale teeth sits at the front of the head — this is a \
-predator, not a grazer. The mouth and teeth read clearly against the dark body."""
+The movement frames read as the creature swimming in four distinct directions — \
+down, up, left, and right — each with its bulky head (and the lure ahead of it) \
+leading its direction of travel and a forked tail trailing behind, not the same \
+blob repeated."""
+weight = 3
+reference = "target"
+domain = "fidelity"
+
+[[review_item]]
+id = "lure-bob-tell"
+title = "Lure-bob animation"
+text = """
+The tell frames (row 2 into row 3) show the dangling lure bobbing and its amber \
+glow pulsing — bigger and brighter, then easing back — across the frames, so \
+playing them reads as the lure beckoning."""
 weight = 2
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
-id = "pursuer-read"
-title = "Reads as a pursuer"
-text = """
-The sprite reads as a bulky, forward-facing ENEMY chaser oriented in its \
-direction of travel, not as a passive background fish or a player avatar."""
-weight = 1
-reference = "target"
-domain = "fidelity"
-
-[[review_item]]
 id = "palette"
-title = "Deep-sea palette"
+title = "Dark body, amber lure"
 text = """
-Uses the dark deep-sea palette from the brief (near-black body, dark maw, warm \
-glowing lure, pale teeth) with no out-of-palette colors and no halo of stray \
-pixels."""
+Uses the Lure's palette from the brief (dark slate body, lighter underside, near-\
+black outline/maw, amber lure glow, bright lure core) with no out-of-palette \
+colors and no halo of stray pixels."""
 weight = 1
 reference = "target"
 domain = "fidelity"
 
 [[review_item]]
 id = "framing"
-title = "Canvas framing"
+title = "Frame framing"
 text = """
-The creature fills most of the 64x64 frame, roughly centered with a small margin, \
-neither tiny in a corner nor clipped at an edge (the lure may rise toward the \
-top edge)."""
+Each creature fills most of its own 32x32 frame cell, centered with a small \
+margin, neither tiny in a corner nor spilling across the grid lines into the \
+neighboring frame."""
 weight = 1
 reference = "target"
 domain = "fidelity"

@@ -31,6 +31,8 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         simulation: None,
         r#match: None,
         replay: None,
+        asset_kind: crate::test_case::AssetKind::Sprite,
+        sheet: None,
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),

@@ -85,6 +85,7 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
         target_fidelity: 0.9,
         cheat_divergence: Some(0.05),
         detail: None,
+        sheet: None,
     });
     run
 }
@@ -107,6 +108,8 @@ fn manifest() -> StoredManifest {
         canvas: None,
         tool: None,
         output: None,
+        asset_kind: test_cabinet_core::AssetKind::Sprite,
+        sheet: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: vec![],

@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use super::{BuildCommands, TestCaseCatalog, TestType};
+use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -157,6 +157,178 @@ fn asset_generation_requires_a_single_target_reference() {
         .resolve("sprite", "v1.0.0")
         .expect_err("a non-`target` reference is rejected");
     assert!(format!("{err}").contains("view = \"target\""), "got: {err}");
+}
+
+// --- sprite-sheet resolution -----------------------------------------------
+
+/// A complete, valid sprite-sheet manifest: a 64x64 canvas tiled into a 2x2 grid
+/// of 32x32 frames with one named sequence. Tests clone this and mutate one thing.
+const VALID_SHEET_MANIFEST: &str = "\
+name = \"Sheet\"\n\
+difficulty = \"medium\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n\
+asset_kind = \"sprite-sheet\"\n\
+[canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"draw\"\noperations = \"schemas/operations.json\"\npreview = \"canvas.png\"\n\
+[output]\nactions = \"actions.json\"\n\
+[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
+[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
+[[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[variant]]\nslug = \"base\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sheet is.\"\n";
+
+#[test]
+fn sprite_sheet_resolves_its_sheet_table() {
+    let (_dir, catalog) = asset_catalog(VALID_SHEET_MANIFEST);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::SpriteSheet);
+    let sheet = version.sheet.as_ref().expect("sheet");
+    assert_eq!(
+        (
+            sheet.frame_width,
+            sheet.frame_height,
+            sheet.columns,
+            sheet.rows
+        ),
+        (32, 32, 2, 2)
+    );
+    assert_eq!(sheet.sequences.len(), 1);
+    let sequence = &sheet.sequences[0];
+    assert_eq!(sequence.slug, "walk-right");
+    // An omitted name is humanized from the slug.
+    assert_eq!(sequence.name, "Walk Right");
+    assert_eq!(sequence.frames, vec![0, 1]);
+    assert_eq!(sequence.fps, 4.0);
+}
+
+#[test]
+fn single_sprite_defaults_asset_kind() {
+    // The original single-sprite manifest declares no `asset_kind`: it defaults to
+    // `Sprite` and carries no sheet, so existing cases resolve unchanged.
+    let (_dir, catalog) = asset_catalog(VALID_ASSET_MANIFEST);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::Sprite);
+    assert!(version.sheet.is_none());
+}
+
+#[test]
+fn sprite_kind_rejects_a_sheet_table() {
+    // A single-sprite case (the default kind) that declares a [sheet] table is a
+    // mistake.
+    let manifest = format!(
+        "{VALID_ASSET_MANIFEST}[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
+         [[sheet.sequence]]\nslug = \"x\"\nframes = [0]\nfps = 2.0\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [sheet] table on a single-sprite case is rejected");
+    assert!(
+        format!("{err}").contains("declares no [sheet]"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn sprite_sheet_requires_a_sheet_table() {
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "[sheet]\nframe_width = 32\nframe_height = 32\ncolumns = 2\nrows = 2\n\
+         [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n",
+        "",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a sprite-sheet case without a [sheet] table is rejected");
+    assert!(format!("{err}").contains("requires a"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_grid_mismatch() {
+    // 3 columns of 32px is 96px wide, not the canvas's 64px.
+    let manifest = VALID_SHEET_MANIFEST.replace("columns = 2", "columns = 3");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a grid that does not tile the canvas is rejected");
+    assert!(format!("{err}").contains("must"), "got: {err}");
+    assert!(format!("{err}").contains("canvas"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_out_of_range_frame() {
+    // The 2x2 grid has cells 0..=3; frame 4 does not exist.
+    let manifest = VALID_SHEET_MANIFEST.replace("frames = [0, 1]", "frames = [0, 4]");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a frame index outside the grid is rejected");
+    assert!(format!("{err}").contains("frame 4"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_empty_sequence() {
+    let manifest = VALID_SHEET_MANIFEST.replace("frames = [0, 1]", "frames = []");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a sequence with no frames is rejected");
+    assert!(format!("{err}").contains("no frames"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_nonpositive_fps() {
+    let manifest = VALID_SHEET_MANIFEST.replace("fps = 4.0", "fps = 0.0");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a non-positive fps is rejected");
+    assert!(format!("{err}").contains("fps"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_rejects_duplicate_sequence_slug() {
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n",
+        "[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
+         [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [2, 3]\nfps = 4.0\n",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("two sequences with the same slug are rejected");
+    assert!(format!("{err}").contains("duplicate"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_requires_a_sequence() {
+    let manifest = VALID_SHEET_MANIFEST.replace(
+        "[[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n",
+        "",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [sheet] with no sequences is rejected");
+    assert!(format!("{err}").contains("at least one"), "got: {err}");
+}
+
+#[test]
+fn end_to_end_rejects_sprite_sheet_kind() {
+    // An end-to-end case (the default type) that declares `asset_kind` is a mistake.
+    let (_dir, catalog) = catalog_with_manifest(
+        "asset_kind = \"sprite-sheet\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("asset_kind on an e2e case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
 }
 
 #[test]
