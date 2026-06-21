@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use foray_core::board::Team;
 use foray_core::replay::ReplayResult;
-use foray_core::state::{Ended, Score};
+use foray_core::state::{Ended, Kills, Score};
 
 use super::{AdversarialValidator, ended_to, summarize};
 use crate::execution::ArtifactCollection;
@@ -125,6 +125,7 @@ fn summarize_maps_a_red_sweep_to_a_submission_win() {
     let result = ReplayResult {
         winner: Some(Team::Red),
         score: Score { red: 41, blue: 39 },
+        kills: Kills::default(),
         ended: Ended::Swept,
         ticks: 9123,
     };
@@ -161,6 +162,7 @@ fn summarize_maps_a_blue_win_to_a_submission_loss() {
     let result = ReplayResult {
         winner: Some(Team::Blue),
         score: Score { red: 10, blue: 20 },
+        kills: Kills::default(),
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
@@ -177,6 +179,7 @@ fn summarize_maps_a_draw() {
     let result = ReplayResult {
         winner: None,
         score: Score { red: 5, blue: 5 },
+        kills: Kills::default(),
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
@@ -189,6 +192,7 @@ fn summarize_maps_a_red_forfeit_to_a_submission_forfeit() {
     let result = ReplayResult {
         winner: Some(Team::Blue),
         score: Score { red: 3, blue: 7 },
+        kills: Kills::default(),
         ended: Ended::Forfeit,
         ticks: 400,
     };

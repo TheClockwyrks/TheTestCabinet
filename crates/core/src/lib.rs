@@ -19,6 +19,7 @@ pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
+pub mod match_play;
 pub mod metrics;
 pub mod models;
 pub mod orchestrator;

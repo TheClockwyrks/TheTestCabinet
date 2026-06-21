@@ -14,6 +14,10 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}/leaderboard`,
   testCaseMetrics: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/metrics`,
+  // The adversarial arena for a case (consoles only): pit two controllers in a
+  // quick match or run a tournament over a field.
+  testCaseArena: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/arena`,
   models: (): string => "/models",
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
@@ -60,6 +64,11 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
+  // Tournament routes (consoles only; the static site never links to them). The
+  // arena persists tournaments and lists them here, each revisitable by id.
+  tournaments: (): string => "/tournaments",
+  tournamentDetail: (id: string): string =>
+    `/tournaments/${encodeURIComponent(id)}`,
 } as const;
 
 // Route patterns for <Route path={...}>. Kept alongside the builders so the
@@ -72,6 +81,7 @@ export const routePatterns = {
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
+  testCaseArena: "/test-cases/:slug/arena",
   models: "/models",
   modelDetail: "/models/:modelId",
   modelStats: "/models/:modelId/stats",
@@ -92,4 +102,6 @@ export const routePatterns = {
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
+  tournaments: "/tournaments",
+  tournamentDetail: "/tournaments/:id",
 } as const;

@@ -23,9 +23,10 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{review, run, run_link, snapshot_state};
+use test_cabinet_entities::{review, run, run_link, snapshot_state, tournament};
 
 use crate::error::Result;
 
@@ -47,6 +48,17 @@ pub struct StoredRun {
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
+}
+
+/// A published tournament as stored: the full record plus its first-publish
+/// timestamp. This is the shape `GET /tournaments/{id}` is built from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredTournament {
+    /// The full tournament record (standings + per-match summaries).
+    pub record: TournamentRecord,
+    /// RFC 3339 of when this tournament was first published. Not part of the
+    /// record itself.
+    pub published_at: String,
 }
 
 /// A run's review as stored.
@@ -317,6 +329,96 @@ impl Db {
         Ok(run::Entity::find().count(&self.conn).await? as i64)
     }
 
+    /// Publish a tournament: upsert its verbatim `TournamentRecord` JSON plus the
+    /// lifted columns. Idempotent on `record.id`: a re-publish updates the record
+    /// blob but **keeps** the original `published_at`. Tournaments are live-only
+    /// (served straight from SQLite), so this does **not** mark the snapshot dirty.
+    pub async fn publish_tournament(
+        &self,
+        record: &TournamentRecord,
+        published_at: &str,
+    ) -> Result<PublishOutcome> {
+        let record_json = serde_json::to_string(record)?;
+
+        let txn = self.conn.begin().await?;
+        let existing_published_at = tournament::Entity::find_by_id(record.id.clone())
+            .one(&txn)
+            .await?
+            .map(|model| model.published_at);
+        let newly_published = existing_published_at.is_none();
+        let effective_published_at =
+            existing_published_at.unwrap_or_else(|| published_at.to_string());
+
+        tournament::Entity::insert(tournament::ActiveModel {
+            id: Set(record.id.clone()),
+            published_at: Set(effective_published_at),
+            created_at: Set(record.created_at.clone()),
+            test_case_slug: Set(record.test_case_slug.clone()),
+            test_case_version: Set(record.test_case_version.clone()),
+            variant: Set(record.variant.clone()),
+            participant_count: Set(record.participants.len() as i32),
+            record_json: Set(record_json),
+        })
+        .on_conflict(
+            OnConflict::column(tournament::Column::Id)
+                .update_columns([
+                    tournament::Column::CreatedAt,
+                    tournament::Column::TestCaseSlug,
+                    tournament::Column::TestCaseVersion,
+                    tournament::Column::Variant,
+                    tournament::Column::ParticipantCount,
+                    tournament::Column::RecordJson,
+                ])
+                .to_owned(),
+        )
+        .exec(&txn)
+        .await?;
+
+        txn.commit().await?;
+        Ok(PublishOutcome { newly_published })
+    }
+
+    /// Fetch one stored tournament by id.
+    pub async fn get_tournament(&self, id: &str) -> Result<Option<StoredTournament>> {
+        tournament::Entity::find_by_id(id.to_string())
+            .one(&self.conn)
+            .await?
+            .map(stored_tournament)
+            .transpose()
+    }
+
+    /// List stored tournaments newest-first (by `published_at`), paginated by a
+    /// `published_at` cursor — the same scheme as [`Db::list_runs`].
+    pub async fn list_tournaments(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredTournament>, Option<String>)> {
+        let fetch = limit.saturating_add(1);
+        let mut query = tournament::Entity::find();
+        if let Some(before) = before {
+            query = query.filter(tournament::Column::PublishedAt.lt(before));
+        }
+        let rows = query
+            .order_by_desc(tournament::Column::PublishedAt)
+            .order_by_desc(tournament::Column::Id)
+            .limit(fetch as u64)
+            .all(&self.conn)
+            .await?;
+
+        let mut tournaments = rows
+            .into_iter()
+            .map(stored_tournament)
+            .collect::<Result<Vec<_>>>()?;
+        let next_before = if tournaments.len() > limit {
+            tournaments.truncate(limit);
+            tournaments.last().map(|t| t.published_at.clone())
+        } else {
+            None
+        };
+        Ok((tournaments, next_before))
+    }
+
     /// Read the snapshot coalescing state, defaulting to a clean state when the
     /// row has never been written.
     pub async fn snapshot_state(&self) -> Result<SnapshotState> {
@@ -436,6 +538,15 @@ impl StoredRunRow {
             events_json: self.events_json,
         })
     }
+}
+
+/// Decode a `tournament` row into the in-memory [`StoredTournament`].
+fn stored_tournament(model: tournament::Model) -> Result<StoredTournament> {
+    let record: TournamentRecord = serde_json::from_str(&model.record_json)?;
+    Ok(StoredTournament {
+        record,
+        published_at: model.published_at,
+    })
 }
 
 /// The wire string for a run state (matching the serde representation).

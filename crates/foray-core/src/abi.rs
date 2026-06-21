@@ -160,6 +160,7 @@ pub extern "C" fn replay_step() -> i64 {
             playback.game.state.result = Some(crate::state::MatchResult {
                 winner: playback.replay.result.winner,
                 score: playback.replay.result.score,
+                kills: playback.replay.result.kills,
                 ended: playback.replay.result.ended,
                 ticks: playback.replay.result.ticks,
             });

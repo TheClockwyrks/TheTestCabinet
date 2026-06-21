@@ -252,3 +252,103 @@ async fn all_runs_returns_everything_newest_first() {
     assert_eq!(all.len(), 2);
     assert_eq!(all[0].record.id, "r2");
 }
+
+fn tournament_record(id: &str) -> TournamentRecord {
+    use test_cabinet_core::match_play::{ControllerKind, ControllerRef, MatchSummary, Standing};
+    use test_cabinet_core::validation::AdversarialOutcome;
+
+    let participant = |pid: &str| ControllerRef {
+        id: pid.to_string(),
+        kind: ControllerKind::Baseline,
+        label: None,
+    };
+    TournamentRecord {
+        id: id.to_string(),
+        created_at: "2026-06-21T00:00:00Z".to_string(),
+        test_case_slug: "foray".to_string(),
+        test_case_version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        participants: vec![participant("border-soldier"), participant("random")],
+        standings: vec![
+            Standing {
+                participant_id: "border-soldier".to_string(),
+                points: 20,
+                wins: 1,
+                losses: 0,
+                draws: 0,
+                rank: 1,
+            },
+            Standing {
+                participant_id: "random".to_string(),
+                points: 3,
+                wins: 0,
+                losses: 1,
+                draws: 0,
+                rank: 2,
+            },
+        ],
+        matches: vec![MatchSummary {
+            match_id: "border-soldier__vs__random".to_string(),
+            red_id: "border-soldier".to_string(),
+            blue_id: "random".to_string(),
+            winner: Some("border-soldier".to_string()),
+            win_type: "swept".to_string(),
+            outcome_for_red: AdversarialOutcome::Win,
+            red_score: 20,
+            blue_score: 3,
+            ticks: 1234,
+            red_kills: 4,
+            blue_kills: 1,
+            replay_key: Some("border-soldier__vs__random".to_string()),
+            detail: None,
+        }],
+    }
+}
+
+#[tokio::test]
+async fn publish_then_get_tournament_round_trips() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let outcome = db
+        .publish_tournament(&tournament_record("t1"), "2026-06-21T00:00:00Z")
+        .await
+        .unwrap();
+    assert!(outcome.newly_published);
+
+    let stored = db.get_tournament("t1").await.unwrap().unwrap();
+    assert_eq!(stored.record.standings[0].participant_id, "border-soldier");
+    assert_eq!(stored.record.matches[0].red_kills, 4);
+    assert_eq!(stored.published_at, "2026-06-21T00:00:00Z");
+}
+
+#[tokio::test]
+async fn republish_tournament_keeps_first_published_at() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.publish_tournament(&tournament_record("t1"), "2026-06-21T00:00:00Z")
+        .await
+        .unwrap();
+    let outcome = db
+        .publish_tournament(&tournament_record("t1"), "2026-06-22T00:00:00Z")
+        .await
+        .unwrap();
+    assert!(!outcome.newly_published, "re-publish is idempotent");
+    let stored = db.get_tournament("t1").await.unwrap().unwrap();
+    assert_eq!(stored.published_at, "2026-06-21T00:00:00Z");
+}
+
+#[tokio::test]
+async fn list_tournaments_orders_newest_first_and_paginates() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.publish_tournament(&tournament_record("t1"), "2026-06-21T10:00:00Z")
+        .await
+        .unwrap();
+    db.publish_tournament(&tournament_record("t2"), "2026-06-21T11:00:00Z")
+        .await
+        .unwrap();
+
+    let (page, next) = db.list_tournaments(1, None).await.unwrap();
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].record.id, "t2", "newest first");
+    let cursor = next.expect("a second page remains");
+    let (page2, _) = db.list_tournaments(1, Some(&cursor)).await.unwrap();
+    assert_eq!(page2[0].record.id, "t1");
+}

@@ -123,7 +123,7 @@ function ReplaySection({
         </div>
       ) : (
         <ReplayOverlay
-          run={run}
+          label={`Match replay for ${run.id}`}
           replayUrl={replay.replayUrl}
           onExit={() => setLaunched(false)}
         />
@@ -137,13 +137,24 @@ function ReplaySection({
 // <canvas> driven by the vendored foray-core wasm engine rather than a
 // cross-origin iframe — so, unlike the iframe case, the parent keeps the
 // keyboard and the lock is purely to keep the fixed overlay from scrolling.
-function ReplayOverlay({
-  run,
+//
+// It plays either a replay fetched from `replayUrl` (a run-detail canonical match
+// or a persisted tournament match) or an inline `replayData` object handed in
+// directly (the arena's transient quick match, whose replay is never stored).
+// Exported so the arena pages reuse the exact same player. Exactly one of
+// `replayUrl`/`replayData` is supplied.
+export function ReplayOverlay({
+  label,
   replayUrl,
+  replayData,
   onExit,
 }: {
-  run: RunRecord;
-  replayUrl: string;
+  /** Accessible label for the canvas (e.g. "Match replay for <id>"). */
+  label: string;
+  /** URL to fetch the replay JSON from, when it is stored. */
+  replayUrl?: string;
+  /** The replay object to play directly, when it is not stored (a quick match). */
+  replayData?: unknown;
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -183,8 +194,12 @@ function ReplayOverlay({
     let cancelled = false;
     (async () => {
       try {
+        // The replay is either fetched from its URL or supplied inline; the wasm
+        // engine and sprite sheet always come from the bundle.
         const [replay, wasm, sheetBlob] = await Promise.all([
-          fetch(replayUrl).then((r) => r.json()),
+          replayUrl !== undefined
+            ? fetch(replayUrl).then((r) => r.json())
+            : Promise.resolve(replayData),
           fetch(forayCoreWasmUrl).then((r) => r.arrayBuffer()),
           fetch(sheetPngUrl).then((r) => r.blob()),
         ]);
@@ -215,7 +230,7 @@ function ReplayOverlay({
     return () => {
       cancelled = true;
     };
-  }, [replayUrl]);
+  }, [replayUrl, replayData]);
 
   // Draw the frame at `cursor` whenever it (or readiness) changes. Facings are
   // derived from frame-to-frame motion, so clear them before each draw — a scrub
@@ -305,11 +320,7 @@ function ReplayOverlay({
               </span>
             </div>
 
-            <canvas
-              ref={canvasRef}
-              className={styles.canvas}
-              aria-label={`Match replay for ${run.id}`}
-            />
+            <canvas ref={canvasRef} className={styles.canvas} aria-label={label} />
 
             <div className={styles.controls}>
               <button

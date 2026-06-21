@@ -15,7 +15,8 @@ export type DetailTab =
   | "inputs"
   | "runs"
   | "leaderboard"
-  | "metrics";
+  | "metrics"
+  | "arena";
 
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -39,7 +40,7 @@ export function TestCaseDetailLayout({
 }: TestCaseDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
-  const { canExecute } = useGalleryData();
+  const { canExecute, arena } = useGalleryData();
   const { testCases } = useTestCases();
   const testCase = testCases.find((entry) => entry.slug === slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
@@ -70,6 +71,16 @@ export function TestCaseDetailLayout({
     },
     { key: "metrics", label: "Metrics", to: routes.testCaseMetrics(testCase.slug) },
   ];
+  // The Arena tab is shown only for an adversarial case on a console that can run
+  // matches (a connected worker exposes the arena capability); it is hidden on the
+  // static site and for every other test type.
+  if (canExecute && arena && testCase.testType === "adversarial") {
+    tabs.push({
+      key: "arena",
+      label: "Arena",
+      to: routes.testCaseArena(testCase.slug),
+    });
+  }
 
   return (
     <PageLayout>

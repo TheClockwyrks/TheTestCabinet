@@ -162,6 +162,12 @@ fn tagging(board: &Board, state: &mut MatchState) {
         }
     }
 
+    for &(_, _, raider_team, _) in &to_respawn {
+        // The taggers are the raider's opponents (the soldiers on this half); each
+        // respawned raider is one kill credited to that defending colony.
+        state.kills.add(raider_team.opponent(), 1);
+    }
+
     for (idx, tag_tile, raider_team, load) in to_respawn {
         // Scatter the dropped load onto the maze as recoverable caches on the
         // defender's territory (the half the raid happened on). Each carried seed
@@ -281,6 +287,7 @@ fn decide(state: &MatchState, sim: &Simulation) -> Option<MatchResult> {
             return Some(MatchResult {
                 winner: Some(team),
                 score: state.score,
+                kills: state.kills,
                 ended: Ended::Swept,
                 ticks: state.tick,
             });
@@ -296,6 +303,7 @@ fn decide(state: &MatchState, sim: &Simulation) -> Option<MatchResult> {
         return Some(MatchResult {
             winner,
             score: state.score,
+            kills: state.kills,
             ended: Ended::TimeLimit,
             ticks: state.tick,
         });
@@ -312,6 +320,7 @@ pub fn forfeit(state: &mut MatchState, loser: Team) -> MatchResult {
     let result = MatchResult {
         winner: Some(loser.opponent()),
         score: state.score,
+        kills: state.kills,
         ended: Ended::Forfeit,
         ticks: state.tick,
     };

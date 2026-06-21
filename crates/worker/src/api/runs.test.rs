@@ -29,6 +29,7 @@ fn test_state() -> AppState {
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),
         jobs: JobRegistry::new(),
+        tournaments: crate::tournaments::TournamentRegistry::new(),
         notifier: WorkerNotifier::new(),
         metrics: crate::metrics::Metrics::new(),
     }
@@ -93,6 +94,7 @@ fn state_with_out_dir(out_dir: std::path::PathBuf) -> AppState {
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),
         jobs: JobRegistry::new(),
+        tournaments: crate::tournaments::TournamentRegistry::new(),
         notifier: WorkerNotifier::new(),
         metrics: crate::metrics::Metrics::new(),
     }

@@ -5,6 +5,7 @@ import { TestCaseInputsPage } from "./[slug]/TestCaseInputsPage";
 import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
 import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
 import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
+import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
 import { TestCasesPage } from "./TestCasesPage";
 
 // Routes owned by the test-cases section: the catalog list and the per-slug
@@ -33,6 +34,12 @@ export function testCasesRoutes() {
       <Route
         path={routePatterns.testCaseMetrics}
         element={<TestCaseMetricsPage />}
+      />
+      {/* The arena is console-only; the page itself guards on the arena
+          capability and renders a short note where it is absent. */}
+      <Route
+        path={routePatterns.testCaseArena}
+        element={<TestCaseArenaPage />}
       />
     </>
   );

@@ -5103,12 +5103,14 @@ name = "test-cabinet-desktop"
 version = "0.0.0"
 dependencies = [
  "dotenvy",
+ "foray-core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "test-cabinet-core",
  "test-cabinet-telemetry",
+ "time",
  "tokio",
  "tracing",
  "uuid",
@@ -5166,6 +5168,7 @@ dependencies = [
  "axum",
  "bytes",
  "dotenvy",
+ "foray-core",
  "futures-util",
  "http",
  "opentelemetry",

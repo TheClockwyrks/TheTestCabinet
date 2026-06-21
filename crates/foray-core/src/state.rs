@@ -105,6 +105,8 @@ pub struct MatchResult {
     pub winner: Option<Team>,
     /// Final banked score per colony.
     pub score: Score,
+    /// How many enemy raiders each colony tagged over the match — the "kills".
+    pub kills: Kills,
     /// How the match ended.
     pub ended: Ended,
     /// The tick at which it ended.
@@ -139,6 +141,37 @@ impl Score {
     }
 }
 
+/// Tags inflicted per colony — a "kill" is a soldier tagging an enemy raider. A
+/// team's count is the number of *enemy* raiders it tagged (Red's count is the
+/// Blue raiders Red soldiers respawned, and vice versa). Surfaced on the
+/// [`MatchResult`] so a match summary can report kills without replaying the match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Kills {
+    /// Enemy (Blue) raiders Red has tagged.
+    pub red: u32,
+    /// Enemy (Red) raiders Blue has tagged.
+    pub blue: u32,
+}
+
+impl Kills {
+    /// The tag count credited to `team`.
+    pub fn get(&self, team: Team) -> u32 {
+        match team {
+            Team::Red => self.red,
+            Team::Blue => self.blue,
+        }
+    }
+
+    /// Credit `team` with one tag against an enemy raider.
+    pub fn add(&mut self, team: Team, amount: u32) {
+        match team {
+            Team::Red => self.red += amount,
+            Team::Blue => self.blue += amount,
+        }
+    }
+}
+
 /// Everything mutable in a match.
 #[derive(Debug, Clone)]
 pub struct MatchState {
@@ -158,6 +191,9 @@ pub struct MatchState {
     pub blue_jelly: BTreeSet<Pos>,
     /// Banked score.
     pub score: Score,
+    /// Tags inflicted per colony so far — the running kill count, carried into
+    /// the [`MatchResult`] when the match decides.
+    pub kills: Kills,
     /// How many of each colony's *original* caches remain unbanked — the sweep
     /// counter. A colony wins by sweep when the opponent's total drops to zero,
     /// i.e. every seed that started on the opponent's half has been banked. We
@@ -201,6 +237,7 @@ impl MatchState {
             red_jelly: board.initial_jelly(Team::Red).iter().copied().collect(),
             blue_jelly: board.initial_jelly(Team::Blue).iter().copied().collect(),
             score: Score::default(),
+            kills: Kills::default(),
             result: None,
         }
     }

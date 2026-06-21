@@ -24,23 +24,18 @@
 //! result and a playable replay.
 
 use foray_core::board::Team;
-use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::replay::ReplayResult;
-use foray_core::state::Ended;
-use foray_host::{MatchSetup, RunError, SandboxLimits, board_for, run_match};
+use foray_host::{RunError, board_for, run_match};
 
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
+use crate::match_play::{REPLAY_JSON, canonical_match_setup, ended_to, outcome_for};
 use crate::reference::RenderedReference;
 use crate::test_case::{ProofFile, TestCaseVersion};
 use crate::validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, ValidationSummary, Validator,
 };
 use crate::validator::proof_results;
-
-/// The run-root-relative path the published replay is written to inside the
-/// produced tree, then collected and served as an ordinary run asset.
-const REPLAY_JSON: &str = "replay.json";
 
 /// The version-folder-relative path the case commits its canonical baseline
 /// opponent (Blue) wasm module at. The case ships this module so the validator
@@ -82,15 +77,10 @@ impl Validator for AdversarialValidator {
         // The orchestrator only routes adversarial cases here, so the tables are
         // present; guard the invariants rather than panicking. The `[build]`
         // table carries the produced module path; `[contract]`, `[sandbox]`, and
-        // `[simulation]` configure the match.
-        let (Some(build), Some(contract), Some(sandbox), Some(simulation)) = (
-            test_case.build.as_ref(),
-            test_case.contract.as_ref(),
-            test_case.sandbox.as_ref(),
-            test_case.simulation.as_ref(),
-        ) else {
+        // `[simulation]` configure the match (validated by `canonical_match_setup`).
+        let Some(build) = test_case.build.as_ref() else {
             return Ok(failed(
-                "adversarial validation requires [build], [contract], [sandbox], and [simulation]",
+                "adversarial validation requires [build]",
                 proof_results,
             ));
         };
@@ -132,26 +122,14 @@ impl Validator for AdversarialValidator {
             }
         };
 
-        // Build the canonical match setup from the case's tables. The board is
-        // generated deterministically from the recorded seed and params so the
-        // replay reconstructs the identical maze on playback.
-        let setup = MatchSetup {
-            entry: contract.entry.clone(),
-            limits: SandboxLimits {
-                fuel_per_tick: sandbox.fuel_per_tick,
-                // The manifest caps memory in bytes; the host takes a `usize`.
-                max_memory_bytes: sandbox.max_memory_bytes as usize,
-            },
-            map_id: MAP_ID.to_string(),
-            seed: CANONICAL_SEED,
-            board_params: BoardParamsSerde::default(),
-            red_id: SUBMISSION_ID.to_string(),
-            blue_id: BASELINE_OPPONENT_ID.to_string(),
-            rules: Rules::default(),
-            sim: Simulation {
-                timestep_ms: simulation.timestep_ms,
-                max_ticks: simulation.max_ticks,
-            },
+        // Build the canonical match setup — the single shared source of the
+        // map/seed/sandbox/simulation params (also used by the arena modes). The
+        // board is generated deterministically from the recorded seed and params so
+        // the replay reconstructs the identical maze on playback. Missing
+        // `[contract]`/`[sandbox]`/`[simulation]` is a case-authoring error.
+        let setup = match canonical_match_setup(test_case, SUBMISSION_ID, BASELINE_OPPONENT_ID) {
+            Ok(setup) => setup,
+            Err(err) => return Ok(failed(&err.to_string(), proof_results)),
         };
         let board = board_for(&setup);
 
@@ -209,41 +187,21 @@ impl Validator for AdversarialValidator {
     }
 }
 
-/// The shipped map's id, recorded in the replay so playback regenerates the maze.
-const MAP_ID: &str = "mirror-32x16";
-
-/// The seed the canonical match's maze is generated from. Fixed so every run of a
-/// case plays on the same board and runs are comparable.
-const CANONICAL_SEED: u64 = 0xC0FFEE;
-
 /// Build the recorded [`AdversarialResult`] from a decided match's result, from
-/// the **submission's** (Red's) perspective.
+/// the **submission's** (Red's) perspective. The `ended`/outcome derivation is the
+/// shared [`match_play`](crate::match_play) logic, so a run's recorded result and
+/// an arena match's summary describe the same match identically.
 fn summarize(result: &ReplayResult) -> AdversarialResult {
-    let winner = result.winner.map(team_to);
-    let ended = ended_to(result.ended);
-    let outcome = match result.ended {
-        Ended::Forfeit => match result.winner {
-            // The submission won by the opponent forfeiting.
-            Some(Team::Red) => AdversarialOutcome::Win,
-            // The submission forfeited — the recorded loss it owns.
-            _ => AdversarialOutcome::Forfeit,
-        },
-        _ => match result.winner {
-            Some(Team::Red) => AdversarialOutcome::Win,
-            Some(Team::Blue) => AdversarialOutcome::Loss,
-            None => AdversarialOutcome::Draw,
-        },
-    };
     AdversarialResult {
         replay_json: REPLAY_JSON.to_string(),
         opponent: BASELINE_OPPONENT_ID.to_string(),
         submission_team: AdversarialTeam::Red,
-        winner,
+        winner: result.winner.map(team_to),
         red_score: result.score.red,
         blue_score: result.score.blue,
-        ended,
+        ended: ended_to(result.ended),
         ticks: result.ticks,
-        outcome,
+        outcome: outcome_for(result, Team::Red),
         detail: None,
     }
 }
@@ -254,30 +212,6 @@ fn team_to(team: Team) -> AdversarialTeam {
         Team::Red => AdversarialTeam::Red,
         Team::Blue => AdversarialTeam::Blue,
     }
-}
-
-/// Map a foray-core [`Ended`] to the replay's wire spelling, matching the JSON the
-/// replay records (`swept`, `time_limit`, `forfeit`).
-///
-/// Serialized through serde so the recorded result's `ended` is, by construction,
-/// the *same* string the published `replay.json` carries — a hand-maintained match
-/// arm here had drifted to a different spelling (`timeLimit`) than the snake_case
-/// serde emits for [`Ended`], so the two artifacts disagreed for time-limit
-/// matches. Deriving from serde removes the drift.
-fn ended_to(ended: Ended) -> String {
-    serde_json::to_value(ended)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        // `Ended` is a plain unit-variant enum: it always serializes to a string,
-        // so this fallback is unreachable, but keep the spelling correct if not.
-        .unwrap_or_else(|| {
-            match ended {
-                Ended::Swept => "swept",
-                Ended::TimeLimit => "time_limit",
-                Ended::Forfeit => "forfeit",
-            }
-            .to_string()
-        })
 }
 
 /// A [`ValidationSummary`] for an adversarial run that could not be scored at all

@@ -1,0 +1,77 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.item {
+  margin: 0;
+}
+
+// A tournament row: the case + counts on the left, the leader and date on the
+// right. Mirrors the run-log row treatment.
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  text-decoration: none;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.cardMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.cardCase {
+  color: t.$color-text;
+}
+
+.cardMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.cardSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: t.$space-xs;
+  text-align: right;
+  min-width: 0;
+}
+
+.cardLeader {
+  color: t.$color-accent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16rem;
+}
+
+.cardDate {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}

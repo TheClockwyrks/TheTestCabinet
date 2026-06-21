@@ -22,6 +22,7 @@ use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
+use crate::match_play::TournamentRecord;
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -173,6 +174,31 @@ pub trait BackendClient: Send + Sync {
     /// Defaults to a no-op so a backend without asset support (or a test stub)
     /// stays valid; the HTTP client overrides it.
     async fn publish_run_asset(&self, _run_id: &str, _file: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Publish an adversarial tournament's record (standings + per-match
+    /// summaries). (`POST /tournaments`) Idempotent on `record.id`. The per-match
+    /// replays are uploaded separately via [`Self::publish_tournament_match`].
+    ///
+    /// Defaults to a no-op so a backend without tournament support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_tournament(&self, _record: &TournamentRecord) -> Result<()> {
+        Ok(())
+    }
+
+    /// Upload one tournament match's replay JSON, served back for browser playback.
+    /// (`POST /tournaments/{id}/matches/{matchId}/replay.json`) Idempotent:
+    /// identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without tournament support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_tournament_match(
+        &self,
+        _tournament_id: &str,
+        _match_id: &str,
+        _bytes: Vec<u8>,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -612,6 +638,58 @@ impl BackendClient for HttpBackendClient {
             .post(&url)
             .headers(headers)
             .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, record),
+        fields(otel.kind = "client", http.request.method = "POST", tournament.id = %record.id),
+        err,
+    )]
+    async fn publish_tournament(&self, record: &TournamentRecord) -> Result<()> {
+        let url = self.url("/tournaments");
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .json(record)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", tournament.id = %tournament_id, match.id = %match_id),
+        err,
+    )]
+    async fn publish_tournament_match(
+        &self,
+        tournament_id: &str,
+        match_id: &str,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
+        let url = self.url(&format!(
+            "/tournaments/{}/matches/{}/replay.json",
+            encode(tournament_id),
+            encode(match_id)
+        ));
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/json")
             .body(bytes)
             .send()
             .await

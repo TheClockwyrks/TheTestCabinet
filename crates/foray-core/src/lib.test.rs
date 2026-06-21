@@ -425,6 +425,11 @@ fn soldier_tags_enemy_raider_scattering_load_and_respawning_it() {
             .iter()
             .all(|c| game.board.team_of_column(c.x) == Team::Red)
     );
+    assert_eq!(
+        game.state.kills,
+        Kills { red: 1, blue: 0 },
+        "Red tagged one Blue raider — one kill credited to Red"
+    );
 }
 
 #[test]
@@ -463,6 +468,11 @@ fn immune_raider_cannot_be_tagged() {
     );
     assert_eq!(blue0.carrying, 2, "an immune raider keeps its load");
     assert_eq!(blue0.immune_ticks, 4, "immunity decrements by one per tick");
+    assert_eq!(
+        game.state.kills,
+        Kills::default(),
+        "an immune raider that cannot be tagged is not a kill"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -713,6 +723,7 @@ fn scripted_match() -> (Board, Vec<TickInput>, MatchResult) {
         game.state.result.unwrap_or(MatchResult {
             winner: None,
             score: game.state.score,
+            kills: game.state.kills,
             ended: Ended::TimeLimit,
             ticks: game.state.tick,
         })

@@ -24,10 +24,13 @@ use crate::config::Config;
 use crate::jobs::JobRegistry;
 use crate::metrics::Metrics;
 use crate::notify::WorkerNotifier;
+use crate::tournaments::TournamentRegistry;
 
+mod matches;
 mod notify;
 mod publish_api;
 mod runs;
+mod tournaments;
 
 /// Shared application state handed to every handler.
 #[derive(Clone)]
@@ -36,6 +39,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The registry of submitted run jobs.
     pub jobs: JobRegistry,
+    /// The registry of submitted tournament jobs.
+    pub tournaments: TournamentRegistry,
     /// The worker-wide notification fan-out (run completions), streamed to the
     /// console over `GET /notifications`.
     pub notifier: WorkerNotifier,
@@ -85,6 +90,17 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/build", get(runs::build_root))
         .route("/runs/{id}/build/", get(runs::build_root))
         .route("/runs/{id}/build/{*path}", get(runs::build_path))
+        // Adversarial arena. A quick match pits two chosen controllers and returns
+        // the replay for immediate playback (transient — nothing persisted); the
+        // controllers route lists what can be pitted (baselines + produced runs).
+        .route("/matches", post(matches::run))
+        .route("/matches/controllers", get(matches::controllers))
+        // A tournament runs every pair as a background job and auto-publishes to
+        // the backend; the console polls status and streams per-match progress.
+        // (`/tournaments/active`-style listing lives on the backend, not here.)
+        .route("/tournaments", post(tournaments::submit))
+        .route("/tournaments/{job}", get(tournaments::status))
+        .route("/tournaments/{job}/events", get(tournaments::events))
         // Publish a finished run: release code, deploy the build, submit to the
         // backend — the same terms a local `tcab publish` uses.
         .route("/publish", post(publish_api::publish))

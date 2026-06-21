@@ -1,11 +1,18 @@
+import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
-import { BackendProvider, WorkersProvider } from "@test-cabinet/ui/client";
+import {
+  BackendProvider,
+  WorkersProvider,
+  useBackend,
+  useWorkers,
+} from "@test-cabinet/ui/client";
 import {
   GalleryApp,
   GalleryDataProvider,
   RunsRuntimeProvider,
   useLiveGallery,
 } from "@test-cabinet/ui/app";
+import { createHttpArena } from "./transport/httpArena";
 import {
   useBackendConnection,
   useWorkerConnections,
@@ -34,7 +41,18 @@ export function App() {
 }
 
 function WebGallery() {
-  const data = useLiveGallery();
+  // The arena runs matches on the active worker and reads persisted tournaments
+  // from the backend; it is offered only when a worker is connected (the gallery
+  // additionally gates the run UI on `canExecute`). Rebuilt when either base URL
+  // changes so it always targets the current connections.
+  const { url: backendUrl } = useBackend();
+  const { active: worker } = useWorkers();
+  const workerUrl = worker?.url ?? null;
+  const arena = useMemo(
+    () => (workerUrl ? createHttpArena(workerUrl, backendUrl) : undefined),
+    [workerUrl, backendUrl],
+  );
+  const data = useLiveGallery(arena);
   return (
     <GalleryDataProvider value={data}>
       <BrowserRouter>

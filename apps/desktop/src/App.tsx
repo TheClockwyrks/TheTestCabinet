@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
 import { BackendProvider, WorkersProvider } from "@test-cabinet/ui/client";
 import {
@@ -6,6 +7,7 @@ import {
   RunsRuntimeProvider,
   useLiveGallery,
 } from "@test-cabinet/ui/app";
+import { createTauriArena } from "./transport/tauriArena";
 import { useTauriBackend, useTauriWorkers } from "./state/useConnections";
 
 // The desktop app: the same shared gallery app the web console renders, but with
@@ -29,7 +31,10 @@ export function App() {
 }
 
 function DesktopGallery() {
-  const data = useLiveGallery();
+  // The local core always exposes the arena over IPC (matches/tournaments run in
+  // process); it is a constant capability, so build it once.
+  const arena = useMemo(() => createTauriArena(), []);
+  const data = useLiveGallery(arena);
   return (
     <GalleryDataProvider value={data}>
       <BrowserRouter>

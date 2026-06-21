@@ -95,6 +95,9 @@ interface SnapshotCaseFile {
   slug: string;
   version: string;
   name: string;
+  // The case's test type. Optional for snapshots written before it was published;
+  // defaults to "end-to-end" when absent.
+  testType?: "end-to-end" | "asset-generation" | "adversarial";
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -197,6 +200,7 @@ interface AssembledVariant {
 interface AssembledTestCase {
   slug: string;
   name: string;
+  testType: "end-to-end" | "asset-generation" | "adversarial";
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -292,6 +296,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   return {
     slug: file.slug,
     name: file.name,
+    testType: file.testType ?? "end-to-end",
     difficulty: file.difficulty,
     tags: file.tags,
     summary: file.summary,

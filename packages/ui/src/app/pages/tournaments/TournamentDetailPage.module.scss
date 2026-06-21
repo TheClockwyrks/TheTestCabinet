@@ -1,0 +1,108 @@
+@use "../../styles/tokens" as t;
+
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}
+
+.caption {
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-lg;
+}
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.heading {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+}
+
+// The standings: rank, controller, points, record — a dense column-aligned board
+// modeled on the model leaderboard.
+.standings,
+.matches {
+  display: flex;
+  flex-direction: column;
+}
+
+.standingsRow {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 8rem 6rem;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-xs 0;
+  border-bottom: 1px solid t.$color-border;
+}
+
+.matchesRow {
+  display: grid;
+  grid-template-columns: 1.5fr 1.5fr 5rem 5rem 6rem;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-xs 0;
+  border-bottom: 1px solid t.$color-border;
+}
+
+.head {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  color: t.$color-text-muted;
+  border-bottom-color: t.$color-text-muted;
+}
+
+.rank {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.controller,
+.match {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.points {
+  font-weight: 700;
+}
+
+.pointsUnit {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.scoreRed {
+  color: t.$color-accent;
+}
+
+.scoreBlue {
+  color: t.$color-accent-2;
+}
+
+.replay {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-surface-2;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

@@ -71,7 +71,7 @@ pub use config::{Rules, Simulation};
 pub use contract::{Action, Dir, Move, World};
 pub use engine::{Match, StateSnapshot};
 pub use replay::{Replay, ReplayError, TickInput};
-pub use state::{Agent, Ended, MatchResult, MatchState, Role, Score};
+pub use state::{Agent, Ended, Kills, MatchResult, MatchState, Role, Score};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]

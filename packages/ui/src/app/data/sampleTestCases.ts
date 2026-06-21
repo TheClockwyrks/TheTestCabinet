@@ -9,6 +9,7 @@ export const sampleTestCases: TestCaseSummary[] = [
   {
     slug: "carom",
     name: "Carom",
+    testType: "end-to-end",
     difficulty: "easy",
     tags: ["arcade", "2d", "paddle", "physics"],
     summary:
@@ -126,6 +127,7 @@ export const sampleTestCases: TestCaseSummary[] = [
   {
     slug: "phalanx",
     name: "Phalanx",
+    testType: "end-to-end",
     difficulty: "medium",
     tags: ["arcade", "2d", "shooter"],
     summary:

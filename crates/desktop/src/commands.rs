@@ -223,7 +223,7 @@ pub async fn resolve_version(slug: String, version: String) -> CmdResult<Version
 /// disk so spec bodies are readable) or the local checkout. The local checkout
 /// already holds the spec files on disk; the backend path writes them under the
 /// per-run staging store.
-async fn resolve_version_inner(slug: &str, version: &str) -> CmdResult<TestCaseVersion> {
+pub(crate) async fn resolve_version_inner(slug: &str, version: &str) -> CmdResult<TestCaseVersion> {
     match config::backend_url() {
         Some(url) => {
             let client = HttpBackendClient::new(url);

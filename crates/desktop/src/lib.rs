@@ -12,12 +12,14 @@
 //! invoked both by the binary (`src/main.rs`) and, on mobile targets, by the
 //! generated platform entry point.
 
+mod arena;
 mod asset;
 mod commands;
 mod config;
 mod events;
 mod playable;
 mod proof;
+mod tournament;
 
 /// The desktop application's version string (the crate version).
 #[tauri::command]
@@ -93,6 +95,11 @@ pub fn run() {
         .register_uri_scheme_protocol(asset::SCHEME, |_app, request| {
             asset::handle_request(&request)
         })
+        // Serve a locally-run tournament's per-match replays to the webview so the
+        // arena can play back an individual match (see `tournament`).
+        .register_uri_scheme_protocol(tournament::SCHEME, |_app, request| {
+            tournament::handle_request(&request)
+        })
         .invoke_handler(tauri::generate_handler![
             app_version,
             backend_configured,
@@ -111,6 +118,11 @@ pub fn run() {
             commands::read_review_items,
             commands::save_review,
             commands::publish_run,
+            arena::run_adversarial_match,
+            arena::list_adversarial_controllers,
+            arena::run_tournament_match,
+            arena::list_tournaments,
+            arena::read_tournament,
         ])
         .run(tauri::generate_context!())
         .expect("error while running The Test Cabinet desktop application");

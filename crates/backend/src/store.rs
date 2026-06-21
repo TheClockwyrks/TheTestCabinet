@@ -564,6 +564,53 @@ impl DefinitionStore {
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("asset `{run_id}/{file}` not stored")))
     }
+
+    /// Where a tournament's per-match replays live:
+    /// `tournaments/<tournament_id>/matches/<match_id>/`.
+    pub fn tournament_match_dir(&self, tournament_id: &str, match_id: &str) -> PathBuf {
+        self.root
+            .join("tournaments")
+            .join(tournament_id)
+            .join("matches")
+            .join(match_id)
+    }
+
+    /// Persist one match's replay under
+    /// `tournaments/<tournament_id>/matches/<match_id>/replay.json`. Keyed by the
+    /// caller-assigned ids, so a re-publish overwrites the identical bytes.
+    pub fn write_tournament_match(
+        &self,
+        tournament_id: &str,
+        match_id: &str,
+        bytes: &[u8],
+    ) -> Result<()> {
+        if !is_safe_segment(tournament_id) || !is_safe_segment(match_id) {
+            return Err(BackendError::BadRequest(
+                "invalid tournament id or match id".to_string(),
+            ));
+        }
+        let dir = self.tournament_match_dir(tournament_id, match_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join("replay.json"), bytes)?;
+        Ok(())
+    }
+
+    /// Read one match's replay JSON.
+    pub fn read_tournament_match(&self, tournament_id: &str, match_id: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(tournament_id) || !is_safe_segment(match_id) {
+            return Err(BackendError::BadRequest(
+                "invalid tournament id or match id".to_string(),
+            ));
+        }
+        let path = self
+            .tournament_match_dir(tournament_id, match_id)
+            .join("replay.json");
+        std::fs::read(&path).map_err(|_| {
+            BackendError::NotFound(format!(
+                "replay for match `{match_id}` of tournament `{tournament_id}` not stored"
+            ))
+        })
+    }
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.

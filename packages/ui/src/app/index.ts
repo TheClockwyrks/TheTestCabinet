@@ -14,6 +14,7 @@ export { GalleryApp } from "./GalleryApp";
 export {
   GalleryDataProvider,
   useGalleryData,
+  type ArenaApi,
   type GalleryData,
   type GalleryDataInput,
   type InProgressRun,

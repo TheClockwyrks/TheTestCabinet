@@ -4,7 +4,13 @@
 // here match the serde DTOs those commands return (camelCase). Tauri's `invoke`
 // is imported lazily so the bundle still loads in a plain browser (where the
 // commands are absent) for development; `isTauri` gates the calls.
-import type { RunRecord, TestType } from "@test-cabinet/run-record";
+import type {
+  ControllerRef,
+  MatchSummary,
+  RunRecord,
+  TestType,
+  TournamentRecord,
+} from "@test-cabinet/run-record";
 import type { InProgressRun, RunNotification } from "@test-cabinet/ui/client";
 
 export function isTauri(): boolean {
@@ -258,3 +264,58 @@ export const previewChannel = (runId: string) => `run://${runId}/preview`;
 export const notifyChannel = "notifications://run";
 // Re-exported so the worker transport can type the listener payload.
 export type { RunNotification };
+
+// --- Adversarial arena ------------------------------------------------------
+
+// A quick (transient) head-to-head match configuration. The command arg is keyed
+// `config`, matching `run_adversarial_match(config: MatchConfig)`.
+export interface MatchConfig {
+  testCase: string;
+  version: string;
+  red: ControllerRef;
+  blue: ControllerRef;
+}
+
+// The quick match's result: the replay (for immediate playback) and the summary.
+export interface MatchResult {
+  replay: unknown | null;
+  summary: MatchSummary;
+}
+
+// A tournament configuration, keyed `config` to match
+// `run_tournament_match(app, config: TournamentConfig)`.
+export interface TournamentConfig {
+  testCase: string;
+  version: string;
+  variant: string;
+  participants: ControllerRef[];
+}
+
+// One completed match emitted live on a tournament's progress channel.
+export interface TournamentProgress {
+  played: number;
+  total: number;
+  summary: MatchSummary;
+}
+
+// A tournament's terminal outcome, emitted on its done channel.
+export type TournamentOutcome =
+  | { kind: "completed"; record: TournamentRecord }
+  | { kind: "failed"; message: string };
+
+export const runAdversarialMatch = (config: MatchConfig) =>
+  invoke<MatchResult>("run_adversarial_match", { config });
+export const listAdversarialControllers = (slug: string, version: string) =>
+  invoke<ControllerRef[]>("list_adversarial_controllers", { slug, version });
+export const runTournamentMatch = (config: TournamentConfig) =>
+  invoke<string>("run_tournament_match", { config });
+export const listTournaments = () =>
+  invoke<TournamentRecord[]>("list_tournaments");
+export const readTournament = (id: string) =>
+  invoke<TournamentRecord>("read_tournament", { id });
+
+// A tournament's live per-match progress and terminal outcome channels — mirror
+// `crates/desktop/src/arena.rs`'s `progress_channel`/`done_channel`.
+export const tournamentProgressChannel = (id: string) =>
+  `tournament://${id}/progress`;
+export const tournamentDoneChannel = (id: string) => `tournament://${id}/done`;

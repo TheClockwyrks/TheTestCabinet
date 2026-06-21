@@ -145,6 +145,7 @@ fn forfeit_result(game: &Match, red_forfeited: bool, blue_forfeited: bool) -> Ma
     MatchResult {
         winner,
         score: game.state.score,
+        kills: game.state.kills,
         ended: Ended::Forfeit,
         ticks: game.state.tick,
     }

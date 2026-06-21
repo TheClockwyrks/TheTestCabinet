@@ -14,7 +14,7 @@ import type {
 } from "../../client/types";
 import { frameReview } from "../data/frameReview";
 import { sampleTestCases } from "../data/sampleTestCases";
-import type { GalleryDataInput } from "../data/galleryContext";
+import type { ArenaApi, GalleryDataInput } from "../data/galleryContext";
 import type { SeededInput, TestCaseSummary } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
 
@@ -135,6 +135,7 @@ async function toTestCaseSummary(
   return {
     slug: info.slug,
     name: info.name,
+    testType: info.testType,
     difficulty: info.difficulty,
     tags: info.tags,
     summary: info.summary,
@@ -165,7 +166,10 @@ async function fetchTestCases(
   );
 }
 
-export function useLiveGallery(): GalleryDataInput {
+// The host supplies its own arena capability (the consoles wire one when a worker
+// is connected; the static site never calls this hook). It is threaded through
+// unchanged so the arena UI resolves it off the shared gallery data.
+export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
@@ -295,6 +299,7 @@ export function useLiveGallery(): GalleryDataInput {
     fetchRunEvents,
     proofMediaUrl,
     assetMediaUrl,
+    arena,
   };
 }
 

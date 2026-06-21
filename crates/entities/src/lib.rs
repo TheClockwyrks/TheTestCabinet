@@ -14,3 +14,4 @@ pub mod review;
 pub mod run;
 pub mod run_link;
 pub mod snapshot_state;
+pub mod tournament;

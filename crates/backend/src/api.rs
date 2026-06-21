@@ -22,6 +22,7 @@ use crate::store::DefinitionStore;
 mod ingest_api;
 mod runs;
 mod test_cases;
+mod tournaments;
 
 /// Shared application state handed to every handler.
 #[derive(Clone)]
@@ -75,6 +76,18 @@ pub fn router(state: AppState) -> Router {
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.
         .route("/runs/{id}/events", get(runs::events))
+        // Adversarial tournaments: a persisted field's standings + per-match
+        // summaries (live-only — not folded into the public-site snapshot), with
+        // each match's replay served on demand for browser playback.
+        .route(
+            "/tournaments",
+            post(tournaments::publish).get(tournaments::list),
+        )
+        .route("/tournaments/{id}", get(tournaments::get))
+        .route(
+            "/tournaments/{id}/matches/{matchId}/replay.json",
+            get(tournaments::match_replay).post(tournaments::put_match_replay),
+        )
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for

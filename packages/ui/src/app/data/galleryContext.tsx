@@ -2,8 +2,11 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type {
   AdversarialResult,
   AssetSheet,
+  ControllerRef,
+  MatchSummary,
   RunRecord,
   RunSubject,
+  TournamentRecord,
 } from "@test-cabinet/run-record";
 import type {
   ProgressCallback,
@@ -41,6 +44,60 @@ export interface ReviewModel {
 // not in this data value, since they change as a session launches runs. The shape
 // is the worker's active-run row, so it is defined once in the client layer.
 export type { InProgressRun } from "../../client/types";
+
+/**
+ * The adversarial-arena capability, supplied only by a host that can run and read
+ * head-to-head matches and tournaments — the consoles when a worker is connected.
+ * The static site omits it, so the arena UI hides. Run methods (`runMatch`,
+ * `runTournament`) additionally require {@link GalleryDataInput.canExecute}; the
+ * read methods only need this object to be present. Each host wires its own
+ * transport behind these: the web host hits the active worker (for runs and live
+ * progress) and the backend (for reading persisted tournaments and replays); the
+ * desktop host invokes the local core's Tauri commands and channels.
+ */
+export interface ArenaApi {
+  /** The controllers available to pit for a case: the committed baselines plus
+   * this host's produced adversarial runs. */
+  listControllers(slug: string, version: string): Promise<ControllerRef[]>;
+  /** Run one transient head-to-head match and return its replay (for immediate
+   * playback) and summary. Nothing is persisted. */
+  runMatch(input: {
+    testCase: string;
+    version: string;
+    red: ControllerRef;
+    blue: ControllerRef;
+  }): Promise<{ replay: unknown | null; summary: MatchSummary }>;
+  /** Start a tournament over the chosen field; resolves to its id. The field runs
+   * in the background — observe it with {@link subscribeTournament}. */
+  runTournament(input: {
+    testCase: string;
+    version: string;
+    variant: string;
+    participants: ControllerRef[];
+  }): Promise<string>;
+  /** Observe a running tournament: each completed match arrives on `onProgress`,
+   * and `onDone` fires once with the finished record (or an error message).
+   * Returns an unsubscribe function. */
+  subscribeTournament(
+    id: string,
+    handlers: {
+      onProgress: (progress: {
+        played: number;
+        total: number;
+        summary: MatchSummary;
+      }) => void;
+      onDone: (record: TournamentRecord | null, error?: string) => void;
+      onError?: (error: unknown) => void;
+    },
+  ): () => void;
+  /** The tournaments this host can show, newest first. */
+  listTournaments(): Promise<TournamentRecord[]>;
+  /** One persisted tournament by id. */
+  readTournament(id: string): Promise<TournamentRecord>;
+  /** The loadable URL of one match's replay, or null when this host cannot serve
+   * it (so the match's Replay control is disabled). */
+  tournamentReplayUrl(tournamentId: string, matchId: string): string | null;
+}
 
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
@@ -99,6 +156,12 @@ export interface GalleryDataInput {
    * Omitted by a host that serves no asset media.
    */
   assetMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * The adversarial-arena capability, present only on a host that can run and read
+   * matches and tournaments (the consoles with a worker). Omitted by the static
+   * site, which hides the arena UI entirely. See {@link ArenaApi}.
+   */
+  arena?: ArenaApi;
 }
 
 /**

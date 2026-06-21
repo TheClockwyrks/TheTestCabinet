@@ -19,11 +19,13 @@ use crate::board::{Board, Team};
 use crate::config::{BoardParamsSerde, Rules, Simulation};
 use crate::contract::Action;
 use crate::engine::Match;
-use crate::state::{Ended, MatchResult, Score};
+use crate::state::{Ended, Kills, MatchResult, Score};
 
 /// The current replay format version. Bumping the engine in a way that changes
 /// reconstruction must bump this so an old replay is recognizably incompatible.
-pub const REPLAY_VERSION: u32 = 1;
+///
+/// `2` added per-team `kills` to the committed result.
+pub const REPLAY_VERSION: u32 = 2;
 
 /// One tick's recorded inputs: each team's action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +50,10 @@ pub struct ReplayResult {
     pub winner: Option<Team>,
     /// Final banked score.
     pub score: Score,
+    /// Tags inflicted per colony — the "kills". Defaulted on read so a
+    /// pre-`kills` replay (format `1`) still parses as zero kills.
+    #[serde(default)]
+    pub kills: Kills,
     /// How the match ended.
     pub ended: Ended,
     /// The tick it ended on.
@@ -59,6 +65,7 @@ impl From<MatchResult> for ReplayResult {
         ReplayResult {
             winner: result.winner,
             score: result.score,
+            kills: result.kills,
             ended: result.ended,
             ticks: result.ticks,
         }
@@ -223,6 +230,7 @@ impl Replay {
         game.state.result = Some(MatchResult {
             winner: self.result.winner,
             score: self.result.score,
+            kills: self.result.kills,
             ended: self.result.ended,
             ticks: self.result.ticks,
         });

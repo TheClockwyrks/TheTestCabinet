@@ -67,13 +67,16 @@ const NAV_LINKS: ReadonlyArray<{ label: string; to: string }> = [
 // aligned to the page's content column. All colors flow from the active design
 // variant's palette.
 export function PageLayout({ children, fill = false }: PageLayoutProps) {
-  const { canExecute } = useGalleryData();
+  const { canExecute, arena } = useGalleryData();
   // The consoles reach run configuration through the Settings gear; the static
   // site keeps the About link in the nav. Both surface the Settings gear — on
   // the site it opens the Appearance-only settings (the sun and feed-style
-  // choices that used to live in the topbar toggle).
+  // choices that used to live in the topbar toggle). The Tournaments link is
+  // shown only on a console with the arena capability (a connected worker).
   const navLinks = canExecute
-    ? NAV_LINKS
+    ? arena
+      ? [...NAV_LINKS, { label: "Tournaments", to: routes.tournaments() }]
+      : NAV_LINKS
     : [...NAV_LINKS, { label: "About", to: routes.about() }];
 
   // The mobile section nav collapses behind a hamburger toggle. CSS owns which

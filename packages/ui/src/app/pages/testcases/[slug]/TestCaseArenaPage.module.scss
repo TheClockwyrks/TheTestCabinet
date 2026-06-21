@@ -1,0 +1,176 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// The Arena tab: stacked quick-match and tournament panels, each modeled on the
+// new-run form's field/select/button layout.
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.heading {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-lg;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-md;
+}
+
+// A two-up grid of labelled selects, mirroring the run-execution form.
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fieldLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.select {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  margin: t.$space-md 0;
+  flex-wrap: wrap;
+}
+
+.primary,
+.secondary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  border: t.$border-hairline solid t.$color-border;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+}
+
+.secondary {
+  background: s.$panel-bg;
+  color: t.$color-text;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+}
+
+.notice {
+  margin: t.$space-md 0 0;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+.error {
+  border-color: t.$color-negative;
+  color: t.$color-negative;
+}
+
+// The tournament builder's controller checklist.
+.pickList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.pickItem {
+  margin: 0;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+}
+
+.pickLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickKind {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+// The finished quick match's summary + replay launch.
+.matchResult {
+  margin-top: t.$space-md;
+}
+
+.record {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-xs t.$space-lg;
+  margin: 0 0 t.$space-md;
+}
+
+.recordTerm {
+  color: t.$color-text-muted;
+}
+
+.scoreRed {
+  color: t.$color-accent;
+}
+
+.scoreBlue {
+  color: t.$color-accent-2;
+}

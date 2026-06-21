@@ -293,6 +293,103 @@ export interface AdversarialResult {
   detail: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Adversarial arena: head-to-head matches and tournaments.
+//
+// These mirror the Rust `test_cabinet_core::match_play` types. The arena lets an
+// operator pit any two controllers (baselines or controllers built by prior runs)
+// head-to-head, or run a field of controllers as a tournament whose standings and
+// per-match summaries are persisted so it can be revisited.
+// ---------------------------------------------------------------------------
+
+/** Where a controller came from — a committed baseline or a prior run's module. */
+export type ControllerKind = "baseline" | "run";
+
+/** A controller that can be pitted: identified, but not yet loaded. */
+export interface ControllerRef {
+  /** The stable id: a baseline name, or a prior run's id. */
+  id: string;
+  /** Where it came from. */
+  kind: ControllerKind;
+  /** An optional human-facing label (e.g. the model id of the run that built it). */
+  label?: string | null;
+}
+
+/**
+ * One match's result, summarized so a tournament list can show the outcome
+ * without loading (and replaying) the match.
+ */
+export interface MatchSummary {
+  /** Stable id for this match (also the replay's storage segment): `"{redId}__vs__{blueId}"`. */
+  matchId: string;
+  /** The controller that played Red (the lower-sorted id in a tournament pair). */
+  redId: string;
+  /** The controller that played Blue. */
+  blueId: string;
+  /** The winning controller's id, or null for a draw. */
+  winner: string | null;
+  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  winType: string;
+  /** The outcome from Red's perspective. */
+  outcomeForRed: AdversarialOutcome;
+  /** Red's banked score (the points Red earned this match). */
+  redScore: number;
+  /** Blue's banked score (the points Blue earned this match). */
+  blueScore: number;
+  /** How many ticks the match ran for. */
+  ticks: number;
+  /** Enemy raiders Red tagged ("kills"). */
+  redKills: number;
+  /** Enemy raiders Blue tagged. */
+  blueKills: number;
+  /** The storage segment the replay is kept under, or absent when no match ran. */
+  replayKey?: string | null;
+  /** Why a controller could not be matched (a load failure), or null. */
+  detail?: string | null;
+}
+
+/** One row of a tournament's standings: a controller's total points and record. */
+export interface Standing {
+  /** The controller this row ranks. */
+  participantId: string;
+  /** Total points — the sum of banked seeds the controller earned across all its
+   * matches. The standings are ranked by this, highest first. */
+  points: number;
+  /** Matches won. */
+  wins: number;
+  /** Matches lost. */
+  losses: number;
+  /** Matches drawn. */
+  draws: number;
+  /** 1-based rank (1 is best). */
+  rank: number;
+}
+
+/**
+ * A persisted tournament: the field, the ranked standings, and every match's
+ * summary. The per-match replays are stored alongside (keyed by `MatchSummary`'s
+ * `replayKey`/`matchId`); this record carries only the summaries so it loads
+ * cheaply.
+ */
+export interface TournamentRecord {
+  /** Unique tournament id. */
+  id: string;
+  /** RFC 3339 timestamp the tournament was run at. */
+  createdAt: string;
+  /** The test case the field competed under. */
+  testCaseSlug: string;
+  /** The exact case version. */
+  testCaseVersion: string;
+  /** The case variant the canonical match used. */
+  variant: string;
+  /** The competing controllers (identity only). */
+  participants: ControllerRef[];
+  /** The standings, ranked highest points first. */
+  standings: Standing[];
+  /** Every match's summary, in the order they were played. */
+  matches: MatchSummary[];
+}
+
 /** Validation signals derived from running the produced artifact. */
 export interface RunValidation {
   loaded: boolean;
