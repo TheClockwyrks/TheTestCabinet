@@ -6,8 +6,13 @@ An **asset-generation** test case evaluates how well a model can use tools to
 **produce a graphical asset** rather than to write a program. Initially this means
 **2D work** — creating a sprite — and it is a deliberately different class of test
 from the others: it does not measure code generation at all, it measures how well
-a model can drive a drawing tool toward a target image through many small,
-deliberate steps.
+a model can drive a drawing tool toward a goal **described in a brief** through
+many small, deliberate steps. The result is **subjective** — the model is given a
+precise written description and the freedom to draw something that matches it, so
+the case rewards creativity rather than the faithful reproduction of a supplied
+picture. There is **no target image** the model copies and no automated
+similarity score; a published run carries a human [review](/components/core/results/#reviews)
+of how convincingly the asset realizes the brief.
 
 The [other test types](/testing/overview/) reward writing code that builds or
 competes. Asset generation isolates a capability those cases deliberately design
@@ -69,16 +74,15 @@ set of animation frames). A sprite sheet's frames are **completely separate
 files** — each its own canvas, drawn with the [`draw-sheet`
 binary](/testing/asset-generation/draw-tool/) and a required `--frame <index>` —
 not regions of one larger image. A sprite-sheet case adds a `[sheet]` table that
-declares its **frames** (each with the index it is written to and its own target)
-and the **animation sequences** — ordered lists of frame indices, each with a
-playback rate — so the review UI can play the named animations back from the
-per-frame regenerated and target images and a reviewer can judge a sheet by its
-motion, not just its static pixels. The shape is a property of the whole version,
-not a variant: a case is either a single sprite or a sprite sheet. A single sprite
-is scored as one image against one target; a sprite sheet is scored **per frame**,
-each frame against its own target, with no whole-sheet aggregate.
+declares its **frames** (each by the index it is written to) and the **animation
+sequences** — ordered lists of frame indices, each with a playback rate — so the
+review UI can play the named animations back from the per-frame regenerated images
+and a reviewer can judge a sheet by its motion, not just its static pixels. The
+shape is a property of the whole version, not a variant: a case is either a single
+sprite or a sprite sheet. Neither carries a target image: a single sprite's one
+regenerated image and a sprite sheet's per-frame regenerated images are reviewed
+against the brief.
 
 See [The drawing binaries](/testing/asset-generation/draw-tool/) for how the model
 draws, and [Manifests](/testing/asset-generation/manifests/) for how a case
-declares its targets, canvas, `asset_kind`, and the `[sheet]` frames and
-sequences.
+declares its canvas, `asset_kind`, and the `[sheet]` frames and sequences.

@@ -163,20 +163,16 @@
       "required": [
         "regeneratedImage",
         "previewImage",
-        "targetImage",
         "actionsLog",
         "operationCount",
-        "targetFidelity",
         "cheatDivergence",
         "detail"
       ],
       "properties": {
         "regeneratedImage": { "type": "string" },
         "previewImage": { "type": "string" },
-        "targetImage": { "type": "string" },
         "actionsLog": { "type": "string" },
         "operationCount": { "type": "integer" },
-        "targetFidelity": { "type": "number" },
         "cheatDivergence": { "type": ["number", "null"] },
         "detail": { "type": ["string", "null"] }
       }

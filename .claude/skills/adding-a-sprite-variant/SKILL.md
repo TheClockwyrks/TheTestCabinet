@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the case's single shared target sprite, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the brief, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
 name: adding-a-sprite-variant
 ---
 
@@ -9,17 +9,17 @@ name: adding-a-sprite-variant
 
 A single-sprite [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
 test case (`asset_kind = "sprite"`, the default) draws **one sprite onto the whole
-canvas** toward a fixed target. Its version offers one or more **variants**, and a
-run selects exactly one. Every variant seeds the version's **common specs** (the
-brief) plus its own **additive** specs. The chosen variant's slug is recorded in the
-run record.
+canvas** toward a goal **described in a brief** (there is no target image). Its
+version offers one or more **variants**, and a run selects exactly one. Every
+variant seeds the version's **common specs** (the brief) plus its own **additive**
+specs. The chosen variant's slug is recorded in the run record.
 
 This skill covers variants of **single-sprite** asset-generation cases. For a
 variant of a **sprite-sheet** case — one whose `[sheet]` table declares a set of
 animation frames, each a separate file — use the
 [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) skill,
-where a variant also shares the per-frame targets and named sequences. For a variant
-of an
+where a variant draws toward the brief across the version's fixed frames and named
+sequences. For a variant of an
 **end-to-end** case — a playable mode with its own menu and rules — use the
 [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
 author a brand-new case, use
@@ -29,15 +29,15 @@ The authoritative schema lives in
 [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md);
 read it before starting.
 
-## The defining constraint: a variant shares the target
+## The defining constraint: a variant varies the brief
 
-This is where asset-generation variants differ sharply from end-to-end ones.
-Resolution requires **exactly one common `target` reference** and **forbids
-per-variant references**. A variant therefore **cannot change the target image** —
-every variant of a case is scored against the same sprite.
+This is where asset-generation variants differ sharply from end-to-end ones. There
+is **no target image** at all, and resolution **forbids any `[[reference]]`**
+(common *or* per-variant). The asset is human-reviewed against the brief, so a
+variant has nothing to "change the target" of — there is none.
 
-What a variant *can* do is vary the **brief** the model draws toward that shared
-target, via an additive spec:
+What a variant *can* do is vary the **brief** the model draws toward, via an
+additive spec:
 
 - a **tighter palette** (a subset of the base colors);
 - a **stricter operation budget** (fewer operations allowed);
@@ -67,7 +67,8 @@ Create `specs/<slug>.md`, stated as a **delta** against the common brief:
 - open by stating it builds on the common brief, by name;
 - state the added or tightened constraint with **precise, testable** terms (exact
   colors, an operation cap, the technique required);
-- reaffirm it draws toward the **same** `target` — the goal image does not change.
+- reaffirm it draws toward the **same** brief — the subject described does not
+  change, only the added constraint.
 
 A variant spec **may** reference the common specs freely (always seeded) but must
 **not** reference another variant's spec.
@@ -77,8 +78,8 @@ A variant spec **may** reference the common specs freely (always seeded) but mus
 In the manifest, add `[[review_item]]`s under the variant for the thing the
 variation makes checkable that the base does not (e.g. "uses flat fills only, with
 no gradients or dithering"). Each item is reporter-side (never seeded), carries a
-stable `id` unique within the variant's effective set, and typically pairs
-`reference = "target"` and a scoring `domain`.
+stable `id` unique within the variant's effective set, and carries only a scoring
+`domain` (no `reference` — there is no target to pair with).
 
 ### 4. Register the variant in `test-case.toml`
 
@@ -89,10 +90,10 @@ default):
 [[variant]]
 slug = "flat"
 name = "Flat Shading"
-description = "Same target, drawn with flat fills only — no gradients or dithering."
+description = "Same brief, drawn with flat fills only — no gradients or dithering."
 spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
 review_item = [
-  { id = "flat-fills", title = "Flat fills only", text = "Every region is a flat color with no gradients or dithering.", reference = "target", domain = "fidelity" },
+  { id = "flat-fills", title = "Flat fills only", text = "Every region is a flat color with no gradients or dithering.", domain = "fidelity" },
 ]
 ```
 
@@ -100,11 +101,12 @@ Rules enforced at resolution:
 
 - `spec` entries are **additive** on the common specs; within one variant, no two
   seeded specs (common + own) may share a `dest`.
-- **No `reference` entry** — a variant-specific reference is rejected for this test
-  type, because the `target` is shared by every variant.
+- **No `reference` entry** — an asset-generation case declares no references at all,
+  so any reference (common or per-variant) is rejected; the case is reviewed against
+  its brief.
 - `review_item` entries are additive on the common ones; an item `id` must be
-  unique within the variant's effective set, and any paired `reference` must be the
-  common `target` (the only reference that exists).
+  unique within the variant's effective set, and an item must **not** carry a
+  `reference` field (there is no target to pair with).
 
 Also update the human-readable comment in the manifest that enumerates the variants
 so the list stays accurate.
@@ -128,8 +130,8 @@ tcab seed   --test-case <slug> --version <version> --variant <new-variant>
 tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
-Read the seeded output to confirm the new variant's brief is self-contained against
-the shared target.
+Read the seeded output to confirm the new variant's brief is self-contained (no
+target image is seeded).
 
 A backend-driven run resolves its definition from the backend's store, which skips
 a version it already holds — so after adding the variant, **force a re-ingest** or

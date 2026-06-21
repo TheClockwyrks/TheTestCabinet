@@ -45,5 +45,4 @@ then the diamond glyph outline, then the white facet glints. Run `draw --help`
 for the available operations (filling and stroking circles and rectangles,
 lines, single pixels, flood fill, and a horizontal mirror) and `draw
 <operation> --help` for each one's exact flags. Call `draw` once per operation
-and read `canvas.png` between calls to judge your progress against this brief
-and the target.
+and read `canvas.png` between calls to judge your progress against this brief.

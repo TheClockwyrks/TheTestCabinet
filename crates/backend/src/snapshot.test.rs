@@ -81,10 +81,8 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
             index: 0,
             regenerated_image: "regenerated.png".to_string(),
             preview_image: "preview.png".to_string(),
-            target_image: "target.png".to_string(),
             actions_log: "actions.json".to_string(),
             operation_count: 3,
-            target_fidelity: 0.9,
             cheat_divergence: Some(0.05),
             detail: None,
         }],
@@ -279,13 +277,10 @@ fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
 #[test]
 fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let (_tmp, store) = empty_store();
-    // Stage the asset media the run uploaded; one of the four (target.png) is
+    // Stage the asset media the run uploaded; one of the three (preview.png) is
     // deliberately absent to prove a missing file is skipped, not fatal.
     store
         .write_run_asset("a1", "regenerated.png", b"png:regen")
-        .unwrap();
-    store
-        .write_run_asset("a1", "preview.png", b"png:preview")
         .unwrap();
     store.write_run_asset("a1", "actions.json", b"[]").unwrap();
 
@@ -316,7 +311,7 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
     assert_eq!(actions.content_type, "application/json");
 
     // The per-run document names each present file by its served name + key; the
-    // missing target.png is omitted.
+    // missing preview.png is omitted.
     let per_run = snapshot
         .objects
         .iter()
@@ -325,10 +320,7 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
     let media = parsed["assetMedia"].as_array().unwrap();
     let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
-    assert_eq!(
-        files,
-        vec!["regenerated.png", "preview.png", "actions.json"]
-    );
+    assert_eq!(files, vec!["regenerated.png", "actions.json"]);
     let regen_meta = media
         .iter()
         .find(|m| m["file"] == "regenerated.png")

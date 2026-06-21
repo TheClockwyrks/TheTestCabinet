@@ -93,7 +93,7 @@ impl SnapshotBuilder {
         // Events tab. Raw harness output is never published. The run's uploaded
         // proof media is exported alongside under `runs/<id>/proof/` and named by
         // snapshot-relative key in `proofMedia`; an asset-generation run's media
-        // (regenerated/preview/target image + action log) is exported under
+        // (regenerated/preview image + action log) is exported under
         // `runs/<id>/asset/` and named by snapshot-relative key in `assetMedia`.
         for run in &self.runs {
             let events = run
@@ -298,8 +298,8 @@ impl SnapshotBuilder {
     ///
     /// - An **asset-generation** run exports the result view's images and log. A
     ///   single sprite serves under bare names (`regenerated.png`, `preview.png`,
-    ///   `target.png`, `actions.json`); a sprite sheet suffixes each frame with
-    ///   `-<index>` (`regenerated-<index>.png`, etc.).
+    ///   `actions.json`); a sprite sheet suffixes each frame with `-<index>`
+    ///   (`regenerated-<index>.png`, etc.).
     /// - An **adversarial** run exports its browser-playable `replay.json`, which
     ///   the replay player loads through the foray-core wasm renderer (the renderer
     ///   itself ships with the UI/site bundle, not per run, so nothing else is
@@ -326,7 +326,6 @@ impl SnapshotBuilder {
                     [
                         format!("regenerated{suffix}.png"),
                         format!("preview{suffix}.png"),
-                        format!("target{suffix}.png"),
                         format!("actions{suffix}.json"),
                     ]
                 })
@@ -517,8 +516,8 @@ struct PerRun<'a> {
     /// The run's uploaded proof-of-implementation media, named by snapshot-relative
     /// key. Empty when the run produced none.
     proof_media: Vec<RunProofOut>,
-    /// An asset-generation run's media (regenerated/preview/target image + action
-    /// log), named by snapshot-relative key. Empty for a non-asset-generation run.
+    /// An asset-generation run's media (regenerated/preview image + action log),
+    /// named by snapshot-relative key. Empty for a non-asset-generation run.
     asset_media: Vec<RunAssetOut>,
 }
 
@@ -535,9 +534,8 @@ struct RunProofOut {
 
 /// An asset-generation media file exposed in a per-run document. `file` is the
 /// stable served name the result view requests — a single sprite's
-/// `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a sprite sheet's
-/// per-frame `regenerated-<index>.png` (etc.); `key` is its snapshot-relative
-/// object key.
+/// `regenerated.png`/`preview.png`/`actions.json` or a sprite sheet's per-frame
+/// `regenerated-<index>.png` (etc.); `key` is its snapshot-relative object key.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunAssetOut {

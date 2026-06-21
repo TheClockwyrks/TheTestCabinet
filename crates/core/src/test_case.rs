@@ -298,17 +298,13 @@ struct ManifestSheet {
     sequence: Vec<ManifestSheetSequence>,
 }
 
-/// A single `[[sheet.frame]]` entry: one frame of the sheet, the index it is
-/// written to, and the per-frame target image it is drawn toward.
+/// A single `[[sheet.frame]]` entry: one frame of the sheet and the index it is
+/// written to.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestSheetFrame {
     /// The frame index this frame is written to (passed as `draw-sheet --frame`).
     /// Unique within the sheet; sequences reference these indices.
     index: u32,
-    /// The per-frame target image, relative to the version folder. Seeded as this
-    /// frame's visual goal and the baseline its regenerated frame is scored
-    /// against.
-    target: PathBuf,
 }
 
 /// A single `[[sheet.sequence]]` entry: one named animation a reviewer can play
@@ -1476,10 +1472,10 @@ impl TestCaseCatalog {
         // drawing binary's `--help` is the contract. The preview and action-log
         // paths are run-relative destinations the binary writes (not seeded),
         // validated only to stay inside the workspace; for a sprite sheet they are
-        // `{frame}` templates, since every frame is a separate file. A sprite
-        // sheet's per-frame targets are collected here as synthesized references
-        // (`target-<index>`) so each is seeded and scored like any other reference.
-        let (canvas, tool, output, sheet, sheet_targets) = match test_type {
+        // `{frame}` templates, since every frame is a separate file. An
+        // asset-generation case has no target image: its output is human-reviewed
+        // against the brief, so it declares no references at all.
+        let (canvas, tool, output, sheet) = match test_type {
             TestType::EndToEnd | TestType::Adversarial => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
@@ -1499,7 +1495,7 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                (None, None, None, None, Vec::new())
+                (None, None, None, None)
             }
             TestType::AssetGeneration => {
                 let canvas = manifest
@@ -1568,9 +1564,9 @@ impl TestCaseCatalog {
                 // The `[sheet]` table is required for — and only for — a
                 // sprite-sheet case. A single-sprite case draws one image onto the
                 // whole canvas and declares no frames; a sprite-sheet case declares
-                // its frames (each with the index it is written to and a per-frame
-                // target) and the named sequences a reviewer plays back.
-                let (sheet, sheet_targets) = match manifest.asset_kind {
+                // its frames (each with the index it is written to) and the named
+                // sequences a reviewer plays back.
+                let sheet = match manifest.asset_kind {
                     AssetKind::Sprite => {
                         if manifest.sheet.is_some() {
                             return Err(invalid(
@@ -1579,7 +1575,7 @@ impl TestCaseCatalog {
                                     .to_string(),
                             ));
                         }
-                        (None, Vec::new())
+                        None
                     }
                     AssetKind::SpriteSheet => {
                         let sheet = manifest.sheet.as_ref().ok_or_else(|| {
@@ -1589,28 +1585,7 @@ impl TestCaseCatalog {
                                     .to_string(),
                             )
                         })?;
-                        let (resolved, targets) =
-                            resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?;
-                        // Each declared frame's target becomes a synthesized static
-                        // reference `target-<index>`, seeded as that frame's visual
-                        // goal and the baseline its regenerated frame is scored
-                        // against.
-                        let mut target_refs = Vec::with_capacity(targets.len());
-                        for (index, rel) in targets {
-                            let source_path = resolve_inside(&rel, "sheet frame target")?;
-                            if !source_path.is_file() {
-                                return Err(invalid(format!(
-                                    "sheet frame {index} target `{}` does not exist",
-                                    rel.display()
-                                )));
-                            }
-                            target_refs.push(ReferenceView {
-                                view: format!("target-{index}"),
-                                kind: ReferenceKind::Image,
-                                source_path,
-                            });
-                        }
-                        (Some(resolved), target_refs)
+                        Some(resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?)
                     }
                 };
 
@@ -1628,7 +1603,6 @@ impl TestCaseCatalog {
                         actions: output.actions.clone(),
                     }),
                     sheet,
-                    sheet_targets,
                 )
             }
         };
@@ -1933,14 +1907,50 @@ impl TestCaseCatalog {
             })
         };
 
+        // An asset-generation case has no automated checks (it has no served build
+        // to drive) and no target image: its output is human-reviewed against the
+        // brief, with only the regenerated image and the cheat-divergence signal
+        // the validator computes. Reject declared checks, declared references
+        // (common or per-variant), and any review-item `reference` — there is no
+        // target to show as expected. This guards the raw manifest up front, before
+        // references are resolved, so an author who declares one gets this message
+        // rather than a confusing downstream "does not exist".
+        if test_type == TestType::AssetGeneration {
+            if !manifest.check.is_empty() {
+                return Err(invalid(
+                    "an asset-generation case declares no [[check]]".to_string(),
+                ));
+            }
+            if !manifest.reference.is_empty()
+                || manifest
+                    .variant
+                    .iter()
+                    .any(|variant| !variant.references.is_empty())
+            {
+                return Err(invalid(
+                    "an asset-generation case declares no [[reference]]; its output is \
+                     human-reviewed, with no target to score against"
+                        .to_string(),
+                ));
+            }
+            let any_item_reference = manifest
+                .review_items
+                .iter()
+                .chain(manifest.variant.iter().flat_map(|variant| &variant.review_items))
+                .any(|item| item.reference.is_some());
+            if any_item_reference {
+                return Err(invalid(
+                    "an asset-generation review item declares no `reference`; it has no target \
+                     to show as expected"
+                        .to_string(),
+                ));
+            }
+        }
+
         let mut common_references = Vec::with_capacity(manifest.reference.len());
         for reference in &manifest.reference {
             common_references.push(resolve_reference(reference)?);
         }
-        // A sprite sheet's per-frame targets are declared on `[[sheet.frame]]`, not
-        // as `[[reference]]` tables; synthesize them as common references so they
-        // are seeded and scored exactly like a single sprite's `target`.
-        common_references.extend(sheet_targets);
 
         // Resolve one reviewer checklist item: its id, title, and text must all be
         // non-empty, since the id keys a recorded verdict, the title heads the item
@@ -2203,55 +2213,6 @@ impl TestCaseCatalog {
             });
         }
 
-        // An asset-generation case has no automated checks (it has no served
-        // build to drive); its fidelity/divergence signals are computed by the
-        // validator from the regenerated image(s). Reject declared checks rather
-        // than silently ignoring them. Its targets are the references the
-        // regenerated image is scored against: a single sprite declares exactly one
-        // `target`; a sprite sheet declares its targets per frame on
-        // `[[sheet.frame]]` (synthesized above as `target-<index>`), so it must not
-        // declare a `[[reference]]` of its own. Either way there is no
-        // browser-rendered reference to render.
-        if test_type == TestType::AssetGeneration {
-            if !manifest.check.is_empty() {
-                return Err(invalid(
-                    "an asset-generation case declares no [[check]]".to_string(),
-                ));
-            }
-            match manifest.asset_kind {
-                AssetKind::Sprite => {
-                    let only_target = matches!(
-                        common_references.as_slice(),
-                        [single] if single.view == "target" && single.kind == ReferenceKind::Image
-                    );
-                    if !only_target {
-                        return Err(invalid(
-                            "a single-sprite case must declare exactly one [[reference]] with \
-                             view = \"target\" and a static image `media`"
-                                .to_string(),
-                        ));
-                    }
-                }
-                AssetKind::SpriteSheet => {
-                    if !manifest.reference.is_empty() {
-                        return Err(invalid(
-                            "a sprite-sheet case declares no [[reference]]; its targets are the \
-                             per-frame `target` paths on [[sheet.frame]]"
-                                .to_string(),
-                        ));
-                    }
-                }
-            }
-            if variants
-                .iter()
-                .any(|variant| !variant.references.is_empty())
-            {
-                return Err(invalid(
-                    "an asset-generation case declares no variant-specific references".to_string(),
-                ));
-            }
-        }
-
         // An adversarial case has no automated checks: it is scored by running the
         // single canonical match, not by driving a served build into views. Reject
         // declared checks rather than silently ignoring them. References (the
@@ -2409,26 +2370,23 @@ fn default_background() -> String {
 /// Resolve and validate a sprite-sheet case's `[sheet]` table.
 ///
 /// A sheet declares its frames explicitly — each with the index it is written to
-/// (unique) and a per-frame target — and the frame dimensions are the canvas
-/// dimensions (`frame_width`/`frame_height`). Each sequence must carry a unique
-/// non-empty slug, name at least one frame, reference only **declared** frame
-/// indices, and run at a positive rate. Returns the resolved [`SheetSpec`]
-/// alongside the `(index, target)` pairs the caller turns into seeded references.
-/// `invalid` is the resolver's error constructor, threaded in so messages carry
-/// the case's slug and version.
+/// (unique) — and the frame dimensions are the canvas dimensions
+/// (`frame_width`/`frame_height`). Each sequence must carry a unique non-empty
+/// slug, name at least one frame, reference only **declared** frame indices, and
+/// run at a positive rate. `invalid` is the resolver's error constructor,
+/// threaded in so messages carry the case's slug and version.
 fn resolve_sheet(
     sheet: &ManifestSheet,
     frame_width: u32,
     frame_height: u32,
     invalid: &impl Fn(String) -> Error,
-) -> Result<(SheetSpec, Vec<(u32, PathBuf)>)> {
+) -> Result<SheetSpec> {
     if sheet.frames.is_empty() {
         return Err(invalid(
             "a [sheet] must declare at least one [[sheet.frame]]".to_string(),
         ));
     }
     let mut frames: Vec<u32> = Vec::with_capacity(sheet.frames.len());
-    let mut targets: Vec<(u32, PathBuf)> = Vec::with_capacity(sheet.frames.len());
     for frame in &sheet.frames {
         if frames.contains(&frame.index) {
             return Err(invalid(format!(
@@ -2436,15 +2394,7 @@ fn resolve_sheet(
                 frame.index
             )));
         }
-        if escapes_folder(&frame.target) {
-            return Err(invalid(format!(
-                "sheet frame {} target `{}` escapes the version folder",
-                frame.index,
-                frame.target.display()
-            )));
-        }
         frames.push(frame.index);
-        targets.push((frame.index, frame.target.clone()));
     }
 
     if sheet.sequence.is_empty() {
@@ -2499,15 +2449,12 @@ fn resolve_sheet(
         });
     }
 
-    Ok((
-        SheetSpec {
-            frame_width,
-            frame_height,
-            frames,
-            sequences,
-        },
-        targets,
-    ))
+    Ok(SheetSpec {
+        frame_width,
+        frame_height,
+        frames,
+        sequences,
+    })
 }
 
 /// Recursively enumerate the files under a workspace directory into

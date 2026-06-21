@@ -67,26 +67,20 @@ type = \"asset-generation\"\n\
 [canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
 [tool]\nbinary = \"draw\"\npreview = \"canvas.png\"\n\
 [output]\nactions = \"actions.json\"\n\
-[[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
 [[variant]]\nslug = \"base\"\n\
-[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sprite is.\"\n";
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sprite is to the brief.\"\n";
 
 /// Write an asset-generation version with all the files a valid one needs
-/// (prompt, seeded brief, the single-sprite target image, and the per-frame
-/// targets a sprite sheet declares) and the given manifest, then return the
-/// catalog. No operations schema is written — the binary's `--help` is the
-/// contract.
+/// (prompt, seeded brief) and the given manifest, then return the catalog. An
+/// asset-generation case has no target image, so none is written. No operations
+/// schema is written either — the binary's `--help` is the contract.
 fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
-    fs::create_dir_all(version.join("reference/frames")).expect("reference dir");
     fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
     fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
-    fs::write(version.join("reference/target.png"), b"\x89PNG").expect("target");
-    fs::write(version.join("reference/frames/0.png"), b"\x89PNG").expect("frame 0");
-    fs::write(version.join("reference/frames/1.png"), b"\x89PNG").expect("frame 1");
     fs::write(version.join("test-case.toml"), manifest).expect("manifest");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
@@ -151,22 +145,43 @@ fn asset_generation_rejects_checks() {
 }
 
 #[test]
-fn asset_generation_requires_a_single_target_reference() {
-    // Rename the only reference's view away from `target`.
-    let manifest = VALID_ASSET_MANIFEST.replace("view = \"target\"", "view = \"goal\"");
+fn asset_generation_rejects_a_reference() {
+    // An asset-generation case is human-reviewed against the brief and has no
+    // target to score against, so any [[reference]] is rejected.
+    let manifest = format!(
+        "{VALID_ASSET_MANIFEST}[[reference]]\nview = \"target\"\nmedia = \"reference/target.png\"\n"
+    );
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a non-`target` reference is rejected");
-    assert!(format!("{err}").contains("view = \"target\""), "got: {err}");
+        .expect_err("a [[reference]] on an asset-gen case is rejected");
+    assert!(format!("{err}").contains("no [[reference]]"), "got: {err}");
+}
+
+#[test]
+fn asset_generation_rejects_a_review_item_reference() {
+    // A review item cannot pair a reference: there is no target to show as
+    // expected.
+    let manifest = format!(
+        "{VALID_ASSET_MANIFEST}[[review_item]]\nid = \"look\"\ntitle = \"Looks right\"\n\
+         text = \"Reads as the subject.\"\nweight = 1\nreference = \"target\"\ndomain = \"fidelity\"\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a review-item reference on an asset-gen case is rejected");
+    assert!(
+        format!("{err}").contains("declares no `reference`"),
+        "got: {err}"
+    );
 }
 
 // --- sprite-sheet resolution -----------------------------------------------
 
 /// A complete, valid sprite-sheet manifest: a 32x32 frame canvas, two declared
-/// frames (each with its own target), and one named sequence over them. Tests
-/// clone this and mutate one thing. The preview/actions paths are `{frame}`
-/// templates since every frame is a separate file.
+/// frames, and one named sequence over them. Tests clone this and mutate one
+/// thing. The preview/actions paths are `{frame}` templates since every frame is
+/// a separate file.
 const VALID_SHEET_MANIFEST: &str = "\
 name = \"Sheet\"\n\
 difficulty = \"medium\"\n\
@@ -178,17 +193,17 @@ asset_kind = \"sprite-sheet\"\n\
 [tool]\nbinary = \"draw-sheet\"\npreview = \"frames/{frame}.png\"\n\
 [output]\nactions = \"frames/{frame}.actions.json\"\n\
 [sheet]\n\
-[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
-[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n\
+[[sheet.frame]]\nindex = 0\n\
+[[sheet.frame]]\nindex = 1\n\
 [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
 [[variant]]\nslug = \"base\"\n\
-[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sheet is.\"\n";
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the sheet is to the brief.\"\n";
 
 /// The `[sheet]` block of [`VALID_SHEET_MANIFEST`], for tests that delete it.
 const SHEET_BLOCK: &str = "[sheet]\n\
-[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
-[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n\
+[[sheet.frame]]\nindex = 0\n\
+[[sheet.frame]]\nindex = 1\n\
 [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n";
 
 #[test]
@@ -208,20 +223,11 @@ fn sprite_sheet_resolves_its_sheet_table() {
     assert_eq!(sequence.name, "Walk Right");
     assert_eq!(sequence.frames, vec![0, 1]);
     assert_eq!(sequence.fps, 4.0);
-    // Each declared frame's target is synthesized as a `target-<index>` reference.
+    // An asset-generation case has no target image, so it synthesizes no
+    // references at all.
     assert!(
-        version
-            .common_references
-            .iter()
-            .any(|r| r.view == "target-0"),
-        "frame 0 target is a synthesized reference"
-    );
-    assert!(
-        version
-            .common_references
-            .iter()
-            .any(|r| r.view == "target-1"),
-        "frame 1 target is a synthesized reference"
+        version.common_references.is_empty(),
+        "a sprite sheet declares no references"
     );
 }
 
@@ -265,8 +271,7 @@ fn sprite_sheet_rejects_a_sheet_with_no_frames() {
     // Drop both [[sheet.frame]] entries but keep a sequence: a sheet must declare
     // its frames.
     let manifest = VALID_SHEET_MANIFEST.replace(
-        "[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/0.png\"\n\
-         [[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n",
+        "[[sheet.frame]]\nindex = 0\n[[sheet.frame]]\nindex = 1\n",
         "",
     );
     let err = asset_catalog(&manifest)
@@ -282,8 +287,8 @@ fn sprite_sheet_rejects_a_sheet_with_no_frames() {
 #[test]
 fn sprite_sheet_rejects_duplicate_frame_index() {
     let manifest = VALID_SHEET_MANIFEST.replace(
-        "[[sheet.frame]]\nindex = 1\ntarget = \"reference/frames/1.png\"\n",
-        "[[sheet.frame]]\nindex = 0\ntarget = \"reference/frames/1.png\"\n",
+        "[[sheet.frame]]\nindex = 1\n",
+        "[[sheet.frame]]\nindex = 0\n",
     );
     let err = asset_catalog(&manifest)
         .1
@@ -293,20 +298,6 @@ fn sprite_sheet_rejects_duplicate_frame_index() {
         format!("{err}").contains("duplicate sheet frame index 0"),
         "got: {err}"
     );
-}
-
-#[test]
-fn sprite_sheet_rejects_a_missing_frame_target() {
-    // Point a frame at a target file that does not exist.
-    let manifest = VALID_SHEET_MANIFEST.replace(
-        "target = \"reference/frames/1.png\"",
-        "target = \"reference/frames/missing.png\"",
-    );
-    let err = asset_catalog(&manifest)
-        .1
-        .resolve("sprite", "v1.0.0")
-        .expect_err("a frame target that does not exist is rejected");
-    assert!(format!("{err}").contains("does not exist"), "got: {err}");
 }
 
 #[test]

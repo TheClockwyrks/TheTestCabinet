@@ -134,10 +134,10 @@ pub struct ServedAssetFile {
 /// logical name with an extension whose kind selects which recorded path in the
 /// run's `validation.asset` frame to read from `implementation/`:
 ///
-/// - a single sprite uses `regenerated.png`, `preview.png`, `target.png`, or
-///   `actions.json` (its one frame, index 0);
-/// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`,
-///   `target-<index>.png`, or `actions-<index>.json` (one per declared frame).
+/// - a single sprite uses `regenerated.png`, `preview.png`, or `actions.json`
+///   (its one frame, index 0);
+/// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`, or
+///   `actions-<index>.json` (one per declared frame).
 ///
 /// The flat `<kind>-<index>` spelling keeps each artifact a single path segment so
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
@@ -166,7 +166,6 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         match kind {
             "regenerated" => &frame_result.regenerated_image,
             "preview" => &frame_result.preview_image,
-            "target" => &frame_result.target_image,
             "actions" => &frame_result.actions_log,
             _ => return None,
         }
@@ -188,7 +187,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
 
 /// Parse an asset request into its kind and optional frame index: `regenerated.png`
 /// → `("regenerated", None)`; `actions-3.json` → `("actions", Some(3))`. The kind
-/// names (`regenerated`/`preview`/`target`/`actions`) carry no `-`, so a trailing
+/// names (`regenerated`/`preview`/`actions`) carry no `-`, so a trailing
 /// `-<digits>` is unambiguously a frame index.
 fn parse_asset_request(file: &str) -> Option<(&str, Option<u32>)> {
     let stem = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
@@ -201,7 +200,7 @@ fn parse_asset_request(file: &str) -> Option<(&str, Option<u32>)> {
 }
 
 /// The `Content-Type` for an asset-generation artifact, by file extension: the
-/// regenerated/preview/target images are PNG, the action log is JSON.
+/// regenerated/preview images are PNG, the action log is JSON.
 fn asset_content_type(file: &str) -> &'static str {
     let ext = Path::new(file)
         .extension()

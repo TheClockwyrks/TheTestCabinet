@@ -87,6 +87,6 @@ with `--frame <index>`, using plain in-frame coordinates (0–31). Run `draw-she
 rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
 `draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
 once per operation and read `frames/<index>.png` between calls to judge that
-frame against this brief and its target. A good order is to finish one
+frame against this brief. A good order is to finish one
 direction's two frames, check them, then do the others, and finish with the
 flare charge-up, bloom, and fade frames.

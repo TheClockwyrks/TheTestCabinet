@@ -103,19 +103,16 @@ export interface GalleryDataInput {
 
 /**
  * One frame of an asset-generation run, resolved for display: the regenerated
- * image (the scored output), the model's final preview, the seeded target, and
- * the recorded action log — each as a loadable URL (or null when the host cannot
- * serve it) — alongside the recorded fidelity and cheat-divergence signals.
+ * image (reviewed against the brief), the model's final preview, and the recorded
+ * action log — each as a loadable URL (or null when the host cannot serve it) —
+ * alongside the recorded cheat-divergence signal.
  */
 export interface AssetFrameView {
   /** The frame index: `0` for a single sprite, the declared index for a sheet. */
   index: number;
   regeneratedUrl: string | null;
   previewUrl: string | null;
-  targetUrl: string | null;
   actionsUrl: string | null;
-  /** Similarity of the regenerated image to the target, in `0..=1`. */
-  fidelity: number;
   /** Divergence of the regenerated image from the preview, or null if unmeasured. */
   cheatDivergence: number | null;
   /** How many operations the recorded log holds. */
@@ -127,7 +124,7 @@ export interface AssetFrameView {
 /**
  * An asset-generation run's result, resolved for display: one frame for a single
  * sprite, one per declared frame for a sprite sheet (each a separate image,
- * scored independently).
+ * reviewed against the brief).
  */
 export interface AssetResultView {
   /** The per-frame results, in declared order. */
@@ -268,9 +265,7 @@ export function GalleryDataProvider({
             index: frame.index,
             regeneratedUrl: url(`regenerated${suffix}.png`),
             previewUrl: url(`preview${suffix}.png`),
-            targetUrl: url(`target${suffix}.png`),
             actionsUrl: url(`actions${suffix}.json`),
-            fidelity: frame.targetFidelity,
             cheatDivergence: frame.cheatDivergence,
             operationCount: frame.operationCount,
             detail: frame.detail,

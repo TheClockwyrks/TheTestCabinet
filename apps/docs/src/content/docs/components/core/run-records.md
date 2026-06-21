@@ -86,17 +86,16 @@ The harness version is not duplicated here; it lives in the subject.
   is informational and does not affect the run's status.
 - For an [asset-generation](/testing/asset-generation/overview/) run, an
   **asset** result instead of (end-to-end) checks: the run-root-relative paths to
-  the regenerated image (the scored output), the model's on-disk preview, the
-  seeded target, and the recorded action log; the recorded operation count; the
-  **target fidelity** (similarity of the regenerated image to the target,
-  `0..=1`); and the
-  **cheat divergence** (how far the regenerated image differs from the model's
-  preview, `0..=1`, or null when there was no readable preview to compare).
-  Like checks, both signals are recorded rather than gated. On publish the four
-  media files are uploaded and served back as per-run media
+  the regenerated image (the output a human reviews against the brief), the
+  model's on-disk preview, and the recorded action log; the recorded operation
+  count; and the **cheat divergence** (how far the regenerated image differs from
+  the model's preview, `0..=1`, or null when there was no readable preview to
+  compare). There is no target image and no fidelity score — the asset is judged
+  subjectively against the brief; cheat divergence is recorded rather than gated.
+  On publish the media files are uploaded and served back as per-run media
   (`/runs/<id>/asset/<file>`, where `<file>` is `regenerated.png`, `preview.png`,
-  `target.png`, or `actions.json`) so the gallery can show the side-by-side
-  result. The field is absent on an end-to-end run.
+  or `actions.json`) so the gallery can show the result. The field is absent on an
+  end-to-end run.
 
 ### Links
 

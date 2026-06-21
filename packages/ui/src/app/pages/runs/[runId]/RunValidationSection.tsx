@@ -111,11 +111,10 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
 }
 
 // The validation widget for an asset-generation run: the run regenerated
-// scorable image(s) (the load signal), how faithfully each matched its target,
-// and whether the model drew outside the tool (cheat divergence). A single sprite
-// is one frame; a sprite sheet scores each frame independently, so each is a row.
-// The images themselves are shown on the Verdict tab; this is the recorded
-// numbers.
+// image(s) (the load signal) and whether the model drew outside the tool (cheat
+// divergence). A single sprite is one frame; a sprite sheet has one row per
+// frame. There is no target image or fidelity score — the regenerated asset is
+// reviewed against the brief on the Verdict tab; this is the recorded numbers.
 function AssetValidationTable({ run }: { run: RunRecord }) {
   const { validation } = run;
   const asset = validation.asset!;
@@ -145,13 +144,13 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
           {asset.frames.map((frame) => {
             const drewOutsideTool =
               frame.cheatDivergence !== null && frame.cheatDivergence > 0.05;
-            const label = isSheet ? `Frame ${frame.index}` : "Fidelity to target";
+            const label = isSheet ? `Frame ${frame.index}` : "Sprite";
             return (
               <tr key={frame.index}>
                 <th scope="row" className={styles.checkName}>
                   {label}
                 </th>
-                <td>{(frame.targetFidelity * 100).toFixed(1)}%</td>
+                <td>{frame.operationCount} ops</td>
                 <td className={styles.secondary}>
                   {frame.cheatDivergence === null ? (
                     frame.detail ?? "—"

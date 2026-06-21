@@ -88,15 +88,16 @@ pub struct ProofResult {
     pub detail: Option<String>,
 }
 
-/// The result of regenerating and scoring an asset-generation run.
+/// The result of regenerating an asset-generation run.
 ///
 /// An asset-generation run's authoritative output is its recorded action log(s);
 /// the validator replays each through the same drawing logic the binary used (see
 /// `crate::validator::AssetGenValidator`) to produce the **regenerated** image(s),
-/// which are the scored output. A single sprite produces one [frame](AssetFrameResult);
-/// a sprite sheet produces one per declared frame, each its own separate file and
-/// each scored independently — there is no whole-sheet aggregate. Present only on
-/// an asset-generation run's [`ValidationSummary`].
+/// which are the output a human reviews against the brief. A single sprite
+/// produces one [frame](AssetFrameResult); a sprite sheet produces one per
+/// declared frame, each its own separate file. There is no target image and no
+/// automated fidelity score. Present only on an asset-generation run's
+/// [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetGenResult {
@@ -115,15 +116,15 @@ pub struct AssetGenResult {
     pub detail: Option<String>,
 }
 
-/// The regenerate-and-score result for one frame of an asset-generation run.
+/// The regenerate result for one frame of an asset-generation run.
 ///
 /// For a single sprite this is the whole run's one frame (index 0); for a sprite
-/// sheet there is one per declared frame, each a completely separate file. Two
-/// signals come out of each, both recorded rather than gated (the same stance as
-/// end-to-end [checks](CheckResult)): the [fidelity](Self::target_fidelity) of the
-/// regenerated image against this frame's seeded target, and the
-/// [divergence](Self::cheat_divergence) between it and the pixels the model left
-/// on disk — a high divergence means the model drew outside the tool.
+/// sheet there is one per declared frame, each a completely separate file. One
+/// signal comes out of each, recorded rather than gated (the same stance as
+/// end-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence)
+/// between the regenerated image and the pixels the model left on disk — a high
+/// divergence means the model drew outside the tool. There is no target image and
+/// no fidelity score; the regenerated image is reviewed against the brief.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetFrameResult {
@@ -136,15 +137,10 @@ pub struct AssetFrameResult {
     /// Run-root-relative path to the pixels the model left on disk (this frame's
     /// `preview`), kept for the side-by-side comparison and the divergence signal.
     pub preview_image: String,
-    /// Run-root-relative path to the seeded target this frame is scored against.
-    pub target_image: String,
     /// Run-root-relative path to this frame's recorded action log.
     pub actions_log: String,
     /// How many operations this frame's log recorded.
     pub operation_count: usize,
-    /// Similarity of the regenerated frame to its target, in `0.0..=1.0` (1.0 is
-    /// identical). A recorded signal, not a pass/fail gate.
-    pub target_fidelity: f64,
     /// Divergence between the regenerated frame and the model's on-disk preview,
     /// in `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside
     /// the tool. `None` when the model left no readable preview to compare.

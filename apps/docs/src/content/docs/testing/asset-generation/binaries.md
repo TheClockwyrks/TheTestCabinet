@@ -15,7 +15,7 @@ The binaries are built from `crates/draw` and each is baked into its own
 [run-container image](/components/core/execution/#containerization): `draw` into
 the **sprite image** (`asset_kind = "sprite"`) and `draw-sheet` into the
 **sprite-sheet image** (`asset_kind = "sprite-sheet"`), so a run carries only the
-tool it uses. The same library regenerates the scored image after the run (see
+tool it uses. The same library regenerates the image after the run (see
 [Evaluation](/testing/asset-generation/evaluation/)), so an image produced any
 other way cannot match.
 
@@ -76,6 +76,6 @@ draw-sheet render --actions <log> --out <png> --width 32 --height 32
 
 The seeded `draw.config.json` lists the declared frame indices and the `{frame}`
 templates, so `draw-sheet init` initializes every frame and each operation
-resolves its frame's files. Which frames exist, the per-frame targets, and the
-animation sequences are declared in the case's `[sheet]` table — see
+resolves its frame's files. Which frames exist and the animation sequences are
+declared in the case's `[sheet]` table — see
 [Manifests](/testing/asset-generation/manifests/).

@@ -9,13 +9,13 @@ full procedure is in
 [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/);
 the `adding-a-sprite-sheet-variant` skill is the hands-on guide to follow.
 
-The key constraint: resolution **forbids per-variant references** and per-variant
-`[sheet]` tables. So a variant cannot change the target images — it varies the
-**brief** (an additive spec) the model draws toward those same shared per-frame
-targets: a tighter palette, a stricter operation budget, an added stylistic rule.
-The **`[sheet]` frames, targets, and named sequences are version-level too** — a
-variant shares them and cannot redeclare them, and scoring stays **per frame** (the
-sequences only drive the review UI's animated playback).
+The key constraint: an asset-generation case declares **no references at all**
+(resolution rejects any, common or per-variant) and **forbids per-variant
+`[sheet]` tables**. There is no target image — a variant varies only the **brief**
+(an additive spec) the model draws toward: a tighter palette, a stricter operation
+budget, an added stylistic rule. The **`[sheet]` frames and named sequences are
+version-level too** — a variant shares them and cannot redeclare them, and review
+stays **per frame** (the sequences only drive the review UI's animated playback).
 
 For a **single-sprite** case (`asset_kind = "sprite"`) instead? See
 [Create a Single-Sprite Variant](/quickstarts/create-a-sprite-variant/). Adding a
@@ -30,11 +30,10 @@ mode to an [end-to-end](/testing/end-to-end/overview/) case? See
    brief ("same subject, frames, and palette, except …"), with **precise,
    testable** constraints, saying whether each applies to every frame, a named
    sequence, or across frames. It may reference the common specs but **not** another
-   variant's spec, and it draws toward the **same** per-frame targets and `[sheet]`
-   layout.
+   variant's spec, and it draws toward the **same** `[sheet]` layout.
 3. Add `[[review_item]]`s for what the variation makes observable — including
-   anything the **animation** reveals — each carrying a scoring `domain` (a sheet
-   has no single `target` reference to pair).
+   anything the **animation** reveals — each carrying only a scoring `domain` (the
+   case has no target image, so review items have no `reference`).
 4. Register the variant in `test-case.toml` (do **not** add a `[sheet]` table — it
    is declared once at the version level):
 
@@ -42,7 +41,7 @@ mode to an [end-to-end](/testing/end-to-end/overview/) case? See
 [[variant]]
 slug = "flat"
 name = "Flat Shading"
-description = "Same sheet, drawn with flat fills only — no gradients or dithering, across every frame."
+description = "Same brief, drawn with flat fills only — no gradients or dithering, across every frame."
 spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
 ```
 
@@ -59,5 +58,5 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Seed and render the **new** variant and re-check the **existing** ones to confirm
-nothing else changed and the brief still resolves self-contained against the shared
-per-frame targets, leaving the `[sheet]` frames and sequences intact.
+nothing else changed and the brief still resolves self-contained, leaving the
+`[sheet]` frames and sequences intact.

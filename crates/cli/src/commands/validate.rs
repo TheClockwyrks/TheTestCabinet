@@ -90,16 +90,15 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         println!("  asset: {} ({} frame(s))", kind, asset.frames.len());
         for frame in &asset.frames {
             // A single sprite has one frame (index 0); label per frame so a sheet's
-            // independent scores are each visible.
+            // independent signals are each visible.
             let label = if asset.sheet.is_some() {
                 format!("frame {}", frame.index)
             } else {
                 "sprite".to_string()
             };
             println!(
-                "    {label}: {} operations, fidelity {:.2}{}",
+                "    {label}: {} operations{}",
                 frame.operation_count,
-                frame.target_fidelity,
                 match frame.cheat_divergence {
                     Some(divergence) if divergence > 0.05 =>
                         format!(", divergence {divergence:.2} (drew outside the tool)"),

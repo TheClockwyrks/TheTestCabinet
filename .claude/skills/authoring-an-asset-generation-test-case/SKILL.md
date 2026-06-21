@@ -1,5 +1,5 @@
 ---
-description: Read this skill before creating a new asset-generation test case or version (a sprite the model draws with the `draw` or `draw-sheet` tool, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, target, or manifest under test-cases/. For an end-to-end case (building a playable game) use authoring-an-end-to-end-test-case instead.
+description: Read this skill before creating a new asset-generation test case or version (a sprite the model draws with the `draw` or `draw-sheet` tool, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, or manifest under test-cases/. For an end-to-end case (building a playable game) use authoring-an-end-to-end-test-case instead.
 name: authoring-an-asset-generation-test-case
 ---
 
@@ -9,10 +9,13 @@ name: authoring-an-asset-generation-test-case
 
 An asset-generation test case asks a model to **draw a small pixel sprite** with a
 drawing binary (`draw` for a single sprite, `draw-sheet` for a sprite sheet), one
-recorded operation at a time, toward a fixed target.
+recorded operation at a time, toward a goal **described in a brief**.
 It does not measure code generation; it measures how well a model drives a drawing
-tool toward a goal image through many small, deliberate steps. Authoring one is
-mostly writing a precise, self-contained **brief** and a **fair target**.
+tool toward that description through many small, deliberate steps. The result is
+**subjective** — the model is given a precise written brief and the freedom to draw
+something that matches it, so the case rewards creativity rather than the faithful
+reproduction of a supplied picture. There is **no target image**. Authoring one is
+mostly writing a precise, self-contained **brief**.
 
 The authoritative docs are the source of truth — **read them first** and follow
 them as the authority:
@@ -23,8 +26,9 @@ them as the authority:
 - [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
   — every manifest field and the rules enforced at resolution;
 - [`testing/asset-generation/evaluation.md`](../../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md)
-  — how fidelity (vs. the target) and cheat-divergence (vs. the on-disk preview)
-  are scored.
+  — how the regenerated asset is human-reviewed against the brief (there is no
+  automated similarity score) and how cheat-divergence (vs. the on-disk preview)
+  flags drawing outside the tool.
 
 This skill covers the **asset-generation** test type only. For an **end-to-end**
 case — building a playable game from a spec — use the
@@ -56,27 +60,20 @@ should look like it.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml          # manifest: type, canvas, tool, output, target, variants, domains, review items
+  test-case.toml          # manifest: type, canvas, tool, output, variants, domains, review items
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
   description.md          # site-facing prose (NOT seeded)
   README.md               # human overview (NOT seeded)
   specs/
     brief.md              # the brief: what to draw + how the tool behaves — SEEDED
-  reference/
-    target.png            # SINGLE SPRITE: the goal the sprite is scored against — SEEDED
-    target.actions.json   # the action log target.png was rendered from — NOT seeded (authoring source)
-    frames/               # SPRITE SHEET instead: one target + log per declared frame
-      <index>.png         #   the per-frame goal — SEEDED
-      <index>.actions.json #  the log it was rendered from — NOT seeded (authoring source)
 ```
 
 What a run receives: the selected variant's seeded specs (the common brief + any
-variant-additive brief) and the seeded target(s) — `target.png` for a single
-sprite, or `reference/frames/<index>.png` per frame for a sheet. It also gets the
-`draw` (or `draw-sheet`) binary in its environment, whose `--help` is the
-operations contract; **no operations schema is seeded**. Everything marked *NOT
-seeded* is authoring- or site-side only; the prompt is rendered and handed to the
-harness as the instruction, never written to disk.
+variant-additive brief). There is **no target image** — the model draws toward the
+brief alone. It also gets the `draw` (or `draw-sheet`) binary in its environment,
+whose `--help` is the operations contract; **no operations schema is seeded**.
+Everything marked *NOT seeded* is site-side only; the prompt is rendered and handed
+to the harness as the instruction, never written to disk.
 
 ## Creating a new case — procedure
 
@@ -95,7 +92,7 @@ Seed a single self-contained `specs/brief.md` (not a decomposed spec). State:
 - **what to draw** — the subject, its silhouette and orientation, and the framing
   within the canvas;
 - the **exact palette** — named colors with hex values, declared as the only
-  colors allowed, so fidelity scoring is unambiguous;
+  colors allowed, so the brief is unambiguous;
 - **how the tool behaves** — the drawing binary (`draw`, or `draw-sheet --frame
   <index>` for a sheet) is the only way to make a mark, its `--help` lists the
   operations, it re-renders the preview after each call so the model can read its
@@ -105,36 +102,7 @@ Seed a single self-contained `specs/brief.md` (not a decomposed spec). State:
 The self-containment, *what-not-how*, and precise-values rules from **Writing the
 brief** below apply.
 
-### 3. Render the target(s) from action logs
-
-Do **not** hand-pixel a target. Author it as its own action log and render it
-through the **same** binary, keeping the log as the un-seeded source beside it.
-Rendering each goal through the tool guarantees it is achievable within the
-operation set, so the fidelity baseline is fair. There are no per-view reference
-mockups and no `reference/theme.css`.
-
-For a **single sprite**, render one `target.png`, seeded as the single
-`[[reference]]` (`view = "target"`):
-
-```sh
-draw render --actions reference/target.actions.json --out reference/target.png \
-  --width <canvas width> --height <canvas height> --background transparent
-```
-
-For a **sprite sheet**, every frame is a separate file: author one action log per
-frame and render each at the **frame size** to `reference/frames/<index>.png`,
-which a `[[sheet.frame]]` declares as that frame's `target`:
-
-```sh
-draw render --actions reference/frames/0.actions.json --out reference/frames/0.png \
-  --width <frame width> --height <frame height> --background transparent
-```
-
-Check one frame (or one direction) at a time, and make sure the frames each named
-`[[sheet.sequence]]` references animate cleanly — the sequences are what a reviewer
-watches.
-
-### 4. Write `prompt.hbs`
+### 3. Write `prompt.hbs`
 
 A short instruction that points the model at the seeded brief, tells it to read the
 binary's `--help` for the operations, and restates the hard requirements (draw only
@@ -144,7 +112,7 @@ reference is an error. Model it on an existing case's `prompt.hbs` (e.g.
 `spectra-shard` for a single sprite, `gloamfin` for a sheet — a sheet's prompt also
 explains the per-frame `--frame` model).
 
-### 5. Write the manifest
+### 4. Write the manifest
 
 Author `test-case.toml` per the
 [manifests schema](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
@@ -168,17 +136,15 @@ Author `test-case.toml` per the
   one log per frame, so its path is a `{frame}` template (e.g.
   `frames/{frame}.actions.json`).
 - **`[sheet]`** — **sprite sheets only.** The case's frames as **`[[sheet.frame]]`**
-  entries — each with the `index` it is written to (passed as `draw-sheet --frame`)
-  and its own `target` image (under `reference/frames/`) — plus one or more
-  **`[[sheet.sequence]]`** entries: each a `slug`, optional `name`, an ordered
-  `frames` list of **declared** frame indices, and an `fps`. The number of frames is
-  just how many are declared. The sequences are what the review UI animates
-  (regenerated vs target frames); they do not enter scoring, which is per-frame.
-  Omit this table entirely for a single sprite.
-- **The target(s)** — a single sprite declares **one** `[[reference]]`
-  (`view = "target"`, static-image `media` pointing at `target.png`); a sprite
-  sheet declares **no `[[reference]]`** — its targets are the per-frame `target`
-  paths on `[[sheet.frame]]`. A variant may not declare its own.
+  entries — each just the `index` it is written to (passed as `draw-sheet --frame`)
+  — plus one or more **`[[sheet.sequence]]`** entries: each a `slug`, optional
+  `name`, an ordered `frames` list of **declared** frame indices, and an `fps`. The
+  number of frames is just how many are declared. The sequences are what the review
+  UI animates (the per-frame regenerated images) so a reviewer can judge the motion
+  against the brief. Omit this table entirely for a single sprite.
+- **No targets** — an asset-generation case declares **no `[[reference]]`** at all
+  (common *or* per-variant); resolution rejects any reference. The case is reviewed
+  against its brief, with no goal image to score the regenerated asset against.
 - At least one **`[[variant]]`** (the first is the default — usually `base`); to
   add more, see
   [`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) (single sprite)
@@ -186,17 +152,17 @@ Author `test-case.toml` per the
   [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md)
   (sprite sheet).
 - **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain (e.g.
-  `fidelity`) and the reviewer checklist judging how faithfully the regenerated
-  sprite (or sheet) matches the target (silhouette, palette, framing, animation).
-  A single-sprite item may pair `reference = "target"` and a `domain`; a sheet has
-  no single `target` reference, so its items describe the frames/animation and
-  carry just a `domain`. Reporter-side; **not seeded**.
+  `fidelity`) and the reviewer checklist judging how convincingly the regenerated
+  sprite (or sheet) realizes the brief (silhouette, palette, framing, animation).
+  Each item carries only a `domain` (plus its `id`/`title`/`text`/optional
+  `weight`) — an item must **not** carry a `reference` field (there is no target to
+  pair with; resolution rejects it). Reporter-side; **not seeded**.
 
 There is **no `[build]` table** and **no `[[check]]`** — an asset-generation run
 produces a recorded action log, not a static site, and resolution rejects both for
 this type.
 
-### 6. Write the non-seeded docs
+### 5. Write the non-seeded docs
 
 `description.md` (site blurb) and `README.md` (human overview). These never reach a
 run; keep them honest about what is seeded.
@@ -205,10 +171,10 @@ run; keep them honest about what is seeded.
 
 The brief is the test case. The rules that make one good:
 
-- **Be self-contained.** A run seeds only the brief and the target(s), in an
-  isolated container with no access to these docs. The brief must be complete on its
-  own — no link outside the seeded set, no dependence on the un-seeded target action
-  logs, and the binary's `--help` for the operations.
+- **Be self-contained.** A run seeds only the brief, in an isolated container with
+  no access to these docs and no target image. The brief must be complete on its own
+  — no link outside the seeded set, and it points at the binary's `--help` for the
+  operations.
 - **Specify *what*, not *how*.** Describe the subject, palette, and framing the
   sprite must achieve; leave the order of operations and technique to the model
   (except where a variant deliberately constrains technique).
@@ -239,9 +205,9 @@ tcab seed   --test-case <slug> --version <version> --variant <variant>
 
 `prompt` catches strict-mode template and manifest errors; `seed` writes the seeded
 repository (under `tmp/` by default) so you can read exactly what the model would
-receive — the brief and the target(s), plus the seeded `draw.config.json` and the
-blank starting frame(s). (`tcab validate` reads the local checkout directly and is
-not affected by the backend store being stale.)
+receive — the brief, plus the seeded `draw.config.json` and the blank starting
+frame(s), and no target image. (`tcab validate` reads the local checkout directly
+and is not affected by the backend store being stale.)
 
 ### Re-ingest after editing
 

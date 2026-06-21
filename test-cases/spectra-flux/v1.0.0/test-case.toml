@@ -22,10 +22,6 @@ preview = "canvas.png"
 [output]
 actions = "actions.json"
 
-[[reference]]
-view = "target"
-media = "reference/target.png"
-
 [[spec]]
 source = "specs/brief.md"
 dest = "specs/brief.md"
@@ -50,7 +46,6 @@ The drone shows BOTH spectral bands at the same time — cyan and magenta, split
 across its body — because the Flux is caught mid-shimmer between flips. A \
 single-band drone is the wrong creature for this case."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -61,7 +56,6 @@ Both band motifs are present and centered — the cyan RING glyph and the magent
 DIAMOND glyph overlaid — so the dual-band identity reads by shape as well as \
 color (the colorblind-safe convention the game uses)."""
 weight = 2
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -72,7 +66,6 @@ The sprite reads as a single drone unsettled between two bands (a shimmer), not 
 two separate objects or a flat two-tone shape. White shimmer flecks sell the \
 flicker."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -82,7 +75,6 @@ text = """
 Uses only the Spectra colors from the brief (cyan band, magenta band, white rim \
 and highlights) with no out-of-palette colors and no halo of stray pixels."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -92,5 +84,4 @@ text = """
 The drone fills most of the 64x64 frame, roughly centered with a small margin, \
 neither tiny in a corner nor clipped at an edge."""
 weight = 1
-reference = "target"
 domain = "fidelity"

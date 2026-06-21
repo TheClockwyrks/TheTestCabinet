@@ -22,10 +22,6 @@ preview = "canvas.png"
 [output]
 actions = "actions.json"
 
-[[reference]]
-view = "target"
-media = "reference/target.png"
-
 [[spec]]
 source = "specs/brief.md"
 dest = "specs/brief.md"
@@ -50,7 +46,6 @@ The drone reads as TWO concentric layers in opposite bands — an outer CYAN she
 ring enclosing an inner MAGENTA core. The two-band, shell-then-core construction \
 is the Prism's whole identity."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -61,7 +56,6 @@ The two bands read by shape as well as color: the cyan shell carries the RING \
 motif and the magenta core carries the DIAMOND motif — the colorblind-safe \
 convention the game uses everywhere a band appears."""
 weight = 2
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -71,7 +65,6 @@ text = """
 The Prism reads as the large anchor of a wave — it fills more of the frame than a \
 basic drone would, a substantial two-layer boss rather than a small drone."""
 weight = 2
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -82,7 +75,6 @@ Uses only the Spectra colors from the brief (cyan shell, magenta core, the dark 
 panel color for the gap, white glyphs) with no out-of-palette colors and no halo \
 of stray pixels."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -92,5 +84,4 @@ text = """
 The Prism fills most of the 64x64 frame, roughly centered with a small margin, \
 neither tiny in a corner nor clipped at an edge."""
 weight = 1
-reference = "target"
 domain = "fidelity"

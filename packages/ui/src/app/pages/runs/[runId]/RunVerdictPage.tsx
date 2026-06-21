@@ -43,8 +43,8 @@ export function RunVerdictPage() {
     <RunDetailLayout tab="verdict">
       {({ run, review }) => (
         <>
-          {/* For an asset-generation run, the generated asset and its fidelity /
-              cheat-divergence signals lead the verdict (it has no Play tab).
+          {/* For an asset-generation run, the generated asset and its
+              cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
           <AssetResultSection run={run} />
           {/* For an adversarial run, the canonical match's replay player and its

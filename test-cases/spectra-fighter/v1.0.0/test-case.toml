@@ -27,11 +27,6 @@ preview = "canvas.png"
 [output]
 actions = "actions.json"
 
-# The visual goal the regenerated sprite is scored against. Served as-is.
-[[reference]]
-view = "target"
-media = "reference/target.png"
-
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
@@ -57,7 +52,6 @@ The sprite reads as the player's fighter — an arrowhead hull pointing UP (the 
 direction it fires), not a drone or an enemy. It is clearly a ship, not an \
 abstract shape."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -68,7 +62,6 @@ A glowing cyan core sits in the hull, carrying the cyan band's RING motif (a \
 stroked ring), so the ship's spectral band reads by shape as well as color — the \
 colorblind-safe convention the game uses everywhere a band appears."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -79,7 +72,6 @@ The fighter is cleanly symmetric about its vertical centerline (x = 32) — the 
 wings and engine glows mirror each other — reading as a deliberate ship, not a \
 lopsided blob."""
 weight = 2
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -90,7 +82,6 @@ Uses only the Spectra colors from the brief (light hull, cyan band, warm engine 
 accent, white highlight) with no out-of-palette colors and no halo of stray \
 pixels."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -100,5 +91,4 @@ text = """
 The fighter fills most of the 64x64 frame, roughly centered with a small margin, \
 neither tiny in a corner nor clipped at an edge."""
 weight = 1
-reference = "target"
 domain = "fidelity"

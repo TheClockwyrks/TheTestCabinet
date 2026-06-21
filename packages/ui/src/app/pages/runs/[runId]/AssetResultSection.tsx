@@ -39,7 +39,7 @@ function Sprite({ url, label }: { url: string | null; label: string }) {
   );
 }
 
-/** The fidelity / divergence / operations readout for one frame. */
+/** The divergence / operations readout for one frame. */
 function FrameSignals({ frame }: { frame: AssetFrameView }) {
   const drewOutsideTool =
     frame.cheatDivergence !== null && frame.cheatDivergence > 0.05;
@@ -52,9 +52,6 @@ function FrameSignals({ frame }: { frame: AssetFrameView }) {
         marginTop: 16,
       }}
     >
-      <dt>Fidelity to target</dt>
-      <dd>{(frame.fidelity * 100).toFixed(1)}%</dd>
-
       <dt>Cheat divergence</dt>
       <dd>
         {frame.cheatDivergence === null ? (
@@ -85,7 +82,8 @@ function FrameSignals({ frame }: { frame: AssetFrameView }) {
   );
 }
 
-/** A single sprite: the static three-pane comparison plus its signals. */
+/** A single sprite: the regenerated image beside the model's preview, plus its
+ * signals. */
 function SpriteResult({ frame }: { frame: AssetFrameView }) {
   return (
     <>
@@ -97,8 +95,7 @@ function SpriteResult({ frame }: { frame: AssetFrameView }) {
           justifyContent: "center",
         }}
       >
-        <Sprite url={frame.regeneratedUrl} label="Regenerated (scored)" />
-        <Sprite url={frame.targetUrl} label="Target" />
+        <Sprite url={frame.regeneratedUrl} label="Regenerated" />
         <Sprite url={frame.previewUrl} label="Model's preview" />
       </div>
       <FrameSignals frame={frame} />
@@ -106,8 +103,8 @@ function SpriteResult({ frame }: { frame: AssetFrameView }) {
   );
 }
 
-/** A sprite sheet: each named sequence animated regenerated-vs-target, then the
- * per-frame fidelity/divergence breakdown (a sheet has no aggregate score). */
+/** A sprite sheet: each named sequence animated from the regenerated frames,
+ * then the per-frame divergence/operations breakdown. */
 function SheetResult({
   asset,
   sheet,
@@ -126,8 +123,8 @@ function SheetResult({
     <>
       <h3 className={styles.section}>Animated sequences</h3>
       <p className={styles.secondary}>
-        Each named animation, played from the regenerated frames beside the target
-        frames so the motion can be compared frame for frame.
+        Each named animation, played from the regenerated frames so the motion can
+        be reviewed against the brief.
       </p>
       {sheet.sequences.map((sequence) => (
         <figure key={sequence.slug} style={{ margin: "0 0 20px" }}>
@@ -148,21 +145,14 @@ function SheetResult({
               frameHeight={sheet.frameHeight}
               fps={sequence.fps}
             />
-            <SpriteSheetPlayer
-              label="Target"
-              frameUrls={urls(sequence.frames, (f) => f.targetUrl)}
-              frameWidth={sheet.frameWidth}
-              frameHeight={sheet.frameHeight}
-              fps={sequence.fps}
-            />
           </div>
         </figure>
       ))}
 
-      <h3 className={styles.section}>Per-frame fidelity</h3>
+      <h3 className={styles.section}>Per-frame details</h3>
       <p className={styles.secondary}>
-        Every frame is scored independently against its own target; there is no
-        whole-sheet aggregate.
+        Each frame is a separate file; the regenerated image is reviewed against
+        the brief.
       </p>
       <table className={styles.checks}>
         <tbody>
@@ -174,7 +164,6 @@ function SheetResult({
                 <th scope="row" className={styles.checkName}>
                   Frame {frame.index}
                 </th>
-                <td>{(frame.fidelity * 100).toFixed(1)}%</td>
                 <td className={styles.secondary}>
                   {frame.operationCount} ops
                   {frame.cheatDivergence === null
@@ -202,10 +191,11 @@ function SheetResult({
 
 /**
  * The asset-generation result, shown at the top of the Verdict tab for an
- * asset-generation run. A single sprite shows the regenerated image beside its
- * target and the model's preview, plus the fidelity and cheat-divergence signals;
- * a sprite sheet animates each named sequence (regenerated vs target) from its
- * per-frame images and lists each frame's independent score.
+ * asset-generation run. A single sprite shows the regenerated image beside the
+ * model's preview, plus the cheat-divergence signal; a sprite sheet animates each
+ * named sequence from its per-frame regenerated images and lists each frame's
+ * details. The regenerated asset is reviewed against the brief — there is no
+ * target image or fidelity score.
  *
  * Renders nothing for a non-asset-generation run (its `validation.asset` is
  * absent), so it is safe to mount unconditionally.

@@ -9,11 +9,10 @@ procedure is in
 [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/);
 the `adding-a-sprite-variant` skill is the hands-on guide to follow.
 
-The key constraint: an asset-generation case has **exactly one common `target`**
-reference and resolution **forbids per-variant references**. So a variant cannot
-change the target image — it varies the **brief** (an additive spec) the model
-draws toward that same shared target: a tighter palette, a stricter operation
-budget, an added stylistic rule.
+The key constraint: an asset-generation case declares **no references at all**
+and resolution **rejects any** (common or per-variant). There is no target image
+— a variant varies only the **brief** (an additive spec) the model draws toward:
+a tighter palette, a stricter operation budget, an added stylistic rule.
 
 For a **sprite-sheet** case (`asset_kind = "sprite-sheet"`) instead? See
 [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/).
@@ -27,16 +26,16 @@ Adding a mode to an [end-to-end](/testing/end-to-end/overview/) case? See
 2. Write `specs/<slug>.md`: an additive brief stated as a delta against the common
    brief ("same subject and palette, except …"), with **precise, testable**
    constraints. It may reference the common specs but **not** another variant's
-   spec, and it draws toward the **same** `target`.
-3. Add `[[review_item]]`s for what the variation makes observable, each pairing
-   `reference = "target"` and a scoring `domain`.
+   spec.
+3. Add `[[review_item]]`s for what the variation makes observable, each carrying a
+   scoring `domain` (no `reference` — the case has no target image).
 4. Register the variant in `test-case.toml`:
 
 ```toml
 [[variant]]
 slug = "flat"
 name = "Flat Shading"
-description = "Same target, drawn with flat fills only — no gradients or dithering."
+description = "Same brief, drawn with flat fills only — no gradients or dithering."
 spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
 ```
 
@@ -52,5 +51,4 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Seed and render the **new** variant and re-check the **existing** ones to confirm
-nothing else changed and the brief still resolves self-contained against the
-shared target.
+nothing else changed and the brief still resolves self-contained.

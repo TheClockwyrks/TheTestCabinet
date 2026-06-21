@@ -112,8 +112,8 @@ fn asset_request_parses_bare_names_and_per_frame_names() {
     );
     assert_eq!(parse_asset_request("actions.json"), Some(("actions", None)));
     assert_eq!(
-        parse_asset_request("target-3.png"),
-        Some(("target", Some(3)))
+        parse_asset_request("regenerated-3.png"),
+        Some(("regenerated", Some(3)))
     );
     assert_eq!(
         parse_asset_request("preview-12.png"),

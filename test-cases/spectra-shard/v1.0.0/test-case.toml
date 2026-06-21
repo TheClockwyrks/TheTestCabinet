@@ -21,10 +21,6 @@ preview = "canvas.png"
 [output]
 actions = "actions.json"
 
-[[reference]]
-view = "target"
-media = "reference/target.png"
-
 [[spec]]
 source = "specs/brief.md"
 dest = "specs/brief.md"
@@ -48,7 +44,6 @@ text = """
 The sprite reads as a small, angular **crystalline drone** — a faceted diamond \
 shape, not a round blob or a soft creature. Its geometry is sharp and deliberate."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -59,7 +54,6 @@ The drone is the magenta band, carrying the magenta band's DIAMOND motif (a \
 diamond outline), so its spectral band reads by shape as well as color — the \
 colorblind-safe convention the game uses everywhere a band appears."""
 weight = 3
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -69,7 +63,6 @@ text = """
 The sprite reads as one of the swarm's enemy drones — a compact, hostile crystal \
 — not as the player's ship or a friendly object."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -79,7 +72,6 @@ text = """
 Uses only the Spectra colors from the brief (magenta band, white highlight) with \
 no out-of-palette colors and no halo of stray pixels."""
 weight = 1
-reference = "target"
 domain = "fidelity"
 
 [[review_item]]
@@ -89,5 +81,4 @@ text = """
 The drone fills most of the 64x64 frame, roughly centered with a small margin, \
 neither tiny in a corner nor clipped at an edge."""
 weight = 1
-reference = "target"
 domain = "fidelity"

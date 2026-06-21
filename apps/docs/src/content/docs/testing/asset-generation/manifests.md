@@ -7,9 +7,10 @@ and declares its contents in a `test-case.toml` manifest, the same versioned,
 immutable [catalog layout](/testing/end-to-end/overview/#catalog-layout) every
 test type uses. Unlike an [end-to-end manifest](/testing/end-to-end/manifests/),
 it does not describe a build that produces a static site; it describes the
-**canvas** the model draws on, the **drawing tool** it draws with, where the
-recorded **actions** are collected, and the **reference** the regenerated image is
-scored against.
+**canvas** the model draws on, the **drawing tool** it draws with, and where the
+recorded **actions** are collected. There is no target image: an
+asset-generation case is human-reviewed against its brief, so it declares **no
+`[[reference]]`** at all.
 
 ```toml
 # test-cases/<slug>/<version>/test-case.toml
@@ -47,17 +48,15 @@ actions = "actions.json"     # the ordered record of every operation (required)
                              # (a {frame} template for a sprite sheet, e.g. "frames/{frame}.actions.json")
 
 # Only for asset_kind = "sprite-sheet": the frames the model draws (each a separate
-# file the size of [canvas], with its own target) and the named sequences a
-# reviewer plays back. The number of frames is just how many are declared.
+# file the size of [canvas]) and the named sequences a reviewer plays back. The
+# number of frames is just how many are declared.
 [sheet]
 
 [[sheet.frame]]              # >=1 required; one declared frame
 index  = 6                   # the index it is written to (draw-sheet --frame 6), unique
-target = "reference/frames/6.png" # this frame's per-frame target (seeded as its goal)
 
 [[sheet.frame]]
 index  = 7
-target = "reference/frames/7.png"
 
 [[sheet.sequence]]           # >=1 required; one named animation the UI plays back
 slug   = "walk-right"        # stable slug (required, unique within the sheet)
@@ -65,19 +64,14 @@ name   = "Walk Right"        # display name (optional; default humanizes the slu
 frames = [6, 7]              # ordered frame indices (required, non-empty, each a declared frame)
 fps    = 4                   # playback rate in frames per second (required, > 0)
 
-# A SINGLE SPRITE's target the REGENERATED image is scored against. Same
-# `{ view, media }` shape as an end-to-end static reference; the source target is
-# seeded as the visual goal. A sprite sheet declares NO [[reference]] — its targets
-# are the per-frame `target` paths on [[sheet.frame]] above.
-[[reference]]
-view  = "target"             # view slug (single sprite only)
-media = "reference/target.png" # the target image (seeded as the goal; served as-is)
+# An asset-generation case declares NO [[reference]]: it is reviewed against its
+# brief, with no target image to score the regenerated asset against. (Declaring
+# one — common or per-variant — is rejected.)
 
 # Variants. As with every test type, a case offers one or more and exactly one
 # runs per run. Here a variant varies the BRIEF (an additive spec) the model
-# draws toward the case's single shared `target` — a tighter palette, an
-# operation budget, a required technique — NOT a different target image (a
-# variant may not declare its own reference; see below).
+# draws toward — a tighter palette, an operation budget, a required technique —
+# NOT a different reference (a variant declares no reference; see below).
 [[variant]]
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
@@ -95,9 +89,8 @@ dest   = "specs/brief.md"
   `"end-to-end"`, which then rejects the `[canvas]`/`[tool]`/`[output]` tables.
   Resolution validates the tables against the declared type: an asset-generation
   case must declare `[canvas]`, `[tool]`, and `[output]`, and must **not** declare
-  a `[build]` table or any `[[check]]`. A single sprite declares exactly one
-  `target` reference; a sprite sheet declares its targets per frame on
-  `[[sheet.frame]]` and no `[[reference]]` of its own.
+  a `[build]` table, any `[[check]]`, or any `[[reference]]` (it has no target to
+  score against — declaring one, common or per-variant, is rejected).
 - `asset_kind` chooses the **shape** of the asset within an asset-generation
   case: `"sprite"` (the default — one sprite drawn onto the whole canvas) or
   `"sprite-sheet"` (a set of animation frames, each a separate file). It is a
@@ -107,30 +100,27 @@ dest   = "specs/brief.md"
   explicit value on any other type is rejected.
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
-  each with the `index` it is written to (passed as
-  [`draw-sheet --frame`](/testing/asset-generation/draw-tool/)) and its own
-  per-frame `target` — plus one or more `[[sheet.sequence]]` entries. The number of
-  frames is just how many are declared; for a sprite sheet `[canvas]` describes
-  **one frame** (every frame is a separate file of that size). Resolution validates
-  that frame indices are unique, each `target` exists, and that each sequence has a
-  unique non-empty `slug`, at least one `frames` index, every index a **declared**
-  frame, and `fps > 0`. Scoring is **per frame** — each regenerated frame is
-  compared to its own target, with no whole-sheet aggregate; the named sequences are
-  surfaced to the reviewer and played back as live animations from the per-frame
+  each just the `index` it is written to (passed as
+  [`draw-sheet --frame`](/testing/asset-generation/draw-tool/)) — plus one or more
+  `[[sheet.sequence]]` entries. The number of frames is just how many are declared;
+  for a sprite sheet `[canvas]` describes **one frame** (every frame is a separate
+  file of that size). Resolution validates that frame indices are unique, and that
+  each sequence has a unique non-empty `slug`, at least one `frames` index, every
+  index a **declared** frame, and `fps > 0`. Each frame is regenerated
+  independently, with no whole-sheet aggregate; the named sequences are surfaced to
+  the reviewer and played back as live animations from the per-frame regenerated
   images (the sheet layout travels in the run record so the verdict page can
   animate from the run alone).
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_seconds`, and the `[[spec]]` /
   `[[variant]]` seeding rules behave as they do for an
-  [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief and a
-  target, renders a prompt, and may offer variants. The one difference is
-  references: the targets are **common**, shared by every variant (one `target`
-  for a single sprite, the per-frame `[[sheet.frame]]` targets for a sheet), and a
-  variant may **not** declare its own (unlike end-to-end, where a variant can add
-  references). So a variant here varies only the seeded brief — an additive
-  `[[spec]]` — that the model draws toward those same targets. There is **no
-  `[build]` table** — an asset-generation run produces a recorded action log, not a
-  static site.
+  [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief,
+  renders a prompt, and may offer variants. The difference is references: an
+  asset-generation case declares **none** (unlike end-to-end, where the common set
+  and each variant may add reference mockups). So a variant here varies only the
+  seeded brief — an additive `[[spec]]` — that the model draws toward. There is
+  **no `[build]` table** — an asset-generation run produces a recorded action log,
+  not a static site.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. For a single sprite this is the
   whole canvas; for a sprite sheet it is one frame. Fixing it keeps runs
@@ -148,16 +138,11 @@ dest   = "specs/brief.md"
 - The `[output]` table names the `actions` log the binary records and returns (a
   `{frame}` template for a sheet, one log per frame). This ordered list of
   operations is the **authoritative output**; The Test Cabinet regenerates the
-  scored image from it.
-- The **targets** are the images the regenerated result is scored against — one
-  `[[reference]]` named `target` for a single sprite, the per-frame `target` paths
-  on each `[[sheet.frame]]` for a sheet. Each is seeded as the visual goal handed
-  to the model, the same way an end-to-end case seeds a reference screenshot. A
-  convenient way to author one without hand-pixeling is to write the target itself
-  as an action log and render it through the same drawing library (`draw render
-  --actions … --out target.png`, or `--width 32 --height 32` per frame for a
-  sheet), keeping the action log as the un-seeded source; this guarantees the
-  target is achievable within the operation set, so fidelity scoring is fair.
+  reviewed image from it.
+- There are **no targets**. An asset-generation case is judged by a human against
+  its [brief](/testing/asset-generation/overview/), so it seeds only the brief
+  (and the blank canvas/config the binary writes into) — no goal image, and no
+  `[[reference]]`.
 
 :::caution[Re-ingest after editing]
 The test type and the `[canvas]`/`[tool]`/`[output]` tables are stored in the

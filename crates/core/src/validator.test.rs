@@ -98,9 +98,8 @@ fn score_of_identical_pngs_is_one() {
 
 use super::AssetGenValidator;
 use crate::execution::ArtifactCollection;
-use crate::reference::RenderedReference;
 use crate::test_case::{
-    AssetKind, CanvasSpec, MediaKind, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
+    AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
     TestType, ToolSpec,
 };
 use crate::validation::Validator;
@@ -158,7 +157,7 @@ fn red_4x4() -> Vec<u8> {
 }
 
 #[test]
-fn asset_validation_regenerates_scores_and_detects_no_cheating() {
+fn asset_validation_regenerates_and_detects_no_cheating() {
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = dir.path().join("impl");
     std::fs::create_dir_all(&repo).expect("repo");
@@ -170,22 +169,15 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
     )
     .expect("actions");
     write_png(&repo.join("canvas.png"), 4, 4, &red_4x4());
-    // The seeded target is also all red, so fidelity is perfect.
-    let target = dir.path().join("target.png");
-    write_png(&target, 4, 4, &red_4x4());
 
-    let references = vec![RenderedReference {
-        view: "target".to_string(),
-        kind: MediaKind::Image,
-        media_path: target,
-    }];
+    // An asset-generation run has no target image, so no references are passed.
     let summary = AssetGenValidator::new()
         .validate(
             &asset_version(),
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },
-            &references,
+            &[],
             &[],
         )
         .expect("validate");
@@ -197,7 +189,6 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
     let frame = &asset.frames[0];
     assert_eq!(frame.index, 0);
     assert_eq!(frame.operation_count, 1);
-    assert_eq!(frame.target_fidelity, 1.0, "regenerated matches the target");
     assert_eq!(
         frame.cheat_divergence,
         Some(0.0),
@@ -212,7 +203,7 @@ fn asset_validation_regenerates_scores_and_detects_no_cheating() {
 }
 
 #[test]
-fn asset_validation_scores_each_sheet_frame_independently() {
+fn asset_validation_regenerates_each_sheet_frame_independently() {
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = dir.path().join("impl");
     std::fs::create_dir_all(repo.join("frames")).expect("frames dir");
@@ -225,17 +216,6 @@ fn asset_validation_scores_each_sheet_frame_independently() {
         )
         .expect("frame actions");
         write_png(&repo.join(format!("frames/{index}.png")), 2, 2, &red_2x2());
-    }
-    // One target per frame, found by the synthesized `target-<index>` view.
-    let mut references = Vec::new();
-    for index in [0u32, 1] {
-        let target = dir.path().join(format!("target-{index}.png"));
-        write_png(&target, 2, 2, &red_2x2());
-        references.push(RenderedReference {
-            view: format!("target-{index}"),
-            kind: MediaKind::Image,
-            media_path: target,
-        });
     }
 
     // The canvas is one frame (2x2); the sheet declares two frames and a sequence.
@@ -271,17 +251,16 @@ fn asset_validation_scores_each_sheet_frame_independently() {
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },
-            &references,
+            &[],
             &[],
         )
         .expect("validate");
     let asset = summary.asset.expect("asset result");
-    // One result per declared frame, each scored against its own target with its
-    // regenerated image written under `regenerated/<index>.png`.
+    // One result per declared frame, each with its regenerated image written under
+    // `regenerated/<index>.png`.
     assert_eq!(asset.frames.len(), 2);
     for (frame, index) in asset.frames.iter().zip([0u32, 1]) {
         assert_eq!(frame.index, index);
-        assert_eq!(frame.target_fidelity, 1.0);
         assert_eq!(frame.cheat_divergence, Some(0.0));
         assert!(
             repo.join(format!("regenerated/{index}.png")).is_file(),
@@ -311,29 +290,18 @@ fn asset_validation_flags_drawing_outside_the_tool() {
     .expect("actions");
     let blue = [0u8, 0, 255, 255].repeat(16);
     write_png(&repo.join("canvas.png"), 4, 4, &blue);
-    let target = dir.path().join("target.png");
-    write_png(&target, 4, 4, &red_4x4());
 
-    let references = vec![RenderedReference {
-        view: "target".to_string(),
-        kind: MediaKind::Image,
-        media_path: target,
-    }];
     let summary = AssetGenValidator::new()
         .validate(
             &asset_version(),
             &ArtifactCollection { repo_path: repo },
-            &references,
+            &[],
             &[],
         )
         .expect("validate");
 
     let asset = summary.asset.expect("asset result");
     let frame = &asset.frames[0];
-    assert_eq!(
-        frame.target_fidelity, 1.0,
-        "the regenerated image still matches the target"
-    );
     let divergence = frame.cheat_divergence.expect("divergence measured");
     assert!(
         divergence > 0.5,

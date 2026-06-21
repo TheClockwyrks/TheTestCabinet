@@ -2,40 +2,30 @@
 title: Evaluation
 ---
 
-An asset-generation run is scored on the image the model produced — but on the
-image **regenerated from the recorded actions**, never on the pixels the model
-left on disk. The output of a run is the ordered
+An asset-generation run's output is the image the model produced — but the image
+**regenerated from the recorded actions**, never the pixels the model left on
+disk. The output of a run is the ordered
 [action log](/testing/asset-generation/manifests/) the drawing binary recorded,
-and evaluation begins by turning that log back into an image.
+and evaluation begins by turning that log back into an image. Assessment is then
+**subjective**: there is no target image and no automated similarity score — the
+regenerated asset is judged by a human against the case's brief.
 
 ## Regeneration
 
 The harness replays the recorded operations through the **same drawing logic** the
-binary used and takes the **regenerated image** as the test output. Because the
+binary used and takes the **regenerated image** as the run's output. Because the
 regeneration runs exactly the operations the model issued — and nothing else — an
 image produced by any other means contributes nothing to the result. This is what
 makes the constrained drawing channel enforceable rather than merely requested
 (see [Overview](/testing/asset-generation/overview/#why-the-actions-are-the-output)).
 
-## Fidelity to the target
-
-The regenerated image is compared against the case's
-[reference target](/testing/asset-generation/manifests/) to produce a
-**similarity signal** — how close the drawing came to the goal. As with
-end-to-end [checks](/testing/end-to-end/evaluation/#checks), this is a recorded
-signal rather than a pass/fail gate: a faithful sprite scores well, a vague one
-scores poorly, and the number is surfaced as recorded context for the reviewer.
-
-For a **sprite sheet** each frame is its own separate file, so scoring is **per
-frame**: every regenerated frame is compared to its own
-[per-frame target](/testing/asset-generation/manifests/) and carries its own
-fidelity and cheat-divergence numbers. There is **no whole-sheet aggregate** — the
-run surfaces the frames' independent scores rather than one number. The `[sheet]`
-table's named [sequences](/testing/asset-generation/manifests/) do not enter
-scoring; they are surfaced to the reviewer and **played back as live animations**
-in the review UI (the regenerated frames beside the target frames, in each named
-sequence's order) so a person can judge the motion the sheet encodes — a separate,
-human assessment alongside the recorded per-frame numbers.
+For a **sprite sheet** each frame is its own separate file, so each is regenerated
+independently and carries its own cheat-divergence number; there is **no
+whole-sheet aggregate**. The `[sheet]` table's named
+[sequences](/testing/asset-generation/manifests/) are surfaced to the reviewer and
+**played back as live animations** in the review UI (the regenerated frames in
+each named sequence's order) so a person can judge the motion the sheet encodes
+against the brief.
 
 ## Cheat detection
 
@@ -49,8 +39,9 @@ nothing from drawing outside the tool, and the mismatch simply marks the attempt
 
 ## Review
 
-As with the other types, a published asset-generation run may carry a human
-[review](/components/core/results/#reviews) — a writeup of how convincingly the
-asset matches the brief and how the model approached the drawing — alongside the
-regenerated image and the recorded actions. The fidelity and cheat-detection
-signals inform that assessment; they do not replace it.
+The human [review](/components/core/results/#reviews) is the assessment, not a
+supplement to it: a published asset-generation run carries a writeup of how
+convincingly the regenerated asset realizes the brief and how the model approached
+the drawing, alongside the regenerated image and the recorded actions. The
+cheat-detection signal informs that assessment — flagging a run that drew outside
+the tool — but the judgment of the asset itself is the reviewer's.

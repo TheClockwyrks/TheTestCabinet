@@ -51,5 +51,4 @@ Because the ship is symmetric, you may draw the left half and use
 for the available operations (filling and stroking circles and rectangles,
 lines, single pixels, flood fill, and the horizontal mirror) and `draw
 <operation> --help` for each one's exact flags. Call `draw` once per operation
-and read `canvas.png` between calls to judge your progress against this brief
-and the target.
+and read `canvas.png` between calls to judge your progress against this brief.

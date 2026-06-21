@@ -277,13 +277,14 @@ impl BuildValidator {
 ///
 /// It ignores the build pipeline entirely. Instead it reads each recorded action
 /// log, replays it through the **same** drawing library the in-container binary
-/// used ([`test_cabinet_draw::render`]) to regenerate the scored image, scores
-/// that image against the seeded target (fidelity), and compares it to the pixels
-/// the model left on disk (cheat divergence). Both are recorded signals, not
-/// gates. A single sprite has one log, one regenerated image, one target; a sprite
-/// sheet has one of each **per declared frame** — every frame a separate file,
-/// scored independently with no whole-sheet aggregate. The regenerated image(s)
-/// are written into the produced tree so they are collected and served.
+/// used ([`test_cabinet_draw::render`]) to regenerate the image, and compares it
+/// to the pixels the model left on disk (cheat divergence). An asset-generation
+/// run has no target image: the regenerated image is the output a human reviews
+/// against the brief, and cheat divergence is the one recorded signal — not a
+/// gate. A single sprite has one log and one regenerated image; a sprite sheet has
+/// one of each **per declared frame** — every frame a separate file. The
+/// regenerated image(s) are written into the produced tree so they are collected
+/// and served.
 #[derive(Debug, Clone, Default)]
 pub struct AssetGenValidator;
 
@@ -295,15 +296,13 @@ impl AssetGenValidator {
     }
 }
 
-/// The per-frame plan the validator regenerates and scores: where this frame's
-/// recorded log and preview live, where its regenerated image is written, and the
-/// reference view that is its target.
+/// The per-frame plan the validator regenerates: where this frame's recorded log
+/// and preview live, and where its regenerated image is written.
 struct FramePlan {
     index: u32,
     actions_rel: PathBuf,
     preview_rel: PathBuf,
     regenerated_rel: String,
-    target_view: String,
 }
 
 impl Validator for AssetGenValidator {
@@ -311,7 +310,9 @@ impl Validator for AssetGenValidator {
         &self,
         test_case: &TestCaseVersion,
         artifacts: &ArtifactCollection,
-        references: &[RenderedReference],
+        // An asset-generation run has no target image, so references — the
+        // browser-rendered baselines other types score against — are unused here.
+        _references: &[RenderedReference],
         proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
@@ -351,14 +352,13 @@ impl Validator for AssetGenValidator {
         };
 
         // One frame for a single sprite (index 0); one per declared frame for a
-        // sheet, each with its own log, preview, regenerated image, and target.
+        // sheet, each with its own log, preview, and regenerated image.
         let plans: Vec<FramePlan> = match test_case.sheet.as_ref() {
             None => vec![FramePlan {
                 index: 0,
                 actions_rel: output.actions.clone(),
                 preview_rel: tool.preview.clone(),
                 regenerated_rel: "regenerated.png".to_string(),
-                target_view: "target".to_string(),
             }],
             Some(sheet) => sheet
                 .frames
@@ -368,14 +368,13 @@ impl Validator for AssetGenValidator {
                     actions_rel: crate::test_case::frame_path(&output.actions, index),
                     preview_rel: crate::test_case::frame_path(&tool.preview, index),
                     regenerated_rel: format!("regenerated/{index}.png"),
-                    target_view: format!("target-{index}"),
                 })
                 .collect(),
         };
 
         let mut frames = Vec::with_capacity(plans.len());
         for plan in &plans {
-            match score_frame(repo, &canvas, references, plan) {
+            match score_frame(repo, &canvas, plan) {
                 Ok(frame) => frames.push(frame),
                 // A frame whose log is missing, unparseable, or unrenderable has
                 // nothing to score: the run produced no scorable output, so it is a
@@ -405,14 +404,13 @@ impl Validator for AssetGenValidator {
     }
 }
 
-/// Regenerate and score one frame. Returns `Err` with a fatal reason when the
-/// frame's action log cannot be read, parsed, or rendered — the caller maps that
-/// to a failed load. Non-fatal gaps (a missing target or preview) are recorded in
-/// the frame's `detail` instead.
+/// Regenerate one frame and measure its cheat divergence. Returns `Err` with a
+/// fatal reason when the frame's action log cannot be read, parsed, or rendered —
+/// the caller maps that to a failed load. A non-fatal gap (a missing preview)
+/// is recorded in the frame's `detail` instead.
 fn score_frame(
     repo: &Path,
     canvas: &test_cabinet_draw::Canvas,
-    references: &[RenderedReference],
     plan: &FramePlan,
 ) -> std::result::Result<AssetFrameResult, String> {
     let actions_path = repo.join(&plan.actions_rel);
@@ -444,30 +442,6 @@ fn score_frame(
 
     let mut notes: Vec<String> = Vec::new();
 
-    // Fidelity: score the regenerated frame against its seeded target.
-    let target = references
-        .iter()
-        .find(|reference| reference.view == plan.target_view);
-    let target_fidelity = match target {
-        Some(target) if target.kind == MediaKind::Image => {
-            match score(&target.media_path, &regenerated_path) {
-                Ok(similarity) => similarity,
-                Err(err) => {
-                    notes.push(format!("could not score against the target: {err}"));
-                    0.0
-                }
-            }
-        }
-        Some(_) => {
-            notes.push("the target reference is not an image".to_string());
-            0.0
-        }
-        None => {
-            notes.push("no target reference was provided".to_string());
-            0.0
-        }
-    };
-
     // Cheat divergence: compare the regenerated frame to the model's on-disk
     // preview. A high value means the model drew outside the tool. Absent or
     // unreadable preview leaves it unmeasured rather than failing the run.
@@ -485,18 +459,12 @@ fn score_frame(
         None
     };
 
-    let target_image = target
-        .map(seeded_reference_rel)
-        .unwrap_or_else(|| format!("reference/{}.png", plan.target_view));
-
     Ok(AssetFrameResult {
         index: plan.index,
         regenerated_image: plan.regenerated_rel.clone(),
         preview_image: rel_string(&plan.preview_rel),
-        target_image,
         actions_log: rel_string(&plan.actions_rel),
         operation_count: operations.len(),
-        target_fidelity,
         cheat_divergence,
         detail: (!notes.is_empty()).then(|| notes.join("; ")),
     })
@@ -546,19 +514,6 @@ impl Validator for DispatchValidator {
                 .validate(test_case, artifacts, references, proofs),
         }
     }
-}
-
-/// The run-root-relative path a reference is seeded to: `reference/<view>.<ext>`,
-/// where the extension comes from the reference's served media. Matches the
-/// seeding layout so the validator can name where the seeded target lives.
-fn seeded_reference_rel(reference: &RenderedReference) -> String {
-    let ext = reference
-        .media_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-        .unwrap_or_else(|| "png".to_string());
-    format!("reference/{}.{ext}", reference.view)
 }
 
 /// A run-root-relative path as a forward-slash string, matching how a

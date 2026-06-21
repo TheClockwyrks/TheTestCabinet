@@ -512,13 +512,12 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
     }
 
     /// Upload an asset-generation run's media to the backend, keyed by run id: for
-    /// each frame, the regenerated image, the model's final preview, the seeded
-    /// target, and the action log. Each is read from the collected implementation
-    /// tree at its recorded path and uploaded under the stable logical name the
-    /// result view requests — `regenerated.png`/`preview.png`/`target.png`/
-    /// `actions.json` for a single sprite (its one frame), and the per-frame
-    /// `regenerated-<index>.png` (etc.) for a sprite sheet. A no-op for any
-    /// non-asset-generation run.
+    /// each frame, the regenerated image, the model's final preview, and the
+    /// action log. Each is read from the collected implementation tree at its
+    /// recorded path and uploaded under the stable logical name the result view
+    /// requests — `regenerated.png`/`preview.png`/`actions.json` for a single
+    /// sprite (its one frame), and the per-frame `regenerated-<index>.png` (etc.)
+    /// for a sprite sheet. A no-op for any non-asset-generation run.
     async fn upload_assets(
         &self,
         record: &RunRecord,
@@ -539,7 +538,6 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             let files = [
                 (format!("regenerated{suffix}.png"), &frame.regenerated_image),
                 (format!("preview{suffix}.png"), &frame.preview_image),
-                (format!("target{suffix}.png"), &frame.target_image),
                 (format!("actions{suffix}.json"), &frame.actions_log),
             ];
             for (name, rel) in files {

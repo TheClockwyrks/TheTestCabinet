@@ -25,78 +25,62 @@ background = "transparent"
 binary = "draw-sheet"
 preview = "frames/{frame}.png"
 
-# The recorded action logs — one per frame, the authoritative output each frame's
-# score is regenerated from.
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 32x32 file with its own target —
-# and the named animation sequences a reviewer plays back.
+# The frames the model draws — each a separate 32x32 file — and the named
+# animation sequences a reviewer plays back.
 [sheet]
 
 [[sheet.frame]]
 index = 0
-target = "reference/frames/0.png"
 
 [[sheet.frame]]
 index = 1
-target = "reference/frames/1.png"
 
 [[sheet.frame]]
 index = 2
-target = "reference/frames/2.png"
 
 [[sheet.frame]]
 index = 3
-target = "reference/frames/3.png"
 
 [[sheet.frame]]
 index = 4
-target = "reference/frames/4.png"
 
 [[sheet.frame]]
 index = 5
-target = "reference/frames/5.png"
 
 [[sheet.frame]]
 index = 6
-target = "reference/frames/6.png"
 
 [[sheet.frame]]
 index = 7
-target = "reference/frames/7.png"
 
 [[sheet.frame]]
 index = 8
-target = "reference/frames/8.png"
 
 [[sheet.frame]]
 index = 9
-target = "reference/frames/9.png"
 
 [[sheet.frame]]
 index = 10
-target = "reference/frames/10.png"
 
 [[sheet.frame]]
 index = 11
-target = "reference/frames/11.png"
 
 [[sheet.frame]]
 index = 12
-target = "reference/frames/12.png"
 
 [[sheet.frame]]
 index = 13
-target = "reference/frames/13.png"
 
 [[sheet.frame]]
 index = 14
-target = "reference/frames/14.png"
 
 [[sheet.frame]]
 index = 15
-target = "reference/frames/15.png"
 
 [[sheet.sequence]]
 slug = "walk-down"
