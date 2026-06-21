@@ -74,17 +74,20 @@ container's unprivileged run user cannot write the working tree.)
 ## 3. The run-container image
 
 Every run executes inside a run-container image selected by the test case's
-[test type](/testing/): an [end-to-end](/testing/end-to-end/) run uses the **base
-image**, an [asset-generation](/testing/asset-generation/overview/) run uses the
-**asset-generation image** (the base plus the baked-in `draw` tool). The
+[test type](/testing/) and — for asset-generation — its
+[`asset_kind`](/testing/asset-generation/manifests/): an
+[end-to-end](/testing/end-to-end/) run uses the **base image**, a single-sprite
+[asset-generation](/testing/asset-generation/overview/) run uses the **sprite
+image** (the base plus the baked-in `draw` tool), and a sprite-sheet run uses the
+**sprite-sheet image** (the base plus the baked-in `draw-sheet` tool). The
 [agent harness](/components/core/harnesses/) you drive is installed into the
-container at run time, so neither is a per-harness image to build or pull. By
+container at run time, so none is a per-harness image to build or pull. By
 default a runner **pulls the image it needs from a container registry** (GHCR) the
 first time it is needed and pins the resolved digest in the run record; you do
 not have to build anything to make a first run. Each runner resolves the image
 from its own environment configuration (`TCAB_CONTAINER_REGISTRY`,
-`TCAB_CONTAINER_TAG`, or a per-test-type override —
-`TCAB_CONTAINER_IMAGE_BASE` / `TCAB_CONTAINER_IMAGE_ASSET_GEN`) — see
+`TCAB_CONTAINER_TAG`, or a per-image override — `TCAB_CONTAINER_IMAGE_BASE` /
+`TCAB_CONTAINER_IMAGE_SPRITE` / `TCAB_CONTAINER_IMAGE_SPRITE_SHEET`) — see
 [Execution](/components/core/execution/#containerization).
 
 To build the images locally instead — for offline development or while changing
@@ -93,7 +96,7 @@ locally-tagged builds, and build from the `containers/` directory (see its
 `README.md`):
 
 ```sh
-cd containers && DOCKER=podman ./build.sh   # builds the base + asset-gen images
+cd containers && DOCKER=podman ./build.sh   # builds the base + sprite + sprite-sheet images
 ```
 
 The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,

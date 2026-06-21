@@ -130,7 +130,7 @@ pub struct RunRequest {
     pub max_runtime_override: Option<u64>,
     /// An explicit per-run override for the run-container image: a full, pullable
     /// reference the runtime pulls. `None` — the usual case — resolves the image
-    /// for the run's test type from the environment via
+    /// for the run's test type and asset kind from the environment via
     /// [`resolve_run_image`](crate::harness::resolve_run_image), which consults
     /// no backend. Whatever image actually runs is recorded (resolved to its
     /// registry digest where it has one) as [`RunEnvironment::container_image`].
@@ -296,16 +296,17 @@ where
         let auth_mode = auth.mode();
 
         // The image is the run's explicit per-run override when it carries one,
-        // else the image for the test case's test type, resolved from the
-        // environment (a registry reference, resolved without any backend):
-        // end-to-end runs use the base image, asset-generation runs use the
-        // asset-generation image (the base plus the baked-in `draw` binary). The
-        // selected harness's CLI is installed into the container below either way;
-        // there is no per-harness image.
+        // else the image for the test case's test type and asset kind, resolved
+        // from the environment (a registry reference, resolved without any
+        // backend): end-to-end runs use the base image, single-sprite runs use the
+        // sprite image (the base plus the baked-in `draw` binary), sprite-sheet
+        // runs use the sprite-sheet image (the base plus the baked-in `draw-sheet`
+        // binary). The selected harness's CLI is installed into the container below
+        // either way; there is no per-harness image.
         let image = request
             .container_image
             .clone()
-            .unwrap_or_else(|| resolve_run_image(test_case.test_type));
+            .unwrap_or_else(|| resolve_run_image(test_case.test_type, test_case.asset_kind));
         tracing::Span::current().record("container.image", image.as_str());
 
         // Pull the base image up front so the run fails fast with a clear error

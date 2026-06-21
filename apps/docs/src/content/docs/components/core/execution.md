@@ -21,21 +21,26 @@ example by deleting files.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
-- A run executes in one of **two run-container images**, selected by the test
-  case's [test type](/testing/): an [end-to-end](/testing/end-to-end/) run uses
-  the **base image**; an [asset-generation](/testing/asset-generation/overview/)
-  run uses the **asset-generation image** (the base image plus the baked-in `draw`
-  tool an asset-generation run drives). Neither is a per-harness image: the
-  selected harness's CLI is installed into the container at run time (see
-  [Harness install](#harness-install) below), not baked into the image. Both are
-  registry images, and a runner resolves the one for the run's test type from its
-  **own registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
-  `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
-  image named for the test type (`test-cabinet-base` or `test-cabinet-asset-gen`),
-  and a **per-test-type** override pins a verbatim reference for one image without
-  touching the other (`TCAB_CONTAINER_IMAGE_BASE` for end-to-end,
-  `TCAB_CONTAINER_IMAGE_ASSET_GEN` for asset-generation; there is no override that
-  spans every test type, since the images differ) — and pulls it at run start
+- A run executes in one of **three run-container images**, selected by the test
+  case's [test type](/testing/) and — for asset-generation — its
+  [`asset_kind`](/testing/asset-generation/manifests/): an
+  [end-to-end](/testing/end-to-end/) run uses the **base image**; a single-sprite
+  [asset-generation](/testing/asset-generation/overview/) run
+  (`asset_kind = "sprite"`) uses the **sprite image** (the base image plus the
+  baked-in `draw` tool); and a sprite-sheet run (`asset_kind = "sprite-sheet"`)
+  uses the **sprite-sheet image** (the base image plus the baked-in `draw-sheet`
+  tool). None is a per-harness image: the selected harness's CLI is installed into
+  the container at run time (see [Harness install](#harness-install) below), not
+  baked into the image. All three are registry images, and a runner resolves the
+  one for the run from its **own registry configuration** —
+  `TCAB_CONTAINER_REGISTRY` (default `ghcr.io/theclockwyrks`) and
+  `TCAB_CONTAINER_TAG` (default `latest`) select the image named for the run
+  (`test-cabinet-base`, `test-cabinet-sprite`, or `test-cabinet-sprite-sheet`),
+  and a **per-image** override pins a verbatim reference for one image without
+  touching the others (`TCAB_CONTAINER_IMAGE_BASE` for end-to-end,
+  `TCAB_CONTAINER_IMAGE_SPRITE` for single-sprite,
+  `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for sprite-sheet; there is no override that
+  spans every image, since they differ) — and pulls it at run start
   (`--pull missing`). No backend is consulted, so a runner
   resolves the image the same way against any backend or none. Whatever image
   actually runs is resolved to its registry digest where it has one and recorded

@@ -11,9 +11,11 @@ only channel for making a mark. There are two, sharing one drawing implementatio
   `draw-sheet` is `draw` plus a required `--frame <index>` on every operation; the
   drawing operations and how each one rasterizes are otherwise identical.
 
-The binaries are built from `crates/draw` and baked into the shared
-[run-container image](/components/core/containers/). The same library regenerates
-the scored image after the run (see
+The binaries are built from `crates/draw` and each is baked into its own
+[run-container image](/components/core/execution/#containerization): `draw` into
+the **sprite image** (`asset_kind = "sprite"`) and `draw-sheet` into the
+**sprite-sheet image** (`asset_kind = "sprite-sheet"`), so a run carries only the
+tool it uses. The same library regenerates the scored image after the run (see
 [Evaluation](/testing/asset-generation/evaluation/)), so an image produced any
 other way cannot match.
 

@@ -78,34 +78,46 @@ fn usage_carries_normalized_token_classes() {
 
 #[test]
 fn image_defaults_to_published_namespace_on_latest() {
-    // Nothing set: the published GHCR image for the test type, on the latest tag.
-    // End-to-end runs resolve the base image; asset-generation runs resolve the
-    // asset-generation image (the base plus the baked-in `draw` binary).
+    // Nothing set: the published GHCR image for the run, on the latest tag.
+    // End-to-end runs resolve the base image; single-sprite runs resolve the
+    // sprite image (the base plus baked-in `draw`); sprite-sheet runs resolve the
+    // sprite-sheet image (the base plus baked-in `draw-sheet`).
     assert_eq!(
         compose_run_image(BASE_IMAGE_NAME, None, None, None),
         "ghcr.io/theclockwyrks/test-cabinet-base:latest"
     );
     assert_eq!(
-        compose_run_image(ASSET_GEN_IMAGE_NAME, None, None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-asset-gen:latest"
+        compose_run_image(SPRITE_IMAGE_NAME, None, None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-sprite:latest"
+    );
+    assert_eq!(
+        compose_run_image(SPRITE_SHEET_IMAGE_NAME, None, None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-sprite-sheet:latest"
     );
 }
 
 #[test]
-fn image_spec_tracks_the_test_type() {
-    // Each test type maps to its own image name AND its own verbatim-override env
-    // var; there is no override spanning every test type.
-    let base = image_spec_for(TestType::EndToEnd);
+fn image_spec_tracks_the_test_type_and_asset_kind() {
+    // Each kind of run maps to its own image name AND its own verbatim-override
+    // env var; there is no override spanning every image. `asset_kind` is ignored
+    // for an end-to-end run.
+    let base = image_spec_for(TestType::EndToEnd, AssetKind::Sprite);
     assert_eq!(base.name, BASE_IMAGE_NAME);
     assert_eq!(base.override_env, BASE_IMAGE_OVERRIDE_ENV);
 
-    let asset_gen = image_spec_for(TestType::AssetGeneration);
-    assert_eq!(asset_gen.name, ASSET_GEN_IMAGE_NAME);
-    assert_eq!(asset_gen.override_env, ASSET_GEN_IMAGE_OVERRIDE_ENV);
+    let sprite = image_spec_for(TestType::AssetGeneration, AssetKind::Sprite);
+    assert_eq!(sprite.name, SPRITE_IMAGE_NAME);
+    assert_eq!(sprite.override_env, SPRITE_IMAGE_OVERRIDE_ENV);
 
-    // The two override env vars are distinct, so pinning one leaves the other
+    let sprite_sheet = image_spec_for(TestType::AssetGeneration, AssetKind::SpriteSheet);
+    assert_eq!(sprite_sheet.name, SPRITE_SHEET_IMAGE_NAME);
+    assert_eq!(sprite_sheet.override_env, SPRITE_SHEET_IMAGE_OVERRIDE_ENV);
+
+    // The three override env vars are distinct, so pinning one leaves the others
     // resolving from registry/tag.
-    assert_ne!(base.override_env, asset_gen.override_env);
+    assert_ne!(base.override_env, sprite.override_env);
+    assert_ne!(sprite.override_env, sprite_sheet.override_env);
+    assert_ne!(base.override_env, sprite_sheet.override_env);
 }
 
 #[test]
@@ -119,15 +131,24 @@ fn image_applies_registry_and_tag_overrides() {
         ),
         "registry.example.com/team/test-cabinet-base:v2"
     );
-    // The same registry/tag carries the asset-generation image too.
+    // The same registry/tag carries the sprite and sprite-sheet images too.
     assert_eq!(
         compose_run_image(
-            ASSET_GEN_IMAGE_NAME,
+            SPRITE_IMAGE_NAME,
             None,
             Some("registry.example.com/team".to_string()),
             Some("v2".to_string()),
         ),
-        "registry.example.com/team/test-cabinet-asset-gen:v2"
+        "registry.example.com/team/test-cabinet-sprite:v2"
+    );
+    assert_eq!(
+        compose_run_image(
+            SPRITE_SHEET_IMAGE_NAME,
+            None,
+            Some("registry.example.com/team".to_string()),
+            Some("v2".to_string()),
+        ),
+        "registry.example.com/team/test-cabinet-sprite-sheet:v2"
     );
     // A trailing slash on the registry is normalized away.
     assert_eq!(
@@ -150,16 +171,21 @@ fn image_empty_registry_names_a_local_image() {
         "test-cabinet-base:latest"
     );
     assert_eq!(
-        compose_run_image(ASSET_GEN_IMAGE_NAME, None, Some(String::new()), None),
-        "test-cabinet-asset-gen:latest"
+        compose_run_image(SPRITE_IMAGE_NAME, None, Some(String::new()), None),
+        "test-cabinet-sprite:latest"
+    );
+    assert_eq!(
+        compose_run_image(SPRITE_SHEET_IMAGE_NAME, None, Some(String::new()), None),
+        "test-cabinet-sprite-sheet:latest"
     );
 }
 
 #[test]
 fn explicit_image_override_wins_verbatim() {
-    // The test type's own image override (`TCAB_CONTAINER_IMAGE_BASE` /
-    // `TCAB_CONTAINER_IMAGE_ASSET_GEN`) takes precedence over registry/tag and is
-    // used verbatim (e.g. a pinned digest), trimmed of surrounding whitespace.
+    // The image's own override (`TCAB_CONTAINER_IMAGE_BASE` /
+    // `TCAB_CONTAINER_IMAGE_SPRITE` / `TCAB_CONTAINER_IMAGE_SPRITE_SHEET`) takes
+    // precedence over registry/tag and is used verbatim (e.g. a pinned digest),
+    // trimmed of surrounding whitespace.
     assert_eq!(
         compose_run_image(
             BASE_IMAGE_NAME,
@@ -171,7 +197,7 @@ fn explicit_image_override_wins_verbatim() {
     );
     // A blank explicit value is ignored, falling through to the defaults.
     assert_eq!(
-        compose_run_image(ASSET_GEN_IMAGE_NAME, Some("   ".to_string()), None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-asset-gen:latest"
+        compose_run_image(SPRITE_SHEET_IMAGE_NAME, Some("   ".to_string()), None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-sprite-sheet:latest"
     );
 }

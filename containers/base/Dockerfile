@@ -1,9 +1,10 @@
 # The base run-container image for The Test Cabinet.
 #
 # This is the image an end-to-end run executes in, and the foundation the
-# asset-generation image extends (see `containers/asset-gen/Dockerfile`, which is
-# `FROM` this image plus the baked-in `draw` binary). It provides the common
-# toolchain a run needs and nothing harness specific:
+# asset-generation images extend (see `containers/sprite/Dockerfile` and
+# `containers/sprite-sheet/Dockerfile`, each `FROM` this image plus a baked-in
+# drawing binary). It provides the common toolchain a run needs and nothing
+# harness specific:
 #   - git, because every run executes inside a fresh git repository that is
 #     seeded on the host and mounted in.
 #   - a Node.js build toolchain, because the test cases ask the model to build
@@ -24,10 +25,12 @@
 # `harnesses/README.md`); installing at run time is what lets a run always pick
 # up the harness's latest published version.
 #
-# It also bakes in NO Test Cabinet binary. The `draw` tool an asset-generation run
-# uses is baked into the separate asset-generation image, which is built `FROM`
-# this base — see `containers/asset-gen/Dockerfile`. Keeping `draw` out of the base
-# is deliberate: an end-to-end run never touches it, so the binary (and the Rust
+# It also bakes in NO Test Cabinet binary. The drawing tool an asset-generation
+# run uses (`draw` for a single sprite, `draw-sheet` for a sprite sheet) is baked
+# into the separate asset-generation image for that asset kind, each built `FROM`
+# this base — see `containers/sprite/Dockerfile` and
+# `containers/sprite-sheet/Dockerfile`. Keeping the drawing tools out of the base
+# is deliberate: an end-to-end run never touches them, so the binary (and the Rust
 # toolchain that compiles it) does not belong in the image every run shares.
 
 FROM docker.io/library/node:24-bookworm-slim

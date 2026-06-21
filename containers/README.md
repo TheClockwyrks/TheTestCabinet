@@ -5,26 +5,31 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **three images**, selected by a run's
-[test type](../apps/docs/src/content/docs/testing/):
+There are **four images**, selected by a run's
+[test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
+its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
 - the **base** image, which every
   [end-to-end](../apps/docs/src/content/docs/testing/end-to-end/) run executes
   in;
-- the **asset-generation** image, which every
+- the **sprite** image, which every single-sprite
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-  run executes in — the base image plus the baked-in `draw` binary; and
+  run (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
+  `draw` binary;
+- the **sprite-sheet** image, which every sprite-sheet asset-generation run
+  (`asset_kind = "sprite-sheet"`) executes in — the base image plus the baked-in
+  `draw-sheet` binary; and
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
   toolchain, so a model's controller builds to a wasm core module in-container.
 
-Neither is a per-harness image — a run installs the selected harness's CLI into
+None is a per-harness image — a run installs the selected harness's CLI into
 the image at run time, by running the harness's `install` command (see
 [`../harnesses/README.md`](../harnesses/README.md)). Installing at run time is
 what lets a run always pick up the harness's most recently published version,
 rather than whatever was current when an image was last built. The runner picks
-the image by test type via
+the image by test type and asset kind via
 [`harness::resolve_run_image`](../crates/core/src/harness.rs).
 
 ## Layout
@@ -32,9 +37,10 @@ the image by test type via
 ```
 containers/
 ├── base/Dockerfile          # the end-to-end run image (toolchain, run user)
-├── asset-gen/Dockerfile     # the base image plus the baked-in `draw` binary
+├── sprite/Dockerfile        # the base image plus the baked-in `draw` binary
+├── sprite-sheet/Dockerfile  # the base image plus the baked-in `draw-sheet` binary
 ├── adversarial/Dockerfile   # the base image plus the Rust + wasm32 toolchain
-└── build.sh                 # builds (and optionally pushes) all three images
+└── build.sh                 # builds (and optionally pushes) all four images
 ```
 
 ## Base image
@@ -65,28 +71,37 @@ unprivileged run user cannot `apt-get` them at init time.
 It likewise installs **no agent harness** and **no Test Cabinet binary**. The
 harness CLI is installed into the container at run time from the harness's
 [manifest](../harnesses/README.md), the same way and for the same reason a test
-case prepares its workspace with an init command. End-to-end runs never touch the
-`draw` tool, so it stays out of the base — it lives in the asset-generation image
-below.
+case prepares its workspace with an init command. End-to-end runs never touch a
+drawing tool, so neither lives in the base — they live in the asset-generation
+images below.
 
-## Asset-generation image
+## Asset-generation images
 
-`asset-gen/` is the base image plus exactly one addition: the **`draw`** binary,
-the drawing tool an
-[asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-run uses (`asset-gen/Dockerfile` is `FROM` the base, so it inherits the toolchain,
-the `node` run user, the `/work` working directory, and the keep-alive `CMD`).
-Unlike a harness CLI, `draw` is part of The Test Cabinet itself and its drawing
-logic must match the orchestrator's — the orchestrator regenerates an
-asset-generation run's scored image from its action log through the *same* library
-this binary uses — so it is compiled from this repo (a multi-stage build in
-`asset-gen/Dockerfile`) and baked in rather than installed at run time. Because of
-this coupling, **build the image from the same commit as the orchestrator**: a run
+Asset-generation runs split by [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
+a single-sprite case draws with `draw`, a sprite-sheet case draws with
+`draw-sheet`. Each gets its own image so a run carries only the tool it uses:
+
+- `sprite/` is the base image plus exactly the **`draw`** binary, the drawing tool
+  a single-sprite
+  [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+  run uses.
+- `sprite-sheet/` is the base image plus exactly the **`draw-sheet`** binary, the
+  drawing tool a sprite-sheet run uses (`draw` plus a required `--frame` on every
+  operation).
+
+Both Dockerfiles are `FROM` the base, so each inherits the toolchain, the `node`
+run user, the `/work` working directory, and the keep-alive `CMD`, and adds only
+its one binary. Unlike a harness CLI, these binaries are part of The Test Cabinet
+itself and their drawing logic must match the orchestrator's — the orchestrator
+regenerates an asset-generation run's scored image from its action log through the
+*same* library they use — so each is compiled from this repo (a multi-stage build
+in its Dockerfile) and baked in rather than installed at run time. Because of this
+coupling, **build the images from the same commit as the orchestrator**: a run
 records both the orchestrator commit and the image digest, so a version mismatch
 (which would invalidate the cheat-divergence signal) is auditable after the fact.
-Building `draw` is why the build context is the repository root rather than
-`asset-gen/` (see `build.sh`); `build.sh` builds the asset-generation image `FROM`
-the base it builds alongside it, so the two stay in lockstep.
+Compiling the binaries is why the build context is the repository root rather than
+each image's directory (see `build.sh`); `build.sh` builds both asset-generation
+images `FROM` the base it builds alongside them, so all three stay in lockstep.
 
 ## Adversarial image
 
@@ -113,16 +128,16 @@ controller build can resolve dependencies at run time.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build the base, asset-generation, and adversarial images
+./build.sh                # build the base, sprite, sprite-sheet, and adversarial images
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
-Build-only mode tags `test-cabinet-base:latest`,
-`test-cabinet-asset-gen:latest`, and `test-cabinet-adversarial:latest` locally.
-Those are exactly the names a runner resolves (by test type) when its
-`TCAB_CONTAINER_REGISTRY` is set to an empty string, so a locally-built image is
-used for offline development without pulling anything. Override `IMAGE_TAG` /
-`IMAGE_NAME_PREFIX` to change the tag or name prefix.
+Build-only mode tags `test-cabinet-base:latest`, `test-cabinet-sprite:latest`,
+`test-cabinet-sprite-sheet:latest`, and `test-cabinet-adversarial:latest`
+locally. Those are exactly the names a runner resolves (by test type and asset
+kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
+locally-built image is used for offline development without pulling anything.
+Override `IMAGE_TAG` / `IMAGE_NAME_PREFIX` to change the tag or name prefix.
 
 With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
 is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the
@@ -153,12 +168,12 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build all three images (`./build.sh`) and
+Docker host. When validating on Linux, build all four images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
-the asset-generation image, and that `cargo`/`rustc` and the
-`wasm32-unknown-unknown` target are available to the unprivileged run user in the
-adversarial image (e.g. `cargo --version` and a trivial
-`cargo build --target wasm32-unknown-unknown` as `node`). Validating each
+the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, and
+that `cargo`/`rustc` and the `wasm32-unknown-unknown` target are available to the
+unprivileged run user in the adversarial image (e.g. `cargo --version` and a
+trivial `cargo build --target wasm32-unknown-unknown` as `node`). Validating each
 **harness** — that its
 [install command](../harnesses/README.md) lands a working CLI on `PATH`, the
 exact non-interactive flags, its token/usage reporting format, and which

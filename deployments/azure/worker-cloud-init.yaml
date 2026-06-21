@@ -68,14 +68,17 @@ runcmd:
 
   # ── Run container images ──
   # Pre-pull the run-container images from your registry to warm the cache: the
-  # base image (end-to-end runs) and the asset-generation image (asset-generation
-  # runs, the base plus the baked-in `draw` tool). The worker resolves the one a
-  # run needs by test type per its TCAB_CONTAINER_REGISTRY configuration (see
-  # containers/README.md); a run installs the selected harness's CLI into the
-  # image at run time, so neither is a per-harness image. Drop the asset-gen pull
-  # if this worker only runs end-to-end cases.
+  # base image (end-to-end runs), the sprite image (single-sprite asset-generation
+  # runs, the base plus the baked-in `draw` tool), and the sprite-sheet image
+  # (sprite-sheet runs, the base plus the baked-in `draw-sheet` tool). The worker
+  # resolves the one a run needs by test type and asset kind per its
+  # TCAB_CONTAINER_REGISTRY configuration (see containers/README.md); a run
+  # installs the selected harness's CLI into the image at run time, so none is a
+  # per-harness image. Drop the sprite / sprite-sheet pulls if this worker only
+  # runs end-to-end cases.
   - docker pull <registry>/test-cabinet-base:latest
-  - docker pull <registry>/test-cabinet-asset-gen:latest
+  - docker pull <registry>/test-cabinet-sprite:latest
+  - docker pull <registry>/test-cabinet-sprite-sheet:latest
 
   # ── Private network (Tailscale) ──
   - curl -fsSL https://tailscale.com/install.sh | sh

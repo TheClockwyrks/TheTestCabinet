@@ -1,31 +1,37 @@
 #!/usr/bin/env bash
 # Builds The Test Cabinet run-container images:
 #   - the base image, which every end-to-end run executes in;
-#   - the asset-generation image, which every asset-generation run executes in —
-#     the base image plus the baked-in `draw` binary (`asset-gen/Dockerfile` is
-#     `FROM` the base built here); and
+#   - the sprite image, which every single-sprite asset-generation run
+#     (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
+#     `draw` binary (`sprite/Dockerfile` is `FROM` the base built here);
+#   - the sprite-sheet image, which every sprite-sheet asset-generation run
+#     (`asset_kind = "sprite-sheet"`) executes in — the base image plus the
+#     baked-in `draw-sheet` binary (`sprite-sheet/Dockerfile` is `FROM` the base);
+#     and
 #   - the adversarial image, which every adversarial run executes in — the base
 #     image plus the Rust + `wasm32-unknown-unknown` toolchain so a model's
 #     controller builds to wasm in-container (`adversarial/Dockerfile` is `FROM`
 #     the base built here).
-# None is a per-harness image: a run installs the selected harness's CLI into
-# the image at run time (see `harnesses/README.md`).
+# None is a per-harness image: a run installs the selected harness's CLI into the
+# image at run time (see `harnesses/README.md`).
 #
 # Usage:
-#   ./build.sh                # build the base, asset-generation, and adversarial images
+#   ./build.sh                # build the base, sprite, sprite-sheet, and adversarial images
 #
 # The images are distributed via a registry and pulled by the runner, which
-# resolves the one for a run's test type from its own registry configuration
-# (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-test-type override
-# TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_ASSET_GEN /
-# TCAB_CONTAINER_IMAGE_ADVERSARIAL; see docs/components/core/execution.md). The
+# resolves the one for a run's test type and asset kind from its own registry
+# configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
+# override TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_SPRITE /
+# TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_ADVERSARIAL; see
+# docs/components/core/execution.md). The
 # backend plays no part in container distribution, so this script never talks to
 # it.
 #
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
 # pushed digest reference. Without PUSH it just builds locally (the offline
 # development path): the images are named `test-cabinet-base:<tag>`,
-# `test-cabinet-asset-gen:<tag>`, and `test-cabinet-adversarial:<tag>`, which is
+# `test-cabinet-sprite:<tag>`, `test-cabinet-sprite-sheet:<tag>`, and
+# `test-cabinet-adversarial:<tag>`, which is
 # what a runner resolves when TCAB_CONTAINER_REGISTRY is set to an empty string.
 #
 # Configuration via environment variables:
@@ -35,8 +41,9 @@
 #                 runner's default TCAB_CONTAINER_REGISTRY.
 #   IMAGE_TAG     tag applied to the images (default: latest)
 #   IMAGE_NAME_PREFIX  image name prefix (default: test-cabinet-); the base is
-#                 IMAGE_NAME_PREFIXbase, the asset-generation image is
-#                 IMAGE_NAME_PREFIXasset-gen, and the adversarial image is
+#                 IMAGE_NAME_PREFIXbase, the sprite image is
+#                 IMAGE_NAME_PREFIXsprite, the sprite-sheet image is
+#                 IMAGE_NAME_PREFIXsprite-sheet, and the adversarial image is
 #                 IMAGE_NAME_PREFIXadversarial
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
@@ -51,11 +58,13 @@ readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
 
-# The image tags left in the local store (build-only mode) or tagged from and
-# pushed (push mode). The asset-generation and adversarial images are built `FROM`
-# the local base tag below, so all three stay in lockstep within a single build.
+# The base and adversarial image tags left in the local store (build-only mode) or
+# tagged from and pushed (push mode). The sprite, sprite-sheet, and adversarial
+# images are each built `FROM` the local base tag below, so they stay in lockstep
+# with the base within a single build. The sprite and sprite-sheet tags are
+# composed inline by `build_asset_image`; only the base and adversarial tags are
+# referenced by name here.
 readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
-readonly ASSET_GEN_IMAGE="${IMAGE_NAME_PREFIX}asset-gen:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 
 # In push mode IMAGE_REGISTRY is required: a digest reference must be
@@ -68,8 +77,8 @@ fi
 # Push a locally-built image to the registry under a tag, then resolve and print
 # its pushed digest reference (repo@sha256:...). The digest is read back from the
 # pushed manifest so the reference pins exactly what landed in the registry.
-# Arguments: the local image tag, and the image's short name (e.g. base,
-# asset-gen, adversarial) used to build its registry repository.
+# Arguments: the local image tag, and the image's short name (e.g. base, sprite,
+# sprite-sheet, adversarial) used to build its registry repository.
 push_and_pin() {
 	local local_image="$1"
 	local name="$2"
@@ -94,9 +103,9 @@ push_and_pin() {
 build_base() {
 	echo "==> building ${BASE_IMAGE}"
 	# The build context is the repository root (not just `base/`) so the build
-	# stays consistent with the asset-generation build below, which needs the root
-	# to compile `draw` from `crates/`. A repo-root `.dockerignore` keeps the
-	# context lean (no target/, node_modules/).
+	# stays consistent with the asset-generation builds below, which need the root
+	# to compile the drawing binaries from `crates/`. A repo-root `.dockerignore`
+	# keeps the context lean (no target/, node_modules/).
 	"$DOCKER" build -t "${BASE_IMAGE}" -f "${SCRIPT_DIR}/base/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
@@ -106,22 +115,25 @@ build_base() {
 	fi
 }
 
-build_asset_gen() {
-	echo "==> building ${ASSET_GEN_IMAGE} (FROM ${BASE_IMAGE})"
-	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
-	# arg, the local tag) plus the `draw` binary compiled from `crates/`, so the
-	# build context is the repository root. Building from the local base tag avoids
-	# a registry round-trip and keeps the asset-generation image pinned to the base
-	# produced in this same invocation.
+# Build one asset-generation image `FROM` the base built above plus a drawing
+# binary compiled from `crates/`. The argument is the image's short name
+# (`sprite` / `sprite-sheet`), which is both its name suffix and the directory
+# holding its Dockerfile. The build context is the repository root so the compile
+# stage can see `crates/`; building from the local base tag avoids a registry
+# round-trip and keeps the image pinned to the base produced in this invocation.
+build_asset_image() {
+	local name="$1"
+	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	echo "==> building ${image} (FROM ${BASE_IMAGE})"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-		-t "${ASSET_GEN_IMAGE}" \
-		-f "${SCRIPT_DIR}/asset-gen/Dockerfile" "${SCRIPT_DIR}/.."
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
 		local reference
-		reference="$(push_and_pin "${ASSET_GEN_IMAGE}" asset-gen)"
-		echo "==> asset-gen reference: ${reference}"
+		reference="$(push_and_pin "${image}" "${name}")"
+		echo "==> ${name} reference: ${reference}"
 	fi
 }
 
@@ -147,9 +159,10 @@ build_adversarial() {
 	fi
 }
 
-# The base must be built before the asset-generation and adversarial images,
-# which are both `FROM` it.
+# The base must be built before the sprite, sprite-sheet, and adversarial images,
+# which are all `FROM` it.
 build_base
-build_asset_gen
+build_asset_image sprite
+build_asset_image sprite-sheet
 build_adversarial
 echo "==> done"

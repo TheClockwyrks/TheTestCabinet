@@ -13,7 +13,7 @@ use crate::event::{EventSink, HarnessEvent};
 use crate::execution::{ContainerHandle, ContainerRuntime, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
-use crate::test_case::TestType;
+use crate::test_case::{AssetKind, TestType};
 
 /// The default registry/namespace the run-container image is published under,
 /// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
@@ -26,10 +26,14 @@ const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// harness installs its CLI into this image at run time (see
 /// [`AgentHarness::install_command`]); there is no per-harness image.
 const BASE_IMAGE_NAME: &str = "test-cabinet-base";
-/// The name of the asset-generation run-container image, used by every
-/// asset-generation run. It is the base image plus the baked-in `draw` binary
-/// (see `containers/asset-gen/Dockerfile`).
-const ASSET_GEN_IMAGE_NAME: &str = "test-cabinet-asset-gen";
+/// The name of the sprite run-container image, used by every single-sprite
+/// asset-generation run (`asset_kind = "sprite"`). It is the base image plus the
+/// baked-in `draw` binary (see `containers/sprite/Dockerfile`).
+const SPRITE_IMAGE_NAME: &str = "test-cabinet-sprite";
+/// The name of the sprite-sheet run-container image, used by every sprite-sheet
+/// asset-generation run (`asset_kind = "sprite-sheet"`). It is the base image
+/// plus the baked-in `draw-sheet` binary (see `containers/sprite-sheet/Dockerfile`).
+const SPRITE_SHEET_IMAGE_NAME: &str = "test-cabinet-sprite-sheet";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
 /// so a model's controller builds to wasm in-container (see
@@ -37,42 +41,53 @@ const ASSET_GEN_IMAGE_NAME: &str = "test-cabinet-asset-gen";
 const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 
 /// The environment variable that pins a verbatim override for the base (end-to-
-/// end) image, the per-test-type counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
+/// end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
 const BASE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE";
-/// The environment variable that pins a verbatim override for the
-/// asset-generation image.
-const ASSET_GEN_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ASSET_GEN";
+/// The environment variable that pins a verbatim override for the sprite image.
+const SPRITE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE";
+/// The environment variable that pins a verbatim override for the sprite-sheet
+/// image.
+const SPRITE_SHEET_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE_SHEET";
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
 
-/// How to resolve the run-container image for one [`TestType`]: the composed
+/// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for
-/// *that test type* specifically. There is deliberately no override that spans
-/// every test type — an end-to-end and an asset-generation run need different
-/// images, so a single override could only ever be right for one of them.
+/// *that image* specifically. There is deliberately no override that spans every
+/// image — an end-to-end, a single-sprite, and a sprite-sheet run each need a
+/// different image, so a single override could only ever be right for one.
 struct ImageSpec {
     /// The image name composed with the registry/tag, e.g. `test-cabinet-base`.
     name: &'static str,
-    /// The env var pinning a verbatim reference for this test type's image.
+    /// The env var pinning a verbatim reference for this image.
     override_env: &'static str,
 }
 
-/// The [`ImageSpec`] for a [`TestType`]. End-to-end runs use the base image;
-/// asset-generation runs use the asset-generation image, which bakes in the
-/// `draw` binary an asset-generation run drives; adversarial runs use the
-/// adversarial image, which bakes in the Rust + `wasm32-unknown-unknown`
-/// toolchain a controller compiles to wasm with. Each has its own override env
-/// var so a host can pin one test type's image without disturbing the others.
-fn image_spec_for(test_type: TestType) -> ImageSpec {
+/// The [`ImageSpec`] for a run, selected by its [`TestType`] and (for
+/// asset-generation) its [`AssetKind`]. End-to-end runs use the base image;
+/// single-sprite runs use the sprite image (the base plus the baked-in `draw`
+/// binary); sprite-sheet runs use the sprite-sheet image (the base plus the
+/// baked-in `draw-sheet` binary); adversarial runs use the adversarial image (the
+/// base plus the Rust + `wasm32-unknown-unknown` toolchain a controller compiles
+/// to wasm with). Each has its own override env var so a host can pin one image
+/// without disturbing the others. `asset_kind` is ignored outside an
+/// asset-generation run (it is always [`AssetKind::Sprite`] there).
+fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
     match test_type {
         TestType::EndToEnd => ImageSpec {
             name: BASE_IMAGE_NAME,
             override_env: BASE_IMAGE_OVERRIDE_ENV,
         },
-        TestType::AssetGeneration => ImageSpec {
-            name: ASSET_GEN_IMAGE_NAME,
-            override_env: ASSET_GEN_IMAGE_OVERRIDE_ENV,
+        TestType::AssetGeneration => match asset_kind {
+            AssetKind::Sprite => ImageSpec {
+                name: SPRITE_IMAGE_NAME,
+                override_env: SPRITE_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SpriteSheet => ImageSpec {
+                name: SPRITE_SHEET_IMAGE_NAME,
+                override_env: SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
+            },
         },
         TestType::Adversarial => ImageSpec {
             name: ADVERSARIAL_IMAGE_NAME,
@@ -81,34 +96,36 @@ fn image_spec_for(test_type: TestType) -> ImageSpec {
     }
 }
 
-/// Resolve the run-container image reference for a run's [`TestType`], from the
-/// environment. The image is selected by test type — end-to-end runs use the
-/// base image, asset-generation runs use the asset-generation image, adversarial
-/// runs use the adversarial image — and the
-/// harness's CLI is installed into the container at run time rather than baked
-/// into a per-harness image. The runner pulls the image directly from a registry
-/// — it does **not** ask any backend, so a runner pointed at any backend (or
-/// none) resolves it the same way (see `docs/components/core/execution.md`).
+/// Resolve the run-container image reference for a run, from the environment. The
+/// image is selected by the run's [`TestType`] and (for asset-generation) its
+/// [`AssetKind`] — end-to-end runs use the base image, single-sprite runs use the
+/// sprite image, sprite-sheet runs use the sprite-sheet image, adversarial runs
+/// use the adversarial image — and the harness's CLI is installed into the
+/// container at run time rather than baked into a per-harness image. The runner
+/// pulls the image directly from a registry — it does **not** ask any backend, so
+/// a runner pointed at any backend (or none) resolves it the same way (see
+/// `docs/components/core/execution.md`).
 ///
 /// Precedence:
-/// 1. The test type's **own** image override — `TCAB_CONTAINER_IMAGE_BASE` for an
-///    end-to-end run, `TCAB_CONTAINER_IMAGE_ASSET_GEN` for an asset-generation
-///    run — a full, verbatim reference. Set it to a `@sha256:…` digest to pin an
-///    exact image, or to point at a private build. There is no override that
-///    applies to all test types: the images differ, so each is pinned on its own.
-/// 2. `{registry}/{name}:{tag}`, where `name` is the test type's image
-///    ([`BASE_IMAGE_NAME`] or [`ASSET_GEN_IMAGE_NAME`]), `registry` is
-///    `TCAB_CONTAINER_REGISTRY` (default [`DEFAULT_CONTAINER_REGISTRY`]) and `tag`
-///    is `TCAB_CONTAINER_TAG` (default [`DEFAULT_CONTAINER_TAG`]). The registry
-///    and tag are shared across test types but compose with the per-type name, so
-///    one setting still yields distinct images. An explicitly empty
-///    `TCAB_CONTAINER_REGISTRY` drops the registry prefix, naming a local image
-///    (`{name}:{tag}`) for offline development.
+/// 1. The image's **own** override — `TCAB_CONTAINER_IMAGE_BASE` for an end-to-end
+///    run, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
+///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run — a full, verbatim
+///    reference. Set it to a `@sha256:…` digest to pin an exact image, or to point
+///    at a private build. There is no override that applies to every image: they
+///    differ, so each is pinned on its own.
+/// 2. `{registry}/{name}:{tag}`, where `name` is the run's image
+///    ([`BASE_IMAGE_NAME`], [`SPRITE_IMAGE_NAME`], or [`SPRITE_SHEET_IMAGE_NAME`]),
+///    `registry` is `TCAB_CONTAINER_REGISTRY` (default
+///    [`DEFAULT_CONTAINER_REGISTRY`]) and `tag` is `TCAB_CONTAINER_TAG` (default
+///    [`DEFAULT_CONTAINER_TAG`]). The registry and tag are shared across images but
+///    compose with the per-image name, so one setting still yields distinct images.
+///    An explicitly empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix,
+///    naming a local image (`{name}:{tag}`) for offline development.
 ///
 /// The default with nothing set is the published image on the latest tag, e.g.
 /// `ghcr.io/theclockwyrks/test-cabinet-base:latest` for an end-to-end run.
-pub fn resolve_run_image(test_type: TestType) -> String {
-    let spec = image_spec_for(test_type);
+pub fn resolve_run_image(test_type: TestType, asset_kind: AssetKind) -> String {
+    let spec = image_spec_for(test_type, asset_kind);
     compose_run_image(
         spec.name,
         std::env::var(spec.override_env).ok(),
