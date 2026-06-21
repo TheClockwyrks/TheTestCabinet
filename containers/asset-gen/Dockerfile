@@ -19,6 +19,14 @@
 # only adds `draw`. End-to-end runs use the base image directly; the image a run
 # resolves is selected by its test type (see crate `harness::resolve_run_image`).
 
+# `BASE_IMAGE` is the base image to extend. It is declared here, BEFORE the first
+# `FROM`, so it is a global build arg the `FROM` for the run image below can
+# consume — an `ARG` declared after a `FROM` is scoped to that stage and would be
+# blank in a later `FROM`. `build.sh` passes the base image it just built (e.g.
+# the local `test-cabinet-base:latest`, or a registry-qualified tag) so this image
+# is always `FROM` the matching base.
+ARG BASE_IMAGE=test-cabinet-base:latest
+
 # --- Stage 1: compile the `draw` binary from this repository ----------------
 FROM docker.io/library/rust:1-bookworm AS draw-build
 WORKDIR /build
@@ -30,10 +38,7 @@ COPY . .
 RUN cargo build --release -p test-cabinet-draw --bin draw
 
 # --- Stage 2: the base run image, plus `draw` -------------------------------
-# `BASE_IMAGE` is the base image to extend. `build.sh` passes the base image it
-# just built (e.g. the local `test-cabinet-base:latest`, or a registry-qualified
-# tag) so this image is always `FROM` the matching base.
-ARG BASE_IMAGE=test-cabinet-base:latest
+# `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
 # Bake in the `draw` binary compiled in stage 1. `/usr/local/bin` is on PATH and
