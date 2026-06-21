@@ -380,6 +380,16 @@ export default defineConfig({
                 "testing/adversarial/overview",
                 "testing/adversarial/manifests",
                 "testing/adversarial/evaluation",
+                {
+                  label: "Pacman (Foray)",
+                  collapsed: true,
+                  items: [
+                    "testing/adversarial/adversarial-pacman/overview",
+                    "testing/adversarial/adversarial-pacman/architecture",
+                    "testing/adversarial/adversarial-pacman/references",
+                    "testing/adversarial/adversarial-pacman/assets",
+                  ],
+                },
               ],
             },
             {
