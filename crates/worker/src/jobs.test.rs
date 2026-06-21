@@ -26,6 +26,17 @@ fn agent_event(message: &str) -> HarnessEvent {
     }
 }
 
+/// Build a live preview frame for the given frame index, op count, and a base64
+/// "image" string standing in for the encoded PNG.
+fn preview(frame: u32, operation_count: usize, image: &str) -> AssetPreview {
+    AssetPreview {
+        frame,
+        operation_count,
+        operation: None,
+        image: image.to_string(),
+    }
+}
+
 #[test]
 fn create_registers_a_running_job_with_a_unique_id() {
     let registry = JobRegistry::new();
@@ -134,6 +145,41 @@ async fn subscribe_replays_the_backlog_then_streams_live_events() {
     let status = job.status();
     assert_eq!(status.state, JobState::Succeeded);
     assert_eq!(status.record.unwrap().id, record_id);
+}
+
+#[tokio::test]
+async fn previews_replay_latest_per_frame_and_stream_live() {
+    let registry = JobRegistry::new();
+    let job = registry.create(summary());
+
+    // Two frames before anyone subscribes; the second supersedes the first frame 0.
+    job.push_preview(preview(0, 1, "first"));
+    job.push_preview(preview(0, 2, "second"));
+    job.push_preview(preview(1, 1, "frame-one"));
+
+    let sub = job.subscribe();
+    assert_eq!(
+        sub.previews.len(),
+        2,
+        "only the latest preview per frame is replayed"
+    );
+    assert_eq!(sub.previews[0].frame, 0);
+    assert_eq!(
+        sub.previews[0].operation_count, 2,
+        "frame 0 replays its newest frame, not the superseded one"
+    );
+    assert_eq!(sub.previews[1].frame, 1);
+
+    // A live preview after subscribe is delivered on the same receiver as events.
+    let mut sub = sub;
+    job.push_preview(preview(0, 3, "third"));
+    match sub.receiver.recv().await.unwrap() {
+        StreamItem::Preview(p) => {
+            assert_eq!(p.frame, 0);
+            assert_eq!(p.operation_count, 3);
+        }
+        other => panic!("expected a preview, got {other:?}"),
+    }
 }
 
 #[test]

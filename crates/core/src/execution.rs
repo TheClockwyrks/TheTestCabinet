@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::preview::LivePreviewEndpoint;
 use crate::reference::RenderedReference;
 use crate::test_case::{SpecFile, TestCaseVersion, Variant, WorkspaceFile};
 
@@ -46,6 +47,11 @@ pub struct SeedRequest<'a> {
     /// Reference screenshots rendered for this run, seeded as visual targets.
     /// The reference source mockups they were rendered from are not seeded.
     pub references: &'a [RenderedReference],
+    /// The live-preview listener's address, when a viewer is observing this run.
+    /// For an asset-generation run this is written into the seeded
+    /// `draw.config.json` so the drawing binary streams each frame back to the
+    /// host; `None` for an unobserved run, which seeds no live endpoint.
+    pub live_preview: Option<&'a LivePreviewEndpoint>,
 }
 
 /// A seeded run repository, ready to be copied into a container.
@@ -90,6 +96,11 @@ pub struct ContainerSpec {
     /// protects the host filesystem and other runs, not the network, so this is
     /// expected to be enabled.
     pub network_enabled: bool,
+    /// Extra host-to-IP mappings to add to the container's `/etc/hosts`, each in
+    /// the runtime's `--add-host` form (`hostname:ip`). Used to give the container
+    /// a route to the run host for the live asset preview
+    /// (`host.docker.internal:host-gateway`); empty for a run with no live viewer.
+    pub add_hosts: Vec<String>,
 }
 
 /// A file to materialize inside a started run container.

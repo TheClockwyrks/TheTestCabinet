@@ -143,7 +143,7 @@ impl RepoSeeder for FsRepoSeeder {
         // drawing library the binary and the validator use, so the starting state
         // is exactly what an empty log regenerates to.
         if test_case.test_type == crate::test_case::TestType::AssetGeneration {
-            seed_asset_tool(test_case, &repo)?;
+            seed_asset_tool(test_case, &repo, request.live_preview)?;
         }
 
         // An adversarial run's scaffolding is entirely declarative: the starter
@@ -171,7 +171,11 @@ impl RepoSeeder for FsRepoSeeder {
 /// Seed an asset-generation run's drawing scaffold into `repo`: the canvas
 /// config the `draw` binary reads, an empty action log, and a blank starting
 /// preview rendered from that empty log.
-fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()> {
+fn seed_asset_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
     let canvas_spec = test_case
         .canvas
         .as_ref()
@@ -209,6 +213,15 @@ fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()
     });
     if let Some(sheet) = &test_case.sheet {
         config["frames"] = serde_json::json!(sheet.frames);
+    }
+    // When a viewer is observing the run, seed the live-preview endpoint so the
+    // drawing binary streams each re-rendered frame back to the host. Absent for an
+    // unobserved run (a plain `tcab run`/`tcab validate`), which seeds no `live`.
+    if let Some(live) = live_preview {
+        config["live"] = serde_json::json!({
+            "endpoint": live.endpoint,
+            "token": live.token,
+        });
     }
     write_file(
         &repo.join(crate::test_case::ASSET_CONFIG_DEST),

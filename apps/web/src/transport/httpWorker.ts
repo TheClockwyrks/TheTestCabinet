@@ -11,6 +11,7 @@ import type {
   NotificationSubscription,
 } from "@test-cabinet/ui/client";
 import type {
+  AssetPreview,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
@@ -278,14 +279,20 @@ async function streamEvents(
 }
 
 function emit(line: string, handlers: RunSubscription): void {
+  let parsed: { type?: string };
   try {
-    handlers.onEvent(JSON.parse(line) as HarnessEvent);
+    parsed = JSON.parse(line);
   } catch {
     // A malformed line shouldn't tear down the stream; surface it as a raw event.
-    handlers.onEvent({
-      timestamp: "",
-      type: "raw",
-      raw: line,
-    } as HarnessEvent);
+    handlers.onEvent({ timestamp: "", type: "raw", raw: line } as HarnessEvent);
+    return;
   }
+  // Live asset-generation frames share the event stream, tagged `asset_preview`;
+  // every other line is a normalized harness event (whose `type` is one of the
+  // closed set of event kinds, never `asset_preview`).
+  if (parsed.type === "asset_preview") {
+    handlers.onPreview?.(parsed as unknown as AssetPreview);
+    return;
+  }
+  handlers.onEvent(parsed as HarnessEvent);
 }

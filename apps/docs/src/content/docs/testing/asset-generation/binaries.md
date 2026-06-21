@@ -58,6 +58,48 @@ draw init    # write an empty log and a blank preview (a run starts pre-seeded)
 draw render --actions <log> --out <png> --width <w> --height <h>   # regenerate a log
 ```
 
+## Live preview
+
+When a run is being **watched** — driven by a [worker](/components/worker/overview/)
+or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` —
+the model's drawing can be streamed to the viewer in real time, so a person sees
+the sprite take shape operation by operation rather than only the finished asset.
+
+The intermediate frames live inside the run container, out of reach of the host
+while the run is in progress, and the binary's stdout is mediated by the harness —
+so neither is a reliable channel. Instead the orchestrator opens a small TCP
+listener on the run host and adds a `live` block to the seeded `draw.config.json`:
+
+```jsonc
+{
+  "width": 64, "height": 64, "background": "transparent",
+  "actions": "actions.json", "preview": "canvas.png",
+  "live": {
+    // the run host, reachable from the container as host.docker.internal
+    "endpoint": "host.docker.internal:54123",
+    "token": "…"           // an opaque per-run token echoed with each frame
+  }
+}
+```
+
+After each operation the binary connects back and streams the freshly rendered
+frame — a one-line JSON header (`{ token, frame, operationCount, operation,
+length }`) followed by the frame's raw PNG bytes. The container is given a route to
+the host with `--add-host host.docker.internal:host-gateway` (both Docker and
+Podman resolve `host-gateway` to a host-reachable address); the listener validates
+the token, decodes the frame, and relays it to the viewer over the run's existing
+[live channel](/components/worker/overview/#run-job-endpoints) (the worker's event
+stream, the Tauri app's preview event). For a sprite sheet each frame carries its
+own index, so the viewer can show the most-recently-drawn frame and the status of
+every frame at once.
+
+Streaming is **best-effort and non-essential**: it is absent for an unwatched run
+(no `live` block is seeded, and the binary no-ops), a drawing operation never fails
+because the listener is slow or gone, and the frames are never recorded. The
+recorded **action log** — not these previews — remains the run's authoritative
+output, and the reviewed image is always [regenerated](/testing/asset-generation/evaluation/)
+from it.
+
 ## `draw-sheet`: one file per frame
 
 A sprite sheet's frames are **completely separate files**, never regions of one

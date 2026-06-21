@@ -22,6 +22,7 @@ pub mod harness_registry;
 pub mod metrics;
 pub mod models;
 pub mod playable;
+pub mod preview;
 pub mod pricing;
 pub mod prompt;
 pub mod publish;
@@ -40,6 +41,7 @@ mod tests;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
@@ -77,6 +79,7 @@ pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
     serve_asset_file, serve_build_file, serve_proof_file,
 };
+pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{
@@ -240,6 +243,7 @@ where
         specs: &[SpecFile],
         workspace: &[WorkspaceFile],
         references: &[RenderedReference],
+        live_preview: Option<&LivePreviewEndpoint>,
     ) -> Result<SeededRepo> {
         self.seeder.seed(&SeedRequest {
             test_case,
@@ -247,6 +251,7 @@ where
             specs,
             workspace,
             references,
+            live_preview,
         })
     }
 
@@ -276,6 +281,7 @@ where
         seeded: &SeededRepo,
         request: &RunRequest,
         events: &mut dyn EventSink,
+        host_gateway: bool,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment)> {
         let slug = request.harness;
         let harness = self
@@ -357,6 +363,14 @@ where
             secrets,
             files,
             network_enabled: true,
+            // Give the container a route to the run host only when a viewer is
+            // observing the run (the live asset preview); an unobserved run adds no
+            // host mappings.
+            add_hosts: if host_gateway {
+                vec![crate::preview::HOST_GATEWAY_ADD_HOST.to_string()]
+            } else {
+                Vec::new()
+            },
         };
 
         events.emit(&HarnessEvent::system(
@@ -650,10 +664,18 @@ where
     ///
     /// Normalized [events](crate::event) produced while the harness runs are
     /// emitted to `events` so callers can observe the run live. Pass
-    /// [`NoopEventSink`] to ignore them.
-    pub async fn run(&self, request: &RunRequest, events: &mut dyn EventSink) -> Result<RunRecord> {
+    /// [`NoopEventSink`] to ignore them. An asset-generation run also streams its
+    /// live drawing [frames](crate::preview) to `preview` when one is supplied;
+    /// pass `None` to ignore them.
+    pub async fn run(
+        &self,
+        request: &RunRequest,
+        events: &mut dyn EventSink,
+        preview: Option<Arc<dyn PreviewSink>>,
+    ) -> Result<RunRecord> {
         let test_case = self.resolve(request)?;
-        self.run_resolved(request, &test_case, events).await
+        self.run_resolved(request, &test_case, events, preview)
+            .await
     }
 
     /// Drive a run end to end against an already-resolved [`TestCaseVersion`],
@@ -686,6 +708,7 @@ where
         request: &RunRequest,
         test_case: &TestCaseVersion,
         events: &mut dyn EventSink,
+        preview: Option<Arc<dyn PreviewSink>>,
     ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
@@ -723,9 +746,44 @@ where
                 missing,
             });
         }
-        let seeded = self.seed(test_case, &variant, &specs, &workspace, &references)?;
+        // When a viewer supplied a preview sink and this is an asset-generation
+        // run, open a host listener and seed its address so the drawing binary
+        // streams each re-rendered frame to the viewer (see [`crate::preview`]).
+        // The listener lives in `live` for the whole run and is torn down when it
+        // drops at the end; a bind failure degrades to no live preview rather than
+        // failing the run, since the preview is non-essential.
+        let live = match preview {
+            Some(sink) if test_case.test_type == TestType::AssetGeneration => {
+                match LivePreview::start(sink).await {
+                    Ok(live) => Some(live),
+                    Err(err) => {
+                        eprintln!(
+                            "warning: could not start the live preview listener ({err}); proceeding without it"
+                        );
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        let seeded = self.seed(
+            test_case,
+            &variant,
+            &specs,
+            &workspace,
+            &references,
+            live.as_ref().map(LivePreview::endpoint),
+        )?;
         let (handle, outcome, environment) = self
-            .execute(test_case, &variant, &seeded, request, events)
+            .execute(
+                test_case,
+                &variant,
+                &seeded,
+                request,
+                events,
+                live.is_some(),
+            )
             .await?;
 
         // Collect the working tree, then always tear the container down. The

@@ -179,6 +179,24 @@ export interface HarnessEvent {
   [key: string]: unknown;
 }
 
+// A live asset-generation preview frame, streamed as the model draws (mirrors the
+// Rust `AssetPreview`, crates/core/src/preview.rs). It travels out of band from
+// the recorded event feed — as the worker's `asset_preview` line on the event
+// stream, or the desktop's `run://<id>/preview` channel — and is never persisted;
+// a viewer renders `image` to watch the sprite take shape. Not part of the
+// run-record contract.
+export interface AssetPreview {
+  // The frame this preview belongs to. A single sprite is always frame 0; a sprite
+  // sheet uses the `draw-sheet --frame` index.
+  frame: number;
+  // Operations in the frame's log after this one — the frame's progress.
+  operationCount: number;
+  // The operation that produced this frame (e.g. `fill_rect`), when reported.
+  operation?: string | null;
+  // The frame's PNG, base64-encoded (no `data:` prefix; the viewer builds the URL).
+  image: string;
+}
+
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
 // the Rust `RawOutputLine` (crates/core/src/execution.rs). This is UI-only — it
 // is not part of the run-record contract — and feeds the Events tab's raw view.

@@ -306,6 +306,14 @@ impl ContainerRuntime for CliContainerRuntime {
             args.push("--network".to_string());
             args.push("none".to_string());
         }
+        // Host mappings that give the container a route back to the run host (for
+        // the live asset preview, `host.docker.internal:host-gateway`). Both Docker
+        // and Podman accept `--add-host`, and `host-gateway` resolves to a
+        // host-reachable address on each. Empty for a run with no live viewer.
+        for mapping in &spec.add_hosts {
+            args.push("--add-host".to_string());
+            args.push(mapping.clone());
+        }
         for (key, value) in &spec.secrets {
             args.push("--env".to_string());
             args.push(format!("{key}={value}"));

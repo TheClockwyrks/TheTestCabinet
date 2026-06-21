@@ -4,6 +4,7 @@
 // commands. This is the "local worker" the desktop pre-adds.
 import {
   NotSupportedError,
+  type AssetPreview,
   type HarnessEvent,
   type NotificationSubscription,
   type RunJob,
@@ -45,6 +46,7 @@ export function createTauriWorker(): WorkerClient {
     subscribeToRun(runId: string, handlers: RunSubscription): () => void {
       let unEvent: (() => void) | null = null;
       let unDone: (() => void) | null = null;
+      let unPreview: (() => void) | null = null;
       let cancelled = false;
       api
         .listen<HarnessEvent>(api.eventChannel(runId), (e) =>
@@ -56,10 +58,19 @@ export function createTauriWorker(): WorkerClient {
         .listen<RunOutcome>(api.doneChannel(runId), (o) => handlers.onDone(o))
         .then((u) => (cancelled ? u() : (unDone = u)))
         .catch((err) => handlers.onError?.(err));
+      // Live asset-generation frames arrive on the run's preview channel; other
+      // run types simply never emit on it.
+      api
+        .listen<AssetPreview>(api.previewChannel(runId), (p) =>
+          handlers.onPreview?.(p),
+        )
+        .then((u) => (cancelled ? u() : (unPreview = u)))
+        .catch((err) => handlers.onError?.(err));
       return () => {
         cancelled = true;
         unEvent?.();
         unDone?.();
+        unPreview?.();
       };
     },
 

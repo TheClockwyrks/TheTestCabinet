@@ -6,7 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkersProvider } from "../../../../client/context";
 import type { WorkersContextValue } from "../../../../client/context";
 import type { WorkerClient } from "../../../../client/clients";
-import type { HarnessEvent, RunOutcome } from "../../../../client/types";
+import type {
+  AssetPreview,
+  HarnessEvent,
+  RunOutcome,
+} from "../../../../client/types";
 import { RunsRuntimeProvider } from "../../../runtime/runsRuntime";
 import { RunMonitorPage } from "./RunMonitorPage";
 
@@ -26,6 +30,15 @@ type Handlers = Parameters<WorkerClient["subscribeToRun"]>[1];
 
 function event(fields: Partial<HarnessEvent> & { type: string }): HarnessEvent {
   return { timestamp: "2026-06-18T00:00:00Z", ...fields };
+}
+
+function preview(
+  frame: number,
+  operationCount: number,
+  operation?: string,
+): AssetPreview {
+  // A short stand-in for the base64 PNG; the view only embeds it as a data URL.
+  return { frame, operationCount, operation, image: "AAAA" };
 }
 
 const completed: RunOutcome = {
@@ -144,6 +157,40 @@ describe("RunMonitorPage", () => {
 
     expect(screen.getByText(/Waiting for events/i)).toBeInTheDocument();
     expect(screen.queryByText(/Run complete/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the live drawing for a single-sprite run as frames stream in", async () => {
+    const { value } = makeWorkers((handlers) => {
+      // A single sprite is always frame 0; two operations land in succession.
+      handlers.onPreview?.(preview(0, 1, "fill_background"));
+      handlers.onPreview?.(preview(0, 2, "fill_rect"));
+    });
+
+    renderMonitor(value);
+
+    // The live drawing panel appears, showing the current sprite and its latest
+    // operation count — and no per-frame grid, since a single sprite has one frame.
+    expect(await screen.findByText("Live drawing")).toBeInTheDocument();
+    expect(screen.getByAltText("Current sprite")).toBeInTheDocument();
+    expect(screen.getByText(/2 operations · fill_rect/)).toBeInTheDocument();
+    expect(screen.queryByText("All frames")).not.toBeInTheDocument();
+  });
+
+  it("shows every frame and highlights the active one for a sprite sheet", async () => {
+    const { value } = makeWorkers((handlers) => {
+      handlers.onPreview?.(preview(0, 3));
+      handlers.onPreview?.(preview(1, 1, "line"));
+    });
+
+    renderMonitor(value);
+
+    // A sheet draws into more than frame 0, so the most-recently-drawn frame shows
+    // large (frame 1, its caption) and a grid lists the status of every frame.
+    expect(await screen.findByText("Live drawing")).toBeInTheDocument();
+    expect(screen.getByText(/Frame 1 · 1 operation · line/)).toBeInTheDocument();
+    expect(screen.getByText("All frames")).toBeInTheDocument();
+    expect(screen.getByText("#0 · 3 ops")).toBeInTheDocument();
+    expect(screen.getByText("#1 · 1 ops")).toBeInTheDocument();
   });
 
   it("surfaces a failed outcome without looping", async () => {

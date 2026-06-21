@@ -61,6 +61,9 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
             specs: &specs,
             workspace,
             references: &references,
+            // `tcab seed` only materializes a run's repository for inspection; it
+            // drives no run, so there is no live viewer to stream frames to.
+            live_preview: None,
         })
         .context("seeding the run repository")?;
 

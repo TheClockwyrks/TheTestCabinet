@@ -12,11 +12,19 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use test_cabinet_core::{EventSink, HarnessEvent};
+use test_cabinet_core::{AssetPreview, EventSink, HarnessEvent, PreviewSink};
 
 /// The Tauri event name carrying one live harness event for a run.
 pub fn event_channel(run_id: &str) -> String {
     format!("run://{run_id}/event")
+}
+
+/// The Tauri event name carrying one live asset-generation preview frame for a
+/// run — the desktop equivalent of the worker's `asset_preview` line on its event
+/// stream. The payload is a bare [`AssetPreview`]; the run it belongs to is the
+/// channel itself.
+pub fn preview_channel(run_id: &str) -> String {
+    format!("run://{run_id}/preview")
 }
 
 /// The Tauri event name carrying a run's terminal outcome (record or error).
@@ -102,5 +110,34 @@ impl EventSink for WebviewEventSink {
                 event,
             },
         );
+    }
+}
+
+/// A [`PreviewSink`] that forwards each live asset-generation preview frame to the
+/// webview, so the run monitor can watch the sprite take shape.
+///
+/// Mirrors [`WebviewEventSink`] on the run's preview channel. It takes `&self` (the
+/// trait requires it) so the orchestrator can share it with the background listener
+/// task running alongside the harness session.
+pub struct WebviewPreviewSink {
+    app: AppHandle,
+    channel: String,
+}
+
+impl WebviewPreviewSink {
+    /// Forward this run's preview frames to `app` on the run's preview channel.
+    pub fn new(app: AppHandle, run_id: &str) -> Self {
+        Self {
+            app,
+            channel: preview_channel(run_id),
+        }
+    }
+}
+
+impl PreviewSink for WebviewPreviewSink {
+    fn preview(&self, preview: AssetPreview) {
+        // Like an event emit, a failed send (the window closed) must not affect the
+        // run; the preview is non-essential, so drop it.
+        let _ = self.app.emit(&self.channel, preview);
     }
 }

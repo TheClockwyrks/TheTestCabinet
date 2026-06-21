@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -24,7 +24,9 @@ use test_cabinet_core::{
 };
 
 use crate::config;
-use crate::events::{NOTIFY_CHANNEL, RunNotification, WebviewEventSink, done_channel};
+use crate::events::{
+    NOTIFY_CHANNEL, RunNotification, WebviewEventSink, WebviewPreviewSink, done_channel,
+};
 use crate::playable::build_base_url;
 
 /// A command result whose error is a plain string the webview can render.
@@ -527,13 +529,17 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
 
     let done = done_channel(&job_id);
     let mut sink = WebviewEventSink::new(app.clone(), job_id.clone());
+    // An asset-generation run streams its live drawing frames to the webview on the
+    // run's preview channel; other run types produce none and the listener never
+    // fires.
+    let preview = Arc::new(WebviewPreviewSink::new(app.clone(), &job_id));
     let outcome_app = app.clone();
     // Drive the run on a background task so the command returns the job id at once
     // and the UI streams events live rather than waiting out the whole run.
     tokio::spawn(async move {
         use tauri::Emitter;
         let outcome = match orchestrator
-            .run_resolved(&request, &test_case, &mut sink)
+            .run_resolved(&request, &test_case, &mut sink, Some(preview))
             .await
         {
             Ok(record) => RunOutcome::Completed {

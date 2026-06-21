@@ -5077,6 +5077,7 @@ name = "test-cabinet-core"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "foray-core",
  "foray-host",
  "handlebars",

@@ -144,6 +144,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             specs: &specs,
             workspace,
             references: &references,
+            live_preview: None,
         })
         .expect("seed pong");
 

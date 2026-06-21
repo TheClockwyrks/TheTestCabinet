@@ -5,6 +5,7 @@
 // The console never imports a transport; it only depends on these interfaces and
 // reads them from context (see context.tsx).
 import type {
+  AssetPreview,
   BackendIdentity,
   DomainRating,
   HarnessEvent,
@@ -99,6 +100,9 @@ export interface BackendClient {
 export interface RunSubscription {
   onEvent: (event: HarnessEvent) => void;
   onDone: (outcome: RunOutcome) => void;
+  // An asset-generation run streams live drawing frames here as the model works,
+  // so a viewer can watch the sprite take shape; other run types never call it.
+  onPreview?: (preview: AssetPreview) => void;
   onError?: (error: unknown) => void;
 }
 

@@ -82,6 +82,11 @@ tempfile = "3"
 # `png` crate is a small, pure-Rust decoder with no system dependencies, keeping
 # the workspace buildable on minimal hosts.
 png = "0.17"
+# Base64 for inlining a live asset-generation preview frame into the JSON event a
+# worker streams (or the desktop shell emits) to the run monitor: the run host
+# receives the rendered PNG bytes from the drawing binary and base64-encodes them
+# so the frame travels in the same JSON transport as every other live update.
+base64 = "0.22"
 # JSON Schema generation for the `draw` binary's operation set
 # (`crates/draw`). The `draw schema` subcommand emits this so each
 # asset-generation test case can seed a verbatim copy as its `[tool].operations`

@@ -66,12 +66,17 @@ fn run(cli: Cli) -> Result<(), String> {
             let config: Config = cli::read_config(&cli.config)?;
             let canvas = config.canvas()?;
             let name = op.name();
-            let count = cli::apply(
+            let (count, image) = cli::apply(
                 &canvas,
                 &config.actions,
                 &config.preview,
                 op.into_operation(),
             )?;
+            // A single sprite is frame 0. Streaming is best-effort and a no-op
+            // when the run has no live viewer (no `live` in the seeded config).
+            if let Some(live) = &config.live {
+                cli::send_live_preview(live, 0, name, count, &image);
+            }
             println!(
                 "applied {name} ({count} operation{} recorded)",
                 if count == 1 { "" } else { "s" }

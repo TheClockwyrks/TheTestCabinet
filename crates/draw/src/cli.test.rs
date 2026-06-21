@@ -97,6 +97,7 @@ fn sheet_config_templates_per_frame_paths() {
         frames: vec![0, 1, 13],
         actions: default_sheet_actions(),
         preview: default_sheet_preview(),
+        live: None,
     };
     assert_eq!(
         config.actions_for(13),
@@ -119,7 +120,7 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     };
 
     cli_init(&canvas, &actions, &preview);
-    let count = apply(
+    let (count, returned) = apply(
         &canvas,
         &actions,
         &preview,
@@ -131,12 +132,14 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     assert_eq!(count, 1);
 
     // The log holds the one operation, and the preview is exactly what that log
-    // regenerates to — the property the post-run regeneration relies on.
+    // regenerates to — the property the post-run regeneration relies on. `apply`
+    // also returns those same bytes so a live viewer streams the rendered frame.
     let logged = read_actions(&actions).expect("read back");
     assert_eq!(logged.len(), 1);
     let expected = render(&canvas, &logged).to_png_bytes();
     let on_disk = std::fs::read(&preview).expect("preview written");
     assert_eq!(on_disk, expected);
+    assert_eq!(returned, expected);
 }
 
 #[test]

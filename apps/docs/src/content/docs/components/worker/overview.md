@@ -72,7 +72,14 @@ rather than holding one request open for the whole run:
   submit is first replayed every event so far, then receives new events as the
   harness produces them; the stream closes when the run reaches a terminal state.
   Each line is a [`HarnessEvent`](/components/core/events/); the event taxonomy is
-  documented there rather than as a published JSON schema.
+  documented there rather than as a published JSON schema. An **asset-generation**
+  run also interleaves live drawing frames on this same stream as the model draws
+  — lines tagged `"type": "asset_preview"` carrying the
+  [preview frame](/testing/asset-generation/binaries/#live-preview) (frame index,
+  operation count, and the frame's base64 PNG). A subscriber tells them apart by
+  that `type` (no `HarnessEvent` uses it) and renders them as the live sprite; they
+  are **not** recorded, so the latest frame per index is replayed on reconnect but
+  none appear in `events.jsonl`. Other run types emit none.
 - `GET /runs/{id}/events.jsonl` and `GET /runs/{id}/raw.jsonl` — a **finished**
   run's recorded streams, served verbatim from its output directory as NDJSON and
   keyed by run-record id (unlike the live `/{job}/events` stream above, which is

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use test_cabinet_core::{HarnessEvent, RunRecord};
+use test_cabinet_core::{AssetPreview, HarnessEvent, RunRecord};
 use tokio::sync::broadcast;
 
 /// How a single submitted run is progressing.
@@ -91,6 +91,12 @@ pub struct JobStatus {
 struct JobInner {
     state: JobStateInner,
     events: Vec<HarnessEvent>,
+    /// The most recent live asset-generation preview frame, keyed by frame index.
+    /// Unlike `events`, previews are not accumulated — only the latest per frame is
+    /// kept, since a viewer only ever shows the current image and previews are
+    /// never persisted. Replayed to a late subscriber so a reconnecting viewer
+    /// immediately sees the current state of each frame.
+    latest_previews: HashMap<u32, AssetPreview>,
 }
 
 /// The internal lifecycle, carrying the payloads each terminal state owns.
@@ -121,6 +127,10 @@ pub struct Job {
 pub enum StreamItem {
     /// A normalized harness event.
     Event(Box<HarnessEvent>),
+    /// A live asset-generation preview frame, streamed as the model draws. Carried
+    /// on the same channel as events but never recorded; a viewer renders it to
+    /// watch the sprite take shape.
+    Preview(Box<AssetPreview>),
     /// The run reached a terminal state; no further events will arrive.
     Done,
 }
@@ -160,6 +170,21 @@ impl Job {
         // A send error only means there are currently no subscribers, which is
         // fine — the event is already in the backlog for a later one.
         let _ = self.tx.send(StreamItem::Event(Box::new(event)));
+    }
+
+    /// Record the latest preview for its frame and publish it to live subscribers.
+    ///
+    /// Only the most recent frame is retained (a viewer shows the current image,
+    /// not a history), so this overwrites rather than appends. Like
+    /// [`push_event`](Self::push_event), the retained snapshot is updated under the
+    /// lock before broadcasting so a fresh subscription's replay stays consistent
+    /// with the live frames it then receives.
+    pub fn push_preview(&self, preview: AssetPreview) {
+        {
+            let mut inner = self.inner.lock().expect("job mutex poisoned");
+            inner.latest_previews.insert(preview.frame, preview.clone());
+        }
+        let _ = self.tx.send(StreamItem::Preview(Box::new(preview)));
     }
 
     /// Mark the job succeeded with its produced run record, then signal the stream
@@ -216,6 +241,10 @@ impl Job {
     pub fn subscribe(&self) -> Subscription {
         let inner = self.inner.lock().expect("job mutex poisoned");
         let backlog = inner.events.clone();
+        // The latest preview per frame, in frame order, so a reconnecting viewer
+        // immediately shows the current image of each frame before the live tail.
+        let mut previews: Vec<AssetPreview> = inner.latest_previews.values().cloned().collect();
+        previews.sort_by_key(|preview| preview.frame);
         let terminated = !matches!(inner.state, JobStateInner::Running);
         // Subscribe while holding the lock so an event appended between the
         // snapshot and the subscribe cannot be missed.
@@ -223,6 +252,7 @@ impl Job {
         drop(inner);
         Subscription {
             backlog,
+            previews,
             receiver,
             terminated,
         }
@@ -234,6 +264,10 @@ impl Job {
 pub struct Subscription {
     /// Events accumulated before this subscription, replayed in order.
     pub backlog: Vec<HarnessEvent>,
+    /// The latest preview per frame at subscribe time, replayed so a reconnecting
+    /// viewer immediately shows the current image. Empty for a run with no live
+    /// previews (anything but an observed asset-generation run).
+    pub previews: Vec<AssetPreview>,
     /// Live items published after this subscription was taken.
     pub receiver: broadcast::Receiver<StreamItem>,
     /// Whether the job was already terminal when subscribed (no live items will
@@ -333,6 +367,30 @@ impl JobEventSink {
 impl test_cabinet_core::EventSink for JobEventSink {
     fn emit(&mut self, event: &HarnessEvent) {
         self.job.push_event(event.clone());
+    }
+}
+
+/// A [`PreviewSink`](test_cabinet_core::PreviewSink) that records each live
+/// asset-generation preview frame onto a [`Job`], so the orchestrator's streamed
+/// frames join the job's live stream alongside its events.
+///
+/// Takes `&self` (the trait requires it) so the orchestrator can share it with the
+/// background listener task that runs concurrently with the harness session — the
+/// same `Job` the [`JobEventSink`] writes to, just on the preview channel.
+pub struct JobPreviewSink {
+    job: Job,
+}
+
+impl JobPreviewSink {
+    /// Build a sink that records preview frames onto `job`.
+    pub fn new(job: Job) -> Self {
+        Self { job }
+    }
+}
+
+impl test_cabinet_core::PreviewSink for JobPreviewSink {
+    fn preview(&self, preview: test_cabinet_core::AssetPreview) {
+        self.job.push_preview(preview);
     }
 }
 

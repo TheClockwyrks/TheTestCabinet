@@ -131,8 +131,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     // feed" rather than only harness activity.
     println!("\nevent feed:");
     let mut events = PrintingEventSink;
+    // The CLI prints to a terminal and cannot render the live drawing frames an
+    // asset-generation run can stream, so no preview sink is supplied.
     let record = orchestrator
-        .run_resolved(&request, &test_case, &mut events)
+        .run_resolved(&request, &test_case, &mut events, None)
         .await
         .context("run failed")?;
 

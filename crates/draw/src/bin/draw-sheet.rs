@@ -96,12 +96,17 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             let canvas = config.canvas()?;
             let name = op.name();
-            let count = cli::apply(
+            let (count, image) = cli::apply(
                 &canvas,
                 &config.actions_for(frame),
                 &config.preview_for(frame),
                 op.into_operation(),
             )?;
+            // Stream this frame's re-rendered image to the live viewer, keyed by
+            // its frame index. Best-effort; a no-op for an unobserved run.
+            if let Some(live) = &config.live {
+                cli::send_live_preview(live, frame, name, count, &image);
+            }
             println!(
                 "applied {name} to frame {frame} ({count} operation{} recorded)",
                 if count == 1 { "" } else { "s" }

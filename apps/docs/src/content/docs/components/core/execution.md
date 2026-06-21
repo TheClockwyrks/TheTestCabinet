@@ -21,6 +21,12 @@ example by deleting files.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
+- When an asset-generation run is being watched (a worker or the Tauri app
+  supplies a preview sink), the container is additionally started with
+  `--add-host host.docker.internal:host-gateway` so the in-container drawing
+  binary can stream its [live preview](/testing/asset-generation/binaries/#live-preview)
+  back to a listener on the run host. No host mapping is added for an unwatched
+  run.
 - A run executes in one of **three run-container images**, selected by the test
   case's [test type](/testing/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an

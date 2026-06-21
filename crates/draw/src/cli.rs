@@ -297,6 +297,27 @@ pub struct Config {
     /// Run-workspace-relative path the current image is re-rendered to.
     #[serde(default = "default_preview")]
     pub preview: PathBuf,
+    /// The live-preview endpoint, when a viewer is observing this run. Absent for
+    /// an unobserved run (a plain `tcab run` or `tcab validate`).
+    #[serde(default)]
+    pub live: Option<LiveConfig>,
+}
+
+/// The live-preview endpoint seeded next to a run that a viewer is observing.
+///
+/// When present, the drawing binary streams each re-rendered frame here so the
+/// viewer can watch the sprite take shape between operations. It is absent for an
+/// unobserved run, and streaming is always best-effort: a drawing operation never
+/// fails because the live view is slow or unreachable, since the recorded action
+/// log — not these frames — is the run's authoritative output.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LiveConfig {
+    /// The `host:port` the binary connects to. This is the run host, reachable
+    /// from inside the run container as `host.docker.internal`.
+    pub endpoint: String,
+    /// An opaque per-run token echoed with each update, so the listener accepts
+    /// only the frames belonging to its own run.
+    pub token: String,
 }
 
 impl Config {
@@ -332,6 +353,10 @@ pub struct SheetConfig {
     /// frame index (for example `frames/{frame}.png`).
     #[serde(default = "default_sheet_preview")]
     pub preview: String,
+    /// The live-preview endpoint, when a viewer is observing this run. See
+    /// [`Config::live`].
+    #[serde(default)]
+    pub live: Option<LiveConfig>,
 }
 
 impl SheetConfig {
@@ -434,18 +459,74 @@ pub fn init_canvas(canvas: &Canvas, actions: &Path, preview: &Path) -> Result<()
 
 /// Append one operation to `actions` and re-render `preview` from the **whole**
 /// log, keeping the recorded log the single source of truth and the preview a
-/// faithful reflection of it. Returns the new operation count.
+/// faithful reflection of it. Returns the new operation count and the PNG bytes
+/// the preview was written from, so a caller streaming a live view can forward the
+/// exact rendered frame without re-reading it from disk.
 pub fn apply(
     canvas: &Canvas,
     actions: &Path,
     preview: &Path,
     operation: Operation,
-) -> Result<usize, String> {
+) -> Result<(usize, Vec<u8>), String> {
     let mut operations = read_actions(actions)?;
     operations.push(operation);
     write_actions(actions, &operations)?;
-    render_preview(canvas, &operations, preview)?;
-    Ok(operations.len())
+    let bytes = render(canvas, &operations).to_png_bytes();
+    ensure_parent(preview)?;
+    fs::write(preview, &bytes)
+        .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
+    Ok((operations.len(), bytes))
+}
+
+/// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.
+///
+/// A drawing operation must never fail because the live view is unavailable, so
+/// every error here is swallowed — the recorded action log remains the run's
+/// authoritative output regardless of whether a frame reaches a viewer. The wire
+/// form is one JSON header line (`{ token, frame, operation, operationCount,
+/// length }`) followed by exactly `length` raw PNG bytes; the listener validates
+/// the token before accepting the frame.
+pub fn send_live_preview(
+    live: &LiveConfig,
+    frame: u32,
+    operation: &str,
+    operation_count: usize,
+    image: &[u8],
+) {
+    let _ = try_send_live_preview(live, frame, operation, operation_count, image);
+}
+
+fn try_send_live_preview(
+    live: &LiveConfig,
+    frame: u32,
+    operation: &str,
+    operation_count: usize,
+    image: &[u8],
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind, Write};
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+
+    // A short cap on every step so a stalled or absent listener can never hold up
+    // the drawing operation that triggered the update.
+    const TIMEOUT: Duration = Duration::from_millis(750);
+    let addr =
+        live.endpoint.to_socket_addrs()?.next().ok_or_else(|| {
+            Error::new(ErrorKind::NotFound, "live endpoint resolved to no address")
+        })?;
+    let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
+    stream.set_write_timeout(Some(TIMEOUT))?;
+    let mut header = serde_json::to_vec(&serde_json::json!({
+        "token": live.token,
+        "frame": frame,
+        "operation": operation,
+        "operationCount": operation_count,
+        "length": image.len(),
+    }))?;
+    header.push(b'\n');
+    stream.write_all(&header)?;
+    stream.write_all(image)?;
+    stream.flush()
 }
 
 fn ensure_parent(path: &Path) -> Result<(), String> {

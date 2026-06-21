@@ -403,12 +403,19 @@ fn event_stream(job: Job) -> impl Stream<Item = Result<Bytes, std::convert::Infa
     // Replay the backlog first so a subscriber never misses an event produced
     // between submit and connect.
     let backlog = stream::iter(sub.backlog.into_iter().map(|event| Ok(encode_line(&event))));
+    // Then replay the latest preview per frame, so a viewer reconnecting mid-run
+    // immediately shows the current image of each frame before the live tail.
+    let previews = stream::iter(
+        sub.previews
+            .into_iter()
+            .map(|preview| Ok(encode_preview_line(&preview))),
+    );
 
     // Then the live tail: drive the broadcast receiver until the terminal marker.
     // A job that was already terminal at subscribe time emits no live items (the
     // initial `done` short-circuits). A lagged slow reader skips ahead rather than
-    // blocking the run; the full history is always recoverable from the final
-    // status.
+    // blocking the run; the full event history is always recoverable from the final
+    // status, and only the latest preview per frame matters.
     let live = stream::unfold(
         (sub.terminated, sub.receiver),
         |(done, mut receiver)| async move {
@@ -420,16 +427,39 @@ fn event_stream(job: Job) -> impl Stream<Item = Result<Bytes, std::convert::Infa
                     Ok(StreamItem::Event(event)) => {
                         return Some((Ok(encode_line(&event)), (false, receiver)));
                     }
+                    Ok(StreamItem::Preview(preview)) => {
+                        return Some((Ok(encode_preview_line(&preview)), (false, receiver)));
+                    }
                     Ok(StreamItem::Done) => return None,
                     Err(RecvError::Closed) => return None,
-                    // Skip the lagged window and keep streaming live events.
+                    // Skip the lagged window and keep streaming live items.
                     Err(RecvError::Lagged(_)) => continue,
                 }
             }
         },
     );
 
-    backlog.chain(live)
+    backlog.chain(previews).chain(live)
+}
+
+/// Encode one live preview frame as a `\n`-terminated NDJSON line on the shared
+/// event stream, tagged `type: "asset_preview"` so a subscriber tells it apart
+/// from a [`HarnessEvent`](test_cabinet_core::HarnessEvent) (whose `type` is always
+/// one of the closed set of event kinds, never `asset_preview`). Serialization
+/// cannot fail for a preview's plain JSON-safe fields, so a defensive empty line
+/// stands in for the impossible error rather than aborting the stream.
+fn encode_preview_line(preview: &test_cabinet_core::AssetPreview) -> Bytes {
+    let mut value = serde_json::to_value(preview).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(object) = value.as_object_mut() {
+        object.insert("type".to_string(), serde_json::Value::from("asset_preview"));
+    }
+    match serde_json::to_string(&value) {
+        Ok(mut line) => {
+            line.push('\n');
+            Bytes::from(line)
+        }
+        Err(_) => Bytes::from_static(b"\n"),
+    }
 }
 
 /// Encode one event as a `\n`-terminated NDJSON line. Serialization of a

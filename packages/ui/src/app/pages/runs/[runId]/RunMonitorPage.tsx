@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useWorkers } from "../../../../client/context";
-import type { HarnessEvent, RunOutcome } from "../../../../client/types";
+import type {
+  AssetPreview,
+  HarnessEvent,
+  RunOutcome,
+} from "../../../../client/types";
 import { EventFeed } from "../../../components/EventFeed";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
@@ -9,6 +13,7 @@ import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { useAppSettings } from "../../../store/appSettings";
 import styles from "../RunExec.module.scss";
+import { LiveAssetView } from "./LiveAssetView";
 
 type MonitorStatus =
   | { kind: "running" }
@@ -25,6 +30,10 @@ export function RunMonitorPage() {
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
   const [events, setEvents] = useState<HarnessEvent[]>([]);
+  // The latest live drawing frame per frame index, for an asset-generation run,
+  // plus the frame last drawn into. Empty for every other run type.
+  const [previews, setPreviews] = useState<Map<number, AssetPreview>>(new Map());
+  const [activeFrame, setActiveFrame] = useState<number | null>(null);
   const [status, setStatus] = useState<MonitorStatus>({ kind: "running" });
   const [error, setError] = useState<string | null>(null);
   // Whether the feed auto-follows the newest event. On by default; the user
@@ -46,10 +55,22 @@ export function RunMonitorPage() {
   useEffect(() => {
     if (!worker || !runId) return;
     setEvents([]);
+    setPreviews(new Map());
+    setActiveFrame(null);
     setStatus({ kind: "running" });
     setError(null);
     const unsubscribe = worker.client.subscribeToRun(runId, {
       onEvent: (event) => setEvents((prev) => [...prev, event]),
+      onPreview: (preview) => {
+        // Keep only the latest frame per index — a viewer shows the current image,
+        // not a history — and mark the frame just drawn into as active.
+        setPreviews((prev) => {
+          const next = new Map(prev);
+          next.set(preview.frame, preview);
+          return next;
+        });
+        setActiveFrame(preview.frame);
+      },
       onDone: (outcome) => {
         const runtime = runtimeRef.current;
         setStatus({ kind: "done", outcome });
@@ -94,6 +115,8 @@ export function RunMonitorPage() {
         </p>
       )}
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
+
+      <LiveAssetView previews={previews} activeFrame={activeFrame} />
 
       <div className={styles.feedHeader}>
         <div className={styles.feedHeading}>

@@ -243,6 +243,9 @@ export const publishRun = (id: string) =>
 
 export const eventChannel = (runId: string) => `run://${runId}/event`;
 export const doneChannel = (runId: string) => `run://${runId}/done`;
+// One live asset-generation preview frame for a run — mirrors `crates/desktop`'s
+// `preview_channel`. The payload is a bare `AssetPreview`.
+export const previewChannel = (runId: string) => `run://${runId}/preview`;
 
 // The worker-wide run-completion channel (a single global event, not per-run) the
 // shell emits on each run finishing — mirrors `crates/desktop`'s `NOTIFY_CHANNEL`.

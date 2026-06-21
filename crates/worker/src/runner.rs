@@ -19,7 +19,9 @@ use test_cabinet_core::{
     PrerenderedReferenceRenderer, RunRecord, RunRequest, TestCaseCatalog, materialize_version,
 };
 
-use crate::jobs::{Job, JobEventSink};
+use std::sync::Arc;
+
+use crate::jobs::{Job, JobEventSink, JobPreviewSink};
 use crate::notify::{WorkerNotification, WorkerNotifier};
 
 /// Everything the worker needs to drive a run, derived once from the config and
@@ -124,8 +126,12 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
     };
 
     let mut events = JobEventSink::new(job.clone());
+    // An asset-generation run streams its live drawing frames onto the same job, so
+    // the console's run monitor can watch the sprite take shape; other run types
+    // produce none and the listener simply never fires.
+    let preview = Arc::new(JobPreviewSink::new(job.clone()));
     orchestrator
-        .run_resolved(request, &test_case, &mut events)
+        .run_resolved(request, &test_case, &mut events, Some(preview))
         .await
         .map_err(|err| format!("run failed: {err}"))
 }
