@@ -76,6 +76,11 @@ pub struct WebviewEventSink {
     app: AppHandle,
     run_id: String,
     channel: String,
+    /// The events forwarded so far, retained so the failure path can persist them
+    /// as a failed run's `events.jsonl` (the live webview stream is not recorded,
+    /// so a failed run would otherwise keep no timeline). A completed run records
+    /// its own events through core; this backlog is only read on failure.
+    events: Vec<HarnessEvent>,
 }
 
 impl WebviewEventSink {
@@ -86,7 +91,14 @@ impl WebviewEventSink {
             app,
             run_id,
             channel,
+            events: Vec::new(),
         }
+    }
+
+    /// The events forwarded so far, in order — persisted beside a failed run's
+    /// record so a reviewer can inspect the timeline that led to the failure.
+    pub fn events(&self) -> &[HarnessEvent] {
+        &self.events
     }
 }
 
@@ -101,6 +113,9 @@ struct LiveEvent<'a> {
 
 impl EventSink for WebviewEventSink {
     fn emit(&mut self, event: &HarnessEvent) {
+        // Retain the event so a failed run can persist its timeline; a completed
+        // run records its events through core and ignores this backlog.
+        self.events.push(event.clone());
         // A failed emit (for example, the window closed mid-run) must not abort
         // the run; the record is still written to disk regardless. Drop it.
         let _ = self.app.emit(

@@ -100,15 +100,12 @@ export function RunMonitorPage() {
       onDone: (outcome) => {
         const runtime = runtimeRef.current;
         setStatus({ kind: "done", outcome });
-        runtime.update(runId, {
-          state: outcome.kind === "failed" ? "failed" : "running",
-        });
-        if (outcome.kind === "completed") {
-          // The finished run is now a produced run; drop the in-progress entry
-          // and ask the data source to re-read the worker's produced runs.
-          runtime.remove(runId);
-          runtime.requestRefresh();
-        }
+        // The finished run is now a persisted produced run whether it completed
+        // or failed (a failed run is recorded as a `failed` record keyed by this
+        // run id). Drop the in-progress entry and ask the data source to re-read
+        // the worker's produced runs so it appears in the runs list.
+        runtime.remove(runId);
+        runtime.requestRefresh();
       },
       onError: (e) => setError(String(e)),
     });
@@ -174,6 +171,14 @@ export function RunMonitorPage() {
       {status.kind === "done" && status.outcome.kind === "failed" && (
         <p className={`${styles.notice} ${styles.error}`}>
           Run failed: {status.outcome.message}
+          {runId && (
+            <>
+              {" "}
+              <Link to={routes.runDetail(runId)}>
+                Open the run to see what was recorded.
+              </Link>
+            </>
+          )}
         </p>
       )}
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}

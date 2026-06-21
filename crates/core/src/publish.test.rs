@@ -318,7 +318,10 @@ impl BackendClient for MockBackend {
         Ok(())
     }
     async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
-        self.published.lock().expect("lock").push(run_id.to_string());
+        self.published
+            .lock()
+            .expect("lock")
+            .push(run_id.to_string());
         Ok(PublishAck {
             id: run_id.to_string(),
             newly_published: true,
@@ -446,7 +449,11 @@ async fn review_then_publish_are_separate_backend_calls() {
         .submit_review(&record.id, &writeup)
         .await
         .expect("submit review");
-    let ack = publisher.backend().publish_run(&record.id).await.expect("publish");
+    let ack = publisher
+        .backend()
+        .publish_run(&record.id)
+        .await
+        .expect("publish");
     assert!(ack.newly_published);
 
     let reviews = publisher.backend().reviews();

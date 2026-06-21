@@ -60,6 +60,10 @@ function LeaderboardContent({
       ) {
         continue;
       }
+      // Only a completed run can be ranked: a failed run produced no result and
+      // is never reviewable, so it carries no score. (It has no review either, so
+      // this also guards the scoring below.)
+      if (run.status.state !== "completed") continue;
       const review = findReview(run.id, localWriteups);
       if (!review || review.ratings.length === 0) continue;
       const { earned, total } = scoreChecklist(

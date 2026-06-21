@@ -5,10 +5,12 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, TestCaseVersion, Usage,
-    copy_tree, init_failure_detail, with_runtime_cap, write_run_streams,
+    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, RunState, TestCaseVersion,
+    Usage, build_failed_record, copy_tree, init_failure_detail, with_runtime_cap,
+    write_run_streams,
 };
 use crate::execution::ExecOutput;
+use time::OffsetDateTime;
 
 #[test]
 fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
@@ -285,4 +287,59 @@ async fn runtime_cap_stops_a_session_that_runs_too_long() {
         }
         other => panic!("expected RunTimedOut, got {other:?}"),
     }
+}
+
+/// A failure after the version resolves records the run as `failed` with its real
+/// subject and the reason, so it surfaces in the produced-runs listing with
+/// enough context to see what was attempted and why it stopped.
+#[test]
+fn failed_record_captures_subject_and_reason_from_a_resolved_run() {
+    let request = request_with_override(None);
+    let case = version_with_cap(1800);
+    let started = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("start");
+    let finished = OffsetDateTime::from_unix_timestamp(1_700_000_042).expect("finish");
+
+    let record = build_failed_record(
+        "job-123",
+        &request,
+        Some(&case),
+        started,
+        finished,
+        "locating a container runtime: none found",
+    );
+
+    assert_eq!(record.id, "job-123");
+    assert_eq!(record.status.state, RunState::Failed);
+    assert_eq!(
+        record.status.detail.as_deref(),
+        Some("locating a container runtime: none found"),
+    );
+    assert_eq!(record.subject.test_case_slug, "pong");
+    assert_eq!(record.subject.test_case_version, "v1.0.0");
+    assert_eq!(record.subject.test_type, case.test_type);
+    assert_eq!(record.subject.variant, "base");
+    assert_eq!(record.subject.harness_slug, HarnessSlug::Claude);
+    assert_eq!(record.subject.model_id, "some-model");
+    // A failed run produced no metrics, validation, or environment.
+    assert_eq!(record.metrics, super::RunMetrics::default());
+    assert!(!record.validation.loaded);
+    assert!(!record.started_at.is_empty() && !record.finished_at.is_empty());
+}
+
+/// A failure before the version could be resolved still records a `failed` run,
+/// falling back to what the request carried for the subject.
+#[test]
+fn failed_record_falls_back_to_the_request_when_unresolved() {
+    let request = request_with_override(None);
+    let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("now");
+
+    let record = build_failed_record("job-9", &request, None, now, now, "backend unreachable");
+
+    assert_eq!(record.status.state, RunState::Failed);
+    assert_eq!(record.subject.test_case_version, "v1.0.0");
+    // Unresolved: the test type defaults rather than guessing.
+    assert_eq!(
+        record.subject.test_type,
+        crate::test_case::TestType::default()
+    );
 }

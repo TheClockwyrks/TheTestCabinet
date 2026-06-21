@@ -213,7 +213,10 @@ impl Db {
 
         let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
         let newly_pushed = existing.is_none();
-        let was_published = existing.as_ref().map(|model| model.published).unwrap_or(false);
+        let was_published = existing
+            .as_ref()
+            .map(|model| model.published)
+            .unwrap_or(false);
         let existing_published_at = existing.and_then(|model| model.published_at);
 
         run::Entity::insert(run::ActiveModel {
@@ -494,13 +497,14 @@ impl Db {
         }
         let ids: Vec<String> = runs.iter().map(|run| run.id.clone()).collect();
 
-        let mut link_map: std::collections::HashMap<String, run_link::Model> = run_link::Entity::find()
-            .filter(run_link::Column::RunId.is_in(ids.clone()))
-            .all(&self.conn)
-            .await?
-            .into_iter()
-            .map(|link| (link.run_id.clone(), link))
-            .collect();
+        let mut link_map: std::collections::HashMap<String, run_link::Model> =
+            run_link::Entity::find()
+                .filter(run_link::Column::RunId.is_in(ids.clone()))
+                .all(&self.conn)
+                .await?
+                .into_iter()
+                .map(|link| (link.run_id.clone(), link))
+                .collect();
 
         let mut review_map: std::collections::HashMap<String, Vec<StoredReview>> =
             std::collections::HashMap::new();

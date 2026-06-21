@@ -135,3 +135,31 @@
   color: t.$color-text-muted;
   @include h.halo;
 }
+
+// Shown above the tabs when a run failed before producing a result: the failure
+// reason in the negative color, so a reviewer lands on why it stopped. The tabs
+// below still work (Events shows the captured timeline; Metadata the subject).
+.failureBanner {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-lg;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-negative;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-negative 8%, transparent);
+}
+
+.failureTitle {
+  color: t.$color-negative;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.failureDetail {
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

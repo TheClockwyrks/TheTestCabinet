@@ -170,7 +170,9 @@ async fn add_review_for_an_unknown_run_is_not_found() {
 async fn push_stores_events_json_and_get_run_returns_it() {
     let db = Db::connect_in_memory().await.unwrap();
     let events = r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#;
-    db.push(&record("r1"), &links(), Some(events)).await.unwrap();
+    db.push(&record("r1"), &links(), Some(events))
+        .await
+        .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.events_json.as_deref(), Some(events));
 

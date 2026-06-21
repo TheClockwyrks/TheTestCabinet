@@ -214,7 +214,10 @@ fn load_run_record(run_dir: &Path, run_id: &str) -> Result<RunRecord, ApiError> 
 
 /// Extract the bearer token from an `Authorization: Bearer <token>` header.
 fn bearer(headers: &HeaderMap) -> Option<String> {
-    let value = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let value = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     let token = value
         .strip_prefix("Bearer ")
         .or_else(|| value.strip_prefix("bearer "))?

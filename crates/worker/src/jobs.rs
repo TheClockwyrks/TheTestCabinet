@@ -157,6 +157,20 @@ impl Job {
         })
     }
 
+    /// A snapshot of the events logged so far, in order.
+    ///
+    /// The failure path persists this beside a failed run's record as its
+    /// `events.jsonl` so a reviewer can inspect the timeline that led up to the
+    /// failure — the same backlog the live stream replays, captured at the moment
+    /// the run gave out.
+    pub fn events_snapshot(&self) -> Vec<HarnessEvent> {
+        self.inner
+            .lock()
+            .expect("job mutex poisoned")
+            .events
+            .clone()
+    }
+
     /// Append an event to the log and publish it to every live subscriber.
     ///
     /// Recording the event under the lock before broadcasting keeps the backlog a

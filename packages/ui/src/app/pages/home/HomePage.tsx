@@ -27,8 +27,11 @@ export function HomePage() {
   const { runs, localIds, localWriteups } = useRuns();
   const findReview = useFindReview();
   const recent = [...runs].sort(byRecencyDesc);
-  const featured = recent[0];
-  const rest = recent.slice(1);
+  // The hero spotlights the latest *completed* run: a failed run produced no
+  // stats or rating, so featuring it would lead with zeros. Failed runs still
+  // appear (mixed in, recency-ordered) in the log below.
+  const featured = recent.find((r) => r.status.state === "completed") ?? null;
+  const rest = featured ? recent.filter((r) => r.id !== featured.id) : recent;
   const featuredRating = featured
     ? (worstRating(
         findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
@@ -47,15 +50,17 @@ export function HomePage() {
           }
         />
 
-        {!featured ? (
+        {recent.length === 0 ? (
           <p className={styles.empty}>No runs have been published yet.</p>
         ) : (
           <>
-            <FeaturedRun
-              run={featured}
-              local={localIds.has(featured.id)}
-              rating={featuredRating}
-            />
+            {featured && (
+              <FeaturedRun
+                run={featured}
+                local={localIds.has(featured.id)}
+                rating={featuredRating}
+              />
+            )}
             {rest.length > 0 && (
               <RunLog
                 runs={rest}

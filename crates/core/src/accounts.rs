@@ -143,7 +143,10 @@ impl AccountsClient {
             return Ok(None);
         }
         let response = error_for_status(&url, response).await?;
-        let account = response.json::<Account>().await.map_err(|err| auth_err(&url, err))?;
+        let account = response
+            .json::<Account>()
+            .await
+            .map_err(|err| auth_err(&url, err))?;
         Ok(Some(account))
     }
 
@@ -170,7 +173,11 @@ impl AccountsClient {
 
     /// POST `body` as JSON to `path` and deserialize the JSON response, mapping
     /// transport and non-2xx failures into [`Error::Auth`].
-    async fn post_json<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
+    async fn post_json<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T> {
         let url = self.url(path);
         let response = self
             .http
@@ -181,7 +188,10 @@ impl AccountsClient {
             .await
             .map_err(|err| auth_err(&url, err))?;
         let response = error_for_status(&url, response).await?;
-        response.json::<T>().await.map_err(|err| auth_err(&url, err))
+        response
+            .json::<T>()
+            .await
+            .map_err(|err| auth_err(&url, err))
     }
 }
 

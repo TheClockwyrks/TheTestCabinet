@@ -386,7 +386,10 @@ fn sprite_sheet_review_item_rejects_an_undeclared_sequence() {
         .1
         .resolve("sprite", "v1.0.0")
         .expect_err("a review item naming an undeclared sequence is rejected");
-    assert!(format!("{err}").contains("sequence `walk-left`"), "got: {err}");
+    assert!(
+        format!("{err}").contains("sequence `walk-left`"),
+        "got: {err}"
+    );
 }
 
 #[test]

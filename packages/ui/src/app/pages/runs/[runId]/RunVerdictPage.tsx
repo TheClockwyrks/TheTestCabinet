@@ -52,8 +52,21 @@ export function RunVerdictPage() {
               nothing for other run types. */}
           <AdversarialReplaySection run={run} />
           {
-            // A produced, not-yet-published run the active worker owns is reviewed
-            // and published here; published runs show their review read-only.
+            // A failed run produced no result: there is nothing to review or
+            // publish, so neither the editor nor an empty-verdict panel applies.
+            // The failure reason is shown by the detail layout's banner above; the
+            // Events tab carries whatever timeline was recorded.
+            run.status.state === "failed" ? (
+              <Panel>
+                <p className={styles.empty}>
+                  This run failed before producing a result, so there is nothing
+                  to review or publish. See the failure reason above, and the
+                  Events tab for what was recorded.
+                </p>
+              </Panel>
+            ) : // A produced, not-yet-published run the active worker owns is
+            // reviewed and published here; published runs show their review
+            // read-only.
             canExecute && localIds.has(run.id) ? (
               <RunReviewEditor
                 runId={run.id}

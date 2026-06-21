@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{RunLinks, RunRecord};
+use test_cabinet_core::run_record::{RunLinks, RunRecord, RunState};
 
 use crate::auth::AuthUser;
 use crate::db::{Reviewer, StoredReview, StoredRun};
@@ -48,6 +48,17 @@ pub async fn push(
     _user: AuthUser,
     Json(request): Json<PushRequest>,
 ) -> Result<Response, ApiError> {
+    // Only a run that produced a result can enter the backend: a failed run is
+    // recorded so the consoles can show why it stopped, but it is never reviewable
+    // or publishable. The consoles already refuse to push one; this is the
+    // server-side guard so a failed run can never reach the public snapshot even
+    // if a client bypasses the UI.
+    if request.record.status.state != RunState::Completed {
+        return Err(ApiError::unprocessable(
+            "a run that did not complete cannot be pushed; only completed runs are reviewable",
+        ));
+    }
+
     // The subject should resolve to an ingested version, but this is a warning,
     // not a hard fail, so a historical case can still be pushed.
     let subject = &request.record.subject;

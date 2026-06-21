@@ -931,6 +931,106 @@ where
     }
 }
 
+/// Build and persist the record for a run that failed before producing an
+/// implementation, under `output_dir`, and return it.
+///
+/// A run that errors before [`RunEngine::run_resolved`] reaches its success path
+/// never writes a [`RunRecord`], so it vanishes from the produced-runs listing
+/// the consoles read — leaving no way to see that it ran or why it stopped. This
+/// records such a run as a [`RunState::Failed`] record (the contract already
+/// models one) carrying the failure `detail`, plus whatever `events` were
+/// captured before the failure, written as `events.jsonl` beside it so a reviewer
+/// can inspect the timeline. Metrics, validation, and the container environment
+/// are left at their empty/unknown defaults — a failed run produced none.
+///
+/// This is a free function rather than a [`RunEngine`] method because the
+/// failures that most need recording happen *before* an engine exists — the
+/// container runtime cannot be found, or the definition will not resolve from the
+/// backend — so the runner has only the request, an output directory, and the
+/// reason. `test_case` is the resolved version when the failure happened after
+/// resolution (so the record carries its real version and test type), or `None`
+/// before it could be resolved; the subject then falls back to the request.
+pub fn write_failed_record(
+    output_dir: &std::path::Path,
+    id: &str,
+    request: &RunRequest,
+    test_case: Option<&TestCaseVersion>,
+    started_at: OffsetDateTime,
+    detail: impl Into<String>,
+    events: &[HarnessEvent],
+) -> Result<RunRecord> {
+    let record = build_failed_record(
+        id,
+        request,
+        test_case,
+        started_at,
+        OffsetDateTime::now_utc(),
+        detail,
+    );
+    let run_dir = output_dir.join(&record.id);
+    std::fs::create_dir_all(&run_dir)?;
+    let json = serde_json::to_string_pretty(&record)?;
+    std::fs::write(run_dir.join("run-record.json"), json)?;
+    // The captured events make the failure auditable; an empty backlog (a failure
+    // before any event arrived) simply writes nothing.
+    if !events.is_empty() {
+        write_jsonl(&run_dir.join("events.jsonl"), events)?;
+    }
+    Ok(record)
+}
+
+/// Build the [`RunRecord`] for a run that failed before producing an
+/// implementation. See [`write_failed_record`] for the rationale; this is its
+/// pure record-building half, split out so the mapping from a failed run's known
+/// context to its record can be unit-tested without touching the filesystem.
+fn build_failed_record(
+    id: &str,
+    request: &RunRequest,
+    test_case: Option<&TestCaseVersion>,
+    started_at: OffsetDateTime,
+    finished_at: OffsetDateTime,
+    detail: impl Into<String>,
+) -> RunRecord {
+    let orchestrator_slug = if request.orchestrator.slug.is_empty() {
+        ONE_SHOT_SLUG.to_string()
+    } else {
+        request.orchestrator.slug.clone()
+    };
+    RunRecord {
+        id: id.to_string(),
+        started_at: started_at.format(&Rfc3339).unwrap_or_default(),
+        finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
+        subject: RunSubject {
+            test_case_slug: request.test_case_slug.clone(),
+            test_case_version: test_case
+                .map(|tc| tc.version.clone())
+                .or_else(|| request.test_case_version.clone())
+                .unwrap_or_default(),
+            test_type: test_case.map(|tc| tc.test_type).unwrap_or_default(),
+            variant: request.variant.clone(),
+            harness_slug: request.harness,
+            harness_version: None,
+            orchestrator_slug,
+            model_id: request.model_id.clone(),
+        },
+        tooling: RunTooling::current(),
+        // A failed run probed no container, so the environment is unknown.
+        environment: RunEnvironment {
+            os: "unknown".to_string(),
+            container_image: String::new(),
+            node_version: None,
+            auth_mode: AuthMode::ApiKey,
+        },
+        metrics: RunMetrics::default(),
+        validation: ValidationSummary::default(),
+        links: RunLinks::default(),
+        status: RunStatus {
+            state: RunState::Failed,
+            detail: Some(detail.into()),
+        },
+    }
+}
+
 /// Write a run's raw harness output and its translated events as two JSONL files
 /// in the run directory: `raw.jsonl` carries one stream-tagged line per entry in
 /// arrival order, and `events.jsonl` carries one normalized event per line.

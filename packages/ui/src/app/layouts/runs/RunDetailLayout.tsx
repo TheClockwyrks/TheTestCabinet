@@ -118,6 +118,16 @@ export function RunDetailLayout({
         </div>
       </header>
 
+      {run.status.state === "failed" && (
+        <div className={styles.failureBanner} role="alert">
+          <span className={styles.failureTitle}>Run failed</span>
+          <span className={styles.failureDetail}>
+            {run.status.detail ??
+              "This run failed before producing a result. No reason was recorded."}
+          </span>
+        </div>
+      )}
+
       <div className={styles.controls}>
         <nav className={styles.tabs} aria-label="Run sections">
           {tabs.map((entry) => (

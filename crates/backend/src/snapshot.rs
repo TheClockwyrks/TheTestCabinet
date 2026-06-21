@@ -780,9 +780,11 @@ fn state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
 /// as a wire token. Falls back to `broken` for the (publish-gated, so
 /// unreachable) case of no reviews, so the runs index always carries a tier.
 fn aggregate_rating_str(reviews: &[crate::db::StoredReview]) -> &'static str {
-    test_cabinet_core::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice()))
-        .map(|rating| rating.as_str())
-        .unwrap_or("broken")
+    test_cabinet_core::review::aggregate_rating(
+        reviews.iter().map(|review| review.ratings.as_slice()),
+    )
+    .map(|rating| rating.as_str())
+    .unwrap_or("broken")
 }
 
 #[cfg(test)]

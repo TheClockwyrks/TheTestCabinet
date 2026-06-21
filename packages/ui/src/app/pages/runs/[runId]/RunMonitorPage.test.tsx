@@ -23,6 +23,12 @@ vi.mock("../../../components/PageLayout", () => ({
 vi.mock("../../../components/PromptHeader", () => ({
   PromptHeader: () => null,
 }));
+// The monitor resolves the run's case from the gallery data to decide whether to
+// show the asset view; these tests don't exercise that, so stub the hook with an
+// empty catalog rather than standing up a whole GalleryDataProvider.
+vi.mock("../../../data/galleryContext", () => ({
+  useGalleryData: () => ({ testCases: [] }),
+}));
 
 const RUN_ID = "run-123";
 
@@ -169,11 +175,12 @@ describe("RunMonitorPage", () => {
     renderMonitor(value);
 
     // The live drawing panel appears, showing the current sprite and its latest
-    // operation count — and no per-frame grid, since a single sprite has one frame.
+    // operation count — and no per-frame rail, since a single sprite has one slot.
     expect(await screen.findByText("Live drawing")).toBeInTheDocument();
-    expect(screen.getByAltText("Current sprite")).toBeInTheDocument();
+    // With no resolved case the lone slot is named after the default asset label.
+    expect(screen.getByAltText("Sprite")).toBeInTheDocument();
     expect(screen.getByText(/2 operations · fill_rect/)).toBeInTheDocument();
-    expect(screen.queryByText("All frames")).not.toBeInTheDocument();
+    expect(screen.queryByText(/started$/)).not.toBeInTheDocument();
   });
 
   it("shows every frame and highlights the active one for a sprite sheet", async () => {
@@ -185,12 +192,15 @@ describe("RunMonitorPage", () => {
     renderMonitor(value);
 
     // A sheet draws into more than frame 0, so the most-recently-drawn frame shows
-    // large (frame 1, its caption) and a grid lists the status of every frame.
+    // large (frame 1, its caption) and a rail lists the status of every frame.
     expect(await screen.findByText("Live drawing")).toBeInTheDocument();
-    expect(screen.getByText(/Frame 1 · 1 operation · line/)).toBeInTheDocument();
-    expect(screen.getByText("All frames")).toBeInTheDocument();
-    expect(screen.getByText("#0 · 3 ops")).toBeInTheDocument();
-    expect(screen.getByText("#1 · 1 ops")).toBeInTheDocument();
+    // The large view follows the frame being drawn (frame 1) with its latest op.
+    // The caption splits the slot name from the op detail, so match the detail.
+    expect(screen.getByText(/1 operation · line/)).toBeInTheDocument();
+    // The rail lists every started frame and each slot's op count.
+    expect(screen.getByText("2/2 started")).toBeInTheDocument();
+    expect(screen.getByText("Frame 0")).toBeInTheDocument();
+    expect(screen.getByText("3 ops")).toBeInTheDocument();
   });
 
   it("surfaces a failed outcome without looping", async () => {

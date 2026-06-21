@@ -35,13 +35,14 @@ fn completed_serializes_with_flattened_summary_and_record_id() {
 }
 
 #[test]
-fn failed_serializes_with_message_and_no_record_id() {
+fn failed_serializes_with_message_and_the_job_id_as_record_id() {
     let json =
         serde_json::to_value(WorkerNotification::failed("job-2", &summary(), "boom")).expect("ser");
 
     assert_eq!(json["outcome"], "failed");
     assert_eq!(json["message"], "boom");
-    assert!(json.get("recordId").is_none());
+    // The failed run is persisted under the job id, so the alert links there.
+    assert_eq!(json["recordId"], "job-2");
 }
 
 #[tokio::test]

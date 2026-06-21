@@ -285,7 +285,10 @@ pub fn aggregate_score(scores: &[Score]) -> Option<AggregateScore> {
         return None;
     }
     let total = scores.iter().map(|score| score.total).max().unwrap_or(0);
-    let earned = scores.iter().map(|score| f64::from(score.earned)).sum::<f64>()
+    let earned = scores
+        .iter()
+        .map(|score| f64::from(score.earned))
+        .sum::<f64>()
         / scores.len() as f64;
     Some(AggregateScore {
         earned,

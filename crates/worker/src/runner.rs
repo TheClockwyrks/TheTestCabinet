@@ -17,8 +17,9 @@ use test_cabinet_core::{
     CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator,
     FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, OrchestratorCatalog,
     PrerenderedReferenceRenderer, RunEngine, RunRecord, RunRequest, TestCaseCatalog,
-    materialize_version,
+    TestCaseVersion, materialize_version, write_failed_record,
 };
+use time::OffsetDateTime;
 
 use std::sync::Arc;
 
@@ -49,23 +50,71 @@ pub struct RunContext {
 /// the job's terminal state, so the background task that calls it has nothing
 /// left to handle.
 pub async fn drive_run(ctx: RunContext, request: RunRequest, job: Job, notifier: WorkerNotifier) {
+    let started_at = OffsetDateTime::now_utc();
     match run_inner(&ctx, &request, &job).await {
         Ok(record) => {
             let notification = WorkerNotification::completed(job.id(), job.summary(), &record.id);
             job.finish_succeeded(record);
             notifier.notify(notification);
         }
-        Err(detail) => {
-            let notification = WorkerNotification::failed(job.id(), job.summary(), &detail);
-            job.finish_failed(detail);
+        Err(failure) => {
+            // The job's failed state lives only in memory and is lost when the
+            // worker restarts, so a failed run would otherwise vanish from the
+            // listing entirely. Persist it as a `failed` run record (keyed by the
+            // job id, so the live monitor and the detail page resolve to the same
+            // id) with the captured event backlog, so the consoles can list it and
+            // show why it stopped. A failure to persist is logged, not fatal — the
+            // in-memory failed state and notification still fire.
+            if let Err(err) = write_failed_record(
+                &ctx.out_dir,
+                job.id(),
+                &request,
+                failure.test_case.as_ref(),
+                started_at,
+                &failure.detail,
+                &job.events_snapshot(),
+            ) {
+                tracing::warn!(
+                    job_id = job.id(),
+                    error = %err,
+                    "could not persist failed run record",
+                );
+            }
+            let notification = WorkerNotification::failed(job.id(), job.summary(), &failure.detail);
+            job.finish_failed(failure.detail);
             notifier.notify(notification);
         }
     }
 }
 
+/// Why a run failed, with the resolved version when the failure happened after the
+/// definition was materialized. The version lets the persisted failure record
+/// carry the run's real test type and version; a failure before resolution (the
+/// container runtime is missing, or the backend will not serve the definition)
+/// has none and falls back to what the request carried.
+struct RunFailure {
+    detail: String,
+    test_case: Option<TestCaseVersion>,
+}
+
+impl RunFailure {
+    /// A failure before the version was resolved.
+    fn setup(detail: String) -> Self {
+        Self {
+            detail,
+            test_case: None,
+        }
+    }
+}
+
 /// The fallible body of [`drive_run`]: assemble the orchestrator and run it.
-/// Errors are returned as a human-readable reason for the job's failed state.
-async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<RunRecord, String> {
+/// Errors are returned as a [`RunFailure`] carrying a human-readable reason for
+/// the job's failed state and, once known, the resolved version.
+async fn run_inner(
+    ctx: &RunContext,
+    request: &RunRequest,
+    job: &Job,
+) -> Result<RunRecord, RunFailure> {
     let work_dir = &ctx.work_dir;
     let seed_dir = work_dir.join("seeds").join(job.id());
     let artifact_dir = work_dir.join("artifacts").join(job.id());
@@ -78,11 +127,12 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
         &screenshot_dir,
         &store_dir,
     ] {
-        std::fs::create_dir_all(dir).map_err(|err| format!("creating {}: {err}", dir.display()))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|err| RunFailure::setup(format!("creating {}: {err}", dir.display())))?;
     }
 
     let runtime = CliContainerRuntime::detect()
-        .map_err(|err| format!("locating a container runtime: {err}"))?;
+        .map_err(|err| RunFailure::setup(format!("locating a container runtime: {err}")))?;
 
     // The worker is always backend-driven: resolve the served definition, write
     // it to the per-job store, and reuse the backend's pre-rendered references as
@@ -99,10 +149,10 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
     )
     .await
     .map_err(|err| {
-        format!(
+        RunFailure::setup(format!(
             "resolving {}@{} [{}] from the backend: {err}",
             request.test_case_slug, version_str, request.variant
-        )
+        ))
     })?;
 
     // The base image resolves from the environment inside the orchestrator (a
@@ -132,10 +182,15 @@ async fn run_inner(ctx: &RunContext, request: &RunRequest, job: &Job) -> Result<
     // the console's run monitor can watch the sprite take shape; other run types
     // produce none and the listener simply never fires.
     let preview = Arc::new(JobPreviewSink::new(job.clone()));
+    // From here the version is resolved, so a failure carries it through for the
+    // persisted failure record's subject (its real test type and version).
     orchestrator
         .run_resolved(request, &test_case, &mut events, Some(preview))
         .await
-        .map_err(|err| format!("run failed: {err}"))
+        .map_err(|err| RunFailure {
+            detail: format!("run failed: {err}"),
+            test_case: Some(test_case),
+        })
 }
 
 /// A non-existent catalog root for the orchestrator's unused `catalog` field. A

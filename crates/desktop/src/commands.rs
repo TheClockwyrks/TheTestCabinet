@@ -22,8 +22,9 @@ use test_cabinet_core::{
     ReviewItem, ReviewVerdict, RunEngine, RunRecord, RunRequest, SystemCommandRunner, TestCase,
     TestCaseCatalog, TestCaseVersion, TestType, Writeup, find_build_output, implementation_dir,
     materialize_version, missing_ratings, missing_verdicts, parse_writeup, read_event_log,
-    render_prompt,
+    render_prompt, write_failed_record,
 };
+use time::OffsetDateTime;
 
 use crate::config;
 use crate::events::{
@@ -531,6 +532,9 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
             }
         };
 
+    // Kept beside the moved-in `output_dir` so the background task can persist a
+    // failed run's record there (the struct takes ownership of `output_dir`).
+    let failure_output_dir = output_dir.clone();
     let orchestrator = RunEngine {
         catalog: TestCaseCatalog::new(config::catalog_root()),
         seeder: FsRepoSeeder::new(seed_dir),
@@ -544,6 +548,9 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
         prices: OpenRouterPrices::new(),
         output_dir,
     };
+    // Stamped now so a failed run records when it started, matching a completed
+    // run's `startedAt`.
+    let started_at = OffsetDateTime::now_utc();
 
     // Record the run as in-flight so `list_active_runs` can rebuild the console's
     // in-progress list after a reload; the background task drops it on completion.
@@ -575,9 +582,26 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
             Ok(record) => RunOutcome::Completed {
                 record: Box::new(record),
             },
-            Err(e) => RunOutcome::Failed {
-                message: e.to_string(),
-            },
+            Err(e) => {
+                let message = e.to_string();
+                // Persist the failed run so it appears in the runs list with the
+                // reason and the captured event timeline, mirroring the worker.
+                // Keyed by the live-stream id so the monitor and the detail page
+                // resolve to the same id. A failure to persist is logged, not
+                // fatal — the failed notification still fires.
+                if let Err(write_err) = write_failed_record(
+                    &failure_output_dir,
+                    &active.run_id,
+                    &request,
+                    Some(&test_case),
+                    started_at,
+                    &message,
+                    sink.events(),
+                ) {
+                    eprintln!("warning: could not persist failed run record: {write_err}");
+                }
+                RunOutcome::Failed { message }
+            }
         };
 
         // Build the worker-wide completion notification from the outcome before
@@ -602,7 +626,9 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                 harness_slug: active.harness_slug.clone(),
                 model_id: active.model_id.clone(),
                 outcome: "failed",
-                record_id: None,
+                // The failed run is persisted as a record keyed by the run id, so
+                // the console can deep-link to its detail page to show the error.
+                record_id: Some(active.run_id.clone()),
                 message: Some(message.clone()),
             },
         };

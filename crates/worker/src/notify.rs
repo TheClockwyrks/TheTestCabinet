@@ -52,8 +52,10 @@ pub struct WorkerNotification {
     pub summary: RunSummary,
     /// How the run ended.
     pub outcome: NotificationOutcome,
-    /// The produced run record's id, present when `outcome` is `completed`. This
-    /// is what the console links the alert to.
+    /// The persisted run record's id — what the console links the alert to. For a
+    /// `completed` run this is the produced record's own id; for a `failed` run it
+    /// is the job id, which is also the id the failed record is persisted under
+    /// (see [`crate::runner::drive_run`]), so a failure alert still opens the run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_id: Option<String>,
     /// A human-readable failure reason, present when `outcome` is `failed`.
@@ -74,14 +76,15 @@ impl WorkerNotification {
         }
     }
 
-    /// A run that failed before producing a record, with the reason.
+    /// A run that failed before producing a result, with the reason. The failed
+    /// run is persisted as a record under the job id, so the alert links there.
     pub fn failed(job_id: &str, summary: &RunSummary, message: &str) -> Self {
         Self {
             kind: "run-completed",
             job_id: job_id.to_string(),
             summary: summary.clone(),
             outcome: NotificationOutcome::Failed,
-            record_id: None,
+            record_id: Some(job_id.to_string()),
             message: Some(message.to_string()),
         }
     }

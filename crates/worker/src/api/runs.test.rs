@@ -182,6 +182,59 @@ async fn list_produced_returns_records_newest_first() {
 }
 
 #[tokio::test]
+async fn list_produced_surfaces_failed_runs() {
+    use test_cabinet_core::{OrchestratorSelection, RunRequest, write_failed_record};
+
+    let out_dir = std::env::temp_dir().join("tcab-worker-list-failed");
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    // A completed run sits beside a failed one: a failure persists a `failed`
+    // record (the core helper the runner calls on the error path), and the
+    // listing must surface it alongside completed runs so a reviewer can see why
+    // it stopped.
+    write_record(&out_dir, &record("ok", "2026-06-18T10:00:00Z"));
+    let request = RunRequest {
+        test_case_slug: "pong".to_string(),
+        test_case_version: Some("v1.0.0".to_string()),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model_id: "claude-haiku-4-5".to_string(),
+        orchestrator: OrchestratorSelection::default(),
+        max_runtime_override: None,
+        container_image: None,
+    };
+    write_failed_record(
+        &out_dir,
+        "boom",
+        &request,
+        None,
+        time::OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("time"),
+        "locating a container runtime: none found",
+        &[],
+    )
+    .expect("persist failed record");
+
+    let state = state_with_out_dir(out_dir.clone());
+    let Json(runs) = list_produced(State(state)).await.expect("listing succeeds");
+
+    let failed = runs
+        .iter()
+        .find(|r| r.id == "boom")
+        .expect("failed run listed");
+    assert_eq!(failed.record.status.state, RunState::Failed);
+    assert_eq!(
+        failed.record.status.detail.as_deref(),
+        Some("locating a container runtime: none found"),
+    );
+    assert!(
+        runs.iter().any(|r| r.id == "ok"),
+        "completed run still listed"
+    );
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[tokio::test]
 async fn list_produced_with_no_output_dir_is_empty() {
     let out_dir = std::env::temp_dir().join("tcab-worker-list-missing");
     let _ = std::fs::remove_dir_all(&out_dir);

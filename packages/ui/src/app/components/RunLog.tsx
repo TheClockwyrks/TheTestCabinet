@@ -162,8 +162,16 @@ function RunRow({
   showModel: boolean;
 }) {
   const { subject, metrics } = run;
+  // A failed run (execution errored before producing a result) is listed inline
+  // so the failure can be inspected, marked with the same negative styling an
+  // active row uses. It can carry no rating — it was never reviewable.
+  const failed = run.status.state === "failed";
   return (
-    <Link to={routes.runDetail(run.id)} className={styles.row}>
+    <Link
+      to={routes.runDetail(run.id)}
+      className={styles.row}
+      data-failed={failed ? "" : undefined}
+    >
       <span className={styles.rowCaret}>&rsaquo;</span>
       {showCase && (
         <span className={styles.test}>
@@ -193,7 +201,9 @@ function RunRow({
         {formatUsd(metrics.cost.comparable)}
       </span>
       <span className={styles.rating} data-label="Rating">
-        {rating ? (
+        {failed ? (
+          <span className={styles.activeStatus}>failed</span>
+        ) : rating ? (
           <RatingBadge rating={rating} />
         ) : (
           <span className={styles.noRating}>&mdash;</span>

@@ -45,15 +45,17 @@ function MetricsContent({
 }) {
   const { runs } = useRuns();
 
-  // Runs of this case and variant, newest first. Memoized so the chart specs are
-  // stable across re-renders.
+  // Completed runs of this case and variant, newest first. Memoized so the chart
+  // specs are stable across re-renders. Failed runs produced no metrics (their
+  // cost and tokens are zero), so charting them would skew the distribution.
   const variantRuns = useMemo(
     () =>
       runs
         .filter(
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
-            run.subject.variant === variant.slug,
+            run.subject.variant === variant.slug &&
+            run.status.state === "completed",
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     [runs, testCase.slug, variant.slug],
