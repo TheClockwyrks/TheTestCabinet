@@ -121,7 +121,9 @@ function SheetResult({
 
   return (
     <>
-      <h3 className={styles.section}>Animated sequences</h3>
+      <h3 className={`${styles.section} ${styles.leadHeading}`}>
+        Animated sequences
+      </h3>
       <p className={styles.secondary}>
         Each named animation, played from the regenerated frames so the motion can
         be reviewed against the brief.
@@ -207,7 +209,9 @@ export function AssetResultSection({ run }: { run: RunRecord }) {
 
   return (
     <Panel>
-      <h2 className={styles.section}>Generated asset</h2>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>
+        Generated asset
+      </h2>
       {asset.sheet ? (
         <SheetResult asset={asset} sheet={asset.sheet} />
       ) : asset.frames[0] ? (

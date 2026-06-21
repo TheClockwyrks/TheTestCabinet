@@ -9,15 +9,22 @@ import type {
 import { EventFeed } from "../../../components/EventFeed";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
+import { useGalleryData } from "../../../data/galleryContext";
 import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { useAppSettings } from "../../../store/appSettings";
+import tabStyles from "../../../layouts/runs/RunDetailLayout.module.scss";
 import styles from "../RunExec.module.scss";
 import { LiveAssetView } from "./LiveAssetView";
 
 type MonitorStatus =
   | { kind: "running" }
   | { kind: "done"; outcome: RunOutcome };
+
+// Which half of the live monitor is showing. An asset-generation run can switch
+// between watching the model draw and reading its activity; every other run type
+// only has the feed.
+type MonitorTab = "assets" | "events";
 
 // The live monitor for an active run (`/runs/:runId/live`). It subscribes to the
 // active worker's event stream (which replays events so far, then streams new
@@ -29,6 +36,7 @@ export function RunMonitorPage() {
   const { runId } = useParams<{ runId: string }>();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
+  const gallery = useGalleryData();
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   // The latest live drawing frame per frame index, for an asset-generation run,
   // plus the frame last drawn into. Empty for every other run type.
@@ -41,6 +49,24 @@ export function RunMonitorPage() {
   // off, and toggling it back on snaps to the bottom and resumes.
   const [following, setFollowing] = useState(true);
   const feedStyle = useAppSettings((s) => s.eventFeedStyle);
+
+  // The run's launch identity (slug/variant), tracked by the runs runtime, lets
+  // us resolve the case it belongs to — and from it the declared sprite-sheet
+  // slots the asset view shows as soon as the page loads, before the model has
+  // drawn anything.
+  const inProgress = runtime.inProgress.find((r) => r.runId === runId);
+  const caseSummary = gallery.testCases.find(
+    (c) => c.slug === inProgress?.testCaseSlug,
+  );
+  // Treat the run as asset-generation when its case says so, or once any drawing
+  // preview has streamed (covers a run not in the in-progress list — e.g. after a
+  // reload — whose case can't be resolved).
+  const isAssetRun =
+    caseSummary?.testType === "asset-generation" || previews.size > 0;
+  const sheet = caseSummary?.sheet ?? null;
+  const assetLabel = caseSummary?.name ?? "Sprite";
+
+  const [tab, setTab] = useState<MonitorTab>("assets");
 
   // Hold the latest runtime in a ref so the subscription effect can reach its
   // callbacks without depending on it. The runtime object is recreated whenever
@@ -89,35 +115,10 @@ export function RunMonitorPage() {
     return unsubscribe;
   }, [worker, runId]);
 
-  return (
-    <PageLayout fill>
-      <PromptHeader command="--monitor" comment={<>// live run activity</>} />
-
-      {!worker && (
-        <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — the live stream comes from the worker that ran
-          this job.
-        </p>
-      )}
-
-      {status.kind === "done" && status.outcome.kind === "completed" && (
-        <p className={`${styles.notice} ${styles.ok}`}>
-          Run complete — state {status.outcome.record.status.state}, loaded{" "}
-          {String(status.outcome.record.validation.loaded)}.{" "}
-          <Link to={routes.runDetail(status.outcome.record.id)}>
-            Open the run to review and publish it.
-          </Link>
-        </p>
-      )}
-      {status.kind === "done" && status.outcome.kind === "failed" && (
-        <p className={`${styles.notice} ${styles.error}`}>
-          Run failed: {status.outcome.message}
-        </p>
-      )}
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
-
-      <LiveAssetView previews={previews} activeFrame={activeFrame} />
-
+  // The event feed half: its header (the run id and the Follow toggle) and the
+  // feed itself. Shared by both the tabbed (asset) and untabbed layouts.
+  const feed = (
+    <>
       <div className={styles.feedHeader}>
         <div className={styles.feedHeading}>
           <span className={styles.feedTitle}>Live Event Feed</span>
@@ -147,6 +148,79 @@ export function RunMonitorPage() {
             : "No events were recorded."
         }
       />
+    </>
+  );
+
+  return (
+    <PageLayout fill>
+      <PromptHeader command="--monitor" comment={<>// live run activity</>} />
+
+      {!worker && (
+        <p className={`${styles.notice} ${styles.warn}`}>
+          No worker connected — the live stream comes from the worker that ran
+          this job.
+        </p>
+      )}
+
+      {status.kind === "done" && status.outcome.kind === "completed" && (
+        <p className={`${styles.notice} ${styles.ok}`}>
+          Run complete — state {status.outcome.record.status.state}, loaded{" "}
+          {String(status.outcome.record.validation.loaded)}.{" "}
+          <Link to={routes.runDetail(status.outcome.record.id)}>
+            Open the run to review and publish it.
+          </Link>
+        </p>
+      )}
+      {status.kind === "done" && status.outcome.kind === "failed" && (
+        <p className={`${styles.notice} ${styles.error}`}>
+          Run failed: {status.outcome.message}
+        </p>
+      )}
+      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
+
+      {isAssetRun ? (
+        <>
+          {/* The same tab bar the run-detail pages use, so the live monitor's two
+              views (the drawing and the activity feed) read as one family — and
+              the feed no longer vanishes when the model starts drawing. */}
+          <div className={tabStyles.controls}>
+            <nav className={tabStyles.tabs} aria-label="Live run sections">
+              <button
+                type="button"
+                className={`${styles.tabButton}${
+                  tab === "assets" ? ` ${styles.tabButtonActive}` : ""
+                }`}
+                aria-current={tab === "assets" ? "true" : undefined}
+                onClick={() => setTab("assets")}
+              >
+                Generated assets
+              </button>
+              <button
+                type="button"
+                className={`${styles.tabButton}${
+                  tab === "events" ? ` ${styles.tabButtonActive}` : ""
+                }`}
+                aria-current={tab === "events" ? "true" : undefined}
+                onClick={() => setTab("events")}
+              >
+                Event feed
+              </button>
+            </nav>
+          </div>
+          {tab === "assets" ? (
+            <LiveAssetView
+              previews={previews}
+              activeFrame={activeFrame}
+              sheet={sheet}
+              assetLabel={assetLabel}
+            />
+          ) : (
+            feed
+          )}
+        </>
+      ) : (
+        feed
+      )}
     </PageLayout>
   );
 }

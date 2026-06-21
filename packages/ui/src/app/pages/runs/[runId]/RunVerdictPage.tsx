@@ -42,7 +42,7 @@ export function RunVerdictPage() {
   return (
     <RunDetailLayout tab="verdict">
       {({ run, review }) => (
-        <>
+        <div className={styles.tabStack}>
           {/* For an asset-generation run, the generated asset and its
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
@@ -75,7 +75,7 @@ export function RunVerdictPage() {
               </Panel>
             )
           }
-        </>
+        </div>
       )}
     </RunDetailLayout>
   );

@@ -2,7 +2,12 @@
 // The HTTP transport (apps/web) and the Tauri transport (apps/desktop, a later
 // item) both produce and consume these. Fields are camelCase to match both the
 // backend HTTP API and the run-record contract.
-import type { MediaKind, RunRecord, TestType } from "@test-cabinet/run-record";
+import type {
+  AssetSheet,
+  MediaKind,
+  RunRecord,
+  TestType,
+} from "@test-cabinet/run-record";
 import type {
   DomainRating,
   Rating,
@@ -79,6 +84,11 @@ export interface VersionInfo {
   // The case's scoring domains (case-level). A reviewer rates each independently;
   // a run's overall rating is the worst across them.
   domains: Domain[];
+  // The sprite-sheet frame grid and named sequences a sprite-sheet
+  // asset-generation case declares; absent (null) for a single sprite or any
+  // non-asset case. Carried so the live monitor can show one stable slot per
+  // declared frame as the model draws, named from the sequences.
+  sheet?: AssetSheet | null;
   maxRuntimeSeconds: number;
 }
 

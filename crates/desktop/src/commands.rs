@@ -139,6 +139,11 @@ pub struct VersionInfo {
     /// The case's scoring domains (case-level). A reviewer rates each
     /// independently; a run's overall rating is the worst across them.
     pub domains: Vec<Domain>,
+    /// The sprite-sheet frame grid and named sequences, present only for a
+    /// sprite-sheet case; `None` otherwise. Lets the webview's live monitor show
+    /// one stable slot per declared frame as the model draws.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<test_cabinet_core::SheetSpec>,
     pub max_runtime_seconds: u64,
 }
 
@@ -178,6 +183,7 @@ impl VersionInfo {
             test_type: v.test_type,
             variants,
             domains: v.domains.clone(),
+            sheet: v.sheet.clone(),
             max_runtime_seconds: v.max_runtime_seconds,
         })
     }

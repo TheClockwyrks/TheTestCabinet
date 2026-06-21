@@ -156,6 +156,10 @@ async function toTestCaseSummary(
       name: d.name,
       description: d.description,
     })),
+    // Case-level: the sprite-sheet declaration (frames + named sequences), so the
+    // live monitor can render one stable slot per declared frame. Null for a
+    // single sprite or any non-asset case.
+    sheet: info.sheet ?? null,
   };
 }
 

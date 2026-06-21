@@ -251,6 +251,35 @@
   }
 }
 
+// The live monitor's view toggle. Reuses the run-detail tab bar's container
+// (`RunDetailLayout`'s `.controls`/`.tabs`) so it reads as the same strip, but
+// these are in-page buttons (not route links), so the pill look is defined here
+// and the button chrome reset away. Mirrors `RunDetailLayout`'s `.tab`/`.tabActive`.
+.tabButton {
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.tabButtonActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}
+
 // Checklist in the review editor.
 .checklist {
   display: flex;
@@ -407,6 +436,13 @@
   flex-direction: column;
   gap: t.$space-xs;
   min-width: 0;
+
+  // The "N/M addressed" label leads the rail, so drop the section label's default
+  // top margin — otherwise it sits lower than the current question's title in the
+  // adjacent column and the two columns read as misaligned.
+  .sectionLabel {
+    margin-top: 0;
+  }
 }
 
 .itemNavList {

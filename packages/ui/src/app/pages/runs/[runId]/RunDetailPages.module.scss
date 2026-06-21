@@ -10,6 +10,25 @@
   margin-bottom: t.$space-xl;
 }
 
+// A `.section` heading that leads its panel (or a subsection) and is followed
+// immediately by its own content or a one-line description. The panel's padding
+// already supplies the space above it, so drop the heading's default top margin;
+// and override `.section`'s block-separating bottom margin with a tight gap so
+// the heading hugs the prose beneath it rather than floating in whitespace.
+.leadHeading {
+  margin-top: 0;
+  margin-bottom: t.$space-sm;
+}
+
+// A vertical stack of panels within a tab body, spaced evenly so adjacent panels
+// (e.g. the Verdict tab's generated-asset panel and its review panel) don't
+// border each other directly.
+.tabStack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
 // A heading that introduces a group of widgets within a tab body (e.g. the
 // "Run info" and "Validation" groups on the Metadata tab).
 .sectionLabel {
@@ -278,4 +297,108 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin: 0 0 t.$space-xs;
+}
+
+// --- The live drawing view (LiveAssetView) -----------------------------------
+
+// A two-column shell: the slot rail on the left, the large current canvas on the
+// right. Stacks the rail above the canvas when space is tight. Used only when the
+// case declares more than one slot (a sprite sheet); a single sprite shows just
+// the canvas.
+.liveLayout {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) 1fr;
+  gap: t.$space-lg;
+  align-items: start;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// The rail of every declared slot, so it is stable from the first render — one
+// entry per frame the case wants the model to fill, named from its sequences.
+.slotRail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.slotRailLabel {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.slotList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One slot button: a thumbnail of its current canvas (or a placeholder) beside
+// the name of what belongs in it and its progress. The selected slot is accented.
+.slotButton {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: transparent;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.slotButtonSelected {
+  border-color: t.$color-accent;
+  color: t.$color-accent;
+}
+
+.slotMeta {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.slotName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slotSub {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The large current canvas and its caption.
+.liveMain {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.liveCaption {
+  text-align: center;
 }

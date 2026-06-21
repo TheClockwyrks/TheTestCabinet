@@ -25,7 +25,7 @@ import type {
   TestType,
   VersionInfo,
 } from "@test-cabinet/ui/client";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
 import { getJson, getJsonStreamed, getText, joinUrl } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -90,6 +90,10 @@ interface ResolvedVersion {
   commonReferences?: ReferenceDescriptor[];
   // The case's scoring domains (case-level).
   domains?: Domain[];
+  // The sprite-sheet frame grid and named sequences (camelCase `SheetSpec`),
+  // present only for a sprite-sheet case. Its shape matches the run-record
+  // `AssetSheet`, so it is carried through verbatim.
+  sheet?: AssetSheet | null;
   variants: {
     slug: string;
     name: string;
@@ -195,6 +199,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
         domains: r.domains ?? [],
+        sheet: r.sheet ?? null,
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,

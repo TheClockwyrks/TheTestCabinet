@@ -5,6 +5,7 @@
 // is imported lazily so the bundle still loads in a plain browser (where the
 // commands are absent) for development; `isTauri` gates the calls.
 import type {
+  AssetSheet,
   ControllerRef,
   MatchSummary,
   RunRecord,
@@ -82,6 +83,10 @@ export interface VersionInfo {
   variants: VariantInfo[];
   // The case's scoring domains (case-level).
   domains: Domain[];
+  // The sprite-sheet frame grid and named sequences, present only for a
+  // sprite-sheet case; null otherwise. Lets the live monitor show one stable
+  // slot per declared frame.
+  sheet?: AssetSheet | null;
   maxRuntimeSeconds: number;
 }
 
