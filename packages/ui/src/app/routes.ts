@@ -33,6 +33,15 @@ export const routes = {
   settings: (): string => "/settings",
   settingsAppearance: (): string => "/settings/appearance",
   settingsConnections: (): string => "/settings/connections",
+  // Account routes (consoles only; the static site is read-only and never links
+  // to them). The account view shows the signed-in user and a sign-out control;
+  // login/register are their own pages. `login`/`register` take an optional
+  // `next` path to return to after authenticating (defaults to the account view).
+  account: (): string => "/account",
+  login: (next?: string): string =>
+    next ? `/login?next=${encodeURIComponent(next)}` : "/login",
+  register: (next?: string): string =>
+    next ? `/register?next=${encodeURIComponent(next)}` : "/register",
   runs: (): string => "/runs",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
@@ -92,6 +101,9 @@ export const routePatterns = {
   settings: "/settings",
   settingsAppearance: "/settings/appearance",
   settingsConnections: "/settings/connections",
+  account: "/account",
+  login: "/login",
+  register: "/register",
   runs: "/runs",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",

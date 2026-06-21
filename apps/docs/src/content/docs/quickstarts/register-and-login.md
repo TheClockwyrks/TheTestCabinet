@@ -48,9 +48,11 @@ tcab logout
 ## Point at the auth service
 
 The CLI, the desktop app, and the web console reach the auth service through
-`TCAB_AUTH_URL`. In a console, you sign in from the UI rather than the shell; the
-[web console](/components/web/overview/) authenticates through the worker, which
-proxies registration and login to the auth service for it.
+`TCAB_AUTH_URL`. In a console, you sign in from the UI rather than the shell: the
+top bar's account control links to a dedicated sign-in (and registration) page,
+and once signed in the same control opens your account page, where you can sign
+out. The [web console](/components/web/overview/) authenticates through the
+worker, which proxies registration and login to the auth service for it.
 
 ## Next steps
 

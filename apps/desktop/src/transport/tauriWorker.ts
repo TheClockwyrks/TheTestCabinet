@@ -107,19 +107,24 @@ export function createTauriWorker(): WorkerClient {
     login: (username, password) => api.login(username, password),
 
     // --- Run lifecycle ---
-    // The desktop has no separate push/review IPC: the local core keeps a
-    // run-store and its `publish_run` command is the *solo* path (push + the
-    // locally-saved review + publish in one step). So `submitReview` persists the
-    // review to the store (the core's system of record), `push` is a no-op the
-    // solo publish subsumes, and `publish` runs the whole thing by id with the
-    // signed-in account's token.
+    // The local core keeps a run-store as the system of record for produced runs
+    // and their reviews. `push` releases the run's source + build and stores it on
+    // the backend privately, with no review — so a run can be pushed without
+    // being reviewed first. `submitReview` persists the review to the local store
+    // (the core's system of record, surfaced again on `list_runs`). `publish` is
+    // the *solo* path: it pushes (idempotently), submits the locally-saved review,
+    // and publishes in one step, so one person can do all three at once. All three
+    // are authorized by the signed-in account's bearer token.
     submitReview: async (id, review) => {
       await api.saveReview(id, review.ratings, review.writeup, review.checklist);
     },
-    push: async () => {
-      // The solo `publish_run` releases source + build itself, so there is no
-      // standalone push on desktop — report nothing newly pushed.
-      return { sourceRepo: "", playableBuild: null, newlyPushed: false };
+    push: async (id, token) => {
+      const result = await api.pushRun(id, token);
+      return {
+        sourceRepo: result.sourceRepo,
+        playableBuild: result.playableBuild,
+        newlyPushed: result.newlyPushed,
+      };
     },
     publish: async (id, token) => {
       const result = await api.publishRun(id, token);

@@ -27,8 +27,11 @@ interfaces. A host imports only what it needs.
 - **The routed gallery application** (`./app`) — the whole site UI: the routed
   pages (Home, Test Cases, Runs, Models, About), the app shell and topbar, and
   the synthwave backdrop, *plus* the run-execution screens (new run, live
-  monitor, review, the Connections settings) and the notification subsystem. All
-  three GUIs mount the same `GalleryApp` component. It reads its data and its
+  monitor, review, the account and sign-in/registration pages, the Connections
+  settings) and the notification subsystem. The topbar carries the console-only
+  affordances — the notifications bell and the account control (the signed-in
+  user, linking to the account page, or a sign-in prompt) — beside the Settings
+  gear. All three GUIs mount the same `GalleryApp` component. It reads its data and its
   capabilities from context, so a host varies it only by what it provides — not
   by swapping out screens. There is no longer a separate "console" build: the
   consoles *are* this gallery app with run execution turned on.
@@ -39,6 +42,7 @@ interfaces. A host imports only what it needs.
   consoles live from a backend and a worker (via the shared `useLiveGallery`
   assembly). A `canExecute` flag on this value is what gates the run-execution
   surface — the new-run button, the live monitor, the editable review, the
+  account and sign-in/registration pages with their topbar account control, the
   Connections settings, and the notification layer — so the static site renders
   the same component with those parts off. The value also resolves each run's
   submitted [proof-of-implementation](/components/core/validation/#proofs) media to

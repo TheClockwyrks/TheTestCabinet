@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { Panel, RatingBadge } from "@test-cabinet/ui";
+import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
 import type {
@@ -13,7 +15,6 @@ import type {
 import type { RunSubject } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
-import { AccountBar } from "../../../components/AccountBar";
 import {
   RATINGS,
   RATING_META,
@@ -48,17 +49,21 @@ function pts(weight: number): string {
 
 // The editable Verdict mode for a produced run the active worker owns: rate it,
 // work the case's declared checklist one item at a time, write the review, and
-// drive it through the push -> review -> publish lifecycle. A run must be pushed
-// (its source + build released and the record stored privately) before it can be
-// reviewed; it can be published only once it carries at least one review. The
-// desktop's local core has no separate push/review IPC — its `publish` is the
-// solo path (push + the saved review + publish), so the editor offers a single
-// "Publish run" action there.
+// drive it through the push -> review -> publish lifecycle. Pushing a run (its
+// source + build released and the record stored privately) needs *no* review — it
+// is what makes the run reviewable — and a run can be published only once it
+// carries at least one review. On the web flow these are three distinct actions
+// (Push / Submit review / Publish). The desktop's local core folds review +
+// publish into one *solo* command, so there the editor offers a standalone "Push
+// run" (so a run can be pushed without being reviewed) alongside a single
+// "Publish run" that saves the review and pushes + publishes in one step.
 //
-// Every mutating action requires a signed-in account (the {@link AccountBar}
-// handles login/register); a review is attributed to that account, and a run may
-// carry one review per account. The editor seeds from the *current account's own*
-// prior review (when any) so re-reviewing keeps that reviewer's answers.
+// Every mutating action requires a signed-in account; signing in and viewing the
+// account live on their own pages (reached from the top bar's account control),
+// so the editor only links to the sign-in page when signed out. A review is
+// attributed to the signed-in account, and a run may carry one review per
+// account. The editor seeds from the *current account's own* prior review (when
+// any) so re-reviewing keeps that reviewer's answers.
 //
 // The checklist is presented one question at a time with a navigable rail of all
 // items (answered ones marked done) so the reviewer can move freely. Each question
@@ -108,8 +113,8 @@ export function RunReviewEditor({
   const [error, setError] = useState<string | null>(null);
   // Whether the run has been pushed this session (the worker stores it privately
   // once pushed). Seeded true when it already carries reviews — those imply it
-  // was pushed — and on the solo desktop path, which pushes inside `publish`.
-  const [pushed, setPushed] = useState(reviews.length > 0 || solo);
+  // was pushed. Used by both flows' Push button to disable a redundant re-push.
+  const [pushed, setPushed] = useState(reviews.length > 0);
   // Reviews this account has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
@@ -308,16 +313,21 @@ export function RunReviewEditor({
 
   return (
     <Panel>
-      {/* Account affordance: mutating actions are gated on being signed in. */}
-      <AccountBar />
-
       {/* The run's existing reviews and the aggregate rating + score, so a
           reviewer sees what others recorded before adding their own. */}
       <ExistingReviews reviews={reviews} items={items} />
 
-      {!account && (
+      {/* Mutating actions are gated on being signed in. Signing in and managing
+          the account live on their own pages (top-bar account control); here we
+          only confirm who is reviewing, or link to the sign-in page. */}
+      {account ? (
+        <p className={styles.notice}>
+          Reviewing as <strong>{account.displayName}</strong>.
+        </p>
+      ) : (
         <p className={`${styles.notice} ${styles.warn}`}>
-          Sign in above to review and publish this run.
+          <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
+          push, review, and publish this run.
         </p>
       )}
 
@@ -519,12 +529,28 @@ export function RunReviewEditor({
           ? undefined
           : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
-        // The solo desktop path is a single Publish that saves the review and
-        // pushes + publishes in one step; the web flow splits into push, submit
-        // review, and publish (the last gated on the run having a review).
+        // The solo desktop path offers a standalone Push (release the run without
+        // a review, so it need not be reviewed first) alongside a single Publish
+        // that saves the review and pushes + publishes in one step. The web flow
+        // splits into push, submit review, and publish (the last gated on the run
+        // having a review).
         if (solo) {
           return (
             <div className={styles.actions}>
+              <button
+                className={styles.secondary}
+                onClick={onPush}
+                disabled={busy || needAccount || pushed}
+                title={
+                  needAccount
+                    ? "Sign in to push"
+                    : pushed
+                      ? "Already pushed"
+                      : "Release this run's source and build, storing it privately — no review needed"
+                }
+              >
+                {pushed ? "Pushed" : "Push run"}
+              </button>
               <button
                 className={styles.primary}
                 onClick={onPublish}

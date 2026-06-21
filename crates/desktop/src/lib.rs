@@ -117,6 +117,7 @@ pub fn run() {
             commands::read_published_run,
             commands::read_review_items,
             commands::save_review,
+            commands::push_run,
             commands::publish_run,
             commands::register,
             commands::login,

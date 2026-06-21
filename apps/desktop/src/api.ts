@@ -184,6 +184,14 @@ export interface LaunchConfig {
   maxRuntimeOverride: number | null;
 }
 
+// The standalone push result: source + build released and the record stored
+// privately (no review). Mirrors `commands::PushResult`.
+export interface PushResult {
+  sourceRepo: string;
+  playableBuild: string | null;
+  newlyPushed: boolean;
+}
+
 export interface PublishResult {
   sourceRepo: string;
   playableBuild: string | null;
@@ -272,6 +280,11 @@ export const saveReview = (
   writeup: string,
   checklist: ReviewVerdict[],
 ) => invoke<void>("save_review", { id, ratings, writeup, checklist });
+// Push a finished run without a review: release its source + build and store the
+// record privately, authorized by the signed-in account's bearer token. The run
+// stays private until it is published; a review is not required to push.
+export const pushRun = (id: string, token: string) =>
+  invoke<PushResult>("push_run", { id, token });
 // The desktop's solo publish: push + the locally-saved review + publish in one
 // step, authorized by the signed-in account's bearer token.
 export const publishRun = (id: string, token: string) =>

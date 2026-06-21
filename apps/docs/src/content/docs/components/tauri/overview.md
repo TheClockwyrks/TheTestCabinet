@@ -45,7 +45,7 @@ further remote [workers](/components/worker/overview/).
   its code and deploy its build, then store its
   [run record](/components/core/run-records/) on the
   [backend](/components/backend/overview/) — so the playable build can be reviewed.
-  The run stays private until it is published.
+  Pushing needs **no** review; the run stays private until it is published.
 - **Review runs.** Record a [review](/components/core/results/#reviews) — the
   hand-written writeup and rating — after playing a finished build, attributed to
   the signed-in account. A run may carry several reviews, one per account.
@@ -64,8 +64,9 @@ shell. It mounts the same `GalleryApp` from the
 [UI library](/components/ui/overview/) that the
 [web console](/components/web/overview/) and the
 [public site](/components/site/overview/) render, so its UI — the routed gallery
-pages plus the run-execution screens (new run, live monitor, review, sign-in, the
-Connections settings) — is the web console's UI, not a separate, plainer one.
+pages plus the run-execution screens (new run, live monitor, review, the account
+and sign-in/registration pages, the Connections settings) — is the web console's
+UI, not a separate, plainer one.
 
 The desktop's only departures from the web console are its host wiring: it
 provides the [UI library](/components/ui/overview/)'s `BackendClient` and

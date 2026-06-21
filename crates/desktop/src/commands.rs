@@ -890,6 +890,74 @@ pub async fn save_review(
 }
 
 // ---------------------------------------------------------------------------
+// Pushing a run (the release step, no review).
+// ---------------------------------------------------------------------------
+
+/// The result of pushing, surfaced to the UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushResult {
+    pub source_repo: String,
+    pub playable_build: Option<String>,
+    pub newly_pushed: bool,
+}
+
+/// Push a finished run **without** a review (the release step): release its
+/// source to a public GitHub repo and deploy its build to Cloudflare Pages, then
+/// store the record on the backend privately so the build can be reviewed. The
+/// run stays private until it is published. Pushing requires **no** review — it
+/// is what makes a run reviewable — and is idempotent on the record id.
+///
+/// This is the desktop equivalent of `tcab push`: the same machine can push a run
+/// and only later (or never) review and publish it. The solo [`publish_run`] path
+/// remains available for when one person does all three at once.
+///
+/// Requires `TCAB_BACKEND_URL` and a bearer `token` (from [`login`]/[`register`]).
+#[tauri::command]
+#[tracing::instrument(skip(token), fields(%id))]
+pub async fn push_run(id: String, token: String) -> CmdResult<PushResult> {
+    let backend = config::backend_url().ok_or_else(|| {
+        "pushing submits the run to the backend, but TCAB_BACKEND_URL is not set".to_string()
+    })?;
+    if token.trim().is_empty() {
+        return Err("you must be logged in to push (no bearer token)".to_string());
+    }
+
+    let run_dir = config::output_dir().join(&id);
+    let record_path = run_dir.join("run-record.json");
+    let record = load_record(&record_path)?;
+
+    let impl_dir = implementation_dir(&record_path);
+    let build_dir = find_build_output(&impl_dir);
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+
+    let publisher = BackendPublisher::new(
+        PublishConfig::from_env(),
+        SystemCommandRunner,
+        HttpBackendClient::new(backend).with_token(Some(token)),
+    );
+    let events = read_event_log(&run_dir);
+    let request = PushRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: build_dir.as_deref(),
+        events: &events,
+    };
+    let outcome = publisher
+        .push(&request)
+        .await
+        .map_err(|e| err("pushing the run", e))?;
+
+    Ok(PushResult {
+        source_repo: outcome.source_repo,
+        playable_build: outcome.playable_build,
+        newly_pushed: outcome.newly_pushed,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Publishing a reviewed run.
 // ---------------------------------------------------------------------------
 

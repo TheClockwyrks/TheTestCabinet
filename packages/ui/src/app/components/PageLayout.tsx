@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
+import { useAuth } from "../../client/auth";
 import { selectUnreadCount, useNotifications } from "../runtime/notifications";
 import { BellIcon } from "./BellIcon";
 import { CabinetIcon } from "./CabinetIcon";
@@ -46,6 +47,17 @@ function GearIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+// A small person glyph for the account control: the signed-in account (or a
+// sign-in prompt when logged out).
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
     </svg>
   );
 }
@@ -131,6 +143,11 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
             >
               <GearIcon />
             </NavLink>
+            {/* The account control: view the signed-in account, or sign in. Like
+                the bell it is console-only — the read-only static site has no
+                accounts and never mounts the auth provider. Sits to the right of
+                the Settings gear. */}
+            {canExecute && <AccountMenu />}
             {/* Mobile-only: collapses the section nav behind a hamburger. Hidden
                 above $bp-md so exactly one nav presentation shows at any width. */}
             <button
@@ -187,5 +204,32 @@ function NotificationsBell() {
       <BellIcon />
       {unread > 0 && <span className={styles.bellDot} aria-hidden="true" />}
     </button>
+  );
+}
+
+// The topbar account control: when signed in it links to the account page and
+// shows the display name; when signed out it links to the sign-in page. The
+// account/login/register pages own the actual sign-in, sign-out, and registration
+// flows — this is just the entry point to them. Rendered only on the consoles
+// (the auth provider is mounted there); the static site never shows it.
+function AccountMenu() {
+  const { account } = useAuth();
+  if (account) {
+    return (
+      <NavLink
+        to={routes.account()}
+        className={styles.account}
+        title={`Signed in as ${account.displayName} (@${account.username})`}
+      >
+        <PersonIcon />
+        <span className={styles.accountName}>{account.displayName}</span>
+      </NavLink>
+    );
+  }
+  return (
+    <NavLink to={routes.login()} className={styles.account} title="Sign in">
+      <PersonIcon />
+      <span className={styles.accountName}>Sign in</span>
+    </NavLink>
   );
 }

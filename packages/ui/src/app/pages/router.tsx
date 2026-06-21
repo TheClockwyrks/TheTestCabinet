@@ -1,6 +1,7 @@
 import { Routes } from "react-router";
 import { useGalleryData } from "../data/galleryContext";
 import { aboutRoutes } from "./about/router";
+import { accountRoutes } from "./account/router";
 import { homeRoutes } from "./home/router";
 import { modelsRoutes } from "./models/router";
 import { runsRoutes } from "./runs/router";
@@ -22,6 +23,7 @@ export function AppRoutes() {
       {tournamentsRoutes(canExecute)}
       {aboutRoutes()}
       {settingsRoutes(canExecute)}
+      {accountRoutes(canExecute)}
     </Routes>
   );
 }

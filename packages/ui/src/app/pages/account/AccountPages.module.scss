@@ -1,0 +1,134 @@
+@use "../../styles/tokens" as t;
+
+// The account section pages (sign in, register, account view). A single centered
+// card over the gallery backdrop, with a vertical form. Colors flow from the
+// active design variant's palette, matching the rest of the console.
+
+.page {
+  display: flex;
+  justify-content: center;
+  padding: t.$space-xl 0;
+}
+
+.card {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.title {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-xl;
+  color: t.$color-text;
+}
+
+.lede {
+  margin: 0 0 t.$space-lg;
+  color: t.$color-text-muted;
+  font-size: t.$font-md;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fieldLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.input {
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.primary {
+  align-self: flex-start;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.error {
+  margin: 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}
+
+.alt {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+
+  a {
+    color: t.$color-accent;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+// The account view's labelled details (display name, username).
+.details {
+  margin: 0 0 t.$space-lg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.term {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.value {
+  margin: 0;
+  color: t.$color-text;
+  font-size: t.$font-md;
+}
