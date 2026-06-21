@@ -463,3 +463,55 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
     assert_eq!(domain_ids, ["play"]);
 }
+
+#[test]
+fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
+    // The bundled sprite-sheet asset-generation cases resolve through the real
+    // catalog, and their animation-centric review items name the sheet sequences
+    // they are about so the reviewer UI can surface exactly those animations. Each
+    // referenced slug must name a declared `[[sheet.sequence]]` — the resolution
+    // that rejects an unknown slug is what makes this a real check of the manifests.
+    let catalog = TestCaseCatalog::new(catalog_root());
+
+    // (case, review item id, the sequence slugs it should reference).
+    let expected: &[(&str, &str, &[&str])] = &[
+        (
+            "emberfin",
+            "four-directions",
+            &["walk-down", "walk-up", "walk-left", "walk-right"],
+        ),
+        (
+            "emberfin",
+            "flare-animation",
+            &["flare-charge", "flare-bloom", "flare-fade"],
+        ),
+        (
+            "gloamfin",
+            "four-directions",
+            &["walk-down", "walk-up", "walk-left", "walk-right"],
+        ),
+        ("gloamfin", "sonar-tell", &["sonar-pulse"]),
+        (
+            "lanternjaw",
+            "four-directions",
+            &["walk-down", "walk-up", "walk-left", "walk-right"],
+        ),
+        ("lanternjaw", "lure-bob-tell", &["lure-bob"]),
+    ];
+
+    for (slug, item_id, sequences) in expected {
+        let version = catalog
+            .resolve_latest(slug)
+            .unwrap_or_else(|e| panic!("resolve {slug}: {e}"));
+        // The referenced items here are all common items, shared by every variant.
+        let item = version
+            .common_review_items
+            .iter()
+            .find(|item| &item.id == item_id)
+            .unwrap_or_else(|| panic!("{slug} should declare review item `{item_id}`"));
+        assert_eq!(
+            item.sequences, *sequences,
+            "{slug}/{item_id} should reference {sequences:?}"
+        );
+    }
+}

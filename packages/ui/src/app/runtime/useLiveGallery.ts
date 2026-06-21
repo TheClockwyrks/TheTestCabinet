@@ -135,6 +135,8 @@ async function toTestCaseSummary(
         text: item.text,
         reference: item.reference ?? null,
         proof: item.proof ?? null,
+        sequences: item.sequences ?? [],
+        frames: item.frames ?? [],
         weight: item.weight,
         domain: item.domain ?? null,
       })),

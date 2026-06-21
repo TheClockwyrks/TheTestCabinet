@@ -144,6 +144,39 @@ dest   = "specs/brief.md"
   (and the blank canvas/config the binary writes into) — no goal image, and no
   `[[reference]]`.
 
+## Review items can reference sequences and frames
+
+A sprite-sheet case's `[[review_item]]` entries (the
+[reviewer checklist](/testing/end-to-end/manifests/), shared by every test type)
+may additionally name the **sheet sequences and frames the item is about**. When
+an item names them, the review UI surfaces exactly those animations and frames
+beside the item — with a toggle between the live animation and the still frames —
+so a reviewer checks the item against the relevant assets without scrolling to the
+generated-asset section or hunting for which frame a number refers to.
+
+```toml
+[[review_item]]
+id     = "four-directions"
+title  = "Four readable directions"
+text   = "The movement frames read as the creature swimming in four directions…"
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"] # sequence slugs (optional)
+frames    = [8, 9]                                              # frame indices (optional)
+weight = 3
+domain = "fidelity"
+```
+
+- `sequences` lists `[[sheet.sequence]]` **slugs**; the animation view plays each
+  named sequence. `frames` lists `[[sheet.frame]]` **indices**; the frames view
+  shows every referenced frame — the explicit `frames` plus the frames the named
+  `sequences` cover.
+- Both are **optional**. An item that names neither applies to the asset as a
+  whole (the reviewer uses the full generated-asset section). An item that names
+  only `frames` shows just those frames (there is nothing to animate).
+- Resolution validates that every slug names a declared sequence and every index a
+  declared frame. Both are valid **only** for a sprite-sheet case (`asset_kind =
+  "sprite-sheet"`): a single sprite, or any non-asset case, has no sheet, so
+  declaring either is rejected.
+
 :::caution[Re-ingest after editing]
 The test type and the `[canvas]`/`[tool]`/`[output]` tables are stored in the
 backend's immutable def store. Because they are newer fields, editing an

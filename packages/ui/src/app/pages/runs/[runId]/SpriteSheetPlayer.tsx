@@ -15,14 +15,16 @@ const BOX: React.CSSProperties = {
 };
 
 /**
- * Plays one named animation sequence of a sprite sheet. Each frame is now its own
- * separate image (the sheet is no longer one sliced image), so the player takes
- * the ordered list of per-frame image URLs the sequence names, preloads them, and
+ * Plays one named animation sequence of a sprite sheet. Each frame is its own
+ * separate image (the sheet is not one sliced image), so the player takes the
+ * ordered list of per-frame image URLs the sequence names, preloads them, and
  * cycles them on a `requestAnimationFrame` loop at the sequence's fps. Used on an
- * asset-generation run's Verdict tab to animate the regenerated and target frames
- * side by side so a reviewer can judge the motion, not just the static pixels.
+ * asset-generation run's Verdict tab to animate the regenerated frames so a
+ * reviewer can judge the motion, not just the static pixels.
  *
- * Renders a "not available" placeholder when the host can serve no frame image.
+ * Renders just the player canvas (or a "not available" placeholder when the host
+ * can serve no frame image) — its caller supplies the title beside it. `label` is
+ * the canvas's accessible name only.
  */
 export function SpriteSheetPlayer({
   label,
@@ -31,6 +33,7 @@ export function SpriteSheetPlayer({
   frameHeight,
   fps,
 }: {
+  /** Accessible name for the player canvas (e.g. the sequence name). */
   label: string;
   /** The per-frame image URLs in sequence order; an entry is null if unservable. */
   frameUrls: (string | null)[];
@@ -93,25 +96,26 @@ export function SpriteSheetPlayer({
     return () => cancelAnimationFrame(raf);
   }, [urlsKey, hasAny, frameUrls, frameWidth, frameHeight, fps]);
 
-  return (
-    <figure style={{ margin: 0, textAlign: "center" }}>
-      {hasAny ? (
-        <canvas
-          ref={canvasRef}
-          width={width}
-          height={height}
-          style={{ ...BOX, width, height }}
-          aria-label={label}
-        />
-      ) : (
-        <div
-          style={{ ...BOX, width: DISPLAY, height: DISPLAY, display: "grid", placeItems: "center" }}
-          aria-label={`${label} unavailable`}
-        >
-          <span className={styles.secondary}>not available</span>
-        </div>
-      )}
-      <figcaption style={{ marginTop: 6 }}>{label}</figcaption>
-    </figure>
+  return hasAny ? (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      style={{ ...BOX, width, height }}
+      aria-label={label}
+    />
+  ) : (
+    <div
+      style={{
+        ...BOX,
+        width: DISPLAY,
+        height: DISPLAY,
+        display: "grid",
+        placeItems: "center",
+      }}
+      aria-label={`${label} unavailable`}
+    >
+      <span className={styles.secondary}>not available</span>
+    </div>
   );
 }

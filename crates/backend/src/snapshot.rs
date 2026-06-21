@@ -646,6 +646,8 @@ struct CaseReviewItemOut<'a> {
     text: &'a str,
     reference: Option<&'a str>,
     proof: Option<&'a str>,
+    sequences: &'a [String],
+    frames: &'a [u32],
     weight: u32,
     domain: Option<&'a str>,
 }
@@ -757,6 +759,8 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
         text: &item.text,
         reference: item.reference.as_deref(),
         proof: item.proof.as_deref(),
+        sequences: &item.sequences,
+        frames: &item.frames,
         weight: item.weight,
         domain: item.domain.as_deref(),
     }

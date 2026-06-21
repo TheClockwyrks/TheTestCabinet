@@ -148,6 +148,8 @@ interface SnapshotReviewItem {
   text: string;
   reference?: string | null;
   proof?: string | null;
+  sequences?: string[];
+  frames?: number[];
   weight: number;
   domain?: string | null;
 }
@@ -205,6 +207,8 @@ interface AssembledReviewItem {
   text: string;
   reference: string | null;
   proof: string | null;
+  sequences: string[];
+  frames: number[];
   weight: number;
   domain: string | null;
 }
@@ -373,6 +377,8 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       text: item.text,
       reference: item.reference ?? null,
       proof: item.proof ?? null,
+      sequences: item.sequences ?? [],
+      frames: item.frames ?? [],
       weight: item.weight,
       domain: item.domain ?? null,
     }));

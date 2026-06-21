@@ -31,6 +31,13 @@ export interface ReviewItemSummary {
   text: string;
   reference?: string | null;
   proof?: string | null;
+  /** For a sprite-sheet asset-generation case: the sheet sequence slugs this item
+   * is about, surfaced as the relevant animations to play beside it. Empty when
+   * the item names none. */
+  sequences?: string[];
+  /** For a sprite-sheet asset-generation case: the frame indices this item is
+   * about, surfaced as the relevant frames beside it. Empty when none. */
+  frames?: number[];
   /** Points this item is worth: a pass earns this weight, a fail earns none. */
   weight: number;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */

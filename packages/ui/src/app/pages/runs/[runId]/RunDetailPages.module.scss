@@ -299,6 +299,130 @@
   margin: 0 0 t.$space-xs;
 }
 
+// --- The generated-asset view (AssetResultSection) ---------------------------
+
+// A stack of sequence rows, spaced so each animation reads as its own band. Used
+// in the narrow review-editor question panel, where one column always fits.
+.sequenceList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-xl;
+}
+
+// The generated-asset section's sequences, laid out two-up so the wide panel's
+// horizontal space is used instead of left empty beside each row. Falls back to a
+// single column once the viewport is too narrow to fit two rows side by side.
+.sequenceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: t.$space-sm;
+  margin-bottom: t.$space-xl;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// One named sequence as a row: a left meta column (name + frame count/fps) and
+// the animation playing to its right, so sequences stack densely instead of each
+// taking a full-width block with empty space beside it.
+.sequenceRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: t.$space-md;
+  align-items: center;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  // On a narrow viewport the side-by-side row gets cramped; stack the meta above
+  // the player.
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: 1fr;
+    gap: t.$space-sm;
+    justify-items: start;
+  }
+}
+
+.sequenceMeta {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.sequenceName {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.sequenceSub {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The animation sits at the start of its cell so rows align regardless of how
+// large each sequence's frame renders.
+.sequencePlayer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+// The per-frame grid reuses the `.checks` table; this just keeps the image and
+// log columns tight so the divergence column takes the slack.
+.frameGrid {
+  .frameThumbCell,
+  .frameLogCell {
+    width: 1%;
+    white-space: nowrap;
+  }
+}
+
+// A small segmented control to flip a referenced asset between its animation and
+// its still frames, so a reviewer can inspect a specific frame without the
+// animation cycling over it.
+.viewToggle {
+  display: inline-flex;
+  gap: 0;
+  margin-bottom: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+}
+
+.viewToggleButton {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border: 0;
+  background: transparent;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  & + & {
+    border-left: t.$border-hairline solid t.$color-border;
+  }
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.viewToggleActive {
+  background: t.$color-accent;
+  color: t.$color-bg;
+
+  &:hover {
+    color: t.$color-bg;
+  }
+}
+
+// The referenced asset(s) for one review item, set off from the item's prose.
+.itemAssets {
+  margin-top: t.$space-sm;
+}
+
 // --- The live drawing view (LiveAssetView) -----------------------------------
 
 // A two-column shell: the slot rail on the left, the large current canvas on the

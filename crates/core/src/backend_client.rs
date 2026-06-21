@@ -1070,6 +1070,8 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         text: item.text,
         reference: item.reference,
         proof: item.proof,
+        sequences: item.sequences,
+        frames: item.frames,
         weight: item.weight,
         domain: item.domain,
     }
@@ -1235,6 +1237,10 @@ struct ReviewItemBody {
     reference: Option<String>,
     #[serde(default)]
     proof: Option<String>,
+    #[serde(default)]
+    sequences: Vec<String>,
+    #[serde(default)]
+    frames: Vec<u32>,
     weight: u32,
     #[serde(default)]
     domain: Option<String>,

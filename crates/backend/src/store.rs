@@ -389,6 +389,14 @@ pub struct StoredReviewItem {
     /// Optional proof id paired with this item as the submitted media.
     #[serde(default)]
     pub proof: Option<String>,
+    /// Sprite-sheet sequence slugs this item is about (the relevant animations the
+    /// reviewer plays). Empty when the item names none.
+    #[serde(default)]
+    pub sequences: Vec<String>,
+    /// Sprite-sheet frame indices this item is about (the relevant frames the
+    /// reviewer inspects). Empty when the item names none.
+    #[serde(default)]
+    pub frames: Vec<u32>,
     /// How many points the item is worth toward the run's score. Always greater
     /// than zero.
     pub weight: u32,

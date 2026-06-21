@@ -159,6 +159,7 @@ text = """
 The movement frames read as the creature swimming in four distinct directions — \
 down, up, left, and right — each with its head leading its direction of travel \
 and a forked tail trailing behind, not the same blob repeated."""
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
 weight = 3
 domain = "fidelity"
 
@@ -170,6 +171,7 @@ The tell frames read as a flare in three beats: a charge-up glow that grows \
 (frames 8–10), a bright radial bloom of expanding rings peaking toward white \
 (frames 11–13), then a fade back toward the dim organ (frames 14–15). Playing \
 them reads unmistakably as a flare going off."""
+sequences = ["flare-charge", "flare-bloom", "flare-fade"]
 weight = 3
 domain = "fidelity"
 

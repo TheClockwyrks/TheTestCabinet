@@ -119,6 +119,12 @@ export interface ReviewItem {
   // item declares no pairing.
   reference?: string | null;
   proof?: string | null;
+  // For a sprite-sheet asset-generation case: the sheet sequence slugs and frame
+  // indices this item is about, so the reviewer UI can surface exactly those
+  // animations/frames beside the item. Empty/undefined when the item names none
+  // (it applies to the asset as a whole).
+  sequences?: string[];
+  frames?: number[];
   // Points this item is worth toward the run's score: a pass earns this weight, a
   // fail earns none.
   weight: number;

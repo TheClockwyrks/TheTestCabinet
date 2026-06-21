@@ -376,6 +376,8 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         text: item.text.clone(),
         reference: item.reference.clone(),
         proof: item.proof.clone(),
+        sequences: item.sequences.clone(),
+        frames: item.frames.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
     }

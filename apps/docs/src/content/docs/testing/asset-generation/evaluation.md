@@ -25,7 +25,11 @@ whole-sheet aggregate**. The `[sheet]` table's named
 [sequences](/testing/asset-generation/manifests/) are surfaced to the reviewer and
 **played back as live animations** in the review UI (the regenerated frames in
 each named sequence's order) so a person can judge the motion the sheet encodes
-against the brief.
+against the brief. A checklist item may also
+[name the sequences and frames it is about](/testing/asset-generation/manifests/#review-items-can-reference-sequences-and-frames),
+in which case the reviewer is shown exactly those animations and frames beside the
+item — with a toggle between the live animation and the still frames — instead of
+scanning the whole sheet to find them.
 
 ## Cheat detection
 

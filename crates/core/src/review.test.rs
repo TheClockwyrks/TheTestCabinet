@@ -13,6 +13,8 @@ fn item(id: &str, weight: u32) -> ReviewItem {
         text: format!("Check {id}."),
         reference: None,
         proof: None,
+        sequences: Vec::new(),
+        frames: Vec::new(),
         weight,
         domain: None,
     }

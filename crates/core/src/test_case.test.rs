@@ -360,6 +360,69 @@ fn sprite_sheet_requires_a_sequence() {
 }
 
 #[test]
+fn sprite_sheet_review_item_carries_its_sequences_and_frames() {
+    // A review item may name the sheet sequences and frames it is about so the
+    // reviewer UI can surface exactly those animations/frames for it.
+    let manifest = format!(
+        "{VALID_SHEET_MANIFEST}[[review_item]]\n\
+         id = \"walk\"\ntitle = \"Walk\"\ntext = \"Reads as walking right.\"\n\
+         sequences = [\"walk-right\"]\nframes = [0]\nweight = 2\ndomain = \"fidelity\"\n"
+    );
+    let (_dir, catalog) = asset_catalog(&manifest);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    let item = &version.common_review_items[0];
+    assert_eq!(item.sequences, vec!["walk-right".to_string()]);
+    assert_eq!(item.frames, vec![0]);
+}
+
+#[test]
+fn sprite_sheet_review_item_rejects_an_undeclared_sequence() {
+    let manifest = format!(
+        "{VALID_SHEET_MANIFEST}[[review_item]]\n\
+         id = \"walk\"\ntitle = \"Walk\"\ntext = \"Reads as walking right.\"\n\
+         sequences = [\"walk-left\"]\nweight = 2\ndomain = \"fidelity\"\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a review item naming an undeclared sequence is rejected");
+    assert!(format!("{err}").contains("sequence `walk-left`"), "got: {err}");
+}
+
+#[test]
+fn sprite_sheet_review_item_rejects_an_undeclared_frame() {
+    let manifest = format!(
+        "{VALID_SHEET_MANIFEST}[[review_item]]\n\
+         id = \"walk\"\ntitle = \"Walk\"\ntext = \"Reads as walking right.\"\n\
+         frames = [9]\nweight = 2\ndomain = \"fidelity\"\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a review item naming an undeclared frame is rejected");
+    assert!(format!("{err}").contains("frame `9`"), "got: {err}");
+}
+
+#[test]
+fn single_sprite_review_item_rejects_sequence_or_frame_refs() {
+    // A single sprite has no sheet, so a review item cannot reference sequences or
+    // frames — declaring either is a manifest error rather than a dropped ref.
+    let manifest = format!(
+        "{VALID_ASSET_MANIFEST}[[review_item]]\n\
+         id = \"look\"\ntitle = \"Looks right\"\ntext = \"Reads as the imp.\"\n\
+         frames = [0]\nweight = 1\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("sequences/frames on a single-sprite review item are rejected");
+    assert!(
+        format!("{err}").contains("only valid for a sprite-sheet"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn end_to_end_rejects_sprite_sheet_kind() {
     // An end-to-end case (the default type) that declares `asset_kind` is a mistake.
     let (_dir, catalog) = catalog_with_manifest(

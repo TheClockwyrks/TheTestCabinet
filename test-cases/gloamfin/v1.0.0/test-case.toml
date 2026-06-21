@@ -147,6 +147,7 @@ The movement frames read as the creature swimming in four distinct directions �
 down (rows 0), up, left, and right — each with its blunt head leading its \
 direction of travel and a forked tail trailing behind, not the same blob \
 repeated."""
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
 weight = 3
 domain = "fidelity"
 
@@ -157,6 +158,7 @@ text = """
 The tell frames (row 2 into row 3) show a pale sonar pulse — concentric rings in \
 the sonar accent color emanating from the body and expanding frame to frame — the \
 signature of a creature that 'sees' by sound."""
+sequences = ["sonar-pulse"]
 weight = 2
 domain = "fidelity"
 

@@ -15,6 +15,7 @@ import type {
 import type { RunSubject } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
+import { ReviewItemAssets } from "./AssetResultSection";
 import {
   RATINGS,
   RATING_META,
@@ -138,6 +139,15 @@ export function RunReviewEditor({
       for (const proof of gallery.proofMediaFor(run)) map.set(proof.id, proof);
     }
     return map;
+  }, [gallery, runId]);
+
+  // For an asset-generation run, its resolved result (frames + sprite sheet) so a
+  // checklist item that names sequences/frames can show exactly those assets
+  // beside the question — no scrolling up to the generated-asset section. Null for
+  // a non-asset run.
+  const asset = useMemo(() => {
+    const run = gallery.runs.find((r) => r.id === runId);
+    return run ? gallery.assetResultFor(run) : null;
   }, [gallery, runId]);
 
   // Load the case's declared checklist items from the backend (common + this
@@ -374,6 +384,21 @@ export function RunReviewEditor({
               {item.title} ({pts(item.weight)})
             </span>
             <span className={styles.checklistText}>{item.text}</span>
+
+            {/* For an asset-generation item that names sheet sequences/frames, the
+                relevant animations and frames inline (with an Animation/Frames
+                toggle) so the reviewer checks the item against exactly the assets
+                it is about, without leaving the question. */}
+            {asset &&
+              ((item.sequences?.length ?? 0) > 0 ||
+                (item.frames?.length ?? 0) > 0) && (
+                <ReviewItemAssets
+                  key={item.id}
+                  asset={asset}
+                  sequences={item.sequences ?? []}
+                  frames={item.frames ?? []}
+                />
+              )}
 
             {/* Expected reference beside submitted proof. Each pane shows only
                 when that side exists — an item may declare just a proof (e.g. a

@@ -148,6 +148,7 @@ The movement frames read as the creature swimming in four distinct directions �
 down, up, left, and right — each with its bulky head (and the lure ahead of it) \
 leading its direction of travel and a forked tail trailing behind, not the same \
 blob repeated."""
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
 weight = 3
 domain = "fidelity"
 
@@ -158,6 +159,7 @@ text = """
 The tell frames (row 2 into row 3) show the dangling lure bobbing and its amber \
 glow pulsing — bigger and brighter, then easing back — across the frames, so \
 playing them reads as the lure beckoning."""
+sequences = ["lure-bob"]
 weight = 2
 domain = "fidelity"
 

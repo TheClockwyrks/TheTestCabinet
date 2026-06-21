@@ -454,6 +454,16 @@ struct ManifestReviewItem {
     /// this item. Must name a proof that resolves for the item's variant.
     #[serde(default)]
     proof: Option<String>,
+    /// Optional sprite-sheet sequence slugs this item is about, surfaced to the
+    /// reviewer as the relevant animations to play. Each must name a declared
+    /// `[[sheet.sequence]]`; only valid for a sprite-sheet asset-generation case.
+    #[serde(default)]
+    sequences: Vec<String>,
+    /// Optional sprite-sheet frame indices this item is about, surfaced to the
+    /// reviewer alongside any referenced sequences' frames. Each must be a declared
+    /// `[[sheet.frame]]`; only valid for a sprite-sheet asset-generation case.
+    #[serde(default)]
+    frames: Vec<u32>,
     /// How many points this item is worth toward the run's score (an academic
     /// test's per-question marks). **Required** and must be greater than zero.
     weight: u32,
@@ -1004,6 +1014,21 @@ pub struct ReviewItem {
     /// Optional proof id whose **submitted** media is shown to the reviewer for
     /// this item. `None` when the item has no paired proof.
     pub proof: Option<String>,
+    /// Sprite-sheet sequence slugs this item is about, in declared order. The
+    /// reviewer UI surfaces these as the relevant animations to play for the item
+    /// so it need not be checked against the whole sheet. Empty when the item
+    /// names none (it applies to the asset as a whole). Only ever non-empty for a
+    /// sprite-sheet asset-generation case; every slug names a declared
+    /// [`SheetSequence`].
+    #[serde(default)]
+    pub sequences: Vec<String>,
+    /// Sprite-sheet frame indices this item is about, in declared order, alongside
+    /// any referenced sequences' frames. The reviewer UI surfaces these as the
+    /// relevant frames for the item. Empty when the item names none. Only ever
+    /// non-empty for a sprite-sheet asset-generation case; every index is a
+    /// declared frame in the [`SheetSpec`].
+    #[serde(default)]
+    pub frames: Vec<u32>,
     /// How many points this item is worth toward the run's score. Always greater
     /// than zero. A run earns this item's weight when the reviewer marks it
     /// `pass`, and none when they mark it `fail`; the run's score is the earned
@@ -2014,12 +2039,47 @@ impl TestCaseCatalog {
                     item.id, domain
                 )));
             }
+            // The sprite-sheet references — the sequences and frames an item is
+            // about — are only meaningful for a sprite-sheet case, and every one
+            // must name something the sheet declares so the reviewer UI can always
+            // resolve it. A single sprite (or any non-asset case) has no sheet, so
+            // declaring either is a manifest error rather than a silently dropped
+            // reference.
+            if !item.sequences.is_empty() || !item.frames.is_empty() {
+                let Some(sheet) = &sheet else {
+                    return Err(invalid(format!(
+                        "review_item `{}` declares `sequences`/`frames`, which are only \
+                         valid for a sprite-sheet case (asset_kind = \"sprite-sheet\")",
+                        item.id
+                    )));
+                };
+                for slug in &item.sequences {
+                    if !sheet.sequences.iter().any(|s| &s.slug == slug) {
+                        return Err(invalid(format!(
+                            "review_item `{}` names sequence `{}`, which the [sheet] does \
+                             not declare",
+                            item.id, slug
+                        )));
+                    }
+                }
+                for index in &item.frames {
+                    if !sheet.frames.contains(index) {
+                        return Err(invalid(format!(
+                            "review_item `{}` names frame `{}`, which the [sheet] does not \
+                             declare",
+                            item.id, index
+                        )));
+                    }
+                }
+            }
             Ok(ReviewItem {
                 id: item.id.clone(),
                 title: item.title.clone(),
                 text: item.text.clone(),
                 reference: item.reference.clone(),
                 proof: item.proof.clone(),
+                sequences: item.sequences.clone(),
+                frames: item.frames.clone(),
                 weight: item.weight,
                 domain: item.domain.clone(),
             })
