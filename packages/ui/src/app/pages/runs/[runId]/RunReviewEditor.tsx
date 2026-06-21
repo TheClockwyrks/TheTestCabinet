@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
+import { Panel, RatingBadge } from "@test-cabinet/ui";
 import { useBackend, useWorkers } from "../../../../client/context";
+import { useAuth } from "../../../../client/auth";
 import type {
   ProofMedia,
   ReferenceShot,
   ReviewItem,
   ReviewVerdict,
+  StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
 import type { RunSubject } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
+import { AccountBar } from "../../../components/AccountBar";
 import {
   RATINGS,
   RATING_META,
   VERDICT_META,
+  aggregateRating,
+  aggregateScore,
   isRating,
-  type ParsedWriteup,
+  scoreChecklist,
+  worstRating,
   type Rating,
 } from "../../../data/ratings";
 import styles from "../RunExec.module.scss";
@@ -40,29 +46,41 @@ function pts(weight: number): string {
   return `${weight} ${weight === 1 ? "pt" : "pts"}`;
 }
 
-// The editable Verdict mode for a produced, not-yet-published run that the active
-// worker owns: rate it, work the case's declared checklist one item at a time,
-// write the review, and publish (the review is submitted with the publish).
+// The editable Verdict mode for a produced run the active worker owns: rate it,
+// work the case's declared checklist one item at a time, write the review, and
+// drive it through the push -> review -> publish lifecycle. A run must be pushed
+// (its source + build released and the record stored privately) before it can be
+// reviewed; it can be published only once it carries at least one review. The
+// desktop's local core has no separate push/review IPC — its `publish` is the
+// solo path (push + the saved review + publish), so the editor offers a single
+// "Publish run" action there.
+//
+// Every mutating action requires a signed-in account (the {@link AccountBar}
+// handles login/register); a review is attributed to that account, and a run may
+// carry one review per account. The editor seeds from the *current account's own*
+// prior review (when any) so re-reviewing keeps that reviewer's answers.
 //
 // The checklist is presented one question at a time with a navigable rail of all
 // items (answered ones marked done) so the reviewer can move freely. Each question
 // shows the case's expected reference beside the agent's submitted proof — when
 // the item declares them — so the reviewer compares the target against the
-// evidence before judging. Read-only published runs keep the plain verdict
-// rendering; this is shown only when the run is worker-owned and unpublished.
+// evidence before judging. The run's existing reviews and the aggregate
+// rating/score are shown above the form.
 export function RunReviewEditor({
   runId,
   subject,
-  review,
   onChanged,
 }: {
   runId: string;
   subject: RunSubject;
-  review: ParsedWriteup | undefined;
   onChanged: () => void;
 }) {
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
+  // The desktop's local worker collapses push/review/publish into one solo
+  // command, so the editor offers a single Publish action there.
+  const solo = worker?.local ?? false;
+  const { account, token } = useAuth();
   // The checklist items are catalog data: read them from the backend, keyed by
   // the run's case identity — the worker doesn't serve the catalog.
   const { client: backend } = useBackend();
@@ -73,14 +91,28 @@ export function RunReviewEditor({
     () => gallery.reviewModelFor(subject).domains,
     [gallery, subject],
   );
+  // Every review submitted against this run so far, and the current account's own
+  // prior review (when any) — the seed for re-reviewing.
+  const reviews = useMemo(() => gallery.reviewsFor(runId), [gallery, runId]);
+  const ownReview = useMemo(
+    () => reviews.find((r) => account && r.reviewerId === account.id),
+    [reviews, account],
+  );
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
-  const [writeup, setWriteup] = useState(review?.body ?? "");
+  const [writeup, setWriteup] = useState(ownReview?.writeup ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
   const [current, setCurrent] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Whether the run has been pushed this session (the worker stores it privately
+  // once pushed). Seeded true when it already carries reviews — those imply it
+  // was pushed — and on the solo desktop path, which pushes inside `publish`.
+  const [pushed, setPushed] = useState(reviews.length > 0 || solo);
+  // Reviews this account has submitted this session, so Publish enables without a
+  // refetch right after submitting.
+  const [submittedThisSession, setSubmittedThisSession] = useState(false);
 
   // The expected reference media (by view) and the submitted proof media (by id)
   // for this run, resolved from the gallery data so each question can show both.
@@ -104,12 +136,12 @@ export function RunReviewEditor({
   }, [gallery, runId]);
 
   // Load the case's declared checklist items from the backend (common + this
-  // variant's own), seeding verdicts from any prior review so re-reviewing keeps
-  // earlier answers.
+  // variant's own), seeding verdicts from the account's own prior review so
+  // re-reviewing keeps that reviewer's earlier answers.
   useEffect(() => {
     if (!backend) return;
     let cancelled = false;
-    const prior = new Map((review?.checklist ?? []).map((v) => [v.id, v]));
+    const prior = new Map((ownReview?.checklist ?? []).map((v) => [v.id, v]));
     backend
       .readReviewItems(
         subject.testCaseSlug,
@@ -136,20 +168,29 @@ export function RunReviewEditor({
     return () => {
       cancelled = true;
     };
-    // Seed only on run/backend change; `review` is the initial value.
+    // Seed on run/backend/account change; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, subject.testCaseSlug, subject.testCaseVersion, subject.variant]);
+  }, [
+    backend,
+    subject.testCaseSlug,
+    subject.testCaseVersion,
+    subject.variant,
+    account?.id,
+  ]);
 
-  // Seed each domain's rating from any prior review, defaulting to "great" so a
-  // domain always carries a value (the reviewer adjusts it down where warranted).
+  // Seed each domain's rating from the account's own prior review, defaulting to
+  // "great" so a domain always carries a value (adjusted down where warranted).
   useEffect(() => {
-    const prior = new Map((review?.ratings ?? []).map((r) => [r.domain, r.rating]));
+    const prior = new Map(
+      (ownReview?.ratings ?? []).map((r) => [r.domain, r.rating]),
+    );
     const seeded: Record<string, Rating> = {};
-    for (const domain of domains) seeded[domain.id] = prior.get(domain.id) ?? "great";
+    for (const domain of domains)
+      seeded[domain.id] = prior.get(domain.id) ?? "great";
     setRatings(seeded);
-    // Seed only when the domain set changes; `review` is the initial value.
+    // Seed when the domain set or account changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domains]);
+  }, [domains, account?.id]);
 
   const allAddressed = items.every((item) => verdicts[item.id]?.status);
   const allRated = domains.every((domain) => ratings[domain.id]);
@@ -180,24 +221,28 @@ export function RunReviewEditor({
     });
   }
 
-  async function onPublish() {
-    if (!client) return;
+  // The reviewer's input as the worker contract carries it.
+  function buildReview() {
+    return {
+      ratings: domains.map((domain) => ({
+        domain: domain.id,
+        rating: ratings[domain.id] ?? "great",
+      })),
+      writeup,
+      checklist: buildChecklist(),
+    };
+  }
+
+  // Run a mutating lifecycle action, wrapping it in the busy/error/message
+  // plumbing so each button shares one path.
+  async function run(label: string, action: () => Promise<void>) {
+    if (!client || !token) return;
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const result = await client.publish(runId, {
-        ratings: domains.map((domain) => ({
-          domain: domain.id,
-          rating: ratings[domain.id] ?? "great",
-        })),
-        writeup,
-        checklist: buildChecklist(),
-      });
-      setMessage(
-        `${result.newlyPublished ? "Published" : "Already published"} — source ${result.sourceRepo}` +
-          (result.playableBuild ? `, build ${result.playableBuild}` : ""),
-      );
+      await action();
+      setMessage(label);
       onChanged();
     } catch (e) {
       setError(String(e));
@@ -205,6 +250,39 @@ export function RunReviewEditor({
       setBusy(false);
     }
   }
+
+  // --- Lifecycle actions ---
+
+  // Push: release the run's source + build and store it privately (web flow).
+  const onPush = () =>
+    run("Pushed — source and build released.", async () => {
+      const result = await client!.push(runId, token!);
+      setPushed(true);
+      setMessage(
+        `${result.newlyPushed ? "Pushed" : "Already pushed"} — source ${
+          result.sourceRepo || "(released)"
+        }` + (result.playableBuild ? `, build ${result.playableBuild}` : ""),
+      );
+    });
+
+  // Submit review: attribute this account's review to the run (web flow). On the
+  // solo desktop path this saves the local draft.
+  const onSubmitReview = () =>
+    run("Review submitted.", async () => {
+      await client!.submitReview(runId, buildReview(), token!);
+      setSubmittedThisSession(true);
+    });
+
+  // Publish: clear the gate (web flow). On the solo desktop path this saves the
+  // review and runs push + review + publish in one step.
+  const onPublish = () =>
+    run("Published.", async () => {
+      if (solo) {
+        await client!.submitReview(runId, buildReview(), token!);
+      }
+      const result = await client!.publish(runId, token!);
+      setMessage(result.newlyPublished ? "Published." : "Already published.");
+    });
 
   if (!client) {
     return (
@@ -217,6 +295,10 @@ export function RunReviewEditor({
     );
   }
 
+  // Whether the run can be published: it carries at least one review (an existing
+  // one or one just submitted this session). The backend is the real gate.
+  const canPublish = reviews.length > 0 || submittedThisSession || solo;
+
   const item = items[current];
   const draft = item ? (verdicts[item.id] ?? { status: "", note: "" }) : null;
   const expected = item?.reference
@@ -226,6 +308,19 @@ export function RunReviewEditor({
 
   return (
     <Panel>
+      {/* Account affordance: mutating actions are gated on being signed in. */}
+      <AccountBar />
+
+      {/* The run's existing reviews and the aggregate rating + score, so a
+          reviewer sees what others recorded before adding their own. */}
+      <ExistingReviews reviews={reviews} items={items} />
+
+      {!account && (
+        <p className={`${styles.notice} ${styles.warn}`}>
+          Sign in above to review and publish this run.
+        </p>
+      )}
+
       {item && draft && (
         <div className={styles.reviewLayout}>
           {/* The navigable rail of every checklist item; answered items are
@@ -418,23 +513,140 @@ export function RunReviewEditor({
         ))}
       </fieldset>
 
-      <div className={styles.actions}>
-        <button
-          className={styles.primary}
-          onClick={onPublish}
-          disabled={busy || !writeup.trim() || !allAddressed || !allRated}
-          title={
-            !writeup.trim() || !allAddressed || !allRated
-              ? "Write a review, rate every domain, and give every checklist item a verdict before publishing"
-              : undefined
-          }
-        >
-          Publish run
-        </button>
-      </div>
+      {(() => {
+        const reviewReady = writeup.trim() !== "" && allAddressed && allRated;
+        const reviewTitle = reviewReady
+          ? undefined
+          : "Write a review, rate every domain, and give every checklist item a verdict first";
+        const needAccount = !account || !token;
+        // The solo desktop path is a single Publish that saves the review and
+        // pushes + publishes in one step; the web flow splits into push, submit
+        // review, and publish (the last gated on the run having a review).
+        if (solo) {
+          return (
+            <div className={styles.actions}>
+              <button
+                className={styles.primary}
+                onClick={onPublish}
+                disabled={busy || needAccount || !reviewReady}
+                title={needAccount ? "Sign in to publish" : reviewTitle}
+              >
+                Publish run
+              </button>
+            </div>
+          );
+        }
+        return (
+          <div className={styles.actions}>
+            <button
+              className={styles.secondary}
+              onClick={onPush}
+              disabled={busy || needAccount || pushed}
+              title={
+                needAccount
+                  ? "Sign in to push"
+                  : pushed
+                    ? "Already pushed"
+                    : "Release this run's source and build, storing it privately"
+              }
+            >
+              {pushed ? "Pushed" : "Push run"}
+            </button>
+            <button
+              className={styles.secondary}
+              onClick={onSubmitReview}
+              disabled={busy || needAccount || !pushed || !reviewReady}
+              title={
+                needAccount
+                  ? "Sign in to review"
+                  : !pushed
+                    ? "Push the run before reviewing it"
+                    : reviewTitle
+              }
+            >
+              Submit review
+            </button>
+            <button
+              className={styles.primary}
+              onClick={onPublish}
+              disabled={busy || needAccount || !canPublish}
+              title={
+                needAccount
+                  ? "Sign in to publish"
+                  : !canPublish
+                    ? "Submit at least one review before publishing"
+                    : undefined
+              }
+            >
+              Publish run
+            </button>
+          </div>
+        );
+      })()}
 
       {message && <p className={`${styles.notice} ${styles.ok}`}>{message}</p>}
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
+  );
+}
+
+// The run's existing reviews and the aggregate verdict, shown above the editor so
+// a reviewer sees what others recorded. The aggregate rating is the worst any
+// reviewer gave any domain ({@link aggregateRating}); the aggregate score is the
+// mean earned over the case's checklist across reviews ({@link aggregateScore}),
+// when the scoring model is available.
+function ExistingReviews({
+  reviews,
+  items,
+}: {
+  reviews: StoredReview[];
+  items: ReviewItem[];
+}) {
+  if (reviews.length === 0) return null;
+
+  const aggRating = aggregateRating(reviews.map((r) => r.ratings));
+  const aggScore =
+    items.length > 0
+      ? aggregateScore(reviews.map((r) => scoreChecklist(items, r.checklist)))
+      : null;
+
+  return (
+    <div className={styles.field}>
+      <p className={styles.sectionLabel}>
+        {reviews.length} review{reviews.length === 1 ? "" : "s"}
+      </p>
+      <div className={styles.actions}>
+        {aggRating && (
+          <span title="Aggregate rating (worst across all reviews)">
+            <RatingBadge rating={aggRating} />
+          </span>
+        )}
+        {aggScore && (
+          <span className={styles.muted}>
+            {aggScore.earned.toFixed(1)} / {aggScore.total} pts (avg of{" "}
+            {aggScore.reviews})
+          </span>
+        )}
+      </div>
+      <ul>
+        {reviews.map((review) => {
+          const overall = worstRating(review.ratings.map((r) => r.rating));
+          return (
+            <li key={review.reviewerId || review.reviewer}>
+              <strong>{review.reviewer}</strong>
+              {overall && (
+                <>
+                  {" — "}
+                  <RatingBadge rating={overall} />
+                </>
+              )}
+              {review.writeup.trim() && (
+                <p className={styles.muted}>{review.writeup.trim()}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

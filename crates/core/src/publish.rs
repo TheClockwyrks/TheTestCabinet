@@ -20,12 +20,13 @@ use crate::backend_client::BackendClient;
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
 use crate::execution::ArtifactCollection;
-use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 
-/// A request to publish a single finished run.
+/// A request to push a single finished run: release its source + build and store
+/// the record on the backend, **without** a review. The review and the publish
+/// gate are separate steps (`POST /runs/{id}/reviews` and `/publish`).
 #[derive(Debug, Clone, PartialEq)]
-pub struct PublishRequest<'a> {
+pub struct PushRequest<'a> {
     /// The run record describing the run.
     pub record: &'a RunRecord,
     /// The collected implementation to release as the run's public source repo.
@@ -35,10 +36,6 @@ pub struct PublishRequest<'a> {
     /// build link unset, so a record can still be released and recorded without a
     /// build (for example a failed run whose source is still worth publishing).
     pub build_dir: Option<&'a Path>,
-    /// The run's hand-written review. Publishing requires one, so it is carried
-    /// by value here rather than left optional — a run without a writeup and
-    /// rating is refused before a request is ever built (see `tcab publish`).
-    pub writeup: &'a Writeup,
     /// The run's recorded normalized event stream (`events.jsonl`), submitted to
     /// the backend so it can be shown on the published run's Events tab. Empty
     /// when the run recorded no events or its log is unavailable; the raw harness
@@ -64,53 +61,54 @@ pub fn read_event_log(run_dir: &Path) -> Vec<HarnessEvent> {
         .collect()
 }
 
-/// The result of publishing a run, with the links produced.
+/// The result of pushing a run, with the links produced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishOutcome {
+pub struct PushOutcome {
     /// URL of the public repository holding the released source.
     pub source_repo: String,
     /// URL of the playable build made available for embedding, when one was
     /// deployed. `None` when the request carried no build directory.
     pub playable_build: Option<String>,
-    /// Whether this publish actually changed anything on the backend, or was a
-    /// no-op because the run was already recorded (publishing is idempotent).
-    pub newly_published: bool,
+    /// Whether this push newly stored the run on the backend, or was a no-op
+    /// because it was already recorded (pushing is idempotent).
+    pub newly_pushed: bool,
 }
 
-/// Publishes finished runs.
+/// Pushes finished runs: releases the source + build and stores the record on the
+/// backend (unpublished). Reviewing and the publish gate are separate backend
+/// calls ([`BackendClient::submit_review`] / [`BackendClient::publish_run`]).
 ///
 /// Every operation must be idempotent so a sweep producing many runs can be
-/// published repeatedly without manual handling of each one.
+/// pushed repeatedly without manual handling of each one.
 #[async_trait::async_trait]
 pub trait Publisher: Send + Sync {
     /// Release the run's generated code to its own public repository, returning
     /// the repository URL.
-    async fn release_code(&self, request: &PublishRequest<'_>) -> Result<String>;
+    async fn release_code(&self, request: &PushRequest<'_>) -> Result<String>;
 
     /// Deploy the run's playable build, returning the URL it is served at, or
     /// `None` when the request carried no build directory.
-    async fn release_playable_build(&self, request: &PublishRequest<'_>) -> Result<Option<String>>;
+    async fn release_playable_build(&self, request: &PushRequest<'_>) -> Result<Option<String>>;
 
-    /// Submit the run record, review, resolved links, and recorded event stream to
-    /// the backend (the system of record). Idempotent on `record.id`; returns
-    /// whether the run was newly recorded.
-    async fn submit_run(
+    /// Submit the run record, resolved links, and recorded event stream to the
+    /// backend (the system of record) — **without** a review. Idempotent on
+    /// `record.id`; returns whether the run was newly stored.
+    async fn push_run(
         &self,
         record: &RunRecord,
-        writeup: &Writeup,
         links: &RunLinks,
         events: &[HarnessEvent],
     ) -> Result<bool>;
 
-    /// Publish a single run end to end. Idempotent.
-    async fn publish(&self, request: &PublishRequest<'_>) -> Result<PublishOutcome>;
+    /// Push a single run end to end (release + store). Idempotent.
+    async fn push(&self, request: &PushRequest<'_>) -> Result<PushOutcome>;
 
-    /// Publish many runs in batch. Idempotent for each entry.
-    async fn publish_batch(&self, requests: &[PublishRequest<'_>]) -> Result<Vec<PublishOutcome>> {
+    /// Push many runs in batch. Idempotent for each entry.
+    async fn push_batch(&self, requests: &[PushRequest<'_>]) -> Result<Vec<PushOutcome>> {
         let mut outcomes = Vec::with_capacity(requests.len());
         for request in requests {
-            outcomes.push(self.publish(request).await?);
+            outcomes.push(self.push(request).await?);
         }
         Ok(outcomes)
     }
@@ -127,28 +125,24 @@ pub struct NoopPublisher;
 
 #[async_trait::async_trait]
 impl Publisher for NoopPublisher {
-    async fn release_code(&self, _request: &PublishRequest<'_>) -> Result<String> {
+    async fn release_code(&self, _request: &PushRequest<'_>) -> Result<String> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
 
-    async fn release_playable_build(
-        &self,
-        _request: &PublishRequest<'_>,
-    ) -> Result<Option<String>> {
+    async fn release_playable_build(&self, _request: &PushRequest<'_>) -> Result<Option<String>> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
 
-    async fn submit_run(
+    async fn push_run(
         &self,
         _record: &RunRecord,
-        _writeup: &Writeup,
         _links: &RunLinks,
         _events: &[HarnessEvent],
     ) -> Result<bool> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
 
-    async fn publish(&self, _request: &PublishRequest<'_>) -> Result<PublishOutcome> {
+    async fn push(&self, _request: &PushRequest<'_>) -> Result<PushOutcome> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
 }
@@ -362,7 +356,7 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
 
 #[async_trait::async_trait]
 impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
-    async fn release_code(&self, request: &PublishRequest<'_>) -> Result<String> {
+    async fn release_code(&self, request: &PushRequest<'_>) -> Result<String> {
         let record = request.record;
         let impl_dir = request.artifacts.repo_path.as_path();
         let qualified = self.config.repo_qualified(record);
@@ -393,7 +387,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         Ok(self.config.repo_url(record))
     }
 
-    async fn release_playable_build(&self, request: &PublishRequest<'_>) -> Result<Option<String>> {
+    async fn release_playable_build(&self, request: &PushRequest<'_>) -> Result<Option<String>> {
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
@@ -430,27 +424,23 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         Ok(Some(url))
     }
 
-    async fn submit_run(
+    async fn push_run(
         &self,
         record: &RunRecord,
-        writeup: &Writeup,
         links: &RunLinks,
         events: &[HarnessEvent],
     ) -> Result<bool> {
-        let ack = self
-            .backend
-            .publish_run(record, writeup, links, events)
-            .await?;
-        Ok(ack.newly_published)
+        let ack = self.backend.push_run(record, links, events).await?;
+        Ok(ack.newly_pushed)
     }
 
-    async fn publish(&self, request: &PublishRequest<'_>) -> Result<PublishOutcome> {
+    async fn push(&self, request: &PushRequest<'_>) -> Result<PushOutcome> {
         let source_repo = self.release_code(request).await?;
         let playable_build = self.release_playable_build(request).await?;
 
-        // Record the produced links on the run record before submitting it; the
+        // Record the produced links on the run record before storing it; the
         // backend writes them onto the stored record and exports them into the
-        // site snapshot.
+        // site snapshot once the run is published.
         let links = RunLinks {
             source_repo: Some(source_repo.clone()),
             playable_build: playable_build.clone(),
@@ -458,9 +448,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         let mut record = request.record.clone();
         record.links = links.clone();
 
-        let newly_published = self
-            .submit_run(&record, request.writeup, &links, request.events)
-            .await?;
+        let newly_pushed = self.push_run(&record, &links, request.events).await?;
 
         // Upload each produced proof-of-implementation file so the backend can
         // serve it back as the reviewer's submitted-evidence pane. Proofs live in
@@ -470,14 +458,14 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 
         // For an asset-generation run, upload the regenerated image, the final
         // preview, the target, and the action log so the gallery's result view can
-        // show them for a published run (the same artifacts the worker/desktop
+        // show them once the run is published (the same artifacts the worker/desktop
         // serve locally before publish).
         self.upload_assets(&record, request.artifacts).await?;
 
-        Ok(PublishOutcome {
+        Ok(PushOutcome {
             source_repo,
             playable_build,
-            newly_published,
+            newly_pushed,
         })
     }
 }

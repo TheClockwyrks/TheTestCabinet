@@ -17,6 +17,8 @@ API key.
 
 - [Set Up Authentication](/quickstarts/set-up-authentication/) — give a harness
   the API key or subscription credentials a run needs.
+- [Register and Log In](/quickstarts/register-and-login/) — create a user account
+  and sign in, so push, review, and publish are attributed to you.
 - [Run a Test Case](/quickstarts/run-a-test-case/) — drive a single test case
   through a harness and write a run record.
 - [Author an End-to-End Test Case](/quickstarts/author-an-end-to-end-test-case/)
@@ -31,10 +33,10 @@ API key.
 - [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
-- [Review a Run](/quickstarts/review-a-run/) — write the required review for a
-  finished run.
-- [Publish a Run](/quickstarts/publish-a-run/) — release a reviewed run to
-  public hosting and the gallery.
+- [Review a Run](/quickstarts/review-a-run/) — submit a review (one per account)
+  for a pushed run.
+- [Publish a Run](/quickstarts/publish-a-run/) — push, review, and publish a run
+  to public hosting and the gallery.
 
 Each quickstart has a matching User Guide that covers the same task in full,
 including prerequisites and the reasoning behind each step.

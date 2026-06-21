@@ -118,6 +118,8 @@ pub fn run() {
             commands::read_review_items,
             commands::save_review,
             commands::publish_run,
+            commands::register,
+            commands::login,
             arena::run_adversarial_match,
             arena::list_adversarial_controllers,
             arena::run_tournament_match,

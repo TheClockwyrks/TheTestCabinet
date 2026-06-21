@@ -1,18 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/backend-api/publish-run-request.schema.json",
-  "title": "PublishRunRequest",
-  "description": "The body of POST /runs: a published run's machine-generated record, its hand-written review, and the resolved public links. The operator's component has already released the source repo and deployed the build before calling, so it sends the captured URLs. Idempotent on record.id.",
+  "title": "PushRunRequest",
+  "description": "The body of POST /runs, the PUSH step: a finished run's machine-generated record, its resolved public links, and its optional recorded event stream. A push stores the run WITHOUT a review and does NOT make it public — the build is released so it can be reviewed, but the run is excluded from the public snapshot until it is published (see POST /runs/{id}/publish). No review is sent here; reviews are submitted separately to POST /runs/{id}/reviews. Requires a bearer token (the authenticated account). Idempotent on record.id.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["record", "review", "links"],
+  "required": ["record", "links"],
   "properties": {
     "record": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
       "description": "A full RunRecord. Its `links` MAY be empty here; the `links` below are authoritative and the backend writes them onto the stored record."
-    },
-    "review": {
-      "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
     },
     "links": { "$ref": "#/$defs/RunLinks" },
     "events": { "$ref": "#/$defs/HarnessEvents" }
@@ -20,7 +17,7 @@
   "$defs": {
     "HarnessEvents": {
       "type": "array",
-      "description": "The run's recorded normalized event stream. Optional; the backend stores it verbatim and re-emits it to the public snapshot for the run's Events tab. Raw harness output is never published. Each item is a normalized harness event (see /components/core/events/); its `type` discriminator selects the inlined fields.",
+      "description": "The run's recorded normalized event stream. Optional; the backend stores it verbatim and re-emits it to the public snapshot for the run's Events tab once the run is published. Raw harness output is never published. Each item is a normalized harness event (see /components/core/events/); its `type` discriminator selects the inlined fields.",
       "items": {
         "type": "object",
         "required": ["timestamp", "type"],
@@ -41,7 +38,7 @@
         },
         "playableBuild": {
           "type": ["string", "null"],
-          "description": "The deployment URL the build tool reported, recorded verbatim — NOT a host constructed from the run id and project, which Cloudflare's branch-alias sanitization may truncate."
+          "description": "The deployment URL the build tool reported, recorded verbatim — NOT a host constructed from the run id and project, which Cloudflare's branch-alias sanitization may truncate. A pushed run's build is playable (so it can be reviewed) even before the run is published."
         }
       }
     }

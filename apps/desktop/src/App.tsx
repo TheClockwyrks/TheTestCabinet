@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
-import { BackendProvider, WorkersProvider } from "@test-cabinet/ui/client";
+import {
+  AuthProvider,
+  BackendProvider,
+  WorkersProvider,
+} from "@test-cabinet/ui/client";
 import {
   GalleryApp,
   GalleryDataProvider,
@@ -21,10 +25,15 @@ export function App() {
   return (
     <BackendProvider value={backend}>
       <WorkersProvider value={workers}>
-        {/* Above the data source so a launched run's refresh signal reaches it. */}
-        <RunsRuntimeProvider>
-          <DesktopGallery />
-        </RunsRuntimeProvider>
+        {/* Auth lives below the workers provider — register/login invoke the
+            local core's commands through the active worker transport — and above
+            the gallery so the review UI can read the signed-in account. */}
+        <AuthProvider>
+          {/* Above the data source so a launched run's refresh signal reaches it. */}
+          <RunsRuntimeProvider>
+            <DesktopGallery />
+          </RunsRuntimeProvider>
+        </AuthProvider>
       </WorkersProvider>
     </BackendProvider>
   );

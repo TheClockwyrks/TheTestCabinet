@@ -19,6 +19,7 @@
 //! trusts every caller that can reach it.
 
 pub mod api;
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -85,11 +86,16 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     );
     let refresher = publisher.spawn();
 
+    // The client the auth middleware verifies bearer tokens against. Constructed
+    // once and shared; it holds only the auth service base URL.
+    let auth = Arc::new(test_cabinet_core::AccountsClient::new(config.auth_url.clone()));
+
     let bind = config.bind.clone();
     let state = AppState {
         db,
         store,
         publisher,
+        auth,
         config: Arc::new(config),
     };
     let router = api::router(state);

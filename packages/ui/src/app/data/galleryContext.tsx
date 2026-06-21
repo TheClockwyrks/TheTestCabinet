@@ -12,6 +12,7 @@ import type {
   ProgressCallback,
   ProofMedia,
   RunEventStreams,
+  StoredReview,
 } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import { extensionFor } from "./proofMedia";
@@ -108,9 +109,21 @@ export interface GalleryDataInput {
   localIds: ReadonlySet<string>;
   /**
    * Raw writeups keyed by run id — the `---\nrating: …\n---\n\n<body>` framing
-   * `parseWriteup` reads. Holds both published reviews and local previews.
+   * `parseWriteup` reads. Holds both published reviews and local previews. A run
+   * carrying more than one review is framed into an *aggregate* writeup here (the
+   * worst rating any reviewer gave each domain, the strictest checklist verdict,
+   * and the writeups concatenated) so the cards, leaderboard, and badges show the
+   * aggregate verdict. The individual reviews are carried separately in
+   * {@link reviews} for the run-detail page.
    */
   writeups: Readonly<Record<string, string>>;
+  /**
+   * The submitted reviews keyed by run id, each attributed to its author. Drives
+   * the run-detail page's per-reviewer breakdown and the aggregate rating/score.
+   * A pushed-but-unreviewed run (or one with no reviews) has none. Hosts that
+   * carry only the framed {@link writeups} (none today) may leave this empty.
+   */
+  reviews: Readonly<Record<string, StoredReview[]>>;
   /** True while the run list is still loading. */
   runsLoading: boolean;
   /** The test-case catalog. */
@@ -246,6 +259,14 @@ export interface GalleryData extends GalleryDataInput {
     override?: Readonly<Record<string, string>>,
   ): ParsedWriteup | undefined;
   /**
+   * The individual reviews submitted against a run, in submission order. Empty
+   * when the run has none (or the host carries only framed writeups). The
+   * run-detail page renders each reviewer's verdict and computes the aggregate
+   * rating ({@link aggregateRating}) and score ({@link aggregateScore}) from
+   * these.
+   */
+  reviewsFor(runId: string): StoredReview[];
+  /**
    * The run's submitted proof-of-implementation media, derived from its recorded
    * `validation.proofs` and resolved to loadable URLs via {@link proofMediaUrl}.
    * Each entry carries the recorded presence; `url` is null when the media cannot
@@ -285,12 +306,15 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, proofMediaUrl, assetMediaUrl, testCases } = value;
+    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases } = value;
     return {
       ...value,
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      reviewsFor(runId) {
+        return reviews[runId] ?? [];
       },
       reviewModelFor(subject) {
         const testCase = testCases.find((c) => c.slug === subject.testCaseSlug);

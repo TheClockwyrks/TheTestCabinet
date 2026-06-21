@@ -10,6 +10,7 @@ import {
 import {
   runs as publishedRuns,
   writeups as publishedWriteups,
+  reviews as publishedReviews,
   testCases as catalogTestCases,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
@@ -76,6 +77,11 @@ export function useStaticGallery(): GalleryDataInput {
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
 
+  // The published per-reviewer breakdown (the run-detail page's source). The site
+  // never has unpublished, multi-review local runs, so the snapshot's reviews are
+  // the whole of it.
+  const reviews = publishedReviews;
+
   // The Events tab's data source on the static site: a published run's normalized
   // event stream, emitted at build time as a per-run static asset by
   // vite-plugin-snapshot (raw harness output is never published). A run without
@@ -125,6 +131,7 @@ export function useStaticGallery(): GalleryDataInput {
     runs,
     localIds,
     writeups,
+    reviews,
     runsLoading: loading,
     testCases,
     testCasesUsingSamples,

@@ -27,7 +27,8 @@ translates HTTP requests into core calls and streams the results back:
   API so a caller can render progress remotely, exactly as the CLI prints them
   locally.
 - It produces the same [run record](/components/core/run-records/) a local run
-  would, and can [publish](/components/core/results/) on the same terms.
+  would, and can [push, review, and publish](/components/core/results/#lifecycle)
+  on the same terms.
 
 Because it is a [runner](/components/architecture/#runners-and-reporters), the
 worker's host needs a supported container runtime, and it resolves test case
@@ -52,9 +53,10 @@ rather than holding one request open for the whole run:
   [`worker-api/submit-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/submit-run-ack.schema.json).
 - `GET /runs` — list the runs this worker has **produced**: every
   [run record](/components/core/run-records/) it has written to its output
-  directory, newest first by finish time, each paired with a null review (a
-  worker keeps no review store — a run gains one only when published). The
-  consoles read this to surface produced-but-unpublished runs in the gallery.
+  directory, newest first by finish time, each paired with no reviews (a
+  worker keeps no review store — reviews live on the backend, attributed to the
+  account that wrote them). The consoles read this to surface
+  produced-but-unpushed runs in the gallery.
   Response schema:
   [`worker-api/produced-runs.schema.json`](https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json).
 - `GET /runs/active` — the runs this worker is **currently executing**, each by
@@ -114,15 +116,28 @@ rather than holding one request open for the whole run:
   is not delivered (the run still surfaces via `/runs` and drops out of
   `/runs/active`). Each event's `data` is a
   [`worker-api/notification.schema.json`](https://docs.testcabinet.ai/schema/worker-api/notification.schema.json).
-- `POST /publish` — [publish](/components/core/results/) a finished run on the
-  same terms a local `tcab publish` does (release the source repo, deploy the
-  build, submit the record + review + links to the
-  [backend](/components/backend/overview/)). A worker keeps no review store, so
-  the review (`rating`, `writeup`, `checklist`) is sent inline with the run id.
-  Request schema:
-  [`worker-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json);
-  response schema:
+- `POST /auth/register` and `POST /auth/login` — the worker **proxies** these to
+  the [auth service](/components/auth/overview/) so the consoles have a single
+  origin to talk to. Register creates an [account](/components/backend/overview/#accounts);
+  login returns the `{ token, account }` the console then presents on push, review,
+  and publish. The worker does not store the token — it just forwards the user's
+  bearer token onward to the backend on each mutating call below.
+- `POST /push` — the **release** half of the
+  [lifecycle](/components/core/results/#lifecycle): release a finished run's source
+  and build and store its record on the [backend](/components/backend/overview/)
+  **without** a review (`{ runId }`). The run is private but its build is playable
+  for review. The worker forwards the caller's bearer token to the backend.
+- `POST /review` — submit a [review](/components/core/results/#reviews) for a
+  pushed run (`{ runId, ratings, writeup, checklist }`); a worker keeps no review
+  store, so the review is sent inline and forwarded — with the caller's bearer
+  token, which attributes it to the account — to the backend's
+  `POST /runs/{id}/reviews`. Request schema:
+  [`worker-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json).
+- `POST /publish` — flip a pushed, reviewed run **public** (`{ runId }`),
+  forwarding the bearer token to the backend's `POST /runs/{id}/publish`. The
+  backend refuses a run with no review. Response schema:
   [`worker-api/publish-run-ack.schema.json`](https://docs.testcabinet.ai/schema/worker-api/publish-run-ack.schema.json).
+  Each of `push`, `review`, and `publish` requires a bearer token (`401` without).
 - `GET /healthz` — liveness/readiness and identity: the service `status`, the
   contract `version`, a `role` of `worker`, and the `backendUrl` this worker is
   bound to (so the UI can check a worker shares the backend it is itself pointed
@@ -133,10 +148,13 @@ On failure every endpoint returns the same `{ "error": { "code", "message" } }`
 envelope the backend uses, paired with an appropriate status. Schema:
 [`backend-api/error.schema.json`](https://docs.testcabinet.ai/schema/backend-api/error.schema.json).
 
-It resolves test-case definitions from, and publishes results to, the backend
-(`TCAB_BACKEND_URL`); it has no local
-checkout. Configuration is by environment variable (`TCAB_WORKER_BIND`,
-`TCAB_BACKEND_URL`, `TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`). Like the backend,
-there is **no
-app-level auth** — bind it to a private-network interface and let reachability be
-the access control.
+It resolves test-case definitions from, and pushes/reviews/publishes results to,
+the backend (`TCAB_BACKEND_URL`); it has no local checkout. It proxies account
+register/login to, and forwards bearer tokens against, the
+[auth service](/components/auth/overview/) (`TCAB_AUTH_URL`). Configuration is by
+environment variable (`TCAB_WORKER_BIND` — `8788` by default,`TCAB_BACKEND_URL`,
+`TCAB_AUTH_URL`, `TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`). Like the backend, the
+worker has no accounts of its own and stays on the private network; the bearer
+tokens it forwards are an identity layer carried *through* it to the backend, not
+a login the worker itself performs. Bind it to a private-network interface and let
+reachability remain the first line of access control.

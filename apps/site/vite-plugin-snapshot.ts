@@ -49,6 +49,11 @@ interface SnapshotRunSummary {
     testCaseSlug: string;
     testCaseVersion: string;
   };
+  // Aggregate verdict across the run's reviews: the worst rating any reviewer
+  // gave any domain, and how many reviews back it. Present on the index summary
+  // (the per-run file carries the full reviews). Optional for older snapshots.
+  rating?: string | null;
+  reviewCount?: number;
 }
 
 interface SnapshotReviewVerdict {
@@ -62,10 +67,16 @@ interface SnapshotDomainRating {
   rating: string;
 }
 
+// One review entry in a run's `reviews[]` array: the reviewer's verdict plus
+// attribution (the public snapshot exposes the display name and id, not the
+// username). A run can carry more than one.
 interface SnapshotReview {
+  reviewerId?: string;
+  reviewer?: string;
   ratings: SnapshotDomainRating[];
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
+  reviewedAt?: string | null;
 }
 
 // `runs/<run-id>.json`: the full run record plus its review and links, and the
@@ -76,7 +87,9 @@ interface SnapshotReview {
 interface SnapshotRunFile {
   schemaVersion: number;
   record: unknown; // a full RunRecord (camelCase, links populated)
-  review: SnapshotReview;
+  // Every review submitted against the run (one per reviewer). Only published
+  // runs appear in the snapshot, and the publish gate requires at least one.
+  reviews: SnapshotReview[];
   links?: { sourceRepo: string | null; playableBuild: string | null };
   events?: unknown; // a JSON array of normalized HarnessEvents, when present
   // The run's uploaded proof-of-implementation media, named by snapshot-relative
@@ -147,13 +160,28 @@ interface SnapshotDomain {
 
 // ---- The shape the app consumes (mirrors src/data/testCases.ts) -------------
 
+// One assembled review the app consumes (the gallery's `StoredReview`). The
+// public snapshot carries the display name + id, not the username.
+interface AssembledReview {
+  reviewerId: string;
+  reviewer: string;
+  ratings: SnapshotDomainRating[];
+  writeup: string;
+  checklist: SnapshotReviewVerdict[];
+  reviewedAt: string | null;
+}
+
 interface AssembledSnapshot {
   // Verbatim RunRecord blobs, newest first (the snapshot's `runs/<id>.json`
   // `record`). The app types these as RunRecord[].
   runs: unknown[];
-  // `writeups/<runId>` framing reconstructed from each run's review, keyed by
-  // run id — the same `---\nrating: …\n---\n\n<body>` form the app parses.
+  // `writeups/<runId>` framing reconstructed from each run's reviews (the
+  // *aggregate* writeup when there are several), keyed by run id — the same
+  // `---\nrating: …\n---\n\n<body>` form the app parses for the cards/badges.
   writeups: Record<string, string>;
+  // Each run's individual reviews, keyed by run id — the app's `reviewsFor(runId)`
+  // reads this for the run-detail per-reviewer breakdown and the aggregate score.
+  reviews: Record<string, AssembledReview[]>;
   // Test-case metadata, mapped to the app's TestCaseSummary shape.
   testCases: AssembledTestCase[];
   // Resolved proof media URLs, keyed by run id then by served file name
@@ -214,10 +242,29 @@ interface AssembledTestCase {
 const EMPTY: AssembledSnapshot = {
   runs: [],
   writeups: {},
+  reviews: {},
   testCases: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
 };
+
+// Rating tiers, ordered best to worst — the worst across reviewers/domains is the
+// run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
+const RATING_ORDER = ["flawless", "great", "scuffed", "broken"];
+
+// The worst (lowest) rating among `tiers`, or null when empty.
+function worstRating(tiers: string[]): string | null {
+  let worst: string | null = null;
+  let worstRank = -1;
+  for (const tier of tiers) {
+    const rank = RATING_ORDER.indexOf(tier);
+    if (rank > worstRank) {
+      worstRank = rank;
+      worst = tier;
+    }
+  }
+  return worst;
+}
 
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
 function joinUrl(base: string, key: string): string {
@@ -232,22 +279,68 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-// Reconstruct a writeup's `---\nrating.<domain>: …\n---\n\n<body>` framing from a
-// review, so the existing `parseWriteup` path is unchanged on the site side.
-// Per-domain ratings become `rating.<domain>: <tier>` lines and checklist
-// verdicts become `review.<id>: <status> [note]` lines, both of which
-// `parseWriteup` recovers.
-function frameWriteup(review: SnapshotReview): string {
-  const body = review.writeup ?? "";
-  const ratings = (review.ratings ?? []).map(
-    (r) => `rating.${r.domain}: ${r.rating}`,
-  );
-  const verdicts = (review.checklist ?? []).map((v) => {
-    const note = (v.note ?? "").replace(/\s+/g, " ").trim();
-    return `review.${v.id}: ${v.status}${note ? ` ${note}` : ""}`;
-  });
-  const frontmatter = [...ratings, ...verdicts].join("\n");
+// Reconstruct a single *aggregate* writeup's `---\nrating.<domain>: …\n---\n\n
+// <body>` framing from a run's reviews, so the existing `parseWriteup` path is
+// unchanged on the site side and the cards/badges show the aggregate verdict. The
+// aggregate rating for a domain is the worst any reviewer gave it; a checklist
+// item reads `pass` only when every reviewer who judged it passed it; the body
+// concatenates each reviewer's prose, attributed by display name. Mirrors
+// `frameReviews` in `@test-cabinet/ui`. Returns null for no reviews.
+function frameWriteup(reviews: SnapshotReview[]): string | null {
+  if (reviews.length === 0) return null;
+
+  const ratingsByDomain = new Map<string, string[]>();
+  for (const review of reviews) {
+    for (const r of review.ratings ?? []) {
+      const list = ratingsByDomain.get(r.domain) ?? [];
+      list.push(r.rating);
+      ratingsByDomain.set(r.domain, list);
+    }
+  }
+  const ratingLines: string[] = [];
+  for (const [domain, tiers] of ratingsByDomain) {
+    const worst = worstRating(tiers);
+    if (worst) ratingLines.push(`rating.${domain}: ${worst}`);
+  }
+
+  const statusesByItem = new Map<string, string[]>();
+  for (const review of reviews) {
+    for (const v of review.checklist ?? []) {
+      const list = statusesByItem.get(v.id) ?? [];
+      list.push(v.status);
+      statusesByItem.set(v.id, list);
+    }
+  }
+  const verdictLines: string[] = [];
+  for (const [id, statuses] of statusesByItem) {
+    const status = statuses.every((s) => s === "pass") ? "pass" : "fail";
+    verdictLines.push(`review.${id}: ${status}`);
+  }
+
+  const body = reviews
+    .map((review) => {
+      const text = (review.writeup ?? "").trim();
+      const who = review.reviewer ?? "Reviewer";
+      return text ? `**${who}**\n\n${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n---\n\n");
+
+  const frontmatter = [...ratingLines, ...verdictLines].join("\n");
   return `---\n${frontmatter}\n---\n\n${body}`;
+}
+
+// Map a snapshot review to the app's StoredReview shape, filling sensible
+// defaults for fields an older snapshot may omit.
+function toAssembledReview(review: SnapshotReview): AssembledReview {
+  return {
+    reviewerId: review.reviewerId ?? "",
+    reviewer: review.reviewer ?? "Reviewer",
+    ratings: review.ratings ?? [],
+    writeup: review.writeup ?? "",
+    checklist: review.checklist ?? [],
+    reviewedAt: review.reviewedAt ?? null,
+  };
 }
 
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
@@ -373,6 +466,7 @@ async function loadSnapshot(
 
   const runs: unknown[] = [];
   const writeups: Record<string, string> = {};
+  const reviews: Record<string, AssembledReview[]> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
@@ -384,8 +478,11 @@ async function loadSnapshot(
       joinUrl(base, `${index.runsPrefix}${summary.id}.json`),
     );
     runs.push(runFile.record);
-    if (runFile.review) {
-      writeups[summary.id] = frameWriteup(runFile.review);
+    const runReviews = runFile.reviews ?? [];
+    if (runReviews.length > 0) {
+      reviews[summary.id] = runReviews.map(toAssembledReview);
+      const framed = frameWriteup(runReviews);
+      if (framed !== null) writeups[summary.id] = framed;
     }
     // The run's proof media, keyed by served file name (the key's last segment),
     // resolved to absolute URLs the proof/review UI loads.
@@ -433,6 +530,7 @@ async function loadSnapshot(
   return {
     runs,
     writeups,
+    reviews,
     testCases: collapseCases(base, caseFiles),
     proofMediaUrls,
     assetMediaUrls,
@@ -444,6 +542,7 @@ function serialize(data: AssembledSnapshot): string {
     "// Generated at build time by vite-plugin-snapshot. Do not edit.",
     `export const runs = ${JSON.stringify(data.runs)};`,
     `export const writeups = ${JSON.stringify(data.writeups)};`,
+    `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,

@@ -3,16 +3,19 @@ title: Run Records
 ---
 
 A run record is the data contract produced by every run. It is what the testing
-harness emits, what [publishing](/components/core/results/#publishing) uploads
-to the [backend](/components/backend/overview/), and what the
+harness emits, what [pushing a run](/components/core/results/#push) uploads to
+the [backend](/components/backend/overview/), and what the
 [site](/components/site/overview/) ultimately consumes. Every other part of the
 system is built around producing or reading this record, so its shape is
-deliberately fixed.
+deliberately fixed. A run's [reviews](/components/core/results/#reviews) — the
+hand-written assessments a run accumulates before it is published — are
+**not** part of this contract; they are authored separately and travel alongside
+the record.
 
 A run record must be serialized in a machine readable format such as JSON and
 stored with the run's other artifacts. It is written locally beside those
 artifacts when a run finishes (see [Co-located Run Files](#co-located-run-files))
-and uploaded to the backend when the run is published.
+and uploaded to the backend when the run is [pushed](/components/core/results/#push).
 
 Schema: [`core/run-record.schema.json`](https://docs.testcabinet.ai/schema/core/run-record.schema.json).
 The [backend's API and snapshot](/components/backend/api/) contracts reference
@@ -100,7 +103,9 @@ The harness version is not duplicated here; it lives in the subject.
 ### Links
 
 - A link to the public repository holding the run's generated source.
-- A link to the playable build, when one has been published.
+- A link to the playable build, when one has been released (a run's build is
+  released and playable at [push](/components/core/results/#push), before the run
+  is published).
 
 ### Status
 
@@ -114,17 +119,21 @@ artifacts:
 
 - `run-record.json` — the run record described above.
 - `implementation/` — a copy of the produced working tree. Any proof-of-
-  implementation files the build wrote live here at their declared `dest`; on
-  publish, each present proof is uploaded and served back as per-run media
-  (`/runs/<id>/proof/<proof-id>.<ext>`) so the reviewer UI can show the submitted
-  evidence beside the expected reference.
+  implementation files the build wrote live here at their declared `dest`; when
+  the run is [pushed](/components/core/results/#push), each present proof is
+  uploaded and served back as per-run media (`/runs/<id>/proof/<proof-id>.<ext>`)
+  so the reviewer UI can show the submitted evidence beside the expected
+  reference.
 - `raw.jsonl` — the harness's raw output, one JSON object per captured line in
   arrival order, each tagging the [stream](/components/core/events/) the line
   came from and the line's verbatim text.
 - `events.jsonl` — the [normalized events](/components/core/events/) translated
   from that raw output, one event per line, in the order they were produced.
-- `writeup.md` — the run's [review](/components/core/results/#reviews), when one
-  has been written.
+- `writeup.md` — a local [review](/components/core/results/#reviews) of the run,
+  when one has been written. This is the operator's own review, used by the solo
+  [`tcab publish`](/components/core/results/#tcab-publish-the-solo-path) path; a
+  pushed run can also accumulate further reviews from other accounts, which are
+  held on the backend rather than beside the run on disk.
 
 Recording the raw output beside its translation makes a run's event
 classification auditable: replaying `raw.jsonl` through the harness layer's

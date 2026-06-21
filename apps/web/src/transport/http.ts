@@ -6,6 +6,13 @@ export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
 }
 
+// Build the `Authorization: Bearer <token>` header for a mutating call, or an
+// empty object when there is no token (an unauthenticated read). Merge it into a
+// request's headers so any helper can attach the current account's token.
+export function bearer(token?: string | null): Record<string, string> {
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 export async function getJson<T>(base: string, path: string): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
     headers: { accept: "application/json" },
@@ -14,14 +21,22 @@ export async function getJson<T>(base: string, path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+// POST a JSON body. `token`, when given, is sent as `Authorization: Bearer
+// <token>` — every mutating worker call (push/review/publish) supplies it; the
+// account register/login calls do not (they produce the token).
 export async function postJson<T>(
   base: string,
   path: string,
   body: unknown,
+  token?: string | null,
 ): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...bearer(token),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await httpError(res);

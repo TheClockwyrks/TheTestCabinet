@@ -4,8 +4,10 @@ title: HTTP API
 
 The backend exposes a single HTTP API that every other component talks to: the
 [runners](/components/architecture/#runners-and-reporters) resolve test case
-definitions through it, the operator's component publishes runs to it, and
-reporters read published runs back from it. Container images are **not** part of
+definitions through it, the operator's component pushes, reviews, and publishes
+runs to it, and reporters read published runs back from it. User identity is **not**
+served here — it lives in the standalone [auth service](/components/auth/overview/),
+whose tokens this API verifies. Container images are **not** part of
 this API — a runner pulls them from its own configured registry (see
 [Container images](#container-images)). This page is the authoritative contract
 for that interface — the cross-component surface. How the backend stores what it
@@ -27,11 +29,16 @@ this contract.
 - Ratings are the four tiers defined in
   [Reviews](/components/core/results/#reviews):
   `flawless`, `great`, `scuffed`, `broken`.
-- There is **no application-level authentication.** Reachability is the access
-  control — the backend sits on a private network and trusts every caller that
-  can reach it (see [Authentication](/components/backend/overview/#authentication)).
+- **Reads are open; mutations require a bearer token.** Reachability is the first
+  line of access control — the backend sits on a private network — but the
+  mutating run endpoints (push, review, publish) additionally require an
+  `Authorization: Bearer <token>` header identifying the acting
+  [account](/components/backend/overview/#accounts), which the backend verifies
+  against the [auth service](/components/auth/overview/). A missing or invalid
+  token is a `401`. Reads (definitions, runs, snapshot refresh) need no token. See
+  [Authentication](/components/backend/overview/#authentication).
 - Errors use one envelope across every endpoint, paired with an appropriate HTTP
-  status (`400`, `404`, `409`, `422`, `500`):
+  status (`400`, `401`, `404`, `409`, `422`, `500`):
 
   ```jsonc
   { "error": { "code": "string", "message": "string" } }
@@ -199,31 +206,35 @@ self-hosted one) and with no backend at all. See
 [Execution](/components/core/execution/#containerization) for how a runner
 resolves and records the image it ran.
 
-## Publishing and reading runs
+## Pushing, reviewing, publishing, and reading runs
 
-### `POST /runs`
+A run reaches the gallery through three mutating steps — **push** the run, attach
+one or more **reviews**, then **publish** it (the
+[lifecycle](/components/core/results/#lifecycle)). Each of the three requires a
+bearer token (`401` without). Reads need none.
 
-Submit a published run: its [run record](/components/core/run-records/), its
-[review](/components/core/results/#reviews), and the resolved links. The
-operator's component has already released the source repo and deployed the build
-before calling, so it sends the captured URLs; the backend writes the
-authoritative links onto the stored record. The call is **idempotent on the
-record's id** — re-publishing an existing run updates its review, links, and
-record blob without changing when it was first published.
+### `POST /runs` — push
+
+**Push** a finished run: its [run record](/components/core/run-records/) and the
+resolved links — **no review**. The operator's component has already released the
+source repo and deployed the build before calling, so it sends the captured URLs;
+the backend writes the authoritative links onto the stored record. A pushed run is
+stored **privately** — it is *not* in the public snapshot, but its build is
+playable so it can be reviewed. The call is **idempotent on the record's id** —
+re-pushing updates the links and record blob without changing when it was first
+pushed and without disturbing any reviews already attached. Requires a bearer
+token.
 
 ```jsonc
 {
   "record": { "…": "a full RunRecord; its links MAY be empty here" },
-  // `checklist` is optional: the reviewer's verdicts on the case's declared
-  // reviewer checklist items (see Reviews). Omit it when the case declares none.
-  "review": { "rating": "great", "writeup": "Plays well, but…", "checklist": [] },
   "links": {
     "sourceRepo": "https://github.com/TheClockwyrks/tcab-pong-claude-…",
     "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
   },
   // The run's recorded normalized event stream, stored and re-emitted to the
-  // snapshot for the run's Events tab. Optional; an array of HarnessEvents. Raw
-  // harness output is never published.
+  // snapshot for the run's Events tab once published. Optional; an array of
+  // HarnessEvents. Raw harness output is never published.
   "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
 }
 ```
@@ -233,22 +244,65 @@ verbatim — not a host constructed from the run id and project, which Cloudflar
 branch-alias sanitization may truncate (see
 [Hosting](/components/site/overview/#hosting)).
 
-Publishing **refuses a run without a review** (`422`): the rating must be a valid
-tier and the writeup must be non-empty. The response reports the run id, whether
-it was newly published, and whether a snapshot refresh was queued or coalesced
-into a pending one. Schema:
+The response reports the run id and whether it was newly stored. Schema:
 [`backend-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/backend-api/publish-run-request.schema.json).
+
+### `POST /runs/{id}/reviews` — submit a review
+
+Submit a [review](/components/core/results/#reviews) for a pushed run: the
+per-domain `ratings`, the markdown `writeup`, and the checklist verdicts. The
+review is **attributed to the account the bearer token resolves to** — the
+reviewer identity is taken from the token, not the body. A run may carry **many
+reviews, one per account**; re-submitting from the same account replaces that
+account's own review. `404` if the run is unknown; `422` if a declared domain is
+unrated or a declared checklist item lacks a verdict; `401` without a token.
+Schema:
+[`backend-api/review.schema.json`](https://docs.testcabinet.ai/schema/backend-api/review.schema.json).
+
+### `POST /runs/{id}/publish` — publish
+
+Flip a pushed run **public** — the gate that puts it in the snapshot and the
+gallery. **Refuses a run that has no review** (`422`). Idempotent: re-publishing
+an already-published run is a no-op success. The response reports the run id,
+whether it was newly published, and whether a snapshot refresh was queued or
+coalesced into a pending one. Requires a bearer token.
 
 ### `GET /runs`
 
-List stored published runs, newest first, paginated by a `before` cursor and a
-`limit`. The response carries the runs and the cursor for the next page (`null`
-when there are no more). Used by reporters.
+List stored runs, newest first, paginated by a `before` cursor and a `limit`. A
+`state` query parameter selects which runs:
+
+- `state=published` (the **default**) — published runs only, for reporters and
+  the public-facing views.
+- `state=review` — the **reviewer worklist**: pushed runs awaiting review,
+  including those not yet published, so a reviewer can find runs to assess.
+
+The response carries the runs and the cursor for the next page (`null` when there
+are no more).
 
 ### `GET /runs/{id}`
 
-One stored run: its record (with links populated), its review, and its links.
-`404` if unknown.
+One stored run, as `{ record, reviews, published, links }`: its record (with
+links populated), the **array** of reviews it carries (each with its reviewer
+identity), whether it is `published`, and its links. `404` if unknown.
+
+```jsonc
+{
+  "record": { "…": "full RunRecord, links populated" },
+  "published": false,
+  "reviews": [
+    {
+      "reviewerId": "acct_7yq…",
+      "reviewer": "Ada",
+      "ratings": [{ "domain": "single-player", "rating": "great" }],
+      "writeup": "Plays well, but…",
+      "checklist": [],
+      "reviewedAt": "2026-06-21T18:00:00Z"
+    }
+  ],
+  "links": { "sourceRepo": "https://github.com/…", "playableBuild": "https://…" }
+}
+```
 
 ### `GET /runs/{id}/events`
 

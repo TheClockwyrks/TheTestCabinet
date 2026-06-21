@@ -128,6 +128,7 @@ web_modules/
 .env
 .env.runner
 .env.backend
+.env.auth
 .env.worker
 .env.site
 .env.development.local

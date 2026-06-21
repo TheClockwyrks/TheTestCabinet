@@ -37,6 +37,19 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }
 
+    /// `401 Unauthorized` with code `unauthorized` — an absent, invalid, or
+    /// expired bearer token on a mutating endpoint.
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
+    }
+
+    /// `502 Bad Gateway` with code `auth_unavailable` — the auth service could
+    /// not be reached to verify a token (distinct from a *rejected* token, which
+    /// is a `401`).
+    pub fn auth_unavailable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
+    }
+
     /// `400 Bad Request` with code `bad_request`.
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, "bad_request", message)

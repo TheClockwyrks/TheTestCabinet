@@ -18,9 +18,9 @@ use std::path::{Path, PathBuf};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
-    EntityTrait, FromQueryResult, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, Select, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
+    DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
@@ -30,19 +30,25 @@ use test_cabinet_entities::{review, run, run_link, snapshot_state, tournament};
 
 use crate::error::Result;
 
-/// A published run as stored: the full record, its review, and its links. This
-/// is the shape `GET /runs/{id}` and the snapshot's per-run file are built from.
+/// A stored run: the full record, its reviews, and its links. This is the shape
+/// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
+/// pushed (private, [`published`](Self::published) false) or published; it may
+/// carry zero reviews (while pending) or many.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredRun {
     /// The full run record, links populated.
     pub record: RunRecord,
-    /// The review (rating + writeup body).
-    pub review: StoredReview,
+    /// The run's reviews, oldest first. Empty while the run is still pending
+    /// review; one per reviewing account once reviewed. The run's overall rating
+    /// is the worst across them and its score the average.
+    pub reviews: Vec<StoredReview>,
     /// The resolved links.
     pub links: RunLinks,
-    /// RFC 3339 of when this run was first published (the snapshot card's
-    /// `publishedAt`). Not part of the run record itself.
-    pub published_at: String,
+    /// Whether the run is published (and thus eligible for the public snapshot).
+    pub published: bool,
+    /// RFC 3339 of when this run was first published, or `None` while it is only
+    /// pushed. Not part of the run record itself.
+    pub published_at: Option<String>,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
     /// array string (the `run.events_json` column). `None` for a run that
     /// recorded none. Re-emitted into the snapshot and served by
@@ -61,11 +67,13 @@ pub struct StoredTournament {
     pub published_at: String,
 }
 
-/// A run's review as stored.
+/// A run's review as stored, attributed to the account that wrote it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReview {
-    /// The reviewer's per-domain ratings. The run's overall rating is the worst
-    /// across them.
+    /// The account that wrote the review.
+    pub reviewer: Reviewer,
+    /// The reviewer's per-domain ratings. This review's overall rating is the
+    /// worst across them; the run's is the worst across all its reviews.
     pub ratings: Vec<DomainRating>,
     /// The markdown writeup body.
     pub writeup: String,
@@ -73,12 +81,43 @@ pub struct StoredReview {
     /// a JSON array in the `review.checklist` column. Empty for a case with no
     /// items.
     pub checklist: Vec<ReviewVerdict>,
+    /// RFC 3339 of when the review was submitted (or last updated).
+    pub reviewed_at: String,
 }
 
-/// The outcome of publishing a run into the store.
+/// The reviewing account a [`StoredReview`] is attributed to, denormalized from
+/// the verified bearer token at submission so the snapshot is self-contained
+/// (accounts live in the auth service's separate database).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reviewer {
+    /// The account id (from the auth service).
+    pub user_id: String,
+    /// The account's login handle.
+    pub username: String,
+    /// The account's human-facing display name.
+    pub display_name: String,
+}
+
+/// The outcome of publishing a tournament into the store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublishOutcome {
-    /// Whether the run was newly inserted (vs. an idempotent re-publish).
+    /// Whether the record was newly inserted (vs. an idempotent re-publish).
+    pub newly_published: bool,
+}
+
+/// The outcome of pushing a run into the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PushOutcome {
+    /// Whether the run was newly stored (vs. an idempotent re-push of an
+    /// already-stored run).
+    pub newly_pushed: bool,
+}
+
+/// The outcome of publishing a run (flipping it public).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishRunOutcome {
+    /// Whether the run went from pending to published (vs. an idempotent
+    /// re-publish of an already-published run).
     pub newly_published: bool,
 }
 
@@ -150,42 +189,38 @@ impl Db {
         Ok(())
     }
 
-    /// Publish a run: upsert the record (verbatim JSON + lifted columns), its
-    /// review, and its links in one transaction. Idempotent on `record.id`: a
-    /// re-publish updates the review, links, and the record blob (with links
-    /// rewritten on) but **keeps** the original `published_at`.
-    pub async fn publish(
+    /// Push a run: upsert the record (verbatim JSON + lifted columns) and its
+    /// links in one transaction, **without** a review. The run starts
+    /// unpublished, so it is private (not in the public snapshot) but its build
+    /// is available for a reviewer to play. Idempotent on `record.id`: a re-push
+    /// updates the record blob, lifted columns, links, and events but **preserves**
+    /// the published flag and `published_at`. Marks the snapshot dirty only when
+    /// the run is already published (an unpublished run is not in the snapshot, so
+    /// re-pushing it changes nothing public).
+    pub async fn push(
         &self,
         record: &RunRecord,
-        review: &StoredReview,
         links: &RunLinks,
-        published_at: &str,
         events_json: Option<&str>,
-    ) -> Result<PublishOutcome> {
+    ) -> Result<PushOutcome> {
         // The stored record always carries the resolved links, so the snapshot's
         // record blob and its `links` sibling never disagree.
         let mut record = record.clone();
         record.links = links.clone();
         let record_json = serde_json::to_string(&record)?;
-        let ratings_json = serde_json::to_string(&review.ratings)?;
-        let checklist_json = serde_json::to_string(&review.checklist)?;
 
         let txn = self.conn.begin().await?;
 
-        let existing_published_at = run::Entity::find_by_id(record.id.clone())
-            .one(&txn)
-            .await?
-            .map(|model| model.published_at);
-        let newly_published = existing_published_at.is_none();
-        // Preserve the first publish's timestamp on re-publish.
-        let effective_published_at =
-            existing_published_at.unwrap_or_else(|| published_at.to_string());
+        let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
+        let newly_pushed = existing.is_none();
+        let was_published = existing.as_ref().map(|model| model.published).unwrap_or(false);
+        let existing_published_at = existing.and_then(|model| model.published_at);
 
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
             started_at: Set(record.started_at.clone()),
             finished_at: Set(record.finished_at.clone()),
-            published_at: Set(effective_published_at),
+            published_at: Set(existing_published_at),
             test_case_slug: Set(record.subject.test_case_slug.clone()),
             test_case_version: Set(record.subject.test_case_version.clone()),
             variant: Set(record.subject.variant.clone()),
@@ -194,12 +229,13 @@ impl Db {
             model_id: Set(record.subject.model_id.clone()),
             run_state: Set(run_state_str(record.status.state).to_string()),
             loaded: Set(record.validation.loaded),
+            published: Set(was_published),
             record_json: Set(record_json),
             events_json: Set(events_json.map(|s| s.to_string())),
         })
         .on_conflict(
-            // Re-publish updates everything except the id and the preserved
-            // `published_at` (the latter is already the original value here).
+            // Re-push updates the record and lifted columns but never the publish
+            // state (`Published`/`PublishedAt`), which only `publish` changes.
             OnConflict::column(run::Column::Id)
                 .update_columns([
                     run::Column::StartedAt,
@@ -214,24 +250,6 @@ impl Db {
                     run::Column::Loaded,
                     run::Column::RecordJson,
                     run::Column::EventsJson,
-                ])
-                .to_owned(),
-        )
-        .exec(&txn)
-        .await?;
-
-        review::Entity::insert(review::ActiveModel {
-            run_id: Set(record.id.clone()),
-            ratings: Set(ratings_json),
-            writeup: Set(review.writeup.clone()),
-            checklist: Set(checklist_json),
-        })
-        .on_conflict(
-            OnConflict::column(review::Column::RunId)
-                .update_columns([
-                    review::Column::Ratings,
-                    review::Column::Writeup,
-                    review::Column::Checklist,
                 ])
                 .to_owned(),
         )
@@ -254,36 +272,147 @@ impl Db {
         .exec(&txn)
         .await?;
 
-        // Mark the snapshot dirty within the same transaction so a publish and
-        // its coalescing flag commit atomically.
+        // Re-pushing an already-published run changes its public record, so mark
+        // the snapshot dirty; pushing a pending run does not (it is not public).
+        if was_published {
+            set_dirty(&txn).await?;
+        }
+
+        txn.commit().await?;
+        Ok(PushOutcome { newly_pushed })
+    }
+
+    /// Submit a review for a stored run, attributed to `review.reviewer`. An
+    /// account reviews a run at most once: re-submitting from the same account
+    /// updates that review rather than adding another. Returns the run's current
+    /// published state so the caller can decide whether the public snapshot needs
+    /// refreshing. Errors with [`crate::error::BackendError::NotFound`] when no
+    /// run with `run_id` is stored.
+    pub async fn add_review(&self, run_id: &str, review: &StoredReview) -> Result<bool> {
+        let ratings_json = serde_json::to_string(&review.ratings)?;
+        let checklist_json = serde_json::to_string(&review.checklist)?;
+
+        let txn = self.conn.begin().await?;
+
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+
+        // Reuse the existing review id for this (run, reviewer) pair so a
+        // re-submission updates in place; mint a fresh id for a first review.
+        let existing = review::Entity::find()
+            .filter(review::Column::RunId.eq(run_id))
+            .filter(review::Column::ReviewerUserId.eq(&review.reviewer.user_id))
+            .one(&txn)
+            .await?;
+        let id = existing
+            .map(|model| model.id)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        review::Entity::insert(review::ActiveModel {
+            id: Set(id),
+            run_id: Set(run_id.to_string()),
+            reviewer_user_id: Set(review.reviewer.user_id.clone()),
+            reviewer_username: Set(review.reviewer.username.clone()),
+            reviewer_display_name: Set(review.reviewer.display_name.clone()),
+            ratings: Set(ratings_json),
+            writeup: Set(review.writeup.clone()),
+            checklist: Set(checklist_json),
+            reviewed_at: Set(review.reviewed_at.clone()),
+        })
+        .on_conflict(
+            OnConflict::column(review::Column::Id)
+                .update_columns([
+                    review::Column::ReviewerUsername,
+                    review::Column::ReviewerDisplayName,
+                    review::Column::Ratings,
+                    review::Column::Writeup,
+                    review::Column::Checklist,
+                    review::Column::ReviewedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&txn)
+        .await?;
+
+        // A new/updated review changes a published run's aggregate rating and
+        // score, so refresh the snapshot; a pending run is not public.
+        if run.published {
+            set_dirty(&txn).await?;
+        }
+
+        txn.commit().await?;
+        Ok(run.published)
+    }
+
+    /// Publish a stored run: flip it public. Refused with
+    /// [`crate::error::BackendError::Unprocessable`] unless the run has at least
+    /// one review, and [`crate::error::BackendError::NotFound`] when no run with
+    /// `run_id` is stored. Idempotent: re-publishing an already-published run
+    /// preserves its original `published_at`. Stamps `published_at` with
+    /// `published_at` on the first publish.
+    pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
+        let txn = self.conn.begin().await?;
+
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+
+        let review_count = review::Entity::find()
+            .filter(review::Column::RunId.eq(run_id))
+            .count(&txn)
+            .await?;
+        if review_count == 0 {
+            return Err(crate::error::BackendError::Unprocessable(format!(
+                "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
+            )));
+        }
+
+        let newly_published = !run.published;
+        // Preserve the first publish's timestamp on re-publish.
+        let effective_published_at = run
+            .published_at
+            .clone()
+            .unwrap_or_else(|| published_at.to_string());
+
+        let mut active = run.into_active_model();
+        active.published = Set(true);
+        active.published_at = Set(Some(effective_published_at));
+        active.update(&txn).await?;
+
         set_dirty(&txn).await?;
 
         txn.commit().await?;
-        Ok(PublishOutcome { newly_published })
+        Ok(PublishRunOutcome { newly_published })
     }
 
-    /// Fetch one stored run by id.
+    /// Fetch one stored run by id (published or pending).
     pub async fn get_run(&self, id: &str) -> Result<Option<StoredRun>> {
-        stored_run_query()
-            .filter(run::Column::Id.eq(id))
-            .into_model::<StoredRunRow>()
+        let run = run::Entity::find_by_id(id.to_string())
             .one(&self.conn)
-            .await?
-            .map(StoredRunRow::into_stored_run)
-            .transpose()
+            .await?;
+        let Some(run) = run else {
+            return Ok(None);
+        };
+        Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
-    /// List stored runs newest-first (by `published_at`), paginated by a
-    /// `published_at` cursor. Returns at most `limit` runs and the next cursor
-    /// (the last row's `published_at`) when more may remain.
-    pub async fn list_runs(
+    /// List **published** runs newest-first (by `published_at`), paginated by a
+    /// `published_at` cursor. This is the public read side; pending runs never
+    /// appear. Returns at most `limit` runs and the next cursor when more remain.
+    pub async fn list_published(
         &self,
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
-        // Fetch one extra row to decide whether a next cursor exists.
         let fetch = limit.saturating_add(1);
-        let mut query = stored_run_query();
+        let mut query = run::Entity::find().filter(run::Column::Published.eq(true));
         if let Some(before) = before {
             query = query.filter(run::Column::PublishedAt.lt(before));
         }
@@ -291,42 +420,121 @@ impl Db {
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .into_model::<StoredRunRow>()
             .all(&self.conn)
             .await?;
 
-        let mut runs = rows
-            .into_iter()
-            .map(StoredRunRow::into_stored_run)
-            .collect::<Result<Vec<_>>>()?;
-
-        // More rows than the page size means a next cursor exists; drop the
-        // probe row and cursor on the last returned run's timestamp.
+        let mut runs = self.assemble(rows).await?;
         let next_before = if runs.len() > limit {
             runs.truncate(limit);
-            runs.last().map(|run| run.published_at.clone())
+            runs.last().and_then(|run| run.published_at.clone())
         } else {
             None
         };
         Ok((runs, next_before))
     }
 
-    /// Load every stored run, newest-first, for full snapshot regeneration.
-    pub async fn all_runs(&self) -> Result<Vec<StoredRun>> {
-        let rows = stored_run_query()
-            .order_by_desc(run::Column::PublishedAt)
+    /// List **all** runs (pending and published) newest-first by `finished_at`,
+    /// paginated by a `finished_at` cursor. This is the reviewer's worklist: it
+    /// includes runs awaiting review, each carrying its current reviews and its
+    /// published flag.
+    pub async fn list_for_review(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        let fetch = limit.saturating_add(1);
+        let mut query = run::Entity::find();
+        if let Some(before) = before {
+            query = query.filter(run::Column::FinishedAt.lt(before));
+        }
+        let rows = query
+            .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
-            .into_model::<StoredRunRow>()
+            .limit(fetch as u64)
             .all(&self.conn)
             .await?;
-        rows.into_iter()
-            .map(StoredRunRow::into_stored_run)
-            .collect()
+
+        let mut runs = self.assemble(rows).await?;
+        let next_before = if runs.len() > limit {
+            runs.truncate(limit);
+            runs.last().map(|run| run.record.finished_at.clone())
+        } else {
+            None
+        };
+        Ok((runs, next_before))
     }
 
-    /// The total number of published runs.
+    /// Load every **published** run, newest-first, for full snapshot
+    /// regeneration. Pending (unpublished) runs are excluded — the public
+    /// snapshot only ever contains published runs.
+    pub async fn all_published(&self) -> Result<Vec<StoredRun>> {
+        let rows = run::Entity::find()
+            .filter(run::Column::Published.eq(true))
+            .order_by_desc(run::Column::PublishedAt)
+            .order_by_desc(run::Column::Id)
+            .all(&self.conn)
+            .await?;
+        self.assemble(rows).await
+    }
+
+    /// The total number of published runs (the count that lands in the snapshot).
     pub async fn run_count(&self) -> Result<i64> {
-        Ok(run::Entity::find().count(&self.conn).await? as i64)
+        Ok(run::Entity::find()
+            .filter(run::Column::Published.eq(true))
+            .count(&self.conn)
+            .await? as i64)
+    }
+
+    /// Assemble [`StoredRun`]s from `run` rows: batch-load their links and reviews
+    /// and stitch them in. Keeps the per-run review fan-out to two queries total
+    /// regardless of page size.
+    async fn assemble(&self, runs: Vec<run::Model>) -> Result<Vec<StoredRun>> {
+        if runs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<String> = runs.iter().map(|run| run.id.clone()).collect();
+
+        let mut link_map: std::collections::HashMap<String, run_link::Model> = run_link::Entity::find()
+            .filter(run_link::Column::RunId.is_in(ids.clone()))
+            .all(&self.conn)
+            .await?
+            .into_iter()
+            .map(|link| (link.run_id.clone(), link))
+            .collect();
+
+        let mut review_map: std::collections::HashMap<String, Vec<StoredReview>> =
+            std::collections::HashMap::new();
+        let reviews = review::Entity::find()
+            .filter(review::Column::RunId.is_in(ids))
+            .order_by_asc(review::Column::ReviewedAt)
+            .order_by_asc(review::Column::Id)
+            .all(&self.conn)
+            .await?;
+        for review in reviews {
+            let run_id = review.run_id.clone();
+            review_map
+                .entry(run_id)
+                .or_default()
+                .push(stored_review(review)?);
+        }
+
+        let mut out = Vec::with_capacity(runs.len());
+        for run in runs {
+            let record: RunRecord = serde_json::from_str(&run.record_json)?;
+            let link = link_map.remove(&run.id);
+            out.push(StoredRun {
+                record,
+                reviews: review_map.remove(&run.id).unwrap_or_default(),
+                links: RunLinks {
+                    source_repo: link.as_ref().and_then(|l| l.source_repo.clone()),
+                    playable_build: link.and_then(|l| l.playable_build.clone()),
+                },
+                published: run.published,
+                published_at: run.published_at,
+                events_json: run.events_json,
+            });
+        }
+        Ok(out)
     }
 
     /// Publish a tournament: upsert its verbatim `TournamentRecord` JSON plus the
@@ -487,57 +695,22 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     Ok(())
 }
 
-/// The shared joined projection every `StoredRun` query selects: the eight
-/// columns of [`StoredRunRow`], from `run` joined to its `review` and `run_link`.
-fn stored_run_query() -> Select<run::Entity> {
-    run::Entity::find()
-        .select_only()
-        .column(run::Column::RecordJson)
-        .column(review::Column::Ratings)
-        .column(review::Column::Writeup)
-        .column(run_link::Column::SourceRepo)
-        .column(run_link::Column::PlayableBuild)
-        .column(run::Column::PublishedAt)
-        .column(review::Column::Checklist)
-        .column(run::Column::EventsJson)
-        .join(JoinType::InnerJoin, run::Relation::Review.def())
-        .join(JoinType::InnerJoin, run::Relation::RunLink.def())
-}
-
-/// A joined row from [`stored_run_query`], decoded into a [`StoredRun`].
-#[derive(FromQueryResult)]
-struct StoredRunRow {
-    record_json: String,
-    ratings: String,
-    writeup: String,
-    source_repo: Option<String>,
-    playable_build: Option<String>,
-    published_at: String,
-    checklist: String,
-    events_json: Option<String>,
-}
-
-impl StoredRunRow {
-    /// Parse the JSON-backed columns into the in-memory [`StoredRun`].
-    fn into_stored_run(self) -> Result<StoredRun> {
-        let record: RunRecord = serde_json::from_str(&self.record_json)?;
-        let ratings: Vec<DomainRating> = serde_json::from_str(&self.ratings)?;
-        let checklist: Vec<ReviewVerdict> = serde_json::from_str(&self.checklist)?;
-        Ok(StoredRun {
-            record,
-            review: StoredReview {
-                ratings,
-                writeup: self.writeup,
-                checklist,
-            },
-            links: RunLinks {
-                source_repo: self.source_repo,
-                playable_build: self.playable_build,
-            },
-            published_at: self.published_at,
-            events_json: self.events_json,
-        })
-    }
+/// Decode a `review` row into the in-memory [`StoredReview`], parsing its
+/// JSON-backed ratings/checklist columns.
+fn stored_review(model: review::Model) -> Result<StoredReview> {
+    let ratings: Vec<DomainRating> = serde_json::from_str(&model.ratings)?;
+    let checklist: Vec<ReviewVerdict> = serde_json::from_str(&model.checklist)?;
+    Ok(StoredReview {
+        reviewer: Reviewer {
+            user_id: model.reviewer_user_id,
+            username: model.reviewer_username,
+            display_name: model.reviewer_display_name,
+        },
+        ratings,
+        writeup: model.writeup,
+        checklist,
+        reviewed_at: model.reviewed_at,
+    })
 }
 
 /// Decode a `tournament` row into the in-memory [`StoredTournament`].

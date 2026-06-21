@@ -137,3 +137,41 @@ export function scoreChecklist(
   }
   return { earned, total };
 }
+
+/**
+ * A run's aggregate score across all of its reviews: the mean weight earned over
+ * the shared total. A run can carry more than one review; the declared checklist
+ * (and so the total) is the same for each, so `earned` is averaged and is
+ * therefore fractional. Mirrors `AggregateScore` in the Rust core.
+ */
+export interface AggregateScore {
+  /** The mean weight earned across the run's reviews. */
+  earned: number;
+  /** The total weight available — identical across the run's reviews. */
+  total: number;
+  /** How many reviews the average is taken over. */
+  reviews: number;
+}
+
+/**
+ * The aggregate score across a run's per-review {@link Score}s: the mean weight
+ * earned over the shared total, or null when there are no reviews. Mirrors
+ * `aggregate_score` in the Rust core.
+ */
+export function aggregateScore(scores: readonly Score[]): AggregateScore | null {
+  if (scores.length === 0) return null;
+  const total = scores.reduce((max, s) => Math.max(max, s.total), 0);
+  const earned = scores.reduce((sum, s) => sum + s.earned, 0) / scores.length;
+  return { earned, total, reviews: scores.length };
+}
+
+/**
+ * The aggregate overall rating across a run's reviews: the worst (lowest) rating
+ * any reviewer gave any domain, or null when there are none. Each entry is one
+ * review's per-domain ratings. Mirrors `aggregate_rating` in the Rust core.
+ */
+export function aggregateRating(
+  reviews: readonly (readonly DomainRating[])[],
+): Rating | null {
+  return worstRating(reviews.flatMap((ratings) => ratings.map((r) => r.rating)));
+}

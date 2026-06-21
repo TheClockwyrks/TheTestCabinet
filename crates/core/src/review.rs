@@ -255,6 +255,63 @@ pub struct Score {
     pub total: u32,
 }
 
+/// A run's aggregate score across all of its reviews: the mean point weight
+/// earned over the (shared) total available.
+///
+/// A run can carry more than one review (different people judging the same
+/// build). The declared checklist — and therefore the [`Score::total`] — is the
+/// same for every review of a run's variant, so the aggregate keeps that total
+/// and averages only the weight each reviewer awarded. `earned` is therefore
+/// fractional, sitting between the harshest and most generous review.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AggregateScore {
+    /// The mean weight earned across the run's reviews.
+    pub earned: f64,
+    /// The total weight available — identical across the run's reviews.
+    pub total: u32,
+    /// How many reviews the average is taken over.
+    pub reviews: u32,
+}
+
+/// The aggregate score across a run's per-review [`Score`]s: the mean weight
+/// earned over the shared total. `None` when the run has no reviews — the
+/// condition the publish gate forbids, so a published run always aggregates.
+///
+/// The total is taken as the largest across the reviews; in practice every
+/// review of a run's variant scores the same declared checklist, so the totals
+/// agree and the `max` is just defensive.
+pub fn aggregate_score(scores: &[Score]) -> Option<AggregateScore> {
+    if scores.is_empty() {
+        return None;
+    }
+    let total = scores.iter().map(|score| score.total).max().unwrap_or(0);
+    let earned = scores.iter().map(|score| f64::from(score.earned)).sum::<f64>()
+        / scores.len() as f64;
+    Some(AggregateScore {
+        earned,
+        total,
+        reviews: scores.len() as u32,
+    })
+}
+
+/// The aggregate overall rating across a run's reviews: the worst (lowest)
+/// rating any reviewer gave any domain, or `None` when there are no ratings.
+///
+/// Each `review` is one reviewer's per-domain ratings. A single review's overall
+/// rating is already the worst across its domains ([`Writeup::overall_rating`]);
+/// taking the worst across every review's every domain therefore yields the
+/// worst across the reviews — one harsh reviewer cannot be masked by a generous
+/// one, just as one broken domain cannot be masked by a flawless one.
+pub fn aggregate_rating<'a>(
+    reviews: impl IntoIterator<Item = &'a [DomainRating]>,
+) -> Option<Rating> {
+    Rating::worst(
+        reviews
+            .into_iter()
+            .flat_map(|ratings| ratings.iter().map(|domain| domain.rating)),
+    )
+}
+
 /// Score a run by combining the case's declared `items` (which carry the point
 /// weights) with the reviewer's `writeup` verdicts: an item earns its weight when
 /// marked `pass` and none when marked `fail`. The total is the sum of every

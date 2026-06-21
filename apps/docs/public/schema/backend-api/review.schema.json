@@ -2,14 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
   "title": "Review",
-  "description": "A run's hand-written review: a per-domain quality rating plus a markdown writeup. Authored separately from the machine-generated run record and required for a run to be published. The run's overall rating is the worst across its domain ratings; the run's score is the point weight of its passed checklist items over the total declared weight.",
+  "description": "A single hand-written review of a run: a per-domain quality rating, a markdown writeup, and the reviewer's checklist verdicts, attributed to the authenticated account that submitted it. A run may carry MANY reviews — one per account — so this is both the submission shape (POST /runs/{id}/reviews, where the reviewer identity is taken from the bearer token rather than the body) and the per-entry shape served back in the reviews array. A run's overall rating is the worst across every domain of every review; its score is the average of each review's earned-over-declared checklist weight. Publishing a run requires at least one review.",
   "type": "object",
   "additionalProperties": false,
   "required": ["ratings", "writeup"],
   "properties": {
+    "reviewerId": {
+      "type": "string",
+      "description": "The stable account id this review is attributed to. Set by the backend from the verified bearer token; ignored if present on a submission. Populated when a review is read back."
+    },
+    "reviewer": {
+      "type": "string",
+      "description": "The reviewer account's display name, denormalized for presentation. Set by the backend; populated when a review is read back."
+    },
+    "reviewedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the review was submitted. Set by the backend; populated when a review is read back."
+    },
     "ratings": {
       "type": "array",
-      "description": "The reviewer's quality rating for each of the test case's declared scoring domains (see the version manifest's domains). One entry per declared domain; publishing refuses a run whose review leaves any declared domain unrated. The overall rating shown for the run is the worst across these.",
+      "description": "The reviewer's quality rating for each of the test case's declared scoring domains (see the version manifest's domains). One entry per declared domain; a review must rate every declared domain. Within this single review the overall rating is the worst across these; the run's overall rating is the worst across every review.",
       "minItems": 1,
       "items": { "$ref": "#/$defs/DomainRating" }
     },
@@ -20,7 +33,7 @@
     },
     "checklist": {
       "type": "array",
-      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; publishing refuses a run whose review leaves any declared item without a verdict. Empty for a case that declares no items.",
+      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; a review must give every declared item a verdict. Empty for a case that declares no items.",
       "items": { "$ref": "#/$defs/ReviewVerdict" }
     }
   },

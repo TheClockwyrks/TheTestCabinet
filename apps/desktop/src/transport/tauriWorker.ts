@@ -100,17 +100,30 @@ export function createTauriWorker(): WorkerClient {
     // IPC buffers the whole payload, so there is no transfer to report progress
     // for — the optional `onProgress` is simply unused.
     readRunEvents: (id) => api.readRunEvents(id),
-    // The worker contract carries the review with the publish. The local core
-    // keeps a run-store, so persist the review there first, then publish by id —
-    // the store is the core's system of record for a produced run's review.
-    publish: async (id, review) => {
-      await api.saveReview(
-        id,
-        review.ratings,
-        review.writeup,
-        review.checklist,
-      );
-      return api.publishRun(id);
+
+    // --- Accounts (the local core proxies the standalone auth service) ---
+    register: (username, password, displayName) =>
+      api.register(username, password, displayName),
+    login: (username, password) => api.login(username, password),
+
+    // --- Run lifecycle ---
+    // The desktop has no separate push/review IPC: the local core keeps a
+    // run-store and its `publish_run` command is the *solo* path (push + the
+    // locally-saved review + publish in one step). So `submitReview` persists the
+    // review to the store (the core's system of record), `push` is a no-op the
+    // solo publish subsumes, and `publish` runs the whole thing by id with the
+    // signed-in account's token.
+    submitReview: async (id, review) => {
+      await api.saveReview(id, review.ratings, review.writeup, review.checklist);
+    },
+    push: async () => {
+      // The solo `publish_run` releases source + build itself, so there is no
+      // standalone push on desktop — report nothing newly pushed.
+      return { sourceRepo: "", playableBuild: null, newlyPushed: false };
+    },
+    publish: async (id, token) => {
+      const result = await api.publishRun(id, token);
+      return { newlyPublished: result.newlyPublished };
     },
 
     // The local core has no HTTP origin, so a produced run's proof media is served

@@ -113,15 +113,23 @@ impl BackendClient for StubBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok("Build {{variant.name}} at {{workspace}}".to_string())
     }
-    async fn publish_run(
+    async fn push_run(
         &self,
         record: &crate::run_record::RunRecord,
-        _review: &crate::review::Writeup,
         _links: &crate::run_record::RunLinks,
         _events: &[crate::event::HarnessEvent],
-    ) -> Result<PublishAck> {
-        Ok(PublishAck {
+    ) -> Result<PushAck> {
+        Ok(PushAck {
             id: record.id.clone(),
+            newly_pushed: true,
+        })
+    }
+    async fn submit_review(&self, _run_id: &str, _review: &crate::review::Writeup) -> Result<()> {
+        Ok(())
+    }
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+        Ok(PublishAck {
+            id: run_id.to_string(),
             newly_published: true,
         })
     }
@@ -278,18 +286,23 @@ fn sample_record(id: &str) -> RunRecord {
 }
 
 #[tokio::test]
-async fn list_runs_parses_page_cursor_links_and_review() {
-    // The backend names the cursor `nextBefore`, serves the review's per-domain
-    // ratings, and serves the resolved links separately from the record blob.
+async fn list_runs_parses_page_cursor_links_and_reviews() {
+    // The backend names the cursor `nextBefore`, serves the reviews array (with
+    // reviewer identity), and serves the resolved links separately from the blob.
     let record = serde_json::to_value(sample_record("run-1")).expect("serialize");
     let body = serde_json::json!({
         "runs": [{
             "record": record,
-            "review": {
+            "published": true,
+            "reviews": [{
+                "reviewerId": "u1",
+                "reviewer": "Ada L.",
+                "username": "ada",
                 "ratings": [{ "domain": "gameplay", "rating": "great" }],
                 "writeup": "Plays well.",
                 "checklist": [],
-            },
+                "reviewedAt": "2026-06-14T11:00:00Z",
+            }],
             "links": {
                 "sourceRepo": "https://example.com/repo",
                 "playableBuild": "https://abc.pages.dev",
@@ -308,8 +321,11 @@ async fn list_runs_parses_page_cursor_links_and_review() {
     assert_eq!(page.runs.len(), 1);
     let run = &page.runs[0];
     assert_eq!(run.record.id, "run-1");
+    assert!(run.published);
+    assert_eq!(run.reviews.len(), 1);
+    assert_eq!(run.reviews[0].reviewer, "Ada L.");
     assert_eq!(
-        run.review.ratings,
+        run.reviews[0].ratings,
         vec![crate::review::DomainRating {
             domain: "gameplay".to_string(),
             rating: crate::review::Rating::Great,
@@ -332,11 +348,16 @@ async fn read_run_parses_a_single_stored_run() {
     let record = serde_json::to_value(sample_record("run-9")).expect("serialize");
     let body = serde_json::json!({
         "record": record,
-        "review": {
+        "published": true,
+        "reviews": [{
+            "reviewerId": "u2",
+            "reviewer": "Grace H.",
+            "username": "grace",
             "ratings": [{ "domain": "gameplay", "rating": "scuffed" }],
             "writeup": "Janky.",
             "checklist": [],
-        },
+            "reviewedAt": "2026-06-14T12:00:00Z",
+        }],
         "links": { "sourceRepo": null, "playableBuild": null },
     });
     let base = serve_once(body.to_string()).await;
@@ -347,13 +368,14 @@ async fn read_run_parses_a_single_stored_run() {
         .expect("read run");
 
     assert_eq!(run.record.id, "run-9");
+    assert_eq!(run.reviews.len(), 1);
     assert_eq!(
-        run.review.ratings,
+        run.reviews[0].ratings,
         vec![crate::review::DomainRating {
             domain: "gameplay".to_string(),
             rating: crate::review::Rating::Scuffed,
         }]
     );
-    assert_eq!(run.review.writeup, "Janky.");
+    assert_eq!(run.reviews[0].writeup, "Janky.");
     assert!(run.links.source_repo.is_none());
 }

@@ -32,7 +32,24 @@ pub enum Command {
     /// Run validation over a produced implementation.
     Validate(ValidateArgs),
 
-    /// Publish a finished run (idempotent, batch-capable).
+    /// Create an account on the auth service and log in (open self-registration).
+    Register(RegisterArgs),
+
+    /// Log in to an existing account and store the bearer token.
+    Login(LoginArgs),
+
+    /// Revoke the stored token and log out.
+    Logout,
+
+    /// Push finished run(s) to the backend (release source + build, no review).
+    /// The run is stored privately and is playable for review, but not yet public.
+    Push(PushArgs),
+
+    /// Submit a review (from the run's `writeup.md`) for an already-pushed run.
+    Review(ReviewArgs),
+
+    /// Publish finished run(s): push + self-review + publish in one step (the solo
+    /// path). A run cannot be published without at least one review.
     Publish(PublishArgs),
 
     /// List supported harnesses and their availability.
@@ -179,6 +196,58 @@ pub struct ValidateArgs {
     pub variant: String,
 }
 
+/// Arguments for `tcab register`.
+#[derive(Debug, Args)]
+pub struct RegisterArgs {
+    /// The desired unique username.
+    #[arg(long, value_name = "NAME")]
+    pub username: String,
+
+    /// The human-facing display name shown beside your reviews.
+    #[arg(long, value_name = "NAME")]
+    pub display_name: String,
+
+    /// The account password. If omitted, the `TCAB_PASSWORD` environment variable
+    /// is used (so the command stays scriptable).
+    #[arg(long, value_name = "PASSWORD")]
+    pub password: Option<String>,
+}
+
+/// Arguments for `tcab login`.
+#[derive(Debug, Args)]
+pub struct LoginArgs {
+    /// The account username.
+    #[arg(long, value_name = "NAME")]
+    pub username: String,
+
+    /// The account password. If omitted, the `TCAB_PASSWORD` environment variable
+    /// is used.
+    #[arg(long, value_name = "PASSWORD")]
+    pub password: Option<String>,
+}
+
+/// Arguments for `tcab push`.
+#[derive(Debug, Args)]
+pub struct PushArgs {
+    /// One or more run record files to push. Multiple values push a sweep's runs
+    /// in a single invocation.
+    #[arg(value_name = "RUN_RECORD", required = true, num_args = 1..)]
+    pub run_records: Vec<std::path::PathBuf>,
+}
+
+/// Arguments for `tcab review`.
+#[derive(Debug, Args)]
+pub struct ReviewArgs {
+    /// The run record file of the (already-pushed) run to review.
+    #[arg(value_name = "RUN_RECORD")]
+    pub run_record: std::path::PathBuf,
+
+    /// Path to the review's `writeup.md`. Defaults to the `writeup.md` beside the
+    /// run record.
+    #[arg(long, value_name = "FILE")]
+    pub writeup: Option<std::path::PathBuf>,
+}
+
 /// Arguments for `tcab publish`.
 #[derive(Debug, Args)]
 pub struct PublishArgs {
@@ -187,13 +256,8 @@ pub struct PublishArgs {
     #[arg(value_name = "RUN_RECORD", required = true, num_args = 1..)]
     pub run_records: Vec<std::path::PathBuf>,
 
-    /// Re-publish even if a run already appears published. Publishing is
-    /// idempotent regardless; this only forces the work to run again.
-    #[arg(long)]
-    pub force: bool,
-
-    /// Print what would be published — repository names, build subdomains, and
-    /// the dataset that would change — without creating, pushing, or committing
+    /// Print what would be pushed, reviewed, and published — repository names and
+    /// build subdomains — without creating, pushing, deploying, or submitting
     /// anything.
     #[arg(long)]
     pub dry_run: bool,

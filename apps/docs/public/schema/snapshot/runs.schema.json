@@ -28,6 +28,7 @@
         "validationLoaded",
         "state",
         "rating",
+        "reviewCount",
         "links"
       ],
       "properties": {
@@ -57,8 +58,13 @@
         },
         "rating": {
           "type": "string",
-          "description": "The run's overall rating — the worst across its per-domain ratings — shown as a per-run badge.",
+          "description": "The run's aggregate overall rating — the worst across every domain of every review — shown as a per-run badge.",
           "enum": ["flawless", "great", "scuffed", "broken"]
+        },
+        "reviewCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many reviews the run carries. At least one (only published runs appear here, and publishing requires a review). The site computes the run's aggregate score (the average across reviews) from the per-run file's reviews array; this count lets a card note how many reviewers contributed."
         },
         "links": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunLinks"

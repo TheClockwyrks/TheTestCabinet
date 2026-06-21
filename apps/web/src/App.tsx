@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
 import {
+  AuthProvider,
   BackendProvider,
   WorkersProvider,
   useBackend,
@@ -31,10 +32,15 @@ export function App() {
   return (
     <BackendProvider value={backend}>
       <WorkersProvider value={workers}>
-        {/* Above the data source so a launched run's refresh signal reaches it. */}
-        <RunsRuntimeProvider>
-          <WebGallery />
-        </RunsRuntimeProvider>
+        {/* Auth lives below the workers provider — register/login go through the
+            active worker transport — and above the gallery so the review UI can
+            read the signed-in account. */}
+        <AuthProvider>
+          {/* Above the data source so a launched run's refresh signal reaches it. */}
+          <RunsRuntimeProvider>
+            <WebGallery />
+          </RunsRuntimeProvider>
+        </AuthProvider>
       </WorkersProvider>
     </BackendProvider>
   );

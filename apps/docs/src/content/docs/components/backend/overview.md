@@ -21,7 +21,8 @@ The backend serves two kinds of client, as described in
 - **Runners** ([CLI](/components/cli/overview/),
   [worker](/components/worker/overview/), [Tauri app](/components/tauri/overview/))
   resolve test case definitions from the backend, then push their
-  [run records](/components/core/run-records/) back to it when a run is published.
+  [run records](/components/core/run-records/) back to it when a run is
+  [pushed](/components/core/results/#push), reviewed, and published.
   (Container images are not resolved from the backend — a runner pulls them from
   its configured registry directly; see
   [Execution](/components/core/execution/#containerization).)
@@ -55,40 +56,73 @@ credentials) — no configuration file is required.
 
 ## Authentication
 
-The backend has no end-user accounts and no public write surface. Only the
-operator and other authorized users may push to or pull from it. Rather than
-hand-rolling an authentication mechanism, the backend is intended to sit on a
-**private network** — using something like [Tailscale](https://tailscale.com/)
-or a comparable mesh/VPN — so that reachability itself is the access control and
-the service is never exposed to the public internet.
+The backend has no public write surface, and it stays on a **private network** —
+using something like [Tailscale](https://tailscale.com/) or a comparable
+mesh/VPN — so that reachability is the first line of access control and the
+service is never exposed to the public internet. On top of that network boundary,
+a second, application-level layer **identifies who is acting**: real user
+[accounts](#accounts), so that every [review](/components/core/results/#reviews) a
+run carries is attributed to a person rather than being anonymous. The network
+boundary is not replaced — auth is an *added* layer.
 
-- Pushing results (publishing) and pulling definitions both require the caller
-  to be on that private network; a runner authenticates to the backend by being
-  able to reach it.
-- Keeping authentication at the network layer means the backend does not need to
-  implement and maintain its own login, token, or session handling.
+- **Reads stay open.** Pulling definitions and reading runs require only that the
+  caller can reach the backend on its private network.
+- **Mutations require an account.** The mutating run endpoints — pushing,
+  reviewing, and publishing — require a **bearer token** identifying the account
+  acting; without one the backend answers `401`. The backend does not itself store
+  credentials; it verifies each token against a separate [auth
+  service](/components/auth/overview/) (see [Accounts](#accounts)).
 
 Because the backend is private, the [public site](/components/site/overview/)
 does **not** read from it directly.
 
-## Publishing and Synchronization
+## Accounts
 
-[Publishing](/components/core/results/#publishing) a run is split into a half
-that operators do directly and a half the backend owns. An operator's component
-(the [CLI](/components/cli/overview/) or [Tauri app](/components/tauri/overview/))
-releases the run's generated code to its own public repository and makes the
-playable build embeddable — work that has no shared state, since each run is a
-distinct repository — and then submits the run record, the review, and the
-resulting links to the backend.
+User identity lives in a **standalone [auth service](/components/auth/overview/)**
+(`crates/auth-service`, the `tcab-auth-service` binary), not in the backend
+itself. The auth service handles open self-registration and password login
+(hashing with Argon2id) and mints opaque **bearer tokens**; the backend stays out
+of the credential business entirely.
 
-The backend owns the **synchronized** half. Being a single, central entity is
-the point: it serializes publish requests so that two operators publishing at
-the same time cannot race on the shared state. On each request it:
+On every mutating run request (push, review, publish) the caller presents its
+token as `Authorization: Bearer <token>`, and the backend **verifies** it against
+the auth service (`POST /auth/verify`) to resolve the acting account — failing the
+request `401` if the token is missing or invalid. The account it resolves is what a
+review is [attributed](/components/core/results/#reviews) to.
 
-1. Ingests the run record and its [review](/components/core/results/#reviews)
-   into its store, the system of record for published runs.
+The backend is pointed at the auth service with `TCAB_BACKEND_AUTH_URL` (default
+`http://127.0.0.1:8789`). Identity is an *added* layer on top of the private
+network, not a replacement for it: the auth service is itself a private-network
+service, and open self-registration is acceptable precisely because reaching it
+already requires being on that network. See the
+[auth service overview](/components/auth/overview/).
+
+## Push, Review, Publish, and Synchronization
+
+A run reaches the gallery through three steps the backend mediates — **push**,
+**review**, then **publish** (the [lifecycle](/components/core/results/#lifecycle)
+is the conceptual account; this is the backend's role in it). The release work is
+split into a half that operators do directly and a half the backend owns.
+
+On **push**, an operator's component (the [CLI](/components/cli/overview/) or
+[Tauri app](/components/tauri/overview/)) releases the run's generated code to its
+own public repository and makes the playable build embeddable — work that has no
+shared state, since each run is a distinct repository — and then submits the run
+record and the resulting links to the backend. The backend stores the run
+**privately**: it is not in the public snapshot, but its build is playable so it
+can be reviewed. **Review** then attaches one or more
+[reviews](/components/core/results/#reviews) (one per account) to a pushed run.
+
+The backend owns the **synchronized** half, which runs on **publish**. Being a
+single, central entity is the point: it serializes publish requests so that two
+operators publishing at the same time cannot race on the shared state. Publish is
+a gate — it **refuses a run that has no review** (`422`) — and on each accepted
+publish the backend:
+
+1. Marks the run published in its store, the system of record.
 2. Regenerates the [public snapshot](#public-snapshot) from the full set of
-   published runs.
+   **published** runs (a pushed-but-unpublished run is excluded), each with its
+   reviews.
 3. Uploads the snapshot to its public bucket and triggers a rebuild of the site.
 
 Because the backend coordinates this, it can also **coalesce** a burst of
@@ -97,12 +131,17 @@ regeneration, one upload, and one site rebuild, rather than one of each per run.
 Regenerating the whole published set each time (rather than applying deltas)
 keeps the operation idempotent: re-running it converges on the same snapshot.
 
+Each of these three mutations requires a bearer token (see [Accounts](#accounts));
+reviews are attributed to the account the token resolves to.
+
 ## Public Snapshot
 
 The public site must show published runs to anonymous visitors without depending
 on the private backend. To bridge this, the backend **exports a public
-snapshot** of its published dataset — the run records, the reviews, and the case
-metadata the gallery needs — that the static site is built from.
+snapshot** of its published dataset — the run records, their reviews (each
+attributed to its reviewer), and the case metadata the gallery needs — that the
+static site is built from. Only **published** runs are exported; a pushed run
+that has not been published is never in the snapshot.
 
 - The snapshot is uploaded to a **[Cloudflare R2](https://developers.cloudflare.com/r2/)**
   bucket, which pairs naturally with the site's Cloudflare Pages deployment. The
@@ -135,7 +174,15 @@ connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
 (`TCAB_BACKEND_STORE`), the repository checkout it ingests from
 (`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
 (`TCAB_SNAPSHOT_COALESCE_MS`), and its R2 (`TCAB_R2_*`) and deploy-hook
-(`TCAB_SITE_DEPLOY_HOOK_URL`) credentials. Only `TCAB_BACKEND_CHECKOUT` is
-required; with the R2 and deploy-hook variables omitted the backend still
-ingests and records publishes and regenerates the snapshot on disk, skipping
-only the upload and rebuild — a dev-only mode.
+(`TCAB_SITE_DEPLOY_HOOK_URL`) credentials, and the
+[auth service](/components/auth/overview/) it verifies bearer tokens against
+(`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`). The backend binds to
+`8787` by default (the worker uses `8788`, the auth service `8789`). Only
+`TCAB_BACKEND_CHECKOUT` is required; with the R2 and deploy-hook variables omitted
+the backend still ingests, records pushes/reviews/publishes, and regenerates the
+snapshot on disk, skipping only the upload and rebuild — a dev-only mode.
+
+User identity is **not** part of this crate. It lives in the standalone
+[auth service](/components/auth/overview/) (`crates/auth-service`,
+`tcab-auth-service`), which the backend treats as an external dependency it
+verifies tokens against — keeping credential storage out of the backend entirely.

@@ -14,12 +14,12 @@ import type {
   HarnessEvent,
   Model,
   ProgressCallback,
-  ReviewDocument,
   ReviewItem,
   RunEventStreams,
   RunPage,
   Specification,
   SpecDocument,
+  StoredReview,
   StoredRun,
   TestCase,
   TestType,
@@ -102,11 +102,25 @@ interface ResolvedVersion {
   }[];
 }
 
+// One review entry of `GET /runs/{id}` — the reviewer's verdict plus attribution
+// (id, display name, and login username).
+interface ReviewResponse {
+  reviewerId: string;
+  reviewer: string;
+  username?: string | null;
+  ratings: StoredReview["ratings"];
+  writeup: string;
+  checklist: StoredReview["checklist"];
+  reviewedAt?: string | null;
+}
+
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
-// record (links populated), its review, and the resolved links.
+// record (links populated), every review submitted against it, whether it is
+// published, and the resolved links.
 interface StoredRunResponse {
   record: RunRecord;
-  review: ReviewDocument | null;
+  reviews?: ReviewResponse[] | null;
+  published?: boolean;
   links?: { sourceRepo: string | null; playableBuild: string | null };
 }
 
@@ -119,12 +133,22 @@ interface RunPageResponse {
 }
 
 // The backend serves the record with its links already populated, so the run's
-// id and links are taken from the record itself.
+// id and links are taken from the record itself. Every review is carried through
+// with its attribution; a backend-served run is always a published one.
 function toStoredRun(r: StoredRunResponse): StoredRun {
   const record = r.links
     ? { ...r.record, links: { ...r.record.links, ...r.links } }
     : r.record;
-  return { id: record.id, record, review: r.review ?? null };
+  const reviews: StoredReview[] = (r.reviews ?? []).map((rv) => ({
+    reviewerId: rv.reviewerId,
+    reviewer: rv.reviewer,
+    username: rv.username ?? null,
+    ratings: rv.ratings,
+    writeup: rv.writeup,
+    checklist: rv.checklist,
+    reviewedAt: rv.reviewedAt ?? null,
+  }));
+  return { id: record.id, record, reviews, published: r.published ?? true };
 }
 
 export function createHttpBackend(baseUrl: string): BackendClient {

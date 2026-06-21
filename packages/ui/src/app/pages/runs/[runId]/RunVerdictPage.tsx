@@ -58,7 +58,6 @@ export function RunVerdictPage() {
               <RunReviewEditor
                 runId={run.id}
                 subject={run.subject}
-                review={review}
                 onChanged={() => runtime.requestRefresh()}
               />
             ) : (

@@ -3,12 +3,14 @@ title: Overview
 ---
 
 The public site lives at [testcabinet.ai](https://testcabinet.ai) and is where
-published runs are browsed and played. It is the way the public interacts with
-The Test Cabinet: a gallery first — the home page and runs index are ordered by
-recency, and visitors compare implementations above all by playing them — but
+**published** runs are browsed and played. It is the way the public interacts
+with The Test Cabinet: a gallery first — the home page and runs index are ordered
+by recency, and visitors compare implementations above all by playing them — but
 each run also carries a numeric [score and rating](/components/core/results/#reviews)
-from its review, and each test case has a [leaderboard](#leaderboard) that ranks
-models by score.
+aggregated across its [reviews](/components/core/results/#reviews), and each test
+case has a [leaderboard](#leaderboard) that ranks models by score. Only published
+runs appear; a run that has been [pushed](/components/core/results/#push) but not
+yet published is private and never reaches the gallery.
 
 ## A Static Site
 
@@ -53,7 +55,8 @@ surfaces:
 - The [validation](/components/core/validation/) signals, such as whether the
   implementation loaded.
 - The run's overall [rating](/components/core/results/#reviews) — the worst across
-  its scoring domains — shown as a per-run quality badge.
+  every domain of every review the run carries — shown as a per-run quality badge,
+  with a note of how many reviewers contributed.
 
 The home page and the global runs index are ordered purely by recency, not by
 score — the cost and token metrics in particular are never used to sort or rank
@@ -64,9 +67,10 @@ rather than by resource metrics.
 Alongside the home page, which leads with the most recent results, a dedicated
 runs index lists the cabinet's full run history one page at a time, newest
 first, with a search that narrows by test case, harness, or model name. A run's
-own detail page sits under this section, opening on its review — the overall
-rating, the score, the per-domain ratings, and the per-item checklist breakdown
-— ahead of the playable build.
+own detail page sits under this section, opening on its reviews — the aggregate
+overall rating and score up front, then each review's writeup, per-domain ratings,
+and per-item checklist breakdown, attributed to the reviewer who wrote it — ahead
+of the playable build.
 
 ## Playing and Cloning
 
@@ -91,25 +95,31 @@ then recency), and the table shows the rank, model, `earned / total` points, and
 overall rating badge. This is the one place the gallery deliberately *does* rank,
 because models on the same case and variant are directly comparable; the home
 page and runs index stay recency-ordered. Like the rest of the site it is built
-from the static snapshot, computing each run's score from the case's review-item
-weights and the run's recorded verdicts.
+from the static snapshot, computing each run's score client-side: each review's
+earned-over-declared checklist weight, then **averaged across the run's reviews**.
+Ties are broken by the better aggregate overall rating (the worst across reviews),
+then recency.
 
 ## Implementation Writeups
 
-A run carries a short, hand-written writeup shown on its page before the
-playable build is launched, headed by the run's overall
-[rating](/components/core/results/#reviews) and its score, with the per-domain
-ratings and the per-item checklist breakdown alongside. The writeup is
-curatorial: it is where known-broken elements, caveats, or things worth noticing
-about an implementation are called out, so a visitor knows what to expect before
-playing, and the rating and score give them the reviewer's verdict up front.
+A run carries one or more short, hand-written writeups shown on its page before
+the playable build is launched, headed by the run's **aggregate** overall
+[rating](/components/core/results/#reviews) and its score, with each review's
+per-domain ratings and per-item checklist breakdown alongside, attributed to the
+reviewer who wrote it. A writeup is curatorial: it is where known-broken elements,
+caveats, or things worth noticing about an implementation are called out, so a
+visitor knows what to expect before playing, and the aggregate rating and score
+give them the reviewers' verdict up front.
 
-The writeup, ratings, and checklist together form a run's [review](/components/core/results/#reviews).
-A review is authored separately from the machine-generated
-[run record](/components/core/run-records/) and is not part of that data
-contract. Every published run has one — publishing refuses a run without it — so
-a published run is always framed by its review. Reviews travel to the site as
-part of the exported snapshot, alongside the run record.
+A writeup, its ratings, and its checklist together form one
+[review](/components/core/results/#reviews). Reviews are authored separately from
+the machine-generated [run record](/components/core/run-records/) and are not part
+of that data contract; each is attributed to the [account](/components/backend/overview/#accounts)
+that wrote it. Every published run has at least one — publishing refuses a run
+without a review — and may carry several from different reviewers. The run's score
+is the **average** across them and its overall rating the **worst** across them.
+Reviews travel to the site as part of the exported snapshot, alongside the run
+record.
 
 ## Hosting
 

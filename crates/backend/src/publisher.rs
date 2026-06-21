@@ -168,7 +168,7 @@ impl RefresherHandle {
     err,
 )]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
-    let runs = inner.db.all_runs().await?;
+    let runs = inner.db.all_published().await?;
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 

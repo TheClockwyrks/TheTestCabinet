@@ -22,6 +22,9 @@ export {
   type Score,
   type WeightedItem,
   scoreChecklist,
+  type AggregateScore,
+  aggregateScore,
+  aggregateRating,
 } from "@test-cabinet/ui";
 
 import {

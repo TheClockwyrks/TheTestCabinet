@@ -17,6 +17,10 @@ const DEFAULT_BIND: &str = "127.0.0.1:8787";
 const DEFAULT_DATABASE_URL: &str = "sqlite://./tcab-backend.sqlite?mode=rwc";
 /// The default on-disk definition store when `TCAB_BACKEND_STORE` is unset.
 const DEFAULT_STORE: &str = "./tcab-store";
+/// The default auth service URL when `TCAB_BACKEND_AUTH_URL` is unset: the auth
+/// service's own loopback default, so local dev works with both services up and
+/// no extra configuration.
+const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
 /// The default coalescing window, in milliseconds, when
 /// `TCAB_SNAPSHOT_COALESCE_MS` is unset.
 const DEFAULT_COALESCE_MS: u64 = 5000;
@@ -53,6 +57,10 @@ pub struct Config {
     pub checkout: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
     pub store: PathBuf,
+    /// The standalone auth service's base URL (`TCAB_BACKEND_AUTH_URL`). The
+    /// backend verifies each mutating request's bearer token against it. Defaults
+    /// to the auth service's loopback address for local dev.
+    pub auth_url: String,
     /// R2 upload configuration, or `None` when snapshot upload is disabled
     /// because the R2 variables were not all supplied (only valid in dev: see
     /// [`Config::from_env`]).
@@ -89,6 +97,7 @@ impl Config {
         let database_url = env_or("TCAB_BACKEND_DATABASE_URL", DEFAULT_DATABASE_URL);
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
+        let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
 
         let r2 = R2Config::from_env();
         let deploy_hook_url = std::env::var("TCAB_SITE_DEPLOY_HOOK_URL")
@@ -109,6 +118,7 @@ impl Config {
             database_url,
             checkout,
             store,
+            auth_url,
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),

@@ -33,6 +33,9 @@ pub struct AppState {
     pub store: DefinitionStore,
     /// The coalescing snapshot publisher.
     pub publisher: Publisher,
+    /// Verifies bearer tokens against the standalone auth service. The mutating
+    /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
+    pub auth: Arc<test_cabinet_core::AccountsClient>,
     /// The resolved configuration (checkout path for ingest, etc.).
     pub config: Arc<Config>,
 }
@@ -56,8 +59,16 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
-        .route("/runs", post(runs::publish).get(runs::list))
+        // Push a run (record + links + events, no review; requires auth) and list
+        // runs. `GET /runs` lists published runs by default; `?state=review` lists
+        // all runs (pending + published) for the reviewer worklist.
+        .route("/runs", post(runs::push).get(runs::list))
         .route("/runs/{id}", get(runs::get))
+        // Submit a review for a run (requires auth; attributed to the token's
+        // account). A run may carry many reviews, one per account.
+        .route("/runs/{id}/reviews", post(runs::add_review))
+        // Publish a run (requires auth; refused with no reviews). Flips it public.
+        .route("/runs/{id}/publish", post(runs::publish))
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
         // uploaded by the publisher (POST) and served as-is for the reviewer UI's
         // submitted-evidence panes (GET).

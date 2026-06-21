@@ -1,12 +1,13 @@
-# Local backend for service-driven testing.
+# Local backend + auth service for service-driven testing.
 #
-# This brings up ONLY the backend, in a container, with a local volume for its
-# state (SQLite DB + definition store + ingest checkout). The WORKER is NOT here
-# on purpose: a worker starts a container per run, so it runs directly on the
-# host using the host's container runtime. See
+# This brings up the backend and the auth service, in containers, each with a
+# local volume for its state (the backend's SQLite DB + definition store +
+# ingest checkout; the auth service's own SQLite DB). The WORKER is NOT here on
+# purpose: a worker starts a container per run, so it runs directly on the host
+# using the host's container runtime. See
 # apps/docs/src/content/docs/development/running.md.
 #
-#   docker compose -f deployments/local/compose.yml up backend
+#   docker compose -f deployments/local/compose.yml up backend auth
 #
 # Then, in a separate shell, run the worker on the host:
 #
@@ -28,6 +29,8 @@ services:
       TCAB_BACKEND_DATABASE_URL: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
       TCAB_BACKEND_STORE: "/state/tcab-store"
       TCAB_BACKEND_CHECKOUT: "/checkout"
+      # The auth service this backend verifies tokens against (compose DNS name).
+      TCAB_BACKEND_AUTH_URL: "http://auth:8789"
       TCAB_ENV: "local"
     ports:
       - "127.0.0.1:8787:8787"
@@ -37,5 +40,26 @@ services:
       # The repository, ingested via `POST /ingest`. Mounted read-only.
       - ../..:/checkout:ro
 
+  auth:
+    # A slimmer image than the backend's — the auth service has no reference
+    # rendering, so it needs neither Chromium nor the font set.
+    build:
+      context: ../..
+      dockerfile: deployments/azure/auth.Dockerfile
+    # The auth service loads .env.auth (copied from the repo-root example). The
+    # in-container paths below override the file's host-oriented defaults.
+    env_file:
+      - ../../.env.auth
+    environment:
+      TCAB_AUTH_BIND: "0.0.0.0:8789"
+      TCAB_AUTH_DATABASE_URL: "sqlite:///state/tcab-auth.sqlite?mode=rwc"
+      TCAB_ENV: "local"
+    ports:
+      - "127.0.0.1:8789:8789"
+    volumes:
+      # Persistent state across restarts.
+      - auth-state:/state
+
 volumes:
   backend-state:
+  auth-state:

@@ -4,9 +4,10 @@ title: Overview
 
 The web console is The Test Cabinet's runner/reporter GUI running in a plain
 browser. It is the same console as the [Tauri app](/components/tauri/overview/) —
-configure and launch runs, watch their live [event](/components/core/events/)
-stream, return to any run still in progress and be notified when one completes,
-read [specs](/testing/end-to-end/overview/), review finished runs, and publish —
+sign in, configure and launch runs, watch their live
+[event](/components/core/events/) stream, return to any run still in progress and
+be notified when one completes, read [specs](/testing/end-to-end/overview/),
+[push](/components/core/results/#push) finished runs, review them, and publish —
 but delivered as a static web app instead of a desktop binary, and backed by
 **remote workers** rather than a built-in local one.
 
@@ -28,7 +29,10 @@ The console talks to two distinct services, mirroring
 - A set of **workers** — the [runners](/components/worker/overview/) that actually
   execute a run. A launched run is submitted to the selected worker over the
   [worker API](/components/worker/overview/), and its live events stream back
-  from there.
+  from there. A worker also **proxies** account register/login to the
+  [auth service](/components/auth/overview/) and forwards the signed-in account's
+  bearer token to the backend when the console pushes, reviews, or publishes, so
+  the console authenticates through the same worker it runs on.
 
 The web console **starts with no workers**: a person adds worker servers by URL
 in the Connections settings (under the Settings gear), then picks which one a run
@@ -71,6 +75,7 @@ the routed gallery plus the run-execution screens — comes from the
 It runs against the now-implemented [backend](/components/backend/overview/) and
 [worker](/components/worker/overview/) contracts: the backend serves the catalog
 and published runs, and the worker exposes its run-execution, produced-run
-listing, recorded-event, notification, and publish endpoints. Where a host can't
+listing, recorded-event, notification, auth-proxy, and push/review/publish
+endpoints. Where a host can't
 provide a piece of data — for example a worker that returns no recorded events
 for an older run — the shared UI degrades gracefully rather than erroring.

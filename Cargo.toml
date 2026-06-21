@@ -14,6 +14,7 @@ members = [
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",
+	"crates/auth-service",
 	"crates/telemetry",
 	"crates/entities",
 	"crates/migration",
@@ -162,6 +163,16 @@ sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
 percent-encoding = "2"
+
+# The standalone auth service hashes passwords with Argon2id (the password-hashing
+# competition winner; memory-hard, the settled default for new password stores)
+# and mints opaque bearer tokens from OS randomness. `argon2` re-exports the
+# `password-hash` PHC-string machinery so a stored hash carries its own salt and
+# parameters. `rand` supplies the `OsRng` used for both the per-password salt and
+# the token bytes; its `rand_core` matches the one `password-hash` expects. Only
+# `crates/auth-service` pulls these in, so the leaner crates never compile them.
+argon2 = "0.5"
+rand = "0.8"
 
 # Worker HTTP server. The worker streams a run's live harness events back to the
 # caller as the run proceeds; `futures-util` adapts an mpsc receiver into the

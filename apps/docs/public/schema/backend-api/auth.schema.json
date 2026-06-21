@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/auth.schema.json",
+  "title": "Auth",
+  "description": "The account and token shapes the standalone auth service exposes, and the worker proxies. Registration and login take a username/password; login returns an opaque bearer token plus the account it identifies. The token is sent as `Authorization: Bearer <token>` on every mutating run request (push, review, publish), which the backend verifies against the auth service. Reads need no token.",
+  "$defs": {
+    "RegisterRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["username", "password", "displayName"],
+      "description": "The body of POST /auth/register: open self-registration. The password is hashed with Argon2id; it is never stored or returned in plaintext.",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "The unique login handle.",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string",
+          "description": "The account password, hashed with Argon2id server-side.",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The name shown beside the account's reviews.",
+          "minLength": 1
+        }
+      }
+    },
+    "LoginRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["username", "password"],
+      "description": "The body of POST /auth/login.",
+      "properties": {
+        "username": { "type": "string", "minLength": 1 },
+        "password": { "type": "string", "minLength": 1 }
+      }
+    },
+    "Account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "username", "displayName"],
+      "description": "A user account. Reviews are attributed to its `id`; its `displayName` is shown beside them.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "AuthResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token", "account"],
+      "description": "The response to a successful register or login: the opaque bearer token to present on mutating requests, and the account it identifies.",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "An opaque bearer token. Presented as `Authorization: Bearer <token>`; the backend verifies it against the auth service's POST /auth/verify.",
+          "minLength": 1
+        },
+        "account": { "$ref": "#/$defs/Account" }
+      }
+    }
+  }
+}

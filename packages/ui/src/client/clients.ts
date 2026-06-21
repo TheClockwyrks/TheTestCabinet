@@ -6,6 +6,7 @@
 // reads them from context (see context.tsx).
 import type {
   AssetPreview,
+  AuthResult,
   BackendIdentity,
   DomainRating,
   HarnessEvent,
@@ -14,6 +15,7 @@ import type {
   Model,
   ProgressCallback,
   PublishResult,
+  PushResult,
   ReviewItem,
   ReviewVerdict,
   RunEventStreams,
@@ -177,13 +179,53 @@ export interface WorkerClient {
     onProgress?: ProgressCallback,
   ): Promise<RunEventStreams>;
 
+  // --- Accounts (the worker proxies the standalone auth service) ---
+
   /**
-   * Publish a run together with its review (`POST /publish`). The review is
-   * supplied inline — a worker keeps no review store, so the rating, writeup and
-   * checklist are sent with the run id. Idempotent on the run; resolves the
-   * resulting public links.
+   * Register a new account (`POST /auth/register`) and resolve a bearer token
+   * plus the created account. The token authorizes the mutating run-lifecycle
+   * calls below.
    */
-  publish(id: string, review: ReviewDocumentInput): Promise<PublishResult>;
+  register(
+    username: string,
+    password: string,
+    displayName: string,
+  ): Promise<AuthResult>;
+
+  /**
+   * Log in (`POST /auth/login`) and resolve a bearer token plus the account it
+   * belongs to.
+   */
+  login(username: string, password: string): Promise<AuthResult>;
+
+  // --- Run lifecycle: push -> review -> publish ---
+
+  /**
+   * Push a produced run (`POST /push`, Bearer): release its source repo and (when
+   * it produced one) playable build, and store the record privately — with no
+   * review and not yet published. Idempotent on the run (`newlyPushed` is false
+   * when it was already pushed).
+   */
+  push(id: string, token: string): Promise<PushResult>;
+
+  /**
+   * Submit a review against a run (`POST /review`, Bearer), attributed to the
+   * token's account. Multiple reviews are allowed — one per account; submitting
+   * again from the same account replaces that account's review. The run must
+   * already be pushed.
+   */
+  submitReview(
+    id: string,
+    review: ReviewDocumentInput,
+    token: string,
+  ): Promise<void>;
+
+  /**
+   * Publish a run (`POST /publish`, Bearer): clear the publish gate so the run
+   * becomes public. The backend refuses a run carrying zero reviews. Idempotent
+   * (`newlyPublished` is false when it was already public).
+   */
+  publish(id: string, token: string): Promise<PublishResult>;
 
   /**
    * The URL to load one of a produced run's proof-of-implementation media files

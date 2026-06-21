@@ -13,11 +13,14 @@ worth separating, because they need very different amounts of setup:
   fastest way to launch one run; the [quickstarts](/quickstarts/overview/) walk
   through it and [Building](/development/building/) covers producing the binaries.
 - **The full service-driven flow** — the [backend](/components/backend/overview/),
-  a [worker](/components/worker/overview/), and the
+  the [auth service](/components/auth/overview/), a
+  [worker](/components/worker/overview/), and the
   [web console](/components/web/overview/) running as their own processes, exactly
   as a deployed environment runs them, just all on `localhost`. This is the
   environment to reach for when developing or debugging the services themselves,
-  and it is what the rest of this page sets up.
+  and it is what the rest of this page sets up. (The auth service is what lets you
+  register, log in, and push/review/publish; without it the read-only flow still
+  works, but mutations are rejected `401`.)
 
 Running the services on one machine is the local mirror of a real
 [deployment](/deployment/overview/): the same binaries and the same configuration,
@@ -31,10 +34,10 @@ and prod — see [Deployment](/deployment/overview/).
   [first-time setup](/guides/first-time-setup/).
 - The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
   built or pullable for whichever harness you intend to run.
-- The two service binaries, built per [Building](/development/building/):
-  `cargo build -p test-cabinet-backend` and `cargo build -p test-cabinet-worker`
-  (or the `build-portable-*` aliases for a static binary). The web console is a
-  Vite app under `apps/web`.
+- The service binaries, built per [Building](/development/building/):
+  `cargo build -p test-cabinet-backend`, `cargo build -p test-cabinet-worker`, and
+  `cargo build -p tcab-auth-service` (or the `build-portable-*` aliases for static
+  binaries). The web console is a Vite app under `apps/web`.
 - A harness API key for the harness you will run (for example
   `ANTHROPIC_API_KEY` for `claude`).
 
@@ -74,6 +77,8 @@ definitions from — point it at this repository:
 TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # Leave TCAB_BACKEND_BIND at its default 127.0.0.1:8787 for local use.
 # Leave TCAB_BACKEND_DATABASE_URL unset to use the default local SQLite file.
+# Leave TCAB_BACKEND_AUTH_URL at its default http://127.0.0.1:8789 so the backend
+# verifies bearer tokens against the local auth service.
 # R2 + deploy-hook variables can stay blank: with them unset the backend still
 # records to its database and regenerates the snapshot on disk (a dev-only mode).
 ```
@@ -84,6 +89,8 @@ key for whatever you will run:
 ```sh
 TCAB_BACKEND_URL=http://127.0.0.1:8787
 # Leave TCAB_WORKER_BIND at its default 127.0.0.1:8788.
+# Leave TCAB_AUTH_URL at its default http://127.0.0.1:8789 so the worker proxies
+# register/login to, and forwards bearer tokens against, the auth service.
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -134,7 +141,30 @@ published against. Once a published run references a version it is immutable —
 revise by creating a **new version** instead, never by editing and re-ingesting
 the published one (see [Test Cases](/testing/end-to-end/overview/)).
 
-## 3. Start the worker
+## 3. Start the auth service
+
+So you can register, log in, and push/review/publish, start the auth service. It
+takes its own bind address and its own database, separate from the backend's:
+
+```sh
+TCAB_AUTH_BIND=127.0.0.1:8789 \
+TCAB_AUTH_DATABASE_URL=sqlite://./tcab-auth.db?mode=rwc \
+  ./target/debug/tcab-auth-service
+```
+
+Both default to the values shown, so a bare `./target/debug/tcab-auth-service`
+works too. Confirm it with `curl http://127.0.0.1:8789/healthz`, then create an
+account and log in:
+
+```sh
+tcab register --username dev --display-name "Dev"
+```
+
+The backend (pointed at it by `TCAB_BACKEND_AUTH_URL`) now verifies the token the
+CLI stored, so mutations are accepted. Without the auth service running, reads
+still work but push/review/publish are rejected `401`.
+
+## 4. Start the worker
 
 From a directory containing `.env.worker`, on the host:
 
@@ -147,7 +177,7 @@ started, and binds `127.0.0.1:8788`. Check `curl http://127.0.0.1:8788/healthz` 
 the response reports the worker's identity and the backend it is bound to, which
 is a quick way to confirm the two agree.
 
-## 4. Start the web console
+## 5. Start the web console
 
 Run the console's dev server and open it in a browser:
 
@@ -173,7 +203,7 @@ unset keeps both on plain stdout logging.
 
 ## Next
 
-When this works end to end, the same two binaries deploy unchanged to
+When this works end to end, the same service binaries deploy unchanged to
 [staging and prod on Azure](/deployment/azure/) — what changes is where they bind
 and how they are supervised, not how they are configured. See
 [Deployment](/deployment/overview/) for the remote build.

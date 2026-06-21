@@ -12,8 +12,11 @@ pub struct Model {
     pub id: String,
     pub started_at: String,
     pub finished_at: String,
-    /// RFC 3339 of the first publish; the newest-first sort/pagination key.
-    pub published_at: String,
+    /// RFC 3339 of the first publish, or `NULL` while the run is still only
+    /// pushed (unpublished). The newest-first sort/pagination key for the public
+    /// listing, which only ever sees published runs.
+    #[sea_orm(nullable)]
+    pub published_at: Option<String>,
     pub test_case_slug: String,
     pub test_case_version: String,
     pub variant: String,
@@ -23,6 +26,11 @@ pub struct Model {
     pub run_state: String,
     /// Whether the produced build loaded (lifted from the validation summary).
     pub loaded: bool,
+    /// Whether the run has been published. A pushed run starts unpublished
+    /// (private, playable for reviewers) and is flipped to published — gated on
+    /// having at least one review — by an explicit publish. Only published runs
+    /// enter the public snapshot.
+    pub published: bool,
     /// The full `RunRecord` serialized verbatim (links populated).
     #[sea_orm(column_type = "Text")]
     pub record_json: String,
@@ -33,7 +41,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_one = "super::review::Entity")]
+    /// A run has many reviews — different accounts may each review it once.
+    #[sea_orm(has_many = "super::review::Entity")]
     Review,
     #[sea_orm(has_one = "super::run_link::Entity")]
     RunLink,

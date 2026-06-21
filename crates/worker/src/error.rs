@@ -41,6 +41,13 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }
 
+    /// `401 Unauthorized` with code `unauthorized` — a mutating call (push,
+    /// review, publish) without a bearer token, or a login the auth service
+    /// rejected.
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
+    }
+
     /// `422 Unprocessable Entity` with code `unprocessable` — a request that
     /// parsed but cannot be acted on (e.g. a publish missing its review).
     pub fn unprocessable(message: impl Into<String>) -> Self {

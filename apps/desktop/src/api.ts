@@ -144,10 +144,32 @@ export interface ReviewDocument {
   checklist: ReviewVerdict[];
 }
 
+// One submitted review on a stored run, attributed to the account that wrote it.
+export interface StoredReview extends ReviewDocument {
+  reviewerId: string;
+  reviewer: string;
+  username?: string | null;
+  reviewedAt?: string | null;
+}
+
 export interface StoredRun {
   id: string;
   record: RunRecord;
-  review: ReviewDocument | null;
+  reviews: StoredReview[];
+  published: boolean;
+}
+
+// A user account, as the auth service returns it (the core proxies the call).
+export interface Account {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+// The auth `register`/`login` result: a bearer token plus its account.
+export interface AuthResult {
+  token: string;
+  account: Account;
 }
 
 export interface LaunchConfig {
@@ -250,8 +272,20 @@ export const saveReview = (
   writeup: string,
   checklist: ReviewVerdict[],
 ) => invoke<void>("save_review", { id, ratings, writeup, checklist });
-export const publishRun = (id: string) =>
-  invoke<PublishResult>("publish_run", { id });
+// The desktop's solo publish: push + the locally-saved review + publish in one
+// step, authorized by the signed-in account's bearer token.
+export const publishRun = (id: string, token: string) =>
+  invoke<PublishResult>("publish_run", { id, token });
+
+// Account auth: the local core proxies the standalone auth service. Both resolve
+// a bearer token plus the account.
+export const register = (
+  username: string,
+  password: string,
+  displayName: string,
+) => invoke<AuthResult>("register", { username, password, displayName });
+export const login = (username: string, password: string) =>
+  invoke<AuthResult>("login", { username, password });
 
 export const eventChannel = (runId: string) => `run://${runId}/event`;
 export const doneChannel = (runId: string) => `run://${runId}/done`;

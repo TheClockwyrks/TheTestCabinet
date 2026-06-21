@@ -16,6 +16,7 @@ durably somewhere else.
 | Data | Where it lives | Recoverable without a backup? |
 | ---- | -------------- | ----------------------------- |
 | **Published run records, reviews, links** | The backend's database (`TCAB_BACKEND_DATABASE_URL`) | **No — this is the system of record.** |
+| **User accounts** (usernames, Argon2id password hashes, display names) | The [auth service](/components/auth/overview/)'s own database (`TCAB_AUTH_DATABASE_URL`) | **No — accounts cannot be reconstructed.** |
 | Test-case definition store (`TCAB_BACKEND_STORE`) | On disk | Yes — re-ingested from the repository (`POST /ingest`) |
 | Ingest checkout (`TCAB_BACKEND_CHECKOUT`) | On disk | Yes — it is a git checkout |
 | The [public snapshot](/components/backend/snapshot/) | Cloudflare R2 | Yes — regenerated from the database |
@@ -25,6 +26,13 @@ So "back up the runs" reduces to "continuously back up one small database" — a
 SQLite file when the backend runs on SQLite, or a managed instance's provider
 backups when it runs on PostgreSQL. Everything else is reproducible from the
 repository or already lives in a durable service.
+
+The [auth service](/components/auth/overview/)'s **accounts** database is the one
+other irreplaceable store, and it backs up exactly the same way (its own SQLite
+file under `TCAB_AUTH_DATABASE_URL`, or a managed instance). It is even smaller and
+changes rarely, but apply the same approach below to it: losing it loses every
+account, and reviews on the backend would point at reviewer ids with no identities
+behind them.
 
 ### A built-in safety net
 

@@ -2,18 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/snapshot/run.schema.json",
   "title": "SnapshotRun",
-  "description": "A per-run file in the snapshot (`runs/<run-id>.json`): the full run record (links populated), plus the review and links the site needs for the detail page. The writeup is gated ahead of the embedded build; the rating is shown up front.",
+  "description": "A per-run file in the snapshot (`runs/<run-id>.json`): the full run record (links populated), plus every review and the links the site needs for the detail page. The snapshot contains ONLY published runs, so `published` is always true here. A run carries one or more reviews (one per reviewer account); the site shows each writeup with its reviewer's display name, gated ahead of the embedded build, and computes the run's score (the average across reviews) and overall rating (the worst across reviews) client-side.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "record", "review", "links"],
+  "required": ["schemaVersion", "record", "reviews", "published", "links"],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
     "record": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
       "description": "The full RunRecord, verbatim, with `links` populated."
     },
-    "review": {
-      "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
+    "published": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true: the public snapshot contains only published runs."
+    },
+    "reviews": {
+      "type": "array",
+      "description": "Every review submitted for this run, one entry per reviewer account, attributed by reviewer identity. At least one (publishing requires it). The run's score is the average of each review's earned-over-declared checklist weight; its overall rating is the worst rating across every domain of every review.",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
+      }
     },
     "links": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunLinks"

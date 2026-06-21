@@ -133,13 +133,54 @@ export interface ReviewDocument {
   checklist: ReviewVerdict[];
 }
 
+// One submitted review on a stored run, attributed to the account that wrote it.
+// A run may carry more than one (one per account); the run's aggregate rating is
+// the worst any reviewer gave any domain and its aggregate score the mean earned.
+// Mirrors the per-review object the backend/worker `GET /runs/{id}` returns and
+// the snapshot's `reviews[]` entries.
+export interface StoredReview extends ReviewDocument {
+  // The reviewing account's stable id.
+  reviewerId: string;
+  // The reviewer's display name, for attribution in the UI.
+  reviewer: string;
+  // The reviewer's username (login handle). Absent on the public snapshot, which
+  // exposes only the display name.
+  username?: string | null;
+  // When the review was submitted (ISO-8601), when reported.
+  reviewedAt?: string | null;
+}
+
 // A finished run held by a runner (a worker, or the local core in Tauri),
 // awaiting review and/or publishing. Also the shape the backend serves for a
-// *published* run (`GET /runs/{id}`): its record (links populated) and review.
+// *published* run (`GET /runs/{id}`): its record (links populated), every review
+// submitted against it, and whether it has been published.
 export interface StoredRun {
   id: string;
   record: RunRecord;
-  review: ReviewDocument | null;
+  // Every review submitted against the run (attributed to its author). Empty for
+  // a pushed-but-unreviewed run.
+  reviews: StoredReview[];
+  // Whether the run has cleared the publish gate (a published run is publicly
+  // visible). Worker-produced runs default to false until published.
+  published: boolean;
+}
+
+// --- Accounts & auth ---
+
+// A user account, as the auth service returns it (the worker proxies the call).
+export interface Account {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+// The auth service's register/login result: a bearer token plus the account it
+// belongs to. Clients store the token and send `Authorization: Bearer <token>`
+// on every mutating call (push/review/publish). Mirrors the worker's
+// `POST /auth/{register,login}` response.
+export interface AuthResult {
+  token: string;
+  account: Account;
 }
 
 // One page of published runs from the backend (`GET /runs`), newest first.
@@ -165,9 +206,20 @@ export interface LaunchConfig {
   maxRuntimeOverride: number | null;
 }
 
-export interface PublishResult {
+// The worker's `POST /push` ack: the run's released source repo and (where the
+// run produced one) playable build, and whether this call was the one that
+// released them (false when the run was already pushed). A push stores the run
+// privately — no review, not yet published.
+export interface PushResult {
   sourceRepo: string;
   playableBuild: string | null;
+  newlyPushed: boolean;
+}
+
+// The worker's `POST /publish` ack: whether this call was the one that published
+// the run (false when it was already public). The backend refuses (422) to
+// publish a run carrying zero reviews — the editor gates the action on that.
+export interface PublishResult {
   newlyPublished: boolean;
 }
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/worker-api/publish-run-ack.schema.json",
   "title": "WorkerPublishRunAck",
-  "description": "The response to a successful worker POST /publish: the resolved public links and whether the run was newly recorded. Publishing is idempotent, so a re-publish of an already-published run succeeds with `newlyPublished: false`.",
+  "description": "The response to a successful worker POST /push or POST /publish: the resolved public links and whether the run was newly recorded/published. Both are idempotent, so a re-push or re-publish of a run already in that state succeeds with `newlyPublished: false`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["runId", "sourceRepo", "newlyPublished"],

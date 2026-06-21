@@ -59,42 +59,64 @@ pub struct ResolvedArtifact {
     pub bytes: Vec<u8>,
 }
 
-/// The backend's acknowledgement of a published run.
+/// The backend's acknowledgement of a pushed run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PushAck {
+    /// The run id the backend stored the push under (`record.id`).
+    pub id: String,
+    /// Whether this push newly stored the run (`true`) or was an idempotent
+    /// re-push of an already-stored run (`false`).
+    pub newly_pushed: bool,
+}
+
+/// The backend's acknowledgement of publishing a run (flipping it public).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishAck {
-    /// The run id the backend stored the publish under (`record.id`).
+    /// The run id that was published (`record.id`).
     pub id: String,
-    /// Whether this publish was newly recorded (`true`) or an idempotent
-    /// re-publish of an already-stored run (`false`).
+    /// Whether this publish flipped a pending run public (`true`) or was an
+    /// idempotent re-publish of an already-published run (`false`).
     pub newly_published: bool,
 }
 
 /// A run on the backend's read side, as served by `GET /runs` and
-/// `GET /runs/{id}`: the full record (with its links resolved), the review it
-/// was published with, and the resolved links. This is what a reporter or
-/// gallery consumes — the publish-time counterpart is [`BackendClient::publish_run`].
+/// `GET /runs/{id}`: the full record (with its links resolved), its reviews, and
+/// the resolved links. This is what a reporter or gallery consumes.
 #[derive(Debug, Clone)]
 pub struct PublishedRun {
     /// The full run record. Its [`RunLinks`] are the resolved links the backend
     /// holds (the separate [`links`](Self::links) field, merged onto the blob).
     pub record: RunRecord,
-    /// The review the run was published with.
-    pub review: PublishedReview,
+    /// The run's reviews, oldest first. Empty while the run is pending review.
+    /// The run's overall rating is the worst across them and its score the
+    /// average.
+    pub reviews: Vec<PublishedReview>,
+    /// Whether the run is published (in the public snapshot).
+    pub published: bool,
     /// The resolved source-repo and playable-build links the backend recorded.
     pub links: RunLinks,
 }
 
-/// A review as the backend serves it on the read side: the per-domain ratings,
-/// the prose body, and the reviewer's verdicts on the case's checklist items.
+/// A review as the backend serves it on the read side: the reviewing account's
+/// public identity, the per-domain ratings, the prose body, and the reviewer's
+/// verdicts on the case's checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedReview {
-    /// The reviewer's rating for each of the case's scoring domains. The run's
-    /// overall rating is the worst across them.
+    /// The reviewing account's id.
+    pub reviewer_id: String,
+    /// The reviewing account's display name.
+    pub reviewer: String,
+    /// The reviewing account's login handle.
+    pub username: String,
+    /// The reviewer's rating for each of the case's scoring domains. This
+    /// review's overall rating is the worst across them.
     pub ratings: Vec<crate::review::DomainRating>,
     /// The review prose.
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items.
     pub checklist: Vec<crate::review::ReviewVerdict>,
+    /// RFC 3339 of when the review was submitted.
+    pub reviewed_at: String,
 }
 
 /// One page of published runs from `GET /runs`, newest first.
@@ -145,16 +167,29 @@ pub trait BackendClient: Send + Sync {
     /// [`Self::resolve_version`]; this is the explicit fetch).
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String>;
 
-    /// Submit a published run: record + review + resolved links + recorded event
-    /// stream. (`POST /runs`) Idempotent on `record.id`. `events` is the run's
-    /// normalized event log; pass an empty slice when none is available.
-    async fn publish_run(
+    /// Push a run: record + resolved links + recorded event stream, **without** a
+    /// review. (`POST /runs`) Stores it privately (unpublished) so a reviewer can
+    /// play the build; it does not enter the public snapshot until published.
+    /// Idempotent on `record.id`. `events` is the run's normalized event log; pass
+    /// an empty slice when none is available. Requires the client to carry a
+    /// bearer token (see [`HttpBackendClient::with_token`]).
+    async fn push_run(
         &self,
         record: &RunRecord,
-        review: &Writeup,
         links: &RunLinks,
         events: &[HarnessEvent],
-    ) -> Result<PublishAck>;
+    ) -> Result<PushAck>;
+
+    /// Submit a review for a pushed run. (`POST /runs/{id}/reviews`) The review is
+    /// attributed to the account behind the client's bearer token; a run may carry
+    /// many reviews, one per account, and re-submitting from the same account
+    /// updates it. Requires a bearer token.
+    async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()>;
+
+    /// Publish a run: flip it public. (`POST /runs/{id}/publish`) Refused by the
+    /// backend unless the run has at least one review. Idempotent; requires a
+    /// bearer token.
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck>;
 
     /// Upload one proof-of-implementation media file for a published run, served
     /// back as the reviewer's submitted-evidence pane. `file` is `<proof-id>.<ext>`.
@@ -388,24 +423,38 @@ impl crate::reference::ReferenceRenderer for PrerenderedReferenceRenderer {
 /// A [`BackendClient`] that talks to the backend's HTTP API over `reqwest`.
 ///
 /// The base URL is the backend's address (for example `http://127.0.0.1:8787`).
-/// There is no app-level auth — the private network / Tailscale is the access
-/// control — so no credentials are attached.
+/// The mutating endpoints (push, review, publish, media upload) require a bearer
+/// token, attached on every request when one is set via [`Self::with_token`];
+/// reads work without one. The private network is still the outer boundary — the
+/// token authenticates *which account* is acting, not merely that the caller can
+/// reach the backend.
 #[derive(Debug, Clone)]
 pub struct HttpBackendClient {
     /// The backend base URL, without a trailing slash.
     base_url: String,
+    /// The bearer token attached to every request, or `None` for read-only use.
+    token: Option<String>,
     /// The shared HTTP client.
     http: reqwest::Client,
 }
 
 impl HttpBackendClient {
-    /// Construct a client targeting the backend at `base_url`.
+    /// Construct a client targeting the backend at `base_url`, with no token (for
+    /// read-only use). Use [`Self::with_token`] to authenticate mutating calls.
     pub fn new(base_url: impl Into<String>) -> Self {
         let base = base_url.into();
         Self {
             base_url: base.trim_end_matches('/').to_string(),
+            token: None,
             http: reqwest::Client::new(),
         }
+    }
+
+    /// Attach (or clear) the bearer token this client authenticates mutating
+    /// requests with. `None` leaves it read-only.
+    pub fn with_token(mut self, token: Option<String>) -> Self {
+        self.token = token.filter(|t| !t.is_empty());
+        self
     }
 
     /// The backend base URL this client targets.
@@ -416,6 +465,19 @@ impl HttpBackendClient {
     /// Join a path onto the base URL.
     fn url(&self, path: &str) -> String {
         format!("{}/{}", self.base_url, path.trim_start_matches('/'))
+    }
+
+    /// The outbound headers for a request: the current trace context (a no-op
+    /// when no propagator is installed) plus the bearer token when one is set.
+    fn headers(&self) -> http::HeaderMap {
+        let mut headers = http::HeaderMap::new();
+        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        if let Some(token) = &self.token
+            && let Ok(value) = http::HeaderValue::from_str(&format!("Bearer {token}"))
+        {
+            headers.insert(http::header::AUTHORIZATION, value);
+        }
+        headers
     }
 
     /// GET `path` and deserialize a JSON body, mapping transport and status
@@ -448,14 +510,11 @@ impl HttpBackendClient {
             .to_vec())
     }
 
-    /// Issue a GET to `url` with the current trace context injected into the
-    /// outbound headers, so the backend can continue this trace. The injection is
-    /// a no-op unless a binary installed the global propagator (the propagation
-    /// helper degrades silently otherwise), so this is safe in fmt-only mode.
+    /// Issue a GET to `url` with the standard headers (trace context, and the
+    /// bearer token when set). The trace injection is a no-op unless a binary
+    /// installed the global propagator, so this is safe in fmt-only mode.
     async fn get(&self, url: &str) -> reqwest::Result<reqwest::Response> {
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
-        self.http.get(url).headers(headers).send().await
+        self.http.get(url).headers(self.headers()).send().await
     }
 }
 
@@ -547,7 +606,7 @@ impl BackendClient for HttpBackendClient {
     }
 
     #[instrument(
-        skip(self, record, review, links, events),
+        skip(self, record, links, events),
         fields(
             otel.kind = "client",
             http.request.method = "POST",
@@ -556,36 +615,75 @@ impl BackendClient for HttpBackendClient {
         ),
         err,
     )]
-    async fn publish_run(
+    async fn push_run(
         &self,
         record: &RunRecord,
-        review: &Writeup,
         links: &RunLinks,
         events: &[HarnessEvent],
-    ) -> Result<PublishAck> {
+    ) -> Result<PushAck> {
         let url = self.url("/runs");
-        let body = PublishBody {
+        let body = PushBody {
             record,
-            review: ReviewBody {
-                ratings: &review.ratings,
-                writeup: &review.body,
-                checklist: &review.checklist,
-            },
             links: LinksBody {
                 source_repo: links.source_repo.clone(),
                 playable_build: links.playable_build.clone(),
             },
             events,
         };
-        // Inject the current trace context so the backend continues this trace.
-        // A no-op when no propagator is installed (fmt-only mode).
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
         let response = self
             .http
             .post(&url)
-            .headers(headers)
+            .headers(self.headers())
             .json(&body)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        let response = error_for_status(&url, response).await?;
+        let ack: PushAckBody = response
+            .json()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        Ok(PushAck {
+            id: ack.id,
+            newly_pushed: ack.newly_pushed,
+        })
+    }
+
+    #[instrument(
+        skip(self, review),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/reviews", encode(run_id)));
+        let body = ReviewBody {
+            ratings: &review.ratings,
+            writeup: &review.body,
+            checklist: &review.checklist,
+        };
+        let response = self
+            .http
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+        let url = self.url(&format!("/runs/{}/publish", encode(run_id)));
+        let response = self
+            .http
+            .post(&url)
+            .headers(self.headers())
             .send()
             .await
             .map_err(|err| backend_err(&url, err))?;
@@ -608,8 +706,7 @@ impl BackendClient for HttpBackendClient {
     async fn publish_run_proof(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
         let url = self.url(&format!("/runs/{}/proof/{}", encode(run_id), encode(file)));
         let content_type = content_type_for_file(file);
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let headers = self.headers();
         let response = self
             .http
             .post(&url)
@@ -631,8 +728,7 @@ impl BackendClient for HttpBackendClient {
     async fn publish_run_asset(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
         let url = self.url(&format!("/runs/{}/asset/{}", encode(run_id), encode(file)));
         let content_type = content_type_for_file(file);
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let headers = self.headers();
         let response = self
             .http
             .post(&url)
@@ -653,8 +749,7 @@ impl BackendClient for HttpBackendClient {
     )]
     async fn publish_tournament(&self, record: &TournamentRecord) -> Result<()> {
         let url = self.url("/tournaments");
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let headers = self.headers();
         let response = self
             .http
             .post(&url)
@@ -683,8 +778,7 @@ impl BackendClient for HttpBackendClient {
             encode(tournament_id),
             encode(match_id)
         ));
-        let mut headers = http::HeaderMap::new();
-        test_cabinet_telemetry::propagation::inject_current_context(&mut headers);
+        let headers = self.headers();
         let response = self
             .http
             .post(&url)
@@ -1175,9 +1269,8 @@ struct CheckBody {
 }
 
 #[derive(serde::Serialize)]
-struct PublishBody<'a> {
+struct PushBody<'a> {
     record: &'a RunRecord,
-    review: ReviewBody<'a>,
     links: LinksBody,
     /// The run's normalized event stream. Always sent (an empty array when the
     /// run has none); the backend stores it for the published Events tab.
@@ -1202,6 +1295,13 @@ struct LinksBody {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct PushAckBody {
+    id: String,
+    newly_pushed: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PublishAckBody {
     id: String,
     newly_published: bool,
@@ -1219,13 +1319,23 @@ struct RunPageBody {
 #[serde(rename_all = "camelCase")]
 struct StoredRunBody {
     record: RunRecord,
-    review: ReviewOutBody,
+    #[serde(default)]
+    reviews: Vec<ReviewOutBody>,
+    #[serde(default)]
+    published: bool,
     #[serde(default)]
     links: LinksOutBody,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ReviewOutBody {
+    #[serde(default)]
+    reviewer_id: String,
+    #[serde(default)]
+    reviewer: String,
+    #[serde(default)]
+    username: String,
     /// The reviewer's rating for each scoring domain. Deserialized straight into
     /// [`crate::review::DomainRating`] — the wire shape matches it.
     #[serde(default)]
@@ -1233,6 +1343,8 @@ struct ReviewOutBody {
     writeup: String,
     #[serde(default)]
     checklist: Vec<crate::review::ReviewVerdict>,
+    #[serde(default)]
+    reviewed_at: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -1263,11 +1375,20 @@ fn stored_run_from(body: StoredRunBody) -> PublishedRun {
     record.links = links.clone();
     PublishedRun {
         record,
-        review: PublishedReview {
-            ratings: body.review.ratings,
-            writeup: body.review.writeup,
-            checklist: body.review.checklist,
-        },
+        reviews: body
+            .reviews
+            .into_iter()
+            .map(|review| PublishedReview {
+                reviewer_id: review.reviewer_id,
+                reviewer: review.reviewer,
+                username: review.username,
+                ratings: review.ratings,
+                writeup: review.writeup,
+                checklist: review.checklist,
+                reviewed_at: review.reviewed_at,
+            })
+            .collect(),
+        published: body.published,
         links,
     }
 }

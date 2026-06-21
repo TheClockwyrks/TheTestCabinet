@@ -2,19 +2,26 @@
 title: Review a Run
 ---
 
-Every published run carries a hand-written [review](/components/core/results/#reviews)
-— a writeup, a rating for each scoring [domain](/terminology/#domain), and a
-verdict on each of the case's [reviewer-checklist](/testing/end-to-end/manifests/)
-items — authored after playing the build. The verdicts and the items' point
-weights produce the run's [score](/terminology/#score). Publishing refuses a run
-without a review. The full workflow is in
+Every published run carries one or more hand-written
+[reviews](/components/core/results/#reviews) — each a writeup, a rating for each
+scoring [domain](/terminology/#domain), and a verdict on each of the case's
+[reviewer-checklist](/testing/end-to-end/manifests/) items — authored after playing
+the build. The verdicts and the items' point weights produce each review's
+[score](/terminology/#score); across a run's reviews the score is averaged and the
+overall rating is the worst. Every review is attributed to the
+[account](/components/backend/overview/#accounts) that wrote it, a run may carry
+**one review per account** (often from people other than whoever
+[pushed](/components/core/results/#push) it), and publishing refuses a run with no
+review. You review a *pushed* run — one whose build has been released so it can be
+played. The full workflow is in
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
 
 ## Review in a console
 
 The [Tauri desktop app](/components/tauri/overview/) and the
-[web console](/components/web/overview/) are the primary way to review. Open the
-finished run, play its build, then fill in the review editor:
+[web console](/components/web/overview/) are the primary way to review.
+[Sign in](/quickstarts/register-and-login/), then open the finished run, play its
+build, and fill in the review editor:
 
 - Work the **reviewer checklist** — one item at a time, with a rail of every item
   alongside (answered items marked done) so you can move freely. Each item shows
@@ -34,7 +41,14 @@ submitted (and any it didn't), browsable independent of the checklist.
 
 The console writes the review to `runs/<id>/writeup.md` for you.
 
-## Review by hand
+## Review from the CLI
+
+From a [signed-in](/quickstarts/register-and-login/) shell, submit a review for a
+pushed run with its writeup file, attributed to your account:
+
+```sh
+tcab review runs/<id>/run-record.json --writeup runs/<id>/writeup.md
+```
 
 The review file is also hand-editable. Create `runs/<id>/writeup.md` beside the
 run's `run-record.json`, with a `rating.<domain>:` line per scoring domain in

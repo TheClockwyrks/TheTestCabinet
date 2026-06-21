@@ -25,6 +25,7 @@ fn test_state() -> AppState {
         config: Arc::new(Config {
             bind: "127.0.0.1:0".to_string(),
             backend_url: "http://127.0.0.1:8787".to_string(),
+            auth_url: "http://127.0.0.1:8789".to_string(),
             out_dir: std::env::temp_dir().join("tcab-worker-test-out"),
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),
@@ -90,6 +91,7 @@ fn state_with_out_dir(out_dir: std::path::PathBuf) -> AppState {
         config: Arc::new(Config {
             bind: "127.0.0.1:0".to_string(),
             backend_url: "http://127.0.0.1:8787".to_string(),
+            auth_url: "http://127.0.0.1:8789".to_string(),
             out_dir,
             work_dir: std::env::temp_dir().join("tcab-worker-test-work"),
         }),

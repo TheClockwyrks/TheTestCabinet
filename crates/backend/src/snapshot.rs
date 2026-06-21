@@ -114,11 +114,7 @@ impl SnapshotBuilder {
                 &PerRun {
                     schema_version: SCHEMA_VERSION,
                     record: &run.record,
-                    review: ReviewOut {
-                        ratings: &run.review.ratings,
-                        writeup: &run.review.writeup,
-                        checklist: &run.review.checklist,
-                    },
+                    reviews: run.reviews.iter().map(review_out).collect(),
                     links: LinksOut {
                         source_repo: run.links.source_repo.as_deref(),
                         playable_build: run.links.playable_build.as_deref(),
@@ -184,7 +180,9 @@ impl SnapshotBuilder {
 
         RunSummary {
             id: record.id.clone(),
-            published_at: run.published_at.clone(),
+            // The snapshot only ever contains published runs, so `published_at`
+            // is always set; default defensively rather than panic.
+            published_at: run.published_at.clone().unwrap_or_default(),
             started_at: record.started_at.clone(),
             finished_at: record.finished_at.clone(),
             subject: SubjectOut::from(record),
@@ -192,7 +190,8 @@ impl SnapshotBuilder {
             metrics: &record.metrics,
             validation_loaded: record.validation.loaded,
             state: state_str(record.status.state),
-            rating: overall_rating_str(&run.review.ratings),
+            rating: aggregate_rating_str(&run.reviews),
+            review_count: run.reviews.len(),
             links: LinksOut {
                 source_repo: run.links.source_repo.as_deref(),
                 playable_build: run.links.playable_build.as_deref(),
@@ -473,7 +472,11 @@ struct RunSummary<'a> {
     metrics: &'a test_cabinet_core::metrics::RunMetrics,
     validation_loaded: bool,
     state: &'static str,
+    /// The run's overall rating: the worst rating any reviewer gave any domain.
     rating: &'static str,
+    /// How many reviews the run carries. The site averages their scores; the
+    /// aggregate sits between the harshest and most generous review.
+    review_count: usize,
     links: LinksOut<'a>,
 }
 
@@ -506,7 +509,9 @@ impl SubjectOut {
 struct PerRun<'a> {
     schema_version: u32,
     record: &'a RunRecord,
-    review: ReviewOut<'a>,
+    /// The run's reviews, oldest first. The site averages their scores and takes
+    /// the worst rating across them; each entry names its reviewer.
+    reviews: Vec<ReviewOut<'a>>,
     links: LinksOut<'a>,
     /// The run's recorded normalized event stream (a JSON array), omitted when the
     /// run captured none. The site emits this as a per-run static asset its Events
@@ -544,12 +549,32 @@ struct RunAssetOut {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReviewOut<'a> {
-    /// The reviewer's rating for each scoring domain. The run's overall rating is
-    /// the worst across them.
+    /// The reviewing account's id (stable across their reviews).
+    reviewer_id: &'a str,
+    /// The reviewer's display name, shown beside their review.
+    reviewer: &'a str,
+    /// The reviewer's rating for each scoring domain. This review's overall
+    /// rating is the worst across them.
     ratings: &'a [test_cabinet_core::review::DomainRating],
     writeup: &'a str,
     checklist: &'a [test_cabinet_core::review::ReviewVerdict],
+    /// RFC 3339 of when the review was submitted.
+    reviewed_at: &'a str,
+}
+
+/// Map a stored review to its snapshot wire shape, exposing the reviewer's
+/// public identity (id + display name) but never any account internals.
+fn review_out(review: &crate::db::StoredReview) -> ReviewOut<'_> {
+    ReviewOut {
+        reviewer_id: &review.reviewer.user_id,
+        reviewer: &review.reviewer.display_name,
+        ratings: &review.ratings,
+        writeup: &review.writeup,
+        checklist: &review.checklist,
+        reviewed_at: &review.reviewed_at,
+    }
 }
 
 #[derive(Serialize)]
@@ -747,11 +772,11 @@ fn state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
     }
 }
 
-/// The run's overall rating — the worst across its per-domain ratings — as a wire
-/// token. Falls back to `broken` for the (publish-gated, so unreachable) case of
-/// no ratings, so the runs index always carries a tier.
-fn overall_rating_str(ratings: &[test_cabinet_core::review::DomainRating]) -> &'static str {
-    test_cabinet_core::review::Rating::worst(ratings.iter().map(|domain| domain.rating))
+/// The run's overall rating — the worst rating any reviewer gave any domain —
+/// as a wire token. Falls back to `broken` for the (publish-gated, so
+/// unreachable) case of no reviews, so the runs index always carries a tier.
+fn aggregate_rating_str(reviews: &[crate::db::StoredReview]) -> &'static str {
+    test_cabinet_core::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice()))
         .map(|rating| rating.as_str())
         .unwrap_or("broken")
 }

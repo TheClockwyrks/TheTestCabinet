@@ -1,102 +1,101 @@
-//! The publish endpoint: release a finished run on the same terms a local
-//! `tcab publish` does.
+//! The run-lifecycle endpoints: push, review, and publish a finished run on the
+//! same terms a local `tcab push`/`review`/`publish` does.
 //!
-//! Publishing is a distinct, explicit operation from running (see
-//! `core/results.md`): it releases the run's generated source to its own public
-//! GitHub repository, deploys the playable build to Cloudflare Pages, and submits
-//! the record + review + resolved links to the backend (the system of record).
+//! The run lifecycle is split (see `core/results.md`):
+//! - **push** releases the run's source to its own public GitHub repository,
+//!   deploys the playable build to Cloudflare Pages, and stores the record on the
+//!   backend — without a review.
+//! - **review** submits a review for an already-pushed run.
+//! - **publish** flips a reviewed run public (refused with no reviews).
+//!
 //! The worker re-implements none of this — it assembles the core
-//! [`BackendPublisher`](test_cabinet_core::BackendPublisher) exactly as the CLI
-//! does and drives it.
-//!
-//! A run cannot be published without a review (a hand-written rating + writeup),
-//! so the request carries one; a missing or invalid rating is a `422`.
+//! [`BackendPublisher`](test_cabinet_core::BackendPublisher)/[`HttpBackendClient`]
+//! exactly as the CLI does and drives it, **forwarding the caller's bearer token**
+//! (the console's logged-in account) to the backend, which attributes the review.
 
 use std::path::Path;
 
 use axum::Json;
 use axum::extract::State;
+use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{
-    ArtifactCollection, BackendPublisher, DomainRating, HttpBackendClient, PublishConfig,
-    PublishRequest, Publisher, RunRecord, SystemCommandRunner, Writeup, find_build_output,
-    read_event_log,
+    ArtifactCollection, BackendClient, BackendPublisher, DomainRating, HttpBackendClient,
+    PublishConfig, Publisher, PushRequest, RunRecord, SystemCommandRunner, Writeup,
+    find_build_output, read_event_log,
 };
 
 use crate::api::AppState;
 use crate::error::ApiError;
 
-/// The body of `POST /publish`: which finished run to publish, and its review.
+/// The body of `POST /push`: which finished run to push.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishBody {
-    /// The id of a run this worker previously produced. Its record and collected
-    /// implementation are loaded from the worker's output directory.
+pub struct PushBody {
+    /// The id of a run this worker previously produced.
     pub run_id: String,
-    /// The reviewer's quality rating for each of the case's scoring domains. Each
-    /// rating is one of `flawless` | `great` | `scuffed` | `broken`.
+}
+
+/// The body of `POST /review`: a review for an already-pushed run.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewBody {
+    /// The run to review.
+    pub run_id: String,
+    /// The reviewer's quality rating for each scoring domain.
     pub ratings: Vec<DomainRating>,
-    /// The writeup prose shown before the playable build (markdown body).
+    /// The writeup prose (markdown body).
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items.
     #[serde(default)]
     pub checklist: Vec<test_cabinet_core::ReviewVerdict>,
 }
 
-/// The response to a successful publish: the resolved links and whether anything
-/// changed (publishing is idempotent).
+/// The body of `POST /publish`: which reviewed run to publish.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishBody {
+    /// The run to publish.
+    pub run_id: String,
+}
+
+/// The response to a successful push: the resolved links and idempotency flag.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushAck {
+    pub run_id: String,
+    pub source_repo: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playable_build: Option<String>,
+    pub newly_pushed: bool,
+}
+
+/// The response to a successful review submission.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewAck {
+    pub run_id: String,
+}
+
+/// The response to a successful publish.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishAck {
-    /// The published run's id.
     pub run_id: String,
-    /// The public source repository URL.
-    pub source_repo: String,
-    /// The playable-build URL, when a static build was deployed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub playable_build: Option<String>,
-    /// Whether this publish newly recorded the run, or was an idempotent re-publish.
     pub newly_published: bool,
 }
 
-/// `POST /publish` — publish a finished run.
-///
-/// Loads the run's record and implementation from this worker's output
-/// directory, validates the review, and runs the full publish (release code,
-/// deploy build, submit to the backend). Idempotent on the run id.
-pub async fn publish(
+/// `POST /push` — release the run's source + build and store the record (no
+/// review). Requires the caller's bearer token, forwarded to the backend.
+pub async fn push(
     State(state): State<AppState>,
-    Json(body): Json<PublishBody>,
-) -> Result<Json<PublishAck>, ApiError> {
-    // Validate the review up front: publishing refuses a run without one. The
-    // rating tiers themselves are validated by deserialization; here we only
-    // require that at least one domain was rated and the writeup is non-empty.
-    if body.ratings.is_empty() {
-        return Err(ApiError::unprocessable(
-            "`ratings` must rate at least one domain (a run cannot be published without a review)",
-        ));
-    }
-    if body.writeup.trim().is_empty() {
-        return Err(ApiError::unprocessable(
-            "`writeup` must not be empty (a run cannot be published without a review)",
-        ));
-    }
-    let writeup = Writeup {
-        ratings: body.ratings,
-        body: body.writeup.trim().to_string(),
-        checklist: body.checklist,
-    };
+    headers: HeaderMap,
+    Json(body): Json<PushBody>,
+) -> Result<Json<PushAck>, ApiError> {
+    let publisher = publisher(&state, &headers)?;
 
-    // Locate the record and its sibling implementation that a prior run wrote.
     let run_dir = state.config.out_dir.join(&body.run_id);
-    let record_path = run_dir.join("run-record.json");
-    let record = load_record(&record_path).map_err(|err| {
-        ApiError::not_found(format!(
-            "no run record for `{}` at {}: {err}",
-            body.run_id,
-            record_path.display()
-        ))
-    })?;
+    let record = load_run_record(&run_dir, &body.run_id)?;
     let impl_dir = run_dir.join("implementation");
     if !impl_dir.is_dir() {
         return Err(ApiError::not_found(format!(
@@ -109,37 +108,116 @@ pub async fn publish(
     let artifacts = ArtifactCollection {
         repo_path: impl_dir,
     };
-    // Publish the recorded event log alongside the run so its Events tab works on
-    // the public site (best-effort: an absent log publishes as no events).
     let events = read_event_log(&run_dir);
 
-    let publisher = BackendPublisher::new(
-        PublishConfig::from_env(),
-        SystemCommandRunner,
-        HttpBackendClient::new(state.config.backend_url.clone()),
-    );
-    let request = PublishRequest {
+    let request = PushRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: build_dir.as_deref(),
-        writeup: &writeup,
         events: &events,
     };
     let outcome = publisher
-        .publish(&request)
+        .push(&request)
         .await
-        .map_err(|err| ApiError::internal(format!("publishing run `{}`: {err}", body.run_id)))?;
+        .map_err(|err| ApiError::internal(format!("pushing run `{}`: {err}", body.run_id)))?;
 
-    Ok(Json(PublishAck {
+    Ok(Json(PushAck {
         run_id: record.id,
         source_repo: outcome.source_repo,
         playable_build: outcome.playable_build,
-        newly_published: outcome.newly_published,
+        newly_pushed: outcome.newly_pushed,
     }))
 }
 
-/// Load a run record from its `run-record.json`.
-fn load_record(path: &Path) -> Result<RunRecord, String> {
-    let text = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
-    serde_json::from_str(&text).map_err(|err| err.to_string())
+/// `POST /review` — submit a review for an already-pushed run, attributed to the
+/// caller's account (the forwarded bearer token).
+pub async fn review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ReviewBody>,
+) -> Result<Json<ReviewAck>, ApiError> {
+    if body.ratings.is_empty() {
+        return Err(ApiError::unprocessable(
+            "`ratings` must rate at least one domain",
+        ));
+    }
+    if body.writeup.trim().is_empty() {
+        return Err(ApiError::unprocessable("`writeup` must not be empty"));
+    }
+    let writeup = Writeup {
+        ratings: body.ratings,
+        body: body.writeup.trim().to_string(),
+        checklist: body.checklist,
+    };
+    let client = backend_client(&state, &headers)?;
+    client
+        .submit_review(&body.run_id, &writeup)
+        .await
+        .map_err(|err| ApiError::internal(format!("reviewing run `{}`: {err}", body.run_id)))?;
+    Ok(Json(ReviewAck {
+        run_id: body.run_id,
+    }))
+}
+
+/// `POST /publish` — publish a reviewed run (flip it public). Forwards the
+/// caller's token; the backend refuses a run with no reviews.
+pub async fn publish(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PublishBody>,
+) -> Result<Json<PublishAck>, ApiError> {
+    let client = backend_client(&state, &headers)?;
+    let ack = client
+        .publish_run(&body.run_id)
+        .await
+        .map_err(|err| ApiError::internal(format!("publishing run `{}`: {err}", body.run_id)))?;
+    Ok(Json(PublishAck {
+        run_id: ack.id,
+        newly_published: ack.newly_published,
+    }))
+}
+
+/// Build a [`BackendPublisher`] whose backend client carries the caller's bearer
+/// token (forwarded from the incoming request).
+fn publisher(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<BackendPublisher<SystemCommandRunner, HttpBackendClient>, ApiError> {
+    Ok(BackendPublisher::new(
+        PublishConfig::from_env(),
+        SystemCommandRunner,
+        backend_client(state, headers)?,
+    ))
+}
+
+/// Build an [`HttpBackendClient`] carrying the caller's bearer token. The token
+/// is required: a mutating call without an authenticated account is a `401`.
+fn backend_client(state: &AppState, headers: &HeaderMap) -> Result<HttpBackendClient, ApiError> {
+    let token = bearer(headers)
+        .ok_or_else(|| ApiError::unauthorized("missing bearer token — log in first"))?;
+    Ok(HttpBackendClient::new(state.config.backend_url.clone()).with_token(Some(token)))
+}
+
+/// Load a run record from `<run_dir>/run-record.json`, mapping a missing one to a
+/// `404`.
+fn load_run_record(run_dir: &Path, run_id: &str) -> Result<RunRecord, ApiError> {
+    let record_path = run_dir.join("run-record.json");
+    let text = std::fs::read_to_string(&record_path).map_err(|err| {
+        ApiError::not_found(format!(
+            "no run record for `{run_id}` at {}: {err}",
+            record_path.display()
+        ))
+    })?;
+    serde_json::from_str(&text)
+        .map_err(|err| ApiError::internal(format!("parsing run record for `{run_id}`: {err}")))
+}
+
+/// Extract the bearer token from an `Authorization: Bearer <token>` header.
+fn bearer(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))?
+        .trim();
+    (!token.is_empty()).then(|| token.to_string())
 }

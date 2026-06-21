@@ -341,3 +341,64 @@ fn score_sums_the_weight_of_passed_items() {
         }
     );
 }
+
+#[test]
+fn aggregate_score_averages_earned_over_the_shared_total() {
+    // Two reviewers scored the same 6-point checklist: one earned 6, one earned 3.
+    let scores = [
+        Score {
+            earned: 6,
+            total: 6,
+        },
+        Score {
+            earned: 3,
+            total: 6,
+        },
+    ];
+    let aggregate = aggregate_score(&scores).expect("two reviews aggregate");
+    assert_eq!(aggregate.total, 6);
+    assert_eq!(aggregate.reviews, 2);
+    assert!((aggregate.earned - 4.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn aggregate_score_is_none_without_reviews() {
+    assert!(aggregate_score(&[]).is_none());
+}
+
+#[test]
+fn aggregate_rating_is_the_worst_across_every_review_and_domain() {
+    // One generous review (all flawless) and one harsh review (one broken domain):
+    // the aggregate is the worst any reviewer gave any domain.
+    let generous = vec![
+        DomainRating {
+            domain: "single-player".to_string(),
+            rating: Rating::Flawless,
+        },
+        DomainRating {
+            domain: "versus".to_string(),
+            rating: Rating::Flawless,
+        },
+    ];
+    let harsh = vec![
+        DomainRating {
+            domain: "single-player".to_string(),
+            rating: Rating::Great,
+        },
+        DomainRating {
+            domain: "versus".to_string(),
+            rating: Rating::Broken,
+        },
+    ];
+    let reviews = [generous.as_slice(), harsh.as_slice()];
+    assert_eq!(
+        aggregate_rating(reviews.iter().copied()),
+        Some(Rating::Broken)
+    );
+}
+
+#[test]
+fn aggregate_rating_is_none_without_ratings() {
+    let empty: [&[DomainRating]; 0] = [];
+    assert_eq!(aggregate_rating(empty), None);
+}

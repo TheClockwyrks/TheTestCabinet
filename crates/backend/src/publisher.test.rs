@@ -42,6 +42,34 @@ fn record(id: &str) -> RunRecord {
     }
 }
 
+/// Push, review, and publish a run so it lands in the published set the snapshot
+/// is built from.
+async fn seed_published(db: &Db, id: &str, published_at: &str) {
+    db.push(&record(id), &RunLinks::default(), None)
+        .await
+        .unwrap();
+    db.add_review(
+        id,
+        &StoredReview {
+            reviewer: crate::db::Reviewer {
+                user_id: "u1".to_string(),
+                username: "ada".to_string(),
+                display_name: "Ada".to_string(),
+            },
+            ratings: vec![DomainRating {
+                domain: "gameplay".to_string(),
+                rating: Rating::Great,
+            }],
+            writeup: "ok".to_string(),
+            checklist: vec![],
+            reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+    db.publish(id, published_at).await.unwrap();
+}
+
 /// Build a publisher in dev mode (no R2, no hook): an in-memory database and a
 /// fresh temp definition store. The `TempDir` is returned so the store outlives
 /// the publisher.
@@ -62,22 +90,7 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
 #[tokio::test]
 async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
     let (_dir, publisher, db) = dev_publisher().await;
-    db.publish(
-        &record("r1"),
-        &StoredReview {
-            ratings: vec![DomainRating {
-                domain: "gameplay".to_string(),
-                rating: Rating::Great,
-            }],
-            writeup: "ok".to_string(),
-            checklist: vec![],
-        },
-        &RunLinks::default(),
-        "2026-06-17T21:40:00Z",
-        None,
-    )
-    .await
-    .unwrap();
+    seed_published(&db, "r1", "2026-06-17T21:40:00Z").await;
     assert!(db.snapshot_state().await.unwrap().dirty);
 
     let outcome = publisher.refresh_now().await.unwrap();
@@ -101,22 +114,7 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
 
     // A burst of three publishes, each waking the debounce loop.
     for i in 0..3 {
-        db.publish(
-            &record(&format!("r{i}")),
-            &StoredReview {
-                ratings: vec![DomainRating {
-                    domain: "gameplay".to_string(),
-                    rating: Rating::Great,
-                }],
-                writeup: "ok".to_string(),
-                checklist: vec![],
-            },
-            &RunLinks::default(),
-            &format!("2026-06-17T21:4{i}:00Z"),
-            None,
-        )
-        .await
-        .unwrap();
+        seed_published(&db, &format!("r{i}"), &format!("2026-06-17T21:4{i}:00Z")).await;
         publisher.queue_refresh();
     }
 

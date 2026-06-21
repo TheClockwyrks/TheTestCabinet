@@ -2,9 +2,10 @@
 title: Overview
 ---
 
-This section covers standing up The Test Cabinet's two long-running **services**
-— the [backend](/components/backend/overview/) (`tcab-backend`) and the
-[worker](/components/worker/overview/) (`tcab-worker`) — as **remote**
+This section covers standing up The Test Cabinet's three long-running **services**
+— the [backend](/components/backend/overview/) (`tcab-backend`), the
+[worker](/components/worker/overview/) (`tcab-worker`), and the
+[auth service](/components/auth/overview/) (`tcab-auth-service`) — as **remote**
 environments: a [staging and a production](/deployment/azure/) environment on
 Azure. The guidance is written to be reproducible by anyone running their own
 instance; there is nothing here that is specific to a private deployment.
@@ -26,6 +27,7 @@ that do.
 | ----- | ----------- | ---------- |
 | [Backend](/components/backend/overview/) (`tcab-backend`) | A long-running HTTP service | This section |
 | [Worker](/components/worker/overview/) (`tcab-worker`) | A long-running HTTP service on a host with a container runtime | This section |
+| [Auth service](/components/auth/overview/) (`tcab-auth-service`) | A small long-running HTTP service with its own database | This section |
 | [Web console](/components/web/overview/) (`apps/web`) | A static bundle served to operators on the private network | This section |
 | [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static Cloudflare Pages sites | [Releasing](/development/releasing/) |
 | [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs | Not deployed — see [Building](/development/building/) |
@@ -34,20 +36,27 @@ The [CLI](/components/cli/overview/) and [Tauri app](/components/tauri/overview/
 are runner/reporter tools that an individual operator runs on their own machine;
 they are not part of a deployment. The web console *is* part of one, but it is
 just a static bundle — the only stateful, always-on processes to operate are the
-backend and the workers.
+backend, the workers, and the auth service.
+
+The **auth service** is small (a database and an HTTP listener, no container
+runtime), and like the backend it sits on the private network. It hosts the user
+[accounts](/components/backend/overview/#accounts) the backend verifies tokens
+against. It runs alongside the backend in each environment.
 
 ## Environments
 
-The same two binaries run in every environment; what changes is where they bind,
+The same binaries run in every environment; what changes is where they bind,
 what they talk to, and how they are kept up. The custom `TCAB_ENV` variable tags
 each one (`local`, `staging`, `prod`) so [telemetry](/development/observability/)
-and logs from each can be told apart.
+and logs from each can be told apart. By default the services bind to distinct
+ports — backend `8787`, worker `8788`, auth service `8789` — so they can share a
+host or a tailnet without colliding.
 
-| Environment | Purpose | Backend | Workers |
-| ----------- | ------- | ------- | ------- |
-| **Local** | Exercise the whole flow on one machine (development) | A process (or container) on `localhost` | A process on the host, using the host's container runtime |
-| **Staging** | A production-shaped environment to validate changes | Managed (Azure Container Apps) | One or more VM nodes |
-| **Prod** | The environment operators actually use | Managed (Azure Container Apps) | A pool of VM nodes |
+| Environment | Purpose | Backend | Auth service | Workers |
+| ----------- | ------- | ------- | ------------ | ------- |
+| **Local** | Exercise the whole flow on one machine (development) | A process (or container) on `localhost` | A process on `localhost` (`127.0.0.1:8789`) | A process on the host, using the host's container runtime |
+| **Staging** | A production-shaped environment to validate changes | Managed (Azure Container Apps) | Managed (Azure Container Apps) | One or more VM nodes |
+| **Prod** | The environment operators actually use | Managed (Azure Container Apps) | Managed (Azure Container Apps) | A pool of VM nodes |
 
 The **local** environment is a development convenience and is documented under
 [Running](/development/running/), not here. This section is about the two
@@ -76,19 +85,37 @@ difference drives every choice in this section.
   browser. Pointing `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL**
   instead lifts the single-replica and database-volume constraints. The details
   are in [Azure: staging & prod](/deployment/azure/#backend-on-azure-container-apps).
+- **The auth service is a small stateful service with no container runtime.** It
+  keeps its **own** database — separate from the backend's — of user accounts
+  (`TCAB_AUTH_DATABASE_URL`, its own SQLite by default) and an HTTP listener
+  (`TCAB_AUTH_BIND`, default `127.0.0.1:8789`); it renders nothing and has no
+  egress. It hosts the same single-writer SQLite trade-off as the backend, so it
+  is pinned to a single replica with a persistent volume, or pointed at a managed
+  database. The backend reaches it at `TCAB_BACKEND_AUTH_URL`.
 
 | Service | Container runtime on host? | Persistent storage | External egress |
 | ------- | ------------------------- | ------------------ | --------------- |
-| Worker | **Yes** — runs each test case in a container | Scratch only (`TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`) | Model APIs + package registries (from inside run containers); GitHub & Cloudflare when it publishes |
+| Worker | **Yes** — runs each test case in a container | Scratch only (`TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`) | Model APIs + package registries (from inside run containers); GitHub & Cloudflare when it pushes |
 | Backend | No | **Yes** — database (SQLite, or external PostgreSQL), definition store, ingest checkout | Cloudflare R2 (snapshot upload) + the site's deploy hook |
+| Auth service | No | **Yes** — its own accounts database (SQLite, or external) | None |
 
-## Access: there is no app-level auth
+## Access: a private network, plus accounts on it
 
-Neither service has accounts, tokens, or a login. As described under
-[Backend authentication](/components/backend/overview/#authentication), the model
-is that **reachability is the access control**: both services bind to a private
-address and are never exposed to the public internet, so only machines and people
-who can already reach them on a private network can use them.
+**Reachability is the first line of access control**: every service binds to a
+private address and is never exposed to the public internet, so only machines and
+people who can already reach them on a private network can use them. As described
+under [Backend authentication](/components/backend/overview/#authentication), on
+top of that the [auth service](/components/auth/overview/) adds real **user
+[accounts](/components/backend/overview/#accounts)** so that the mutating run
+actions (push, review, publish) are attributed to a person — the backend verifies
+each request's bearer token against the auth service.
+
+This is an added identity layer, **not** a public surface: registration is open,
+but the auth service is itself private, so "open self-registration" means *anyone
+already on the private network* can create an account — there is no public sign-up
+page and nothing reachable from the public internet. Reads stay open even within
+the network. Deploy the auth service alongside the backend, on the same private
+network, and point the backend at it with `TCAB_BACKEND_AUTH_URL`.
 
 That has one consequence worth stating up front, because it shapes the worker
 topology: a [worker's jobs are held per-instance](/components/worker/overview/) —
@@ -114,9 +141,11 @@ Two ways to provide that private network are documented, and you can pick either
 ## Secrets and telemetry
 
 - **Secrets** — harness API keys, the `GITHUB_TOKEN` and Cloudflare token used
-  when a worker publishes, and the backend's R2 credentials and deploy-hook URL —
-  are supplied through the environment or your platform's secret store and are
-  **never committed**. Every file under
+  when a worker pushes a run, and the backend's R2 credentials and deploy-hook URL
+  — are supplied through the environment or your platform's secret store and are
+  **never committed**. The auth service holds no third-party secret; it stores only
+  Argon2id password hashes in its own database, which the
+  [backups](/deployment/backups/) page covers alongside the backend's. Every file under
   [`deployments/`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments)
   is an `.example`/placeholder template, matching the repo-root
   [`.env.backend.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.backend.example)

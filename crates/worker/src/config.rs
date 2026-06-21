@@ -32,6 +32,11 @@ pub struct Config {
     /// runs to (`TCAB_BACKEND_URL`). Required: a worker is always backend-driven
     /// (it has no local `test-cases/` checkout).
     pub backend_url: String,
+    /// The auth service base URL the worker proxies register/login to
+    /// (`TCAB_AUTH_URL`). The console reaches auth through the worker; the worker
+    /// forwards the user's bearer token to the backend on mutating calls. Defaults
+    /// to the auth service's loopback address for local dev.
+    pub auth_url: String,
     /// Directory each run's record and collected implementation is written under
     /// (`TCAB_WORKER_OUT_DIR`).
     pub out_dir: PathBuf,
@@ -56,6 +61,10 @@ impl Config {
             .ok_or(ConfigError::Missing("TCAB_BACKEND_URL"))?
             .trim_end_matches('/')
             .to_string();
+        let auth_url = non_empty("TCAB_AUTH_URL")
+            .unwrap_or_else(|| "http://127.0.0.1:8789".to_string())
+            .trim_end_matches('/')
+            .to_string();
         let out_dir = non_empty("TCAB_WORKER_OUT_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("runs"));
@@ -65,6 +74,7 @@ impl Config {
         Ok(Self {
             bind,
             backend_url,
+            auth_url,
             out_dir,
             work_dir,
         })

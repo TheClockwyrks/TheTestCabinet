@@ -223,9 +223,59 @@ fn publish_accepts_a_batch_of_run_records() {
     match cli.command {
         Command::Publish(args) => {
             assert_eq!(args.run_records.len(), 3);
-            assert!(!args.force);
+            assert!(!args.dry_run);
         }
         other => panic!("expected a publish command, got {other:?}"),
+    }
+}
+
+#[test]
+fn push_and_review_parse() {
+    let cli = Cli::try_parse_from(["tcab", "push", "a.json", "b.json"]).expect("push parses");
+    match cli.command {
+        Command::Push(args) => assert_eq!(args.run_records.len(), 2),
+        other => panic!("expected a push command, got {other:?}"),
+    }
+
+    let cli = Cli::try_parse_from(["tcab", "review", "a.json", "--writeup", "w.md"])
+        .expect("review parses");
+    match cli.command {
+        Command::Review(args) => {
+            assert_eq!(args.run_record, std::path::PathBuf::from("a.json"));
+            assert_eq!(args.writeup, Some(std::path::PathBuf::from("w.md")));
+        }
+        other => panic!("expected a review command, got {other:?}"),
+    }
+}
+
+#[test]
+fn login_and_register_parse() {
+    let cli = Cli::try_parse_from(["tcab", "login", "--username", "ada", "--password", "secret"])
+        .expect("login parses");
+    match cli.command {
+        Command::Login(args) => {
+            assert_eq!(args.username, "ada");
+            assert_eq!(args.password.as_deref(), Some("secret"));
+        }
+        other => panic!("expected a login command, got {other:?}"),
+    }
+
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "register",
+        "--username",
+        "ada",
+        "--display-name",
+        "Ada L.",
+    ])
+    .expect("register parses");
+    match cli.command {
+        Command::Register(args) => {
+            assert_eq!(args.username, "ada");
+            assert_eq!(args.display_name, "Ada L.");
+            assert!(args.password.is_none());
+        }
+        other => panic!("expected a register command, got {other:?}"),
     }
 }
 

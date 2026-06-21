@@ -25,7 +25,8 @@ The Test Cabinet is made up of the following components.
 | [Worker](/components/worker/overview/) | An Axum server that exposes the core's run functionality over an HTTP API, for running test cases on a remote machine. |
 | [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. |
 | [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by remote workers rather than a built-in local one. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and stores published run results. |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and stores run results (pushed, reviewed, and published). |
+| [Auth service](/components/auth/overview/) | A small standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
 | [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend/worker client interfaces the Tauri and web consoles share. |
 | [Docs](/components/docs/overview/) | This documentation site. |
@@ -39,7 +40,7 @@ Two roles recur across the components:
   and the [Tauri app](/components/tauri/overview/). A runner needs a container
   runtime on the machine it runs on, resolves the requested test case version
   from the backend, drives the run through the core, and reports the result back
-  to the backend on publish.
+  to the backend when the run is [pushed](/components/core/results/#lifecycle).
 - A **reporter** is any component that displays run results: the
   [Tauri app](/components/tauri/overview/), the
   [web console](/components/web/overview/), and the
@@ -65,13 +66,17 @@ been dropped in favor of a single, centralized
 [backend](/components/backend/overview/) that records run results and serves as
 the canonical copy of the test case definitions runners need.
 
-The backend stays deliberately small. There are still no end-user accounts and
-no public write surface; instead it sits on a private network and only
-authorized users and machines can push to or pull from it (see
-[Backend](/components/backend/overview/#authentication)). The
-[public site](/components/site/overview/) remains a fully static, backend-less
-deployment: publishing exports a public snapshot of the dataset that the site
-builds from, so the gallery has no live dependency on the private backend.
+The backend stays deliberately small and has no public write surface; it sits on
+a private network, so reaching it is the first line of access control (see
+[Backend](/components/backend/overview/#authentication)). On top of that, real
+**user [accounts](/components/backend/overview/#accounts)** — held in a standalone
+[auth service](/components/auth/overview/) — identify *who* acts, so that every
+[review](/components/core/results/#reviews) is attributed to a person. The backend
+verifies the auth service's bearer tokens on the mutating run endpoints (push,
+review, publish); reads stay open. The [public site](/components/site/overview/)
+remains a fully static, backend-less deployment: publishing exports a public
+snapshot of the **published** runs that the site builds from, so the gallery has
+no live dependency on the private backend.
 
 ## Local Operation
 
@@ -96,13 +101,16 @@ At a high level, launching a run must:
 - Record [metrics](/components/core/metrics/) as the run proceeds and collect the
   produced repository when it finishes.
 - Run [validation](/components/core/validation/) over the produced implementation.
-- Write a [run record](/components/core/run-records/), and optionally
-  [publish](/components/core/results/) the run.
+- Write a [run record](/components/core/run-records/), and then optionally
+  [push, review, and publish](/components/core/results/#lifecycle) the run.
 
-Publishing releases the produced code to its own public repository, makes its
-build available for embedding, and submits the run record to the backend, which
-serializes it into its store and refreshes the public snapshot the site is built
-from. See [Results](/components/core/results/).
+Getting a run onto the gallery is three explicit steps: **push** releases the
+produced code to its own public repository, makes its build playable for review,
+and stores the run record on the backend *privately*; **review** lets people
+(typically not the operator) submit assessments; and **publish** flips a reviewed
+run public, which refreshes the snapshot the site is built from. The CLI's
+`tcab publish` collapses all three for the solo case. See
+[Results](/components/core/results/).
 
 ## Live Streaming
 

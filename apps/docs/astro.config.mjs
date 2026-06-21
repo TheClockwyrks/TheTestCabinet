@@ -135,6 +135,7 @@ export default defineConfig({
           items: [
             "quickstarts/overview",
             "quickstarts/set-up-authentication",
+            "quickstarts/register-and-login",
             "quickstarts/run-a-test-case",
             "quickstarts/author-an-end-to-end-test-case",
             "quickstarts/author-an-asset-generation-test-case",
@@ -164,6 +165,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.3.0",
             "changelogs/v0.2.0",
             "changelogs/v0.1.0",
           ],
@@ -220,6 +222,11 @@ export default defineConfig({
                 "components/backend/api",
                 "components/backend/snapshot",
               ],
+            },
+            {
+              label: "Auth",
+              collapsed: true,
+              items: ["components/auth/overview"],
             },
             {
               label: "Site",

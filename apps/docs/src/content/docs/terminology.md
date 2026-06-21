@@ -2,11 +2,21 @@
 title: Terminology
 ---
 
+## Auth Service
+
+The [auth service](/components/auth/overview/) is the standalone private service
+that holds The Test Cabinet's [user accounts](#user--account). It handles open
+self-registration and password login and mints the opaque bearer tokens the
+[backend](#backend) verifies on mutating run requests. It keeps its own database,
+separate from the backend's, so credential storage stays out of the backend.
+
 ## Backend
 
-The [backend](/components/backend/overview/) is The Test Cabinet's single private
+The [backend](/components/backend/overview/) is The Test Cabinet's central private
 service. It is the canonical source of test case definitions for runners and the
-system of record for published run results.
+system of record for run results — pushed, reviewed, and published. It does not
+store credentials itself; it verifies the [auth service](#auth-service)'s bearer
+tokens.
 
 ## Catalog
 
@@ -57,16 +67,29 @@ run, defaults to `one-shot` (a single session), and is harness-agnostic. See
 
 ## Publishing
 
-"Publishing" refers to releasing an implementation to GitHub and uploading its
-run record to The Test Cabinet's [backend](/components/backend/overview/), from
-which a public snapshot is exported for the website. Test runs exist only locally
-until published.
+"Publishing" is the explicit gate that flips a [pushed](#push) run **public** —
+adding it to the public snapshot and gallery. It is **refused unless the run has
+at least one [review](#review)**, so only assessed runs reach the gallery. It is
+the third of three steps ([push](#push) → review → publish); the CLI's
+`tcab publish` is a solo convenience that does all three at once (push,
+self-review, publish). See [Results](/components/core/results/#lifecycle).
+
+## Push
+
+"Pushing" a run is the first step toward the gallery: an operator releases its
+source (a public GitHub repo) and playable build (Cloudflare Pages) and stores its
+[run record](#run-records) on the [backend](/components/backend/overview/) —
+**without** a review. A pushed run is **private** (not in the gallery), but its
+build is playable so anyone can [review](#review) it before it is
+[published](#publishing). Test runs exist only locally until pushed.
 
 ## Rating
 
 A rating is the reviewer's subjective quality tier for one [domain](#domain) of a
-run — one of `flawless`, `great`, `scuffed`, or `broken`. A run carries one
-rating per domain; its **overall rating** is the worst across them.
+run — one of `flawless`, `great`, `scuffed`, or `broken`. Each [review](#review)
+carries one rating per domain. A run's **overall rating** is the worst (lowest)
+across every domain of every review it has, so neither a flawless mode nor a
+generous reviewer can mask a broken one.
 
 ## Reporters
 
@@ -77,13 +100,16 @@ GUI reporters allow users to interact with test case implementations. The
 
 ## Review
 
-All test cases are manually reviewed after the implementation is complete. This
-allows the reviewer to assess how well a model matched the spec, check for any
-bugs, and otherwise provide non-automated feedback about the run result. Reviews
-are slightly subjective since games don't map cleanly to a rigid grading scale.
-A review carries a per-domain [rating](#rating), a prose writeup, and a verdict on
-each [reviewer-checklist](#reviewer-checklist) item the case declares. The
-verdicts and item [weights](#score) together produce the run's numeric score.
+All runs are manually reviewed after the implementation is complete. This allows
+the reviewer to assess how well a model matched the spec, check for any bugs, and
+otherwise provide non-automated feedback about the run result. Reviews are
+slightly subjective since games don't map cleanly to a rigid grading scale. A
+review carries a per-domain [rating](#rating), a prose writeup, a verdict on each
+[reviewer-checklist](#reviewer-checklist) item the case declares, and the identity
+of the [account](#user--account) that wrote it. A run may carry **multiple
+reviews — one per account** — typically from people other than the operator who
+[pushed](#push) it; the verdicts and item [weights](#score) produce each review's
+numeric score, which are then averaged across reviews for the run.
 
 ## Reviewer Checklist
 
@@ -109,11 +135,12 @@ capable of running test cases — the [CLI](/components/cli/overview/), a
 
 ## Score
 
-A run's score is its earned points over the points available: each
-[reviewer-checklist](#reviewer-checklist) item is worth a `weight`, a `pass`
-earns that weight and a `fail` earns none, and the total is the sum of every
-declared item's weight. It is shown on the run alongside the per-domain
-[ratings](#rating) and is what the per-case [leaderboard](#leaderboard) ranks on.
+A [review](#review)'s score is its earned points over the points available: each
+[reviewer-checklist](#reviewer-checklist) item is worth a `weight`, a `pass` earns
+that weight and a `fail` earns none, and the total is the sum of every declared
+item's weight. A run carrying several reviews has a **score that is the average**
+of its reviews' scores. The run's score is shown alongside its overall
+[rating](#rating) and is what the per-case [leaderboard](#leaderboard) ranks on.
 
 ## Snapshot
 
@@ -125,6 +152,17 @@ from this snapshot, so the gallery keeps no live dependency on the backend.
 
 Test cases provide the scenarios used for testing. Each test case represents
 some isolated task that a harness/model must perform.
+
+## User / Account
+
+A user account is a real, registered identity in the
+[auth service](#auth-service), created by open self-registration with a username,
+password, and display name. Logging in mints a bearer token that authenticates the
+mutating run actions — [push](#push), [review](#review), and
+[publish](#publishing) — so every review a run carries is attributed to the
+account that wrote it. Accounts are an identity layer on top of the private
+network, not a replacement for it; reading the gallery or the backend needs no
+account.
 
 ## Validation
 

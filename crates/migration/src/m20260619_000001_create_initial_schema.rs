@@ -23,7 +23,9 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Run::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(Run::StartedAt).string().not_null())
                     .col(ColumnDef::new(Run::FinishedAt).string().not_null())
-                    .col(ColumnDef::new(Run::PublishedAt).string().not_null())
+                    // Nullable: a pushed-but-unpublished run has no publish time
+                    // yet; it is stamped when the run is published.
+                    .col(ColumnDef::new(Run::PublishedAt).string())
                     .col(ColumnDef::new(Run::TestCaseSlug).string().not_null())
                     .col(ColumnDef::new(Run::TestCaseVersion).string().not_null())
                     .col(ColumnDef::new(Run::Variant).string().not_null())
@@ -32,6 +34,14 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Run::ModelId).string().not_null())
                     .col(ColumnDef::new(Run::RunState).string().not_null())
                     .col(ColumnDef::new(Run::Loaded).boolean().not_null())
+                    // Whether the run is published (in the public snapshot). A
+                    // pushed run starts unpublished and is gated on a review.
+                    .col(
+                        ColumnDef::new(Run::Published)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     .col(ColumnDef::new(Run::RecordJson).text().not_null())
                     .col(ColumnDef::new(Run::EventsJson).text())
                     .to_owned(),
@@ -81,15 +91,29 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_run_published")
+                    .table(Run::Table)
+                    .col(Run::Published)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
             .create_table(
                 Table::create()
                     .table(Review::Table)
                     .if_not_exists()
+                    .col(ColumnDef::new(Review::Id).string().not_null().primary_key())
+                    .col(ColumnDef::new(Review::RunId).string().not_null())
+                    .col(ColumnDef::new(Review::ReviewerUserId).string().not_null())
+                    .col(ColumnDef::new(Review::ReviewerUsername).string().not_null())
                     .col(
-                        ColumnDef::new(Review::RunId)
+                        ColumnDef::new(Review::ReviewerDisplayName)
                             .string()
-                            .not_null()
-                            .primary_key(),
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(Review::Ratings)
@@ -104,6 +128,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("[]"),
                     )
+                    .col(ColumnDef::new(Review::ReviewedAt).string().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_review_run")
@@ -111,6 +136,21 @@ impl MigrationTrait for Migration {
                             .to(Run::Table, Run::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        // An account reviews a run at most once: re-submitting updates that one
+        // review rather than adding another.
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_review_run_reviewer")
+                    .table(Review::Table)
+                    .col(Review::RunId)
+                    .col(Review::ReviewerUserId)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -201,6 +241,7 @@ enum Run {
     ModelId,
     RunState,
     Loaded,
+    Published,
     RecordJson,
     EventsJson,
 }
@@ -208,10 +249,15 @@ enum Run {
 #[derive(DeriveIden)]
 enum Review {
     Table,
+    Id,
     RunId,
+    ReviewerUserId,
+    ReviewerUsername,
+    ReviewerDisplayName,
     Ratings,
     Writeup,
     Checklist,
+    ReviewedAt,
 }
 
 #[derive(DeriveIden)]

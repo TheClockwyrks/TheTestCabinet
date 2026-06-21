@@ -2,68 +2,83 @@
 title: Publishing a Test Run Result
 ---
 
-A run is local until it is **published**. Publishing is the explicit, idempotent,
-batch-capable operation that takes a finished, reviewed run and releases it: its
-generated code, its playable build, and its [run record](/components/core/run-records/)
-on the gallery. The final product is released as it is — bugs and all — rather
-than reduced to a score (see [Results](/components/core/results/)).
+A run is local until it reaches the gallery, and it gets there through three
+explicit steps — **push**, **review**, **publish** — split so that the person who
+*ran* a model need not be the only one who *judges* it (see
+[Results: Lifecycle](/components/core/results/#lifecycle)):
 
-This guide covers running a publish from the [CLI](/components/cli/overview/),
-which is the path for scripting and batch sweeps. You can also publish a reviewed
-run interactively from the [Tauri desktop app](/components/tauri/overview/) or the
-[web console](/components/web/overview/): open the run and use its publish action,
-and the console runs exactly the same operation described here — releasing the
-source and build, then submitting the record and review to the backend. The same
-prerequisites apply wherever you publish from. For the conceptual model behind it
-— the two halves of a publish and where each safely happens — read
-[Results: Publishing](/components/core/results/#publishing).
+- **Push** releases a finished run's source and build and stores its
+  [run record](/components/core/run-records/) on the backend **without** a review.
+  The run stays **private** — not in the gallery — but its build is playable, so it
+  can be reviewed.
+- **Review** is anyone (typically *not* the operator) submitting an assessment for
+  a pushed run; see [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
+  A run may gather several reviews, one per account.
+- **Publish** flips a pushed, reviewed run **public**. It is refused unless the run
+  has at least one review.
+
+This guide covers driving these from the [CLI](/components/cli/overview/), the path
+for scripting and batch sweeps. You can also do each interactively from the
+[Tauri desktop app](/components/tauri/overview/) or the
+[web console](/components/web/overview/): open a run and use its push, review, and
+publish actions, which run exactly the same operations. The final product is
+released as it is — bugs and all — rather than reduced to a score (see
+[Results](/components/core/results/)).
 
 ## Prerequisites
 
-- **A reviewed run.** Publishing refuses a run whose `writeup.md` is missing or
-  whose frontmatter has no valid rating — every published implementation must be
-  framed by a human assessment. Write the review first; see
-  [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
-- **The GitHub CLI.** `tcab publish` shells out to `gh` to create and push the
-  per-run repositories, so `gh` must be installed and authenticated on the host,
-  with a token carrying `repo` and `workflow` scopes (`gh auth login` or
-  `GH_TOKEN`). In the devcontainer, install it with
-  `.devcontainer/tools/gh.sh`; it is not in the base image, so re-run it after a
-  rebuild.
-- **Release credentials.** Releasing per-run artifacts is the operator's half of
-  a publish, so the operator holds the credentials it needs — a repository-host
+- **An account, logged in.** Push, review, and publish all require an
+  [account](/components/backend/overview/#accounts): the backend records who acted
+  and attributes each review to them. Register or log in once, which stores a
+  bearer token at `~/.config/tcab/credentials.json`:
+
+  ```sh
+  tcab register --username ada --display-name "Ada"   # first time
+  tcab login --username ada                            # thereafter
+  ```
+
+  See [Register and Log In](/quickstarts/register-and-login/).
+- **The GitHub CLI.** Pushing shells out to `gh` to create and push the per-run
+  repositories, so `gh` must be installed and authenticated on the host, with a
+  token carrying `repo` and `workflow` scopes (`gh auth login` or `GH_TOKEN`). In
+  the devcontainer, install it with `.devcontainer/tools/gh.sh`; it is not in the
+  base image, so re-run it after a rebuild.
+- **Release credentials.** Releasing per-run artifacts is the operator's half of a
+  push, so the operator holds the credentials it needs — a repository-host
   credential and the build-deploy token. See
-  [CLI Authentication](/components/cli/overview/#authentication) for the full
-  list and why each lives where it does.
+  [CLI Authentication](/components/cli/overview/#authentication) for the full list
+  and why each lives where it does.
+- **A review, before you publish.** Publishing refuses a run with no review. For
+  the solo path below, your local `writeup.md` (a valid rating per domain and a
+  non-empty body) supplies it; write the review first — see
+  [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
 
-## Confirm the batch with a dry run
+## The solo path: `tcab publish`
 
-`--dry-run` prints exactly what would be published — repository names, build
-subdomains, and the dataset that would change — and each run's rating, without
-creating, pushing, or committing anything:
+When the same person ran the model, played it, and vouches for it, `tcab publish`
+collapses all three steps — push, self-review, publish — into one idempotent,
+batch-capable command. It is the fast path for sweeps you review yourself.
+
+`--dry-run` prints exactly what would happen — repository names, build subdomains,
+the dataset that would change, and each run's rating — without creating, pushing,
+or committing anything:
 
 ```sh
 tcab publish runs/<id>/run-record.json --dry-run
 ```
 
-This is the fastest way to confirm a batch is fully reviewed before publishing
-for real. Because the review is known locally, a single run missing it stops the
-**whole** batch before anything is released, so a sweep is never left half
-published. `publish` takes multiple record paths for exactly this batch case:
+Because the review is known locally, a single run missing it stops the **whole**
+batch before anything is released, so a sweep is never left half published.
+`publish` takes multiple record paths for exactly this batch case:
 
 ```sh
 tcab publish runs/<a>/run-record.json runs/<b>/run-record.json --dry-run
-```
-
-## Publish
-
-```sh
-tcab publish runs/<id>/run-record.json
+tcab publish runs/<a>/run-record.json runs/<b>/run-record.json   # for real
 ```
 
 The operation is idempotent: re-running it on an already-published run is safe.
-`--force` re-runs the work anyway when you need to refresh a release. A publish
-releases three things (see [Results](/components/core/results/#publishing) and
+`--force` re-runs the work anyway when you need to refresh a release. It releases
+three things (see [Results](/components/core/results/#lifecycle) and
 [Generated Code](/components/core/results/#generated-code)):
 
 - **Source** — each run's collected implementation is pushed to its **own**
@@ -75,15 +90,31 @@ releases three things (see [Results](/components/core/results/#publishing) and
   root, which is what keeps it playable exactly as the test case's
   [build interface](/testing/end-to-end/overview/#design-requirements) and the
   [load check](/components/core/validation/#load-check) already require.
-- **Gallery** — the run record, with its source and build links filled in, plus
-  the run's review, is submitted to the [backend](/components/backend/overview/),
-  which records it and regenerates the public snapshot the
-  [site](/components/site/overview/) is built from. Submitting requires the
-  operator to be authenticated to the backend, which only accepts pushes from
-  authorized users.
+- **Gallery** — the run record (with its links), your self-review, and the publish
+  gate are submitted to the [backend](/components/backend/overview/), which records
+  them and regenerates the public snapshot the [site](/components/site/overview/)
+  is built from. This requires a logged-in account.
 
-The backend performs this last, synchronized half alone, so two operators
-publishing at once cannot race on the store or the snapshot.
+## The three-step path: push, then have others review, then publish
+
+When a *different* person should review a run — the usual case for a benchmark you
+want others to vouch for — split the steps:
+
+```sh
+tcab push runs/<id>/run-record.json          # release + store privately (no review)
+# ... someone with their own account reviews the now-playable build:
+tcab review runs/<id>/run-record.json --writeup writeup.md
+# ... once the run has at least one review, an operator publishes it:
+tcab publish runs/<id>/run-record.json
+```
+
+`push` releases the source and build and stores the record on the backend
+**without** a review; the run is private but its build is playable, so reviewers
+can assess it. `review` submits a review attributed to *its own* account — a run
+gathers one review per account. The final `publish` flips the run public and is
+refused if no review exists. Each of the three requires a logged-in account; the
+backend performs the synchronized publish half alone, so two operators publishing
+at once cannot race on the store or the snapshot.
 
 ## Preview before you publish
 

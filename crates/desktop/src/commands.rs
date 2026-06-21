@@ -13,11 +13,12 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use test_cabinet_core::{
-    ArtifactCollection, BackendClient, BackendPublisher, BrowserRenderer, CliArtifactCollector,
-    CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator, Domain, DomainRating,
-    FsRepoSeeder, HarnessEvent, HarnessSlug, HttpBackendClient, Model, ModelCatalog, NoopPublisher,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, PrerenderedReferenceRenderer,
-    PublishConfig, PublishRequest, PublishedRun, Publisher, RawOutputLine, ReferenceRenderer,
+    AccountsClient, ArtifactCollection, AuthnResponse, BackendClient, BackendPublisher,
+    BrowserRenderer, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
+    DispatchValidator, Domain, DomainRating, FsRepoSeeder, HarnessEvent, HarnessSlug,
+    HttpBackendClient, LoginRequest, Model, ModelCatalog, NoopPublisher, OpenRouterPrices,
+    OrchestratorCatalog, OrchestratorSelection, PrerenderedReferenceRenderer, PublishConfig,
+    PublishedRun, Publisher, PushRequest, RawOutputLine, ReferenceRenderer, RegisterRequest,
     ReviewItem, ReviewVerdict, RunEngine, RunRecord, RunRequest, SystemCommandRunner, TestCase,
     TestCaseCatalog, TestCaseVersion, TestType, Writeup, find_build_output, implementation_dir,
     materialize_version, missing_ratings, missing_verdicts, parse_writeup, read_event_log,
@@ -798,15 +799,16 @@ pub async fn read_published_run(id: String) -> CmdResult<StoredRun> {
 }
 
 /// Map a backend [`PublishedRun`] into the webview's [`StoredRun`] shape. A
-/// published run always carries a review, so it is never `None` here.
+/// published run carries at least one review; the desktop's run list shows the
+/// first (the web console shows the full set with the aggregate).
 fn published_to_stored(run: PublishedRun) -> StoredRun {
     StoredRun {
         id: run.record.id.clone(),
         record: Box::new(run.record),
-        review: Some(ReviewDocument {
-            ratings: run.review.ratings,
-            writeup: run.review.writeup,
-            checklist: run.review.checklist,
+        review: run.reviews.into_iter().next().map(|review| ReviewDocument {
+            ratings: review.ratings,
+            writeup: review.writeup,
+            checklist: review.checklist,
         }),
     }
 }
@@ -900,18 +902,22 @@ pub struct PublishResult {
     pub newly_published: bool,
 }
 
-/// Publish a reviewed run: release its source to a public GitHub repo, deploy its
-/// build to Cloudflare Pages, and submit the record + review + links to the
-/// backend (the system of record).
+/// Publish a reviewed run end to end (the solo path): release its source to a
+/// public GitHub repo and deploy its build to Cloudflare Pages, store the record
+/// on the backend, submit the locally-authored review (attributed to the
+/// logged-in account behind `token`), and publish it.
 ///
-/// Requires `TCAB_BACKEND_URL` and a `writeup.md` beside the record (authored via
-/// [`save_review`]); both are checked before anything is released.
+/// Requires `TCAB_BACKEND_URL`, a bearer `token` (from [`login`]/[`register`]),
+/// and a `writeup.md` beside the record (authored via [`save_review`]).
 #[tauri::command]
-#[tracing::instrument(fields(%id))]
-pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
+#[tracing::instrument(skip(token), fields(%id))]
+pub async fn publish_run(id: String, token: String) -> CmdResult<PublishResult> {
     let backend = config::backend_url().ok_or_else(|| {
         "publishing submits the run to the backend, but TCAB_BACKEND_URL is not set".to_string()
     })?;
+    if token.trim().is_empty() {
+        return Err("you must be logged in to publish (no bearer token)".to_string());
+    }
 
     let run_dir = config::output_dir().join(&id);
     let record_path = run_dir.join("run-record.json");
@@ -956,26 +962,66 @@ pub async fn publish_run(id: String) -> CmdResult<PublishResult> {
     let publisher = BackendPublisher::new(
         PublishConfig::from_env(),
         SystemCommandRunner,
-        HttpBackendClient::new(backend),
+        HttpBackendClient::new(backend).with_token(Some(token)),
     );
     let events = read_event_log(&run_dir);
-    let request = PublishRequest {
+    // push (release + store, no review), then submit the review (attributed to
+    // the account), then publish (the gate refuses a run with no reviews).
+    let request = PushRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: build_dir.as_deref(),
-        writeup: &writeup,
         events: &events,
     };
     let outcome = publisher
-        .publish(&request)
+        .push(&request)
+        .await
+        .map_err(|e| err("pushing the run", e))?;
+    publisher
+        .backend()
+        .submit_review(&record.id, &writeup)
+        .await
+        .map_err(|e| err("submitting the review", e))?;
+    let ack = publisher
+        .backend()
+        .publish_run(&record.id)
         .await
         .map_err(|e| err("publishing the run", e))?;
 
     Ok(PublishResult {
         source_repo: outcome.source_repo,
         playable_build: outcome.playable_build,
-        newly_published: outcome.newly_published,
+        newly_published: ack.newly_published,
     })
+}
+
+/// Register a new account on the auth service and return the minted token + the
+/// account. The webview stores the token and passes it to [`publish_run`].
+#[tauri::command]
+#[tracing::instrument(skip(password), fields(%username))]
+pub async fn register(
+    username: String,
+    password: String,
+    display_name: String,
+) -> CmdResult<AuthnResponse> {
+    AccountsClient::new(config::auth_url())
+        .register(&RegisterRequest {
+            username,
+            password,
+            display_name,
+        })
+        .await
+        .map_err(|e| err("registering an account", e))
+}
+
+/// Log in to an existing account and return the minted token + the account.
+#[tauri::command]
+#[tracing::instrument(skip(password), fields(%username))]
+pub async fn login(username: String, password: String) -> CmdResult<AuthnResponse> {
+    AccountsClient::new(config::auth_url())
+        .login(&LoginRequest { username, password })
+        .await
+        .map_err(|e| err("logging in", e))
 }
 
 // ---------------------------------------------------------------------------

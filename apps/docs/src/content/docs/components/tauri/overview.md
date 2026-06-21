@@ -11,8 +11,8 @@ line or an HTTP API.
 
 It is both a
 [runner and a reporter](/components/architecture/#runners-and-reporters), which
-is what makes it the natural hub: a person can launch a run, watch it, judge it,
-and publish it without leaving the app.
+is what makes it the natural hub: a person can sign in, launch a run, watch it,
+judge it, and push or publish it without leaving the app.
 
 Its console UI is shared with the [web console](/components/web/overview/)
 through the [UI library](/components/ui/overview/): the two are the same console,
@@ -38,16 +38,23 @@ further remote [workers](/components/worker/overview/).
 - **Read the specs.** Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was actually asked for.
+- **Sign in.** Log in to (or register with) the
+  [auth service](/components/auth/overview/) so that pushes, reviews, and
+  publishes are attributed to an [account](/components/backend/overview/#accounts).
+- **Push runs.** [Push](/components/core/results/#push) a finished run — release
+  its code and deploy its build, then store its
+  [run record](/components/core/run-records/) on the
+  [backend](/components/backend/overview/) — so the playable build can be reviewed.
+  The run stays private until it is published.
 - **Review runs.** Record a [review](/components/core/results/#reviews) — the
-  hand-written writeup and rating — after playing a finished build. This is the
-  curatorial step that publishing requires.
-- **Publish.** [Publish](/components/core/results/) a reviewed run: release its
-  code and deploy its build, then submit its
-  [run record](/components/core/run-records/) and review to the
-  [backend](/components/backend/overview/).
+  hand-written writeup and rating — after playing a finished build, attributed to
+  the signed-in account. A run may carry several reviews, one per account.
+- **Publish.** [Publish](/components/core/results/#publish) a pushed, reviewed run
+  to flip it public. The solo path (push + self-review + publish in one action) is
+  available too, for when the same person does all three.
 
 As a runner the app needs a supported container runtime on the machine it runs
-on, and it resolves definitions from and publishes to the
+on, and it resolves definitions from and pushes/reviews/publishes to the
 [backend](/components/backend/overview/).
 
 ## Status
@@ -57,7 +64,7 @@ shell. It mounts the same `GalleryApp` from the
 [UI library](/components/ui/overview/) that the
 [web console](/components/web/overview/) and the
 [public site](/components/site/overview/) render, so its UI — the routed gallery
-pages plus the run-execution screens (new run, live monitor, review, the
+pages plus the run-execution screens (new run, live monitor, review, sign-in, the
 Connections settings) — is the web console's UI, not a separate, plainer one.
 
 The desktop's only departures from the web console are its host wiring: it
@@ -65,9 +72,10 @@ provides the [UI library](/components/ui/overview/)'s `BackendClient` and
 `WorkerClient` over Tauri commands instead of HTTP, resolving the catalog from
 the embedded [core](/components/core/overview/) over IPC and pre-adding a single
 **built-in local worker** (also the embedded core). Those commands cover the
-whole flow end to end — resolving the catalog, configuring and launching a run
-with a live event stream, reading the seeded specs, writing a review (writeup +
-rating), and publishing a reviewed run. A run's loadable media — a produced run's
+whole flow end to end — signing in to the auth service, resolving the catalog,
+configuring and launching a run with a live event stream, reading the seeded
+specs, pushing a finished run, writing a review (writeup + rating), and publishing
+a pushed, reviewed run. A run's loadable media — a produced run's
 proof artifacts and an [asset-generation](/testing/asset-generation/overview/)
 run's regenerated/target/preview images and action log — is served not over a
 command but over custom URI schemes (`tcab-proof://` and `tcab-asset://`), since

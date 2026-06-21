@@ -8,14 +8,24 @@ gross failures cheaply (see the [home page](/) and
 [Review](/terminology/#review) terminology). That judgement is what produces a
 run's numbers: a per-[domain](/terminology/#domain) **rating** and a numeric
 **[score](/terminology/#score)** in points. This guide covers assessing a
-finished run: reading its automated signals, playing the build, and writing the
-**review** that publishing requires.
+finished run: reading its automated signals, playing the build, and writing a
+**review**.
 
 A review is **curatorial** — authored separately by a person after playing the
 build, not emitted by the run — and it is deliberately not part of the
-[run record](/components/core/run-records/) contract. It is also a hard
-prerequisite: [publishing](/guides/publishing-a-test-run-result/) refuses any run
-without one.
+[run record](/components/core/run-records/) contract. Every review is attributed
+to the [account](/components/backend/overview/#accounts) that wrote it, and a run
+may carry **several reviews, one per account** — typically from people other than
+the operator who [pushed](/components/core/results/#push) the run. Across them, the
+run's score is the **average** and its overall rating the **worst**. A run needs at
+least one review before it can be [published](/guides/publishing-a-test-run-result/),
+so review is the gate between pushing a run and putting it on the gallery.
+
+You review a [pushed](/components/core/results/#push) run — one whose build has been
+released so it can be played. From a console, open the run and submit a review; from
+the CLI, `tcab review <run-record> --writeup writeup.md` submits one attributed to
+your logged-in account. Either way you must be
+[signed in](/quickstarts/register-and-login/).
 
 ## What a finished run leaves on disk
 
@@ -118,5 +128,8 @@ they will once live, so you can confirm the framing before publishing.
 
 ## Next step
 
-Once the review is in place, the run is ready to
-[publish](/guides/publishing-a-test-run-result/).
+Once a run has at least one review, it is ready to
+[publish](/guides/publishing-a-test-run-result/). If you reviewed a run someone
+else pushed, an operator can now publish it; if you ran, reviewed, and are
+publishing it yourself, `tcab publish` does the push, self-review, and publish in
+one step.

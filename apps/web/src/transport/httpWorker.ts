@@ -12,11 +12,13 @@ import type {
 } from "@test-cabinet/ui/client";
 import type {
   AssetPreview,
+  AuthResult,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
   ProgressCallback,
   PublishResult,
+  PushResult,
   RawOutputLine,
   ReviewDocumentInput,
   RunEventStreams,
@@ -52,11 +54,17 @@ interface JobResponse {
   detail?: string | null;
 }
 
-// The worker's `POST /publish` ack. `PublishResult` drops the echoed `runId`.
-interface PublishAck {
+// The worker's `POST /push` ack. `PushResult` drops the echoed `runId`.
+interface PushAck {
   runId: string;
   sourceRepo: string;
   playableBuild?: string | null;
+  newlyPushed: boolean;
+}
+
+// The worker's `POST /publish` ack. `PublishResult` drops the echoed `runId`.
+interface PublishAck {
+  runId: string;
   newlyPublished: boolean;
 }
 
@@ -179,7 +187,14 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
         `/runs/${encodeURIComponent(id)}`,
       );
       if (!job.record) throw new Error(`Run ${id} has no record yet.`);
-      return { id, record: resolveBuildLink(job.record, baseUrl), review: null };
+      // A worker job read carries only the record; reviews and publish state are
+      // resolved through the gallery's stored-run listing instead.
+      return {
+        id,
+        record: resolveBuildLink(job.record, baseUrl),
+        reviews: [],
+        published: false,
+      };
     },
 
     async readRunEvents(
@@ -206,23 +221,74 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
       return { events, raw };
     },
 
-    async publish(
-      id: string,
-      review: ReviewDocumentInput,
-    ): Promise<PublishResult> {
-      // The worker holds no review store, so `POST /publish` carries the review
-      // inline alongside the run id (`components/worker/overview.md`).
-      const ack = await postJson<PublishAck>(baseUrl, "/publish", {
-        runId: id,
-        ratings: review.ratings,
-        writeup: review.writeup,
-        checklist: review.checklist,
+    // --- Accounts (the worker proxies the standalone auth service) ---
+
+    async register(
+      username: string,
+      password: string,
+      displayName: string,
+    ): Promise<AuthResult> {
+      return postJson<AuthResult>(baseUrl, "/auth/register", {
+        username,
+        password,
+        displayName,
       });
+    },
+
+    async login(username: string, password: string): Promise<AuthResult> {
+      return postJson<AuthResult>(baseUrl, "/auth/login", {
+        username,
+        password,
+      });
+    },
+
+    // --- Run lifecycle: push -> review -> publish ---
+
+    async push(id: string, token: string): Promise<PushResult> {
+      // `POST /push` releases the run's source + build and stores the record
+      // privately (no review, not yet published).
+      const ack = await postJson<PushAck>(
+        baseUrl,
+        "/push",
+        { runId: id },
+        token,
+      );
       return {
         sourceRepo: ack.sourceRepo,
         playableBuild: ack.playableBuild ?? null,
-        newlyPublished: ack.newlyPublished,
+        newlyPushed: ack.newlyPushed,
       };
+    },
+
+    async submitReview(
+      id: string,
+      review: ReviewDocumentInput,
+      token: string,
+    ): Promise<void> {
+      // `POST /review` attributes the review to the token's account; a run can
+      // carry one review per account.
+      await postJson<{ runId: string }>(
+        baseUrl,
+        "/review",
+        {
+          runId: id,
+          ratings: review.ratings,
+          writeup: review.writeup,
+          checklist: review.checklist,
+        },
+        token,
+      );
+    },
+
+    async publish(id: string, token: string): Promise<PublishResult> {
+      // `POST /publish` is the gate — the backend refuses a run with zero reviews.
+      const ack = await postJson<PublishAck>(
+        baseUrl,
+        "/publish",
+        { runId: id },
+        token,
+      );
+      return { newlyPublished: ack.newlyPublished };
     },
   };
 }

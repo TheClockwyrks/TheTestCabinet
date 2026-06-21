@@ -13,6 +13,7 @@
 
 mod cli;
 mod commands;
+mod config;
 mod work_dir;
 
 use clap::Parser;
@@ -52,7 +53,12 @@ async fn dispatch(command: Command) -> anyhow::Result<()> {
     match command {
         Command::Run(args) => commands::run::execute(args).await,
         Command::Validate(args) => commands::validate::execute(args).await,
-        Command::Publish(args) => commands::publish::execute(args).await,
+        Command::Register(args) => commands::auth::register(args).await,
+        Command::Login(args) => commands::auth::login(args).await,
+        Command::Logout => commands::auth::logout().await,
+        Command::Push(args) => commands::publish::push(args).await,
+        Command::Review(args) => commands::publish::review(args).await,
+        Command::Publish(args) => commands::publish::publish(args).await,
         Command::Harnesses(args) => commands::harnesses::execute(args).await,
         Command::Orchestrators(args) => commands::orchestrators::execute(args).await,
         Command::Seed(args) => commands::seed::execute(args).await,
@@ -66,6 +72,11 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Run(_) => "run",
         Command::Validate(_) => "validate",
+        Command::Register(_) => "register",
+        Command::Login(_) => "login",
+        Command::Logout => "logout",
+        Command::Push(_) => "push",
+        Command::Review(_) => "review",
         Command::Publish(_) => "publish",
         Command::Harnesses(_) => "harnesses",
         Command::Orchestrators(_) => "orchestrators",

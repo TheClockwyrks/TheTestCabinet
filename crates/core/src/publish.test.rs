@@ -7,11 +7,11 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::backend_client::{
-    BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
+    BackendClient, PublishAck, PublishedRun, PushAck, ResolvedArtifact, ResolvedReference, RunPage,
 };
 use crate::event::{EventKind, HarnessEvent};
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::review::{DomainRating, Rating};
+use crate::review::{DomainRating, Rating, Writeup};
 use crate::run_record::{HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling};
 use crate::test_case::{TestCase, TestCaseVersion};
 use crate::validation::ValidationSummary;
@@ -228,27 +228,40 @@ impl CommandRunner for MockRunner {
     }
 }
 
-/// One run as captured by [`MockBackend`]: the stored record, its writeup, the
-/// resolved links, and the harness events submitted alongside it.
-type SubmittedRun = (RunRecord, Writeup, RunLinks, Vec<HarnessEvent>);
+/// One run as captured by [`MockBackend`]: the stored record, the resolved links,
+/// and the harness events pushed alongside it.
+type PushedRun = (RunRecord, RunLinks, Vec<HarnessEvent>);
 
-/// A [`BackendClient`] that records each published run and reports whether it was
-/// newly recorded, so the submit half can be asserted without a real backend.
+/// A [`BackendClient`] that records each pushed run, each submitted review, and
+/// each publish, so the push/review/publish split can be asserted without a real
+/// backend.
 struct MockBackend {
-    already_published: bool,
-    submitted: Mutex<Vec<SubmittedRun>>,
+    already_pushed: bool,
+    pushed: Mutex<Vec<PushedRun>>,
+    reviews: Mutex<Vec<(String, Writeup)>>,
+    published: Mutex<Vec<String>>,
 }
 
 impl MockBackend {
-    fn new(already_published: bool) -> Self {
+    fn new(already_pushed: bool) -> Self {
         Self {
-            already_published,
-            submitted: Mutex::new(Vec::new()),
+            already_pushed,
+            pushed: Mutex::new(Vec::new()),
+            reviews: Mutex::new(Vec::new()),
+            published: Mutex::new(Vec::new()),
         }
     }
 
-    fn submitted(&self) -> Vec<SubmittedRun> {
-        self.submitted.lock().expect("lock").clone()
+    fn pushed(&self) -> Vec<PushedRun> {
+        self.pushed.lock().expect("lock").clone()
+    }
+
+    fn reviews(&self) -> Vec<(String, Writeup)> {
+        self.reviews.lock().expect("lock").clone()
+    }
+
+    fn published(&self) -> Vec<String> {
+        self.published.lock().expect("lock").clone()
     }
 }
 
@@ -282,22 +295,33 @@ impl BackendClient for MockBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok(String::new())
     }
-    async fn publish_run(
+    async fn push_run(
         &self,
         record: &RunRecord,
-        review: &Writeup,
         links: &RunLinks,
         events: &[HarnessEvent],
-    ) -> Result<PublishAck> {
-        self.submitted.lock().expect("lock").push((
-            record.clone(),
-            review.clone(),
-            links.clone(),
-            events.to_vec(),
-        ));
-        Ok(PublishAck {
+    ) -> Result<PushAck> {
+        self.pushed
+            .lock()
+            .expect("lock")
+            .push((record.clone(), links.clone(), events.to_vec()));
+        Ok(PushAck {
             id: record.id.clone(),
-            newly_published: !self.already_published,
+            newly_pushed: !self.already_pushed,
+        })
+    }
+    async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()> {
+        self.reviews
+            .lock()
+            .expect("lock")
+            .push((run_id.to_string(), review.clone()));
+        Ok(())
+    }
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+        self.published.lock().expect("lock").push(run_id.to_string());
+        Ok(PublishAck {
+            id: run_id.to_string(),
+            newly_published: true,
         })
     }
     async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
@@ -325,7 +349,7 @@ fn publisher_for(
 }
 
 #[tokio::test]
-async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
+async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, build_dir) =
         publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
@@ -333,7 +357,6 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
         repo_path: impl_dir,
     };
     let record = sample_record();
-    let writeup = sample_writeup();
     let events = vec![HarnessEvent {
         timestamp: "2026-06-17T20:41:00Z".to_string(),
         session_id: None,
@@ -341,17 +364,16 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
             message: "thinking".to_string(),
         },
     }];
-    let request = PublishRequest {
+    let request = PushRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: Some(&build_dir),
-        writeup: &writeup,
         events: &events,
     };
 
-    let outcome = publisher.publish(&request).await.expect("publish");
+    let outcome = publisher.push(&request).await.expect("push");
 
-    assert!(outcome.newly_published);
+    assert!(outcome.newly_pushed);
     assert_eq!(
         outcome.source_repo,
         "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
@@ -377,15 +399,13 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
     // No GitHub Pages workflow / no dataset commit anymore.
     assert!(!calls.iter().any(|c| c.contains("git commit")));
 
-    // The record was submitted to the backend with its links filled in, and the
-    // review traveled with it.
-    let submitted = publisher.backend().submitted();
-    assert_eq!(submitted.len(), 1);
-    let (stored, review, links, submitted_events) = &submitted[0];
+    // The record was stored on the backend with its links filled in — but no
+    // review traveled with it (pushing carries no review).
+    let pushed = publisher.backend().pushed();
+    assert_eq!(pushed.len(), 1);
+    let (stored, links, pushed_events) = &pushed[0];
     assert_eq!(stored.id, record.id);
-    assert_eq!(review, &writeup);
-    // The recorded event stream travels with the publish.
-    assert_eq!(submitted_events, &events);
+    assert_eq!(pushed_events, &events);
     assert_eq!(
         links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
@@ -394,7 +414,7 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
         links.playable_build.as_deref(),
         Some("https://abc123.test-cabinet-runs.pages.dev")
     );
-    // The links are also written onto the submitted record blob.
+    // The links are also written onto the stored record blob.
     assert_eq!(
         stored.links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
@@ -402,33 +422,66 @@ async fn publish_creates_public_repo_deploys_build_and_submits_to_backend() {
 }
 
 #[tokio::test]
-async fn publish_is_idempotent_when_already_released() {
+async fn review_then_publish_are_separate_backend_calls() {
     let dir = tempfile::tempdir().expect("tempdir");
-    // Repo already exists; backend reports the run as already published.
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let record = sample_record();
+    let request = PushRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(&build_dir),
+        events: &[],
+    };
+    publisher.push(&request).await.expect("push");
+
+    // A separate review submission, then the publish gate — the operator-release
+    // half (`push`) is done; these are pure backend calls.
+    let writeup = sample_writeup();
+    publisher
+        .backend()
+        .submit_review(&record.id, &writeup)
+        .await
+        .expect("submit review");
+    let ack = publisher.backend().publish_run(&record.id).await.expect("publish");
+    assert!(ack.newly_published);
+
+    let reviews = publisher.backend().reviews();
+    assert_eq!(reviews.len(), 1);
+    assert_eq!(reviews[0].0, record.id);
+    assert_eq!(reviews[0].1, writeup);
+    assert_eq!(publisher.backend().published(), vec![record.id]);
+}
+
+#[tokio::test]
+async fn push_is_idempotent_when_already_released() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Repo already exists; backend reports the run as already stored.
     let (publisher, impl_dir, build_dir) =
         publisher_for(dir.path(), MockRunner::new(true), MockBackend::new(true));
     let artifacts = ArtifactCollection {
         repo_path: impl_dir,
     };
     let record = sample_record();
-    let writeup = sample_writeup();
-    let request = PublishRequest {
+    let request = PushRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: Some(&build_dir),
-        writeup: &writeup,
         events: &[],
     };
-    let outcome = publisher.publish(&request).await.expect("publish");
+    let outcome = publisher.push(&request).await.expect("push");
 
-    assert!(!outcome.newly_published);
+    assert!(!outcome.newly_pushed);
     let calls = publisher.runner().calls();
     // The existing repo is left in place — no create.
     assert!(!calls.iter().any(|c| c.contains("gh repo create")));
 }
 
 #[tokio::test]
-async fn publish_without_a_build_dir_skips_the_deploy() {
+async fn push_without_a_build_dir_skips_the_deploy() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) =
         publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
@@ -436,21 +489,19 @@ async fn publish_without_a_build_dir_skips_the_deploy() {
         repo_path: impl_dir,
     };
     let record = sample_record();
-    let writeup = sample_writeup();
-    let request = PublishRequest {
+    let request = PushRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: None,
-        writeup: &writeup,
         events: &[],
     };
-    let outcome = publisher.publish(&request).await.expect("publish");
+    let outcome = publisher.push(&request).await.expect("push");
 
     assert!(outcome.playable_build.is_none());
     let calls = publisher.runner().calls();
     assert!(!calls.iter().any(|c| c.contains("wrangler")));
-    // The run is still submitted, with no playable-build link.
-    let submitted = publisher.backend().submitted();
-    assert_eq!(submitted.len(), 1);
-    assert!(submitted[0].2.playable_build.is_none());
+    // The run is still stored, with no playable-build link.
+    let pushed = publisher.backend().pushed();
+    assert_eq!(pushed.len(), 1);
+    assert!(pushed[0].1.playable_build.is_none());
 }

@@ -19,6 +19,16 @@ pub fn backend_url() -> Option<String> {
         .filter(|url| !url.is_empty())
 }
 
+/// The auth service base URL (`TCAB_AUTH_URL`), where the desktop registers and
+/// logs in. Falls back to the auth service's loopback default for local dev.
+pub fn auth_url() -> String {
+    std::env::var("TCAB_AUTH_URL")
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:8789".to_string())
+}
+
 /// Locate the test case catalog root for local (no-backend) resolution.
 ///
 /// Honors `TCAB_TEST_CASES_DIR`, otherwise defaults to `test-cases` relative to

@@ -27,7 +27,7 @@ export {
   RunsRuntimeProvider,
   type RunsRuntime,
 } from "./runtime/runsRuntime";
-export { frameReview } from "./data/frameReview";
+export { frameReview, frameReviews } from "./data/frameReview";
 
 // The shared live gallery data source for the consoles (web + desktop), built
 // from the BackendClient/WorkerClient contexts. Each console supplies its own

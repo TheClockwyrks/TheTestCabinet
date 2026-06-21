@@ -26,6 +26,7 @@ use crate::metrics::Metrics;
 use crate::notify::WorkerNotifier;
 use crate::tournaments::TournamentRegistry;
 
+mod auth_api;
 mod matches;
 mod notify;
 mod publish_api;
@@ -101,8 +102,17 @@ pub fn router(state: AppState) -> Router {
         .route("/tournaments", post(tournaments::submit))
         .route("/tournaments/{job}", get(tournaments::status))
         .route("/tournaments/{job}/events", get(tournaments::events))
-        // Publish a finished run: release code, deploy the build, submit to the
-        // backend — the same terms a local `tcab publish` uses.
+        // Account register/login proxied to the standalone auth service (the
+        // console only knows the worker's address). The minted token is relayed
+        // back and sent as a bearer on the run-lifecycle calls below.
+        .route("/auth/register", post(auth_api::register))
+        .route("/auth/login", post(auth_api::login))
+        // The run lifecycle, the same terms a local `tcab push`/`review`/`publish`
+        // uses, with the caller's bearer token forwarded to the backend: push
+        // (release + store, no review), review (attributed to the account), and
+        // publish (flip public, refused with no reviews).
+        .route("/push", post(publish_api::push))
+        .route("/review", post(publish_api::review))
         .route("/publish", post(publish_api::publish))
         // Record request count + latency for every handled request. Runs inside
         // the trace span (added below) so its timing covers the same work the

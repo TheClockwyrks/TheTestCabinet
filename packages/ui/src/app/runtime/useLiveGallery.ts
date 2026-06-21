@@ -8,11 +8,12 @@ import {
 import { useBackend, useWorkers } from "../../client/context";
 import type {
   ProgressCallback,
+  StoredReview,
   StoredRun,
   TestCase,
   VersionInfo,
 } from "../../client/types";
-import { frameReview } from "../data/frameReview";
+import { frameReviews } from "../data/frameReview";
 import { sampleTestCases } from "../data/sampleTestCases";
 import type { ArenaApi, GalleryDataInput } from "../data/galleryContext";
 import type { SeededInput, TestCaseSummary } from "../data/testCases";
@@ -35,18 +36,25 @@ interface AssembledRuns {
   runs: RunRecord[];
   localIds: Set<string>;
   writeups: Record<string, string>;
+  reviews: Record<string, StoredReview[]>;
 }
 
 function emptyRuns(): AssembledRuns {
-  return { runs: [], localIds: new Set(), writeups: {} };
+  return { runs: [], localIds: new Set(), writeups: {}, reviews: {} };
 }
 
 // Map a backend StoredRun (published or produced) into the gallery's run +
-// writeup shapes. The record already carries populated links.
+// review shapes. The record already carries populated links. A run can carry more
+// than one review now; the individual reviews are kept for the detail page, and
+// an aggregate writeup (worst rating per domain, strictest checklist) is framed
+// for the cards/leaderboard/badges that read one writeup per run.
 function ingest(stored: StoredRun, into: AssembledRuns, local: boolean): void {
   into.runs.push(stored.record);
   if (local) into.localIds.add(stored.id);
-  if (stored.review) into.writeups[stored.id] = frameReview(stored.review);
+  const reviews = stored.reviews ?? [];
+  if (reviews.length > 0) into.reviews[stored.id] = reviews;
+  const framed = frameReviews(reviews);
+  if (framed !== null) into.writeups[stored.id] = framed;
 }
 
 async function fetchPublishedRuns(
@@ -177,6 +185,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
+  const [reviews, setReviews] = useState<Record<string, StoredReview[]>>({});
   const [runsLoading, setRunsLoading] = useState(false);
   const [testCases, setTestCases] = useState<TestCaseSummary[]>([]);
 
@@ -241,6 +250,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
       setRuns(merged);
       setLocalIds(produced.localIds);
       setWriteups({ ...published.writeups, ...produced.writeups });
+      setReviews({ ...published.reviews, ...produced.reviews });
       setRunsLoading(false);
     })();
     return () => {
@@ -292,6 +302,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
     runs,
     localIds,
     writeups,
+    reviews,
     runsLoading,
     testCases: testCasesUsingSamples ? sampleTestCases : testCases,
     testCasesUsingSamples,

@@ -9,6 +9,7 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod accounts;
 pub mod adversarial_validator;
 pub mod auth;
 pub mod backend_client;
@@ -50,6 +51,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::instrument;
 
+pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, RegisterRequest};
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredFile, CredSource, RequestedAuthMode, SubscriptionSpec, auth_readiness,
@@ -57,7 +59,7 @@ pub use auth::{
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
-    PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
+    PublishedRun, PushAck, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
@@ -89,8 +91,8 @@ pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{
-    BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, PublishOutcome,
-    PublishRequest, Publisher, SystemCommandRunner, implementation_dir, parse_wrangler_url,
+    BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, Publisher,
+    PushOutcome, PushRequest, SystemCommandRunner, implementation_dir, parse_wrangler_url,
     read_event_log, run_slug,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
@@ -691,10 +693,10 @@ where
         Ok(())
     }
 
-    /// Publish a finished run: release code, publish the build, append the
-    /// record.
-    pub async fn publish(&self, request: &PublishRequest<'_>) -> Result<PublishOutcome> {
-        self.publisher.publish(request).await
+    /// Push a finished run: release code, deploy the build, store the record
+    /// (unpublished). Reviewing and publishing are separate backend calls.
+    pub async fn push(&self, request: &PushRequest<'_>) -> Result<PushOutcome> {
+        self.publisher.push(request).await
     }
 
     /// Drive an entire run end to end through every lifecycle stage.

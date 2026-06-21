@@ -1,0 +1,112 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// The account affordance shown above the review/publish controls: a compact
+// signed-in row, or an inline login / register form when signed out.
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  padding: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.who {
+  color: t.$color-text;
+  font-size: t.$font-md;
+}
+
+.handle {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.prompt {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.fields {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.input {
+  flex: 1 1 8rem;
+  min-width: 8rem;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.primary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: t.$color-accent;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.error {
+  margin: 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}

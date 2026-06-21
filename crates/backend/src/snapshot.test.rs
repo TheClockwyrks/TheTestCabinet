@@ -55,19 +55,26 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 detail: None,
             },
         },
-        review: StoredReview {
+        reviews: vec![StoredReview {
+            reviewer: crate::db::Reviewer {
+                user_id: "u1".to_string(),
+                username: "ada".to_string(),
+                display_name: "Ada L.".to_string(),
+            },
             ratings: vec![DomainRating {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
             }],
             writeup: "Plays well.".to_string(),
             checklist: vec![],
-        },
+            reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        }],
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
             playable_build: Some("https://abc.pages.dev".to_string()),
         },
-        published_at: published_at.to_string(),
+        published: true,
+        published_at: Some(published_at.to_string()),
         events_json: None,
     }
 }
@@ -219,6 +226,7 @@ fn run_summary_carries_denormalized_case_name_and_camelcase_fields() {
     assert_eq!(summary["publishedAt"], "2026-06-17T21:40:00Z");
     assert_eq!(summary["validationLoaded"], true);
     assert_eq!(summary["rating"], "great");
+    assert_eq!(summary["reviewCount"], 1);
     assert_eq!(summary["subject"]["harnessSlug"], "claude");
     assert_eq!(summary["links"]["playableBuild"], "https://abc.pages.dev");
 }
@@ -245,9 +253,11 @@ fn per_run_file_embeds_full_record_review_and_links() {
         parsed["record"]["links"]["playableBuild"],
         "https://abc.pages.dev"
     );
-    assert_eq!(parsed["review"]["ratings"][0]["domain"], "gameplay");
-    assert_eq!(parsed["review"]["ratings"][0]["rating"], "great");
-    assert_eq!(parsed["review"]["writeup"], "Plays well.");
+    assert_eq!(parsed["reviews"][0]["ratings"][0]["domain"], "gameplay");
+    assert_eq!(parsed["reviews"][0]["ratings"][0]["rating"], "great");
+    assert_eq!(parsed["reviews"][0]["writeup"], "Plays well.");
+    assert_eq!(parsed["reviews"][0]["reviewer"], "Ada L.");
+    assert_eq!(parsed["reviews"][0]["reviewerId"], "u1");
 }
 
 #[test]

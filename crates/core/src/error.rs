@@ -196,6 +196,12 @@ pub enum Error {
     #[error("review error: {0}")]
     Review(String),
 
+    /// An account operation against the auth service failed: a registration or
+    /// login was rejected (bad credentials, a taken username), or the service
+    /// could not be reached. The detail carries the service's explanation.
+    #[error("auth error: {0}")]
+    Auth(String),
+
     /// An orchestrator could not be resolved (an unknown built-in slug, or an
     /// external `--orchestrator-dir` whose manifest or runner could not be read
     /// or parsed). The detail names the slug or directory and what was wrong.

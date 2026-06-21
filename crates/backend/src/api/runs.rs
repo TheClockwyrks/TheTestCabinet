@@ -1,5 +1,11 @@
-//! Publishing and reading runs, and the forced snapshot refresh (§1.4 of
-//! `design/v0.2.0-contracts.md`).
+//! The run lifecycle endpoints: push, review, publish, and reads.
+//!
+//! A run is **pushed** (record + links + events, no review) — stored privately,
+//! its build playable for reviewers but absent from the public snapshot. Any
+//! account may then **review** it (one review per account). An explicit
+//! **publish** flips it public, and is refused unless it has at least one review.
+//! Push, review, and publish each require a valid bearer token (see
+//! [`crate::auth::AuthUser`]); reads stay open on the private network.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -13,7 +19,8 @@ use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
 
-use crate::db::{StoredReview, StoredRun};
+use crate::auth::AuthUser;
+use crate::db::{Reviewer, StoredReview, StoredRun};
 use crate::error::ApiError;
 
 use super::AppState;
@@ -22,12 +29,13 @@ use super::AppState;
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
 
-/// `POST /runs` — submit a published run (record + review + links). Validates
-/// the review gate, ingests into SQLite, then queues a coalesced snapshot
-/// refresh. Idempotent on `record.id` (201 newly published, 200 re-publish).
+/// `POST /runs` — push a run (record + links + events, **no** review). Stores it
+/// privately (unpublished) so a reviewer can play the build; it does not enter
+/// the public snapshot until published. Requires a bearer token. Idempotent on
+/// `record.id` (201 newly pushed, 200 re-push).
 #[tracing::instrument(
-    name = "runs.publish",
-    skip(state, request),
+    name = "runs.push",
+    skip(state, _user, request),
     fields(
         run.id = %request.record.id,
         case.slug = %request.record.subject.test_case_slug,
@@ -35,51 +43,30 @@ const MAX_LIMIT: usize = 200;
     ),
     err(Debug),
 )]
-pub async fn publish(
+pub async fn push(
     State(state): State<AppState>,
-    Json(request): Json<PublishRequest>,
+    _user: AuthUser,
+    Json(request): Json<PushRequest>,
 ) -> Result<Response, ApiError> {
-    // §1.4 validation gate (422 on failure): at least one domain must be rated
-    // (the rating tiers are validated by deserialization) and the writeup must be
-    // non-empty — publishing refuses a run without a review.
-    if request.review.ratings.is_empty() {
-        return Err(ApiError::unprocessable(
-            "review.ratings must rate at least one domain — publishing refuses a run without a review",
-        ));
-    }
-    if request.review.writeup.trim().is_empty() {
-        return Err(ApiError::unprocessable(
-            "review.writeup must be non-empty — publishing refuses a run without a review",
-        ));
-    }
-
     // The subject should resolve to an ingested version, but this is a warning,
-    // not a hard fail, so a historical case can still be re-published.
+    // not a hard fail, so a historical case can still be pushed.
     let subject = &request.record.subject;
     if !state
         .store
         .has_version(&subject.test_case_slug, &subject.test_case_version)
     {
         tracing::warn!(
-            "publishing run {} against uningested case {}@{}",
+            "pushing run {} against uningested case {}@{}",
             request.record.id,
             subject.test_case_slug,
             subject.test_case_version
         );
     }
 
-    let review = StoredReview {
-        ratings: request.review.ratings,
-        writeup: request.review.writeup.trim().to_string(),
-        checklist: request.review.checklist,
-    };
     let links = RunLinks {
         source_repo: request.links.source_repo,
         playable_build: request.links.playable_build,
     };
-    let published_at = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .map_err(|e| ApiError::internal(format!("formatting published_at: {e}")))?;
 
     // Persist the run's recorded event stream verbatim as a JSON array (omitted
     // when empty), so the published Events tab can replay it. Raw harness output
@@ -95,25 +82,108 @@ pub async fn publish(
 
     let outcome = state
         .db
-        .publish(
-            &request.record,
-            &review,
-            &links,
-            &published_at,
-            events_json.as_deref(),
-        )
+        .push(&request.record, &links, events_json.as_deref())
+        .await
+        .map_err(ApiError::from)?;
+
+    let body = PushResponse {
+        id: request.record.id.clone(),
+        newly_pushed: outcome.newly_pushed,
+    };
+    let status = if outcome.newly_pushed {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(body)).into_response())
+}
+
+/// `POST /runs/{id}/reviews` — submit a review for a run, attributed to the
+/// token's account. The review gate (at least one domain rated, a non-empty
+/// writeup) applies here. An account reviews a run at most once: re-submitting
+/// updates that review. Requires a bearer token. `404` for an unknown run.
+#[tracing::instrument(
+    name = "runs.add_review",
+    skip(state, user, request),
+    fields(run.id = %id, reviewer = %user.0.username),
+    err(Debug),
+)]
+pub async fn add_review(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    user: AuthUser,
+    Json(request): Json<ReviewRequest>,
+) -> Result<Json<ReviewResponse>, ApiError> {
+    if request.ratings.is_empty() {
+        return Err(ApiError::unprocessable(
+            "review.ratings must rate at least one domain",
+        ));
+    }
+    if request.writeup.trim().is_empty() {
+        return Err(ApiError::unprocessable("review.writeup must be non-empty"));
+    }
+
+    let reviewed_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting reviewedAt: {e}")))?;
+    let review = StoredReview {
+        reviewer: Reviewer {
+            user_id: user.0.id,
+            username: user.0.username,
+            display_name: user.0.display_name,
+        },
+        ratings: request.ratings,
+        writeup: request.writeup.trim().to_string(),
+        checklist: request.checklist,
+        reviewed_at,
+    };
+
+    let published = state
+        .db
+        .add_review(&id, &review)
+        .await
+        .map_err(ApiError::from)?;
+
+    // A review on an already-published run changes its public aggregate, so a
+    // refresh is queued; on a pending run it is not yet public.
+    if published {
+        state.publisher.queue_refresh();
+    }
+
+    Ok(Json(ReviewResponse { id, published }))
+}
+
+/// `POST /runs/{id}/publish` — publish a run (flip it public). Refused with 422
+/// unless the run has at least one review. Requires a bearer token. Idempotent
+/// (201 newly published, 200 re-publish). `404` for an unknown run.
+#[tracing::instrument(
+    name = "runs.publish",
+    skip(state, _user),
+    fields(run.id = %id, reviewer = %_user.0.username),
+    err(Debug),
+)]
+pub async fn publish(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    _user: AuthUser,
+) -> Result<Response, ApiError> {
+    let published_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting published_at: {e}")))?;
+
+    let outcome = state
+        .db
+        .publish(&id, &published_at)
         .await
         .map_err(ApiError::from)?;
 
     // Coalesced: the dirty flag was set in the publish transaction; this only
     // wakes the debounce loop, which folds a burst into one regen/upload/rebuild.
     state.publisher.queue_refresh();
-
-    // Domain metric: one accepted publish, split by first-publish vs re-publish.
     crate::metrics::record_run_published(outcome.newly_published);
 
     let body = PublishResponse {
-        id: request.record.id.clone(),
+        id: id.clone(),
         newly_published: outcome.newly_published,
         snapshot_refresh: "queued",
     };
@@ -125,24 +195,35 @@ pub async fn publish(
     Ok((status, Json(body)).into_response())
 }
 
-/// `GET /runs?limit=&before=` — list stored runs, newest first, paginated.
+/// `GET /runs?limit=&before=&state=` — list runs, newest first, paginated.
+///
+/// `state` defaults to `published` (the public read side: only published runs,
+/// ordered by publish time). `state=review` returns **all** runs — pending and
+/// published — ordered by finish time, for the reviewer worklist.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<ListResponse>, ApiError> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    let (runs, next_before) = state
-        .db
-        .list_runs(limit, params.before.as_deref())
-        .await
-        .map_err(ApiError::from)?;
+    let (runs, next_before) = match params.state.as_deref() {
+        Some("review") | Some("all") => state
+            .db
+            .list_for_review(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
+        _ => state
+            .db
+            .list_published(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
+    };
     Ok(Json(ListResponse {
         runs: runs.iter().map(stored_run_out).collect(),
         next_before,
     }))
 }
 
-/// `GET /runs/{id}` — one stored run.
+/// `GET /runs/{id}` — one stored run (published or pending) with its reviews.
 pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -198,38 +279,49 @@ pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshRespon
     }))
 }
 
-/// Map a stored run to the §1.4 wire shape (`record` with links populated,
-/// `review`, `links`).
+/// Map a stored run to the read-side wire shape: `record` (links populated), the
+/// reviews array, the resolved links, and the published flag.
 fn stored_run_out(run: &StoredRun) -> StoredRunOut {
     StoredRunOut {
         record: run.record.clone(),
-        review: ReviewOut {
-            ratings: run.review.ratings.clone(),
-            writeup: run.review.writeup.clone(),
-            checklist: run.review.checklist.clone(),
-        },
+        reviews: run.reviews.iter().map(review_out).collect(),
         links: LinksOut {
             source_repo: run.links.source_repo.clone(),
             playable_build: run.links.playable_build.clone(),
         },
+        published: run.published,
     }
 }
 
-// --- Wire shapes (§1.4) -----------------------------------------------------
+/// Map a stored review to its read-side wire shape, exposing the reviewer's
+/// public identity.
+fn review_out(review: &StoredReview) -> ReviewOut {
+    ReviewOut {
+        reviewer_id: review.reviewer.user_id.clone(),
+        reviewer: review.reviewer.display_name.clone(),
+        username: review.reviewer.username.clone(),
+        ratings: review.ratings.clone(),
+        writeup: review.writeup.clone(),
+        checklist: review.checklist.clone(),
+        reviewed_at: review.reviewed_at.clone(),
+    }
+}
+
+// --- Wire shapes ------------------------------------------------------------
 
 #[derive(Deserialize)]
-pub struct PublishRequest {
+pub struct PushRequest {
     record: RunRecord,
-    review: ReviewIn,
     #[serde(default)]
     links: LinksIn,
     /// The run's recorded normalized event stream (empty when the run recorded
-    /// none); stored verbatim and re-emitted to the snapshot.
+    /// none); stored verbatim and re-emitted to the snapshot once published.
+    #[serde(default)]
     events: Vec<HarnessEvent>,
 }
 
 #[derive(Deserialize)]
-struct ReviewIn {
+pub struct ReviewRequest {
     #[serde(default)]
     ratings: Vec<DomainRating>,
     writeup: String,
@@ -248,6 +340,21 @@ struct LinksIn {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PushResponse {
+    id: String,
+    newly_pushed: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewResponse {
+    id: String,
+    /// Whether the run is published (and so this review changed something public).
+    published: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PublishResponse {
     id: String,
     newly_published: bool,
@@ -258,6 +365,9 @@ struct PublishResponse {
 pub struct ListParams {
     limit: Option<usize>,
     before: Option<String>,
+    /// `published` (default) for the public listing, or `review`/`all` for the
+    /// reviewer worklist (pending + published).
+    state: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -268,17 +378,26 @@ pub struct ListResponse {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StoredRunOut {
     record: RunRecord,
-    review: ReviewOut,
+    /// The run's reviews, oldest first. Empty while the run is pending review.
+    reviews: Vec<ReviewOut>,
     links: LinksOut,
+    /// Whether the run is published (in the public snapshot).
+    published: bool,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReviewOut {
+    reviewer_id: String,
+    reviewer: String,
+    username: String,
     ratings: Vec<DomainRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
+    reviewed_at: String,
 }
 
 #[derive(Serialize)]
