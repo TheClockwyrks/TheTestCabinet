@@ -267,7 +267,8 @@ tmp/
 # Ignore generated workflows
 .claude/workflows/
 
-# Ignore Sqlite files used by the backend
+# Ignore Sqlite files used by services
+tcab-auth.sqlite*
 tcab-backend.sqlite*
 
 # The backend's on-disk definition store (default TCAB_BACKEND_STORE=./tcab-store).
