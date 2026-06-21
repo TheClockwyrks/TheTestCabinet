@@ -92,6 +92,26 @@ pub struct StoredManifest {
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<StoredOutput>,
+    /// The controller contract an adversarial case's wasm controller implements.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract: Option<StoredContract>,
+    /// The per-tick sandbox limits applied to an adversarial case's controllers.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<StoredSandbox>,
+    /// The simulation-loop configuration of an adversarial case. `Some` only for
+    /// adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulation: Option<StoredSimulation>,
+    /// How an adversarial case pairs implementations into matches. `Some` only for
+    /// adversarial.
+    #[serde(default, rename = "match", skip_serializing_if = "Option::is_none")]
+    pub r#match: Option<StoredMatch>,
+    /// How an adversarial case renders a recorded match for browser playback.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<StoredReplay>,
     /// The asset shape (single sprite vs sprite sheet). Defaulted to
     /// [`AssetKind::Sprite`] for manifests stored before the discriminator existed.
     #[serde(default)]
@@ -148,6 +168,69 @@ pub struct StoredBuild {
     pub install: String,
     /// Static-build command.
     pub build: String,
+    /// The run-root-relative path of the produced wasm controller module,
+    /// forward-slashed. `Some` only for an adversarial case; the validator and the
+    /// arena load this as the submission. Skipped when absent so an end-to-end
+    /// build carries no null module.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
+}
+
+/// The controller contract of an adversarial case persisted in a
+/// [`StoredManifest`]. Path fields are forward-slashed run-workspace-relative keys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredContract {
+    /// The exported function invoked once per tick.
+    pub entry: String,
+    /// The run-workspace-relative path of the seeded `world` observation schema.
+    pub world: String,
+    /// The run-workspace-relative path of the seeded `action` schema.
+    pub action: String,
+}
+
+/// The per-tick sandbox limits of an adversarial case persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredSandbox {
+    /// The wasmtime fuel ceiling for a single tick.
+    pub fuel_per_tick: u64,
+    /// The linear-memory cap in bytes.
+    pub max_memory_bytes: u64,
+}
+
+/// The simulation-loop configuration of an adversarial case persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredSimulation {
+    /// The fixed, faked delta handed to the game logic each tick (milliseconds).
+    pub timestep_ms: u32,
+    /// Hard cap on match length.
+    pub max_ticks: u32,
+}
+
+/// How an adversarial case pairs implementations into matches, persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredMatch {
+    /// Controllers per match.
+    pub participants: u32,
+    /// How the field is paired (for example `round-robin`).
+    pub structure: String,
+    /// Matches played per pairing.
+    pub rounds: u32,
+}
+
+/// How an adversarial case renders a recorded match for browser playback,
+/// persisted in a [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredReplay {
+    /// The run-workspace-relative path the renderer is seeded to, forward-slashed.
+    pub renderer: String,
 }
 
 /// The canvas of an asset-generation case persisted in a [`StoredManifest`].

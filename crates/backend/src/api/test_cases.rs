@@ -10,7 +10,9 @@ use serde::Serialize;
 use test_cabinet_core::{AssetKind, SheetSpec, TestType};
 
 use crate::error::ApiError;
-use crate::store::StoredManifest;
+use crate::store::{
+    StoredContract, StoredManifest, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
+};
 
 use super::AppState;
 
@@ -185,6 +187,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         build: manifest.build.as_ref().map(|build| BuildOut {
             install: build.install.clone(),
             build: build.build.clone(),
+            module: build.module.clone(),
         }),
         canvas: manifest.canvas.as_ref().map(|canvas| CanvasOut {
             width: canvas.width,
@@ -198,6 +201,11 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         output: manifest.output.as_ref().map(|output| OutputOut {
             actions: output.actions.clone(),
         }),
+        contract: manifest.contract.clone(),
+        sandbox: manifest.sandbox,
+        simulation: manifest.simulation,
+        r#match: manifest.r#match.clone(),
+        replay: manifest.replay.clone(),
         asset_kind: manifest.asset_kind,
         sheet: manifest.sheet.clone(),
         prompt_template: manifest.prompt_template.clone(),
@@ -396,6 +404,16 @@ pub struct VersionResponse {
     tool: Option<ToolOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<OutputOut>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contract: Option<StoredContract>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sandbox: Option<StoredSandbox>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    simulation: Option<StoredSimulation>,
+    #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
+    r#match: Option<StoredMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replay: Option<StoredReplay>,
     asset_kind: AssetKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetSpec>,
@@ -416,6 +434,8 @@ pub struct VersionResponse {
 struct BuildOut {
     install: String,
     build: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    module: Option<String>,
 }
 
 #[derive(Serialize)]

@@ -44,3 +44,32 @@ fn scan_with_empty_test_case_restriction_is_a_no_op() {
         .unwrap();
     assert!(report.test_case_versions.is_empty());
 }
+
+#[test]
+fn stored_manifest_carries_adversarial_specs() {
+    // An adversarial case's `[contract]`, `[sandbox]`, `[simulation]`, `[match]`,
+    // `[replay]`, and `build.module` must survive into the stored manifest — they
+    // are what the arena's `canonical_match_setup` needs. Resolving the real
+    // adversarial-pacman case and building its manifest guards the full path
+    // (regression: these fields were dropped, so a quick match 500'd with
+    // "an adversarial match requires [contract], [sandbox], and [simulation]").
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let resolved = catalog.resolve("adversarial-pacman", "v1.0.0").unwrap();
+
+    let manifest = build_stored_manifest(&resolved).unwrap();
+
+    let contract = manifest.contract.expect("contract survives ingest");
+    assert_eq!(contract.entry, "tick");
+    let sandbox = manifest.sandbox.expect("sandbox survives ingest");
+    assert!(sandbox.fuel_per_tick > 0);
+    let simulation = manifest.simulation.expect("simulation survives ingest");
+    assert!(simulation.max_ticks > 0);
+    assert!(manifest.r#match.is_some(), "match survives ingest");
+    assert!(manifest.replay.is_some(), "replay survives ingest");
+    let module = manifest
+        .build
+        .and_then(|build| build.module)
+        .expect("build.module survives ingest");
+    assert!(module.ends_with(".wasm"));
+}

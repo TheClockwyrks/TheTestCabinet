@@ -21,9 +21,10 @@ use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCheck, StoredDomain,
-    StoredManifest, StoredOutput, StoredProof, StoredReference, StoredReviewItem, StoredSpec,
-    StoredTool, StoredVariant, StoredWorkspaceFile,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCheck, StoredContract,
+    StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof, StoredReference,
+    StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec, StoredTool,
+    StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -285,6 +286,10 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
             build: build.build.clone(),
+            module: build
+                .module
+                .as_ref()
+                .map(|module| module.to_string_lossy().replace('\\', "/")),
         }),
         canvas: resolved.canvas.as_ref().map(|canvas| StoredCanvas {
             width: canvas.width,
@@ -297,6 +302,30 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         }),
         output: resolved.output.as_ref().map(|output| StoredOutput {
             actions: output.actions.to_string_lossy().replace('\\', "/"),
+        }),
+        contract: resolved.contract.as_ref().map(|contract| StoredContract {
+            entry: contract.entry.clone(),
+            world: contract.world.to_string_lossy().replace('\\', "/"),
+            action: contract.action.to_string_lossy().replace('\\', "/"),
+        }),
+        sandbox: resolved.sandbox.as_ref().map(|sandbox| StoredSandbox {
+            fuel_per_tick: sandbox.fuel_per_tick,
+            max_memory_bytes: sandbox.max_memory_bytes,
+        }),
+        simulation: resolved
+            .simulation
+            .as_ref()
+            .map(|simulation| StoredSimulation {
+                timestep_ms: simulation.timestep_ms,
+                max_ticks: simulation.max_ticks,
+            }),
+        r#match: resolved.r#match.as_ref().map(|m| StoredMatch {
+            participants: m.participants,
+            structure: m.structure.clone(),
+            rounds: m.rounds,
+        }),
+        replay: resolved.replay.as_ref().map(|replay| StoredReplay {
+            renderer: replay.renderer.to_string_lossy().replace('\\', "/"),
         }),
         asset_kind: resolved.asset_kind,
         sheet: resolved.sheet.clone(),
