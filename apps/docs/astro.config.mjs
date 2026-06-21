@@ -176,6 +176,7 @@ export default defineConfig({
             // domain concepts that used to live there now sit under the component
             // that owns them — almost all of them under Core.
             "components/architecture",
+            "components/live-streaming",
             {
               label: "Core",
               collapsed: true,

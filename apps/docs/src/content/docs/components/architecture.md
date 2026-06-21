@@ -104,6 +104,17 @@ build available for embedding, and submits the run record to the backend, which
 serializes it into its store and refreshes the public snapshot the site is built
 from. See [Results](/components/core/results/).
 
+## Live Streaming
+
+Some progress happens *inside* the run container — most visibly an
+[asset-generation](/testing/asset-generation/overview/) run drawing through its
+in-container binary — and a watched run shows that progress to the viewer in real
+time. Because the container's filesystem is not host-visible mid-run and a
+subprocess's stdout is mediated by the harness, the host opens a small per-run
+network listener that the in-container process connects back to, and relays each
+update to the viewer over the run's existing live channel. This is a reusable
+pattern; see [Live Streaming](/components/live-streaming/).
+
 ## A Note on "Harness"
 
 The word *harness* is used two ways throughout these docs:
