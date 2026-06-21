@@ -99,8 +99,8 @@ fn score_of_identical_pngs_is_one() {
 use super::AssetGenValidator;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
-    AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
-    TestType, ToolSpec,
+    AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion, TestType,
+    ToolSpec,
 };
 use crate::validation::Validator;
 

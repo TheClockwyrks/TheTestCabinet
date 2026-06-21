@@ -28,8 +28,8 @@ use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec,
     MediaKind, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec,
-    Variant, WorkspaceFile,
+    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType,
+    ToolSpec, Variant, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds

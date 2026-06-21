@@ -1936,7 +1936,12 @@ impl TestCaseCatalog {
             let any_item_reference = manifest
                 .review_items
                 .iter()
-                .chain(manifest.variant.iter().flat_map(|variant| &variant.review_items))
+                .chain(
+                    manifest
+                        .variant
+                        .iter()
+                        .flat_map(|variant| &variant.review_items),
+                )
                 .any(|item| item.reference.is_some());
             if any_item_reference {
                 return Err(invalid(
