@@ -30,6 +30,11 @@ const BASE_IMAGE_NAME: &str = "test-cabinet-base";
 /// asset-generation run. It is the base image plus the baked-in `draw` binary
 /// (see `containers/asset-gen/Dockerfile`).
 const ASSET_GEN_IMAGE_NAME: &str = "test-cabinet-asset-gen";
+/// The name of the adversarial run-container image, used by every adversarial
+/// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
+/// so a model's controller builds to wasm in-container (see
+/// `containers/adversarial/Dockerfile`).
+const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 
 /// The environment variable that pins a verbatim override for the base (end-to-
 /// end) image, the per-test-type counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
@@ -37,6 +42,9 @@ const BASE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE";
 /// The environment variable that pins a verbatim override for the
 /// asset-generation image.
 const ASSET_GEN_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ASSET_GEN";
+/// The environment variable that pins a verbatim override for the adversarial
+/// image.
+const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
 
 /// How to resolve the run-container image for one [`TestType`]: the composed
 /// image name, and the environment variable that pins a verbatim override for
@@ -52,8 +60,10 @@ struct ImageSpec {
 
 /// The [`ImageSpec`] for a [`TestType`]. End-to-end runs use the base image;
 /// asset-generation runs use the asset-generation image, which bakes in the
-/// `draw` binary an asset-generation run drives. Each has its own override env
-/// var so a host can pin one test type's image without disturbing the other.
+/// `draw` binary an asset-generation run drives; adversarial runs use the
+/// adversarial image, which bakes in the Rust + `wasm32-unknown-unknown`
+/// toolchain a controller compiles to wasm with. Each has its own override env
+/// var so a host can pin one test type's image without disturbing the others.
 fn image_spec_for(test_type: TestType) -> ImageSpec {
     match test_type {
         TestType::EndToEnd => ImageSpec {
@@ -64,12 +74,17 @@ fn image_spec_for(test_type: TestType) -> ImageSpec {
             name: ASSET_GEN_IMAGE_NAME,
             override_env: ASSET_GEN_IMAGE_OVERRIDE_ENV,
         },
+        TestType::Adversarial => ImageSpec {
+            name: ADVERSARIAL_IMAGE_NAME,
+            override_env: ADVERSARIAL_IMAGE_OVERRIDE_ENV,
+        },
     }
 }
 
 /// Resolve the run-container image reference for a run's [`TestType`], from the
 /// environment. The image is selected by test type — end-to-end runs use the
-/// base image, asset-generation runs use the asset-generation image — and the
+/// base image, asset-generation runs use the asset-generation image, adversarial
+/// runs use the adversarial image — and the
 /// harness's CLI is installed into the container at run time rather than baked
 /// into a per-harness image. The runner pulls the image directly from a registry
 /// — it does **not** ask any backend, so a runner pointed at any backend (or

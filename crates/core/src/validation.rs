@@ -130,6 +130,76 @@ pub struct AssetGenResult {
     pub detail: Option<String>,
 }
 
+/// Which side a match outcome is reported from, for an adversarial run.
+///
+/// The validator always runs the submission as Red against the committed baseline
+/// opponent as Blue (lead decision 4), so [`AdversarialResult::outcome`] is from
+/// the submission's perspective and this records that the submission was Red.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AdversarialTeam {
+    /// The west colony — the submission, in the canonical match.
+    Red,
+    /// The east colony — the baseline opponent, in the canonical match.
+    Blue,
+}
+
+/// The outcome of an adversarial run's canonical match, from the **submission's**
+/// perspective.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AdversarialOutcome {
+    /// The submission won the match.
+    Win,
+    /// The submission lost the match.
+    Loss,
+    /// The match was a draw.
+    Draw,
+    /// The submission forfeited (it failed to build, did not export the contract
+    /// entry, trapped, exhausted its fuel/memory, or returned an invalid action).
+    Forfeit,
+}
+
+/// The result of scoring an adversarial run's single canonical match.
+///
+/// An adversarial run's authoritative output is its compiled wasm controller. The
+/// validator (see `crate::adversarial_validator::AdversarialValidator`) loads it
+/// as Red, loads the case's committed baseline opponent as Blue, runs **one**
+/// match through the shared [Foray host](foray_host), writes the published
+/// `replay.json` into the run's asset directory, and records the result here. A
+/// submission that fails to build, does not export the entry, or forfeits is
+/// recorded as a loss/forfeit — never a crash. Present only on an adversarial
+/// run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdversarialResult {
+    /// Run-root-relative path to the published, browser-playable replay — the
+    /// scored artifact of the run.
+    pub replay_json: String,
+    /// The id of the baseline opponent the submission was matched against (Blue).
+    pub opponent: String,
+    /// Which side the submission played (always [`AdversarialTeam::Red`] for the
+    /// canonical match; recorded so a consumer never has to assume it).
+    pub submission_team: AdversarialTeam,
+    /// The winning side, or `None` for a draw. `red` is the submission.
+    pub winner: Option<AdversarialTeam>,
+    /// The submission's (Red's) banked score at the end of the match.
+    pub red_score: u32,
+    /// The opponent's (Blue's) banked score at the end of the match.
+    pub blue_score: u32,
+    /// How the match ended (the replay's `ended`: `swept`, `time_limit`, or
+    /// `forfeit`).
+    pub ended: String,
+    /// How many ticks the match ran for.
+    pub ticks: u32,
+    /// The outcome from the submission's perspective.
+    pub outcome: AdversarialOutcome,
+    /// Detail about a submission that could not be matched (for example a missing
+    /// or unloadable module), or `None` when the match ran.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,6 +230,11 @@ pub struct ValidationSummary {
     /// all and its shape is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asset: Option<AssetGenResult>,
+    /// The canonical-match result of an adversarial run. `None` for any other
+    /// type, so a non-adversarial summary serializes with no new field at all and
+    /// its shape is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adversarial: Option<AdversarialResult>,
 }
 
 /// Runs validation over a produced implementation.

@@ -1,0 +1,26 @@
+[package]
+name = "foray-controller-sdk"
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false
+
+# The helper most Foray controllers share. A controller crate links this as an
+# `rlib`, writes a single `fn decide(world: &World) -> Action`, and invokes the
+# `controller!` macro; the SDK then wires up the v1 wasm controller ABI
+# (`alloc`/`tick`) so the crate compiles to a `wasm32-unknown-unknown` core module
+# the `foray-host` sandbox can load. It depends on `foray-core` only for the
+# `World`/`Action` contract types and the maze it pathfinds over. It has no
+# wasm-host dependency of its own — it IS the guest side of the boundary.
+[lib]
+name = "foray_controller_sdk"
+crate-type = ["rlib"]
+
+[dependencies]
+# The controller-facing contract (`World`/`Action`) plus the board model and
+# pathfinding helpers the reference controllers reuse. `default-features = false`
+# drops the schema and TOML-loader features a controller never needs, keeping the
+# guest wasm lean (a controller decodes the observation, it does not emit schemas
+# or parse maps).
+foray-core = { path = "../foray-core", default-features = false }
+serde_json = "1"

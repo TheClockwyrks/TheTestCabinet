@@ -73,6 +73,28 @@ struct Manifest {
     /// `[output]` table). Required for asset-generation, forbidden otherwise.
     #[serde(default)]
     output: Option<ManifestOutput>,
+    /// The controller contract an adversarial case's wasm controller must
+    /// implement (the `[contract]` table). Required for adversarial, forbidden
+    /// otherwise.
+    #[serde(default)]
+    contract: Option<ManifestContract>,
+    /// The per-tick sandbox limits applied to an adversarial case's controllers
+    /// (the `[sandbox]` table). Required for adversarial, forbidden otherwise.
+    #[serde(default)]
+    sandbox: Option<ManifestSandbox>,
+    /// The simulation-loop configuration of an adversarial case (the
+    /// `[simulation]` table). Required for adversarial, forbidden otherwise.
+    #[serde(default)]
+    simulation: Option<ManifestSimulation>,
+    /// How an adversarial case pairs implementations into matches (the `[match]`
+    /// table). Required for adversarial, forbidden otherwise. `match` is a Rust
+    /// keyword, so the field is `r#match`.
+    #[serde(default, rename = "match")]
+    r#match: Option<ManifestMatch>,
+    /// How an adversarial case renders a recorded match for browser playback (the
+    /// `[replay]` table). Required for adversarial, forbidden otherwise.
+    #[serde(default)]
+    replay: Option<ManifestReplay>,
     /// Specs seeded for **every** variant. Each maps a `source` inside the
     /// version folder to a `dest` in the run's workspace. Declared as repeated
     /// `[[spec]]` tables.
@@ -129,15 +151,80 @@ struct Manifest {
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
-/// a produced implementation into a served static site. Both fields are required
-/// — there are no defaults, so a case always records exactly how it is built.
+/// a produced implementation into the case's scored artifact. `install` and
+/// `build` are required for every case that declares the table (an end-to-end
+/// build emits a static site; an adversarial build emits a wasm controller
+/// module). `module` names the wasm artifact and is required for — and only
+/// valid on — an adversarial case, where the validator loads it into the sandbox.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestBuild {
     /// Command that installs dependencies (for example `npm ci`, which requires a
     /// committed lockfile).
     install: String,
-    /// Command that produces the static build (for example `npm run build`).
+    /// Command that produces the build (for example `npm run build`, or
+    /// `cargo build --release --target wasm32-unknown-unknown`).
     build: String,
+    /// The produced wasm controller module's path, relative to the run root.
+    /// Required on an adversarial case (the validator loads it as the submission);
+    /// an end-to-end build emits a static site and declares none.
+    #[serde(default)]
+    module: Option<PathBuf>,
+}
+
+/// The `[contract]` table of an adversarial case: the controller interface the
+/// model must implement. The schemas are the only channel between a controller
+/// and the game.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestContract {
+    /// The exported function invoked once per game tick (for example `tick`).
+    entry: String,
+    /// The JSON Schema of the per-tick observation passed to the controller,
+    /// relative to the version folder. Seeded so the model can read it.
+    world: PathBuf,
+    /// The JSON Schema of the actions the controller may return each tick,
+    /// relative to the version folder. Seeded so the model can read it.
+    action: PathBuf,
+}
+
+/// The `[sandbox]` table of an adversarial case: the per-tick limits applied to
+/// every controller invocation. Exceeding either is a disqualifying forfeit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+struct ManifestSandbox {
+    /// The wasmtime fuel ceiling for a single tick.
+    fuel_per_tick: u64,
+    /// The linear-memory cap in bytes.
+    max_memory_bytes: u64,
+}
+
+/// The `[simulation]` table of an adversarial case: the faked timestep and the
+/// hard tick cap that bound the loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+struct ManifestSimulation {
+    /// The fixed, faked delta handed to the game logic each tick (milliseconds).
+    timestep_ms: u32,
+    /// Hard cap on match length; reaching it ends the match (a draw if tied).
+    max_ticks: u32,
+}
+
+/// The `[match]` table of an adversarial case: how implementations are paired
+/// into matches. Recorded faithfully, though the validator only runs the single
+/// canonical match (lead decision 4).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestMatch {
+    /// Controllers per match.
+    participants: u32,
+    /// How the field is paired (for example `round-robin`).
+    structure: String,
+    /// Matches played per pairing.
+    rounds: u32,
+}
+
+/// The `[replay]` table of an adversarial case: the browser renderer fed the
+/// recorded replay data for playback on the site.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReplay {
+    /// The browser renderer entry, relative to the version folder.
+    renderer: PathBuf,
 }
 
 /// The `[canvas]` table of an asset-generation case: the fixed image the model
@@ -347,9 +434,11 @@ pub struct TestCase {
 /// The type of a test case: which class of capability it measures and which
 /// manifest tables it declares.
 ///
-/// Today two types exist in code: the original [`Self::EndToEnd`] (build a
-/// working program) and [`Self::AssetGeneration`] (drive a drawing tool toward a
-/// target image). The type is the explicit discriminator everything branches on
+/// Today three types exist in code: the original [`Self::EndToEnd`] (build a
+/// working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+/// target image), and [`Self::Adversarial`] (write a wasm controller pitted
+/// head-to-head against a baseline). The type is the explicit discriminator
+/// everything branches on
 /// — resolution, validation, the run record, and the UI — rather than being
 /// inferred from which tables a manifest happens to declare. It defaults to
 /// [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.
@@ -362,6 +451,11 @@ pub enum TestType {
     /// Produce a graphical asset by driving a drawing tool one operation at a
     /// time; the recorded operations are the authoritative output.
     AssetGeneration,
+    /// Write a controller compiled to wasm that drives one side of a head-to-head
+    /// game; the controller is run repeatedly against a baseline opponent and the
+    /// match outcome is the authoritative result. See
+    /// `docs/testing/adversarial/`.
+    Adversarial,
 }
 
 /// The kind of a piece of media — used for both reference media and proof
@@ -492,8 +586,13 @@ pub struct WorkspaceFile {
 pub struct BuildCommands {
     /// Command that installs dependencies before the build.
     pub install: String,
-    /// Command that produces the static build.
+    /// Command that produces the build.
     pub build: String,
+    /// The run-root-relative path of the produced wasm controller module. `Some`
+    /// only for an adversarial case (an end-to-end build emits a static site and
+    /// has no single module artifact); the validator loads this as the submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<PathBuf>,
 }
 
 /// The resolved `[canvas]` of an asset-generation case: the fixed image the
@@ -533,6 +632,66 @@ pub struct ToolSpec {
 pub struct OutputSpec {
     /// The run-workspace-relative path of the recorded action log.
     pub actions: PathBuf,
+}
+
+/// The resolved `[contract]` of an adversarial case: the controller interface.
+/// `world` and `action` are the run-workspace-relative paths the contract
+/// schemas are seeded to (as common specs), so the model reads them where the
+/// case declared them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractSpec {
+    /// The exported function invoked once per tick (the manifest's `entry`).
+    pub entry: String,
+    /// The run-workspace-relative path of the seeded `world` observation schema.
+    pub world: PathBuf,
+    /// The run-workspace-relative path of the seeded `action` schema.
+    pub action: PathBuf,
+}
+
+/// The resolved `[sandbox]` of an adversarial case: the per-tick limits applied
+/// to every controller invocation by the wasm host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxSpec {
+    /// The wasmtime fuel ceiling for a single tick.
+    pub fuel_per_tick: u64,
+    /// The linear-memory cap in bytes.
+    pub max_memory_bytes: u64,
+}
+
+/// The resolved `[simulation]` of an adversarial case: the faked timestep and
+/// the hard tick cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulationSpec {
+    /// The fixed, faked delta handed to the game logic each tick (milliseconds).
+    pub timestep_ms: u32,
+    /// Hard cap on match length; reaching it ends the match (a draw if tied).
+    pub max_ticks: u32,
+}
+
+/// The resolved `[match]` of an adversarial case: how the field is paired into
+/// matches. Recorded faithfully though the validator only runs the single
+/// canonical match (lead decision 4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchSpec {
+    /// Controllers per match.
+    pub participants: u32,
+    /// How the field is paired (for example `round-robin`).
+    pub structure: String,
+    /// Matches played per pairing.
+    pub rounds: u32,
+}
+
+/// The resolved `[replay]` of an adversarial case: the browser renderer fed the
+/// recorded replay data for playback on the site.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaySpec {
+    /// The run-workspace-relative path the renderer is seeded to.
+    pub renderer: PathBuf,
 }
 
 /// A named build target of a test case.
@@ -783,6 +942,27 @@ pub struct TestCaseVersion {
     /// only for asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<OutputSpec>,
+    /// The controller contract an adversarial case's wasm controller implements.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract: Option<ContractSpec>,
+    /// The per-tick sandbox limits applied to an adversarial case's controllers.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<SandboxSpec>,
+    /// The simulation-loop configuration of an adversarial case. `Some` only for
+    /// adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulation: Option<SimulationSpec>,
+    /// How an adversarial case pairs implementations into matches. `Some` only for
+    /// adversarial. Recorded faithfully though the validator runs only the single
+    /// canonical match.
+    #[serde(default, rename = "match", skip_serializing_if = "Option::is_none")]
+    pub r#match: Option<MatchSpec>,
+    /// How an adversarial case renders a recorded match for browser playback.
+    /// `Some` only for adversarial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<ReplaySpec>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -1023,9 +1203,18 @@ impl TestCaseCatalog {
                 if build.build.trim().is_empty() {
                     return Err(invalid("build.build must not be empty".to_string()));
                 }
+                // An end-to-end build emits a static site, not a wasm module, so a
+                // `module` artifact path is an adversarial-only field; reject it
+                // here rather than silently ignoring it.
+                if build.module.is_some() {
+                    return Err(invalid(
+                        "build.module is only valid for an adversarial case".to_string(),
+                    ));
+                }
                 Some(BuildCommands {
                     install: build.install,
                     build: build.build,
+                    module: None,
                 })
             }
             TestType::AssetGeneration => {
@@ -1035,6 +1224,37 @@ impl TestCaseCatalog {
                     ));
                 }
                 None
+            }
+            TestType::Adversarial => {
+                // An adversarial build compiles the model's submission to a wasm
+                // controller module: the case must state both commands and the
+                // `module` artifact path explicitly (the validator loads it as the
+                // submission), so absence of any of the three is rejected.
+                let build = manifest
+                    .build
+                    .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
+                if build.install.trim().is_empty() {
+                    return Err(invalid("build.install must not be empty".to_string()));
+                }
+                if build.build.trim().is_empty() {
+                    return Err(invalid("build.build must not be empty".to_string()));
+                }
+                let module = build
+                    .module
+                    .ok_or_else(|| invalid("build.module is required".to_string()))?;
+                // The produced module lives under the run root; it must stay inside
+                // it so the validator never reads a controller from outside the run.
+                if escapes_folder(&module) {
+                    return Err(invalid(format!(
+                        "build.module `{}` escapes the run workspace",
+                        module.display()
+                    )));
+                }
+                Some(BuildCommands {
+                    install: build.install,
+                    build: build.build,
+                    module: Some(module),
+                })
             }
         };
 
@@ -1105,7 +1325,7 @@ impl TestCaseCatalog {
         // run-relative destinations the binary writes (not seeded), validated only
         // to stay inside the workspace.
         let (canvas, tool, output) = match test_type {
-            TestType::EndToEnd => {
+            TestType::EndToEnd | TestType::Adversarial => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
                     return Err(invalid(
@@ -1181,6 +1401,147 @@ impl TestCaseCatalog {
                     }),
                     Some(OutputSpec {
                         actions: output.actions.clone(),
+                    }),
+                )
+            }
+        };
+
+        // Resolve the adversarial tables (`[contract]`, `[sandbox]`,
+        // `[simulation]`, `[match]`, `[replay]`). They are required for — and only
+        // for — an adversarial case; on any other type they are a mistake. The
+        // `world`/`action` contract schemas are authored files inside the version
+        // folder, seeded like the asset-gen operations schema (appended to
+        // `common_specs`) so the model reads them where the contract names them.
+        // The replay renderer is validated to exist and stay inside the version
+        // folder (it is the browser playback bundle, served as a run asset, not a
+        // run-workspace dest), and `build.module` (validated above) is the wasm
+        // artifact the validator loads.
+        let (contract, sandbox, simulation, r#match, replay) = match test_type {
+            TestType::EndToEnd | TestType::AssetGeneration => {
+                if manifest.contract.is_some()
+                    || manifest.sandbox.is_some()
+                    || manifest.simulation.is_some()
+                    || manifest.r#match.is_some()
+                    || manifest.replay.is_some()
+                {
+                    return Err(invalid(
+                        "[contract], [sandbox], [simulation], [match], and [replay] are only valid \
+                         for an adversarial case"
+                            .to_string(),
+                    ));
+                }
+                (None, None, None, None, None)
+            }
+            TestType::Adversarial => {
+                let contract = manifest
+                    .contract
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [contract] table is required".to_string()))?;
+                if contract.entry.trim().is_empty() {
+                    return Err(invalid("contract.entry must not be empty".to_string()));
+                }
+                let world_source = resolve_inside(&contract.world, "contract world schema")?;
+                if !world_source.is_file() {
+                    return Err(invalid(format!(
+                        "contract world schema `{}` does not exist",
+                        contract.world.display()
+                    )));
+                }
+                let action_source = resolve_inside(&contract.action, "contract action schema")?;
+                if !action_source.is_file() {
+                    return Err(invalid(format!(
+                        "contract action schema `{}` does not exist",
+                        contract.action.display()
+                    )));
+                }
+                common_specs.push(SpecFile {
+                    source_path: world_source,
+                    dest: contract.world.clone(),
+                });
+                common_specs.push(SpecFile {
+                    source_path: action_source,
+                    dest: contract.action.clone(),
+                });
+
+                let sandbox = manifest
+                    .sandbox
+                    .ok_or_else(|| invalid("the [sandbox] table is required".to_string()))?;
+                if sandbox.fuel_per_tick == 0 {
+                    return Err(invalid(
+                        "sandbox.fuel_per_tick must be greater than zero".to_string(),
+                    ));
+                }
+                if sandbox.max_memory_bytes == 0 {
+                    return Err(invalid(
+                        "sandbox.max_memory_bytes must be greater than zero".to_string(),
+                    ));
+                }
+
+                let simulation = manifest
+                    .simulation
+                    .ok_or_else(|| invalid("the [simulation] table is required".to_string()))?;
+                if simulation.timestep_ms == 0 {
+                    return Err(invalid(
+                        "simulation.timestep_ms must be greater than zero".to_string(),
+                    ));
+                }
+                if simulation.max_ticks == 0 {
+                    return Err(invalid(
+                        "simulation.max_ticks must be greater than zero".to_string(),
+                    ));
+                }
+
+                let r#match = manifest
+                    .r#match
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [match] table is required".to_string()))?;
+                if r#match.participants == 0 {
+                    return Err(invalid(
+                        "match.participants must be greater than zero".to_string(),
+                    ));
+                }
+                if r#match.structure.trim().is_empty() {
+                    return Err(invalid("match.structure must not be empty".to_string()));
+                }
+                if r#match.rounds == 0 {
+                    return Err(invalid(
+                        "match.rounds must be greater than zero".to_string(),
+                    ));
+                }
+
+                let replay = manifest
+                    .replay
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [replay] table is required".to_string()))?;
+                let renderer = resolve_inside(&replay.renderer, "replay renderer")?;
+                if !renderer.is_file() {
+                    return Err(invalid(format!(
+                        "replay renderer `{}` does not exist",
+                        replay.renderer.display()
+                    )));
+                }
+
+                (
+                    Some(ContractSpec {
+                        entry: contract.entry.clone(),
+                        world: contract.world.clone(),
+                        action: contract.action.clone(),
+                    }),
+                    Some(SandboxSpec {
+                        fuel_per_tick: sandbox.fuel_per_tick,
+                        max_memory_bytes: sandbox.max_memory_bytes,
+                    }),
+                    Some(SimulationSpec {
+                        timestep_ms: simulation.timestep_ms,
+                        max_ticks: simulation.max_ticks,
+                    }),
+                    Some(MatchSpec {
+                        participants: r#match.participants,
+                        structure: r#match.structure.clone(),
+                        rounds: r#match.rounds,
+                    }),
+                    Some(ReplaySpec {
+                        renderer: replay.renderer.clone(),
                     }),
                 )
             }
@@ -1636,6 +1997,18 @@ impl TestCaseCatalog {
             }
         }
 
+        // An adversarial case has no automated checks: it is scored by running the
+        // single canonical match, not by driving a served build into views. Reject
+        // declared checks rather than silently ignoring them. References (the
+        // browser-rendered visual baselines an end-to-end case uses) are not part
+        // of the contract here either, but they are harmless if a case ships site
+        // mockups, so they are left permitted.
+        if test_type == TestType::Adversarial && !manifest.check.is_empty() {
+            return Err(invalid(
+                "an adversarial case declares no [[check]]".to_string(),
+            ));
+        }
+
         // Every check must name a reference view that resolves for **every**
         // variant — either a common reference or one each variant declares — so
         // its baseline can always be rendered whichever variant runs. This keeps
@@ -1680,6 +2053,11 @@ impl TestCaseCatalog {
             canvas,
             tool,
             output,
+            contract,
+            sandbox,
+            simulation,
+            r#match,
+            replay,
             common_specs,
             common_workspace,
             init: manifest.init,

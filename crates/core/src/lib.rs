@@ -9,6 +9,7 @@
 //! are thin layers on top of this core; keeping orchestration here is what makes
 //! batch runs and unattended sweeps possible.
 
+pub mod adversarial_validator;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
@@ -45,6 +46,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::instrument;
 
+pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredFile, CredSource, RequestedAuthMode, SubscriptionSpec, auth_readiness,
     resolve_auth,
@@ -93,13 +95,14 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    CanvasSpec, Check, CheckAction, Domain, MediaKind, OutputSpec, ProofFile, ReferenceKind,
-    ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, TestType,
-    ToolSpec, Variant, WorkspaceFile,
+    CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind, OutputSpec,
+    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SimulationSpec,
+    SpecFile, TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant,
+    WorkspaceFile,
 };
 pub use validation::{
-    AssetGenResult, CapturedView, CheckResult, ProofResult, StepResult, ValidationSummary,
-    Validator,
+    AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
+    CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
 pub use validator::{AssetGenValidator, BuildValidator, DispatchValidator};
 

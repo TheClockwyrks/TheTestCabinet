@@ -66,7 +66,7 @@ export interface RunTooling {
  * choose how to present a run. Defaults to `"end-to-end"` for records written
  * before the discriminator existed.
  */
-export type TestType = "end-to-end" | "asset-generation";
+export type TestType = "end-to-end" | "asset-generation" | "adversarial";
 
 /** Identifies what was run: the test case, the harness, and the model. */
 export interface RunSubject {
@@ -196,6 +196,45 @@ export interface AssetGenResult {
   detail: string | null;
 }
 
+/**
+ * Which side a match outcome is reported from. The validator always runs the
+ * submission as `"red"` against the committed baseline opponent as `"blue"`.
+ */
+export type AdversarialTeam = "red" | "blue";
+
+/** The outcome of an adversarial run's canonical match, from the submission's
+ * perspective. */
+export type AdversarialOutcome = "win" | "loss" | "draw" | "forfeit";
+
+/**
+ * The result of scoring an adversarial run's single canonical match. The
+ * submission's compiled wasm controller is loaded as Red, the case's committed
+ * baseline opponent as Blue, and one match is run; the replay is published as an
+ * ordinary run asset. Present only on an adversarial run's validation.
+ */
+export interface AdversarialResult {
+  /** Run-root-relative path to the published, browser-playable replay. */
+  replayJson: string;
+  /** The id of the baseline opponent the submission was matched against (Blue). */
+  opponent: string;
+  /** Which side the submission played (always `"red"` for the canonical match). */
+  submissionTeam: AdversarialTeam;
+  /** The winning side, or null for a draw. `"red"` is the submission. */
+  winner: AdversarialTeam | null;
+  /** The submission's (Red's) banked score at the end of the match. */
+  redScore: number;
+  /** The opponent's (Blue's) banked score at the end of the match. */
+  blueScore: number;
+  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  ended: string;
+  /** How many ticks the match ran for. */
+  ticks: number;
+  /** The outcome from the submission's perspective. */
+  outcome: AdversarialOutcome;
+  /** Detail about a submission that could not be matched, or null. */
+  detail: string | null;
+}
+
 /** Validation signals derived from running the produced artifact. */
 export interface RunValidation {
   loaded: boolean;
@@ -224,6 +263,10 @@ export interface RunValidation {
    * end-to-end run.
    */
   asset?: AssetGenResult;
+  /**
+   * The canonical-match result of an adversarial run. Absent for any other type.
+   */
+  adversarial?: AdversarialResult;
 }
 
 /** Outbound links for a run. Either may be null when not published. */

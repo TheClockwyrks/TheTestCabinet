@@ -48,6 +48,7 @@ fn build_table_sets_the_commands() {
         Some(BuildCommands {
             install: "pnpm install --frozen-lockfile".to_string(),
             build: "pnpm build".to_string(),
+            module: None,
         })
     );
     assert_eq!(version.test_type, TestType::EndToEnd);
@@ -169,6 +170,193 @@ fn end_to_end_rejects_asset_tables() {
         .expect_err("asset tables on an e2e case are rejected");
     assert!(
         format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
+}
+
+// --- adversarial resolution ------------------------------------------------
+
+/// A complete, valid adversarial manifest. Tests clone this and mutate one thing
+/// to exercise a single validation rule.
+const VALID_ADVERSARIAL_MANIFEST: &str = "\
+name = \"Foray\"\n\
+difficulty = \"hard\"\n\
+tags = [\"adversarial\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"adversarial\"\n\
+[build]\ninstall = \"cargo fetch\"\nbuild = \"cargo build --release --target wasm32-unknown-unknown\"\nmodule = \"target/wasm32-unknown-unknown/release/controller.wasm\"\n\
+[contract]\nentry = \"tick\"\nworld = \"schemas/world.json\"\naction = \"schemas/action.json\"\n\
+[sandbox]\nfuel_per_tick = 5000000\nmax_memory_bytes = 67108864\n\
+[simulation]\ntimestep_ms = 16\nmax_ticks = 37500\n\
+[match]\nparticipants = 2\nstructure = \"round-robin\"\nrounds = 1\n\
+[replay]\nrenderer = \"replay/index.html\"\n\
+[[variant]]\nslug = \"base\"\n\
+[[domain]]\nid = \"play\"\ndescription = \"How well the controller plays.\"\n";
+
+/// Write an adversarial version with all the files a valid one needs (prompt,
+/// world/action schemas, replay renderer) and the given manifest, then return the
+/// catalog.
+fn adversarial_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = dir.path().join("foray/v1.0.0");
+    fs::create_dir_all(version.join("schemas")).expect("schemas dir");
+    fs::create_dir_all(version.join("replay")).expect("replay dir");
+    fs::write(version.join("prompt.hbs"), "Write a controller.").expect("prompt");
+    fs::write(version.join("schemas/world.json"), "{}").expect("world schema");
+    fs::write(version.join("schemas/action.json"), "{}").expect("action schema");
+    fs::write(version.join("replay/index.html"), "<html></html>").expect("renderer");
+    fs::write(version.join("test-case.toml"), manifest).expect("manifest");
+    let catalog = TestCaseCatalog::new(dir.path());
+    (dir, catalog)
+}
+
+#[test]
+fn adversarial_case_resolves_its_tables() {
+    let (_dir, catalog) = adversarial_catalog(VALID_ADVERSARIAL_MANIFEST);
+    let version = catalog.resolve("foray", "v1.0.0").expect("resolve");
+    assert_eq!(version.test_type, TestType::Adversarial);
+    let build = version.build.as_ref().expect("build");
+    assert_eq!(
+        build.module.as_ref().and_then(|m| m.to_str()),
+        Some("target/wasm32-unknown-unknown/release/controller.wasm")
+    );
+    let contract = version.contract.as_ref().expect("contract");
+    assert_eq!(contract.entry, "tick");
+    let sandbox = version.sandbox.as_ref().expect("sandbox");
+    assert_eq!(sandbox.fuel_per_tick, 5_000_000);
+    assert_eq!(sandbox.max_memory_bytes, 67_108_864);
+    let simulation = version.simulation.as_ref().expect("simulation");
+    assert_eq!((simulation.timestep_ms, simulation.max_ticks), (16, 37_500));
+    let r#match = version.r#match.as_ref().expect("match");
+    assert_eq!(r#match.participants, 2);
+    assert_eq!(r#match.structure, "round-robin");
+    assert!(version.replay.is_some(), "replay table resolved");
+    // The world/action contract schemas are seeded like any other spec so the
+    // model can read them where the contract names them.
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest.to_str() == Some("schemas/world.json")),
+        "world schema is seeded as a common spec"
+    );
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest.to_str() == Some("schemas/action.json")),
+        "action schema is seeded as a common spec"
+    );
+}
+
+/// Each required adversarial table, with the substring its rejection carries when
+/// the table is dropped from the manifest.
+const REQUIRED_ADVERSARIAL_TABLES: &[(&str, &str)] = &[
+    (
+        "[contract]\nentry = \"tick\"\nworld = \"schemas/world.json\"\naction = \"schemas/action.json\"\n",
+        "[contract] table is required",
+    ),
+    (
+        "[sandbox]\nfuel_per_tick = 5000000\nmax_memory_bytes = 67108864\n",
+        "[sandbox] table is required",
+    ),
+    (
+        "[simulation]\ntimestep_ms = 16\nmax_ticks = 37500\n",
+        "[simulation] table is required",
+    ),
+    (
+        "[match]\nparticipants = 2\nstructure = \"round-robin\"\nrounds = 1\n",
+        "[match] table is required",
+    ),
+    (
+        "[replay]\nrenderer = \"replay/index.html\"\n",
+        "[replay] table is required",
+    ),
+];
+
+#[test]
+fn adversarial_missing_each_required_table_is_rejected() {
+    for (table, expected) in REQUIRED_ADVERSARIAL_TABLES {
+        let manifest = VALID_ADVERSARIAL_MANIFEST.replace(table, "");
+        let err = adversarial_catalog(&manifest)
+            .1
+            .resolve("foray", "v1.0.0")
+            .expect_err("a missing required table is rejected");
+        assert!(
+            format!("{err}").contains(expected),
+            "dropping `{table}` should mention `{expected}`, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn adversarial_requires_build_module() {
+    // Drop only the `module` line from an otherwise-valid build table.
+    let manifest = VALID_ADVERSARIAL_MANIFEST.replace(
+        "module = \"target/wasm32-unknown-unknown/release/controller.wasm\"\n",
+        "",
+    );
+    let err = adversarial_catalog(&manifest)
+        .1
+        .resolve("foray", "v1.0.0")
+        .expect_err("a missing build.module is rejected");
+    assert!(
+        format!("{err}").contains("build.module is required"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn adversarial_rejects_asset_tables() {
+    let manifest = format!("{VALID_ADVERSARIAL_MANIFEST}[canvas]\nwidth = 8\nheight = 8\n");
+    let err = adversarial_catalog(&manifest)
+        .1
+        .resolve("foray", "v1.0.0")
+        .expect_err("asset tables on an adversarial case are rejected");
+    assert!(
+        format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn adversarial_rejects_checks() {
+    let manifest = format!("{VALID_ADVERSARIAL_MANIFEST}[[check]]\nview = \"x\"\n");
+    let err = adversarial_catalog(&manifest)
+        .1
+        .resolve("foray", "v1.0.0")
+        .expect_err("a [[check]] on an adversarial case is rejected");
+    assert!(format!("{err}").contains("no [[check]]"), "got: {err}");
+}
+
+#[test]
+fn end_to_end_rejects_adversarial_tables() {
+    // An end-to-end case (the default type) that declares a [contract] is a mistake.
+    let (_dir, catalog) = catalog_with_manifest(
+        "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [contract]\nentry = \"tick\"\nworld = \"schemas/world.json\"\naction = \"schemas/action.json\"",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("adversarial tables on an e2e case are rejected");
+    assert!(
+        format!("{err}").contains("only valid for an adversarial case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn end_to_end_rejects_a_build_module() {
+    // `module` is an adversarial-only field; an end-to-end build emits a static
+    // site and declares none.
+    let (_dir, catalog) = catalog_with_manifest(
+        "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\nmodule = \"out.wasm\"",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a build.module on an e2e case is rejected");
+    assert!(
+        format!("{err}").contains("build.module is only valid for an adversarial case"),
         "got: {err}"
     );
 }

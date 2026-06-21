@@ -1,0 +1,3 @@
+# Build outputs — never committed; the harness rebuilds the controller from source.
+/target/
+/tools/target/

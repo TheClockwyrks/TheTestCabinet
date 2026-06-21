@@ -20,10 +20,16 @@ what is specific to Foray.
 
 ```
 crates/
-  foray-core/        # the authoritative game: rules, state, scoring, replay (de)serialization
-    src/lib.rs       #   crate-type = ["cdylib", "rlib"] — links natively and to wasm
-  foray-cli/         # `foray` binary: load two controllers, run one match, dump a replay
+  foray-core/             # the authoritative game: rules, state, scoring, replay (de)serialization
+    src/lib.rs            #   crate-type = ["cdylib", "rlib"] — links natively and to wasm
+  foray-host/             # the reusable wasm host: load controllers, per-tick loop, sandbox
+    src/lib.rs
+  foray-cli/              # `foray` binary: thin clap wrapper over foray-host
     src/main.rs
+  foray-controller-sdk/   # ergonomic Rust SDK a controller depends on (world/action + ABI glue)
+  foray-ref-random/       # baseline: uniformly-random legal moves
+  foray-ref-greedy-raider/# baseline: rush the nearest cache, never break off
+  foray-ref-border-soldier/# baseline: hug the border; the committed canonical opponent
 ```
 
 - **`foray-core`** owns everything authoritative: the board model, agent state,
@@ -35,11 +41,26 @@ crates/
   [`world`](#world-the-observation) and [`action`](#action-the-output) types and
   their JSON Schemas are defined here and exported so the schemas and the engine
   can never disagree.
-- **`foray-cli`** is the thin native driver. It owns the **wasm host**
-  ([`wasmtime`](https://wasmtime.dev/)) that loads the two competing controller
-  modules, the per-tick invocation loop, sandbox enforcement (fuel, memory), and
-  writing the replay to disk. The host lives in the CLI, not in core, because
-  core must stay wasm-compilable.
+- **`foray-host`** is the reusable **wasm host** ([`wasmtime`](https://wasmtime.dev/)).
+  It loads the two competing controller modules, runs the per-tick invocation
+  loop, and enforces the sandbox (fuel, memory). It lives in its own crate — not in
+  `foray-core` (which must stay wasm-compilable) and not buried in the CLI —
+  because the core `AdversarialValidator` reuses the **exact same host** to score a
+  submission, so there is one host implementation and the CLI and the validator can
+  never diverge.
+- **`foray-cli`** is the thin native `foray` binary: a clap wrapper that reads the
+  map and two modules off disk, calls `foray-host`, and writes the replay (plus a
+  `schema` helper that dumps the `world`/`action` JSON Schemas straight from
+  `foray-core`).
+- **`foray-controller-sdk`** is the optional ergonomic Rust SDK a model's
+  controller can depend on: it owns the hand-rolled ABI glue (`alloc`/`tick`, see
+  [The controller ABI](#the-controller-abi)) and re-exports the `world`/`action`
+  types, so a Rust controller writes a plain `tick(world) -> action` and never
+  touches raw pointers.
+- The three **`foray-ref-*`** crates are the
+  [baseline controllers](/testing/adversarial/adversarial-pacman/references/);
+  `foray-ref-border-soldier` is the one committed with the case as the **canonical
+  opponent** every submission is scored against.
 
 ## The CLI
 
@@ -90,6 +111,36 @@ The controller exports the entry function named by the manifest's
 invoked **once per tick per team** with that team's `world` observation encoded
 as JSON bytes and must return an `action` as JSON bytes. The two schemas are the
 **only** channel between a controller and the game.
+
+### The controller ABI
+
+For v1 a controller compiles to a **`wasm32-unknown-unknown` core module** — a
+plain wasm module, **not** a component/`wasip2` module — so a controller needs
+nothing beyond the standard `wasm32-unknown-unknown` target (no `wasm-bindgen`, no
+component toolchain). The host (`foray-host`) and the guest exchange JSON over a
+small **hand-rolled C ABI** of two exports:
+
+- `alloc(len: i32) -> i32` — the guest allocates `len` bytes in its own linear
+  memory and returns a pointer to them. The host calls this each tick to obtain a
+  buffer it then writes the `world` JSON into.
+- `tick(ptr: i32, len: i32) -> i64` — the contract entry. The host has written the
+  `world` JSON at `ptr` (`len` bytes); the guest reads it, decides, writes its
+  `action` JSON somewhere in **its own** memory, and returns that location packed
+  as `((out_ptr as i64) << 32) | (out_len as i64)`. The host unpacks the i64 and
+  reads the `action` JSON back out of the guest's memory.
+
+`foray-host` reuses **one wasmtime `Store` + `Instance` per controller for the
+whole match** (the engine is built once and shared), so guest globals/statics
+persist across ticks — a controller may carry working memory (an explored map, a
+plan) forward — while the per-tick `fuel_per_tick` ceiling and the
+`max_memory_bytes` cap still apply to every invocation. A Rust controller can use
+[`foray-controller-sdk`](#crate-layout) to get this ABI for free and just write
+`tick(world) -> action`.
+
+The **same C-ABI style** is how `foray-core` exposes
+[browser playback](#browser-playback): it exports `alloc` plus
+`replay_load`/`replay_board`/`replay_step`/`replay_reset`, so the renderer
+instantiates it through the platform `WebAssembly` API with no extra toolchain.
 
 ### `world` — the observation
 

@@ -1,0 +1,44 @@
+# A SEPARATE, native workspace for the `foray` CLI — the local match runner from
+# references.md. It is kept out of the controller workspace on purpose: the
+# controller builds to `wasm32-unknown-unknown`, but the CLI hosts wasmtime and
+# must build for your NATIVE target, so the two cannot share a default build
+# target. Build the CLI once with:
+#
+#     cargo build --release --manifest-path tools/Cargo.toml --target-dir tools/target
+#
+# then run matches with `tools/target/release/foray simulate ...` (see README.md).
+# `.cargo/config.toml` here pins the host target so the build does not inherit the
+# controller workspace's wasm default.
+
+[workspace]
+resolver = "2"
+members = ["foray-cli", "foray-host"]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# The wasm runtime that loads the two controller modules and meters each per-tick
+# invocation with a fuel ceiling and a memory cap. Pure Rust — no system packages.
+# The lean host feature set: `runtime` is the JIT execution path and `std` enables
+# the platform virtual-memory backend it needs; `cranelift` is the compiler. This
+# matches the in-container scorer and avoids the default features that pull in a C
+# toolchain. Pinned to the major version the host was written against.
+wasmtime = { version = "45", default-features = false, features = [
+	"std",
+	"cranelift",
+	"runtime",
+] }
+
+# `foray-core` is a `cdylib`; pin one codegen unit to avoid an incremental-codegen
+# race when it is built natively (see the controller workspace's note).
+[profile.dev.package.foray-core]
+codegen-units = 1

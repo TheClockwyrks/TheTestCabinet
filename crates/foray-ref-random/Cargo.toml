@@ -1,0 +1,20 @@
+[package]
+name = "foray-ref-random"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `random` reference controller — the absolute floor (references.md). It picks
+# a uniformly random LEGAL move per owned agent each tick and `Stop`s when boxed
+# in. It does not seek seeds, defend, or prefer crossing the border; any serious
+# controller should beat it overwhelmingly. Built as a `cdylib` to
+# `wasm32-unknown-unknown`, it is one of the baselines seeded into the model's
+# workspace as a worked example and an opponent to dismantle.
+[lib]
+name = "foray_ref_random"
+crate-type = ["cdylib"]
+
+[dependencies]
+foray-core = { path = "../foray-core", default-features = false }
+foray-controller-sdk = { path = "../foray-controller-sdk" }

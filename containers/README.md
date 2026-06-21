@@ -5,15 +5,19 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **two images**, selected by a run's
+There are **three images**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/):
 
 - the **base** image, which every
   [end-to-end](../apps/docs/src/content/docs/testing/end-to-end/) run executes
-  in; and
+  in;
 - the **asset-generation** image, which every
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-  run executes in — the base image plus the baked-in `draw` binary.
+  run executes in — the base image plus the baked-in `draw` binary; and
+- the **adversarial** image, which every
+  [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
+  run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
+  toolchain, so a model's controller builds to a wasm core module in-container.
 
 Neither is a per-harness image — a run installs the selected harness's CLI into
 the image at run time, by running the harness's `install` command (see
@@ -27,9 +31,10 @@ the image by test type via
 
 ```
 containers/
-├── base/Dockerfile        # the end-to-end run image (toolchain, run user)
-├── asset-gen/Dockerfile   # the base image plus the baked-in `draw` binary
-└── build.sh               # builds (and optionally pushes) both images
+├── base/Dockerfile          # the end-to-end run image (toolchain, run user)
+├── asset-gen/Dockerfile     # the base image plus the baked-in `draw` binary
+├── adversarial/Dockerfile   # the base image plus the Rust + wasm32 toolchain
+└── build.sh                 # builds (and optionally pushes) all three images
 ```
 
 ## Base image
@@ -83,21 +88,41 @@ Building `draw` is why the build context is the repository root rather than
 `asset-gen/` (see `build.sh`); `build.sh` builds the asset-generation image `FROM`
 the base it builds alongside it, so the two stay in lockstep.
 
+## Adversarial image
+
+`adversarial/` is the base image plus one addition: the **Rust toolchain with
+the `wasm32-unknown-unknown` target** (`adversarial/Dockerfile` is `FROM` the
+base, so it inherits the toolchain, the `node` run user, the `/work` working
+directory, and the keep-alive `CMD`). An
+[adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md) run
+asks the model to write a controller in Rust; the case's `[build]` commands
+compile that controller to a wasm core module **inside this container at run
+time**, which is why the build toolchain is baked in.
+
+Unlike the asset-generation image, **nothing of The Test Cabinet's own is baked
+in here**: there is no compile stage and no binary to copy. The wasm the model
+produces is run by the orchestrator/validator (the `foray` engine + a wasmtime
+host), not by anything in this image — the image only has to turn the model's
+Rust source into wasm. The toolchain is installed system-wide and made
+world-readable so the unprivileged run user can invoke `cargo`/`rustc` and the
+wasm target without root; its cargo registry/cache is owned by the run user so a
+controller build can resolve dependencies at run time.
+
 ## Building
 
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build the base and asset-generation images
+./build.sh                # build the base, asset-generation, and adversarial images
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
-Build-only mode tags `test-cabinet-base:latest` and
-`test-cabinet-asset-gen:latest` locally. Those are exactly the names a runner
-resolves (by test type) when its `TCAB_CONTAINER_REGISTRY` is set to an empty
-string, so a locally-built image is used for offline development without pulling
-anything. Override `IMAGE_TAG` / `IMAGE_NAME_PREFIX` to change the tag or name
-prefix.
+Build-only mode tags `test-cabinet-base:latest`,
+`test-cabinet-asset-gen:latest`, and `test-cabinet-adversarial:latest` locally.
+Those are exactly the names a runner resolves (by test type) when its
+`TCAB_CONTAINER_REGISTRY` is set to an empty string, so a locally-built image is
+used for offline development without pulling anything. Override `IMAGE_TAG` /
+`IMAGE_NAME_PREFIX` to change the tag or name prefix.
 
 With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
 is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the
@@ -128,9 +153,13 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build both images (`./build.sh`) and
-confirm a container from each runs and keeps alive, and that `draw` is on `PATH`
-in the asset-generation image. Validating each **harness** — that its
+Docker host. When validating on Linux, build all three images (`./build.sh`) and
+confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
+the asset-generation image, and that `cargo`/`rustc` and the
+`wasm32-unknown-unknown` target are available to the unprivileged run user in the
+adversarial image (e.g. `cargo --version` and a trivial
+`cargo build --target wasm32-unknown-unknown` as `node`). Validating each
+**harness** — that its
 [install command](../harnesses/README.md) lands a working CLI on `PATH`, the
 exact non-interactive flags, its token/usage reporting format, and which
 environment variable carries the provider API key — is tracked alongside the

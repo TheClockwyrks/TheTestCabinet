@@ -13,6 +13,7 @@ use std::process::Command;
 
 use uuid::Uuid;
 
+use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
@@ -125,6 +126,7 @@ impl Validator for BuildValidator {
             checks,
             proofs: proof_results,
             asset: None,
+            adversarial: None,
         })
     }
 }
@@ -133,7 +135,7 @@ impl Validator for BuildValidator {
 /// the produced tree. A proof counts as present when its `dest` exists and is a
 /// non-empty file; an empty file is treated as missing, since a zero-byte capture
 /// is never a usable proof.
-fn proof_results(proofs: &[ProofFile], repo: &Path) -> Vec<ProofResult> {
+pub(crate) fn proof_results(proofs: &[ProofFile], repo: &Path) -> Vec<ProofResult> {
     proofs
         .iter()
         .map(|proof| {
@@ -449,6 +451,7 @@ impl Validator for AssetGenValidator {
                 cheat_divergence,
                 detail: (!notes.is_empty()).then(|| notes.join("; ")),
             }),
+            adversarial: None,
         })
     }
 }
@@ -461,15 +464,18 @@ impl Validator for AssetGenValidator {
 pub struct DispatchValidator {
     build: BuildValidator,
     asset: AssetGenValidator,
+    adversarial: AdversarialValidator,
 }
 
 impl DispatchValidator {
     /// Build the dispatcher, threading the screenshot scratch directory to the
-    /// end-to-end validator (the asset-generation validator keeps no scratch).
+    /// end-to-end validator (the asset-generation and adversarial validators keep
+    /// no scratch).
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             build: BuildValidator::new(screenshot_dir),
             asset: AssetGenValidator::new(),
+            adversarial: AdversarialValidator::new(),
         }
     }
 }
@@ -488,6 +494,9 @@ impl Validator for DispatchValidator {
                 .validate(test_case, artifacts, references, proofs),
             TestType::AssetGeneration => self
                 .asset
+                .validate(test_case, artifacts, references, proofs),
+            TestType::Adversarial => self
+                .adversarial
                 .validate(test_case, artifacts, references, proofs),
         }
     }
@@ -529,6 +538,7 @@ fn failed_load(
         checks: Vec::new(),
         proofs,
         asset: None,
+        adversarial: None,
     }
 }
 

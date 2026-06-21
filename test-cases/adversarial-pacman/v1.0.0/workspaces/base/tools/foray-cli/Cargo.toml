@@ -1,0 +1,23 @@
+[package]
+name = "foray-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `foray` binary: a thin clap wrapper over `foray-host`. It loads two
+# controller wasm modules and a map, runs ONE match, and writes the replay — plus
+# a `schema` helper that dumps the world/action JSON schemas from `foray-core`.
+# All of the actual host logic (the wasm sandbox, the per-tick loop) lives in
+# `foray-host` so the core validator can reuse it; this crate only does argument
+# parsing and file I/O.
+[[bin]]
+name = "foray"
+path = "src/main.rs"
+
+[dependencies]
+foray-core = { path = "../../vendor/foray-core" }
+foray-host = { path = "../foray-host" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

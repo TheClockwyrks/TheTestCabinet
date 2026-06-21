@@ -142,13 +142,26 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
 
     let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
     let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
-    let asset = record.validation.asset.as_ref()?;
-    let rel = match stem {
-        "regenerated" => &asset.regenerated_image,
-        "preview" => &asset.preview_image,
-        "target" => &asset.target_image,
-        "actions" => &asset.actions_log,
-        _ => return None,
+
+    // The replay of an adversarial run is served as an ordinary run asset too: the
+    // browser replay player fetches `replay.json` over the same `/asset/{file}`
+    // path the asset-gen media use, so the asset-media plumbing stays
+    // test-type-agnostic.
+    let rel: &str = if let Some(asset) = record.validation.asset.as_ref() {
+        match stem {
+            "regenerated" => &asset.regenerated_image,
+            "preview" => &asset.preview_image,
+            "target" => &asset.target_image,
+            "actions" => &asset.actions_log,
+            _ => return None,
+        }
+    } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
+        match stem {
+            "replay" => &adversarial.replay_json,
+            _ => return None,
+        }
+    } else {
+        return None;
     };
 
     let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;

@@ -130,6 +130,11 @@ fn asset_version() -> TestCaseVersion {
         output: Some(OutputSpec {
             actions: std::path::PathBuf::from("actions.json"),
         }),
+        contract: None,
+        sandbox: None,
+        simulation: None,
+        r#match: None,
+        replay: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,
@@ -254,4 +259,83 @@ fn asset_validation_without_an_action_log_fails_to_load() {
         .expect("validate");
     assert!(!summary.loaded, "no action log means nothing to score");
     assert!(summary.asset.is_none());
+}
+
+// --- dispatch --------------------------------------------------------------
+
+use super::DispatchValidator;
+use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
+
+/// A minimal adversarial version rooted at `root`, whose submission module path
+/// is `module_rel` (relative to the run root).
+fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
+    TestCaseVersion {
+        slug: "foray".to_string(),
+        version: "v1.0.0".to_string(),
+        name: "Foray".to_string(),
+        difficulty: "hard".to_string(),
+        tags: Vec::new(),
+        summary: None,
+        description_path: None,
+        root,
+        prompt_path: std::path::PathBuf::from("prompt.hbs"),
+        max_runtime_seconds: 1800,
+        test_type: TestType::Adversarial,
+        build: Some(crate::test_case::BuildCommands {
+            install: "cargo fetch".to_string(),
+            build: "cargo build".to_string(),
+            module: Some(std::path::PathBuf::from(module_rel)),
+        }),
+        canvas: None,
+        tool: None,
+        output: None,
+        contract: Some(ContractSpec {
+            entry: "tick".to_string(),
+            world: std::path::PathBuf::from("schemas/world.json"),
+            action: std::path::PathBuf::from("schemas/action.json"),
+        }),
+        sandbox: Some(SandboxSpec {
+            fuel_per_tick: 5_000_000,
+            max_memory_bytes: 67_108_864,
+        }),
+        simulation: Some(SimulationSpec {
+            timestep_ms: 16,
+            max_ticks: 37_500,
+        }),
+        r#match: None,
+        replay: None,
+        common_specs: Vec::new(),
+        common_workspace: Vec::new(),
+        init: None,
+        asset_paths: Vec::new(),
+        variants: Vec::new(),
+        common_references: Vec::new(),
+        common_proofs: Vec::new(),
+        checks: Vec::new(),
+        common_review_items: Vec::new(),
+        domains: Vec::new(),
+    }
+}
+
+#[test]
+fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    let screenshots = dir.path().join("screenshots");
+    // No module on disk → the adversarial validator records a forfeit. The point
+    // here is that the dispatcher routed to it at all (it produced an
+    // `adversarial` result, not an end-to-end `build`/load failure).
+    let version = dispatch_adversarial_version(dir.path().to_path_buf(), "controller.wasm");
+
+    let summary = DispatchValidator::new(screenshots)
+        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .expect("validate");
+
+    assert!(
+        summary.adversarial.is_some(),
+        "an adversarial case is scored by the adversarial validator"
+    );
+    assert!(summary.asset.is_none(), "not an asset-gen result");
+    assert!(summary.build.is_none(), "not an end-to-end build result");
 }

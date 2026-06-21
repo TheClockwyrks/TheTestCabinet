@@ -1,5 +1,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
+import type {
+  AdversarialResult,
+  RunRecord,
+  RunSubject,
+} from "@test-cabinet/run-record";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -116,6 +120,39 @@ export interface AssetResultView {
   detail: string | null;
 }
 
+/**
+ * An adversarial run's canonical-match result, resolved for display: the
+ * loadable URL of the published, browser-playable replay (or null when the host
+ * cannot serve it) alongside the recorded match record (opponent, sides, winner,
+ * scores, how/when it ended, and the outcome from the submission's perspective).
+ *
+ * The replay PLAYER itself ships with the bundle (the foray-core wasm renderer
+ * and sprite sheet are one set, not per run), so only the run-specific
+ * `replay.json` is resolved here.
+ */
+export interface ReplayResultView {
+  /** Loadable URL of the run's `replay.json`, or null if it cannot be served. */
+  replayUrl: string | null;
+  /** The baseline opponent the submission was matched against (Blue). */
+  opponent: string;
+  /** Which side the submission played (always `"red"` for the canonical match). */
+  submissionTeam: AdversarialResult["submissionTeam"];
+  /** The winning side, or null for a draw. `"red"` is the submission. */
+  winner: AdversarialResult["winner"];
+  /** The submission's (Red's) banked score at the end of the match. */
+  redScore: number;
+  /** The opponent's (Blue's) banked score at the end of the match. */
+  blueScore: number;
+  /** How the match ended (e.g. `"swept"`, `"timeLimit"`, `"forfeit"`). */
+  ended: string;
+  /** How many ticks the match ran for. */
+  ticks: number;
+  /** The outcome from the submission's perspective. */
+  outcome: AdversarialResult["outcome"];
+  /** Detail about a submission that could not be matched, or null. */
+  detail: string | null;
+}
+
 export interface GalleryData extends GalleryDataInput {
   /**
    * Resolve a run's review. A caller-supplied `override` map (a run's local
@@ -139,6 +176,13 @@ export interface GalleryData extends GalleryDataInput {
    * resolved via {@link assetMediaUrl}.
    */
   assetResultFor(run: RunRecord): AssetResultView | null;
+  /**
+   * An adversarial run's canonical-match result resolved for display, or null
+   * when the run is not adversarial (its `validation.adversarial` is absent). The
+   * replay URL is resolved via {@link assetMediaUrl}, the same per-run asset
+   * plumbing asset-generation media uses.
+   */
+  replayResultFor(run: RunRecord): ReplayResultView | null;
   /**
    * The scoring model for a run's subject: the effective (common + variant)
    * weighted checklist items and the case's scoring domains, resolved from the
@@ -202,6 +246,24 @@ export function GalleryDataProvider({
           cheatDivergence: asset.cheatDivergence,
           operationCount: asset.operationCount,
           detail: asset.detail,
+        };
+      },
+      replayResultFor(run) {
+        const adversarial = run.validation.adversarial;
+        if (!adversarial) return null;
+        return {
+          replayUrl: assetMediaUrl
+            ? assetMediaUrl(run.id, "replay.json")
+            : null,
+          opponent: adversarial.opponent,
+          submissionTeam: adversarial.submissionTeam,
+          winner: adversarial.winner,
+          redScore: adversarial.redScore,
+          blueScore: adversarial.blueScore,
+          ended: adversarial.ended,
+          ticks: adversarial.ticks,
+          outcome: adversarial.outcome,
+          detail: adversarial.detail,
         };
       },
     };

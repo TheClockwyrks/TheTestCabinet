@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
-    FsRepoSeeder, RenderedReference, RepoSeeder, SeedRequest, TestCaseCatalog,
+    FsRepoSeeder, RenderedReference, RepoSeeder, SeedRequest, TestCaseCatalog, TestType,
 };
 
 /// The repository's `test-cases/` directory.
@@ -357,4 +357,108 @@ reference = \"title\"
         message.contains("variant `frenzy` does not declare"),
         "error should name the variant missing the checked view: {err}"
     );
+}
+
+#[test]
+fn resolves_adversarial_pacman_from_its_manifest() {
+    // Foray (on-disk slug `adversarial-pacman`) is the first ADVERSARIAL case. It
+    // must resolve through the real catalog under the adversarial validation: the
+    // type discriminator selects the adversarial tables, and each
+    // ([build].module / [contract] / [sandbox] / [simulation] / [match] / [replay])
+    // resolves rather than being rejected as an end-to-end manifest would be.
+    let catalog = TestCaseCatalog::new(catalog_root());
+
+    // The case is listed alongside the end-to-end cases (the catalog list item
+    // carries the slug and its versions; the type is surfaced once resolved).
+    let cases = catalog.list().expect("list catalog");
+    let listed = cases
+        .iter()
+        .find(|c| c.slug == "adversarial-pacman")
+        .expect("adversarial-pacman should be listed");
+    assert!(
+        listed.versions.iter().any(|v| v == "v1.0.0"),
+        "adversarial-pacman should list its v1.0.0 version"
+    );
+
+    let version = catalog
+        .resolve("adversarial-pacman", "v1.0.0")
+        .expect("resolve adversarial-pacman v1.0.0");
+    assert_eq!(version.slug, "adversarial-pacman");
+    // The in-fiction title is "Foray" while the on-disk slug stays
+    // `adversarial-pacman`.
+    assert_eq!(version.name, "Foray");
+    assert_eq!(version.test_type, TestType::Adversarial);
+    assert_eq!(version.difficulty, "hard");
+
+    // The adversarial build emits a wasm controller module the validator loads as
+    // the submission — `build.module` is resolved (it is rejected on other types).
+    let build = version
+        .build
+        .as_ref()
+        .expect("adversarial case has a build");
+    assert_eq!(
+        build.module.as_deref(),
+        Some(Path::new(
+            "target/wasm32-unknown-unknown/release/controller.wasm"
+        )),
+        "the wasm controller artifact path is resolved from [build].module"
+    );
+
+    // The controller contract resolves, and its `world`/`action` schemas are seeded
+    // as common specs at the dests the contract names (so the model reads them
+    // there).
+    let contract = version
+        .contract
+        .as_ref()
+        .expect("adversarial case has a [contract]");
+    assert_eq!(contract.entry, "tick");
+    assert_eq!(contract.world, Path::new("schemas/world.json"));
+    assert_eq!(contract.action, Path::new("schemas/action.json"));
+    for dest in [&contract.world, &contract.action] {
+        assert!(
+            version.common_specs.iter().any(|spec| &spec.dest == dest),
+            "the contract schema {} should be seeded as a common spec",
+            dest.display()
+        );
+    }
+
+    // The per-tick sandbox limits, the simulation loop, the match structure, and
+    // the browser replay renderer all resolve.
+    let sandbox = version.sandbox.expect("adversarial case has a [sandbox]");
+    assert_eq!(sandbox.fuel_per_tick, 5_000_000);
+    assert_eq!(sandbox.max_memory_bytes, 67_108_864);
+
+    let simulation = version
+        .simulation
+        .expect("adversarial case has a [simulation]");
+    assert_eq!(simulation.timestep_ms, 16);
+    assert_eq!(simulation.max_ticks, 37_500);
+
+    let r#match = version
+        .r#match
+        .as_ref()
+        .expect("adversarial case has a [match]");
+    assert_eq!(r#match.participants, 2);
+    assert_eq!(r#match.structure, "round-robin");
+    assert_eq!(r#match.rounds, 1);
+
+    let replay = version
+        .replay
+        .as_ref()
+        .expect("adversarial case has a [replay]");
+    assert_eq!(replay.renderer, Path::new("replay/index.html"));
+
+    // v1 ships a single `base` variant scored against the committed baseline.
+    let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(variant_slugs, ["base"]);
+
+    // An adversarial case carries no end-to-end/asset-generation tables.
+    assert!(version.canvas.is_none());
+    assert!(version.tool.is_none());
+    assert!(version.output.is_none());
+    // Its decisive signal is the recorded match, not a per-view check.
+    assert!(version.checks.is_empty());
+    // The single qualitative scoring domain a human review works through.
+    let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
+    assert_eq!(domain_ids, ["play"]);
 }

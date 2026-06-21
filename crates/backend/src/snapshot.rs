@@ -289,20 +289,39 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
-    /// Collect an asset-generation run's media: the `assetMedia[]` metadata entries
+    /// Collect a run's published media: the `assetMedia[]` metadata entries
     /// (served file name + snapshot-relative key) and the media objects to upload.
-    /// The served names are the stable, fixed set the result view requests
-    /// (`regenerated.png`, `preview.png`, `target.png`, `actions.json`); each is
-    /// read from the run's stored asset directory and skipped if missing. A run that
-    /// is not asset-generation (no `validation.asset`) contributes nothing.
+    ///
+    /// The asset-media plumbing is test-type-agnostic — an `assetMedia[]` entry is
+    /// just a `{ file, key }` pair the result view fetches over `/asset/{file}` —
+    /// so this branches on the run's type to pick the fixed set of served names:
+    ///
+    /// - An **asset-generation** run exports the result view's images and log
+    ///   (`regenerated.png`, `preview.png`, `target.png`, `actions.json`).
+    /// - An **adversarial** run exports its browser-playable `replay.json`, which
+    ///   the replay player loads through the foray-core wasm renderer (the renderer
+    ///   itself ships with the UI/site bundle, not per run, so nothing else is
+    ///   exported here).
+    ///
+    /// Each named file is read from the run's stored asset directory and skipped if
+    /// missing. A run that is neither type contributes nothing.
     fn run_assets(&self, run: &StoredRun, prefix: &str) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
-        if run.record.validation.asset.is_none() {
+        let files: &[&str] = if run.record.validation.asset.is_some() {
+            &[
+                "regenerated.png",
+                "preview.png",
+                "target.png",
+                "actions.json",
+            ]
+        } else if run.record.validation.adversarial.is_some() {
+            &["replay.json"]
+        } else {
             return (metas, objects);
-        }
+        };
         let run_id = &run.record.id;
-        for file in ["regenerated.png", "preview.png", "target.png", "actions.json"] {
+        for &file in files {
             let Ok(bytes) = self.store.read_run_asset(run_id, file) else {
                 continue;
             };

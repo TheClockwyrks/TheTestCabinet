@@ -28,6 +28,13 @@ which = { workspace = true }
 # from a run's recorded action log through the exact same logic the in-container
 # binary used.
 test-cabinet-draw = { path = "../draw", default-features = false }
+# The Foray adversarial game engine and its wasm host. The `AdversarialValidator`
+# loads a submission and the committed baseline opponent and runs the single
+# canonical match through the **shared** host (`foray-host`), so the validator and
+# the `foray` CLI use one host implementation. `foray-core` supplies the rules and
+# the board/replay types; the wasmtime dependency lives entirely in `foray-host`.
+foray-core = { path = "../foray-core" }
+foray-host = { path = "../foray-host" }
 http = { workspace = true }
 tracing = { workspace = true }
 # Propagation only — the library never pulls in the OTLP exporters/SDK (those

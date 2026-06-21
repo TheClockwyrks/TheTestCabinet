@@ -26,9 +26,10 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    BuildCommands, CanvasSpec, Check, CheckAction, Domain, MediaKind, OutputSpec, ProofFile,
-    ReferenceKind, ReferenceView, ReviewItem, SpecFile, TestCase, TestCaseVersion, TestType,
-    ToolSpec, Variant, WorkspaceFile,
+    BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
+    OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec,
+    SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec, Variant,
+    WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -715,6 +716,16 @@ struct VersionBody {
     tool: Option<ToolBody>,
     #[serde(default)]
     output: Option<OutputBody>,
+    #[serde(default)]
+    contract: Option<ContractBody>,
+    #[serde(default)]
+    sandbox: Option<SandboxBody>,
+    #[serde(default)]
+    simulation: Option<SimulationBody>,
+    #[serde(default, rename = "match")]
+    r#match: Option<MatchBody>,
+    #[serde(default)]
+    replay: Option<ReplayBody>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     #[serde(default)]
@@ -761,6 +772,7 @@ impl VersionBody {
             build: self.build.map(|build| BuildCommands {
                 install: build.install,
                 build: build.build,
+                module: build.module.map(PathBuf::from),
             }),
             canvas: self.canvas.map(|canvas| CanvasSpec {
                 width: canvas.width,
@@ -774,6 +786,27 @@ impl VersionBody {
             }),
             output: self.output.map(|output| OutputSpec {
                 actions: PathBuf::from(&output.actions),
+            }),
+            contract: self.contract.map(|contract| ContractSpec {
+                entry: contract.entry,
+                world: PathBuf::from(&contract.world),
+                action: PathBuf::from(&contract.action),
+            }),
+            sandbox: self.sandbox.map(|sandbox| SandboxSpec {
+                fuel_per_tick: sandbox.fuel_per_tick,
+                max_memory_bytes: sandbox.max_memory_bytes,
+            }),
+            simulation: self.simulation.map(|simulation| SimulationSpec {
+                timestep_ms: simulation.timestep_ms,
+                max_ticks: simulation.max_ticks,
+            }),
+            r#match: self.r#match.map(|m| MatchSpec {
+                participants: m.participants,
+                structure: m.structure,
+                rounds: m.rounds,
+            }),
+            replay: self.replay.map(|replay| ReplaySpec {
+                renderer: PathBuf::from(&replay.renderer),
             }),
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
@@ -906,6 +939,44 @@ fn content_type_for_file(file: &str) -> &'static str {
 struct BuildBody {
     install: String,
     build: String,
+    #[serde(default)]
+    module: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContractBody {
+    entry: String,
+    world: String,
+    action: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SandboxBody {
+    fuel_per_tick: u64,
+    max_memory_bytes: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SimulationBody {
+    timestep_ms: u32,
+    max_ticks: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MatchBody {
+    participants: u32,
+    structure: String,
+    rounds: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplayBody {
+    renderer: String,
 }
 
 #[derive(Deserialize)]

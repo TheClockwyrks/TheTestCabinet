@@ -1,0 +1,201 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// The match-record summary shown alongside the player: outcome, winner, scores,
+// how/when the match ended.
+.record {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-xs t.$space-lg;
+  margin: t.$space-md 0 0;
+}
+
+.recordTerm {
+  color: t.$color-text-muted;
+}
+
+// Outcome tint: a win for the submission reads green, a loss/forfeit red, a
+// draw neutral.
+.win {
+  color: t.$color-accent;
+}
+
+.loss {
+  color: t.$color-accent-2;
+}
+
+.draw {
+  color: t.$color-text-muted;
+}
+
+.detail {
+  margin-top: t.$space-md;
+  color: t.$color-text-muted;
+}
+
+// The pre-launch gate: a short caveat plus the explicit Launch control. The
+// replay engine (the foray-core wasm) never loads until the visitor clicks.
+.gate {
+  margin-top: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-lg;
+}
+
+.notice {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+.launch {
+  margin-top: t.$space-lg;
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// The near-fullscreen overlay the player launches into. It covers the viewport
+// but leaves a slim bar at the top for the Back control so the visitor is never
+// trapped inside it. Document scroll is locked for its lifetime.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: t.$color-bg;
+}
+
+.overlayBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: t.$topbar-height;
+  padding: 0 t.$space-lg;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg-2;
+}
+
+.overlayExit {
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.overlayStage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-md;
+  overflow: auto;
+}
+
+// The scoreboard above the canvas: Red score, the tick counter, Blue score.
+.scoreboard {
+  display: flex;
+  gap: t.$space-xl;
+  align-items: center;
+  font-size: t.$font-lg;
+}
+
+.scoreRed {
+  color: t.$color-accent;
+}
+
+.scoreBlue {
+  color: t.$color-accent-2;
+}
+
+.tickLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.canvas {
+  image-rendering: pixelated;
+  max-width: 100%;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+// The playback transport: play/pause, restart, a scrub slider, and a speed
+// selector — mirroring the bundle's own controls.
+.controls {
+  display: flex;
+  gap: t.$space-md;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+}
+
+.control {
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    background: t.$color-surface;
+  }
+}
+
+.scrub {
+  width: 20rem;
+  max-width: 100%;
+  accent-color: t.$color-accent;
+}
+
+.controlLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.speed {
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
+// The decided-result line beneath the canvas.
+.result {
+  min-height: 1.4em;
+  font-size: t.$font-md;
+}
+
+// The error placeholder, shown when the replay or engine could not be loaded.
+.error {
+  display: grid;
+  place-items: center;
+  height: t.$embed-height;
+  color: t.$color-text-muted;
+}

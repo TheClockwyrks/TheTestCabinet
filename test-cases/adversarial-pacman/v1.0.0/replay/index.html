@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foray — replay</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14100c;
+        --panel: #1f1812;
+        --ink: #e8dcc8;
+        --muted: #9a8a72;
+        --red: #e8635a;
+        --blue: #5a8fe8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+      }
+      h1 { font-size: 16px; margin: 4px 0; letter-spacing: 0.08em; }
+      .sub { color: var(--muted); font-size: 12px; }
+      #stage {
+        background: #0b0805;
+        border: 1px solid #3a2a1c;
+        image-rendering: pixelated;
+        max-width: 100%;
+      }
+      .scoreboard {
+        display: flex;
+        gap: 24px;
+        align-items: center;
+        font-size: 15px;
+      }
+      .score-red { color: var(--red); }
+      .score-blue { color: var(--blue); }
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+        background: var(--panel);
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #3a2a1c;
+      }
+      button {
+        background: #2a2018;
+        color: var(--ink);
+        border: 1px solid #4a3a28;
+        border-radius: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:hover { background: #3a2c20; }
+      input[type="range"] { width: 320px; accent-color: var(--seed, #e8c14a); }
+      select { background: #2a2018; color: var(--ink); border: 1px solid #4a3a28; border-radius: 6px; padding: 5px; }
+      .result { font-size: 14px; min-height: 1.4em; }
+      .result.win-red { color: var(--red); }
+      .result.win-blue { color: var(--blue); }
+      label { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <h1>FORAY</h1>
+    <div class="sub" id="provenance"></div>
+    <div class="scoreboard">
+      <span class="score-red">RED <b id="red-score">0</b></span>
+      <span id="tick-label" class="sub">tick 0 / 0</span>
+      <span class="score-blue">BLUE <b id="blue-score">0</b></span>
+    </div>
+    <canvas id="stage" width="640" height="320"></canvas>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="restart">⟲ Restart</button>
+      <label>tick</label>
+      <input id="scrub" type="range" min="0" max="0" value="0" step="1" />
+      <label>speed</label>
+      <select id="speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </div>
+    <div class="result" id="result"></div>
+
+    <script type="module">
+      import { Engine, loadSheet, Renderer } from "./renderer.mjs";
+
+      const BASE_TPS = 30; // baseline frames-per-second at speed 1×.
+
+      async function main() {
+        const [replay, atlas, palette] = await Promise.all([
+          fetch("./replay.json").then((r) => r.json()),
+          fetch("./assets/sheet.json").then((r) => r.json()),
+          fetch("./assets/palette.json").then((r) => r.json()),
+        ]);
+
+        const engine = await Engine.instantiate("./assets/foray-core.wasm");
+        if (!engine.load(replay)) throw new Error("foray-core rejected the replay");
+        const board = engine.board();
+        const sheet = await loadSheet("./assets/sheet.png", atlas, palette);
+
+        // Reconstruct every frame up front. The canonical match is bounded, so we
+        // buffer the snapshots — this makes scrubbing instant and lets the result
+        // overlay show as soon as the match decides.
+        const frames = [];
+        let snap;
+        while ((snap = engine.step()) !== null) frames.push(snap);
+
+        const stage = document.getElementById("stage");
+        const renderer = new Renderer(stage, sheet, board, 2);
+
+        document.getElementById("provenance").textContent =
+          `${replay.map} · seed ${replay.seed} · red: ${replay.participants.red} vs blue: ${replay.participants.blue}`;
+
+        const scrub = document.getElementById("scrub");
+        const playBtn = document.getElementById("play");
+        const restartBtn = document.getElementById("restart");
+        const speedSel = document.getElementById("speed");
+        const redScore = document.getElementById("red-score");
+        const blueScore = document.getElementById("blue-score");
+        const tickLabel = document.getElementById("tick-label");
+        const resultEl = document.getElementById("result");
+
+        scrub.max = String(frames.length - 1);
+
+        let cursor = 0;
+        let playing = false;
+        let acc = 0;
+        let last = 0;
+
+        function show(i) {
+          cursor = Math.max(0, Math.min(frames.length - 1, i));
+          const f = frames[cursor];
+          // Facings are derived from frame-to-frame motion; clear when we jump so a
+          // scrub doesn't carry a stale direction across a discontinuity.
+          renderer.resetFacing();
+          renderer.draw(f);
+          redScore.textContent = f.score.red;
+          blueScore.textContent = f.score.blue;
+          tickLabel.textContent = `tick ${f.tick} / ${frames[frames.length - 1].tick}`;
+          scrub.value = String(cursor);
+          if (f.result) {
+            const r = f.result;
+            const who = r.winner ? r.winner.toUpperCase() : "DRAW";
+            resultEl.textContent =
+              `${who} · ${r.ended} · red ${r.score.red} – blue ${r.score.blue} · ${r.ticks} ticks`;
+            resultEl.className = "result" + (r.winner ? ` win-${r.winner}` : "");
+          } else {
+            resultEl.textContent = "";
+            resultEl.className = "result";
+          }
+        }
+
+        function setPlaying(on) {
+          playing = on;
+          playBtn.textContent = on ? "⏸ Pause" : "▶ Play";
+          if (on && cursor >= frames.length - 1) show(0);
+          if (on) {
+            last = performance.now();
+            acc = 0;
+            requestAnimationFrame(loop);
+          }
+        }
+
+        function loop(now) {
+          if (!playing) return;
+          const dt = (now - last) / 1000;
+          last = now;
+          acc += dt * BASE_TPS * Number(speedSel.value);
+          while (acc >= 1) {
+            acc -= 1;
+            if (cursor >= frames.length - 1) {
+              setPlaying(false);
+              return;
+            }
+            show(cursor + 1);
+          }
+          requestAnimationFrame(loop);
+        }
+
+        playBtn.onclick = () => setPlaying(!playing);
+        restartBtn.onclick = () => {
+          setPlaying(false);
+          show(0);
+        };
+        scrub.oninput = () => {
+          setPlaying(false);
+          show(Number(scrub.value));
+        };
+
+        show(0);
+      }
+
+      main().catch((err) => {
+        document.getElementById("result").textContent = "error: " + err.message;
+        console.error(err);
+      });
+    </script>
+  </body>
+</html>

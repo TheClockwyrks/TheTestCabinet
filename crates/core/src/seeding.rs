@@ -146,6 +146,20 @@ impl RepoSeeder for FsRepoSeeder {
             seed_asset_tool(test_case, &repo)?;
         }
 
+        // An adversarial run's scaffolding is entirely declarative: the starter
+        // workspace (the `foray` CLI, the map definitions, and the bundled
+        // reference-controller sources), the `world`/`action` contract schemas, and
+        // any committed assets are all authored files the manifest names, so they
+        // are seeded by the common workspace/spec/asset copying above. Unlike an
+        // asset-generation run — which needs a *synthesized* canvas config and a
+        // blank starting preview — there is nothing to generate here, so this
+        // branch deliberately seeds nothing extra. It exists to make the per-type
+        // handling explicit and to be the hook should a future adversarial case
+        // need synthesized scaffolding (a pre-built baseline `.wasm`, say).
+        if test_case.test_type == crate::test_case::TestType::Adversarial {
+            seed_adversarial(test_case, &repo)?;
+        }
+
         let initial_commit = init_repo(&repo)?;
         Ok(SeededRepo {
             path: repo,
@@ -205,6 +219,35 @@ fn seed_asset_tool(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()
     test_cabinet_draw::render(&canvas, &[])
         .encode_png(&preview_path)
         .map_err(seed_err)?;
+    Ok(())
+}
+
+/// Seed an adversarial run's scaffolding into `repo`.
+///
+/// Every part of an adversarial run's scaffolding — the starter workspace, the
+/// `world`/`action` contract schemas (seeded as common specs), the bundled
+/// reference controllers, and the map definitions — is an authored file the
+/// manifest declares, so it is already copied in by the common
+/// workspace/spec/asset seeding. This validates the required tables are present
+/// (the orchestrator only routes adversarial runs here, so their absence is an
+/// invariant violation worth surfacing as a clear seeding error) and otherwise
+/// synthesizes nothing.
+fn seed_adversarial(test_case: &crate::TestCaseVersion, _repo: &Path) -> Result<()> {
+    if test_case.contract.is_none() {
+        return Err(Error::Seeding(
+            "adversarial case has no [contract]".to_string(),
+        ));
+    }
+    if test_case
+        .build
+        .as_ref()
+        .and_then(|b| b.module.as_ref())
+        .is_none()
+    {
+        return Err(Error::Seeding(
+            "adversarial case has no build.module".to_string(),
+        ));
+    }
     Ok(())
 }
 

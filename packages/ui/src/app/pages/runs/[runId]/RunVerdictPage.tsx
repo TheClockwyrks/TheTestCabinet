@@ -12,6 +12,7 @@ import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
 import { AssetResultSection } from "./AssetResultSection";
+import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import styles from "./RunDetailPages.module.scss";
 
 // Map a verdict status to the row class that tints its marker.
@@ -46,6 +47,10 @@ export function RunVerdictPage() {
               cheat-divergence signals lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
           <AssetResultSection run={run} />
+          {/* For an adversarial run, the canonical match's replay player and its
+              record lead the verdict (it likewise has no Play tab). Renders
+              nothing for other run types. */}
+          <AdversarialReplaySection run={run} />
           {
             // A produced, not-yet-published run the active worker owns is reviewed
             // and published here; published runs show their review read-only.

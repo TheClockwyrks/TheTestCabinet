@@ -61,6 +61,7 @@ fn sample_record() -> RunRecord {
             checks: vec![],
             proofs: vec![],
             asset: None,
+            adversarial: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

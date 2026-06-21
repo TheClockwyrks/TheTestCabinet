@@ -1,0 +1,27 @@
+{
+  "slots": ["body_dark", "body_mid", "body_light", "accent", "carried_seed"],
+  "shared": {
+    "soil_dark": "#241a12",
+    "soil_mid": "#3a2a1c",
+    "floor": "#1b1410",
+    "border": "#4a3f2a",
+    "seed": "#e8c14a",
+    "jelly": "#7be0a0",
+    "jelly_spent": "#3c5a47",
+    "carried_seed": "#ffd964"
+  },
+  "teams": {
+    "red": {
+      "body_dark": "#5a1410",
+      "body_mid": "#a83228",
+      "body_light": "#e8635a",
+      "accent": "#ffb0a0"
+    },
+    "blue": {
+      "body_dark": "#0f2a5a",
+      "body_mid": "#2a5aa8",
+      "body_light": "#5a8fe8",
+      "accent": "#a0c8ff"
+    }
+  }
+}

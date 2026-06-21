@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    ArtifactCollection, BrowserRenderer, DispatchValidator, ReferenceRenderer, StepResult,
-    TestCaseCatalog, Validator,
+    AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DispatchValidator,
+    ReferenceRenderer, StepResult, TestCaseCatalog, Validator,
 };
 
 use crate::cli::ValidateArgs;
@@ -97,6 +97,32 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         }
         if let Some(detail) = &asset.detail {
             println!("  asset detail: {detail}");
+        }
+    }
+    if let Some(adversarial) = &summary.adversarial {
+        let outcome = match adversarial.outcome {
+            AdversarialOutcome::Win => "win",
+            AdversarialOutcome::Loss => "loss",
+            AdversarialOutcome::Draw => "draw",
+            AdversarialOutcome::Forfeit => "forfeit",
+        };
+        let winner = match adversarial.winner {
+            Some(AdversarialTeam::Red) => "red",
+            Some(AdversarialTeam::Blue) => "blue",
+            None => "draw",
+        };
+        println!("  opponent: {}", adversarial.opponent);
+        println!("  outcome: {outcome} (winner: {winner})");
+        println!(
+            "  score: red {} — blue {}",
+            adversarial.red_score, adversarial.blue_score
+        );
+        println!(
+            "  ended: {} after {} ticks",
+            adversarial.ended, adversarial.ticks
+        );
+        if let Some(detail) = &adversarial.detail {
+            println!("  adversarial detail: {detail}");
         }
     }
 

@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Dir": {
+      "description": "A cardinal move or a hold. The only thing a controller can express per agent — there is no variant that touches game state, so an [`Action`] is structurally incapable of cheating.",
+      "oneOf": [
+        {
+          "description": "North: `y - 1`.",
+          "enum": [
+            "N"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "South: `y + 1`.",
+          "enum": [
+            "S"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "East: `x + 1`.",
+          "enum": [
+            "E"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "West: `x - 1`.",
+          "enum": [
+            "W"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Hold position.",
+          "enum": [
+            "Stop"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "Move": {
+      "description": "One agent's move within an [`Action`].",
+      "properties": {
+        "agent": {
+          "description": "The owned agent's id (`0..3`).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "dir": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Dir"
+            }
+          ],
+          "description": "The direction to move it (or `Stop`)."
+        }
+      },
+      "required": [
+        "agent",
+        "dir"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "A controller's output for one tick: one move per owned agent.",
+  "properties": {
+    "moves": {
+      "description": "One entry per owned agent. The host validates that exactly the team's three ids appear, each once.",
+      "items": {
+        "$ref": "#/definitions/Move"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "moves"
+  ],
+  "title": "Action",
+  "type": "object"
+}

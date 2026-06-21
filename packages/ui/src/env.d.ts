@@ -23,3 +23,11 @@ declare module "*?raw" {
   const src: string;
   export default src;
 }
+
+// Vite `?url` imports resolve to the emitted asset's URL — used to ship the
+// vendored Foray replay assets (the foray-core wasm and the sprite-sheet PNG)
+// with the bundle, fetched at runtime by the replay player.
+declare module "*?url" {
+  const src: string;
+  export default src;
+}

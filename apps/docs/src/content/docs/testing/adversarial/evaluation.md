@@ -42,6 +42,15 @@ faked, fixed [timestep](/testing/adversarial/overview/#lockstep-simulation-and-r
 makes a recorded match reproducible, a result does not depend on which machine
 produced it.
 
+:::note[v1 scores one match against a committed baseline]
+Field-wide round-robin / bracket standings are the **design target**, but they are
+not what the first adversarial case does today. In v1, a run is scored on a
+**single canonical match** against a baseline opponent the case commits — for
+[Foray](/testing/adversarial/adversarial-pacman/references/#the-canonical-opponent-v1-scoring)
+that is `border-soldier`. The manifest's `[match]` structure is still recorded
+faithfully; cross-model tournaments are a planned later step.
+:::
+
 ## Replays and review
 
 Every match is recorded as **replay data** sufficient to reconstruct the

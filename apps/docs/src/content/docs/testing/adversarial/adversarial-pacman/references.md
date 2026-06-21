@@ -71,6 +71,26 @@ raider to bank before it is caught, reason about jelly, or weigh load against th
 distance home. It rewards a controller that reads the match state and reallocates
 its three agents dynamically.
 
+## The canonical opponent (v1 scoring)
+
+For v1, a run is scored on **one canonical match**: the validator builds the
+model's submission to wasm, loads it as **Red**, loads the case's committed
+`border-soldier` module as **Blue**, and runs that single Foray match on the fixed
+`mirror-32x16` map and seed. The published `replay.json` is that match, and the
+recorded outcome (`win` / `loss` / `draw` / `forfeit`, plus winner, score, ticks)
+is from the submission's perspective. `border-soldier` is the canonical opponent
+precisely because it is the **strongest** of the three baselines — beating it is
+the bar v1 sets.
+
+`random` and `greedy-raider` ship in the workspace as local sparring partners (run
+them with `foray simulate` as above), but they are **not** the scored opponent.
+Cross-model **round-robin / bracket tournaments** — the field-wide
+[standings](/testing/adversarial/evaluation/#standings) the test-type evaluation
+describes — are a **planned future step** and are out of scope for v1: the match
+[`structure`](/testing/adversarial/manifests/) is still recorded faithfully in the
+manifest, but the validator only runs the one canonical match against the
+committed baseline.
+
 ## Why none of them is good
 
 The three baselines span the obvious failure space on purpose — pure noise

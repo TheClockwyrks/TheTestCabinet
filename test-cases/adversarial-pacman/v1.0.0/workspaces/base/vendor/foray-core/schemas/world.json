@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "BoardView": {
+      "description": "The static board view embedded in every observation.",
+      "properties": {
+        "border_x": {
+          "description": "First column belonging to Blue's half (matches the engine's `border_x`).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "height": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "walls": {
+          "description": "Blocked tiles, static for the match, as `[x, y]` pairs.",
+          "items": {
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "width": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "border_x",
+        "height",
+        "walls",
+        "width"
+      ],
+      "type": "object"
+    },
+    "EnemyAgentView": {
+      "description": "One of the opposing colony's agents. The same fields minus `can_move_this_tick` (a controller does not drive enemies, so their cadence is not exposed).",
+      "properties": {
+        "carrying": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "id": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "immune_ticks": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/definitions/Role"
+        },
+        "x": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "carrying",
+        "id",
+        "immune_ticks",
+        "role",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "JellyView": {
+      "description": "A royal-jelly node in the observation.",
+      "properties": {
+        "active": {
+          "description": "Always `true` in the list (consumed nodes are dropped from it), but kept explicit to match architecture.md's shape and leave room for a future recharge variant.",
+          "type": "boolean"
+        },
+        "x": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "active",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "OwnAgentView": {
+      "description": "One of the controller's *own* agents, with the carry-weight cadence pre-computed so the controller never re-derives it.",
+      "properties": {
+        "can_move_this_tick": {
+          "description": "Whether this agent may move this tick under carry-weight (see [`crate::state::Agent::can_move_this_tick`]). A move submitted for an agent reading `false` is a no-op.",
+          "type": "boolean"
+        },
+        "carrying": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "id": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "immune_ticks": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/definitions/Role"
+        },
+        "x": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "can_move_this_tick",
+        "carrying",
+        "id",
+        "immune_ticks",
+        "role",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "Role": {
+      "description": "The role an agent currently has, derived from the half it stands on.",
+      "oneOf": [
+        {
+          "description": "On its own half: a defender that can tag enemy raiders.",
+          "enum": [
+            "soldier"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "On the enemy half: a forager that eats caches and carries the load home.",
+          "enum": [
+            "raider"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "ScoreView": {
+      "description": "Banked score, as the observation spells it (`{ \"red\": .., \"blue\": .. }`).",
+      "properties": {
+        "blue": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "red": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "blue",
+        "red"
+      ],
+      "type": "object"
+    },
+    "SeedsRemaining": {
+      "description": "Remaining (un-banked-away) seed totals per half, the sweep-progress signal.",
+      "properties": {
+        "blue_half": {
+          "description": "Seeds still to be banked away from Blue's half (what Red must sweep).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "red_half": {
+          "description": "Seeds still to be banked away from Red's half (what Blue must sweep).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "blue_half",
+        "red_half"
+      ],
+      "type": "object"
+    },
+    "Team": {
+      "description": "Which colony a tile or agent belongs to. Red holds the west half, Blue the east; an agent's *role* (soldier vs. raider) is derived from the half it stands on, not from the colony it belongs to — see [`crate::state`].",
+      "oneOf": [
+        {
+          "description": "The west colony (lower columns).",
+          "enum": [
+            "red"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The east colony (higher columns).",
+          "enum": [
+            "blue"
+          ],
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "description": "The per-tick observation handed to one team's controller. Fully observable in v1 (no fog) — a deliberate first-case simplification.",
+  "properties": {
+    "board": {
+      "$ref": "#/definitions/BoardView"
+    },
+    "enemies": {
+      "description": "The opposing colony's three agents.",
+      "items": {
+        "$ref": "#/definitions/EnemyAgentView"
+      },
+      "type": "array"
+    },
+    "jelly": {
+      "description": "Active royal-jelly nodes.",
+      "items": {
+        "$ref": "#/definitions/JellyView"
+      },
+      "type": "array"
+    },
+    "my_agents": {
+      "description": "This team's three agents.",
+      "items": {
+        "$ref": "#/definitions/OwnAgentView"
+      },
+      "type": "array"
+    },
+    "score": {
+      "$ref": "#/definitions/ScoreView"
+    },
+    "seeds": {
+      "description": "Every uneaten cache (including dropped, recoverable ones) on the board.",
+      "items": {
+        "items": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "seeds_remaining": {
+      "$ref": "#/definitions/SeedsRemaining"
+    },
+    "team": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/Team"
+        }
+      ],
+      "description": "Which colony this controller drives."
+    },
+    "tick": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "timestep_ms": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "board",
+    "enemies",
+    "jelly",
+    "my_agents",
+    "score",
+    "seeds",
+    "seeds_remaining",
+    "team",
+    "tick",
+    "timestep_ms"
+  ],
+  "title": "World",
+  "type": "object"
+}

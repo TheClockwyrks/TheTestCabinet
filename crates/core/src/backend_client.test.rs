@@ -41,10 +41,16 @@ impl BackendClient for StubBackend {
             build: Some(BuildCommands {
                 install: "npm ci".to_string(),
                 build: "npm run build".to_string(),
+                module: None,
             }),
             canvas: None,
             tool: None,
             output: None,
+            contract: None,
+            sandbox: None,
+            simulation: None,
+            r#match: None,
+            replay: None,
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
@@ -258,6 +264,7 @@ fn sample_record(id: &str) -> RunRecord {
             checks: vec![],
             proofs: vec![],
             asset: None,
+            adversarial: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

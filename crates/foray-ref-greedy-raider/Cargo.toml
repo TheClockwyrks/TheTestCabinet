@@ -1,0 +1,20 @@
+[package]
+name = "foray-ref-greedy-raider"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `greedy-raider` reference controller — all offence, no sense (references.md).
+# Every agent beelines (shortest path) to the nearest enemy seed cache, eats, and
+# heads home only when no enemy cache is reachable or it is boxed out. It NEVER
+# defends and IGNORES carry weight (it happily over-loads and crawls home), so a
+# competent defender shreds it. Built as a `cdylib` to `wasm32-unknown-unknown` as
+# one of the baselines seeded into the model's workspace.
+[lib]
+name = "foray_ref_greedy_raider"
+crate-type = ["cdylib"]
+
+[dependencies]
+foray-core = { path = "../foray-core", default-features = false }
+foray-controller-sdk = { path = "../foray-controller-sdk" }

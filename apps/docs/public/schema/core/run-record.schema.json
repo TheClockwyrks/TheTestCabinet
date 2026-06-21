@@ -47,12 +47,17 @@
       "type": "string",
       "enum": ["completed", "failed", "unevaluable"]
     },
+    "TestType": {
+      "type": "string",
+      "enum": ["end-to-end", "asset-generation", "adversarial"]
+    },
     "RunSubject": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "testCaseSlug",
         "testCaseVersion",
+        "testType",
         "variant",
         "harnessSlug",
         "harnessVersion",
@@ -61,6 +66,7 @@
       "properties": {
         "testCaseSlug": { "type": "string" },
         "testCaseVersion": { "type": "string" },
+        "testType": { "$ref": "#/$defs/TestType" },
         "variant": { "type": "string" },
         "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
         "harnessVersion": { "type": ["string", "null"] },
@@ -141,15 +147,91 @@
         "detail": { "type": ["string", "null"] }
       }
     },
+    "StepResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "succeeded", "detail"],
+      "properties": {
+        "command": { "type": "string" },
+        "succeeded": { "type": "boolean" },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "AssetGenResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regeneratedImage",
+        "previewImage",
+        "targetImage",
+        "actionsLog",
+        "operationCount",
+        "targetFidelity",
+        "cheatDivergence",
+        "detail"
+      ],
+      "properties": {
+        "regeneratedImage": { "type": "string" },
+        "previewImage": { "type": "string" },
+        "targetImage": { "type": "string" },
+        "actionsLog": { "type": "string" },
+        "operationCount": { "type": "integer" },
+        "targetFidelity": { "type": "number" },
+        "cheatDivergence": { "type": ["number", "null"] },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "AdversarialTeam": {
+      "type": "string",
+      "enum": ["red", "blue"]
+    },
+    "AdversarialOutcome": {
+      "type": "string",
+      "enum": ["win", "loss", "draw", "forfeit"]
+    },
+    "AdversarialResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replayJson",
+        "opponent",
+        "submissionTeam",
+        "winner",
+        "redScore",
+        "blueScore",
+        "ended",
+        "ticks",
+        "outcome",
+        "detail"
+      ],
+      "properties": {
+        "replayJson": { "type": "string" },
+        "opponent": { "type": "string" },
+        "submissionTeam": { "$ref": "#/$defs/AdversarialTeam" },
+        "winner": {
+          "oneOf": [{ "$ref": "#/$defs/AdversarialTeam" }, { "type": "null" }]
+        },
+        "redScore": { "type": "number" },
+        "blueScore": { "type": "number" },
+        "ended": { "type": "string" },
+        "ticks": { "type": "integer" },
+        "outcome": { "$ref": "#/$defs/AdversarialOutcome" },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
     "RunValidation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["loaded", "detail", "checks", "proofs"],
+      "required": ["loaded", "detail", "install", "build", "checks", "proofs"],
       "properties": {
         "loaded": { "type": "boolean" },
         "detail": { "type": ["string", "null"] },
-        "install": { "type": ["object", "null"] },
-        "build": { "type": ["object", "null"] },
+        "install": {
+          "oneOf": [{ "$ref": "#/$defs/StepResult" }, { "type": "null" }]
+        },
+        "build": {
+          "oneOf": [{ "$ref": "#/$defs/StepResult" }, { "type": "null" }]
+        },
         "checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/CheckResult" }
@@ -157,7 +239,9 @@
         "proofs": {
           "type": "array",
           "items": { "$ref": "#/$defs/ProofResult" }
-        }
+        },
+        "asset": { "$ref": "#/$defs/AssetGenResult" },
+        "adversarial": { "$ref": "#/$defs/AdversarialResult" }
       }
     },
     "RunLinks": {

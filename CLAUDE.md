@@ -47,6 +47,17 @@ and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
 to).
 
+**Adversarial (Foray) crates:** the [adversarial](apps/docs/src/content/docs/testing/adversarial/)
+test type's engine and host live in their own crates under `crates/`, documented
+in the case's
+[architecture doc](apps/docs/src/content/docs/testing/adversarial/adversarial-pacman/architecture.md):
+`foray-core/` (the authoritative rules engine; compiles natively *and* to
+`wasm32-unknown-unknown` for browser replay playback), `foray-host/` (the reusable
+`wasmtime` host — the per-tick controller loop + fuel/memory sandbox — reused by
+both the CLI and `core`'s `AdversarialValidator`), `foray-cli/` (the `foray`
+binary), `foray-controller-sdk/` (the controller-authoring SDK), and the three
+`foray-ref-*/` baseline controllers.
+
 ## Repository layout, building & testing
 
 The canonical repo layout and the build/format/lint/test commands for both the

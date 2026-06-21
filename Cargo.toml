@@ -4,6 +4,13 @@ members = [
 	"crates/core",
 	"crates/cli",
 	"crates/draw",
+	"crates/foray-core",
+	"crates/foray-host",
+	"crates/foray-cli",
+	"crates/foray-controller-sdk",
+	"crates/foray-ref-random",
+	"crates/foray-ref-greedy-raider",
+	"crates/foray-ref-border-soldier",
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",
@@ -17,6 +24,31 @@ edition = "2024"
 version = "0.0.0"
 license = "MIT"
 publish = false
+
+# `foray-core` is a `cdylib` (it compiles to `wasm32-unknown-unknown` for the
+# browser playback ABI — see `crates/foray-core/Cargo.toml`). On the NATIVE host
+# the same `cdylib` is still emitted as an (otherwise unused) `.so`, and rustc's
+# *incremental* codegen for a `cdylib` split across the dev profile's many codegen
+# units intermittently drops a `*.rcgu.o` object, so the linker fails with
+# "cannot find …rcgu.o: No such file or directory" on a second incremental build.
+# Pinning this one package to a single codegen unit makes incremental codegen emit
+# one object and removes the race; it only affects `foray-core`'s native compile,
+# not the wasm build the browser performs.
+[profile.dev.package.foray-core]
+codegen-units = 1
+
+# The desktop shell's library target is built as a `cdylib`/`staticlib` (the Tauri
+# v2 convention — see `crates/desktop/Cargo.toml`) in addition to the plain `lib`.
+# On the NATIVE host `cargo test` compiles this library (incrementally, split
+# across the dev profile's many codegen units), and rustc intermittently drops one
+# of the `*.rcgu.o` objects on a second incremental build, so assembling the rlib
+# fails with "failed to build archive … failed to open object file: No such file or
+# directory". This is the same incremental-codegen race already pinned away for
+# `foray-core` above. Forcing a single codegen unit makes codegen emit one object
+# and removes the race; it is dev-profile only and does not affect the release
+# bundle Tauri ships.
+[profile.dev.package.test-cabinet-desktop]
+codegen-units = 1
 
 [workspace.dependencies]
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
@@ -66,6 +98,19 @@ which = "8"
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"rustls-tls",
+] }
+
+# The wasm host for the Foray adversarial case (`crates/foray-host`). wasmtime is
+# pure Rust (no system packages), so it builds on the same minimal hosts as the
+# rest of the workspace. The host loads the two competing controller modules,
+# meters each per-tick invocation with fuel, and caps linear memory. `cranelift`
+# is the JIT (default); `cache` is dropped because matches run in ephemeral run
+# containers where a compile cache buys nothing. Pinned to the major version the
+# host was written against so an automatic minor bump never silently changes the
+# fuel/epoch semantics the sandbox relies on.
+wasmtime = { version = "45", default-features = false, features = [
+	"cranelift",
+	"runtime",
 ] }
 
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.

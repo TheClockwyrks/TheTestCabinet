@@ -21,10 +21,16 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         build: Some(BuildCommands {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
+            module: None,
         }),
         canvas: None,
         tool: None,
         output: None,
+        contract: None,
+        sandbox: None,
+        simulation: None,
+        r#match: None,
+        replay: None,
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),

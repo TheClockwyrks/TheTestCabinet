@@ -1,0 +1,34 @@
+[package]
+name = "foray-core"
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false
+
+# The authoritative game engine for Foray — the board, agent state, the tick
+# advance (movement/eating/tagging/banking/jelly with carry-weight cadence),
+# scoring, and the replay format. It is the CONTRACT you build against: the
+# `World` observation and `Action` output types live here. Do not edit it; the
+# harness scores you against this exact engine.
+[lib]
+name = "foray_core"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Defaults match the upstream crate. A controller links this with
+# `default-features = false`, which drops `playback` (the browser `alloc`/`replay_*`
+# exports that would otherwise collide with the controller's own `alloc`) and the
+# schema/TOML features it does not need.
+default = ["schema", "map-toml", "playback"]
+schema = ["dep:schemars"]
+playback = []
+map-toml = ["dep:toml"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = { version = "0.8", optional = true }
+toml = { version = "0.8", optional = true }
+
+[dev-dependencies]
+serde_json = "1"

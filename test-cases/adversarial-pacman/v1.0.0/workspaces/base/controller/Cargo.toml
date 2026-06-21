@@ -1,0 +1,29 @@
+[package]
+name = "controller"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Your Foray controller. It compiles to a `wasm32-unknown-unknown` core module the
+# harness loads into the sandbox; the `cdylib` crate-type and the SDK's
+# `controller!` macro give it the three exports the host needs (`memory`, `alloc`,
+# and the `tick` contract entry).
+#
+# IMPORTANT: keep the crate name `controller` and the `cdylib` crate-type, so the
+# build emits `target/wasm32-unknown-unknown/release/controller.wasm` — the exact
+# path the manifest's `build.module` names. Renaming either changes the artifact
+# path and the harness will not find your module.
+[lib]
+name = "controller"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The controller contract: the `World` observation handed in each tick and the
+# `Action` you return. `default-features = false` drops the schema/TOML-loader
+# features a controller never needs, keeping the guest wasm lean.
+foray-core = { path = "../vendor/foray-core", default-features = false }
+# The guest side of the controller ABI plus the maze helpers (a passability grid
+# and a BFS) the baselines pathfind over. Link it, write `fn decide`, and invoke
+# `controller!(decide)` — see `src/lib.rs`.
+foray-controller-sdk = { path = "../vendor/foray-controller-sdk" }

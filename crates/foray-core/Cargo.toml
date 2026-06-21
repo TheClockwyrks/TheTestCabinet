@@ -1,0 +1,70 @@
+[package]
+name = "foray-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoritative game engine for the Foray adversarial test case (on-disk slug
+# `adversarial-pacman`). This crate owns the board model, agent state, the tick
+# advance (movement/eating/tagging/banking/jelly with carry-weight cadence),
+# scoring, and the replay (de)serialization + reconstruction. It has NO I/O and
+# NO wasm-host dependency — pure rules plus data types — so the exact same crate
+# compiles for the native `foray` CLI and for `wasm32-unknown-unknown` in the
+# browser. The wasm host (wasmtime) lives in `foray-cli`, never here, so this
+# crate stays wasm-compilable.
+[lib]
+name = "foray_core"
+# `rlib` for the native CLI and the controller/reference crates that link the
+# rules in-process; `cdylib` for the browser, which instantiates the produced
+# `foray_core.wasm` directly and calls the hand-rolled C ABI (alloc/replay_*).
+crate-type = ["cdylib", "rlib"]
+
+# The artifact generator emits the seeded JSON Schemas and the committed map. It
+# needs both the schema accessors and the TOML serializer, so it is gated on
+# those features — the lean browser wasm build (`--no-default-features`) skips it.
+[[bin]]
+name = "gen-artifacts"
+path = "src/bin/gen-artifacts.rs"
+required-features = ["schema", "map-toml"]
+
+[features]
+# Schema export is on by default so `cargo test`/`cargo run --bin emit-schemas`
+# and the manifest-seeding path get the JSON Schemas. It is a feature so the
+# browser cdylib can be built `--no-default-features` to drop schemars from the
+# playback wasm, which only needs the replay ABI. Disabling it never changes the
+# engine — only whether the schema accessors compile.
+default = ["schema", "map-toml", "playback"]
+schema = ["dep:schemars"]
+# The browser playback ABI (`src/abi.rs`: the hand-rolled `alloc`/`replay_*` C
+# exports). On by default for a normal build, but a *separate* feature so this
+# crate can be linked as a plain `rlib` into another `wasm32-unknown-unknown` crate
+# — the controller SDK and reference controllers depend on it for the contract
+# types — without inheriting and colliding on those exported symbols (each
+# controller exports its own `alloc`). Those consumers set `default-features =
+# false`; the browser cdylib build keeps it (or opts in with
+# `--no-default-features --features playback,...`). Disabling it only drops the
+# playback exports, never any engine logic.
+playback = []
+# The TOML map loader. On by default for the native CLI (which loads
+# `maps/*.toml`) and human-authored maps. The browser playback build can drop it
+# with `--no-default-features`: a replay carries the map's `seed`, so the browser
+# regenerates the same maze deterministically from the seed and never parses
+# TOML. Disabling it does not change any generated maze — only whether the file
+# loader compiles.
+map-toml = ["dep:toml"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# JSON Schema generation for the controller-facing `World`/`Action` types, so the
+# schemas the manifest seeds verbatim are generated from the very types the
+# engine (de)serializes — they cannot drift. Pure Rust, compiles to wasm.
+schemars = { workspace = true, optional = true }
+# Map-file parsing for the `maps/*.toml` definitions. Pure Rust; gated so the
+# browser playback build can drop it (see the `map-toml` feature).
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The schema-emitting test and the round-trip tests deserialize fixtures.
+serde_json = { workspace = true }
