@@ -23,9 +23,9 @@ use crate::state::{Ended, Kills, MatchResult, Score};
 
 /// The current replay format version. Bumping the engine in a way that changes
 /// reconstruction must bump this so an old replay is recognizably incompatible.
-///
-/// `2` added per-team `kills` to the committed result.
-pub const REPLAY_VERSION: u32 = 2;
+/// No replays have been captured yet, so there is a single format: per-team
+/// `kills` is part of v1, not a later addition.
+pub const REPLAY_VERSION: u32 = 1;
 
 /// One tick's recorded inputs: each team's action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,9 +50,7 @@ pub struct ReplayResult {
     pub winner: Option<Team>,
     /// Final banked score.
     pub score: Score,
-    /// Tags inflicted per colony — the "kills". Defaulted on read so a
-    /// pre-`kills` replay (format `1`) still parses as zero kills.
-    #[serde(default)]
+    /// Tags inflicted per colony — the "kills".
     pub kills: Kills,
     /// How the match ended.
     pub ended: Ended,

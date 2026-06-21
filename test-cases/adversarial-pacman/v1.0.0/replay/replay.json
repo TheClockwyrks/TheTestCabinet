@@ -6014,6 +6014,10 @@
       "red": 0,
       "blue": 20
     },
+    "kills": {
+      "red": 0,
+      "blue": 9
+    },
     "ended": "swept",
     "ticks": 176
   }
