@@ -282,7 +282,7 @@ impl SystemStage {
             (InstallHarness, Started) => "Installing the harness CLI",
             (InstallHarness, Completed) => "Harness CLI installed",
             (InstallHarness, Failed) => "Failed to install the harness CLI",
-            (ProbeHarness, Started) => "Checking the harness is ready",
+            (ProbeHarness, Started) => "Checking if the harness is ready",
             (ProbeHarness, Completed) => "Harness ready",
             (ProbeHarness, Failed) => "Harness is unavailable",
             (InitTestCase, Started) => "Preparing the test case workspace",
