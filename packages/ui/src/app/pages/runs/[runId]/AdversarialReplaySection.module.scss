@@ -14,6 +14,24 @@
   color: t.$color-text-muted;
 }
 
+// The opponent selector above the proof-match record: pick which reference
+// opponent's replay to inspect.
+.opponentPicker {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-top: t.$space-md;
+}
+
+.opponentSelect {
+  padding: t.$space-xs t.$space-sm;
+  font: inherit;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
 // Outcome tint: a win for the submission reads green, a loss/forfeit red, a
 // draw neutral.
 .win {

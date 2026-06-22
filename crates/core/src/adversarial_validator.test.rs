@@ -9,12 +9,19 @@ use foray_core::board::Team;
 use foray_core::replay::ReplayResult;
 use foray_core::state::{Ended, Kills, Score};
 
-use super::{AdversarialValidator, ended_to, summarize};
+use super::{AdversarialValidator, ended_to, replay_entry, summarize};
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
     AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
 };
-use crate::validation::{AdversarialOutcome, AdversarialTeam, Validator};
+use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
+
+/// Build a scored replay entry for `result` against `border-soldier`, the helper
+/// most mapping tests assert on (the opponent id and `scored` flag are immaterial
+/// to the outcome derivation under test).
+fn entry(result: &ReplayResult) -> AdversarialReplay {
+    replay_entry("border-soldier", "replay.json", true, result)
+}
 
 /// A minimal adversarial version rooted at `root`, whose submission module path
 /// is `module_rel` (relative to the run root).
@@ -118,14 +125,78 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
             .detail
             .as_deref()
             .unwrap_or_default()
-            .contains("baseline opponent"),
-        "detail names the missing baseline: {:?}",
+            .contains("border-soldier"),
+        "detail names the missing opponent: {:?}",
         summary.detail
     );
 }
 
 #[test]
-fn summarize_maps_a_red_sweep_to_a_submission_win() {
+fn validate_writes_a_replay_per_opponent_and_records_them() {
+    // The committed Foray case root, where the reference opponents live.
+    let case_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/adversarial-pacman/v1.0.0");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    // A committed baseline stands in for the submission so the matches actually run.
+    let submission =
+        std::fs::read(case_root.join("references/random.wasm")).expect("submission wasm");
+    std::fs::write(repo.join("controller.wasm"), &submission).expect("write submission");
+
+    let mut version = adversarial_version(case_root, "controller.wasm");
+    // Keep each match short so all four resolve quickly.
+    version.simulation = Some(SimulationSpec {
+        timestep_ms: 16,
+        max_ticks: 64,
+    });
+
+    let summary = AdversarialValidator::new()
+        .validate(
+            &version,
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    assert!(summary.loaded, "the submission presented a controller");
+    let result = summary.adversarial.expect("adversarial result");
+    // One replay per AUTO_REPLAY_OPPONENTS entry, canonical (border-soldier) first
+    // and mirrored to the top-level fields.
+    assert_eq!(result.replays.len(), 4);
+    assert_eq!(result.replays[0].opponent, "border-soldier");
+    assert_eq!(result.opponent, "border-soldier");
+    assert_eq!(result.controller_module, "controller.wasm");
+    // `random` is the unscored exhibition; every other opponent is scored.
+    let random = result
+        .replays
+        .iter()
+        .find(|r| r.opponent == "random")
+        .expect("random replay");
+    assert!(!random.scored, "random is an exhibition");
+    assert!(
+        result
+            .replays
+            .iter()
+            .filter(|r| r.opponent != "random")
+            .all(|r| r.scored),
+        "every non-random opponent is scored",
+    );
+    // Each replay file was written into the produced tree at its recorded path.
+    for replay in &result.replays {
+        assert!(
+            repo.join(&replay.replay_json).is_file(),
+            "replay file `{}` was written",
+            replay.replay_json,
+        );
+    }
+}
+
+#[test]
+fn replay_entry_maps_a_red_sweep_to_a_submission_win() {
     let result = ReplayResult {
         winner: Some(Team::Red),
         score: Score { red: 41, blue: 39 },
@@ -133,12 +204,51 @@ fn summarize_maps_a_red_sweep_to_a_submission_win() {
         ended: Ended::Swept,
         ticks: 9123,
     };
-    let summary = summarize(&result);
+    let summary = entry(&result);
     assert_eq!(summary.outcome, AdversarialOutcome::Win);
     assert_eq!(summary.winner, Some(AdversarialTeam::Red));
     assert_eq!((summary.red_score, summary.blue_score), (41, 39));
     assert_eq!(summary.ended, "swept");
     assert_eq!(summary.ticks, 9123);
+}
+
+#[test]
+fn summarize_mirrors_the_canonical_opponent_and_keeps_every_replay() {
+    // The top-level scored fields mirror the first (canonical) replay; every
+    // opponent's replay is preserved in order, scored flags intact.
+    let canonical = AdversarialReplay {
+        opponent: "border-soldier".to_string(),
+        replay_json: "replay.json".to_string(),
+        winner: Some(AdversarialTeam::Red),
+        red_score: 41,
+        blue_score: 39,
+        ended: "swept".to_string(),
+        ticks: 9123,
+        outcome: AdversarialOutcome::Win,
+        scored: true,
+    };
+    let exhibition = AdversarialReplay {
+        opponent: "random".to_string(),
+        replay_json: "replay-3.json".to_string(),
+        winner: Some(AdversarialTeam::Red),
+        red_score: 80,
+        blue_score: 1,
+        ended: "swept".to_string(),
+        ticks: 500,
+        outcome: AdversarialOutcome::Win,
+        scored: false,
+    };
+    let result = summarize(
+        vec![canonical.clone(), exhibition.clone()],
+        "target/release/controller.wasm".to_string(),
+    );
+    assert_eq!(result.opponent, "border-soldier");
+    assert_eq!(result.replay_json, "replay.json");
+    assert_eq!(result.outcome, AdversarialOutcome::Win);
+    assert_eq!((result.red_score, result.blue_score), (41, 39));
+    assert_eq!(result.controller_module, "target/release/controller.wasm");
+    assert_eq!(result.replays, vec![canonical, exhibition]);
+    assert!(!result.replays[1].scored, "random stays unscored");
 }
 
 #[test]
@@ -170,7 +280,7 @@ fn summarize_maps_a_blue_win_to_a_submission_loss() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    let summary = summarize(&result);
+    let summary = entry(&result);
     assert_eq!(summary.outcome, AdversarialOutcome::Loss);
     // The recorded `ended` is the *same* snake_case spelling the published
     // `replay.json` carries (serde's `rename_all = "snake_case"` on `Ended`), so
@@ -187,7 +297,7 @@ fn summarize_maps_a_draw() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    assert_eq!(summarize(&result).outcome, AdversarialOutcome::Draw);
+    assert_eq!(entry(&result).outcome, AdversarialOutcome::Draw);
 }
 
 #[test]
@@ -200,7 +310,7 @@ fn summarize_maps_a_red_forfeit_to_a_submission_forfeit() {
         ended: Ended::Forfeit,
         ticks: 400,
     };
-    let summary = summarize(&result);
+    let summary = entry(&result);
     assert_eq!(summary.outcome, AdversarialOutcome::Forfeit);
     assert_eq!(summary.winner, Some(AdversarialTeam::Blue));
 }

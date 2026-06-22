@@ -11,7 +11,7 @@ use test_cabinet_core::match_play::{ControllerRef, MatchSummary, run_quick_match
 use test_cabinet_core::{BackendClient, HttpBackendClient};
 
 use crate::api::AppState;
-use crate::arena::{list_controllers, resolve_controller};
+use crate::arena::{list_controllers, resolve_controller, with_pushed_controllers};
 use crate::error::ApiError;
 
 /// `POST /matches` — run one head-to-head match between two controllers and
@@ -67,12 +67,17 @@ pub async fn run(
 }
 
 /// `GET /matches/controllers?testCase=` — the controllers available to pit for a
-/// case: the committed baselines plus this worker's produced adversarial runs.
+/// case: the committed arena opponents (model-facing baselines plus the hidden
+/// references), this worker's produced adversarial runs, and the case's **pushed**
+/// adversarial controllers resolved from the backend (so a pushed implementation is
+/// always selectable, even from a host that did not produce it).
 pub async fn controllers(
     State(state): State<AppState>,
     Query(params): Query<ControllersParams>,
 ) -> Json<ControllersResponse> {
-    let controllers = list_controllers(&state.config.out_dir, &params.test_case);
+    let local = list_controllers(&state.config.out_dir, &params.test_case);
+    let client = HttpBackendClient::new(state.config.backend_url.clone());
+    let controllers = with_pushed_controllers(&client, &params.test_case, local).await;
     Json(ControllersResponse { controllers })
 }
 

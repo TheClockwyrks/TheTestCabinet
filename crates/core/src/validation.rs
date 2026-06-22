@@ -181,23 +181,55 @@ pub enum AdversarialOutcome {
     Forfeit,
 }
 
-/// The result of scoring an adversarial run's single canonical match.
+/// One auto-generated proof replay: the submission played head-to-head against a
+/// single reference opponent. A finished adversarial run records one of these per
+/// opponent in [`AdversarialResult::replays`] — programmatic, reproducible
+/// evidence the implementation actually plays, which is what *replaces*
+/// proof-of-implementation for adversarial cases.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdversarialReplay {
+    /// The id of the opponent the submission was matched against (Blue).
+    pub opponent: String,
+    /// Run-root-relative path to the published, browser-playable replay.
+    pub replay_json: String,
+    /// The winning side, or `None` for a draw. `red` is the submission.
+    pub winner: Option<AdversarialTeam>,
+    /// The submission's (Red's) banked score at the end of the match.
+    pub red_score: u32,
+    /// The opponent's (Blue's) banked score at the end of the match.
+    pub blue_score: u32,
+    /// How the match ended (`swept`, `time_limit`, or `forfeit`).
+    pub ended: String,
+    /// How many ticks the match ran for.
+    pub ticks: u32,
+    /// The outcome from the submission's perspective.
+    pub outcome: AdversarialOutcome,
+    /// Whether this match's outcome counts as recorded evidence. `false` for an
+    /// exhibition opponent (e.g. `random`, a trivial bar): its replay is kept so a
+    /// reviewer can watch it, but the outcome is informational only.
+    pub scored: bool,
+}
+
+/// The result of scoring an adversarial run.
 ///
 /// An adversarial run's authoritative output is its compiled wasm controller. The
 /// validator (see `crate::adversarial_validator::AdversarialValidator`) loads it
-/// as Red, loads the case's committed baseline opponent as Blue, runs **one**
-/// match through the shared [Foray host](foray_host), writes the published
-/// `replay.json` into the run's asset directory, and records the result here. A
-/// submission that fails to build, does not export the entry, or forfeits is
-/// recorded as a loss/forfeit — never a crash. Present only on an adversarial
-/// run's [`ValidationSummary`].
+/// as Red and plays it against the case's committed reference opponents (Blue),
+/// each through the shared [Foray host](foray_host), writing one published replay
+/// per opponent into the run's asset directory (see [`Self::replays`]). The
+/// top-level fields mirror the **canonical** opponent's match (`border-soldier`),
+/// which scoring and the leaderboard read. A submission that fails to build, does
+/// not export the entry, or forfeits is recorded as a loss/forfeit — never a
+/// crash. Present only on an adversarial run's [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdversarialResult {
-    /// Run-root-relative path to the published, browser-playable replay — the
-    /// scored artifact of the run.
+    /// Run-root-relative path to the canonical published replay (`replay.json`) —
+    /// the scored artifact mirrored by the top-level fields below. Also the first
+    /// entry of [`Self::replays`].
     pub replay_json: String,
-    /// The id of the baseline opponent the submission was matched against (Blue).
+    /// The id of the canonical opponent the submission was scored against (Blue).
     pub opponent: String,
     /// Which side the submission played (always [`AdversarialTeam::Red`] for the
     /// canonical match; recorded so a consumer never has to assume it).
@@ -219,6 +251,18 @@ pub struct AdversarialResult {
     /// or unloadable module), or `None` when the match ran.
     #[serde(default)]
     pub detail: Option<String>,
+    /// Run-root-relative path to the produced controller wasm module (the case's
+    /// `build.module`), or empty when the build emitted none. Lets the push flow
+    /// upload the controller to the backend (so a pushed run is selectable in the
+    /// arena) without re-resolving the case manifest.
+    #[serde(default)]
+    pub controller_module: String,
+    /// One proof replay per reference opponent the run was auto-replayed against
+    /// (canonical opponent first). These are the run's evidence of play. Empty
+    /// only when the submission never presented a loadable controller (a forfeit
+    /// before any match could run).
+    #[serde(default)]
+    pub replays: Vec<AdversarialReplay>,
 }
 
 /// The result of scoring a performance run.

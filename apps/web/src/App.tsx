@@ -47,16 +47,30 @@ export function App() {
 }
 
 function WebGallery() {
-  // The arena runs matches on the active worker and reads persisted tournaments
-  // from the backend; it is offered only when a worker is connected (the gallery
-  // additionally gates the run UI on `canExecute`). Rebuilt when either base URL
-  // changes so it always targets the current connections.
+  // The arena runs matches on a chosen worker (the active one by default) and reads
+  // persisted tournaments from the backend; it is offered only when a worker is
+  // connected (the gallery additionally gates the run UI on `canExecute`). Rebuilt
+  // when the worker set or backend changes so it always targets the current
+  // connections.
   const { url: backendUrl } = useBackend();
-  const { active: worker } = useWorkers();
-  const workerUrl = worker?.url ?? null;
+  const { workers, activeId } = useWorkers();
+  // The arena needs every worker's id/label/url so its dropdown can switch which
+  // worker contributes its local runs; the key folds the set so the memo rebuilds
+  // when a worker is added/removed or its URL changes.
+  const arenaWorkers = useMemo(
+    () => workers.map((w) => ({ id: w.id, label: w.label, url: w.url })),
+    [workers],
+  );
+  const workersKey = arenaWorkers
+    .map((w) => `${w.id}:${w.url ?? ""}`)
+    .join("|");
   const arena = useMemo(
-    () => (workerUrl ? createHttpArena(workerUrl, backendUrl) : undefined),
-    [workerUrl, backendUrl],
+    () =>
+      arenaWorkers.length > 0
+        ? createHttpArena(arenaWorkers, activeId, backendUrl)
+        : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workersKey, activeId, backendUrl],
   );
   const data = useLiveGallery(arena);
   return (

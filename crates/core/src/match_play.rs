@@ -41,10 +41,51 @@ pub const CANONICAL_SEED: u64 = 0xC0FFEE;
 /// run asset, and the per-match artifact name a tournament stores).
 pub const REPLAY_JSON: &str = "replay.json";
 
-/// The ids of the baseline controllers a case commits under `references/<id>.wasm`,
-/// always available as opponents in the arena. `border-soldier` is also the
-/// canonical scoring opponent the validator uses.
+/// The ids of the **model-facing** baseline controllers a case commits under
+/// `references/<id>.wasm`. These three are documented to models and baked into the
+/// run container; `border-soldier` is also the canonical scoring opponent the
+/// validator uses. The arena offers a wider set (see [`ARENA_OPPONENT_IDS`]).
 pub const BASELINE_IDS: &[&str] = &["border-soldier", "greedy-raider", "random"];
+
+/// The ids of the **hidden** reference opponents a case commits under
+/// `references/<id>.wasm` but deliberately keeps out of the model's view (not
+/// documented, not seeded into the run container). `fuel-probe` is a non-trivial
+/// adversary that defeats every baseline; it is used to auto-replay a run against
+/// a strong opponent and is selectable in the arena, but never shown to a model.
+pub const HIDDEN_OPPONENT_IDS: &[&str] = &["fuel-probe"];
+
+/// Every opponent the arena and the validator may load: the model-facing
+/// baselines plus the hidden references. This is the allowlist a host resolves a
+/// "baseline" controller against — it is intentionally wider than [`BASELINE_IDS`]
+/// (which stays the model-facing set). Kept in sync with `BASELINE_IDS` ++
+/// `HIDDEN_OPPONENT_IDS` (asserted in tests).
+pub const ARENA_OPPONENT_IDS: &[&str] =
+    &["border-soldier", "greedy-raider", "random", "fuel-probe"];
+
+/// The opponents a finished adversarial run is auto-replayed against, in order,
+/// paired with whether that match's outcome is **scored** (recorded in the run
+/// record's `replays`). The first entry is the canonical opponent: its replay is
+/// written to [`REPLAY_JSON`] and mirrored to the run result's top-level fields.
+/// `random` is an unscored exhibition — its replay is kept so a reviewer can watch
+/// it, but its outcome is excluded from the recorded set.
+pub const AUTO_REPLAY_OPPONENTS: &[(&str, bool)] = &[
+    ("border-soldier", true),
+    ("greedy-raider", true),
+    ("fuel-probe", true),
+    ("random", false),
+];
+
+/// The run-root-relative filename of the replay at `index` in an adversarial run's
+/// `replays` list. Index 0 is the canonical [`REPLAY_JSON`] (`replay.json`); the
+/// rest are `replay-<index>.json`, a single path segment so they route through the
+/// one-segment `/asset/{file}` endpoint (and `tcab-asset://`) unchanged.
+pub fn replay_filename(index: usize) -> String {
+    if index == 0 {
+        REPLAY_JSON.to_string()
+    } else {
+        format!("replay-{index}.json")
+    }
+}
 
 /// Where a controller came from — surfaced so the arena UI can group baselines
 /// apart from controllers built by prior runs.
@@ -53,8 +94,16 @@ pub const BASELINE_IDS: &[&str] = &["border-soldier", "greedy-raider", "random"]
 pub enum ControllerKind {
     /// A baseline committed with the case (`references/<id>.wasm`).
     Baseline,
-    /// A controller a prior run produced (resolved from the host's run output dir).
+    /// A controller a prior run produced, resolved from *this* host's run output
+    /// dir. Local to the host that ran it — selectable only while browsing through
+    /// that worker (the dropdown picks which worker contributes these).
     Run,
+    /// A controller a **pushed** run produced, resolved from the backend's stored
+    /// `controller.wasm`. Always selectable from any host (the backend is the
+    /// shared source), so a reviewer can watch a pushed implementation play
+    /// without having produced it locally.
+    #[serde(rename = "pushed")]
+    PushedRun,
 }
 
 /// A controller a match can be played with, identified but not yet loaded.

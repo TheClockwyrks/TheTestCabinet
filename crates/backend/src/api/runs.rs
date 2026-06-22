@@ -16,6 +16,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::event::HarnessEvent;
+use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord, RunState};
 
@@ -234,6 +235,35 @@ pub async fn list(
     }))
 }
 
+/// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial
+/// controllers for a case: every stored run (pending or published) that produced
+/// an adversarial result and uploaded a controller wasm. The arena resolves these
+/// as [`ControllerKind::PushedRun`] (fetching the wasm from
+/// `GET /runs/{id}/controller.wasm`), so a reviewer can pit a pushed
+/// implementation from any host. A read; no auth on the private network.
+pub async fn adversarial_controllers(
+    State(state): State<AppState>,
+    Query(params): Query<ControllersParams>,
+) -> Result<Json<ControllersResponse>, ApiError> {
+    let runs = state
+        .db
+        .list_for_case(&params.test_case)
+        .await
+        .map_err(ApiError::from)?;
+    let controllers = runs
+        .into_iter()
+        .filter(|run| run.record.validation.adversarial.is_some())
+        // Only runs whose controller wasm actually landed can be pitted.
+        .filter(|run| state.store.has_run_controller(&run.record.id))
+        .map(|run| ControllerRef {
+            id: run.record.id.clone(),
+            kind: ControllerKind::PushedRun,
+            label: Some(run.record.subject.model_id.clone()),
+        })
+        .collect();
+    Ok(Json(ControllersResponse { controllers }))
+}
+
 /// `GET /runs/{id}` — one stored run (published or pending) with its reviews.
 pub async fn get(
     State(state): State<AppState>,
@@ -386,6 +416,19 @@ pub struct ListParams {
 pub struct ListResponse {
     runs: Vec<StoredRunOut>,
     next_before: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllersParams {
+    /// The test case slug whose pushed controllers to list.
+    test_case: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllersResponse {
+    controllers: Vec<ControllerRef>,
 }
 
 #[derive(Serialize)]

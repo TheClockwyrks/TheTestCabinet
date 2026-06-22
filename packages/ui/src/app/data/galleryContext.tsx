@@ -56,29 +56,52 @@ export type { InProgressRun } from "../../client/types";
  * progress) and the backend (for reading persisted tournaments and replays); the
  * desktop host invokes the local core's Tauri commands and channels.
  */
+/** A worker the arena can run matches/tournaments on. The web host has one per
+ * configured worker; the desktop host has a single built-in local worker. */
+export interface ArenaWorkerOption {
+  /** Stable id (the local worker uses the reserved id `"local"`). */
+  id: string;
+  /** Display label. */
+  label: string;
+}
+
 export interface ArenaApi {
-  /** The controllers available to pit for a case: the committed baselines plus
-   * this host's produced adversarial runs. */
-  listControllers(slug: string, version: string): Promise<ControllerRef[]>;
-  /** Run one transient head-to-head match and return its replay (for immediate
-   * playback) and summary. Nothing is persisted. */
+  /** The workers this host can run matches on, so the arena can offer a worker to
+   * pick. A run resolves a controller of kind `"run"` against the chosen worker's
+   * local output dir; pushed and baseline controllers resolve the same on any. */
+  listWorkers(): ArenaWorkerOption[];
+  /** The controllers available to pit for a case: the committed baselines, the
+   * chosen worker's produced adversarial runs (kind `"run"`), and the case's
+   * pushed adversarial controllers (kind `"pushed"`). `workerId` selects which
+   * worker contributes its local runs (defaults to the active worker). */
+  listControllers(
+    slug: string,
+    version: string,
+    workerId?: string,
+  ): Promise<ControllerRef[]>;
+  /** Run one transient head-to-head match on `workerId` (defaults to the active
+   * worker) and return its replay (for immediate playback) and summary. Nothing is
+   * persisted. */
   runMatch(input: {
     testCase: string;
     version: string;
     red: ControllerRef;
     blue: ControllerRef;
+    workerId?: string;
   }): Promise<{ replay: unknown | null; summary: MatchSummary }>;
-  /** Start a tournament over the chosen field; resolves to its id. The field runs
-   * in the background — observe it with {@link subscribeTournament}. */
+  /** Start a tournament over the chosen field on `workerId` (defaults to the active
+   * worker); resolves to its id. The field runs in the background — observe it with
+   * {@link subscribeTournament}, passing the same `workerId`. */
   runTournament(input: {
     testCase: string;
     version: string;
     variant: string;
     participants: ControllerRef[];
+    workerId?: string;
   }): Promise<string>;
-  /** Observe a running tournament: each completed match arrives on `onProgress`,
-   * and `onDone` fires once with the finished record (or an error message).
-   * Returns an unsubscribe function. */
+  /** Observe a running tournament on `workerId` (the worker it was started on):
+   * each completed match arrives on `onProgress`, and `onDone` fires once with the
+   * finished record (or an error message). Returns an unsubscribe function. */
   subscribeTournament(
     id: string,
     handlers: {
@@ -90,6 +113,7 @@ export interface ArenaApi {
       onDone: (record: TournamentRecord | null, error?: string) => void;
       onError?: (error: unknown) => void;
     },
+    workerId?: string,
   ): () => void;
   /** The tournaments this host can show, newest first. */
   listTournaments(): Promise<TournamentRecord[]>;
@@ -225,27 +249,41 @@ export interface AssetResultView {
  * and sprite sheet are one set, not per run), so only the run-specific
  * `replay.json` is resolved here.
  */
-export interface ReplayResultView {
-  /** Loadable URL of the run's `replay.json`, or null if it cannot be served. */
-  replayUrl: string | null;
-  /** The baseline opponent the submission was matched against (Blue). */
+/** One opponent's proof match resolved for display: its record plus the loadable
+ * replay URL. */
+export interface ReplayMatchView {
+  /** The opponent the submission was matched against (Blue). */
   opponent: string;
-  /** Which side the submission played (always `"red"` for the canonical match). */
-  submissionTeam: AdversarialResult["submissionTeam"];
+  /** Loadable URL of this match's replay JSON, or null if it cannot be served. */
+  replayUrl: string | null;
   /** The winning side, or null for a draw. `"red"` is the submission. */
   winner: AdversarialResult["winner"];
   /** The submission's (Red's) banked score at the end of the match. */
   redScore: number;
   /** The opponent's (Blue's) banked score at the end of the match. */
   blueScore: number;
-  /** How the match ended (e.g. `"swept"`, `"timeLimit"`, `"forfeit"`). */
+  /** How the match ended (e.g. `"swept"`, `"time_limit"`, `"forfeit"`). */
   ended: string;
   /** How many ticks the match ran for. */
   ticks: number;
   /** The outcome from the submission's perspective. */
   outcome: AdversarialResult["outcome"];
-  /** Detail about a submission that could not be matched, or null. */
+  /** Whether this match's outcome counts as recorded evidence (`false` for an
+   * exhibition opponent like `random`). */
+  scored: boolean;
+  /** Detail about a forfeit, or null. */
   detail: string | null;
+}
+
+export interface ReplayResultView {
+  /** Which side the submission played (always `"red"`). */
+  submissionTeam: AdversarialResult["submissionTeam"];
+  /**
+   * One proof match per reference opponent the submission was replayed against,
+   * canonical (`border-soldier`) first. For a forfeit run that never played a
+   * match this holds a single synthesized record whose `replayUrl` is null.
+   */
+  replays: ReplayMatchView[];
 }
 
 export interface GalleryData extends GalleryDataInput {
@@ -367,20 +405,40 @@ export function GalleryDataProvider({
       replayResultFor(run) {
         const adversarial = run.validation.adversarial;
         if (!adversarial) return null;
-        return {
-          replayUrl: assetMediaUrl
-            ? assetMediaUrl(run.id, "replay.json")
-            : null,
-          opponent: adversarial.opponent,
-          submissionTeam: adversarial.submissionTeam,
-          winner: adversarial.winner,
-          redScore: adversarial.redScore,
-          blueScore: adversarial.blueScore,
-          ended: adversarial.ended,
-          ticks: adversarial.ticks,
-          outcome: adversarial.outcome,
-          detail: adversarial.detail,
-        };
+        // One view per recorded opponent replay (canonical first). A forfeit run
+        // records no replays, so synthesize a single record from the top-level
+        // fields with no playable URL — the section still shows the forfeit.
+        const replays: ReplayMatchView[] =
+          adversarial.replays.length > 0
+            ? adversarial.replays.map((entry) => ({
+                opponent: entry.opponent,
+                replayUrl: assetMediaUrl
+                  ? assetMediaUrl(run.id, entry.replayJson)
+                  : null,
+                winner: entry.winner,
+                redScore: entry.redScore,
+                blueScore: entry.blueScore,
+                ended: entry.ended,
+                ticks: entry.ticks,
+                outcome: entry.outcome,
+                scored: entry.scored,
+                detail: null,
+              }))
+            : [
+                {
+                  opponent: adversarial.opponent,
+                  replayUrl: null,
+                  winner: adversarial.winner,
+                  redScore: adversarial.redScore,
+                  blueScore: adversarial.blueScore,
+                  ended: adversarial.ended,
+                  ticks: adversarial.ticks,
+                  outcome: adversarial.outcome,
+                  scored: true,
+                  detail: adversarial.detail,
+                },
+              ];
+        return { submissionTeam: adversarial.submissionTeam, replays };
       },
     };
   }, [value]);

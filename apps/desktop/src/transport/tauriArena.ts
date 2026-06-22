@@ -9,6 +9,12 @@ import * as api from "../api";
 
 export function createTauriArena(): ArenaApi {
   return {
+    // The desktop shell runs every match in its one embedded local core, so there
+    // is a single fixed "worker"; the `workerId` the methods accept is ignored.
+    listWorkers() {
+      return [{ id: "local", label: "Local" }];
+    },
+
     listControllers(slug, version): Promise<ControllerRef[]> {
       return api.listAdversarialControllers(slug, version);
     },

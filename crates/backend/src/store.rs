@@ -691,6 +691,46 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("asset `{run_id}/{file}` not stored")))
     }
 
+    /// Where a run's pushed controller wasm lives: `runs/<run_id>/controller.wasm`.
+    /// Adversarial runs upload this at push so a pushed implementation can be
+    /// resolved and pitted in the arena from any host.
+    pub fn run_controller_path(&self, run_id: &str) -> PathBuf {
+        self.root
+            .join("runs")
+            .join(run_id)
+            .join("controller.wasm")
+    }
+
+    /// Persist a run's controller wasm module. Keyed by the run id a push carries,
+    /// so a re-push overwrites the identical bytes.
+    pub fn write_run_controller(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) {
+            return Err(BackendError::BadRequest("invalid run id".to_string()));
+        }
+        let path = self.run_controller_path(run_id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Ok(())
+    }
+
+    /// Whether a run has an uploaded controller wasm (so it can be pitted in the
+    /// arena). A cheap existence check used when listing pushed controllers.
+    pub fn has_run_controller(&self, run_id: &str) -> bool {
+        is_safe_segment(run_id) && self.run_controller_path(run_id).is_file()
+    }
+
+    /// Read a run's controller wasm module.
+    pub fn read_run_controller(&self, run_id: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) {
+            return Err(BackendError::BadRequest("invalid run id".to_string()));
+        }
+        let path = self.run_controller_path(run_id);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("controller for run `{run_id}` not stored")))
+    }
+
     /// Where a tournament's per-match replays live:
     /// `tournaments/<tournament_id>/matches/<match_id>/`.
     pub fn tournament_match_dir(&self, tournament_id: &str, match_id: &str) -> PathBuf {

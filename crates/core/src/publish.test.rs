@@ -241,6 +241,10 @@ struct MockBackend {
     pushed: Mutex<Vec<PushedRun>>,
     reviews: Mutex<Vec<(String, Writeup)>>,
     published: Mutex<Vec<String>>,
+    /// `(run_id, file)` for every uploaded run asset (replays travel this path).
+    assets: Mutex<Vec<(String, String)>>,
+    /// `(run_id, byte_len)` for every uploaded controller wasm.
+    controllers: Mutex<Vec<(String, usize)>>,
 }
 
 impl MockBackend {
@@ -250,6 +254,8 @@ impl MockBackend {
             pushed: Mutex::new(Vec::new()),
             reviews: Mutex::new(Vec::new()),
             published: Mutex::new(Vec::new()),
+            assets: Mutex::new(Vec::new()),
+            controllers: Mutex::new(Vec::new()),
         }
     }
 
@@ -263,6 +269,14 @@ impl MockBackend {
 
     fn published(&self) -> Vec<String> {
         self.published.lock().expect("lock").clone()
+    }
+
+    fn assets(&self) -> Vec<(String, String)> {
+        self.assets.lock().expect("lock").clone()
+    }
+
+    fn controllers(&self) -> Vec<(String, usize)> {
+        self.controllers.lock().expect("lock").clone()
     }
 }
 
@@ -327,6 +341,20 @@ impl BackendClient for MockBackend {
             id: run_id.to_string(),
             newly_published: true,
         })
+    }
+    async fn publish_run_asset(&self, run_id: &str, file: &str, _bytes: Vec<u8>) -> Result<()> {
+        self.assets
+            .lock()
+            .expect("lock")
+            .push((run_id.to_string(), file.to_string()));
+        Ok(())
+    }
+    async fn publish_run_controller(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        self.controllers
+            .lock()
+            .expect("lock")
+            .push((run_id.to_string(), bytes.len()));
+        Ok(())
     }
     async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
         unimplemented!("not exercised by publish tests")
@@ -422,6 +450,75 @@ async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
     assert_eq!(
         stored.links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
+    );
+}
+
+#[tokio::test]
+async fn push_uploads_adversarial_replays_and_the_controller() {
+    use crate::validation::{
+        AdversarialOutcome, AdversarialReplay, AdversarialResult, AdversarialTeam,
+    };
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
+
+    // The produced tree holds the controller wasm and the two proof replays at the
+    // run-root-relative paths the record names.
+    std::fs::write(impl_dir.join("controller.wasm"), b"\0asm-bytes").expect("wasm");
+    std::fs::write(impl_dir.join("replay.json"), b"{}").expect("replay");
+    std::fs::write(impl_dir.join("replay-1.json"), b"{}").expect("replay-1");
+
+    let replay = |opponent: &str, file: &str| AdversarialReplay {
+        opponent: opponent.to_string(),
+        replay_json: file.to_string(),
+        winner: Some(AdversarialTeam::Red),
+        red_score: 1,
+        blue_score: 0,
+        ended: "swept".to_string(),
+        ticks: 10,
+        outcome: AdversarialOutcome::Win,
+        scored: true,
+    };
+    let mut record = sample_record();
+    record.subject.test_type = crate::test_case::TestType::Adversarial;
+    record.validation.adversarial = Some(AdversarialResult {
+        replay_json: "replay.json".to_string(),
+        opponent: "border-soldier".to_string(),
+        submission_team: AdversarialTeam::Red,
+        winner: Some(AdversarialTeam::Red),
+        red_score: 1,
+        blue_score: 0,
+        ended: "swept".to_string(),
+        ticks: 10,
+        outcome: AdversarialOutcome::Win,
+        detail: None,
+        controller_module: "controller.wasm".to_string(),
+        replays: vec![
+            replay("border-soldier", "replay.json"),
+            replay("greedy-raider", "replay-1.json"),
+        ],
+    });
+
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let request = PushRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(&build_dir),
+        events: &[],
+    };
+    publisher.push(&request).await.expect("push");
+
+    // Every proof replay is uploaded under its own filename (served back through
+    // the asset plumbing), and the controller wasm is uploaded for the arena.
+    let assets = publisher.backend().assets();
+    assert!(assets.contains(&(record.id.clone(), "replay.json".to_string())));
+    assert!(assets.contains(&(record.id.clone(), "replay-1.json".to_string())));
+    assert_eq!(
+        publisher.backend().controllers(),
+        vec![(record.id.clone(), b"\0asm-bytes".len())],
     );
 }
 

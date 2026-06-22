@@ -269,15 +269,48 @@ export type AdversarialTeam = "red" | "blue";
 export type AdversarialOutcome = "win" | "loss" | "draw" | "forfeit";
 
 /**
- * The result of scoring an adversarial run's single canonical match. The
- * submission's compiled wasm controller is loaded as Red, the case's committed
- * baseline opponent as Blue, and one match is run; the replay is published as an
- * ordinary run asset. Present only on an adversarial run's validation.
+ * One auto-generated proof replay: the submission played head-to-head against a
+ * single reference opponent. A finished adversarial run records one per opponent
+ * in {@link AdversarialResult.replays}. These replays are the run's evidence of
+ * play — they replace proof-of-implementation for adversarial cases.
  */
-export interface AdversarialResult {
+export interface AdversarialReplay {
+  /** The id of the opponent the submission was matched against (Blue). */
+  opponent: string;
   /** Run-root-relative path to the published, browser-playable replay. */
   replayJson: string;
-  /** The id of the baseline opponent the submission was matched against (Blue). */
+  /** The winning side, or null for a draw. `"red"` is the submission. */
+  winner: AdversarialTeam | null;
+  /** The submission's (Red's) banked score at the end of the match. */
+  redScore: number;
+  /** The opponent's (Blue's) banked score at the end of the match. */
+  blueScore: number;
+  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  ended: string;
+  /** How many ticks the match ran for. */
+  ticks: number;
+  /** The outcome from the submission's perspective. */
+  outcome: AdversarialOutcome;
+  /**
+   * Whether this match's outcome counts as recorded evidence. `false` for an
+   * exhibition opponent (e.g. `random`): the replay is kept to watch, but the
+   * outcome is informational only.
+   */
+  scored: boolean;
+}
+
+/**
+ * The result of scoring an adversarial run. The submission's compiled wasm
+ * controller is loaded as Red and played against each committed reference
+ * opponent (Blue); one replay is published per opponent (see {@link replays}).
+ * The top-level fields mirror the canonical opponent's match (`border-soldier`),
+ * which scoring and the leaderboard read. Present only on an adversarial run's
+ * validation.
+ */
+export interface AdversarialResult {
+  /** Run-root-relative path to the canonical published replay (`replay.json`). */
+  replayJson: string;
+  /** The id of the canonical opponent the submission was scored against (Blue). */
   opponent: string;
   /** Which side the submission played (always `"red"` for the canonical match). */
   submissionTeam: AdversarialTeam;
@@ -295,6 +328,18 @@ export interface AdversarialResult {
   outcome: AdversarialOutcome;
   /** Detail about a submission that could not be matched, or null. */
   detail: string | null;
+  /**
+   * Run-root-relative path to the produced controller wasm module, or empty when
+   * the build emitted none. Lets the push flow upload the controller so a pushed
+   * run is selectable in the arena.
+   */
+  controllerModule: string;
+  /**
+   * One proof replay per reference opponent (canonical opponent first). The run's
+   * evidence of play. Empty only when the submission never presented a loadable
+   * controller (a forfeit before any match could run).
+   */
+  replays: AdversarialReplay[];
 }
 
 /**
@@ -354,8 +399,15 @@ export interface PerformanceResult {
 // per-match summaries are persisted so it can be revisited.
 // ---------------------------------------------------------------------------
 
-/** Where a controller came from — a committed baseline or a prior run's module. */
-export type ControllerKind = "baseline" | "run";
+/**
+ * Where a controller came from:
+ * - `"baseline"` — a committed reference module (`references/<id>.wasm`).
+ * - `"run"` — a controller a prior run produced, resolved from *this* worker's
+ *   local output dir (selectable only while browsing through that worker).
+ * - `"pushed"` — a controller a pushed run produced, resolved from the backend's
+ *   stored `controller.wasm` (always selectable from any host).
+ */
+export type ControllerKind = "baseline" | "run" | "pushed";
 
 /** A controller that can be pitted: identified, but not yet loaded. */
 export interface ControllerRef {

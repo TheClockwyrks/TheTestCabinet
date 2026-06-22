@@ -15,6 +15,7 @@ export {
   GalleryDataProvider,
   useGalleryData,
   type ArenaApi,
+  type ArenaWorkerOption,
   type GalleryData,
   type GalleryDataInput,
   type InProgressRun,

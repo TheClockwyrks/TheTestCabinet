@@ -51,13 +51,46 @@ that is `border-soldier`. The manifest's `[match]` structure is still recorded
 faithfully; cross-model tournaments are a planned later step.
 :::
 
+## Proof replays
+
+On completion, a run is auto-replayed against **every committed reference
+opponent**, not just the canonical one, and each match's replay is published as a
+run asset. For [Foray](/testing/adversarial/adversarial-pacman/references/) that
+is the three baselines — `border-soldier`, `greedy-raider`, and `random` — plus a
+**hidden** stronger reference, `fuel-probe`, that is never given to the model.
+`border-soldier`'s match is the canonical scored one (mirrored to the run's
+recorded outcome); `greedy-raider` and `fuel-probe` are recorded as scored
+evidence too; `random` is kept as an unscored *exhibition* (beating it carries no
+signal, but the replay is still watchable).
+
+These replays **replace proof-of-implementation** for adversarial cases. Other
+test types declare proof artifacts the agent must produce and a reviewer checks
+are present; an adversarial run instead proves itself by *playing* — the matches
+are programmatic and reproducible from the recorded ticks, so there is nothing for
+the model to fake and nothing for a reviewer to take on trust.
+
 ## Replays and review
 
 Every match is recorded as **replay data** sufficient to reconstruct the
 simulation deterministically. The replay is what is published: it is rendered in
 the browser on the [public site](/components/site/overview/) so a reader can watch
-the match unfold, the same way an end-to-end build is embedded and played. A
-human [review](/components/core/results/#reviews) may still accompany a published
-run — a writeup of how a controller played, what strategy it appeared to use, and
-where it failed — but the decisive signal for an adversarial case is the match
-record itself, not a reviewer's rating.
+the match unfold, the same way an end-to-end build is embedded and played. The
+run-detail view offers an opponent selector so a reviewer can watch the submission
+against each reference opponent in turn. A human
+[review](/components/core/results/#reviews) may still accompany a published run — a
+writeup of how a controller played, what strategy it appeared to use, and where it
+failed — but the decisive signal for an adversarial case is the match record
+itself, not a reviewer's rating.
+
+## The arena: reviewing before publishing
+
+A controller need not be published to be watched. The **arena** (a console-only,
+adversarial-only surface) pits any two controllers in a transient *quick match* or
+runs a whole field as a *tournament*. Its controller list is the committed
+opponents (including the hidden `fuel-probe`), a chosen **worker's**
+locally-produced runs, and every **pushed** controller. Local runs are resolved
+from the worker that produced them — a dropdown selects which worker contributes
+its local implementations — so a reviewer can pit an implementation **before**
+pushing it. A pushed run uploads its controller wasm to the backend at push time,
+so a pushed implementation is always selectable from any host, even one that did
+not produce it.

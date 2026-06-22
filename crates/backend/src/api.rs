@@ -63,6 +63,9 @@ pub fn router(state: AppState) -> Router {
         // runs. `GET /runs` lists published runs by default; `?state=review` lists
         // all runs (pending + published) for the reviewer worklist.
         .route("/runs", post(runs::push).get(runs::list))
+        // The pushed adversarial controllers for a case (id + model label), so the
+        // arena can pit a pushed implementation from any host. A read.
+        .route("/adversarial/controllers", get(runs::adversarial_controllers))
         .route("/runs/{id}", get(runs::get))
         // Submit a review for a run (requires auth; attributed to the token's
         // account). A run may carry many reviews, one per account.
@@ -82,6 +85,13 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/runs/{id}/asset/{file}",
             get(test_cases::run_asset).post(test_cases::put_run_asset),
+        )
+        // An adversarial run's pushed controller wasm: uploaded by the publisher at
+        // push (POST) and served so the arena can pit a pushed implementation from
+        // any host (GET).
+        .route(
+            "/runs/{id}/controller.wasm",
+            get(test_cases::run_controller).post(test_cases::put_run_controller),
         )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab

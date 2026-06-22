@@ -136,6 +136,33 @@ pub async fn put_run_asset(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/controller.wasm` — an adversarial run's pushed controller wasm,
+/// served so the arena can resolve and pit a pushed implementation from any host.
+pub async fn run_controller(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_controller(&id)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response("controller.wasm", bytes))
+}
+
+/// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
+/// uploaded by the publisher at push alongside the run record.
+pub async fn put_run_controller(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_controller(&id, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.

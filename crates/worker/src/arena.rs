@@ -7,8 +7,10 @@
 
 use std::path::Path;
 
+use std::collections::HashSet;
+
 use test_cabinet_core::match_play::{
-    BASELINE_IDS, ControllerKind, ControllerRef, ResolvedController,
+    ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, ResolvedController,
 };
 use test_cabinet_core::{BackendClient, RunRecord, TestCaseVersion};
 
@@ -36,7 +38,10 @@ pub async fn resolve_controller(
     }
     let wasm = match controller.kind {
         ControllerKind::Baseline => {
-            if !BASELINE_IDS.contains(&controller.id.as_str()) {
+            // The arena offers a wider opponent set than the model-facing baselines
+            // (it includes the hidden references like `fuel-probe`), so resolve
+            // against `ARENA_OPPONENT_IDS`.
+            if !ARENA_OPPONENT_IDS.contains(&controller.id.as_str()) {
                 return Err(format!("unknown baseline `{}`", controller.id));
             }
             let source = format!("references/{}.wasm", controller.id);
@@ -64,6 +69,19 @@ pub async fn resolve_controller(
                 )
             })?
         }
+        ControllerKind::PushedRun => {
+            // A pushed run's controller lives on the backend (uploaded at push), so
+            // any host can resolve it — not just the one that produced it.
+            client
+                .controller_artifact(&controller.id)
+                .await
+                .map_err(|err| {
+                    format!(
+                        "fetching pushed controller for run `{}`: {err}",
+                        controller.id
+                    )
+                })?
+        }
     };
     Ok(ResolvedController {
         controller: controller.clone(),
@@ -71,10 +89,13 @@ pub async fn resolve_controller(
     })
 }
 
-/// The controllers available to pit for `slug`: the committed baselines plus every
-/// adversarial run this worker has produced for the case.
+/// The locally-resolvable controllers to pit for `slug`: the committed arena
+/// opponents (the model-facing baselines plus the hidden references like
+/// `fuel-probe`) plus every adversarial run this worker has produced for the case.
+/// Pushed controllers (resolved from the backend) are merged on top by
+/// [`with_pushed_controllers`].
 pub fn list_controllers(out_dir: &Path, slug: &str) -> Vec<ControllerRef> {
-    let mut controllers: Vec<ControllerRef> = BASELINE_IDS
+    let mut controllers: Vec<ControllerRef> = ARENA_OPPONENT_IDS
         .iter()
         .map(|id| ControllerRef {
             id: id.to_string(),
@@ -83,6 +104,27 @@ pub fn list_controllers(out_dir: &Path, slug: &str) -> Vec<ControllerRef> {
         })
         .collect();
     controllers.extend(adversarial_runs(out_dir, slug));
+    controllers
+}
+
+/// Extend the locally-resolved `controllers` with the case's **pushed** adversarial
+/// controllers from the backend, so a pushed implementation is selectable here even
+/// when this worker did not produce it. A run that is both local and pushed keeps
+/// its local entry (resolved from disk, no backend round-trip); a backend that is
+/// unreachable or has none simply contributes nothing.
+pub async fn with_pushed_controllers(
+    client: &dyn BackendClient,
+    slug: &str,
+    mut controllers: Vec<ControllerRef>,
+) -> Vec<ControllerRef> {
+    let known: HashSet<String> = controllers.iter().map(|c| c.id.clone()).collect();
+    if let Ok(pushed) = client.list_adversarial_controllers(slug).await {
+        for controller in pushed {
+            if !known.contains(&controller.id) {
+                controllers.push(controller);
+            }
+        }
+    }
     controllers
 }
 

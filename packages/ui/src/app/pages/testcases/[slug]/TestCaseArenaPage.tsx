@@ -71,23 +71,59 @@ function ArenaPanels({
   const [controllers, setControllers] = useState<ControllerRef[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Resolve the controllers available to pit (committed baselines + this host's
-  // produced adversarial runs) whenever the case changes.
+  // The worker a match/tournament runs on. It also decides which worker's local
+  // (unpushed) runs appear in the controller list — pushed and baseline
+  // controllers resolve on any worker. Defaults to the first listed (the active
+  // one).
+  const workers = useMemo(() => arena.listWorkers(), [arena]);
+  const [workerId, setWorkerId] = useState<string>(workers[0]?.id ?? "");
+  useEffect(() => {
+    // Keep the selection valid as the worker set changes (added/removed).
+    if (!workers.some((w) => w.id === workerId)) {
+      setWorkerId(workers[0]?.id ?? "");
+    }
+  }, [workers, workerId]);
+
+  // Resolve the controllers available to pit (committed baselines + the chosen
+  // worker's produced runs + the case's pushed controllers) whenever the case or
+  // the selected worker changes.
   useEffect(() => {
     let active = true;
     setControllers([]);
     setLoadError(null);
     arena
-      .listControllers(testCase.slug, testCase.latestVersion)
+      .listControllers(testCase.slug, testCase.latestVersion, workerId)
       .then((cs) => active && setControllers(cs))
       .catch((e) => active && setLoadError(String(e)));
     return () => {
       active = false;
     };
-  }, [arena, testCase.slug, testCase.latestVersion]);
+  }, [arena, testCase.slug, testCase.latestVersion, workerId]);
 
   return (
     <section className={styles.section}>
+      {workers.length > 1 && (
+        <Panel>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Worker</span>
+            <select
+              className={styles.select}
+              value={workerId}
+              onChange={(e) => setWorkerId(e.target.value)}
+            >
+              {workers.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={styles.muted}>
+            Matches run on this worker, and its locally-produced (unpushed) runs are
+            listed below. Pushed implementations are selectable on any worker.
+          </p>
+        </Panel>
+      )}
       {loadError && (
         <p className={`${styles.notice} ${styles.error}`}>{loadError}</p>
       )}
@@ -95,21 +131,25 @@ function ArenaPanels({
         arena={arena}
         testCase={testCase}
         controllers={controllers}
+        workerId={workerId}
       />
       <TournamentPanel
         arena={arena}
         testCase={testCase}
         variant={variant}
         controllers={controllers}
+        workerId={workerId}
       />
     </section>
   );
 }
 
 // A controller's display label: its human label when present, else its id, with
-// the baselines and produced runs grouped under <optgroup>s.
+// the baselines, pushed implementations, and this worker's produced runs grouped
+// under <optgroup>s.
 function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
   const baselines = controllers.filter((c) => c.kind === "baseline");
+  const pushed = controllers.filter((c) => c.kind === "pushed");
   const runs = controllers.filter((c) => c.kind === "run");
   return (
     <>
@@ -122,8 +162,17 @@ function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
           ))}
         </optgroup>
       )}
+      {pushed.length > 0 && (
+        <optgroup label="Pushed implementations">
+          {pushed.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label ?? c.id}
+            </option>
+          ))}
+        </optgroup>
+      )}
       {runs.length > 0 && (
-        <optgroup label="Produced runs">
+        <optgroup label="This worker">
           {runs.map((c) => (
             <option key={c.id} value={c.id}>
               {c.label ?? c.id}
@@ -139,10 +188,12 @@ function QuickMatchPanel({
   arena,
   testCase,
   controllers,
+  workerId,
 }: {
   arena: ArenaApi;
   testCase: TestCaseSummary;
   controllers: ControllerRef[];
+  workerId: string;
 }) {
   const [redId, setRedId] = useState("");
   const [blueId, setBlueId] = useState("");
@@ -180,6 +231,7 @@ function QuickMatchPanel({
         version: testCase.latestVersion,
         red,
         blue,
+        workerId,
       });
       setResult(outcome);
     } catch (e) {
@@ -265,11 +317,13 @@ function TournamentPanel({
   testCase,
   variant,
   controllers,
+  workerId,
 }: {
   arena: ArenaApi;
   testCase: TestCaseSummary;
   variant: VariantSummary;
   controllers: ControllerRef[];
+  workerId: string;
 }) {
   const navigate = useNavigate();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
@@ -304,22 +358,28 @@ function TournamentPanel({
         version: testCase.latestVersion,
         variant: variant.slug,
         participants,
+        workerId,
       });
-      // Observe the field; navigate to the persisted detail when it finishes.
-      const stop = arena.subscribeTournament(id, {
-        onProgress: (p) => setProgress(p),
-        onDone: (record, err) => {
-          stop();
-          setRunning(false);
-          if (record) navigate(routes.tournamentDetail(record.id));
-          else setError(err ?? "The tournament failed to complete.");
+      // Observe the field on the same worker it was started on; navigate to the
+      // persisted detail when it finishes.
+      const stop = arena.subscribeTournament(
+        id,
+        {
+          onProgress: (p) => setProgress(p),
+          onDone: (record, err) => {
+            stop();
+            setRunning(false);
+            if (record) navigate(routes.tournamentDetail(record.id));
+            else setError(err ?? "The tournament failed to complete.");
+          },
+          onError: (e) => {
+            stop();
+            setRunning(false);
+            setError(String(e));
+          },
         },
-        onError: (e) => {
-          stop();
-          setRunning(false);
-          setError(String(e));
-        },
-      });
+        workerId,
+      );
     } catch (e) {
       setError(String(e));
       setRunning(false);

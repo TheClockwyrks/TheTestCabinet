@@ -15,8 +15,10 @@ use std::path::Path;
 use foray_core::replay::Replay;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
+use std::collections::HashSet;
+
 use test_cabinet_core::match_play::{
-    BASELINE_IDS, ControllerKind, ControllerRef, MatchSummary, ResolvedController,
+    ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, MatchSummary, ResolvedController,
     TournamentRecord, resolve_baseline, run_quick_match, run_tournament,
 };
 use test_cabinet_core::{BackendClient, HttpBackendClient, TestCaseVersion};
@@ -51,7 +53,9 @@ async fn resolve_controller(
     }
     let wasm = match controller.kind {
         ControllerKind::Baseline => {
-            if !BASELINE_IDS.contains(&controller.id.as_str()) {
+            // The arena offers the hidden references (e.g. `fuel-probe`) as well as
+            // the model-facing baselines, so resolve against the wider arena set.
+            if !ARENA_OPPONENT_IDS.contains(&controller.id.as_str()) {
                 return Err(format!("unknown baseline `{}`", controller.id));
             }
             match config::backend_url() {
@@ -86,6 +90,17 @@ async fn resolve_controller(
                     e,
                 )
             })?
+        }
+        ControllerKind::PushedRun => {
+            // A pushed run's controller lives on the backend (uploaded at push), so
+            // any host can resolve it even without having produced it locally.
+            let url = config::backend_url().ok_or_else(|| {
+                "no backend configured to resolve a pushed controller".to_string()
+            })?;
+            HttpBackendClient::new(url)
+                .controller_artifact(&controller.id)
+                .await
+                .map_err(|e| cmd_err("fetching pushed controller", e))?
         }
     };
     Ok(ResolvedController {
@@ -135,15 +150,18 @@ pub async fn run_adversarial_match(config: MatchConfig) -> CmdResult<MatchResult
     })
 }
 
-/// List the controllers available to pit for a case: the committed baselines plus
-/// this host's produced adversarial runs (labelled by model id).
+/// List the controllers available to pit for a case: the committed arena opponents
+/// (model-facing baselines plus the hidden references), this host's produced
+/// adversarial runs (labelled by model id), and the case's **pushed** adversarial
+/// controllers from the backend (so a pushed implementation is selectable even when
+/// this host did not produce it).
 #[tauri::command]
 #[tracing::instrument(fields(%slug))]
-pub fn list_adversarial_controllers(
+pub async fn list_adversarial_controllers(
     slug: String,
     _version: String,
 ) -> CmdResult<Vec<ControllerRef>> {
-    let mut controllers: Vec<ControllerRef> = BASELINE_IDS
+    let mut controllers: Vec<ControllerRef> = ARENA_OPPONENT_IDS
         .iter()
         .map(|id| ControllerRef {
             id: id.to_string(),
@@ -174,6 +192,20 @@ pub fn list_adversarial_controllers(
             });
         }
     }
+
+    // Merge the case's pushed controllers from the backend (when one is
+    // configured), skipping any already present as a local run.
+    if let Some(url) = config::backend_url()
+        && let Ok(pushed) = HttpBackendClient::new(url).list_adversarial_controllers(&slug).await
+    {
+        let known: HashSet<String> = controllers.iter().map(|c| c.id.clone()).collect();
+        for controller in pushed {
+            if !known.contains(&controller.id) {
+                controllers.push(controller);
+            }
+        }
+    }
+
     Ok(controllers)
 }
 

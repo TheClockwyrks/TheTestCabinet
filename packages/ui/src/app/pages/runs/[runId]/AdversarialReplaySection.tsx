@@ -3,6 +3,7 @@ import { Panel } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import {
   useGalleryData,
+  type ReplayMatchView,
   type ReplayResultView,
 } from "../../../data/galleryContext";
 import {
@@ -35,9 +36,13 @@ const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
 /**
  * The adversarial result, shown at the top of the Verdict tab for an adversarial
- * run: the canonical match's record (outcome, winner, scores, how/when it ended)
- * and a gated, embeddable replay player that reconstructs the match in-browser
- * with the same foray-core wasm engine the CLI scored it with.
+ * run: the run's **proof matches** — one per reference opponent the submission was
+ * auto-replayed against (the three baselines plus the hidden `fuel-probe`) — each
+ * with its record (outcome, winner, scores, how/when it ended) and a gated,
+ * embeddable replay player that reconstructs the match in-browser with the same
+ * foray-core wasm engine the CLI scored it with. A reviewer picks the opponent to
+ * watch from a selector; these replays are what a reviewer judges play on (they
+ * replace proof-of-implementation for adversarial cases).
  *
  * Renders nothing for a non-adversarial run (its `validation.adversarial` is
  * absent), so it is safe to mount unconditionally.
@@ -45,7 +50,7 @@ const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 export function AdversarialReplaySection({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
   const replay = gallery.replayResultFor(run);
-  if (!replay) return null;
+  if (!replay || replay.replays.length === 0) return null;
   return <ReplaySection run={run} replay={replay} />;
 }
 
@@ -56,82 +61,121 @@ function ReplaySection({
   run: RunRecord;
   replay: ReplayResultView;
 }) {
+  const matches = replay.replays;
+  const [selected, setSelected] = useState(0);
   const [launched, setLaunched] = useState(false);
-
-  const outcomeClass =
-    replay.outcome === "win"
-      ? styles.win
-      : replay.outcome === "draw"
-        ? styles.draw
-        : styles.loss;
-
-  const winnerLabel = replay.winner
-    ? replay.winner === "red"
-      ? "Red (submission)"
-      : "Blue (opponent)"
-    : "Draw";
+  const match = matches[Math.min(selected, matches.length - 1)] ?? matches[0]!;
 
   return (
     <Panel>
-      <h2 className={detailStyles.section}>Canonical match</h2>
+      <h2 className={detailStyles.section}>Proof matches</h2>
 
-      {/* The recorded match record: how the single scored match resolved. */}
-      <dl className={styles.record}>
-        <dt className={styles.recordTerm}>Outcome</dt>
-        <dd className={outcomeClass}>{replay.outcome}</dd>
+      <p className={styles.notice}>
+        The submission was auto-replayed against each reference opponent. Pick an
+        opponent to watch the match the model&rsquo;s controller actually played.
+      </p>
 
-        <dt className={styles.recordTerm}>Opponent</dt>
-        <dd>{replay.opponent} (Blue)</dd>
-
-        <dt className={styles.recordTerm}>Winner</dt>
-        <dd>{winnerLabel}</dd>
-
-        <dt className={styles.recordTerm}>Score</dt>
-        <dd>
-          <span className={styles.scoreRed}>Red {replay.redScore}</span>
-          {" — "}
-          <span className={styles.scoreBlue}>Blue {replay.blueScore}</span>
-        </dd>
-
-        <dt className={styles.recordTerm}>Ended</dt>
-        <dd>
-          {replay.ended} · {replay.ticks} ticks
-        </dd>
-      </dl>
-
-      {replay.detail ? (
-        <p className={styles.detail}>{replay.detail}</p>
+      {matches.length > 1 ? (
+        <label className={styles.opponentPicker}>
+          <span className={styles.recordTerm}>Opponent</span>
+          <select
+            className={styles.opponentSelect}
+            value={selected}
+            onChange={(e) => {
+              setSelected(Number(e.target.value));
+              // A new opponent means a new replay; collapse the player back to its
+              // gate so the next launch loads the chosen match.
+              setLaunched(false);
+            }}
+          >
+            {matches.map((m, i) => (
+              <option key={m.opponent} value={i}>
+                {m.opponent}
+                {m.scored ? "" : " (exhibition)"} — {m.outcome}
+              </option>
+            ))}
+          </select>
+        </label>
       ) : null}
 
-      {replay.replayUrl === null ? (
+      <MatchRecord match={match} />
+
+      {match.detail ? (
+        <p className={styles.detail}>{match.detail}</p>
+      ) : null}
+
+      {match.replayUrl === null ? (
         <p className={styles.detail}>
-          The replay for this run is not available to play here.
+          The replay for this match is not available to play here.
         </p>
       ) : !launched ? (
         // Gate the launch behind a short caveat. The replay reconstructs the
         // model's controller exactly as it played; the engine is only loaded on
         // click so the wasm never downloads for a visitor who doesn't watch.
         <div className={styles.gate}>
-          <p className={styles.notice}>
-            This replays the match the model&rsquo;s controller actually played,
-            reconstructed in your browser by the same engine that scored it.
-          </p>
           <button
             type="button"
             className={styles.launch}
             onClick={() => setLaunched(true)}
           >
-            Launch replay
+            Launch replay vs {match.opponent}
           </button>
         </div>
       ) : (
         <ReplayOverlay
-          label={`Match replay for ${run.id}`}
-          replayUrl={replay.replayUrl}
+          // Key on the opponent so switching mid-watch tears down and rebuilds the
+          // player for the newly selected replay.
+          key={match.opponent}
+          label={`Match replay for ${run.id} vs ${match.opponent}`}
+          replayUrl={match.replayUrl}
           onExit={() => setLaunched(false)}
         />
       )}
     </Panel>
+  );
+}
+
+/** The recorded result of one proof match, from the submission's perspective. */
+function MatchRecord({ match }: { match: ReplayMatchView }) {
+  const outcomeClass =
+    match.outcome === "win"
+      ? styles.win
+      : match.outcome === "draw"
+        ? styles.draw
+        : styles.loss;
+
+  const winnerLabel = match.winner
+    ? match.winner === "red"
+      ? "Red (submission)"
+      : "Blue (opponent)"
+    : "Draw";
+
+  return (
+    <dl className={styles.record}>
+      <dt className={styles.recordTerm}>Outcome</dt>
+      <dd className={outcomeClass}>
+        {match.outcome}
+        {match.scored ? "" : " · exhibition (unscored)"}
+      </dd>
+
+      <dt className={styles.recordTerm}>Opponent</dt>
+      <dd>{match.opponent} (Blue)</dd>
+
+      <dt className={styles.recordTerm}>Winner</dt>
+      <dd>{winnerLabel}</dd>
+
+      <dt className={styles.recordTerm}>Score</dt>
+      <dd>
+        <span className={styles.scoreRed}>Red {match.redScore}</span>
+        {" — "}
+        <span className={styles.scoreBlue}>Blue {match.blueScore}</span>
+      </dd>
+
+      <dt className={styles.recordTerm}>Ended</dt>
+      <dd>
+        {match.ended} · {match.ticks} ticks
+      </dd>
+    </dl>
   );
 }
 

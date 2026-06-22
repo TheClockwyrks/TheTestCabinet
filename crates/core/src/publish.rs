@@ -462,6 +462,11 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         // serve locally before publish).
         self.upload_assets(&record, request.artifacts).await?;
 
+        // For an adversarial run, upload the proof replays and the controller wasm
+        // so a pushed run can be watched and pitted in the arena from any host
+        // (the worker/desktop serve these locally before push).
+        self.upload_adversarial(&record, request.artifacts).await?;
+
         Ok(PushOutcome {
             source_repo,
             playable_build,
@@ -495,6 +500,43 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             self.backend
                 .publish_run_proof(&record.id, &file, bytes)
                 .await?;
+        }
+        Ok(())
+    }
+
+    /// Upload an adversarial run's artifacts to the backend, keyed by run id: every
+    /// proof replay (under its run-root-relative filename, served back through the
+    /// same `/asset/{file}` plumbing the asset media use) and the produced
+    /// controller wasm (so a pushed implementation is resolvable and pittable in
+    /// the arena from any host). A no-op for any non-adversarial run.
+    async fn upload_adversarial(
+        &self,
+        record: &RunRecord,
+        artifacts: &ArtifactCollection,
+    ) -> Result<()> {
+        let Some(adversarial) = &record.validation.adversarial else {
+            return Ok(());
+        };
+        // Each opponent's replay is served back by its own filename
+        // (`replay.json`, `replay-1.json`, …), matching `playable::serve_asset_file`.
+        for replay in &adversarial.replays {
+            let path = artifacts.repo_path.join(&replay.replay_json);
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            self.backend
+                .publish_run_asset(&record.id, &replay.replay_json, bytes)
+                .await?;
+        }
+        // The controller wasm, when the build produced one (a forfeit-before-load
+        // run records an empty path and has nothing to upload).
+        if !adversarial.controller_module.is_empty() {
+            let path = artifacts.repo_path.join(&adversarial.controller_module);
+            if let Ok(bytes) = std::fs::read(&path) {
+                self.backend
+                    .publish_run_controller(&record.id, bytes)
+                    .await?;
+            }
         }
         Ok(())
     }

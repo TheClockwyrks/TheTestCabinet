@@ -22,7 +22,7 @@ use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
-use crate::match_play::TournamentRecord;
+use crate::match_play::{ControllerRef, TournamentRecord};
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -210,6 +210,40 @@ pub trait BackendClient: Send + Sync {
     /// stays valid; the HTTP client overrides it.
     async fn publish_run_asset(&self, _run_id: &str, _file: &str, _bytes: Vec<u8>) -> Result<()> {
         Ok(())
+    }
+
+    /// Upload an adversarial run's controller wasm module for a pushed run, served
+    /// back so the arena can resolve and pit a pushed implementation from any host.
+    /// (`POST /runs/{id}/controller.wasm`) Idempotent: identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without controller support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_controller(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Fetch a pushed adversarial run's controller wasm module.
+    /// (`GET /runs/{id}/controller.wasm`) Used by the arena to resolve a
+    /// [`ControllerKind::PushedRun`](crate::match_play::ControllerKind::PushedRun).
+    ///
+    /// Defaults to an error so a backend without controller support (or a test
+    /// stub) is explicit about not serving one; the HTTP client overrides it.
+    async fn controller_artifact(&self, run_id: &str) -> Result<Vec<u8>> {
+        Err(Error::Publish(format!(
+            "this backend client cannot serve the controller for run `{run_id}`"
+        )))
+    }
+
+    /// List the pushed adversarial controllers for a case: every stored run that
+    /// produced an adversarial result and uploaded a controller, as a
+    /// [`ControllerKind::PushedRun`](crate::match_play::ControllerKind::PushedRun)
+    /// ref. (`GET /adversarial/controllers?testCase=<slug>`) The arena merges these
+    /// with the host's local runs so a pushed implementation is always selectable.
+    ///
+    /// Defaults to an empty list so a backend without arena support (or a test
+    /// stub) stays valid; the HTTP client overrides it.
+    async fn list_adversarial_controllers(&self, _slug: &str) -> Result<Vec<ControllerRef>> {
+        Ok(Vec::new())
     }
 
     /// Publish an adversarial tournament's record (standings + per-match
@@ -740,6 +774,39 @@ impl BackendClient for HttpBackendClient {
             .map_err(|err| backend_err(&url, err))?;
         error_for_status(&url, response).await?;
         Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run_controller(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/controller.wasm", encode(run_id)));
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/wasm")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    async fn controller_artifact(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.get_bytes(&format!("/runs/{}/controller.wasm", encode(run_id)))
+            .await
+    }
+
+    async fn list_adversarial_controllers(&self, slug: &str) -> Result<Vec<ControllerRef>> {
+        let body: ControllersBody = self
+            .get_json(&format!("/adversarial/controllers?testCase={}", encode(slug)))
+            .await?;
+        Ok(body.controllers)
     }
 
     #[instrument(
@@ -1348,6 +1415,11 @@ struct PushAckBody {
 struct PublishAckBody {
     id: String,
     newly_published: bool,
+}
+
+#[derive(Deserialize)]
+struct ControllersBody {
+    controllers: Vec<ControllerRef>,
 }
 
 #[derive(Deserialize)]

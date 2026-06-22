@@ -467,6 +467,21 @@ impl Db {
         Ok((runs, next_before))
     }
 
+    /// Load every stored run for one test case (pending and published),
+    /// newest-first by `finished_at`. Used to enumerate an adversarial case's
+    /// pushed controllers for the arena (the caller filters to adversarial runs
+    /// that uploaded a controller). Unpaginated: an adversarial case's field is
+    /// small.
+    pub async fn list_for_case(&self, slug: &str) -> Result<Vec<StoredRun>> {
+        let rows = run::Entity::find()
+            .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .all(&self.conn)
+            .await?;
+        self.assemble(rows).await
+    }
+
     /// Load every **published** run, newest-first, for full snapshot
     /// regeneration. Pending (unpublished) runs are excluded — the public
     /// snapshot only ever contains published runs.

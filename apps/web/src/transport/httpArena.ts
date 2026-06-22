@@ -8,8 +8,14 @@ import type {
   MatchSummary,
   TournamentRecord,
 } from "@test-cabinet/run-record";
-import type { ArenaApi } from "@test-cabinet/ui/app";
+import type { ArenaApi, ArenaWorkerOption } from "@test-cabinet/ui/app";
 import { getJson, joinUrl, postJson } from "./http";
+
+/** One worker the arena can run on: its identity plus its base URL. */
+export interface ArenaWorker extends ArenaWorkerOption {
+  /** The worker's base URL (web workers are always remote, so never null here). */
+  url: string | null;
+}
 
 // The worker's `POST /tournaments` ack: the id plus the URLs to observe it.
 interface TournamentAck {
@@ -40,25 +46,38 @@ interface TournamentListPage {
 }
 
 /**
- * Build the web host's arena capability from the base URLs it currently holds.
- * `workerUrl` is the active worker (or null when none is connected); `backendUrl`
- * is the backend (or null). The run methods reject without a worker; the read
- * methods reject without a backend. The gallery only offers the run UI when both
- * `canExecute` and the arena are present, so the rejections back a clear failure
- * rather than a silent no-op.
+ * Build the web host's arena capability from the workers and backend it currently
+ * holds. `workers` is every configured worker (each with its base URL); `activeId`
+ * is the worker a call defaults to when none is named; `backendUrl` is the backend
+ * (or null). A run resolves the worker by the call's `workerId` (or the active
+ * worker), and rejects when none is connected; the read methods reject without a
+ * backend. The gallery only offers the run UI when both `canExecute` and the arena
+ * are present, so the rejections back a clear failure rather than a silent no-op.
  */
 export function createHttpArena(
-  workerUrl: string | null,
+  workers: ArenaWorker[],
+  activeId: string | null,
   backendUrl: string | null,
 ): ArenaApi {
-  const requireWorker = (): string => {
-    if (!workerUrl) throw new Error("No worker connected to run the arena on.");
-    return workerUrl;
+  // Resolve a call's worker base URL: the named worker, else the active one.
+  const workerUrl = (workerId?: string): string | null => {
+    const id = workerId ?? activeId;
+    const worker = workers.find((w) => w.id === id) ?? null;
+    return worker?.url ?? null;
+  };
+  const requireWorker = (workerId?: string): string => {
+    const base = workerUrl(workerId);
+    if (!base) throw new Error("No worker connected to run the arena on.");
+    return base;
   };
 
   return {
-    async listControllers(slug): Promise<ControllerRef[]> {
-      const base = requireWorker();
+    listWorkers(): ArenaWorkerOption[] {
+      return workers.map((w) => ({ id: w.id, label: w.label }));
+    },
+
+    async listControllers(slug, _version, workerId): Promise<ControllerRef[]> {
+      const base = requireWorker(workerId);
       const { controllers } = await getJson<{ controllers: ControllerRef[] }>(
         base,
         `/matches/controllers?testCase=${encodeURIComponent(slug)}`,
@@ -67,7 +86,7 @@ export function createHttpArena(
     },
 
     runMatch(input): Promise<{ replay: unknown | null; summary: MatchSummary }> {
-      const base = requireWorker();
+      const base = requireWorker(input.workerId);
       return postJson<{ replay: unknown | null; summary: MatchSummary }>(
         base,
         "/matches",
@@ -81,7 +100,7 @@ export function createHttpArena(
     },
 
     async runTournament(input): Promise<string> {
-      const base = requireWorker();
+      const base = requireWorker(input.workerId);
       const ack = await postJson<TournamentAck>(base, "/tournaments", {
         testCase: input.testCase,
         version: input.version,
@@ -91,8 +110,8 @@ export function createHttpArena(
       return ack.tournamentId;
     },
 
-    subscribeTournament(id, handlers): () => void {
-      const base = workerUrl;
+    subscribeTournament(id, handlers, workerId): () => void {
+      const base = workerUrl(workerId);
       if (!base) {
         handlers.onDone(null, "No worker connected to run the arena on.");
         return () => {};

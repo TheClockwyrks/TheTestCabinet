@@ -171,7 +171,19 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         }
     } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
         match kind {
-            "replay" => &adversarial.replay_json,
+            // Each opponent's replay is one entry in `replays`, addressed by its
+            // index: `replay.json` (frame `None`) is the canonical opponent at
+            // index 0, `replay-<i>.json` selects entry `i`.
+            "replay" => {
+                let index = frame.unwrap_or(0) as usize;
+                match adversarial.replays.get(index) {
+                    Some(entry) => &entry.replay_json,
+                    // Fall back to the canonical path for index 0 even when the
+                    // list is absent (a forfeit run records no replays).
+                    None if index == 0 => &adversarial.replay_json,
+                    None => return None,
+                }
+            }
             _ => return None,
         }
     } else {
