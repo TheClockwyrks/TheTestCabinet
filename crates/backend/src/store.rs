@@ -188,6 +188,7 @@ pub struct StoredBuild {
 /// types coexist on one stored shape (only one pair is set).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StoredContract {
     /// The exported function invoked once per tick (adversarial) or once per
     /// scenario (performance).
@@ -212,6 +213,7 @@ pub struct StoredContract {
 /// types coexist (only one is set).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StoredSandbox {
     /// Adversarial only: the wasmtime fuel ceiling for a single tick.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -239,6 +241,7 @@ pub struct StoredCase {
 /// [`StoredManifest`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StoredSimulation {
     /// The fixed, faked delta handed to the game logic each tick (milliseconds).
     pub timestep_ms: u32,
@@ -250,6 +253,7 @@ pub struct StoredSimulation {
 /// [`StoredManifest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StoredMatch {
     /// Controllers per match.
     pub participants: u32,
@@ -263,6 +267,7 @@ pub struct StoredMatch {
 /// persisted in a [`StoredManifest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StoredReplay {
     /// The run-workspace-relative path the renderer is seeded to, forward-slashed.
     pub renderer: String,

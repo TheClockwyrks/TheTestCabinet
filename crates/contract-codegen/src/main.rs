@@ -219,6 +219,11 @@ fn main() -> Result<()> {
         anon("backend-api/error.schema.json", root_schema::<berr::ErrorEnvelope>()),
         anon("backend-api/test-case-catalog.schema.json", root_schema::<bapi::CatalogResponse>()),
         anon("backend-api/test-case-versions.schema.json", root_schema::<bapi::VersionsResponse>()),
+        // The fully-resolved definition of one test-case version (`GET
+        // /test-cases/{slug}/{version}`). Self-contained except for the core
+        // run-record types it shares (`TestType`, `MediaKind`, `AssetSheet`),
+        // which are rewritten to cross-document `$ref`s at the run-record URL.
+        anon("backend-api/resolved-test-case-version.schema.json", root_schema::<bapi::VersionResponse>()),
         // The backend's push request (`POST /runs`): the run record, its links,
         // and the recorded event stream. References the core run-record document
         // by URL; its `LinksIn` and the `HarnessEvent`/`EventKind` tree stay

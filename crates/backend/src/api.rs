@@ -27,7 +27,7 @@ mod tournaments;
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
 pub use runs::{LinksIn, PushRequest};
-pub use test_cases::{CatalogCase, CatalogResponse, VersionsResponse};
+pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
 #[derive(Clone)]

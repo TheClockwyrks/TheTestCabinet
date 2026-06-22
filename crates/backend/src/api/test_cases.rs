@@ -414,8 +414,14 @@ pub struct VersionsResponse {
     pub versions: Vec<String>,
 }
 
+/// The resolved, fully-rendered definition of one test-case version: the body of
+/// `GET /test-cases/{slug}/{version}`. Everything a reporter needs to present the
+/// case — its metadata, the per-test-type contract/sandbox shapes, the rendered
+/// prompt and seeded specs, and every variant, reference, proof, check, and
+/// reviewer item — resolved as a real run receives them.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct VersionResponse {
     slug: String,
     version: String,
@@ -461,6 +467,7 @@ pub struct VersionResponse {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct BuildOut {
     install: String,
     build: String,
@@ -470,6 +477,7 @@ struct BuildOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct CanvasOut {
     width: u32,
     height: u32,
@@ -478,6 +486,7 @@ struct CanvasOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ToolOut {
     binary: String,
     preview: String,
@@ -485,11 +494,13 @@ struct ToolOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct OutputOut {
     actions: String,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct SpecOut {
     source: String,
     dest: String,
@@ -497,12 +508,14 @@ struct SpecOut {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct AssetOut {
     source: String,
     dest: String,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct WorkspaceOut {
     source: String,
     dest: String,
@@ -510,6 +523,7 @@ struct WorkspaceOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct VariantOut {
     slug: String,
     name: String,
@@ -525,6 +539,7 @@ struct VariantOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReviewItemOut {
     id: String,
     title: String,
@@ -537,6 +552,7 @@ struct ReviewItemOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct DomainOut {
     id: String,
     name: String,
@@ -545,6 +561,7 @@ struct DomainOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReferenceOut {
     view: String,
     /// How the reference is produced (`rendered`, `image`, or `video`).
@@ -555,6 +572,7 @@ struct ReferenceOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ProofOut {
     id: String,
     name: String,
@@ -564,6 +582,7 @@ struct ProofOut {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct CheckOut {
     view: String,
     name: String,

@@ -1,10 +1,676 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AssetKind": {
+      "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is **either** a single sprite or a sprite sheet — never both, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences). Defaults to\n[`Self::Sprite`] so a manifest that predates the discriminator — and every\nnon-asset-generation case — resolves unchanged.",
+      "oneOf": [
+        {
+          "const": "sprite",
+          "description": "One sprite drawn onto the whole canvas (the original asset-generation shape).",
+          "type": "string"
+        },
+        {
+          "const": "sprite-sheet",
+          "description": "A grid of animation frames drawn onto the canvas, sliced into the named\nsequences the `[sheet]` table declares.",
+          "type": "string"
+        }
+      ]
+    },
+    "AssetOut": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["source", "dest"],
+      "type": "object"
+    },
+    "BuildOut": {
+      "properties": {
+        "build": {
+          "type": "string"
+        },
+        "install": {
+          "type": "string"
+        },
+        "module": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["install", "build"],
+      "type": "object"
+    },
+    "CanvasOut": {
+      "properties": {
+        "background": {
+          "type": "string"
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["width", "height", "background"],
+      "type": "object"
+    },
+    "CheckAction": {
+      "description": "A single action that drives a served implementation toward a view.\n\nSerializes to the JSON shape the browser driver consumes (an internally\ntagged `{ \"type\": … }` object); see `packages/browser-driver/driver.mjs`.",
+      "oneOf": [
+        {
+          "description": "Pause for `ms` milliseconds.",
+          "properties": {
+            "ms": {
+              "description": "Duration to wait, in milliseconds.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "wait",
+              "type": "string"
+            }
+          },
+          "required": ["type", "ms"],
+          "type": "object"
+        },
+        {
+          "description": "Press and release a key (Playwright key name, e.g. `Enter`, `ArrowUp`).",
+          "properties": {
+            "key": {
+              "description": "The key to press.",
+              "type": "string"
+            },
+            "type": {
+              "const": "key",
+              "type": "string"
+            }
+          },
+          "required": ["type", "key"],
+          "type": "object"
+        },
+        {
+          "description": "Hold a key down for `ms` milliseconds, then release it.",
+          "properties": {
+            "key": {
+              "description": "The key to hold.",
+              "type": "string"
+            },
+            "ms": {
+              "description": "How long to hold it, in milliseconds.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "hold",
+              "type": "string"
+            }
+          },
+          "required": ["type", "key", "ms"],
+          "type": "object"
+        },
+        {
+          "description": "Click a logical-pixel point on the page.",
+          "properties": {
+            "type": {
+              "const": "click",
+              "type": "string"
+            },
+            "x": {
+              "description": "Horizontal position, in logical pixels.",
+              "format": "double",
+              "type": "number"
+            },
+            "y": {
+              "description": "Vertical position, in logical pixels.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": ["type", "x", "y"],
+          "type": "object"
+        }
+      ]
+    },
+    "CheckOut": {
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/CheckAction"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "referenceView": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": ["view", "name", "referenceView", "actions"],
+      "type": "object"
+    },
+    "DomainOut": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "description"],
+      "type": "object"
+    },
+    "OutputOut": {
+      "properties": {
+        "actions": {
+          "type": "string"
+        }
+      },
+      "required": ["actions"],
+      "type": "object"
+    },
+    "ProofOut": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind", "dest"],
+      "type": "object"
+    },
+    "ReferenceKind": {
+      "description": "How a reference view's source is turned into the seeded/served artifact.",
+      "oneOf": [
+        {
+          "const": "rendered",
+          "description": "An HTML mockup rendered to a PNG screenshot. The served media is always an\nimage.",
+          "type": "string"
+        },
+        {
+          "const": "image",
+          "description": "A static image file used as-is.",
+          "type": "string"
+        },
+        {
+          "const": "video",
+          "description": "A static video file (`mp4`) used as-is.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReferenceOut": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ReferenceKind",
+          "description": "How the reference is produced (`rendered`, `image`, or `video`)."
+        },
+        "mediaUrl": {
+          "description": "The URL path the reference media is served under.",
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": ["view", "kind", "mediaUrl"],
+      "type": "object"
+    },
+    "ReviewItemOut": {
+      "properties": {
+        "domain": {
+          "type": ["string", "null"]
+        },
+        "id": {
+          "type": "string"
+        },
+        "proof": {
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "type": ["string", "null"]
+        },
+        "text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "weight": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["id", "title", "text", "weight"],
+      "type": "object"
+    },
+    "SpecOut": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "template": {
+          "type": "boolean"
+        }
+      },
+      "required": ["source", "dest", "template"],
+      "type": "object"
+    },
+    "StoredContract": {
+      "description": "The submission contract of an adversarial or performance case persisted in a\n[`StoredManifest`]. Path fields are forward-slashed run-workspace-relative keys.\nAdversarial carries the per-tick `world`/`action` schemas; performance carries\nthe per-scenario `input`/`output` schemas. The pairs are `Option` so the two\ntypes coexist on one stored shape (only one pair is set).",
+      "properties": {
+        "action": {
+          "description": "Adversarial only: the seeded `action` schema path.",
+          "type": ["string", "null"]
+        },
+        "entry": {
+          "description": "The exported function invoked once per tick (adversarial) or once per\nscenario (performance).",
+          "type": "string"
+        },
+        "input": {
+          "description": "Performance only: the seeded `input` (scenario) schema path.",
+          "type": ["string", "null"]
+        },
+        "output": {
+          "description": "Performance only: the seeded `output` (state) schema path.",
+          "type": ["string", "null"]
+        },
+        "world": {
+          "description": "Adversarial only: the seeded `world` observation schema path.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["entry"],
+      "type": "object"
+    },
+    "StoredMatch": {
+      "description": "How an adversarial case pairs implementations into matches, persisted in a\n[`StoredManifest`].",
+      "properties": {
+        "participants": {
+          "description": "Controllers per match.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rounds": {
+          "description": "Matches played per pairing.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "structure": {
+          "description": "How the field is paired (for example `round-robin`).",
+          "type": "string"
+        }
+      },
+      "required": ["participants", "structure", "rounds"],
+      "type": "object"
+    },
+    "StoredReplay": {
+      "description": "How an adversarial case renders a recorded match for browser playback,\npersisted in a [`StoredManifest`].",
+      "properties": {
+        "renderer": {
+          "description": "The run-workspace-relative path the renderer is seeded to, forward-slashed.",
+          "type": "string"
+        }
+      },
+      "required": ["renderer"],
+      "type": "object"
+    },
+    "StoredSandbox": {
+      "description": "The sandbox limits of an adversarial or performance case persisted in a\n[`StoredManifest`]. Adversarial meters per tick (`fuel_per_tick`); performance\nmeters per scenario (`fuel_limit`). Both fuel fields are `Option` so the two\ntypes coexist (only one is set).",
+      "properties": {
+        "fuelLimit": {
+          "description": "Performance only: the wasmtime fuel ceiling for a whole scenario.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "fuelPerTick": {
+          "description": "Adversarial only: the wasmtime fuel ceiling for a single tick.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "maxMemoryBytes": {
+          "description": "The linear-memory cap in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["maxMemoryBytes"],
+      "type": "object"
+    },
+    "StoredSimulation": {
+      "description": "The simulation-loop configuration of an adversarial case persisted in a\n[`StoredManifest`].",
+      "properties": {
+        "maxTicks": {
+          "description": "Hard cap on match length.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timestepMs": {
+          "description": "The fixed, faked delta handed to the game logic each tick (milliseconds).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["timestepMs", "maxTicks"],
+      "type": "object"
+    },
+    "ToolOut": {
+      "properties": {
+        "binary": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        }
+      },
+      "required": ["binary", "preview"],
+      "type": "object"
+    },
+    "VariantOut": {
+      "properties": {
+        "description": {
+          "type": ["string", "null"]
+        },
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "description": "The variant's prompt, rendered as a real run receives it.",
+          "type": "string"
+        },
+        "proofs": {
+          "items": {
+            "$ref": "#/$defs/ProofOut"
+          },
+          "type": "array"
+        },
+        "references": {
+          "items": {
+            "$ref": "#/$defs/ReferenceOut"
+          },
+          "type": "array"
+        },
+        "reviewItems": {
+          "items": {
+            "$ref": "#/$defs/ReviewItemOut"
+          },
+          "type": "array"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "specs": {
+          "items": {
+            "$ref": "#/$defs/SpecOut"
+          },
+          "type": "array"
+        },
+        "workspace": {
+          "items": {
+            "$ref": "#/$defs/WorkspaceOut"
+          },
+          "type": ["array", "null"]
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "prompt",
+        "specs",
+        "references",
+        "proofs",
+        "reviewItems"
+      ],
+      "type": "object"
+    },
+    "WorkspaceOut": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["source", "dest"],
+      "type": "object"
+    }
+  },
   "$id": "https://docs.testcabinet.ai/schema/backend-api/resolved-test-case-version.schema.json",
-  "title": "ResolvedTestCaseVersion",
-  "description": "The full manifest a runner needs to seed and validate a run, as returned by GET /test-cases/{slug}/versions/{version}. It is the authored test-case version with host-absolute paths rewritten to definition-store-relative `source` keys (a runner has no checkout), references resolved to backend-rendered screenshot URLs rather than mockup source, and the prompt template served inline. Spec and asset bodies are NOT inlined; they are fetched per file from the artifact endpoint using each `source` key.",
-  "type": "object",
-  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The resolved, fully-rendered definition of one test-case version: the body of\n`GET /test-cases/{slug}/{version}`. Everything a reporter needs to present the\ncase — its metadata, the per-test-type contract/sandbox shapes, the rendered\nprompt and seeded specs, and every variant, reference, proof, check, and\nreviewer item — resolved as a real run receives them.",
+  "properties": {
+    "assetKind": {
+      "$ref": "#/$defs/AssetKind"
+    },
+    "assets": {
+      "items": {
+        "$ref": "#/$defs/AssetOut"
+      },
+      "type": "array"
+    },
+    "build": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BuildOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "canvas": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CanvasOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/CheckOut"
+      },
+      "type": "array"
+    },
+    "commonProofs": {
+      "items": {
+        "$ref": "#/$defs/ProofOut"
+      },
+      "type": "array"
+    },
+    "commonReferences": {
+      "items": {
+        "$ref": "#/$defs/ReferenceOut"
+      },
+      "type": "array"
+    },
+    "commonReviewItems": {
+      "items": {
+        "$ref": "#/$defs/ReviewItemOut"
+      },
+      "type": "array"
+    },
+    "commonSpecs": {
+      "items": {
+        "$ref": "#/$defs/SpecOut"
+      },
+      "type": "array"
+    },
+    "contract": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredContract"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "description": {
+      "type": ["string", "null"]
+    },
+    "difficulty": {
+      "type": "string"
+    },
+    "domains": {
+      "items": {
+        "$ref": "#/$defs/DomainOut"
+      },
+      "type": "array"
+    },
+    "init": {
+      "type": ["string", "null"]
+    },
+    "match": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredMatch"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "maxRuntimeSeconds": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "output": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OutputOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "promptTemplate": {
+      "type": "string"
+    },
+    "replay": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredReplay"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sandbox": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredSandbox"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sheet": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/AssetSheet"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "simulation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredSimulation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "slug": {
+      "type": "string"
+    },
+    "summary": {
+      "type": ["string", "null"]
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "testType": {
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType"
+    },
+    "tool": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/VariantOut"
+      },
+      "type": "array"
+    },
+    "version": {
+      "type": "string"
+    },
+    "workspace": {
+      "items": {
+        "$ref": "#/$defs/WorkspaceOut"
+      },
+      "type": "array"
+    }
+  },
   "required": [
     "slug",
     "version",
@@ -12,9 +678,11 @@
     "difficulty",
     "tags",
     "maxRuntimeSeconds",
-    "build",
+    "testType",
+    "assetKind",
     "promptTemplate",
     "commonSpecs",
+    "workspace",
     "assets",
     "variants",
     "commonReferences",
@@ -23,264 +691,6 @@
     "commonReviewItems",
     "domains"
   ],
-  "properties": {
-    "slug": { "type": "string" },
-    "version": { "type": "string" },
-    "name": { "type": "string" },
-    "difficulty": { "type": "string" },
-    "tags": { "type": "array", "items": { "type": "string" } },
-    "summary": {
-      "type": ["string", "null"],
-      "description": "Short site-facing summary."
-    },
-    "description": {
-      "type": ["string", "null"],
-      "description": "The resolved description.md body. Site-facing context, NOT seeded into the workspace."
-    },
-    "maxRuntimeSeconds": { "type": "integer" },
-    "build": { "$ref": "#/$defs/BuildCommands" },
-    "promptTemplate": {
-      "type": "string",
-      "description": "The prompt.hbs Handlebars source, served inline because the runner renders it locally and it never hits the runner's disk."
-    },
-    "commonSpecs": {
-      "type": "array",
-      "description": "Specs seeded for every variant.",
-      "items": { "$ref": "#/$defs/SpecFile" }
-    },
-    "assets": {
-      "type": "array",
-      "description": "Asset files seeded into the workspace; authored directories are expanded to one entry per file.",
-      "items": { "$ref": "#/$defs/AssetFile" }
-    },
-    "variants": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/Variant" }
-    },
-    "commonReferences": {
-      "type": "array",
-      "description": "Reference views shared by every variant, resolved to served media (rendered screenshots or static image/video).",
-      "items": { "$ref": "#/$defs/ResolvedReference" }
-    },
-    "commonProofs": {
-      "type": "array",
-      "description": "Proof-of-implementation artifacts requested for every variant. Declarations only — the media is produced by the agent during a run, not served here.",
-      "items": { "$ref": "#/$defs/Proof" }
-    },
-    "checks": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/Check" }
-    },
-    "commonReviewItems": {
-      "type": "array",
-      "description": "Reviewer checklist items shared by every variant. Reporter-side material (not seeded): the reviewer must record a verdict for each before a run can be published.",
-      "items": { "$ref": "#/$defs/ReviewItem" }
-    },
-    "domains": {
-      "type": "array",
-      "description": "The case's scoring domains (case-level, not variant-scoped). A reviewer rates each independently; the run's overall rating is the worst across them. At least one is always present.",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/Domain" }
-    }
-  },
-  "$defs": {
-    "BuildCommands": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "The install and build commands run to validate an implementation.",
-      "properties": {
-        "install": { "type": "string" },
-        "build": { "type": "string" }
-      }
-    },
-    "SpecFile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source", "dest"],
-      "properties": {
-        "source": {
-          "type": "string",
-          "description": "Store-relative key the runner passes to the artifact endpoint to fetch this file's bytes."
-        },
-        "dest": {
-          "type": "string",
-          "description": "Path in the workspace the file is seeded to."
-        },
-        "template": {
-          "type": "boolean",
-          "description": "Whether `source` is a Handlebars (.hbs) template the runner renders before seeding. Defaults to false.",
-          "default": false
-        }
-      }
-    },
-    "AssetFile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source", "dest"],
-      "properties": {
-        "source": {
-          "type": "string",
-          "description": "Store-relative key the runner passes to the artifact endpoint to fetch this file's bytes."
-        },
-        "dest": {
-          "type": "string",
-          "description": "Path in the workspace the file is seeded to."
-        }
-      }
-    },
-    "ResolvedReference": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["view", "kind", "mediaUrl"],
-      "description": "A reference view resolved to its served media. A rendered mockup (`kind: rendered`) is a backend-rendered PNG; a static reference is the authored image (`kind: image`) or video (`kind: video`) served as-is. The runner downloads it, seeds it as the visual target, and (for an image) uses it as the validation baseline. The runner never receives a rendered reference's mockup HTML.",
-      "properties": {
-        "view": { "type": "string" },
-        "kind": {
-          "enum": ["rendered", "image", "video"],
-          "description": "How the reference is produced."
-        },
-        "mediaUrl": {
-          "type": "string",
-          "description": "Backend path to the served media (GET /test-cases/{slug}/versions/{version}/references/{scope}/{view}.{ext}, scope `_common` or a variant slug)."
-        }
-      }
-    },
-    "Proof": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind", "dest"],
-      "description": "A proof-of-implementation artifact a test case asks the build to produce: a screenshot or short clip written to `dest` as evidence. Validation records whether it turned up; this is a declaration only.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Stable slug identifying the proof; recorded in validation and paired by review items."
-        },
-        "name": { "type": "string" },
-        "kind": {
-          "enum": ["image", "video"],
-          "description": "Media kind, inferred from the dest extension."
-        },
-        "dest": {
-          "type": "string",
-          "description": "Path, relative to the run workspace root, the build must write the proof to."
-        }
-      }
-    },
-    "Variant": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "slug",
-        "name",
-        "specs",
-        "references",
-        "proofs",
-        "reviewItems"
-      ],
-      "properties": {
-        "slug": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": ["string", "null"] },
-        "specs": {
-          "type": "array",
-          "description": "Specs additive to the common specs, same shape.",
-          "items": { "$ref": "#/$defs/SpecFile" }
-        },
-        "references": {
-          "type": "array",
-          "description": "References additive to the common references, resolved to served media.",
-          "items": { "$ref": "#/$defs/ResolvedReference" }
-        },
-        "proofs": {
-          "type": "array",
-          "description": "Proof artifacts additive to the common proofs, requested only when this variant is selected.",
-          "items": { "$ref": "#/$defs/Proof" }
-        },
-        "reviewItems": {
-          "type": "array",
-          "description": "Reviewer checklist items additive to the common items, surfaced only when this variant is selected.",
-          "items": { "$ref": "#/$defs/ReviewItem" }
-        }
-      }
-    },
-    "ReviewItem": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "title", "text", "weight"],
-      "description": "A reviewer checklist item a test case declares: something a reviewer must explicitly check after playing the build. Not seeded into the run. Worth `weight` points toward the run's score.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Stable slug identifying the item; recorded with the reviewer's verdict."
-        },
-        "title": {
-          "type": "string",
-          "description": "A short heading shown above the item in the reviewer UI, prefixed with a synthesized number at display time."
-        },
-        "text": {
-          "type": "string",
-          "description": "The prose a reviewer reads — what to check."
-        },
-        "reference": {
-          "type": ["string", "null"],
-          "description": "Optional reference view shown as the expected target for this item."
-        },
-        "proof": {
-          "type": ["string", "null"],
-          "description": "Optional proof id whose submitted media is shown for this item."
-        },
-        "weight": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "How many points this item is worth toward the run's score: a pass earns this weight, a fail earns none, and the total available is the sum over the variant's effective checklist."
-        },
-        "domain": {
-          "type": ["string", "null"],
-          "description": "Optional scoring domain (by id) this item belongs to, or null for a general item that belongs to no single domain."
-        }
-      }
-    },
-    "Domain": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "description"],
-      "description": "A scoring domain a reviewer rates independently. The run's overall rating is the worst across all of a case's domains.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Stable slug identifying the domain; recorded with the reviewer's per-domain rating."
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable display name."
-        },
-        "description": {
-          "type": "string",
-          "description": "A brief description of what the domain covers, shown to the reviewer so they know what they are rating."
-        }
-      }
-    },
-    "Check": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["view", "name", "referenceView", "actions"],
-      "description": "A declared validation check: drive the implementation through `actions`, capture `view`, and compare against the reference identified by `referenceView`.",
-      "properties": {
-        "view": { "type": "string" },
-        "name": { "type": "string" },
-        "referenceView": { "type": "string" },
-        "actions": {
-          "type": "array",
-          "description": "An internally tagged CheckAction list (each item has a `type`), matching the browser-driver action contract.",
-          "items": {
-            "type": "object",
-            "required": ["type"],
-            "properties": {
-              "type": { "type": "string" }
-            }
-          }
-        }
-      }
-    }
-  }
+  "title": "VersionResponse",
+  "type": "object"
 }

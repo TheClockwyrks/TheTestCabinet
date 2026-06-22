@@ -652,6 +652,7 @@ impl std::fmt::Display for TestType {
 /// non-asset-generation case — resolves unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum AssetKind {
     /// One sprite drawn onto the whole canvas (the original asset-generation shape).
     #[default]
@@ -1074,6 +1075,7 @@ impl ReferenceView {
 /// tagged `{ "type": … }` object); see `packages/browser-driver/driver.mjs`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum CheckAction {
     /// Pause for `ms` milliseconds.
     Wait {
