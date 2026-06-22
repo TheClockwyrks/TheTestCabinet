@@ -35,7 +35,9 @@ const RUN_ID = "run-123";
 type Handlers = Parameters<WorkerClient["subscribeToRun"]>[1];
 
 function event(fields: Partial<HarnessEvent> & { type: string }): HarnessEvent {
-  return { timestamp: "2026-06-18T00:00:00Z", ...fields };
+  // The fixtures carry only the fields each event kind's renderer reads; cast to
+  // the precise discriminated union rather than spell out every optional field.
+  return { timestamp: "2026-06-18T00:00:00Z", ...fields } as HarnessEvent;
 }
 
 function preview(

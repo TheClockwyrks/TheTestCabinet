@@ -351,8 +351,9 @@ function emit(line: string, handlers: RunSubscription): void {
   try {
     parsed = JSON.parse(line);
   } catch {
-    // A malformed line shouldn't tear down the stream; surface it as a raw event.
-    handlers.onEvent({ timestamp: "", type: "raw", raw: line } as HarnessEvent);
+    // A malformed line shouldn't tear down the stream; surface it as an
+    // unclassified event carrying the raw text (the contract's `unknown` kind).
+    handlers.onEvent({ timestamp: "", type: "unknown", raw: line });
     return;
   }
   // Live asset-generation frames share the event stream, tagged `asset_preview`;

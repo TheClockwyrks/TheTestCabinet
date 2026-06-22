@@ -8,6 +8,7 @@ import type {
   RunRecord,
   TestType,
 } from "@test-cabinet/run-record";
+import type { HarnessEvent } from "@test-cabinet/run-record/event";
 import type {
   DomainRating,
   Rating,
@@ -17,6 +18,11 @@ import type {
 
 export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
 export type { MediaKind, TestType };
+// The normalized harness event shape is generated from the Rust `HarnessEvent`
+// contract (crates/core/src/event.rs) — the live monitor and the published
+// Events tab both render it. Re-exported here so consumers keep importing it
+// from the shared client types.
+export type { HarnessEvent };
 
 // --- Catalog (served by the backend) ---
 
@@ -238,21 +244,6 @@ export interface PushResult {
 // publish a run carrying zero reviews — the editor gates the action on that.
 export interface PublishResult {
   newlyPublished: boolean;
-}
-
-// A normalized harness event (the run-record contract's HarnessEvent shape). The
-// `type` discriminator and its fields are inlined; the feed renders it
-// generically.
-export interface HarnessEvent {
-  timestamp: string;
-  sessionId?: string;
-  type: string;
-  message?: string;
-  command?: string;
-  path?: string;
-  query?: string;
-  raw?: unknown;
-  [key: string]: unknown;
 }
 
 // A live asset-generation preview frame, streamed as the model draws (mirrors the

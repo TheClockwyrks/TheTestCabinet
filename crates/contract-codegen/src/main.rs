@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
 use test_cabinet_core::{
-    accounts as acct, match_play as mp, metrics as m, review as rv, run_record as rr,
+    accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
     test_case as tc, validation as val,
 };
 use test_cabinet_backend::{api as bapi, error as berr, snapshot as snap};
@@ -119,6 +119,16 @@ fn main() -> Result<()> {
                 rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating, snap::Review,
             ],
         },
+        // The normalized harness event stream: the live monitor and the
+        // published Events tab both render these. `HarnessEvent` carries the
+        // common fields with the `EventKind` discriminator flattened inline.
+        TsModule {
+            file: "event.ts",
+            decls: ts_decls![&cfg;
+                ev::OrchestrationAction, ev::SystemStage, ev::SystemStatus, ev::EventKind,
+                ev::HarnessEvent,
+            ],
+        },
         // The auth surface: accounts and the register/login request + token
         // response.
         TsModule {
@@ -209,6 +219,11 @@ fn main() -> Result<()> {
         anon("backend-api/error.schema.json", root_schema::<berr::ErrorEnvelope>()),
         anon("backend-api/test-case-catalog.schema.json", root_schema::<bapi::CatalogResponse>()),
         anon("backend-api/test-case-versions.schema.json", root_schema::<bapi::VersionsResponse>()),
+        // The backend's push request (`POST /runs`): the run record, its links,
+        // and the recorded event stream. References the core run-record document
+        // by URL; its `LinksIn` and the `HarnessEvent`/`EventKind` tree stay
+        // inline as this is their only referencer.
+        anon("backend-api/publish-run-request.schema.json", root_schema::<bapi::PushRequest>()),
         SchemaDoc {
             rel_path: "backend-api/review.schema.json",
             root: Some("Review"),

@@ -23,11 +23,13 @@ use crate::execution::OutputStream;
 /// nested payload.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct HarnessEvent {
     /// ISO 8601 time the event was observed by the testing harness.
     pub timestamp: String,
     /// The underlying harness's session identifier, when one is known.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub session_id: Option<String>,
     /// The type specific event data.
     #[serde(flatten)]
@@ -67,6 +69,11 @@ impl HarnessEvent {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+// Every `Option<T>` field below is `#[serde(skip_serializing_if)]`, so it is
+// omitted from the wire when absent rather than serialized as `null`; render it
+// as a TypeScript optional (`field?: T`) to match.
+#[cfg_attr(feature = "contract", ts(optional_fields))]
 pub enum EventKind {
     /// A plain natural language message emitted by the agent.
     Agent {
@@ -208,6 +215,7 @@ pub enum EventKind {
     /// Harness output that could not be classified as any other type.
     Unknown {
         /// The original, unclassified harness output.
+        #[cfg_attr(feature = "contract", ts(type = "unknown"))]
         raw: Value,
     },
 }
@@ -225,6 +233,7 @@ enum GoosePendingKind {
 /// The subagent orchestration states a harness can report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum OrchestrationAction {
     /// A subagent began running.
     SubagentStarted,
@@ -239,6 +248,7 @@ pub enum OrchestrationAction {
 /// session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum SystemStage {
     /// Pulling the run-container image.
     PullImage,
@@ -257,6 +267,7 @@ pub enum SystemStage {
 /// The point a [`SystemStage`] has reached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum SystemStatus {
     /// The stage has begun.
     Started,

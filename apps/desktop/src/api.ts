@@ -12,6 +12,7 @@ import type {
   TestType,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import type { HarnessEvent } from "@test-cabinet/run-record/event";
 import type { InProgressRun, RunNotification } from "@test-cabinet/ui/client";
 
 export function isTauri(): boolean {
@@ -205,20 +206,10 @@ export interface PublishResult {
   newlyPublished: boolean;
 }
 
-// A normalized harness event (the run-record contract's HarnessEvent shape). The
-// `type` discriminator and its fields are inlined; we keep it loose here since
-// the UI renders the feed generically.
-export interface HarnessEvent {
-  timestamp: string;
-  sessionId?: string;
-  type: string;
-  message?: string;
-  command?: string;
-  path?: string;
-  query?: string;
-  raw?: unknown;
-  [key: string]: unknown;
-}
+// The normalized harness event shape, generated from the Rust `HarnessEvent`
+// contract (crates/core/src/event.rs) and re-exported so the live feed and the
+// recorded streams below share the same source of truth as the UI.
+export type { HarnessEvent };
 
 export interface LiveEvent {
   runId: string;

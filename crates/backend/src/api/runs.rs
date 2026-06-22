@@ -350,8 +350,18 @@ fn review_out(review: &StoredReview) -> ReviewOut {
 
 // --- Wire shapes ------------------------------------------------------------
 
+/// The body of `POST /runs`, the **push** step: a finished run's
+/// machine-generated record, its resolved public links, and its optional
+/// recorded event stream. A push stores the run *without* a review and does not
+/// make it public — the build is released so it can be reviewed, but the run is
+/// excluded from the public snapshot until it is published (see
+/// `POST /runs/{id}/publish`). Reviews are submitted separately to
+/// `POST /runs/{id}/reviews`. Requires a bearer token; idempotent on `record.id`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PushRequest {
+    /// A full run record. Its `links` MAY be empty here; the `links` below are
+    /// authoritative and the backend writes them onto the stored record.
     record: RunRecord,
     #[serde(default)]
     links: LinksIn,
@@ -370,11 +380,17 @@ pub struct ReviewRequest {
     checklist: Vec<ReviewVerdict>,
 }
 
+/// The resolved public links for a pushed run — the authoritative copies the
+/// backend writes onto the stored record.
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct LinksIn {
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LinksIn {
+    /// The public repository holding the run's generated source.
     #[serde(default)]
     source_repo: Option<String>,
+    /// The deployment URL the build tool reported, recorded verbatim. A pushed
+    /// run's build is playable (so it can be reviewed) even before publish.
     #[serde(default)]
     playable_build: Option<String>,
 }

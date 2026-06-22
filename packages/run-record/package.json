@@ -15,6 +15,10 @@
       "types": "./dist/review.d.ts",
       "default": "./dist/review.js"
     },
+    "./event": {
+      "types": "./dist/event.d.ts",
+      "default": "./dist/event.js"
+    },
     "./account": {
       "types": "./dist/account.d.ts",
       "default": "./dist/account.js"
