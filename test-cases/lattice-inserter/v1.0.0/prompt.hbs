@@ -1,13 +1,18 @@
 Draw the **Lattice inserter**, a 12-frame **sprite sheet** of an animated
 swing-arm machine, using only the drawing tool.
 
-The inserter is a renderer sprite for **Lattice**, a top-down factory simulation.
-You are drawing one inserter mounted on the centre tile, viewed in its canonical
-orientation: it **picks an item up from the tile on its left**, swings the item up
-and over, and **drops it on the tile to its right**. Across the twelve frames the
-arm sweeps from left to right carrying the item, then swings back empty, so the
-animation loops seamlessly. The renderer rotates this one sprite for the other
-facings, so you draw this one orientation only.
+The inserter is a renderer sprite for **Lattice**, a factory simulation rendered
+in **Factorio's high-angle, pseudo-3D style** — you are looking *down* on the
+machine, consistent with the assembler, **not** drawing a side elevation. You are
+drawing one inserter mounted on the centre tile, viewed in its canonical
+orientation: it **picks an item up from the tile on its left**, swings the item in
+an arc **across the floor**, and **drops it on the tile to its right**. Across the
+twelve frames the arm sweeps from left to right carrying the item, then swings back
+empty, so the animation loops seamlessly. The pivot base sits at the centre of the
+frame and the arm's raised height reads from shading and a contact shadow on the
+floor, not from the arm climbing up the screen. The renderer rotates this one
+sprite for the other facings, so you draw this one orientation only. The brief's
+**The look** section is the thing to get right.
 
 ## How drawing works
 
@@ -27,7 +32,7 @@ frame's log. Blank starting frames and empty logs are already in place at
 Each operation is an ordinary subcommand with flags, naming its frame:
 
 ```
-draw-sheet fill-rect --frame 0 --x 24 --y 48 --width 16 --height 12 --color "#4d5a64"
+draw-sheet fill-rect --frame 0 --x 24 --y 26 --width 16 --height 12 --color "#4d5a64"
 ```
 
 Run `draw-sheet --help` to list every operation and `draw-sheet <operation>

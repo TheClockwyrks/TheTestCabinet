@@ -88,9 +88,11 @@ id = "scroll-loop"
 title = "Seamless scrolling loop"
 text = """
 Played in order, the eight frames read as one belt surface moving steadily to \
-the right: the chevron pattern advances by the same small step each frame and \
-frame 7 returns to frame 0 with no jump, stutter, or backward slip. The motion \
-must be a clean continuous loop."""
+the right: the chevron pattern advances by the same small step (one-eighth of the \
+chevron pitch) each frame, so all eight frames sit at distinct offsets and a \
+chevron visibly creeps forward across the loop — it must NOT collapse into two \
+frames oscillating between a pair of positions. Frame 7 returns to frame 0 with \
+no jump, stutter, or backward slip: a clean continuous advancing loop."""
 sequences = ["belt-flow"]
 weight = 3
 domain = "fidelity"

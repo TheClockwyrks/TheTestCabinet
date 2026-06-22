@@ -3,9 +3,10 @@ difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
-simulation, as twelve 64x64 frames whose arm sweeps an item from the left \
-pickup tile, over the top, to the right drop tile and swings back empty in a \
-seamless loop, produced one drawing operation at a time."""
+simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
+frames whose arm sweeps an item across the floor from the left pickup tile to the \
+right drop tile and swings back empty in a seamless loop, produced one drawing \
+operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_seconds = 3600
@@ -91,23 +92,40 @@ name = "Base"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Lattice inserter — its fixed \
-grey-blue base anchored at the bottom centre, the amber swing arm and claw that \
-sweep an arc from the left pickup to the right drop, the held steel plate that \
-appears only on the delivery stroke, the strict amber-on-grey palette, and the \
-seamless loop from frame 11 back to frame 0."""
+How faithfully the regenerated sheet matches the Lattice inserter — its high-angle \
+pseudo-3D viewpoint (consistent with the assembler, never a side elevation), its \
+fixed grey-blue pivot base at the centre, the amber swing arm and claw that sweep \
+an arc across the floor from the left pickup to the right drop with height read \
+from shading and a tracking contact shadow, the held steel plate that appears only \
+on the delivery stroke, the strict amber-on-grey palette, and the seamless loop \
+from frame 11 back to frame 0."""
 
 [[review_item]]
 id = "pickup-swing-drop"
-title = "Pickup-left, swing-over, drop-right arc"
+title = "Pickup-left, swing-across, drop-right arc"
 text = """
-Played in order, the twelve frames read as one swing-arm motion: the claw starts \
-low on the LEFT (over the pickup tile), sweeps in a smooth arc up and over the \
-top, and reaches the RIGHT (over the drop tile) — then returns. The hand traces a \
-clean arc between the two sides, not a jump or a straight slide, and the left side \
-is clearly the pickup and the right the drop."""
+Played in order, the twelve frames read as one swing-arm motion seen from above: \
+the claw starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
+(bowing out through the far side of the centre tile at mid-swing), and reaches the \
+RIGHT drop tile — then returns. The hand traces a clean arc between the two sides, \
+not a jump, a straight slide, or a vertical pendulum lift, and the left side is \
+clearly the pickup and the right the drop."""
 sequences = ["swing"]
 weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "pseudo-3d-viewpoint"
+title = "High-angle pseudo-3D viewpoint"
+text = """
+The inserter is drawn from Lattice's high-angle, pseudo-3D camera — looking DOWN \
+on it, consistent with the assembler and belts — NOT as a side elevation. The \
+pivot base sits on the floor at the centre of the frame (not on a ground line at \
+the bottom), the two worked tiles lie flat to its left and right, and the arm's \
+raised height reads from shading plus a contact shadow tracking on the floor \
+beneath the hand, not from the arm climbing up the screen."""
+sequences = ["swing"]
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
@@ -126,9 +144,9 @@ domain = "fidelity"
 id = "anchored-base"
 title = "Anchored base, only the arm moves"
 text = """
-A small grey-blue base/mount sits fixed near the bottom-centre of every frame and \
-does not move, jitter, or change between frames. Only the arm and claw pivot from \
-it; the base is the still anchor the whole swing rotates around."""
+A small grey-blue base/mount sits fixed at the centre of every frame and does not \
+move, jitter, or change between frames. Only the arm and claw pivot from it; the \
+base is the still anchor the whole swing rotates around."""
 sequences = ["swing"]
 weight = 2
 domain = "fidelity"
@@ -161,9 +179,9 @@ domain = "fidelity"
 id = "framing"
 title = "Centred framing with the reach fitting"
 text = """
-The base is centred horizontally near the bottom of the 64x64 frame and the arm's \
-full reach to the left pickup and right drop fits inside the frame with a small \
-margin — neither clipped at the edges nor cramped into the centre. The 64x64 box \
-reads as a 2x2-tile span with the inserter on the centre line."""
+The base is centred in the 64x64 frame as the pivot and the arm's full reach to \
+the left pickup and right drop fits inside the frame with a small margin — neither \
+clipped at the edges nor cramped into the centre. The 64x64 box reads as a \
+2x2-tile span with the pivot at the centre."""
 weight = 1
 domain = "fidelity"

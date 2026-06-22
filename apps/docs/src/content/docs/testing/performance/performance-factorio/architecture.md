@@ -285,6 +285,35 @@ performance run's decisive signal remains correctness plus the fuel number (the
 [performance manifest](/testing/performance/manifests/) carries no replay renderer
 today), and the visualization is a way to make a run legible, not a way to score it.
 
+### Interpolated playback (not one tick per frame)
+
+The renderer **must** be built the same way [Foray's was revised
+to](/testing/adversarial/adversarial-pacman/architecture/#browser-playback): it does
+**not** draw one simulation tick per displayed frame. Ticks are the simulation's
+discrete steps; drawing them raw makes everything **jump** from one tick's state to
+the next, which on a dense factory is illegible — items, inserter hands, and craft
+progress all teleport. Instead the renderer runs a continuous clock and draws each
+moving thing at an **interpolated** position between the two nearest reconstructed
+ticks, so motion reads smoothly. State that genuinely changes *at* a tick boundary
+(a sink's running count, an assembler depositing an output set, an item consumed)
+**snaps** on that tick; only continuous motion is tweened. None of this is a rule —
+the interpolation is pure presentation over the reconstructed canonical states, and
+the shared engine still decides every value.
+
+This matters more here than it does for Foray, because of how belt items move. An
+item's [position](/testing/performance/performance-factorio/overview/#the-fixed-point-item-model)
+is its fixed-point distance from the lane's output end, and it advances by `SPEED`
+units per tick. If the renderer drew one tick per frame, a packed run of items would
+not just stutter — it could appear **not to move at all**: when every item advances
+by the same step, the item that occupied position *p* last tick is replaced by a
+*different* item arriving at position *p* this tick, so a naive tick-to-tick redraw
+shows an item sitting at *p* both frames and the belt looks frozen except at its two
+ends (where items enter and leave). The fix is the same interpolation: match each
+item to its **own** next-tick position (by lane order along the line) and tween *that*
+item's position across the displayed frames, so every item visibly glides forward at
+the belt's speed. Inserter swings (tween the hand along its arc between phases),
+source/sink pulses, and assembler craft progress are smoothed the same way.
+
 ### Renderer sprites
 
 The art the canvas layer draws is **itself produced by The Test Cabinet**: each
@@ -307,8 +336,23 @@ sprites](/testing/adversarial/adversarial-pacman/assets/) are. They sit under th
 
 The sprites are drawn at **32 px/tile** — Factorio's normal-resolution tile size,
 so a one-tile entity is a 32×32 frame, the 3×3 assembler is 96×96, and a sub-tile
-belt item is 16×16. Each directional entity is drawn in a **single canonical
-orientation** (the flow runs east); because these are flat top-down sprites, the
-renderer rotates them for the other three facings rather than the case drawing each
-four times. As with the engine itself, the renderer holds no art of its own — it
-composites these regenerated frames onto the grid the canonical state describes.
+belt item is 16×16. They share one **projection**: Factorio's high-angle,
+**pseudo-3D** view — the factory is seen from above but at a steep angle, with a
+single overhead light, so the ground-level entities (belts, splitters, the
+source/sink housings, the items) sit nearly flat in the ground plane while the
+**machines read as raised blocks with real height** (a lit top face, beveled
+sides, a grounding contact shadow). The assembler and the inserter are explicitly
+*not* flat top-down silhouettes; drawing the inserter as a side elevation — the
+mistake to avoid — would clash with everything around it.
+
+Handling of facing follows from that. Flat ground entities are drawn in a **single
+canonical orientation** (the flow runs east) and the renderer **rotates** them for
+the other three facings rather than the case drawing each four times. The
+**assembler is non-directional** — a symmetric square machine with no facing — so
+the renderer draws its one sheet as-is and never rotates it. The **inserter is
+directional but authored to stay rotatable**: its base is a centred pivot and its
+swing happens in the ground plane (height shown by shading and a tracking contact
+shadow, not by a screen-space lift), so rotating the canonical east-facing sheet
+still reads correctly for the other facings. As with the engine itself, the
+renderer holds no art of its own — it composites these regenerated frames onto the
+grid the canonical state describes.

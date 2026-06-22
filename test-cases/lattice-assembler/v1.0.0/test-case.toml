@@ -2,10 +2,10 @@ name = "Lattice Assembler"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "machine"]
 summary = """
-Draw the Lattice assembler: a top-down 3x3 industrial crafting machine, as a \
-96x96 sprite sheet — eight frames of a seamless working loop whose central core \
-rotates and pulses while the chassis holds still, produced one drawing operation \
-at a time."""
+Draw the Lattice assembler: a chunky pseudo-3D 3x3 industrial crafting machine \
+with visible height, as a 96x96 sprite sheet — eight frames of a seamless working \
+loop whose central core rotates and pulses while the raised chassis holds still, \
+produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_seconds = 3600
@@ -80,18 +80,22 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice assembler brief — its \
-chunky top-down 3x3 industrial silhouette, the grey-blue chassis with \
-hazard-stripe accents, the strict palette, and the central working core that \
-visibly rotates and pulses across a seamless craft loop."""
+chunky pseudo-3D 3x3 industrial machine that reads as a raised block (a lit top \
+face, beveled sides, a grounding contact shadow) rather than a flat top-down \
+plate, the grey-blue chassis with hazard-stripe accents, the strict palette, and \
+the central working core that visibly rotates and pulses across a seamless craft \
+loop."""
 
 [[review_item]]
 id = "industrial-3x3"
-title = "Chunky 3x3 industrial machine"
+title = "Chunky pseudo-3D 3x3 machine"
 text = """
-Every frame reads at a glance as a chunky, top-down 3x3 industrial assembling \
-machine — a solid square chassis with bolted plating, not a thin or rounded \
-shape. It is non-directional: a square machine that reads correctly at any \
-rotation, with no front, back, or facing."""
+Every frame reads at a glance as a chunky, raised 3x3 industrial assembling \
+machine drawn in Factorio's pseudo-3D style — a solid block standing off the \
+floor with a lit, inset top face, beveled sides, and a grounding contact shadow, \
+NOT a flat top-down plate and not a side elevation. It stays non-directional: \
+symmetric on all four sides with no front, back, or facing, so it reads correctly \
+however the factory is oriented."""
 weight = 3
 domain = "fidelity"
 
