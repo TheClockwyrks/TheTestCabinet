@@ -8,19 +8,24 @@ recorded action log) of an [asset-generation](https://) run of the matching
 expects: the neutral grey recolor ramp (so the per-team palette swap can tint
 them) for `nest`, and the shared non-recolored palette for `seed`/`jelly`.
 
-| File | Asset case | Source run |
+| File(s) | Asset case | Source run |
 | --- | --- | --- |
 | `nest.png` | `foray-nest` v1.0.0 (base) | `9da30365-0847-4114-801c-7beace3e0c93` |
 | `seed.png` | `foray-seed` v1.0.0 (base) | `1302cb40-6240-4455-83a5-772aa4d355d2` |
 | `jelly_active.png` | `foray-jelly` v1.0.0 (base) frame 0 | `9b4713ef-6479-4510-a64d-2e46c2e92cfe` |
 | `jelly_spent.png` | `foray-jelly` v1.0.0 (base) frame 1 | `9b4713ef-6479-4510-a64d-2e46c2e92cfe` |
+| `soldier_*.png` (16) | `foray-soldier` v1.0.0 (base) | `99d92451-733a-4f6d-aac0-aa416f054bd3` |
+| `raider_*.png` (32) | `foray-raider` v1.0.0 (base) | `e132cb18-0e37-4ca0-a9be-c032500dbf37` |
+| `wall_*` / `border_*` / `floor.png` (20) | `foray-walls` v1.0.0 (base) | `af70f7bd-ca2b-497e-9d04-2950c8e5aea4` |
 
-Frames the packer still draws as **placeholders** (no finished source art yet):
-the soldier/raider walk cycles (`foray-soldier`, `foray-raider`) and the maze
-wall tileset (`foray-walls`). When those cases are generated, copy each run's
-**regenerated** per-frame PNGs here under the packer's frame names (the packer
-reads `source/<name>.png`; see `../gen-sheet.mjs`). The asset cases write frames
-by **index** (`frames/<index>.png`); the index → source-name mapping is:
+The only frame the packer still draws as a **placeholder** is `immune_glint` — an
+additive overlay glint with no asset case of its own, drawn procedurally by
+`../gen-sheet.mjs`.
+
+Each case above was copied here from its run's **regenerated** per-frame PNGs (the
+packer reads `source/<name>.png`; see `../gen-sheet.mjs`). The asset cases write
+frames by **index** (`frames/<index>.png`); the index → source-name mapping used
+was:
 
 **`foray-soldier`** (16 frames, facing-major, 4-step walk cycle):
 
