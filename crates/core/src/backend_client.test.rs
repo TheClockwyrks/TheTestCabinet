@@ -84,7 +84,10 @@ impl BackendClient for StubBackend {
             checks: vec![],
             common_review_items: vec![],
             domains: vec![],
-            cases: vec![],
+            cases: vec![crate::test_case::PerformanceCase {
+                input: std::path::PathBuf::from("cases/small.json"),
+                expected: std::path::PathBuf::from("cases/small.out"),
+            }],
         })
     }
     async fn artifact(
@@ -161,6 +164,13 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
     assert!(store.join("assets/ball.png").is_file());
     assert!(store.join("references/_common/title.png").is_file());
 
+    // The held-out `[[case]]` scored set (input scenario + expected oracle state) is
+    // materialized too, so the performance validator reads it from the store dir.
+    assert!(store.join("cases/small.json").is_file());
+    assert!(store.join("cases/small.out").is_file());
+    assert_eq!(version.cases[0].input, store.join("cases/small.json"));
+    assert_eq!(version.cases[0].expected, store.join("cases/small.out"));
+
     // The version's path fields are rooted at the store dir (host paths now), so
     // the existing seeder/prompt-renderer/validator read them unchanged.
     assert_eq!(version.root, store);
@@ -201,6 +211,89 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         .expect("render");
     assert_eq!(rendered.len(), 1);
     assert_eq!(rendered[0].view, "title");
+}
+
+/// An adversarial [`BackendClient`]: a minimal version whose only job is to drive
+/// the adversarial branch of [`materialize_version`]. Its `artifact` serves bytes
+/// for any key (including the `references/<id>.wasm` opponents), mirroring how the
+/// real backend serves the verbatim-copied version folder.
+struct AdversarialStubBackend;
+
+#[async_trait::async_trait]
+impl BackendClient for AdversarialStubBackend {
+    async fn catalog(&self) -> Result<Vec<crate::test_case::TestCase>> {
+        Ok(vec![])
+    }
+    async fn versions(&self, _slug: &str) -> Result<Vec<String>> {
+        Ok(vec!["v1.0.0".to_string()])
+    }
+    async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
+        let mut base = StubBackend.resolve_version(slug, version).await?;
+        base.test_type = crate::test_case::TestType::Adversarial;
+        Ok(base)
+    }
+    async fn artifact(
+        &self,
+        slug: &str,
+        version: &str,
+        source: &std::path::Path,
+    ) -> Result<ResolvedArtifact> {
+        StubBackend.artifact(slug, version, source).await
+    }
+    async fn references(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+    ) -> Result<Vec<ResolvedReference>> {
+        StubBackend.references(slug, version, variant).await
+    }
+    async fn prompt_template(&self, slug: &str, version: &str) -> Result<String> {
+        StubBackend.prompt_template(slug, version).await
+    }
+    async fn push_run(
+        &self,
+        record: &crate::run_record::RunRecord,
+        links: &crate::run_record::RunLinks,
+        events: &[crate::event::HarnessEvent],
+    ) -> Result<PushAck> {
+        StubBackend.push_run(record, links, events).await
+    }
+    async fn submit_review(&self, run_id: &str, review: &crate::review::Writeup) -> Result<()> {
+        StubBackend.submit_review(run_id, review).await
+    }
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+        StubBackend.publish_run(run_id).await
+    }
+    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
+        StubBackend.list_runs(before, limit).await
+    }
+    async fn read_run(&self, id: &str) -> Result<PublishedRun> {
+        StubBackend.read_run(id).await
+    }
+}
+
+#[tokio::test]
+async fn materialize_writes_adversarial_opponent_wasm_to_disk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("foray-v1.0.0");
+    let (version, _references) =
+        materialize_version(&AdversarialStubBackend, "foray", "v1.0.0", "base", &store)
+            .await
+            .expect("materialize");
+
+    // Every arena opponent (model-facing baselines plus the hidden references like
+    // `fuel-probe`) is materialized under `references/<id>.wasm`, so the validator's
+    // disk-based `resolve_baseline` resolves them on a backend-driven host exactly as
+    // it does against a local checkout.
+    for id in crate::match_play::ARENA_OPPONENT_IDS {
+        assert!(
+            store.join(format!("references/{id}.wasm")).is_file(),
+            "opponent `{id}` wasm should be materialized"
+        );
+    }
+    // And the validator's own resolver finds the canonical opponent.
+    assert!(crate::match_play::resolve_baseline(&version, "border-soldier").is_ok());
 }
 
 /// Serve a single fixed `200` JSON response on a fresh local port, returning the

@@ -22,7 +22,7 @@ use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
-use crate::match_play::{ControllerRef, TournamentRecord};
+use crate::match_play::{ARENA_OPPONENT_IDS, ControllerRef, TournamentRecord};
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -374,6 +374,37 @@ pub async fn materialize_version(
         });
     }
 
+    // Adversarial opponent controllers: the case commits its baselines and hidden
+    // references as `references/<id>.wasm`, but those are *not* manifest reference
+    // views, so the screenshot loop above never fetches them. The
+    // [`AdversarialValidator`](crate::AdversarialValidator) (and the arena's
+    // disk-resolved paths) load them straight from `references/<id>.wasm` under the
+    // version root, so materialize them here for an adversarial case — otherwise a
+    // backend-driven run validates against a hole and forfeits with "the case ships
+    // no opponent". The ids are the full arena set (model-facing baselines plus the
+    // hidden references like `fuel-probe`); they live on disk only, never seeded
+    // into the run container, exactly as a local checkout already has them.
+    if resolved.test_type == TestType::Adversarial {
+        for id in ARENA_OPPONENT_IDS {
+            let key = PathBuf::from("references").join(format!("{id}.wasm"));
+            let artifact = client.artifact(slug, version, &key).await?;
+            write_at(&root.join(&key), &artifact.bytes)?;
+        }
+    }
+
+    // Performance `[[case]]` files: the held-out scored set — each case's `input`
+    // scenario and its `expected` oracle state — lives in the version folder but is
+    // neither a spec, an asset, nor a reference view, so the loops above never fetch
+    // it. The [`PerformanceValidator`](crate::PerformanceValidator) reads both from
+    // `test_case.root` per case, so a backend-driven run needs them materialized
+    // exactly as a local checkout already ships them.
+    for case in &resolved.cases {
+        for key in [&case.input, &case.expected] {
+            let artifact = client.artifact(slug, version, key).await?;
+            write_at(&root.join(key), &artifact.bytes)?;
+        }
+    }
+
     // Rewrite path fields from store-relative keys to materialized host paths.
     resolved.root = root.clone();
     resolved.prompt_path = prompt_path;
@@ -381,6 +412,10 @@ pub async fn materialize_version(
         spec.source_path = root.join(&spec.source_path);
     }
     resolved.asset_paths = resolved.asset_paths.iter().map(|a| root.join(a)).collect();
+    for case in &mut resolved.cases {
+        case.input = root.join(&case.input);
+        case.expected = root.join(&case.expected);
+    }
     for file in &mut resolved.common_workspace {
         file.source_path = root.join(&file.source_path);
     }
