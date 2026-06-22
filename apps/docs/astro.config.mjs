@@ -433,6 +433,15 @@ export default defineConfig({
                 "testing/performance/overview",
                 "testing/performance/manifests",
                 "testing/performance/evaluation",
+                {
+                  label: "Factorio (Lattice)",
+                  collapsed: true,
+                  items: [
+                    "testing/performance/performance-factorio/overview",
+                    "testing/performance/performance-factorio/architecture",
+                    "testing/performance/performance-factorio/references",
+                  ],
+                },
               ],
             },
           ],
