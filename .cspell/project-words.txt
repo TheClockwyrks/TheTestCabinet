@@ -70,3 +70,19 @@ rrggbbaa
 recolorable
 mandibled
 scorable
+
+# Adversarial (Foray) controller vocabulary and Rust toolchain.
+offence
+defence
+misbehaviour
+overfitting
+passability
+pathfind
+pathfinding
+dests
+buildkit
+cdylib
+rustc
+rustup
+bindgen
+wasmtime

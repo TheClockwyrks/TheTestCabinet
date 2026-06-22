@@ -123,8 +123,9 @@ apply every tick.)
 ## Writing your controller
 
 You do not implement the ABI by hand. The run environment provides a controller
-SDK (`foray-controller-sdk`, under `$FORAY_HOME/buildkit`, already a dependency of
-your controller) that owns `alloc`, `tick`, the JSON decode/encode, and a
+SDK (`foray-controller-sdk`, under `$FORAY_HOME/buildkit`, already a
+dependency of your controller) that owns `alloc`, `tick`, the JSON
+decode/encode, and a
 legal-action builder. You write **one function** and one macro call:
 
 ```rust
@@ -155,6 +156,6 @@ The SDK also gives you maze helpers you will want:
 You may write the controller in **any language that compiles to a
 `wasm32-unknown-unknown` core module** exporting `memory`, `alloc`, and `tick` with
 this ABI — Rust with the SDK is the supported, batteries-included path, and the
-engine the run environment provides (`foray-core`, under `$FORAY_HOME/buildkit`) is
-the same one the harness scores you against, so its `World`/`Action` types are
+engine the run environment provides (`foray-core`, under `$FORAY_HOME/buildkit`)
+is the same one the harness scores you against, so its `World`/`Action` types are
 exactly right.
