@@ -1,7 +1,9 @@
 // The run record is the central data contract for The Test Cabinet. It has an
 // identical shape in Rust (test_cabinet_core) and here in TypeScript. JSON uses
-// camelCase. Do NOT change this shape without updating the Rust definition and
-// the JSON Schema in this package's `schema/` directory in lockstep.
+// camelCase. Do NOT change this shape without updating the Rust definition and the
+// hand-maintained JSON Schema at
+// `apps/docs/public/schema/core/run-record.schema.json` (served at
+// https://docs.testcabinet.ai/schema/core/run-record.schema.json) in lockstep.
 
 /**
  * The set of agent harnesses a run can be attributed to. Serialized as the
