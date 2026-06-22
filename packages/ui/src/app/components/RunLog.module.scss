@@ -122,11 +122,23 @@ a.row {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
+  // Let the cell shrink within its grid track instead of growing it: grid items
+  // default to a min-width of their content, so without this a long title would
+  // widen this row's track and break alignment with the other rows' columns.
+  min-width: 0;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-accent;
   text-shadow: var(--ttc-glow);
+}
+
+// The title text truncates with an ellipsis so an overlong test name can't push
+// the rest of the row out of alignment (mirrors `.variant`/`.model`). The
+// unpublished tag stays beside it at full size.
+.testName {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .harness {
@@ -153,6 +165,8 @@ a.row {
 
 .tag {
   font-size: 0.7rem;
+  // Only the title text shrinks under a long name — the tag is never clipped.
+  flex: none;
 }
 
 // The rating cell: a compact chip, or a muted dash when a run has no review.

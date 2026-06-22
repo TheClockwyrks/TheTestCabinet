@@ -120,7 +120,9 @@ function ActiveRow({
     >
       <span className={styles.spinner} aria-hidden="true" />
       {showCase && (
-        <span className={styles.test}>{formatSlug(run.testCaseSlug)}</span>
+        <span className={styles.test}>
+          <span className={styles.testName}>{formatSlug(run.testCaseSlug)}</span>
+        </span>
       )}
       <span className={styles.harness} data-label="Harness">
         {run.harnessSlug}
@@ -175,7 +177,9 @@ function RunRow({
       <span className={styles.rowCaret}>&rsaquo;</span>
       {showCase && (
         <span className={styles.test}>
-          {formatSlug(subject.testCaseSlug)}
+          <span className={styles.testName}>
+            {formatSlug(subject.testCaseSlug)}
+          </span>
           {local && <UnpublishedTag className={styles.tag} />}
         </span>
       )}
