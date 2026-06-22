@@ -95,26 +95,57 @@ values are below.
 
 ### Carry weight — the signature mechanic
 
-A raider's speed **degrades with its load**. A raider carrying `load` seeds moves
-once every
+A raider's speed **degrades with its load**, and an **unladen raider is slightly
+faster than a soldier** — the Pac-Man edge over the ghosts, which is what lets a
+colony break a defended line and make progress at all.
 
-```
-1 + floor(load / W)        // shipped W = 3
-```
+Movement uses a **speed accumulator** so speeds can be finer than one tile per
+tick. Each agent earns a fixed amount of *movement charge* per tick and steps one
+tile once it has banked a full tile's worth (`W = 8` charge, the **movement
+resolution**). The charge earned per tick is the agent's **speed**:
 
-ticks. Unladen (`load = 0`) it moves every tick; carrying `3` it moves every other
-tick; carrying `6`, every third tick; and so on. **Soldiers always move every
-tick** regardless of anything.
+- A **soldier** earns `7` per tick — just under the resolution, so it moves a
+  shade under one tile per tick (it skips one step in every eight).
+- A **light raider** — carrying **at most 3** seeds — earns the full `8`, so it
+  moves **every tick**: the one-tile-per-tick cap, and strictly faster than a
+  soldier. The first three seeds are free of any speed penalty, so a raider can
+  grab a small load and still outrun the defence.
+- Past 3 seeds, a raider loses `1` charge per extra seed. So **4 seeds matches a
+  soldier exactly**, **5 seeds is as much slower than a soldier as an unladen
+  raider was faster**, and it keeps dropping from there — down to a floor of `1`
+  charge per tick (an over-loaded raider crawls but never freezes completely).
 
-This inverts the usual question. Hoarding makes a raider slow and easy to run
-down, and a tagged raider loses **everything** it carries. So **load is both your
-score and your vulnerability**: *when to break off and bank* is a real, continuous
-decision, not an afterthought. A controller that over-loads will bleed seeds to
-defenders.
+| Load carried | Raider speed (charge/tick) | Versus a soldier (7) |
+| --- | --- | --- |
+| 0–3 | 8 | faster (moves every tick) |
+| 4 | 7 | equal |
+| 5 | 6 | slower by one |
+| 6 | 5 | slower by two |
+| 7 | 4 | half speed (every other tick) |
+| 8 | 3 | … |
+| 9 | 2 | … |
+| 10+ | 1 (floor) | crawling |
 
-The observation tells you, per owned agent, whether it `can_move_this_tick`
-under this cadence — you never re-derive it. A move you submit for an agent that
-is stalling this tick is simply a no-op.
+This inverts the usual capture-the-flag question. Hoarding makes a raider slow and
+easy to run down, and a tagged raider loses **everything** it carries. So **load
+is both your score and your vulnerability**: *when to break off and bank* is a
+real, continuous decision, not an afterthought. A controller that over-loads will
+bleed seeds to defenders.
+
+The observation tells you, per owned agent, whether it `can_move_this_tick` —
+whether it has banked enough charge to step if you tell it to. You never re-derive
+it. A move you submit for an agent that has not banked a full step this tick is
+simply a no-op. (Because a soldier moves just under every tick, even a soldier
+reads `can_move_this_tick = false` on its occasional skipped step.)
+
+### No passing through another agent
+
+Two agents may **share** a tile, so moving onto another agent is legal — but two
+agents may **never swap tiles in the same tick**. A move that would exchange an
+agent's tile with another agent's (each stepping onto where the other just
+was) is **cancelled for both** — they hold. You can therefore never slip a raider
+*through* a soldier (or vice versa) by trading places; to get past a defender you
+must go around it.
 
 ### Royal jelly — the inverted capsule
 
@@ -154,11 +185,14 @@ a contract-invalid action **forfeits** the match — see `specs/sandbox.md` and
 | Agents per side | 3 (ids 0–2) |
 | Seed caches per half | ~20 |
 | Royal jelly nodes per half | 2 |
-| Carry-weight divisor `W` | 3 — move every `1 + floor(load / 3)` ticks |
+| Movement resolution `W` | 8 charge per tile |
+| Soldier speed | 7 charge/tick (just under one tile/tick) |
+| Light raider speed | 8 charge/tick (every tick) for loads 0–3 |
+| Carry penalty | −1 charge/tick per seed carried past 3, floored at 1 |
 | Jelly immunity `J` | 40 ticks |
 | Timestep | 16 ms (fixed, faked) |
 | Max ticks | 37,500 (10 minutes of game time) |
 
 These constants are part of the game definition, not levers you can change. They
-are listed so you can plan around them — chiefly the carry-weight cadence and the
-jelly window, which are the two quantities good play has to reason about.
+are listed so you can plan around them — chiefly the carry-weight speed curve and
+the jelly window, which are the two quantities good play has to reason about.

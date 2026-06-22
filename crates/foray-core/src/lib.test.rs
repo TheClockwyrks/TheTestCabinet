@@ -48,6 +48,63 @@ fn open_board() -> Board {
     Board::from_map(&doc.to_toml()).expect("hand-laid board loads")
 }
 
+/// A wide-open `20 x 3` board (no interior walls), border between columns 9 and
+/// 10 (`border_x == 10`): Red owns `0..10`, Blue owns `10..20`. Wide enough to
+/// count an agent's move cadence over a full `move_resolution` window without it
+/// crossing the border (which would flip its role and speed).
+fn wide_board() -> Board {
+    let mut walls = Vec::new();
+    for x in 0..20 {
+        walls.push([x, 0]);
+        walls.push([x, 2]);
+    }
+    let doc = MapDoc {
+        id: "open-20x3".into(),
+        width: 20,
+        height: 3,
+        border_x: 10,
+        seed: 0,
+        red_nest: [0, 1],
+        blue_nest: [19, 1],
+        walls,
+        red_seeds: vec![],
+        blue_seeds: vec![],
+        red_jelly: vec![],
+        blue_jelly: vec![],
+    };
+    Board::from_map(&doc.to_toml()).expect("hand-laid board loads")
+}
+
+/// Count how many of the next `move_resolution` ticks a Red agent placed at
+/// `start` carrying `carrying` actually steps east on [`wide_board`]. From rest
+/// this equals the agent's per-tick `move_speed`, so it is the clean handle on the
+/// carry-weight speed model.
+fn moves_in_window(start: Pos, carrying: u32) -> u32 {
+    let board = wide_board();
+    let mut game = Match::new(board, rules(), sim());
+    {
+        let agent = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        agent.pos = start;
+        agent.carrying = carrying;
+    }
+    let mut prev = start;
+    let mut count = 0;
+    for _ in 0..rules().move_resolution {
+        game.step(&move_one(0, Dir::E), &stop());
+        let p = game.state.agents[0].pos;
+        if p != prev {
+            count += 1;
+            prev = p;
+        }
+    }
+    count
+}
+
 /// A minimal helper mirroring the on-disk map document so tests can build boards
 /// without reaching into the private loader struct.
 struct MapDoc {
@@ -251,78 +308,189 @@ fn blocked_or_offboard_move_clamps_to_stop_never_forfeits() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn unladen_raider_moves_every_tick() {
-    let board = open_board();
-    // Red 0 placed on Blue's half (a raider) carrying nothing.
-    let mut game = match_with_red_at(board, Pos::new(4, 1), 0);
-    game.step(&move_one(0, Dir::E), &stop());
-    assert_eq!(game.state.agents[0].pos, Pos::new(5, 1));
-    game.step(&move_one(0, Dir::E), &stop());
+fn light_raider_moves_every_tick_and_outpaces_a_soldier() {
+    // A light raider (load <= light_load) earns the full resolution each tick, so
+    // it steps every tick — the board's one-tile-per-tick cap. A soldier earns
+    // less, so over a full window it steps once fewer: the raider's Pac-Man-style
+    // speed edge that lets a colony actually make progress.
+    let res = rules().move_resolution;
     assert_eq!(
-        game.state.agents[0].pos,
-        Pos::new(6, 1),
-        "unladen raider advances each tick"
+        moves_in_window(Pos::new(10, 1), 0),
+        res,
+        "a light raider moves every tick"
+    );
+    assert_eq!(
+        moves_in_window(Pos::new(1, 1), 0),
+        rules().soldier_speed,
+        "a soldier moves just under one tile per tick"
+    );
+    assert!(
+        rules().soldier_speed < res,
+        "a soldier is strictly slower than a light raider"
     );
 }
 
 #[test]
-fn laden_raider_stalls_on_the_carry_weight_cadence() {
-    let board = open_board();
-    // W = 3, load = 3 -> period 1 + floor(3/3) = 2: moves once every 2 ticks.
-    let mut game = match_with_red_at(board, Pos::new(5, 1), 3);
-    let p0 = game.state.agents[0].pos;
+fn raider_speed_scales_symmetrically_with_load() {
+    // Over a resolution window an agent steps once per point of move_speed. Loads
+    // through light_load keep the full speed; the soldier-speed crossover sits at
+    // light_load + 1 and is symmetric — one seed lighter than the crossover is as
+    // much faster than a soldier as one seed heavier is slower.
+    let res = rules().move_resolution; // 8
+    let soldier = rules().soldier_speed; // 7
+    let light = rules().light_load; // 3
+    let penalty = res - soldier; // per-seed speed loss past light_load
+    let raider = |load| moves_in_window(Pos::new(10, 1), load);
 
-    // Tick 1: stalled (period 2, ticks_since_move starts 0 -> 0+1 < 2).
+    for load in 0..=light {
+        assert_eq!(raider(load), res, "load {load} keeps the full raider speed");
+    }
+    assert_eq!(
+        raider(light + 1),
+        soldier,
+        "the crossover load matches a soldier exactly"
+    );
+    let bonus = raider(light) - soldier; // light raider's edge over a soldier
+    let deficit = soldier - raider(light + 2); // its deficit one seed past crossover
+    assert_eq!(bonus, deficit, "the speed bonus and deficit are symmetric");
+    assert_eq!(
+        raider(light + 2),
+        soldier - penalty,
+        "each extra seed past the crossover costs one penalty step"
+    );
+    assert_eq!(
+        raider(50),
+        rules().min_speed,
+        "an over-loaded raider crawls at the floor speed, never freezing"
+    );
+}
+
+#[test]
+fn laden_raider_stalls_between_steps_under_carry_weight() {
+    let board = open_board();
+    // A heavy load (7) drops the raider's speed to half the resolution
+    // (move_speed 4 of 8), so it steps every other tick.
+    let mut game = match_with_red_at(board, Pos::new(4, 1), 7);
+    let p0 = game.state.agents[0].pos;
     game.step(&move_one(0, Dir::E), &stop());
     assert_eq!(
         game.state.agents[0].pos, p0,
-        "heavy raider stalls on the first tick"
+        "a heavy raider stalls on the first tick"
     );
-    // Tick 2: eligible, moves.
+    game.step(&move_one(0, Dir::E), &stop());
+    assert_eq!(
+        game.state.agents[0].pos,
+        Pos::new(5, 1),
+        "it steps on the second tick"
+    );
+    game.step(&move_one(0, Dir::E), &stop());
+    assert_eq!(
+        game.state.agents[0].pos,
+        Pos::new(5, 1),
+        "stalls again after stepping"
+    );
     game.step(&move_one(0, Dir::E), &stop());
     assert_eq!(
         game.state.agents[0].pos,
         Pos::new(6, 1),
-        "moves on the second tick"
-    );
-    // Tick 3: stalls again.
-    game.step(&move_one(0, Dir::E), &stop());
-    assert_eq!(
-        game.state.agents[0].pos,
-        Pos::new(6, 1),
-        "stalls again after moving"
+        "moves every other tick"
     );
 }
 
 #[test]
-fn can_move_this_tick_matches_the_cadence_in_the_observation() {
+fn can_move_this_tick_matches_the_speed_model_in_the_observation() {
     let board = open_board();
-    let mut game = match_with_red_at(board, Pos::new(5, 1), 3);
+    // load 7 -> speed 4: from rest it has not yet banked a step this tick.
+    let mut game = match_with_red_at(board, Pos::new(4, 1), 7);
     let world = game.observe(Team::Red);
     let agent0 = world.my_agents.iter().find(|a| a.id == 0).unwrap();
     assert!(
         !agent0.can_move_this_tick,
-        "a freshly-laden raider stalls this tick"
+        "a heavy raider has not yet banked a full step"
     );
-    // After one stalled tick it becomes eligible.
+    // After one held tick it has banked enough to step next tick.
     game.step(&stop(), &stop());
     let world = game.observe(Team::Red);
     let agent0 = world.my_agents.iter().find(|a| a.id == 0).unwrap();
-    assert!(agent0.can_move_this_tick, "eligible after stalling once");
+    assert!(
+        agent0.can_move_this_tick,
+        "eligible after banking charge for one tick"
+    );
 }
 
 #[test]
-fn soldiers_always_move_regardless_of_any_load() {
+fn agents_cannot_swap_tiles() {
+    // A Blue raider on Red's half and a Red soldier sit adjacent and try to trade
+    // tiles in one tick. Swapping would let the raider pass *through* the soldier
+    // untagged, so the swap is cancelled and both hold; the tag lands a tick later
+    // when the soldier steps onto the (now stationary) raider.
     let board = open_board();
-    // A soldier on its own half always moves every tick.
-    let mut game = match_with_red_at(board, Pos::new(2, 1), 0);
-    game.step(&move_one(0, Dir::E), &stop());
-    assert_eq!(game.state.agents[0].pos, Pos::new(3, 1));
-    game.step(&move_one(0, Dir::E), &stop());
+    let mut game = Match::new(board, rules(), sim());
+    let res = rules().move_resolution;
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(2, 1); // Red's half -> a raider
+        blue0.carrying = 1;
+        blue0.move_accum = res; // banked, so it is eligible to move this tick
+    }
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(1, 1); // own half -> a soldier
+        red0.move_accum = res;
+    }
+
+    // Red 0: (1,1) -> (2,1) east; Blue 0: (2,1) -> (1,1) west — a swap.
+    game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
     assert_eq!(
-        game.state.agents[0].pos,
-        Pos::new(4, 1),
-        "soldier moves every tick"
+        red0.pos,
+        Pos::new(1, 1),
+        "the soldier holds — no pass-through"
+    );
+    assert_eq!(
+        blue0.pos,
+        Pos::new(2, 1),
+        "the raider holds — no pass-through"
+    );
+    assert_eq!(
+        blue0.carrying, 1,
+        "the raider was not tagged through the swap"
+    );
+
+    // Next tick the soldier steps onto the raider (a move-onto, not a swap) and
+    // tags it — proving only the exchange was blocked, not contact.
+    game.step(&move_one(0, Dir::E), &stop());
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        blue0.pos,
+        game.board.nest(Team::Blue),
+        "stepping onto the raider tags it"
     );
 }
 
@@ -351,9 +519,9 @@ fn raider_eats_an_enemy_cache_into_its_load() {
 #[test]
 fn banking_adds_the_load_to_score_and_resets_it() {
     let board = open_board();
-    // Red raider on Blue's half at (4,1) carrying 2 (load 2 < W, so it still moves
-    // every tick), steps west across the border to (3,1) — its own half —
-    // banking everything.
+    // Red raider on Blue's half at (4,1) carrying 2 (load 2 <= light_load, so it
+    // still moves every tick), steps west across the border to (3,1) — its own
+    // half — banking everything.
     let mut game = match_with_red_at(board, Pos::new(4, 1), 2);
     game.step(&move_one(0, Dir::W), &stop());
     assert_eq!(game.state.agents[0].pos, Pos::new(3, 1));
@@ -367,10 +535,17 @@ fn banking_adds_the_load_to_score_and_resets_it() {
 #[test]
 fn staying_on_the_enemy_half_does_not_bank() {
     let board = open_board();
-    let mut game = match_with_red_at(board, Pos::new(5, 1), 4);
+    // Load 2 keeps the light raider at full speed, so it actually steps deeper
+    // into Blue's half; staying on the enemy half banks nothing.
+    let mut game = match_with_red_at(board, Pos::new(5, 1), 2);
     game.step(&move_one(0, Dir::E), &stop()); // moves deeper into Blue's half
+    assert_eq!(
+        game.state.agents[0].pos,
+        Pos::new(6, 1),
+        "it stepped, not banked"
+    );
     assert_eq!(game.state.score.red, 0, "no crossing, no bank");
-    assert_eq!(game.state.agents[0].carrying, 4);
+    assert_eq!(game.state.agents[0].carrying, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +565,8 @@ fn soldier_tags_enemy_raider_scattering_load_and_respawning_it() {
         .unwrap();
     blue0.pos = Pos::new(2, 1);
     blue0.carrying = 2;
-    // Red 0 is a soldier that steps onto (2,1) to tag.
+    // Red 0 is a soldier that steps onto (2,1) to tag. Bank its charge so it is
+    // eligible to step this tick (a soldier earns just under a full step per tick).
     let red0 = game
         .state
         .agents
@@ -398,6 +574,7 @@ fn soldier_tags_enemy_raider_scattering_load_and_respawning_it() {
         .find(|a| a.team == Team::Red && a.id == 0)
         .unwrap();
     red0.pos = Pos::new(1, 1);
+    red0.move_accum = rules().move_resolution;
 
     game.step(&move_one(0, Dir::E), &stop()); // Red 0: (1,1) -> (2,1)
 
@@ -520,6 +697,7 @@ fn jelly_grants_immunity_and_blocks_a_following_tag() {
         .find(|a| a.team == Team::Red && a.id == 0)
         .unwrap();
     red0.pos = Pos::new(1, 1);
+    red0.move_accum = rules().move_resolution; // eligible to step this tick
     game.step(&move_one(0, Dir::E), &stop()); // Red 0 -> (2,1), onto the immune raider
     let blue0 = game
         .state

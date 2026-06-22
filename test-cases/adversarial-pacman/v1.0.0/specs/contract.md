@@ -55,9 +55,11 @@ Key fields to reason about:
   `raider` on the enemy half. You do not compute it; you read it.
 - **`carrying`** is the agent's current load (seeds eaten but not yet banked).
 - **`can_move_this_tick`** (own agents only) exposes the
-  [carry-weight](/specs/rules.md) cadence directly: a laden raider that is stalling
-  this tick reads `false`, and any move you submit for it is a no-op. Enemies do
-  not carry this field — you do not drive them.
+  [carry-weight speed model](/specs/rules.md) directly: it is `true` when the agent
+  has banked enough charge to step this tick if told to. A laden raider mid-stall
+  reads `false` (any move you submit for it is a no-op), and because a soldier
+  moves just under one tile/tick, even a soldier reads `false` on its occasional
+  skipped step. Enemies do not carry this field — you do not drive them.
 - **`immune_ticks`** is the remaining royal-jelly immunity window (`0` when not
   immune). An immune raider cannot be tagged.
 - **`seeds`** is the full live cache list. The caches you *raid* are the ones on
@@ -94,9 +96,10 @@ ordinary bugs are forgiven, not match-ending.
   a structurally valid `moves` list for you (exactly your three ids, once each),
   so use it and you cannot trip this.
 - **A well-formed but blocked move is clamped, not punished.** A move into a wall,
-  off the board, or submitted for an agent whose carry-weight cadence stalls it
-  this tick is applied as **Stop**. Ordinary pathfinding bugs cost you tempo, not
-  the match.
+  off the board, submitted for an agent that has not banked a full step this tick,
+  or that would **swap tiles** with another agent (you cannot pass through another
+  agent) is applied as **Stop**. Ordinary pathfinding bugs cost you tempo, not the
+  match.
 
 ## The ABI (what the SDK does for you)
 

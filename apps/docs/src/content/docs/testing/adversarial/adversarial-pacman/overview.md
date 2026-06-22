@@ -34,7 +34,8 @@ Two ant colonies — **Red** (west) and **Blue** (east) — share a single
 a mirror twin on the other, so neither colony starts with a structural
 advantage. Movement is **tile-locked**: each agent occupies one tile and on each
 tick moves one tile **N / S / E / W** or holds (**Stop**). Walls block movement;
-two agents may share a tile.
+two agents may share a tile, but two agents may **never swap tiles** in one tick —
+there is no passing through another agent.
 
 The map is laid out around three fixtures:
 
@@ -94,10 +95,15 @@ constants are tunable in the specs.
 
 ### Carry weight — the signature mechanic
 
-A raider's speed **degrades with its load**. A raider carrying `load` seeds moves
-once every `1 + floor(load / W)` ticks (with, say, `W = 3`): unladen it moves
-every tick, but a heavy raider stalls between moves and is easy to run down.
-Soldiers always move every tick.
+A raider's speed **degrades with its load**, and — like Pac-Man against the
+ghosts — an **unladen raider is slightly faster than a soldier**, which is what
+lets a colony break a defended line at all. Movement uses a fixed-point speed
+accumulator (each agent banks *charge* per tick and steps a tile once it has a
+tile's worth), so speeds can be finer than one tile per tick: a soldier moves a
+shade under every tick, a **light raider (load ≤ 3) moves every tick**, and past
+three seeds a raider loses speed per extra seed — matching the soldier at 4 seeds,
+slower by the same margin at 5, and crawling under a heavy load. The exact curve
+is in the case's specs.
 
 This turns the central CTF question — *grab as much as possible, then run* — on
 its head. Hoarding makes you slow and easy to tag, and a tagged raider loses

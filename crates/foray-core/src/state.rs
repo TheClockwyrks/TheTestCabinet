@@ -45,9 +45,13 @@ pub struct Agent {
     /// Remaining tag-immunity ticks from royal jelly. While `> 0` the agent
     /// cannot be tagged; decremented once per tick.
     pub immune_ticks: u32,
-    /// Ticks since this agent last actually moved, used to drive the carry-weight
-    /// cadence: a laden raider only moves when enough ticks have elapsed.
-    pub ticks_since_move: u32,
+    /// Banked movement charge under the [carry-weight speed
+    /// model](crate::config::Rules). Each tick the agent earns
+    /// [`move_speed`](Agent::move_speed) charge; once it reaches
+    /// `move_resolution` it steps one tile and spends that much. A fast agent
+    /// banks a full step every tick; a heavy raider takes several ticks to bank
+    /// one. Kept in `[0, move_resolution]`.
+    pub move_accum: u32,
 }
 
 impl Agent {
@@ -60,25 +64,36 @@ impl Agent {
         }
     }
 
-    /// How often a raider with this load may move: it advances once every
-    /// `1 + floor(load / W)` ticks. Unladen (or a soldier) that is `1` — every
-    /// tick. This is Foray's signature carry-weight mechanic, so it lives in one
-    /// place and is read by both the tick advance and the `world` observation.
-    pub fn move_period(&self, board: &Board, rules: &Rules) -> u32 {
+    /// The movement charge this agent earns per tick under the carry-weight speed
+    /// model (see [`Rules`](crate::config::Rules)). A soldier earns
+    /// `soldier_speed`; a light raider earns the full `move_resolution` (moving
+    /// every tick); a raider carrying past `light_load` loses
+    /// `move_resolution - soldier_speed` per extra seed, floored at `min_speed`.
+    /// This is Foray's signature carry-weight mechanic, so it lives in one place
+    /// and is read by both the tick advance and the `world` observation.
+    pub fn move_speed(&self, board: &Board, rules: &Rules) -> u32 {
         match self.role(board) {
-            // Soldiers always move every tick, regardless of any (impossible)
-            // load — only raiders carry.
-            Role::Soldier => 1,
-            Role::Raider => 1 + self.carrying / rules.carry_weight_divisor,
+            // Soldiers move at a fixed pace, regardless of any (impossible) load —
+            // only raiders carry.
+            Role::Soldier => rules.soldier_speed,
+            Role::Raider => {
+                let over = self.carrying.saturating_sub(rules.light_load);
+                let penalty = rules.move_resolution.saturating_sub(rules.soldier_speed) * over;
+                rules
+                    .move_resolution
+                    .saturating_sub(penalty)
+                    .max(rules.min_speed)
+            }
         }
     }
 
-    /// Whether this agent is eligible to move on the current tick under the
-    /// carry-weight cadence. A stalled laden raider reads `false`, and any move
-    /// it is given collapses to `Stop`. Exposed to controllers via `world` so
-    /// they never have to re-derive the cadence.
+    /// Whether this agent will step a tile if it tries to move this tick: it has
+    /// banked enough charge that one more tick of [`move_speed`](Agent::move_speed)
+    /// reaches `move_resolution`. A heavy raider mid-stall reads `false`, and any
+    /// move it is given collapses to `Stop`. Exposed to controllers via `world`
+    /// so they never have to re-derive the cadence.
     pub fn can_move_this_tick(&self, board: &Board, rules: &Rules) -> bool {
-        self.ticks_since_move + 1 >= self.move_period(board, rules)
+        self.move_accum + self.move_speed(board, rules) >= rules.move_resolution
     }
 }
 
@@ -219,7 +234,7 @@ impl MatchState {
                     pos: nest,
                     carrying: 0,
                     immune_ticks: 0,
-                    ticks_since_move: 0,
+                    move_accum: 0,
                 })
             })
             .collect();

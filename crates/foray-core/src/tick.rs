@@ -4,11 +4,14 @@
 //! Per tick, [`advance`] applies five phases in this order — and the order is
 //! load-bearing, so it is spelled out here and mirrored by the tests:
 //!
-//! 1. **Movement.** Each agent's submitted direction is resolved. Soldiers move
-//!    every tick; a laden raider moves only when its [carry-weight
-//!    cadence](crate::state::Agent::move_period) says it may, otherwise it
-//!    stalls. A move into a wall or off the board (or any move for a stalled
-//!    agent) clamps to `Stop` — never a forfeit.
+//! 1. **Movement.** Each agent's submitted direction is resolved under the
+//!    [carry-weight speed model](crate::config::Rules): a light raider moves every
+//!    tick (faster than a soldier), a soldier moves just under one tile/tick, and
+//!    a laden raider stalls between steps as its [`move_speed`](crate::state::Agent::move_speed)
+//!    drops with load. A move into a wall or off the board (or any move for an
+//!    agent that has not banked a full step) clamps to `Stop` — never a forfeit.
+//!    Two agents may never *swap* tiles in one tick (no passing through another
+//!    agent); such a move is cancelled and both hold.
 //! 2. **Eating.** A raider that ends the tick on an enemy seed cache consumes it
 //!    into its carried load.
 //! 3. **Tagging.** A soldier sharing a tile with an enemy raider on the
@@ -75,13 +78,19 @@ pub fn advance(
     result
 }
 
-/// Phase 1 — movement with the carry-weight cadence.
+/// Phase 1 — movement under the carry-weight speed model.
 fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, rules: &Rules) {
     // Resolve every agent's intended target first (reads only pre-move state),
     // then apply — so one agent's move never changes another's eligibility within
-    // the same tick. Two agents may share a tile, so there is no collision step.
-    let mut targets: Vec<Pos> = Vec::with_capacity(state.agents.len());
-    let mut moved: Vec<bool> = Vec::with_capacity(state.agents.len());
+    // the same tick. Two agents may share a tile, so there is no collision step;
+    // the one thing we forbid is a *swap* (handled below).
+    let n = state.agents.len();
+    let from: Vec<Pos> = state.agents.iter().map(|a| a.pos).collect();
+    // The charge each agent will have banked this tick (current + this tick's
+    // earnings). Carried into the apply pass so speed is computed once.
+    let mut charge: Vec<u32> = Vec::with_capacity(n);
+    let mut targets: Vec<Pos> = Vec::with_capacity(n);
+    let mut moved: Vec<bool> = Vec::with_capacity(n);
 
     for agent in &state.agents {
         let action = match agent.team {
@@ -90,9 +99,11 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
         };
         let dir = action.dir_for(agent.id);
 
-        // A stalled laden raider cannot move this tick regardless of the
-        // direction submitted — the move is a no-op (clamped to Stop).
-        let eligible = agent.can_move_this_tick(board, rules);
+        // Earn this tick's charge; the agent may step only once it reaches the
+        // resolution. A raider mid-stall under carry weight is not yet eligible,
+        // and any move submitted for it is a no-op (clamped to Stop).
+        let banked = agent.move_accum + agent.move_speed(board, rules);
+        let eligible = banked >= rules.move_resolution;
         let target = if eligible {
             dir.apply(agent.pos)
         } else {
@@ -105,19 +116,42 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
         } else {
             (agent.pos, false)
         };
+        charge.push(banked);
         targets.push(final_pos);
         moved.push(did_move);
     }
 
+    // Forbid position swaps. Two agents may *share* a tile, so moving onto another
+    // agent is fine — but two agents exchanging tiles in one tick would let each
+    // pass *through* the other (a soldier and an enemy raider trading places never
+    // share a tile, so the raider would slip past untagged). Cancel any such swap:
+    // both agents hold, and the interaction (a tag, say) happens on a later tick.
+    for i in 0..n {
+        if !moved[i] {
+            continue;
+        }
+        for j in (i + 1)..n {
+            if moved[j] && targets[i] == from[j] && targets[j] == from[i] {
+                targets[i] = from[i];
+                moved[i] = false;
+                targets[j] = from[j];
+                moved[j] = false;
+                break; // agent i has only one target, so only one possible swap
+            }
+        }
+    }
+
     for (i, agent) in state.agents.iter_mut().enumerate() {
         agent.pos = targets[i];
-        if moved[i] {
-            agent.ticks_since_move = 0;
+        agent.move_accum = if moved[i] {
+            // Spent one tile's worth of charge; the remainder carries to next tick.
+            charge[i] - rules.move_resolution
         } else {
-            // Accumulate stall time so the cadence advances even while a heavy
-            // raider holds. Saturating so a very long stall cannot overflow.
-            agent.ticks_since_move = agent.ticks_since_move.saturating_add(1);
-        }
+            // Held this tick (stalled, blocked, or a cancelled swap): keep the
+            // charge so the agent steps as soon as it can, capped at one step so a
+            // long hold cannot bank multiple moves.
+            charge[i].min(rules.move_resolution)
+        };
     }
 }
 
@@ -178,12 +212,12 @@ fn tagging(board: &Board, state: &mut MatchState) {
         if load > 0 {
             scatter_dropped_load(board, state, defender_half, tag_tile, load);
         }
-        // Respawn the raider at its nest with nothing carried; reset its cadence.
+        // Respawn the raider at its nest with nothing carried; reset its charge.
         let nest = board.nest(raider_team);
         let agent = &mut state.agents[idx];
         agent.pos = nest;
         agent.carrying = 0;
-        agent.ticks_since_move = 0;
+        agent.move_accum = 0;
     }
 }
 

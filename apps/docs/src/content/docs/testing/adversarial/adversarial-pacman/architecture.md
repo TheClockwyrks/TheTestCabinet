@@ -95,8 +95,9 @@ Each tick the CLI:
    observation — never the authoritative state, and never the opponent's view.
 2. Hands both action sets to `foray-core`, which advances the world by one
    **fixed, faked [timestep](/testing/adversarial/overview/#lockstep-simulation-and-replays)**
-   (movement → eating → tagging → banking, with carry-weight deciding which
-   raiders are eligible to move this tick).
+   (movement → eating → tagging → banking, with the carry-weight speed model
+   deciding which agents have banked enough charge to step this tick, and any
+   tile-swap between two agents cancelled so neither passes through the other).
 3. Appends the tick's inputs to the replay log.
 
 The loop ends at a win condition or `max_ticks`. Because the timestep is faked,
@@ -185,8 +186,11 @@ limited enemy sensing is a planned variant. Shape (illustrative):
 ```
 
 `can_move_this_tick` exposes the [carry-weight](/testing/adversarial/adversarial-pacman/overview/#carry-weight--the-signature-mechanic)
-cadence directly, so a controller never has to re-derive it: a laden raider that
-is stalling this tick reads `false`, and an action submitted for it is a no-op.
+speed model directly, so a controller never has to re-derive it: it is `true` when
+the agent has banked enough charge to step this tick. A laden raider mid-stall
+reads `false` (an action submitted for it is a no-op), and because a soldier moves
+just under one tile/tick, even a soldier reads `false` on its occasional skipped
+step.
 
 ### `action` — the output
 
