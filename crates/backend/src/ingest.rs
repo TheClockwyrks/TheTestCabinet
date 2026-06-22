@@ -488,12 +488,19 @@ fn to_forward_slash(path: &Path) -> String {
 
 /// Recursively copy a directory tree, skipping hidden entries (so the checkout's
 /// dotfiles and the store's own `.tcab` sidecar never enter a copied definition).
+///
+/// The one exception is `.gitignore`: it is preserved so a backend-driven run
+/// seeds the same ignore rules a local run does (the run's implementation is
+/// released as a git repository, and the file keeps build artifacts out of the
+/// public source repo). This mirrors `core`'s `collect_workspace_files`; keep the
+/// two in lockstep.
 fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let name = entry.file_name();
-        if name.to_string_lossy().starts_with('.') {
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with('.') && name_str != ".gitignore" {
             continue;
         }
         let from = entry.path();

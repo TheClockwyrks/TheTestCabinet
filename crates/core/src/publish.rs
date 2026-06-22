@@ -352,6 +352,61 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         }
         Ok(output)
     }
+
+    /// Stage and commit the run's working tree in `dir` so the subsequent push
+    /// releases the implementation the model produced, not just the seed commit.
+    ///
+    /// A collected implementation is normally already a git repository (seeding
+    /// inits one and commits "Seed test case") with the model's changes left
+    /// uncommitted in the working tree; this commits them. Staging honors the
+    /// seeded `.gitignore`, so build artifacts (`target/`, `node_modules/`, …)
+    /// stay out of the public source repo even though a blanket add is used.
+    ///
+    /// Idempotent: when staging finds nothing to commit — a re-push, or a run
+    /// the model never modified — the commit is skipped rather than failing, and
+    /// the push proceeds against whatever is already committed. A `git init` is
+    /// run defensively for the unusual case of an implementation that arrived
+    /// without a repo, so the push always has commits to create from.
+    async fn commit_implementation(&self, dir: &Path) -> Result<()> {
+        if !dir.join(".git").is_dir() {
+            self.require(
+                "git",
+                &["init", "--quiet", "--initial-branch", "main"],
+                Some(dir),
+            )
+            .await?;
+        }
+        // Repo-local identity so committing does not depend on the host's global
+        // git configuration (matching how seeding configures the seed repo).
+        self.require(
+            "git",
+            &["config", "user.name", "The Test Cabinet"],
+            Some(dir),
+        )
+        .await?;
+        self.require(
+            "git",
+            &["config", "user.email", "runs@test-cabinet.invalid"],
+            Some(dir),
+        )
+        .await?;
+        self.require("git", &["add", "--all"], Some(dir)).await?;
+        // Commit only when staging produced something, so a re-push is a clean
+        // no-op instead of a `git commit` "nothing to commit" failure. Porcelain
+        // status is empty exactly when the index matches HEAD.
+        let status = self
+            .require("git", &["status", "--porcelain"], Some(dir))
+            .await?;
+        if !status.stdout.trim().is_empty() {
+            self.require(
+                "git",
+                &["commit", "--quiet", "--message", "Apply run implementation"],
+                Some(dir),
+            )
+            .await?;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -374,6 +429,14 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
             let source = impl_dir.to_str().ok_or_else(|| {
                 Error::Publish("implementation path is not valid UTF-8".to_string())
             })?;
+            // The collected implementation is a git repo seeded with a single
+            // "Seed test case" commit; the model's actual work sits in the
+            // working tree, uncommitted. `gh repo create --push` only pushes
+            // existing commits, so without this the public repo would carry only
+            // the seed — the run's implementation would be missing entirely.
+            // Commit the working tree first (the seeded `.gitignore` keeps build
+            // artifacts such as `target/` out of it).
+            self.commit_implementation(impl_dir).await?;
             self.require(
                 "gh",
                 &[

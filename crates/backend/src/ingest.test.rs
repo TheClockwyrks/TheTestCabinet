@@ -46,6 +46,37 @@ fn scan_with_empty_test_case_restriction_is_a_no_op() {
 }
 
 #[test]
+fn copy_tree_preserves_gitignore_but_skips_other_dotfiles() {
+    // Hidden entries are dropped so the checkout's dotfiles and the store's
+    // `.tcab` sidecar never enter a copied definition — except `.gitignore`,
+    // which must survive so a backend-driven run seeds the same ignore rules a
+    // local run does. Keep this in lockstep with `core`'s `collect_workspace_files`.
+    let src = TempDir::new().unwrap();
+    write(&src.path().join("package.json"), "{}");
+    write(&src.path().join(".gitignore"), "node_modules/\ntarget/\n");
+    write(&src.path().join(".env"), "SECRET=1");
+    write(&src.path().join(".tcab"), "sidecar");
+    let dst = TempDir::new().unwrap();
+
+    copy_tree(src.path(), &dst.path().join("out")).unwrap();
+
+    let out = dst.path().join("out");
+    assert!(out.join("package.json").exists());
+    assert!(
+        out.join(".gitignore").exists(),
+        ".gitignore must survive ingest"
+    );
+    assert!(
+        !out.join(".env").exists(),
+        "other dotfiles are still skipped"
+    );
+    assert!(
+        !out.join(".tcab").exists(),
+        "the store sidecar is still skipped"
+    );
+}
+
+#[test]
 fn stored_manifest_carries_adversarial_specs() {
     // An adversarial case's `[contract]`, `[sandbox]`, `[simulation]`, `[match]`,
     // `[replay]`, and `build.module` must survive into the stored manifest — they

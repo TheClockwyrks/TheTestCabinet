@@ -888,9 +888,11 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 }
 
 #[test]
-fn workspace_dotfiles_are_not_seeded() {
+fn workspace_dotfiles_are_not_seeded_except_gitignore() {
     // A dotfile in the workspace is skipped (matching how the backend copies a
-    // version into its store), so it is not listed as a seeded workspace file.
+    // version into its store), so it is not listed as a seeded workspace file —
+    // with the single exception of `.gitignore`, which IS seeded so the published
+    // implementation repo can exclude the build artifacts a run produces.
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\n",
         "[[variant]]\nslug = \"base\"\n",
@@ -899,19 +901,21 @@ fn workspace_dotfiles_are_not_seeded() {
         &manifest,
         &[
             ("workspaces/base/package.json", "{}"),
-            ("workspaces/base/.gitignore", "node_modules/"),
+            ("workspaces/base/.gitignore", "node_modules/\ntarget/\n"),
+            ("workspaces/base/.env", "SECRET=1"),
         ],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    let dests: Vec<String> = version
+    let mut dests: Vec<String> = version
         .common_workspace
         .iter()
         .map(|f| f.dest.display().to_string())
         .collect();
+    dests.sort();
     assert_eq!(
         dests,
-        ["package.json"],
-        "dotfiles must be skipped: {dests:?}"
+        [".gitignore", "package.json"],
+        "`.gitignore` is seeded; other dotfiles are skipped: {dests:?}"
     );
 }
 

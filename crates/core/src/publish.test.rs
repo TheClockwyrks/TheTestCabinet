@@ -184,13 +184,29 @@ fn wrangler_url_is_captured_not_constructed() {
 /// so publish orchestration can be asserted without a real `gh`/`git`/`wrangler`.
 struct MockRunner {
     repo_exists: bool,
+    /// Whether `git status --porcelain` should report uncommitted work, so the
+    /// commit-before-push path either commits (dirty) or skips the commit (clean).
+    working_tree_dirty: bool,
     calls: Mutex<Vec<String>>,
 }
 
 impl MockRunner {
+    /// A runner whose implementation working tree carries the model's
+    /// uncommitted changes — the common case the push must commit.
     fn new(repo_exists: bool) -> Self {
         Self {
             repo_exists,
+            working_tree_dirty: true,
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// A runner whose implementation working tree is already clean (nothing to
+    /// commit), so the push proceeds against the existing commits.
+    fn with_clean_tree(repo_exists: bool) -> Self {
+        Self {
+            repo_exists,
+            working_tree_dirty: false,
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -213,17 +229,23 @@ impl CommandRunner for MockRunner {
             .expect("lock")
             .push(format!("{program} {}", args.join(" ")));
         // `gh repo view` is the existence probe; `wrangler pages deploy` prints a
-        // deployment URL; everything else simply "succeeds".
+        // deployment URL; `git status --porcelain` reports the model's
+        // uncommitted work so the commit-before-push path runs; everything else
+        // simply "succeeds".
         let is_repo_view =
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
         let is_wrangler = program == "wrangler";
+        let is_git_status = program == "git" && args.first() == Some(&"status");
+        let stdout = if is_wrangler {
+            "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
+        } else if is_git_status && self.working_tree_dirty {
+            " M controller/src/lib.rs\n".to_string()
+        } else {
+            String::new()
+        };
         Ok(CommandOutput {
             success: if is_repo_view { self.repo_exists } else { true },
-            stdout: if is_wrangler {
-                "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
-            } else {
-                String::new()
-            },
+            stdout,
             stderr: String::new(),
         })
     }
@@ -428,8 +450,17 @@ async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
         calls.iter().any(|c| c.contains("wrangler pages deploy")
             && c.contains(&format!("--branch={}", record.id)))
     );
-    // No GitHub Pages workflow / no dataset commit anymore.
-    assert!(!calls.iter().any(|c| c.contains("git commit")));
+    // The model's uncommitted work is committed before the push, so the public
+    // repo carries the implementation and not just the "Seed test case" commit.
+    // Staging uses a blanket add — the seeded `.gitignore` keeps build artifacts
+    // (e.g. `target/`) out.
+    assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
+    let commit_pos = calls.iter().position(|c| c.contains("git commit"));
+    let create_pos = calls.iter().position(|c| c.contains("gh repo create"));
+    assert!(
+        matches!((commit_pos, create_pos), (Some(commit), Some(create)) if commit < create),
+        "implementation must be committed before the push: {calls:?}"
+    );
 
     // The record was stored on the backend with its links filled in — but no
     // review traveled with it (pushing carries no review).
@@ -450,6 +481,43 @@ async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
     assert_eq!(
         stored.links.source_repo.as_deref(),
         Some(outcome.source_repo.as_str())
+    );
+}
+
+#[tokio::test]
+async fn push_skips_the_commit_when_the_working_tree_is_already_clean() {
+    // A re-push (or a run the model never modified) finds nothing to commit:
+    // staging still runs, but no commit is attempted, and the push proceeds
+    // against the existing commits. This is what keeps committing idempotent.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(
+        dir.path(),
+        MockRunner::with_clean_tree(false),
+        MockBackend::new(false),
+    );
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let record = sample_record();
+    let request = PushRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(&build_dir),
+        events: &[],
+    };
+
+    publisher.push(&request).await.expect("push");
+
+    let calls = publisher.runner().calls();
+    // Staging still happens, but a clean tree means no commit is made...
+    assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
+    assert!(!calls.iter().any(|c| c.contains("git commit")), "{calls:?}");
+    // ...and the push still creates and pushes the repo from what is committed.
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains("gh repo create") && c.contains("--push")),
+        "{calls:?}"
     );
 }
 

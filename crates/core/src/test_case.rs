@@ -2843,7 +2843,12 @@ fn resolve_sheet(
 /// backend copies a version folder into its store: a dotfile would be listed
 /// here but never distributed, so a backend-driven run would fail to fetch it.
 /// Keeping the two in lockstep means a workspace seeds the same set locally and
-/// remotely.
+/// remotely. The one exception is `.gitignore`, which **is** seeded (and is
+/// likewise preserved by the backend's `copy_tree`): it declares the build
+/// artifacts a run produces (Rust's `target/`, a JS `node_modules/`, …), and a
+/// run's implementation is released as a git repository at
+/// [publish](crate::publish) time — without the ignore file those artifacts
+/// would be committed into the public per-run source repo.
 /// Render a relative path with forward slashes so a workspace file's dest is
 /// stable across hosts (a Windows `\` separator would otherwise leak into the
 /// run-relative dest and the serialized manifest).
@@ -2863,7 +2868,14 @@ fn collect_workspace_files(
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        if entry.file_name().to_string_lossy().starts_with('.') {
+        // Hidden entries are skipped to match how a version folder is
+        // distributed, except `.gitignore` — it must be seeded so the published
+        // implementation repo excludes the build artifacts a run produces. See
+        // this function's doc comment, and keep this in lockstep with the
+        // backend's `copy_tree`.
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name.starts_with('.') && file_name != ".gitignore" {
             continue;
         }
         let path = entry.path();

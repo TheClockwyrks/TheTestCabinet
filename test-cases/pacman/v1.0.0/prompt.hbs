@@ -88,3 +88,16 @@ Use the project's own Playwright: import it from your project (for example
 project's `node_modules`, like any other dependency. Launch Chromium with the
 `--no-sandbox` argument — this container has no Chromium sandbox, so a default
 launch will fail.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you
+started, with the starter files in its first commit. Your finished
+implementation is published directly from this repository's commits, so work you
+leave uncommitted is **not** published. When the build is complete and verified,
+commit everything: run `git add -A` then `git commit`, and confirm `git status`
+reports a clean working tree with nothing uncommitted or untracked. A
+`.gitignore` already excludes `node_modules/` and the build output
+(`dist/`/`build/`/`out/`), so a clean tree does not mean committing those — but
+it does mean committing your source, your `package-lock.json`, your `README.md`,
+and the `proof/` artifacts.
