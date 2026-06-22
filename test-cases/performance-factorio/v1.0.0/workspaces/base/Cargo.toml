@@ -1,0 +1,31 @@
+# Starter Cargo workspace for a Lattice engine submission.
+#
+# You write only `engine/src/lib.rs`. The contract types + canonical checksum
+# (`lattice-core`) and the engine SDK (`lattice-sdk`) your engine builds against
+# are NOT in this workspace — the run container provides them under
+# `/opt/lattice/buildkit`, along with the `lattice` CLI you iterate with, the
+# reference engines, and the training scenarios (see `specs/contract.md` and
+# `specs/cli.md`). They are the SAME types and checksum the harness scores you
+# against; you build against them, you do not edit them.
+#
+# Build your engine with:
+#
+#     cargo build --release --target wasm32-unknown-unknown -p engine
+#
+# which emits `target/wasm32-unknown-unknown/release/engine.wasm` — the artifact
+# the harness loads and scores. `.cargo/config.toml` defaults the build target to
+# wasm32 for the `engine` package, so a bare `cargo build --release` works too.
+
+[workspace]
+resolver = "2"
+# The engine is the only crate in this workspace; the contract types and SDK it
+# path-depends on live outside it (in the container's `/opt/lattice/buildkit`), so
+# they are ordinary out-of-workspace path dependencies, not members.
+members = ["engine"]
+
+# Concrete values for the engine's `*.workspace = true` inheritance.
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false

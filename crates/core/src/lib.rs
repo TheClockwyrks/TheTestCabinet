@@ -24,6 +24,7 @@ pub mod match_play;
 pub mod metrics;
 pub mod models;
 pub mod orchestrator;
+pub mod performance_validator;
 pub mod playable;
 pub mod preview;
 pub mod pricing;
@@ -83,6 +84,7 @@ pub use orchestrator::{
     BUILT_IN_SLUGS, ONE_SHOT_SLUG, Orchestrator, OrchestratorCatalog, OrchestratorManifest,
     OrchestratorSelection,
 };
+pub use performance_validator::PerformanceValidator;
 pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
     serve_asset_file, serve_build_file, serve_proof_file,

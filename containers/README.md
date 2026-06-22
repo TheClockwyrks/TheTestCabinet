@@ -5,7 +5,7 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **four images**, selected by a run's
+There are **five images**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
 its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
@@ -24,7 +24,13 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
   run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
   toolchain (so a model's controller builds to a wasm core module in-container)
   and the Foray tooling compiled from `crates/`: the baked-in `foray` CLI, the
-  controller buildkit, and the reference modules + map.
+  controller buildkit, and the reference modules + map; and
+- the **performance** image, which every
+  [performance](../apps/docs/src/content/docs/testing/performance/overview.md)
+  run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
+  toolchain (so a model's engine builds to a wasm core module in-container) and
+  the Lattice tooling compiled from `crates/`: the baked-in `lattice` CLI, the
+  engine buildkit, the reference engines, and the committed training scenarios.
 
 None is a per-harness image — a run installs the selected harness's CLI into
 the image at run time, by running the harness's `install` command (see
@@ -44,7 +50,10 @@ containers/
 ├── adversarial/            # the base image plus the wasm toolchain + Foray tooling
 │   ├── Dockerfile          #   (foray CLI, references + map, controller buildkit)
 │   └── buildkit/Cargo.toml #   de-workspaced root for the baked buildkit crates
-└── build.sh                 # builds (and optionally pushes) all four images
+├── performance/           # the base image plus the wasm toolchain + Lattice tooling
+│   ├── Dockerfile          #   (lattice CLI, reference engines, training, engine buildkit)
+│   └── buildkit/Cargo.toml #   de-workspaced root for the baked buildkit crates
+└── build.sh                 # builds (and optionally pushes) all five images
 ```
 
 ## Base image
@@ -148,18 +157,63 @@ than the image's directory (see `build.sh`); the build also smoke-compiles the
 buildkit standalone, so a buildkit root that has drifted from the repository's
 workspace dependencies fails the image build.
 
+## Performance image
+
+`performance/` is the base image plus the **Rust toolchain with the
+`wasm32-unknown-unknown` target** and **The Test Cabinet's own Lattice tooling**
+(`performance/Dockerfile` is `FROM` the base, so it inherits the toolchain, the
+`node` run user, the `/work` working directory, and the keep-alive `CMD`). A
+[performance](../apps/docs/src/content/docs/testing/performance/overview.md) run
+asks the model to write a factory-simulation engine in Rust; the case's `[build]`
+commands compile that engine to a wasm core module **inside this container at run
+time**, exactly as the adversarial image compiles a controller, which is why the
+Rust toolchain is baked in the same way (system-wide, world-readable, with a
+run-user-owned cargo registry).
+
+Like the adversarial image, this one **also bakes in The Test Cabinet's own
+tooling**, compiled from `crates/` in a multi-stage build and copied under
+`/usr/local/bin` and `/opt/lattice`:
+
+- the **`lattice` CLI** (`/usr/local/bin/lattice`) — the binary a model runs to
+  solve scenarios with the oracle and score its engine locally. It hosts the
+  *same* `lattice-host` the validator scores with, so it must be built from this
+  repo and kept in lockstep, not installed at run time;
+- the **engine buildkit** (`/opt/lattice/buildkit`) — fresh, source-only copies of
+  `lattice-core` and `lattice-sdk` (with a de-workspaced root manifest,
+  [`performance/buildkit/Cargo.toml`](performance/buildkit/Cargo.toml), that
+  re-supplies their `workspace = true` inheritance) that the seeded `engine` crate
+  path-depends on to build — so the run workspace vendors nothing;
+- the **reference engines** (`/opt/lattice/references`, pre-built wasm + readable
+  source) — the naive and transport worked examples; and
+- the **training scenarios** (`/opt/lattice/training`, each
+  `<name>/{scenario.json,expected.json}`) — the labelled practice set, copied from
+  the case's version folder. `$LATTICE_HOME` is set to `/opt/lattice` so specs and
+  a model can name these by `$LATTICE_HOME/training/…` rather than a hard-coded
+  path. The **held-out scored set is never baked here** — it lives only with the
+  case, so a model cannot reach it.
+
+The same coupling argument as the adversarial tooling applies: the CLI, the
+buildkit crates, the reference modules, and the training set must match the types
+and checksum the validator scores against, so **build this image from the same
+commit as the orchestrator** (a run records both the orchestrator commit and the
+image digest, so a mismatch is auditable). Compiling them is why the build context
+is the repository root rather than the image's directory (see `build.sh`); the
+build also smoke-compiles the buildkit standalone, so a buildkit root that has
+drifted from the repository's workspace dependencies fails the image build.
+
 ## Building
 
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build the base, sprite, sprite-sheet, and adversarial images
+./build.sh                # build the base, sprite, sprite-sheet, adversarial, and performance images
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
 Build-only mode tags `test-cabinet-base:latest`, `test-cabinet-sprite:latest`,
-`test-cabinet-sprite-sheet:latest`, and `test-cabinet-adversarial:latest`
-locally. Those are exactly the names a runner resolves (by test type and asset
+`test-cabinet-sprite-sheet:latest`, `test-cabinet-adversarial:latest`, and
+`test-cabinet-performance:latest` locally. Those are exactly the names a runner
+resolves (by test type and asset
 kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
 locally-built image is used for offline development without pulling anything.
 Override `IMAGE_TAG` / `IMAGE_NAME_PREFIX` to change the tag or name prefix.

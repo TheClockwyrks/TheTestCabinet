@@ -183,6 +183,7 @@ impl Validator for AdversarialValidator {
             proofs: proof_results,
             asset: None,
             adversarial: Some(result),
+            performance: None,
         })
     }
 }
@@ -227,6 +228,7 @@ fn failed(detail: &str, proofs: Vec<crate::validation::ProofResult>) -> Validati
         proofs,
         asset: None,
         adversarial: None,
+        performance: None,
     }
 }
 
@@ -257,6 +259,7 @@ fn forfeit_loss(proofs: Vec<crate::validation::ProofResult>, detail: String) -> 
             outcome: AdversarialOutcome::Forfeit,
             detail: Some(detail),
         }),
+        performance: None,
     }
 }
 

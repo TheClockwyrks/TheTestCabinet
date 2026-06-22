@@ -1,0 +1,29 @@
+[package]
+name = "lattice-sdk"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The helper most Lattice submissions share. A submission crate links this as an
+# `rlib`, writes a single `fn simulate(scenario: &Scenario) -> Vec<Snapshot>`, and
+# invokes the `simulate!` macro; the SDK then wires up the v1 wasm submission ABI
+# (`alloc`/`simulate`) so the crate compiles to a `wasm32-unknown-unknown` core
+# module the `lattice-host` sandbox can load. It depends on `lattice-core` only
+# for the `Scenario`/`Snapshot` contract types. It has no wasm-host dependency of
+# its own — it IS the guest side of the boundary.
+#
+# Unlike `foray-controller-sdk`, the SDK has NO grid/maze helpers: a Lattice
+# submission is an engine over the documented rules, so the shared plumbing is
+# purely the ABI and the re-exported contract types.
+[lib]
+name = "lattice_sdk"
+crate-type = ["rlib"]
+
+[dependencies]
+# The scenario/state contract types the submission consumes and produces.
+# `default-features = false` drops the schema feature (schemars) a submission
+# never needs, keeping the guest wasm lean — an engine decodes the scenario and
+# emits snapshots; it does not emit JSON Schemas.
+lattice-core = { path = "../lattice-core", default-features = false }
+serde_json = { workspace = true }

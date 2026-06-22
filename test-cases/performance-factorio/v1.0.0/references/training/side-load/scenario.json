@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "grid": { "width": 16, "height": 10 },
+  "ticks": 20000,
+  "snapshots": [4000, 10000, 20000],
+  "entities": [
+    { "type": "source", "x": 0, "y": 4, "dir": "E", "item": "iron-ore", "lane": "left", "period": 6 },
+    { "type": "belt", "x": 1, "y": 4, "dir": "E", "tier": "slow" },
+    { "type": "belt", "x": 2, "y": 4, "dir": "E", "tier": "slow" },
+    { "type": "belt", "x": 3, "y": 4, "dir": "E", "tier": "slow" },
+    { "type": "belt", "x": 4, "y": 4, "dir": "E", "tier": "slow" },
+    { "type": "sink", "x": 5, "y": 4, "dir": "E" },
+    { "type": "source", "x": 3, "y": 7, "dir": "N", "item": "copper-ore", "lane": "both", "period": 3 },
+    { "type": "belt", "x": 3, "y": 6, "dir": "N", "tier": "fast" },
+    { "type": "belt", "x": 3, "y": 5, "dir": "N", "tier": "fast" }
+  ]
+}

@@ -46,6 +46,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         checks: vec![],
         common_review_items: vec![],
         domains: vec![],
+        cases: vec![],
     }
 }
 

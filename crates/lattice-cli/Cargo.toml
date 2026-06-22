@@ -1,0 +1,25 @@
+[package]
+name = "lattice-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `lattice` binary: a thin clap wrapper over `lattice-core` (the oracle) and
+# `lattice-host` (the wasm sandbox). `solve` runs the reference engine on a
+# scenario and writes the expected `state`; `run` loads a submission module and
+# scores it against the reference (correct/incorrect + fuel) using the SAME host
+# the validator uses; `gen` emits a fresh deterministic scenario from a seed; and
+# `schema` dumps the scenario/state JSON Schemas from `lattice-core`. All of the
+# host logic lives in `lattice-host` so the core validator reuses it; this crate
+# only does argument parsing, the scenario generator, and file I/O.
+[[bin]]
+name = "lattice"
+path = "src/main.rs"
+
+[dependencies]
+lattice-core = { path = "../lattice-core" }
+lattice-host = { path = "../lattice-host" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

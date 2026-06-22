@@ -121,6 +121,7 @@ fn manifest() -> StoredManifest {
         output: None,
         contract: None,
         sandbox: None,
+        cases: Vec::new(),
         simulation: None,
         r#match: None,
         replay: None,

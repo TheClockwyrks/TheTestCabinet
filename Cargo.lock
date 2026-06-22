@@ -2425,6 +2425,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "lattice-cli"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "lattice-core",
+ "lattice-host",
+ "serde_json",
+]
+
+[[package]]
+name = "lattice-core"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lattice-host"
+version = "0.0.0"
+dependencies = [
+ "lattice-core",
+ "serde_json",
+ "thiserror 2.0.18",
+ "wasmtime",
+ "wat",
+]
+
+[[package]]
+name = "lattice-ref-naive"
+version = "0.0.0"
+dependencies = [
+ "lattice-core",
+ "lattice-sdk",
+]
+
+[[package]]
+name = "lattice-ref-transport"
+version = "0.0.0"
+dependencies = [
+ "lattice-core",
+ "lattice-sdk",
+]
+
+[[package]]
+name = "lattice-sdk"
+version = "0.0.0"
+dependencies = [
+ "lattice-core",
+ "serde_json",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5156,6 +5211,8 @@ dependencies = [
  "foray-host",
  "handlebars",
  "http",
+ "lattice-core",
+ "lattice-host",
  "png 0.17.16",
  "reqwest 0.12.28",
  "serde",
@@ -5169,6 +5226,7 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "uuid",
+ "wat",
  "which",
 ]
 

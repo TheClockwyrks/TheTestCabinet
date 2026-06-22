@@ -1,0 +1,581 @@
+[
+  {
+    "tick": 6000,
+    "checksum": "fnv1a64:1db676d1dc2765f2",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 1
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 8,
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 74
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "circuit": 62
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tick": 15000,
+    "checksum": "fnv1a64:5b38f16abe5783e4",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 1
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 8,
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "circuit": 155
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tick": 30000,
+    "checksum": "fnv1a64:a95cd53266310951",
+    "entities": [
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 64,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 128,
+              "item": "copper-cable"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 1
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 8,
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 74
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "circuit": 312
+          }
+        }
+      }
+    ]
+  }
+]

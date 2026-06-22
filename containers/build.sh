@@ -12,18 +12,25 @@
 #     image plus the Rust + `wasm32-unknown-unknown` toolchain (so a model's
 #     controller builds to wasm in-container) and the Foray tooling compiled from
 #     `crates/`: the baked-in `foray` CLI, the controller buildkit, and the
-#     reference modules + map (`adversarial/Dockerfile` is `FROM` the base here).
+#     reference modules + map (`adversarial/Dockerfile` is `FROM` the base here);
+#     and
+#   - the performance image, which every performance run executes in — the base
+#     image plus the Rust + `wasm32-unknown-unknown` toolchain and the Lattice
+#     tooling compiled from `crates/`: the baked-in `lattice` CLI, the engine
+#     buildkit, the reference engines, and the committed training scenarios
+#     (`performance/Dockerfile` is `FROM` the base here).
 # None is a per-harness image: a run installs the selected harness's CLI into the
 # image at run time (see `harnesses/README.md`).
 #
 # Usage:
-#   ./build.sh                # build the base, sprite, sprite-sheet, and adversarial images
+#   ./build.sh                # build the base, sprite, sprite-sheet, adversarial, and performance images
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
 # configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
 # override TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_SPRITE /
-# TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_ADVERSARIAL; see
+# TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_ADVERSARIAL /
+# TCAB_CONTAINER_IMAGE_PERFORMANCE; see
 # docs/components/core/execution.md). The
 # backend plays no part in container distribution, so this script never talks to
 # it.
@@ -31,8 +38,8 @@
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
 # pushed digest reference. Without PUSH it just builds locally (the offline
 # development path): the images are named `test-cabinet-base:<tag>`,
-# `test-cabinet-sprite:<tag>`, `test-cabinet-sprite-sheet:<tag>`, and
-# `test-cabinet-adversarial:<tag>`, which is
+# `test-cabinet-sprite:<tag>`, `test-cabinet-sprite-sheet:<tag>`,
+# `test-cabinet-adversarial:<tag>`, and `test-cabinet-performance:<tag>`, which is
 # what a runner resolves when TCAB_CONTAINER_REGISTRY is set to an empty string.
 #
 # Configuration via environment variables:
@@ -44,8 +51,9 @@
 #   IMAGE_NAME_PREFIX  image name prefix (default: test-cabinet-); the base is
 #                 IMAGE_NAME_PREFIXbase, the sprite image is
 #                 IMAGE_NAME_PREFIXsprite, the sprite-sheet image is
-#                 IMAGE_NAME_PREFIXsprite-sheet, and the adversarial image is
-#                 IMAGE_NAME_PREFIXadversarial
+#                 IMAGE_NAME_PREFIXsprite-sheet, the adversarial image is
+#                 IMAGE_NAME_PREFIXadversarial, and the performance image is
+#                 IMAGE_NAME_PREFIXperformance
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
 set -euo pipefail
@@ -59,14 +67,15 @@ readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
 
-# The base and adversarial image tags left in the local store (build-only mode) or
-# tagged from and pushed (push mode). The sprite, sprite-sheet, and adversarial
-# images are each built `FROM` the local base tag below, so they stay in lockstep
-# with the base within a single build. The sprite and sprite-sheet tags are
-# composed inline by `build_asset_image`; only the base and adversarial tags are
-# referenced by name here.
+# The base, adversarial, and performance image tags left in the local store
+# (build-only mode) or tagged from and pushed (push mode). The sprite,
+# sprite-sheet, adversarial, and performance images are each built `FROM` the local
+# base tag below, so they stay in lockstep with the base within a single build. The
+# sprite and sprite-sheet tags are composed inline by `build_asset_image`; only the
+# base, adversarial, and performance tags are referenced by name here.
 readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
+readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
 # In push mode IMAGE_REGISTRY is required: a digest reference must be
 # registry-qualified to be pullable by a runner.
@@ -161,10 +170,35 @@ build_adversarial() {
 	fi
 }
 
-# The base must be built before the sprite, sprite-sheet, and adversarial images,
-# which are all `FROM` it.
+build_performance() {
+	echo "==> building ${PERFORMANCE_IMAGE} (FROM ${BASE_IMAGE})"
+	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
+	# arg, the local tag) plus the Rust + `wasm32-unknown-unknown` toolchain a
+	# model's engine compiles to wasm with, AND the Lattice tooling the image's
+	# first stage compiles from `crates/`: the `lattice` CLI, the engine buildkit
+	# (`lattice-core` + `lattice-sdk`), and the reference engine wasm modules. It
+	# also bakes the committed training scenarios from the case's version folder
+	# under `test-cases/`. Like the adversarial image it therefore needs the
+	# repository root as its build context (a repo-root `.dockerignore` keeps it
+	# lean). Building from the local base tag avoids a registry round-trip and keeps
+	# the performance image pinned to the base produced in this same invocation.
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		-t "${PERFORMANCE_IMAGE}" \
+		-f "${SCRIPT_DIR}/performance/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${PERFORMANCE_IMAGE}" performance)"
+		echo "==> performance reference: ${reference}"
+	fi
+}
+
+# The base must be built before the sprite, sprite-sheet, adversarial, and
+# performance images, which are all `FROM` it.
 build_base
 build_asset_image sprite
 build_asset_image sprite-sheet
 build_adversarial
+build_performance
 echo "==> done"

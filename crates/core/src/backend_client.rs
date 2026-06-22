@@ -28,9 +28,9 @@ use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec,
-    MediaKind, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType,
-    ToolSpec, Variant, WorkspaceFile,
+    MediaKind, OutputSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
+    ReviewItem, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion,
+    TestType, ToolSpec, Variant, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -925,6 +925,9 @@ struct VersionBody {
     /// wire shape (`id`, `name`, `description`) matches it field for field.
     #[serde(default)]
     domains: Vec<Domain>,
+    /// A performance case's held-out scored set. Empty for every other type.
+    #[serde(default)]
+    cases: Vec<CaseBody>,
 }
 
 impl VersionBody {
@@ -969,11 +972,14 @@ impl VersionBody {
             }),
             contract: self.contract.map(|contract| ContractSpec {
                 entry: contract.entry,
-                world: PathBuf::from(&contract.world),
-                action: PathBuf::from(&contract.action),
+                world: contract.world.as_deref().map(PathBuf::from),
+                action: contract.action.as_deref().map(PathBuf::from),
+                input: contract.input.as_deref().map(PathBuf::from),
+                output: contract.output.as_deref().map(PathBuf::from),
             }),
             sandbox: self.sandbox.map(|sandbox| SandboxSpec {
                 fuel_per_tick: sandbox.fuel_per_tick,
+                fuel_limit: sandbox.fuel_limit,
                 max_memory_bytes: sandbox.max_memory_bytes,
             }),
             simulation: self.simulation.map(|simulation| SimulationSpec {
@@ -1036,6 +1042,14 @@ impl VersionBody {
                 .map(review_item_from)
                 .collect(),
             domains: self.domains,
+            cases: self
+                .cases
+                .into_iter()
+                .map(|case| PerformanceCase {
+                    input: PathBuf::from(&case.input),
+                    expected: PathBuf::from(&case.expected),
+                })
+                .collect(),
         }
     }
 }
@@ -1131,15 +1145,38 @@ struct BuildBody {
 #[serde(rename_all = "camelCase")]
 struct ContractBody {
     entry: String,
-    world: String,
-    action: String,
+    /// Adversarial only; absent on a performance case.
+    #[serde(default)]
+    world: Option<String>,
+    /// Adversarial only; absent on a performance case.
+    #[serde(default)]
+    action: Option<String>,
+    /// Performance only; absent on an adversarial case.
+    #[serde(default)]
+    input: Option<String>,
+    /// Performance only; absent on an adversarial case.
+    #[serde(default)]
+    output: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SandboxBody {
-    fuel_per_tick: u64,
+    /// Adversarial only; absent on a performance case.
+    #[serde(default)]
+    fuel_per_tick: Option<u64>,
+    /// Performance only; absent on an adversarial case.
+    #[serde(default)]
+    fuel_limit: Option<u64>,
     max_memory_bytes: u64,
+}
+
+/// A performance case's held-out `[[case]]` as served by the backend.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CaseBody {
+    input: String,
+    expected: String,
 }
 
 #[derive(Deserialize)]

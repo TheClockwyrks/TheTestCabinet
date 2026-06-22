@@ -29,6 +29,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         output: None,
         contract: None,
         sandbox: None,
+        cases: Vec::new(),
         simulation: None,
         r#match: None,
         replay: None,

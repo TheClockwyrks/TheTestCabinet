@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "grid": { "width": 16, "height": 8 },
+  "ticks": 20000,
+  "snapshots": [4000, 10000, 20000],
+  "entities": [
+    { "type": "source", "x": 0, "y": 2, "dir": "E", "item": "iron-plate", "lane": "both", "period": 2 },
+    { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "express" },
+    { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "express" },
+    { "type": "source", "x": 0, "y": 3, "dir": "E", "item": "copper-plate", "lane": "both", "period": 2 },
+    { "type": "belt", "x": 1, "y": 3, "dir": "E", "tier": "express" },
+    { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "express" },
+    { "type": "splitter", "x": 3, "y": 2, "dir": "E" },
+    { "type": "belt", "x": 4, "y": 2, "dir": "E", "tier": "slow" },
+    { "type": "belt", "x": 5, "y": 2, "dir": "E", "tier": "slow" },
+    { "type": "sink", "x": 6, "y": 2, "dir": "E" },
+    { "type": "belt", "x": 4, "y": 3, "dir": "E", "tier": "slow" },
+    { "type": "belt", "x": 5, "y": 3, "dir": "E", "tier": "slow" }
+  ]
+}

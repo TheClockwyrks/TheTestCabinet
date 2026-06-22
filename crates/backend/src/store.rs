@@ -93,13 +93,18 @@ pub struct StoredManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<StoredOutput>,
     /// The controller contract an adversarial case's wasm controller implements.
-    /// `Some` only for adversarial.
+    /// `Some` for adversarial (per-tick `world`/`action`) and performance
+    /// (per-scenario `input`/`output`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract: Option<StoredContract>,
-    /// The per-tick sandbox limits applied to an adversarial case's controllers.
-    /// `Some` only for adversarial.
+    /// The sandbox limits applied to an adversarial case's controllers (per tick)
+    /// or a performance case's engine (per scenario). `Some` for both types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<StoredSandbox>,
+    /// The held-out scored input cases of a performance case. Empty for other
+    /// types. The scored set is committed with the case and never seeded into a run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cases: Vec<StoredCase>,
     /// The simulation-loop configuration of an adversarial case. `Some` only for
     /// adversarial.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,28 +181,58 @@ pub struct StoredBuild {
     pub module: Option<String>,
 }
 
-/// The controller contract of an adversarial case persisted in a
+/// The submission contract of an adversarial or performance case persisted in a
 /// [`StoredManifest`]. Path fields are forward-slashed run-workspace-relative keys.
+/// Adversarial carries the per-tick `world`/`action` schemas; performance carries
+/// the per-scenario `input`/`output` schemas. The pairs are `Option` so the two
+/// types coexist on one stored shape (only one pair is set).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredContract {
-    /// The exported function invoked once per tick.
+    /// The exported function invoked once per tick (adversarial) or once per
+    /// scenario (performance).
     pub entry: String,
-    /// The run-workspace-relative path of the seeded `world` observation schema.
-    pub world: String,
-    /// The run-workspace-relative path of the seeded `action` schema.
-    pub action: String,
+    /// Adversarial only: the seeded `world` observation schema path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<String>,
+    /// Adversarial only: the seeded `action` schema path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    /// Performance only: the seeded `input` (scenario) schema path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    /// Performance only: the seeded `output` (state) schema path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
-/// The per-tick sandbox limits of an adversarial case persisted in a
-/// [`StoredManifest`].
+/// The sandbox limits of an adversarial or performance case persisted in a
+/// [`StoredManifest`]. Adversarial meters per tick (`fuel_per_tick`); performance
+/// meters per scenario (`fuel_limit`). Both fuel fields are `Option` so the two
+/// types coexist (only one is set).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredSandbox {
-    /// The wasmtime fuel ceiling for a single tick.
-    pub fuel_per_tick: u64,
+    /// Adversarial only: the wasmtime fuel ceiling for a single tick.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_per_tick: Option<u64>,
+    /// Performance only: the wasmtime fuel ceiling for a whole scenario.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_limit: Option<u64>,
     /// The linear-memory cap in bytes.
     pub max_memory_bytes: u64,
+}
+
+/// One held-out scored input case of a performance case persisted in a
+/// [`StoredManifest`]. Path fields are forward-slashed catalog-relative keys; the
+/// scored set is committed with the case and is **not** seeded into a run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredCase {
+    /// The input instance fed to the engine.
+    pub input: String,
+    /// The correct answer the engine's output is checked against.
+    pub expected: String,
 }
 
 /// The simulation-loop configuration of an adversarial case persisted in a

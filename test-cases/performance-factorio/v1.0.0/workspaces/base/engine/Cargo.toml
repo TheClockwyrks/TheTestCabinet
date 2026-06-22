@@ -1,0 +1,37 @@
+[package]
+name = "engine"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Your Lattice engine. It compiles to a `wasm32-unknown-unknown` core module the
+# harness loads into the sandbox; the `cdylib` crate-type and the SDK's `simulate!`
+# macro give it the three exports the host needs (`memory`, `alloc`, and the
+# `simulate` contract entry).
+#
+# IMPORTANT: keep the crate name `engine` and the `cdylib` crate-type, so the build
+# emits `target/wasm32-unknown-unknown/release/engine.wasm` — the exact path the
+# manifest's `build.module` names. Renaming either changes the artifact path and the
+# harness will not find your module.
+[lib]
+name = "engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The contract types (`Scenario`/`Snapshot` and the per-entity state) plus the
+# canonical byte serialization and FNV-1a checksum your output is compared by.
+# `default-features = false` drops the schema feature (schemars) an engine never
+# needs, keeping the guest wasm lean.
+#
+# These two crates are provided by the run container under `/opt/lattice/buildkit`
+# (the baked-in engine "buildkit" — see `specs/contract.md`), NOT vendored into
+# this workspace. They are the SAME types and checksum the harness scores you
+# against; you build against them, you do not edit them. The path is absolute
+# because it is the in-container location of the buildkit — this crate builds inside
+# the run container (where the `lattice` CLI also lives), never on a bare host.
+lattice-core = { path = "/opt/lattice/buildkit/lattice-core", default-features = false }
+# The guest side of the engine ABI (the `alloc`/`simulate` exports) plus the
+# re-exported `Scenario`/`Snapshot` types. Link it, write `fn run`, and invoke
+# `simulate!(run)` — see `src/lib.rs`.
+lattice-sdk = { path = "/opt/lattice/buildkit/lattice-sdk" }

@@ -204,10 +204,16 @@ pub fn canonical_match_setup(
             "an adversarial match requires [contract], [sandbox], and [simulation]".to_string(),
         ));
     };
+    // An adversarial case's resolved `[sandbox]` always carries `fuel_per_tick`
+    // (resolution requires it for this type and forbids the performance
+    // `fuel_limit`); guard the invariant rather than unwrapping blind.
+    let fuel_per_tick = sandbox.fuel_per_tick.ok_or_else(|| {
+        Error::Validation("an adversarial match requires sandbox.fuel_per_tick".to_string())
+    })?;
     Ok(MatchSetup {
         entry: contract.entry.clone(),
         limits: SandboxLimits {
-            fuel_per_tick: sandbox.fuel_per_tick,
+            fuel_per_tick,
             max_memory_bytes: sandbox.max_memory_bytes as usize,
         },
         map_id: MAP_ID.to_string(),

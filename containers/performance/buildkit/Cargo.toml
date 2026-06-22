@@ -1,0 +1,35 @@
+# Workspace root for the baked Lattice engine "buildkit".
+#
+# The performance run-container image bakes a model's engine *build dependencies*
+# under `/opt/lattice/buildkit` so the seeded run workspace never has to vendor
+# them. This directory holds fresh copies of `lattice-core` (the
+# `Scenario`/`Snapshot` contract types, the canonical byte serialization, and the
+# FNV-1a checksum an engine's output is compared by — plus the straightforward
+# reference simulation the floor starter delegates to) and `lattice-sdk` (the
+# guest-side ABI glue and the re-exported contract types), copied UNMODIFIED from
+# `crates/` at image-build time (see `containers/performance/Dockerfile`). A run's
+# `engine/Cargo.toml` path-depends on the two crates under this directory.
+#
+# The crate sources are copied verbatim — so they can never drift from the types
+# and checksum the validator scores against — but they inherit their package fields
+# and dependency versions from the *repository* workspace via `workspace = true`.
+# This root re-supplies that inheritance so the copies build standalone inside the
+# image. The values below MIRROR the repository root `Cargo.toml`'s
+# `[workspace.package]` and the `[workspace.dependencies]` entries those two crates
+# reference (`serde`, `serde_json`, `schemars`); a mismatch after a version bump
+# fails the image build loudly (the Dockerfile compiles the buildkit as a smoke
+# check), which is the signal to update this file.
+[workspace]
+resolver = "2"
+members = ["lattice-core", "lattice-sdk"]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "0.8"

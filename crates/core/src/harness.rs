@@ -40,6 +40,12 @@ const SPRITE_SHEET_IMAGE_NAME: &str = "test-cabinet-sprite-sheet";
 /// tooling: the `foray` CLI, the controller buildkit, and the reference modules +
 /// map (see `containers/adversarial/Dockerfile`).
 const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
+/// The name of the performance run-container image, used by every performance
+/// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
+/// (so a model's engine builds to wasm in-container) and the baked-in Lattice
+/// tooling: the `lattice` CLI, the engine buildkit, the reference modules, and the
+/// training scenarios (see `containers/performance/Dockerfile`).
+const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 
 /// The environment variable that pins a verbatim override for the base (end-to-
 /// end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
@@ -52,6 +58,9 @@ const SPRITE_SHEET_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE_SHEET
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
+/// The environment variable that pins a verbatim override for the performance
+/// image.
+const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 
 /// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for
@@ -71,7 +80,9 @@ struct ImageSpec {
 /// binary); sprite-sheet runs use the sprite-sheet image (the base plus the
 /// baked-in `draw-sheet` binary); adversarial runs use the adversarial image (the
 /// base plus the Rust + `wasm32-unknown-unknown` toolchain a controller compiles
-/// to wasm with, and the baked-in Foray CLI + buildkit + references). Each has its
+/// to wasm with, and the baked-in Foray CLI + buildkit + references); performance
+/// runs use the performance image (the same wasm toolchain plus the baked-in
+/// Lattice CLI + buildkit + reference engines + training scenarios). Each has its
 /// own override env var so a host can pin one image
 /// without disturbing the others. `asset_kind` is ignored outside an
 /// asset-generation run (it is always [`AssetKind::Sprite`] there).
@@ -94,6 +105,10 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
         TestType::Adversarial => ImageSpec {
             name: ADVERSARIAL_IMAGE_NAME,
             override_env: ADVERSARIAL_IMAGE_OVERRIDE_ENV,
+        },
+        TestType::Performance => ImageSpec {
+            name: PERFORMANCE_IMAGE_NAME,
+            override_env: PERFORMANCE_IMAGE_OVERRIDE_ENV,
         },
     }
 }

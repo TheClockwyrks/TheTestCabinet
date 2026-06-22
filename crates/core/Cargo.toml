@@ -36,6 +36,14 @@ test-cabinet-draw = { path = "../draw", default-features = false }
 # the board/replay types; the wasmtime dependency lives entirely in `foray-host`.
 foray-core = { path = "../foray-core" }
 foray-host = { path = "../foray-host" }
+# The Lattice performance engine oracle and its wasm host. The
+# `PerformanceValidator` loads a submission engine and runs it once per held-out
+# input case through the **shared** host (`lattice-host`), scoring it against the
+# `lattice-core` oracle, so the validator and the `lattice` CLI use one host
+# implementation. `lattice-core` supplies the scenario/state types and the oracle;
+# the wasmtime dependency lives entirely in `lattice-host`.
+lattice-core = { path = "../lattice-core", default-features = false }
+lattice-host = { path = "../lattice-host" }
 http = { workspace = true }
 tracing = { workspace = true }
 # Propagation only — the library never pulls in the OTLP exporters/SDK (those
@@ -49,3 +57,9 @@ tempfile = { workspace = true }
 # `test-util` enables paused/auto-advancing time so the runtime cap can be tested
 # without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["test-util"] }
+# Assemble tiny engine submissions from inline WebAssembly text to exercise the
+# performance validator's scoring paths (correct + wrong-answer) without compiling
+# the reference engine crates, mirroring how `lattice-host`'s submission tests do
+# it. The oracle (`lattice-core::Engine`) computes the expected answer the correct
+# module echoes back, so the test stays self-contained and deterministic.
+wat = "1"

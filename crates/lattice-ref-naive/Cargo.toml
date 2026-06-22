@@ -1,0 +1,35 @@
+[package]
+name = "lattice-ref-naive"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `naive` reference engine — the honest floor of the performance case. It
+# advances the world the obvious way: simulate every tick from an empty start,
+# moving every item on every belt one step each tick, and serialize the canonical
+# state at each scheduled snapshot. That is `O(ticks x items)` work, most of it
+# spent re-confirming that long runs of already-compressed belt did not change —
+# exactly the cost the `transport` reference engine avoids (architecture.md, "why
+# this is a performance case").
+#
+# It is **correct** — it produces the oracle's exact per-snapshot checksums — and
+# is built as a `cdylib` to `wasm32-unknown-unknown` over `lattice-sdk`, so it
+# loads in the same sandbox a submission does. The seeded workspace ships it (and
+# `transport`) as a worked example, and the validator's self-test runs it as a
+# submission to prove the fuel gap is real.
+[lib]
+name = "lattice_ref_naive"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The authoritative rules and the canonical state/checksum. `default-features =
+# false` drops the schema feature (schemars) a guest never needs, keeping the
+# wasm lean. The naive engine's per-tick advance IS the move-every-item loop the
+# oracle uses, so reusing the oracle's `Engine` here is the faithful naive
+# strategy, not a shortcut: the work (and therefore the fuel) is the real cost of
+# the obvious approach.
+lattice-core = { path = "../lattice-core", default-features = false }
+# The guest-side ABI glue: the `alloc`/`simulate` exports and the re-exported
+# `Scenario`/`Snapshot` contract types.
+lattice-sdk = { path = "../lattice-sdk" }

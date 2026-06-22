@@ -504,7 +504,8 @@ fn adversarial_case_resolves_its_tables() {
     let contract = version.contract.as_ref().expect("contract");
     assert_eq!(contract.entry, "tick");
     let sandbox = version.sandbox.as_ref().expect("sandbox");
-    assert_eq!(sandbox.fuel_per_tick, 50_000_000);
+    assert_eq!(sandbox.fuel_per_tick, Some(50_000_000));
+    assert_eq!(sandbox.fuel_limit, None);
     assert_eq!(sandbox.max_memory_bytes, 67_108_864);
     let simulation = version.simulation.as_ref().expect("simulation");
     assert_eq!((simulation.timestep_ms, simulation.max_ticks), (16, 37_500));
@@ -621,7 +622,7 @@ fn end_to_end_rejects_adversarial_tables() {
         .resolve("demo", "v1.0.0")
         .expect_err("adversarial tables on an e2e case are rejected");
     assert!(
-        format!("{err}").contains("only valid for an adversarial case"),
+        format!("{err}").contains("only valid for an adversarial or performance case"),
         "got: {err}"
     );
 }
@@ -637,7 +638,8 @@ fn end_to_end_rejects_a_build_module() {
         .resolve("demo", "v1.0.0")
         .expect_err("a build.module on an e2e case is rejected");
     assert!(
-        format!("{err}").contains("build.module is only valid for an adversarial case"),
+        format!("{err}")
+            .contains("build.module is only valid for an adversarial or performance case"),
         "got: {err}"
     );
 }

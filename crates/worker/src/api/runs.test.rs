@@ -140,6 +140,7 @@ fn record(id: &str, finished_at: &str) -> RunRecord {
             proofs: vec![],
             asset: None,
             adversarial: None,
+            performance: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

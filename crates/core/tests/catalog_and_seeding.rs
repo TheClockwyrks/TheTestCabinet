@@ -413,9 +413,17 @@ fn resolves_adversarial_pacman_from_its_manifest() {
         .as_ref()
         .expect("adversarial case has a [contract]");
     assert_eq!(contract.entry, "tick");
-    assert_eq!(contract.world, Path::new("schemas/world.json"));
-    assert_eq!(contract.action, Path::new("schemas/action.json"));
-    for dest in [&contract.world, &contract.action] {
+    let world = contract
+        .world
+        .as_ref()
+        .expect("adversarial contract has a world schema");
+    let action = contract
+        .action
+        .as_ref()
+        .expect("adversarial contract has an action schema");
+    assert_eq!(world, Path::new("schemas/world.json"));
+    assert_eq!(action, Path::new("schemas/action.json"));
+    for dest in [world, action] {
         assert!(
             version.common_specs.iter().any(|spec| &spec.dest == dest),
             "the contract schema {} should be seeded as a common spec",
@@ -426,7 +434,8 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     // The per-tick sandbox limits, the simulation loop, the match structure, and
     // the browser replay renderer all resolve.
     let sandbox = version.sandbox.expect("adversarial case has a [sandbox]");
-    assert_eq!(sandbox.fuel_per_tick, 50_000_000);
+    assert_eq!(sandbox.fuel_per_tick, Some(50_000_000));
+    assert_eq!(sandbox.fuel_limit, None);
     assert_eq!(sandbox.max_memory_bytes, 67_108_864);
 
     let simulation = version
@@ -462,6 +471,128 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     // The single qualitative scoring domain a human review works through.
     let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
     assert_eq!(domain_ids, ["play"]);
+}
+
+#[test]
+fn resolves_lattice_performance_from_its_manifest() {
+    // Lattice (on-disk slug `performance-factorio`) is the first PERFORMANCE case.
+    // It must resolve through the real catalog under the performance validation:
+    // the type discriminator selects the performance tables ([build].module /
+    // [contract] input+output / [sandbox] fuel_limit / the [[case]] scored set) and
+    // forbids the adversarial loop tables, so a manifest that confused the two would
+    // be rejected here.
+    let catalog = TestCaseCatalog::new(catalog_root());
+
+    let cases = catalog.list().expect("list catalog");
+    let listed = cases
+        .iter()
+        .find(|c| c.slug == "performance-factorio")
+        .expect("performance-factorio should be listed");
+    assert!(
+        listed.versions.iter().any(|v| v == "v1.0.0"),
+        "performance-factorio should list its v1.0.0 version"
+    );
+
+    let version = catalog
+        .resolve("performance-factorio", "v1.0.0")
+        .expect("resolve performance-factorio v1.0.0");
+    assert_eq!(version.slug, "performance-factorio");
+    // The in-fiction title is "Lattice" while the on-disk slug stays
+    // `performance-factorio`.
+    assert_eq!(version.name, "Lattice");
+    assert_eq!(version.test_type, TestType::Performance);
+    assert_eq!(version.difficulty, "hard");
+
+    // The performance build emits a wasm engine module the validator loads as the
+    // submission — `build.module` is resolved (it is rejected on end-to-end types).
+    let build = version
+        .build
+        .as_ref()
+        .expect("performance case has a build");
+    assert_eq!(
+        build.module.as_deref(),
+        Some(Path::new(
+            "target/wasm32-unknown-unknown/release/engine.wasm"
+        )),
+        "the wasm engine artifact path is resolved from [build].module"
+    );
+
+    // The engine contract resolves with the once-per-scenario entry and the
+    // `input`/`output` schemas (not the adversarial `world`/`action`), and the two
+    // schemas are seeded as common specs at the dests the contract names.
+    let contract = version
+        .contract
+        .as_ref()
+        .expect("performance case has a [contract]");
+    assert_eq!(contract.entry, "simulate");
+    assert!(
+        contract.world.is_none() && contract.action.is_none(),
+        "a performance contract carries no world/action schemas"
+    );
+    let input = contract
+        .input
+        .as_ref()
+        .expect("performance contract has an input schema");
+    let output = contract
+        .output
+        .as_ref()
+        .expect("performance contract has an output schema");
+    assert_eq!(input, Path::new("schemas/scenario.json"));
+    assert_eq!(output, Path::new("schemas/state.json"));
+    for dest in [input, output] {
+        assert!(
+            version.common_specs.iter().any(|spec| &spec.dest == dest),
+            "the contract schema {} should be seeded as a common spec",
+            dest.display()
+        );
+    }
+
+    // The per-scenario sandbox limits resolve: a `fuel_limit` (not a per-tick
+    // budget) and a memory cap.
+    let sandbox = version.sandbox.expect("performance case has a [sandbox]");
+    assert_eq!(sandbox.fuel_limit, Some(5_000_000_000));
+    assert_eq!(sandbox.fuel_per_tick, None);
+    assert_eq!(sandbox.max_memory_bytes, 268_435_456);
+
+    // The held-out scored set resolves: the three [[case]] entries, each an
+    // input/expected pair that exists inside the version folder (and is NOT seeded).
+    assert_eq!(version.cases.len(), 3, "small/medium/large scored cases");
+    for case in &version.cases {
+        assert!(
+            case.input.is_file(),
+            "scored case input {} should exist",
+            case.input.display()
+        );
+        assert!(
+            case.expected.is_file(),
+            "scored case expected {} should exist",
+            case.expected.display()
+        );
+        // The scored set is never seeded into a run (it is the held-out test half).
+        let seeded_input = version
+            .common_specs
+            .iter()
+            .any(|spec| spec.source_path == case.input);
+        assert!(!seeded_input, "scored cases must not be seeded");
+    }
+
+    // A performance case carries none of the adversarial loop tables or the
+    // end-to-end/asset-generation tables, and no per-view checks.
+    assert!(version.simulation.is_none());
+    assert!(version.r#match.is_none());
+    assert!(version.replay.is_none());
+    assert!(version.canvas.is_none());
+    assert!(version.tool.is_none());
+    assert!(version.output.is_none());
+    assert!(version.checks.is_empty());
+
+    // v1 ships a single `base` variant.
+    let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(variant_slugs, ["base"]);
+
+    // The single qualitative scoring domain a human review works through.
+    let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
+    assert_eq!(domain_ids, ["approach"]);
 }
 
 #[test]

@@ -1,0 +1,17 @@
+# Default `cargo build` in this workspace to the wasm engine target.
+#
+# The engine is the only crate here and it must compile to a
+# `wasm32-unknown-unknown` core module, so making that the default build target
+# lets a bare `cargo build --release` emit
+# `target/wasm32-unknown-unknown/release/engine.wasm` without naming the target
+# each time. The harness build command still passes `--target
+# wasm32-unknown-unknown` explicitly, so the produced artifact is the same either
+# way. (A global default is safe now that the workspace holds only the engine; the
+# contract types/SDK it builds against live outside it, under
+# `/opt/lattice/buildkit`.)
+[build]
+target = "wasm32-unknown-unknown"
+
+[alias]
+# `cargo wasm` — build just the engine module for the wasm target.
+wasm = "build --release --target wasm32-unknown-unknown -p engine"

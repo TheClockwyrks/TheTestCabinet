@@ -84,6 +84,7 @@ impl BackendClient for StubBackend {
             checks: vec![],
             common_review_items: vec![],
             domains: vec![],
+            cases: vec![],
         })
     }
     async fn artifact(
@@ -276,6 +277,7 @@ fn sample_record(id: &str) -> RunRecord {
             proofs: vec![],
             asset: None,
             adversarial: None,
+            performance: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

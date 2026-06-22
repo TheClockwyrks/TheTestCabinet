@@ -221,6 +221,57 @@ pub struct AdversarialResult {
     pub detail: Option<String>,
 }
 
+/// The result of scoring a performance run.
+///
+/// A performance run's authoritative output is its compiled wasm engine. The
+/// validator (see `crate::performance_validator::PerformanceValidator`) loads it,
+/// runs it once per held-out input case through the shared [Lattice
+/// host](lattice_host) under the manifest's per-case fuel/memory limits, and
+/// checks each case's output against the reference oracle. A run is **correct**
+/// only when every case is, and its [`total_fuel`](Self::total_fuel) — the fuel a
+/// correct engine consumes — is the comparable performance result. A built-but-
+/// wrong engine still loaded (it presented an engine); its correctness gate lives
+/// here, mirroring how an adversarial run records its outcome separately from the
+/// load signal. Present only on a performance run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceResult {
+    /// Whether **every** scored input case produced the oracle's exact answer.
+    pub correct: bool,
+    /// The total fuel consumed across all cases — the comparable performance
+    /// result. `Some` only when [`Self::correct`]; `None` for an incorrect run,
+    /// where the fuel is meaningless.
+    pub total_fuel: Option<u64>,
+    /// The per-case results, in the case's declared order.
+    pub cases: Vec<PerformanceCaseResult>,
+    /// Detail about a run that could not be scored at all (for example a missing or
+    /// unloadable module), or `None` when every case ran.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The result of scoring one held-out input case of a performance run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceCaseResult {
+    /// The case-relative path of the input instance this result records under, so a
+    /// reviewer can tie the result back to its case.
+    pub input: String,
+    /// Whether the engine produced the oracle's exact answer for this case.
+    pub correct: bool,
+    /// The fuel the engine consumed on this case. `Some` whenever the engine ran
+    /// (recorded for diagnostics even when incorrect); `None` when the engine could
+    /// not be run on this case at all (a host failure).
+    pub fuel: Option<u64>,
+    /// The tick of the first snapshot whose answer diverged from the oracle, when
+    /// the engine is incorrect for that reason. `None` when correct, or when the
+    /// failure was structural rather than a checksum mismatch.
+    pub first_mismatch_tick: Option<u64>,
+    /// Detail about an incorrect or unrunnable case, or `None` when correct.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -256,6 +307,11 @@ pub struct ValidationSummary {
     /// its shape is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adversarial: Option<AdversarialResult>,
+    /// The correctness-and-fuel result of a performance run. `None` for any other
+    /// type, so a non-performance summary serializes with no new field at all and
+    /// its shape is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<PerformanceResult>,
 }
 
 /// Runs validation over a produced implementation.

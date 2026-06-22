@@ -66,7 +66,11 @@ export interface RunTooling {
  * choose how to present a run. Defaults to `"end-to-end"` for records written
  * before the discriminator existed.
  */
-export type TestType = "end-to-end" | "asset-generation" | "adversarial";
+export type TestType =
+  | "end-to-end"
+  | "asset-generation"
+  | "adversarial"
+  | "performance";
 
 /** Identifies what was run: the test case, the harness, and the model. */
 export interface RunSubject {
@@ -293,6 +297,54 @@ export interface AdversarialResult {
   detail: string | null;
 }
 
+/**
+ * The result of scoring one held-out input case of a performance run: whether the
+ * engine produced the oracle's exact answer, and the fuel it consumed.
+ */
+export interface PerformanceCaseResult {
+  /** The case-relative path of the input instance this result records under. */
+  input: string;
+  /** Whether the engine produced the oracle's exact answer for this case. */
+  correct: boolean;
+  /**
+   * The fuel the engine consumed on this case (recorded for diagnostics even when
+   * incorrect), or null when the engine could not be run on this case at all.
+   */
+  fuel: number | null;
+  /**
+   * The tick of the first snapshot whose answer diverged from the oracle, when the
+   * engine is incorrect for that reason; null when correct or when the failure was
+   * structural rather than a checksum mismatch.
+   */
+  firstMismatchTick: number | null;
+  /** Detail about an incorrect or unrunnable case, or null when correct. */
+  detail: string | null;
+}
+
+/**
+ * The result of scoring a performance run. The submission's compiled wasm engine
+ * is run once per held-out scored case under fuel metering, and gated on
+ * correctness first: only a correct engine's fuel becomes its result. Present only
+ * on a performance run's validation.
+ */
+export interface PerformanceResult {
+  /** Whether every scored input case produced the oracle's exact answer. */
+  correct: boolean;
+  /**
+   * The total fuel consumed across all cases — the comparable performance result.
+   * Present only when `correct`; null for an incorrect run, where fuel is
+   * meaningless.
+   */
+  totalFuel: number | null;
+  /** The per-case results, in the case's declared order. */
+  cases: PerformanceCaseResult[];
+  /**
+   * Detail about a run that could not be scored at all (for example a missing or
+   * unloadable module), or null when every case ran.
+   */
+  detail: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Adversarial arena: head-to-head matches and tournaments.
 //
@@ -422,6 +474,11 @@ export interface RunValidation {
    * The canonical-match result of an adversarial run. Absent for any other type.
    */
   adversarial?: AdversarialResult;
+  /**
+   * The correctness-then-fuel result of a performance run. Absent for any other
+   * type.
+   */
+  performance?: PerformanceResult;
 }
 
 /** Outbound links for a run. Either may be null when not published. */

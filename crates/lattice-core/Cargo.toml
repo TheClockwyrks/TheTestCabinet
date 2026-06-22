@@ -1,0 +1,59 @@
+[package]
+name = "lattice-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoritative simulation engine for the Lattice performance test case
+# (on-disk slug `performance-factorio`). This crate owns the prototype table
+# (belt/inserter tiers, recipes, the `TILE`/`SPACING`/`SPEED`/`SWING`/`CRAFT`
+# constants), the fixed-point world, the per-tick advance (belt movement and
+# compaction, side-loading, splitter balancing, inserter swings, assembler
+# crafting, source/sink bookkeeping), the scenario/state (de)serialization, and
+# the canonical byte serialization + FNV-1a checksum that makes "correct" a
+# bit-exact notion. It has NO I/O and NO wasm-host dependency — pure rules plus
+# data types — so the exact same crate that defines the answer for the native
+# `lattice` CLI also compiles to `wasm32-unknown-unknown` (kept as a `cdylib`
+# for parity with `foray-core` and forward-compat with a future browser
+# renderer). It is the **oracle**, not a worked solution: the model reimplements
+# the documented rules, and reproducing this crate's *outputs* with far less fuel
+# is the task.
+[lib]
+name = "lattice_core"
+# `rlib` for the native CLI, host, SDK, and reference engines that link the rules
+# in-process; `cdylib` for parity with `foray-core` and a future browser replay
+# renderer (out of scope for v1 — there is no playback ABI module here).
+crate-type = ["cdylib", "rlib"]
+
+# The artifact generator emits the seeded JSON Schemas. It needs the schema
+# accessors, so it is gated on the `schema` feature — the lean wasm build
+# (`--no-default-features`) skips it. The bin name is crate-prefixed because the
+# unscoped `gen-artifacts` is already taken by `foray-core`; two bins of the same
+# name in one workspace collide on the shared `target/debug/gen-artifacts`
+# output path (a Cargo warning that is slated to become a hard error).
+[[bin]]
+name = "gen-lattice-artifacts"
+path = "src/bin/gen-artifacts.rs"
+required-features = ["schema"]
+
+[features]
+# Schema export is on by default so `cargo test` and the manifest-seeding path
+# get the JSON Schemas. It is a feature so a consumer that only links the engine
+# (the SDK, the reference engines) can build `--no-default-features` and drop
+# schemars. Disabling it never changes the engine — only whether the schema
+# accessors compile.
+default = ["schema"]
+schema = ["dep:schemars"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# JSON Schema generation for the `Scenario`/`Snapshot` types, so the schemas the
+# manifest seeds verbatim are generated from the very types the engine
+# (de)serializes — they cannot drift. Pure Rust, compiles to wasm.
+schemars = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The schema-drift test and the round-trip tests deserialize fixtures.
+serde_json = { workspace = true }

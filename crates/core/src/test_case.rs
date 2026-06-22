@@ -86,13 +86,15 @@ struct Manifest {
     /// `[output]` table). Required for asset-generation, forbidden otherwise.
     #[serde(default)]
     output: Option<ManifestOutput>,
-    /// The controller contract an adversarial case's wasm controller must
-    /// implement (the `[contract]` table). Required for adversarial, forbidden
-    /// otherwise.
+    /// The contract an adversarial case's wasm controller or a performance case's
+    /// wasm engine must implement (the `[contract]` table). Required for both of
+    /// those types, forbidden otherwise. Adversarial carries `world`/`action`
+    /// per-tick schemas; performance carries `input`/`output` per-case schemas.
     #[serde(default)]
     contract: Option<ManifestContract>,
-    /// The per-tick sandbox limits applied to an adversarial case's controllers
-    /// (the `[sandbox]` table). Required for adversarial, forbidden otherwise.
+    /// The sandbox limits applied to an adversarial case's controllers (per tick)
+    /// or a performance case's engine (per input case) — the `[sandbox]` table.
+    /// Required for both of those types, forbidden otherwise.
     #[serde(default)]
     sandbox: Option<ManifestSandbox>,
     /// The simulation-loop configuration of an adversarial case (the
@@ -161,6 +163,13 @@ struct Manifest {
     /// repeated `[[domain]]` tables.
     #[serde(default, rename = "domain")]
     domains: Vec<ManifestDomain>,
+    /// The held-out input cases a performance case's engine is scored against (the
+    /// `[[case]]` tables). Each pairs an input instance with the answer a correct
+    /// engine must produce. Required for — and only for — a performance case. The
+    /// cases live in the version folder and are **not** seeded into runs (they are
+    /// the secret scored set), unlike every other manifest path.
+    #[serde(default, rename = "case")]
+    cases: Vec<ManifestCase>,
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -184,29 +193,73 @@ struct ManifestBuild {
     module: Option<PathBuf>,
 }
 
-/// The `[contract]` table of an adversarial case: the controller interface the
-/// model must implement. The schemas are the only channel between a controller
-/// and the game.
+/// The `[contract]` table of an adversarial or performance case: the interface
+/// the model's wasm must implement. The schemas are the only channel between the
+/// module and the game/oracle.
+///
+/// Adversarial and performance carry **different** schema pairs on the same
+/// table, generalizing it rather than forking it: an adversarial controller reads
+/// a per-tick `world` observation and returns a per-tick `action`, while a
+/// performance engine reads a whole-scenario `input` and returns the whole
+/// `output`. Each pair is `Option` so the two coexist on one struct and the
+/// type-specific resolution requires exactly the right one.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestContract {
-    /// The exported function invoked once per game tick (for example `tick`).
+    /// The exported function invoked by the host — once per game tick for
+    /// adversarial (for example `tick`), once per input case for performance (for
+    /// example `simulate`).
     entry: String,
-    /// The JSON Schema of the per-tick observation passed to the controller,
+    /// Adversarial only: the JSON Schema of the per-tick observation passed to the
+    /// controller, relative to the version folder. Seeded so the model can read it.
+    #[serde(default)]
+    world: Option<PathBuf>,
+    /// Adversarial only: the JSON Schema of the actions the controller may return
+    /// each tick, relative to the version folder. Seeded so the model can read it.
+    #[serde(default)]
+    action: Option<PathBuf>,
+    /// Performance only: the JSON Schema of an input case handed to the engine,
     /// relative to the version folder. Seeded so the model can read it.
-    world: PathBuf,
-    /// The JSON Schema of the actions the controller may return each tick,
-    /// relative to the version folder. Seeded so the model can read it.
-    action: PathBuf,
+    #[serde(default)]
+    input: Option<PathBuf>,
+    /// Performance only: the JSON Schema of the answer the engine returns, relative
+    /// to the version folder. Seeded so the model can read it.
+    #[serde(default)]
+    output: Option<PathBuf>,
 }
 
-/// The `[sandbox]` table of an adversarial case: the per-tick limits applied to
-/// every controller invocation. Exceeding either is a disqualifying forfeit.
+/// The `[sandbox]` table of an adversarial or performance case: the limits applied
+/// to every metered wasm invocation. Exceeding either fails the invocation.
+///
+/// Adversarial meters **per tick** (`fuel_per_tick`); performance meters **per
+/// input case** (`fuel_limit`), where the fuel a correct engine consumes within
+/// the ceiling is the recorded performance result. Each fuel field is `Option` so
+/// the two coexist on one struct; resolution requires exactly the right one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 struct ManifestSandbox {
-    /// The wasmtime fuel ceiling for a single tick.
-    fuel_per_tick: u64,
+    /// Adversarial only: the wasmtime fuel ceiling for a single tick.
+    #[serde(default)]
+    fuel_per_tick: Option<u64>,
+    /// Performance only: the wasmtime fuel ceiling for a whole input case. The
+    /// engine runs the entire simulation in one metered call, so this is orders of
+    /// magnitude larger than a per-tick budget.
+    #[serde(default)]
+    fuel_limit: Option<u64>,
     /// The linear-memory cap in bytes.
     max_memory_bytes: u64,
+}
+
+/// A `[[case]]` table of a performance case: one held-out input the engine is run
+/// against and the answer a correct engine must produce.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestCase {
+    /// The input instance fed to the engine, relative to the version folder. The
+    /// host hands its contents in through the contract `entry`.
+    input: PathBuf,
+    /// The correct answer the engine's output is checked against, relative to the
+    /// version folder. This is the reference oracle's `state` output (as produced
+    /// by `lattice solve`); the validator compares the engine's per-snapshot
+    /// checksums to it.
+    expected: PathBuf,
 }
 
 /// The `[simulation]` table of an adversarial case: the faked timestep and the
@@ -525,11 +578,12 @@ pub struct TestCase {
 /// The type of a test case: which class of capability it measures and which
 /// manifest tables it declares.
 ///
-/// Today three types exist in code: the original [`Self::EndToEnd`] (build a
+/// Today four types exist in code: the original [`Self::EndToEnd`] (build a
 /// working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
-/// target image), and [`Self::Adversarial`] (write a wasm controller pitted
-/// head-to-head against a baseline). The type is the explicit discriminator
-/// everything branches on
+/// target image), [`Self::Adversarial`] (write a wasm controller pitted
+/// head-to-head against a baseline), and [`Self::Performance`] (write a wasm
+/// engine scored on correctness plus the fuel it burns). The type is the explicit
+/// discriminator everything branches on
 /// — resolution, validation, the run record, and the UI — rather than being
 /// inferred from which tables a manifest happens to declare. It defaults to
 /// [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.
@@ -547,6 +601,12 @@ pub enum TestType {
     /// match outcome is the authoritative result. See
     /// `docs/testing/adversarial/`.
     Adversarial,
+    /// Write an engine compiled to wasm that simulates a deterministic world; the
+    /// engine's output is checked for correctness against a reference oracle and,
+    /// when correct, scored by the fuel it consumes. The contract entry is invoked
+    /// **once per input case** (not per tick), so the whole simulation runs in one
+    /// call. See `docs/testing/performance/`.
+    Performance,
 }
 
 impl TestType {
@@ -557,6 +617,7 @@ impl TestType {
             Self::EndToEnd => "end-to-end",
             Self::AssetGeneration => "asset-generation",
             Self::Adversarial => "adversarial",
+            Self::Performance => "performance",
         }
     }
 }
@@ -760,30 +821,73 @@ pub struct OutputSpec {
     pub actions: PathBuf,
 }
 
-/// The resolved `[contract]` of an adversarial case: the controller interface.
-/// `world` and `action` are the run-workspace-relative paths the contract
-/// schemas are seeded to (as common specs), so the model reads them where the
-/// case declared them.
+/// The resolved `[contract]` of an adversarial or performance case: the wasm
+/// interface the model implements. The schema paths are the run-workspace-relative
+/// destinations the contract schemas are seeded to (as common specs), so the model
+/// reads them where the case declared them.
+///
+/// The two schema pairs are `Option` so one resolved struct serves both types:
+/// adversarial sets `world`/`action` (per-tick), performance sets `input`/`output`
+/// (per-case), and resolution guarantees exactly one pair is present.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContractSpec {
-    /// The exported function invoked once per tick (the manifest's `entry`).
+    /// The exported function the host invokes (the manifest's `entry`) — once per
+    /// tick for adversarial, once per input case for performance.
     pub entry: String,
-    /// The run-workspace-relative path of the seeded `world` observation schema.
-    pub world: PathBuf,
-    /// The run-workspace-relative path of the seeded `action` schema.
-    pub action: PathBuf,
+    /// Adversarial only: the run-workspace-relative path of the seeded `world`
+    /// observation schema. `None` for a performance case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<PathBuf>,
+    /// Adversarial only: the run-workspace-relative path of the seeded `action`
+    /// schema. `None` for a performance case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<PathBuf>,
+    /// Performance only: the run-workspace-relative path of the seeded `input`
+    /// schema. `None` for an adversarial case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<PathBuf>,
+    /// Performance only: the run-workspace-relative path of the seeded `output`
+    /// schema. `None` for an adversarial case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<PathBuf>,
 }
 
-/// The resolved `[sandbox]` of an adversarial case: the per-tick limits applied
-/// to every controller invocation by the wasm host.
+/// The resolved `[sandbox]` of an adversarial or performance case: the limits the
+/// wasm host applies to every metered invocation.
+///
+/// The two fuel fields are `Option` so one resolved struct serves both types:
+/// adversarial sets `fuel_per_tick` (a per-tick budget), performance sets
+/// `fuel_limit` (a per-input-case budget whose consumed fuel is the recorded
+/// result), and resolution guarantees exactly one is present.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SandboxSpec {
-    /// The wasmtime fuel ceiling for a single tick.
-    pub fuel_per_tick: u64,
+    /// Adversarial only: the wasmtime fuel ceiling for a single tick. `None` for a
+    /// performance case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_per_tick: Option<u64>,
+    /// Performance only: the wasmtime fuel ceiling for a whole input case. `None`
+    /// for an adversarial case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel_limit: Option<u64>,
     /// The linear-memory cap in bytes.
     pub max_memory_bytes: u64,
+}
+
+/// A resolved held-out input case of a performance case: a problem instance and
+/// the answer a correct engine must produce.
+///
+/// Both paths are host paths inside the version folder. Unlike specs/workspace
+/// files they are **never** seeded into a run — they are the secret scored set the
+/// validator reads directly from the case to check the engine against.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceCase {
+    /// Host path to the input instance fed to the engine.
+    pub input: PathBuf,
+    /// Host path to the correct answer the engine's output is checked against.
+    pub expected: PathBuf,
 }
 
 /// The resolved `[simulation]` of an adversarial case: the faked timestep and
@@ -1194,6 +1298,11 @@ pub struct TestCaseVersion {
     /// them. At least one is always present. Unlike review items, domains are
     /// case-level rather than variant-scoped.
     pub domains: Vec<Domain>,
+    /// The held-out input cases a performance case's engine is scored against, in
+    /// declared order. Non-empty for a performance case, empty for every other
+    /// type. Not seeded — the secret scored set the validator reads from the case.
+    #[serde(default)]
+    pub cases: Vec<PerformanceCase>,
 }
 
 impl TestCaseVersion {
@@ -1396,11 +1505,12 @@ impl TestCaseCatalog {
                     return Err(invalid("build.build must not be empty".to_string()));
                 }
                 // An end-to-end build emits a static site, not a wasm module, so a
-                // `module` artifact path is an adversarial-only field; reject it
-                // here rather than silently ignoring it.
+                // `module` artifact path belongs to a type that ships a wasm
+                // artifact; reject it here rather than silently ignoring it.
                 if build.module.is_some() {
                     return Err(invalid(
-                        "build.module is only valid for an adversarial case".to_string(),
+                        "build.module is only valid for an adversarial or performance case"
+                            .to_string(),
                     ));
                 }
                 Some(BuildCommands {
@@ -1417,11 +1527,12 @@ impl TestCaseCatalog {
                 }
                 None
             }
-            TestType::Adversarial => {
-                // An adversarial build compiles the model's submission to a wasm
-                // controller module: the case must state both commands and the
-                // `module` artifact path explicitly (the validator loads it as the
-                // submission), so absence of any of the three is rejected.
+            TestType::Adversarial | TestType::Performance => {
+                // Both of these types compile the model's submission to a wasm
+                // module (an adversarial controller, a performance engine): the
+                // case must state both commands and the `module` artifact path
+                // explicitly (the validator loads it as the submission), so absence
+                // of any of the three is rejected.
                 let build = manifest
                     .build
                     .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
@@ -1435,7 +1546,7 @@ impl TestCaseCatalog {
                     .module
                     .ok_or_else(|| invalid("build.module is required".to_string()))?;
                 // The produced module lives under the run root; it must stay inside
-                // it so the validator never reads a controller from outside the run.
+                // it so the validator never reads a module from outside the run.
                 if escapes_folder(&module) {
                     return Err(invalid(format!(
                         "build.module `{}` escapes the run workspace",
@@ -1519,7 +1630,7 @@ impl TestCaseCatalog {
         // asset-generation case has no target image: its output is human-reviewed
         // against the brief, so it declares no references at all.
         let (canvas, tool, output, sheet) = match test_type {
-            TestType::EndToEnd | TestType::Adversarial => {
+            TestType::EndToEnd | TestType::Adversarial | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
                     return Err(invalid(
@@ -1650,17 +1761,22 @@ impl TestCaseCatalog {
             }
         };
 
-        // Resolve the adversarial tables (`[contract]`, `[sandbox]`,
-        // `[simulation]`, `[match]`, `[replay]`). They are required for — and only
-        // for — an adversarial case; on any other type they are a mistake. The
-        // `world`/`action` contract schemas are authored files inside the version
-        // folder, seeded like the asset-gen operations schema (appended to
-        // `common_specs`) so the model reads them where the contract names them.
-        // The replay renderer is validated to exist and stay inside the version
-        // folder (it is the browser playback bundle, served as a run asset, not a
-        // run-workspace dest), and `build.module` (validated above) is the wasm
-        // artifact the validator loads.
-        let (contract, sandbox, simulation, r#match, replay) = match test_type {
+        // Resolve the contract/sandbox tables and (for adversarial) the
+        // `[simulation]`/`[match]`/`[replay]` tables, or (for performance) the
+        // `[[case]]` scored set.
+        //
+        // `[contract]` and `[sandbox]` are required for an adversarial **and** a
+        // performance case (each generalizes them: adversarial carries per-tick
+        // `world`/`action` + `fuel_per_tick`; performance carries per-case
+        // `input`/`output` + `fuel_limit`). The contract schemas are authored files
+        // inside the version folder, seeded like the asset-gen operations schema
+        // (appended to `common_specs`) so the model reads them where the contract
+        // names them. `[simulation]`/`[match]`/`[replay]` are **adversarial-only**:
+        // a performance run is a single once-per-case invocation, not a real-time
+        // match, and v1 carries no replay renderer, so those tables are forbidden on
+        // it. `build.module` (validated above) is the wasm artifact the validator
+        // loads for either type.
+        let (contract, sandbox, simulation, r#match, replay, cases) = match test_type {
             TestType::EndToEnd | TestType::AssetGeneration => {
                 if manifest.contract.is_some()
                     || manifest.sandbox.is_some()
@@ -1670,11 +1786,16 @@ impl TestCaseCatalog {
                 {
                     return Err(invalid(
                         "[contract], [sandbox], [simulation], [match], and [replay] are only valid \
-                         for an adversarial case"
+                         for an adversarial or performance case"
                             .to_string(),
                     ));
                 }
-                (None, None, None, None, None)
+                if !manifest.cases.is_empty() {
+                    return Err(invalid(
+                        "[[case]] tables are only valid for a performance case".to_string(),
+                    ));
+                }
+                (None, None, None, None, None, Vec::new())
             }
             TestType::Adversarial => {
                 let contract = manifest
@@ -1684,33 +1805,59 @@ impl TestCaseCatalog {
                 if contract.entry.trim().is_empty() {
                     return Err(invalid("contract.entry must not be empty".to_string()));
                 }
-                let world_source = resolve_inside(&contract.world, "contract world schema")?;
+                // Adversarial carries the per-tick `world`/`action` schemas, not the
+                // performance `input`/`output` pair; require the former and reject
+                // the latter so a mistyped contract is caught here.
+                if contract.input.is_some() || contract.output.is_some() {
+                    return Err(invalid(
+                        "contract.input/output are only valid for a performance case".to_string(),
+                    ));
+                }
+                let world = contract
+                    .world
+                    .as_ref()
+                    .ok_or_else(|| invalid("contract.world is required".to_string()))?;
+                let action = contract
+                    .action
+                    .as_ref()
+                    .ok_or_else(|| invalid("contract.action is required".to_string()))?;
+                let world_source = resolve_inside(world, "contract world schema")?;
                 if !world_source.is_file() {
                     return Err(invalid(format!(
                         "contract world schema `{}` does not exist",
-                        contract.world.display()
+                        world.display()
                     )));
                 }
-                let action_source = resolve_inside(&contract.action, "contract action schema")?;
+                let action_source = resolve_inside(action, "contract action schema")?;
                 if !action_source.is_file() {
                     return Err(invalid(format!(
                         "contract action schema `{}` does not exist",
-                        contract.action.display()
+                        action.display()
                     )));
                 }
                 common_specs.push(SpecFile {
                     source_path: world_source,
-                    dest: contract.world.clone(),
+                    dest: world.clone(),
                 });
                 common_specs.push(SpecFile {
                     source_path: action_source,
-                    dest: contract.action.clone(),
+                    dest: action.clone(),
                 });
 
                 let sandbox = manifest
                     .sandbox
                     .ok_or_else(|| invalid("the [sandbox] table is required".to_string()))?;
-                if sandbox.fuel_per_tick == 0 {
+                // Adversarial meters per tick; the performance per-case `fuel_limit`
+                // is the wrong knob here.
+                if sandbox.fuel_limit.is_some() {
+                    return Err(invalid(
+                        "sandbox.fuel_limit is only valid for a performance case".to_string(),
+                    ));
+                }
+                let fuel_per_tick = sandbox
+                    .fuel_per_tick
+                    .ok_or_else(|| invalid("sandbox.fuel_per_tick is required".to_string()))?;
+                if fuel_per_tick == 0 {
                     return Err(invalid(
                         "sandbox.fuel_per_tick must be greater than zero".to_string(),
                     ));
@@ -1765,14 +1912,23 @@ impl TestCaseCatalog {
                     )));
                 }
 
+                if !manifest.cases.is_empty() {
+                    return Err(invalid(
+                        "[[case]] tables are only valid for a performance case".to_string(),
+                    ));
+                }
+
                 (
                     Some(ContractSpec {
                         entry: contract.entry.clone(),
-                        world: contract.world.clone(),
-                        action: contract.action.clone(),
+                        world: Some(world.clone()),
+                        action: Some(action.clone()),
+                        input: None,
+                        output: None,
                     }),
                     Some(SandboxSpec {
-                        fuel_per_tick: sandbox.fuel_per_tick,
+                        fuel_per_tick: Some(fuel_per_tick),
+                        fuel_limit: None,
                         max_memory_bytes: sandbox.max_memory_bytes,
                     }),
                     Some(SimulationSpec {
@@ -1787,6 +1943,143 @@ impl TestCaseCatalog {
                     Some(ReplaySpec {
                         renderer: replay.renderer.clone(),
                     }),
+                    Vec::new(),
+                )
+            }
+            TestType::Performance => {
+                // A performance run is scored once per input case (not per tick) and
+                // has no real-time loop, head-to-head match, or replay renderer in
+                // v1, so the adversarial loop tables are forbidden here.
+                if manifest.simulation.is_some()
+                    || manifest.r#match.is_some()
+                    || manifest.replay.is_some()
+                {
+                    return Err(invalid(
+                        "[simulation], [match], and [replay] are only valid for an adversarial \
+                         case"
+                            .to_string(),
+                    ));
+                }
+
+                let contract = manifest
+                    .contract
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [contract] table is required".to_string()))?;
+                if contract.entry.trim().is_empty() {
+                    return Err(invalid("contract.entry must not be empty".to_string()));
+                }
+                // Performance carries the per-case `input`/`output` schemas, not the
+                // adversarial `world`/`action` pair; require the former and reject
+                // the latter so a mistyped contract is caught here.
+                if contract.world.is_some() || contract.action.is_some() {
+                    return Err(invalid(
+                        "contract.world/action are only valid for an adversarial case".to_string(),
+                    ));
+                }
+                let input = contract
+                    .input
+                    .as_ref()
+                    .ok_or_else(|| invalid("contract.input is required".to_string()))?;
+                let output = contract
+                    .output
+                    .as_ref()
+                    .ok_or_else(|| invalid("contract.output is required".to_string()))?;
+                let input_source = resolve_inside(input, "contract input schema")?;
+                if !input_source.is_file() {
+                    return Err(invalid(format!(
+                        "contract input schema `{}` does not exist",
+                        input.display()
+                    )));
+                }
+                let output_source = resolve_inside(output, "contract output schema")?;
+                if !output_source.is_file() {
+                    return Err(invalid(format!(
+                        "contract output schema `{}` does not exist",
+                        output.display()
+                    )));
+                }
+                common_specs.push(SpecFile {
+                    source_path: input_source,
+                    dest: input.clone(),
+                });
+                common_specs.push(SpecFile {
+                    source_path: output_source,
+                    dest: output.clone(),
+                });
+
+                let sandbox = manifest
+                    .sandbox
+                    .ok_or_else(|| invalid("the [sandbox] table is required".to_string()))?;
+                // Performance meters per input case; the adversarial per-tick budget
+                // is the wrong knob here.
+                if sandbox.fuel_per_tick.is_some() {
+                    return Err(invalid(
+                        "sandbox.fuel_per_tick is only valid for an adversarial case".to_string(),
+                    ));
+                }
+                let fuel_limit = sandbox
+                    .fuel_limit
+                    .ok_or_else(|| invalid("sandbox.fuel_limit is required".to_string()))?;
+                if fuel_limit == 0 {
+                    return Err(invalid(
+                        "sandbox.fuel_limit must be greater than zero".to_string(),
+                    ));
+                }
+                if sandbox.max_memory_bytes == 0 {
+                    return Err(invalid(
+                        "sandbox.max_memory_bytes must be greater than zero".to_string(),
+                    ));
+                }
+
+                // The held-out scored set: at least one `[[case]]`. Each pairs an
+                // input with the answer a correct engine must produce. Both files
+                // live inside the version folder and are validated to exist there;
+                // unlike specs they are **never** seeded — they are the secret set
+                // the validator reads directly to score the engine.
+                if manifest.cases.is_empty() {
+                    return Err(invalid(
+                        "a performance case requires at least one [[case]]".to_string(),
+                    ));
+                }
+                let mut cases = Vec::with_capacity(manifest.cases.len());
+                for case in &manifest.cases {
+                    let input_path = resolve_inside(&case.input, "case input")?;
+                    if !input_path.is_file() {
+                        return Err(invalid(format!(
+                            "case input `{}` does not exist",
+                            case.input.display()
+                        )));
+                    }
+                    let expected_path = resolve_inside(&case.expected, "case expected")?;
+                    if !expected_path.is_file() {
+                        return Err(invalid(format!(
+                            "case expected `{}` does not exist",
+                            case.expected.display()
+                        )));
+                    }
+                    cases.push(PerformanceCase {
+                        input: input_path,
+                        expected: expected_path,
+                    });
+                }
+
+                (
+                    Some(ContractSpec {
+                        entry: contract.entry.clone(),
+                        world: None,
+                        action: None,
+                        input: Some(input.clone()),
+                        output: Some(output.clone()),
+                    }),
+                    Some(SandboxSpec {
+                        fuel_per_tick: None,
+                        fuel_limit: Some(fuel_limit),
+                        max_memory_bytes: sandbox.max_memory_bytes,
+                    }),
+                    None,
+                    None,
+                    None,
+                    cases,
                 )
             }
         };
@@ -2302,10 +2595,10 @@ impl TestCaseCatalog {
         // browser-rendered visual baselines an end-to-end case uses) are not part
         // of the contract here either, but they are harmless if a case ships site
         // mockups, so they are left permitted.
-        if test_type == TestType::Adversarial && !manifest.check.is_empty() {
-            return Err(invalid(
-                "an adversarial case declares no [[check]]".to_string(),
-            ));
+        if matches!(test_type, TestType::Adversarial | TestType::Performance)
+            && !manifest.check.is_empty()
+        {
+            return Err(invalid(format!("a {test_type} case declares no [[check]]")));
         }
 
         // Every check must name a reference view that resolves for **every**
@@ -2369,6 +2662,7 @@ impl TestCaseCatalog {
             checks,
             common_review_items,
             domains,
+            cases,
         })
     }
 

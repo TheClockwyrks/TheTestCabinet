@@ -1,0 +1,43 @@
+[package]
+name = "lattice-host"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The native wasm host for the Lattice performance test case (on-disk slug
+# `performance-factorio`). It loads a single submission engine module, hands it
+# the scenario JSON, runs it ONCE per scenario under a wasmtime fuel ceiling and
+# a linear-memory cap, reads back the canonical state JSON, and reports both the
+# parsed snapshots and the fuel consumed. It also scores a submission against the
+# `lattice-core` oracle (checksum comparison) so the `lattice` CLI and the core
+# `PerformanceValidator` share one path.
+#
+# This crate exists so the host lives in exactly ONE place (mirroring
+# `foray-host`): the `lattice` CLI is a thin clap wrapper over `run_submission`,
+# and the core validator depends on this crate to score a submission rather than
+# re-implementing the host. `lattice-core` must stay wasm-compilable, so the
+# wasmtime dependency lives here — never in core. The semantic difference from
+# `foray-host`: the contract entry is invoked ONCE per scenario (not per tick),
+# and the score is correctness (checksum) + per-scenario fuel, not a head-to-head
+# match.
+[lib]
+name = "lattice_host"
+
+[dependencies]
+# The authoritative rules, scenario/state contract, and the checksum the score is
+# compared on. The host never reimplements a rule — it marshals JSON across the
+# wasm boundary and compares checksums against this oracle.
+lattice-core = { path = "../lattice-core" }
+# The wasm runtime. A submission is instantiated once and `simulate` is called
+# once per scenario, with fuel set once before that single call.
+wasmtime = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+# The smoke test assembles a tiny submission module from inline WebAssembly text
+# with `wat` (a baked state-JSON data segment), so the test needs no extra build
+# step or committed binary.
+wat = "1"

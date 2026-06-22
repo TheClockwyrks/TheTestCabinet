@@ -74,6 +74,7 @@ fn sample_record() -> RunRecord {
             }],
             asset: None,
             adversarial: None,
+            performance: None,
         },
         links: RunLinks {
             source_repo: Some("https://example.com/repo".to_string()),

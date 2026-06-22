@@ -1,0 +1,1027 @@
+{
+  "version": 1,
+  "grid": {
+    "width": 24,
+    "height": 12
+  },
+  "ticks": 50000,
+  "snapshots": [
+    12500,
+    25000,
+    50000
+  ],
+  "entities": [
+    {
+      "type": "source",
+      "x": 0,
+      "y": 0,
+      "dir": "E",
+      "item": "copper-ore",
+      "lane": "both",
+      "period": 8
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 21,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 0,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 0,
+      "dir": "E"
+    },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 2,
+      "dir": "E",
+      "item": "copper-cable",
+      "lane": "both",
+      "period": 4
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 21,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 2,
+      "dir": "E"
+    },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 4,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 4
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "splitter",
+      "x": 21,
+      "y": 4,
+      "dir": "E"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 4,
+      "dir": "E",
+      "tier": "express"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 4,
+      "dir": "E"
+    },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 6,
+      "dir": "E",
+      "item": "copper-ore",
+      "lane": "both",
+      "period": 6
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 21,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 6,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 6,
+      "dir": "E"
+    },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 8,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 3
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "splitter",
+      "x": 21,
+      "y": 8,
+      "dir": "E"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 8,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 8,
+      "dir": "E"
+    },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 10,
+      "dir": "E",
+      "item": "circuit",
+      "lane": "both",
+      "period": 2
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 5,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 6,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 7,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 10,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 11,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 12,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 13,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 14,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 15,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 16,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 17,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 18,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 19,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 20,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 21,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 22,
+      "y": 10,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 23,
+      "y": 10,
+      "dir": "E"
+    }
+  ]
+}

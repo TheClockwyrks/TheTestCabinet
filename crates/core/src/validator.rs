@@ -17,6 +17,7 @@ use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
+use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
 use crate::test_case::{MediaKind, ProofFile, TestCaseVersion, TestType};
 use crate::validation::{
@@ -128,6 +129,7 @@ impl Validator for BuildValidator {
             proofs: proof_results,
             asset: None,
             adversarial: None,
+            performance: None,
         })
     }
 }
@@ -400,6 +402,7 @@ impl Validator for AssetGenValidator {
                 detail: None,
             }),
             adversarial: None,
+            performance: None,
         })
     }
 }
@@ -479,17 +482,19 @@ pub struct DispatchValidator {
     build: BuildValidator,
     asset: AssetGenValidator,
     adversarial: AdversarialValidator,
+    performance: PerformanceValidator,
 }
 
 impl DispatchValidator {
     /// Build the dispatcher, threading the screenshot scratch directory to the
-    /// end-to-end validator (the asset-generation and adversarial validators keep
-    /// no scratch).
+    /// end-to-end validator (the asset-generation, adversarial, and performance
+    /// validators keep no scratch).
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             build: BuildValidator::new(screenshot_dir),
             asset: AssetGenValidator::new(),
             adversarial: AdversarialValidator::new(),
+            performance: PerformanceValidator::new(),
         }
     }
 }
@@ -511,6 +516,9 @@ impl Validator for DispatchValidator {
                 .validate(test_case, artifacts, references, proofs),
             TestType::Adversarial => self
                 .adversarial
+                .validate(test_case, artifacts, references, proofs),
+            TestType::Performance => self
+                .performance
                 .validate(test_case, artifacts, references, proofs),
         }
     }
@@ -540,6 +548,7 @@ fn failed_load(
         proofs,
         asset: None,
         adversarial: None,
+        performance: None,
     }
 }
 

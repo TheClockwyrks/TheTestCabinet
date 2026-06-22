@@ -61,12 +61,55 @@ fn stored_manifest_carries_adversarial_specs() {
 
     let contract = manifest.contract.expect("contract survives ingest");
     assert_eq!(contract.entry, "tick");
+    // Adversarial carries the per-tick world/action schemas, not the performance
+    // input/output pair.
+    assert!(contract.world.is_some() && contract.action.is_some());
+    assert!(contract.input.is_none() && contract.output.is_none());
     let sandbox = manifest.sandbox.expect("sandbox survives ingest");
-    assert!(sandbox.fuel_per_tick > 0);
+    assert!(sandbox.fuel_per_tick.unwrap_or(0) > 0);
+    assert!(sandbox.fuel_limit.is_none());
     let simulation = manifest.simulation.expect("simulation survives ingest");
     assert!(simulation.max_ticks > 0);
     assert!(manifest.r#match.is_some(), "match survives ingest");
     assert!(manifest.replay.is_some(), "replay survives ingest");
+    let module = manifest
+        .build
+        .and_then(|build| build.module)
+        .expect("build.module survives ingest");
+    assert!(module.ends_with(".wasm"));
+}
+
+#[test]
+fn stored_manifest_carries_performance_specs() {
+    // A performance case's `[contract]` (input/output), per-scenario `[sandbox]`
+    // (fuel_limit), and the held-out `[[case]]` scored set must survive into the
+    // stored manifest, and the adversarial-only loop tables (simulation/match/
+    // replay) must stay absent. Resolving the real Lattice case and building its
+    // manifest guards the generalized contract/sandbox shape and the new cases
+    // field, mirroring the adversarial regression guard above.
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let resolved = catalog.resolve("performance-factorio", "v1.0.0").unwrap();
+
+    let manifest = build_stored_manifest(&resolved).unwrap();
+
+    let contract = manifest.contract.expect("contract survives ingest");
+    assert_eq!(contract.entry, "simulate");
+    // Performance carries the per-scenario input/output schemas, not world/action.
+    assert!(contract.input.is_some() && contract.output.is_some());
+    assert!(contract.world.is_none() && contract.action.is_none());
+    let sandbox = manifest.sandbox.expect("sandbox survives ingest");
+    assert!(sandbox.fuel_limit.unwrap_or(0) > 0);
+    assert!(sandbox.fuel_per_tick.is_none());
+    // The held-out scored set survives ingest (small/medium/large).
+    assert_eq!(manifest.cases.len(), 3);
+    for case in &manifest.cases {
+        assert!(!case.input.is_empty() && !case.expected.is_empty());
+    }
+    // None of the adversarial loop tables apply to a performance case.
+    assert!(manifest.simulation.is_none());
+    assert!(manifest.r#match.is_none());
+    assert!(manifest.replay.is_none());
     let module = manifest
         .build
         .and_then(|build| build.module)

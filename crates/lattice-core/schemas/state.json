@@ -1,0 +1,295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AssemblerState": {
+      "description": "An assembler's retained state. Buffers are item-id → count maps.",
+      "properties": {
+        "craft_left": {
+          "description": "Ticks remaining in the current craft (`0` when not crafting).",
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "format": "uint16",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "description": "The input buffer: item id → count (empty map when nothing buffered).",
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": {
+            "format": "uint16",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "description": "The output buffer: item id → count.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "craft_left",
+        "inputs",
+        "output"
+      ],
+      "type": "object"
+    },
+    "BeltItem": {
+      "description": "One item on a belt lane, as the JSON output spells it.",
+      "properties": {
+        "item": {
+          "description": "The item id.",
+          "type": "string"
+        },
+        "pos": {
+          "description": "Position in units from the lane's output end (`0..TILE`).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "item",
+        "pos"
+      ],
+      "type": "object"
+    },
+    "BeltState": {
+      "description": "One belt's two lanes, each listing its items from the output end backward (ascending `pos`).",
+      "properties": {
+        "left": {
+          "description": "The left lane (relative to the belt's direction of travel).",
+          "items": {
+            "$ref": "#/definitions/BeltItem"
+          },
+          "type": "array"
+        },
+        "right": {
+          "description": "The right lane.",
+          "items": {
+            "$ref": "#/definitions/BeltItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "left",
+        "right"
+      ],
+      "type": "object"
+    },
+    "EntityState": {
+      "description": "One entity's state, externally tagged so the array stays parallel to the scenario's `entities` (`{ \"belt\": {...} }`, `{ \"sink\": {...} }`, …).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "belt": {
+              "$ref": "#/definitions/BeltState"
+            }
+          },
+          "required": [
+            "belt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "splitter": {
+              "$ref": "#/definitions/SplitterState"
+            }
+          },
+          "required": [
+            "splitter"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inserter": {
+              "$ref": "#/definitions/InserterState"
+            }
+          },
+          "required": [
+            "inserter"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assembler": {
+              "$ref": "#/definitions/AssemblerState"
+            }
+          },
+          "required": [
+            "assembler"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A source holds no item state at rest; `emit_phase` is `tick % period`, so a mid-period snapshot is self-describing.",
+          "properties": {
+            "source": {
+              "properties": {
+                "emit_phase": {
+                  "format": "uint32",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "emit_phase"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "sink": {
+              "$ref": "#/definitions/SinkState"
+            }
+          },
+          "required": [
+            "sink"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "InserterPhase": {
+      "description": "An inserter's swing-arm phase.",
+      "oneOf": [
+        {
+          "description": "Empty-handed, waiting to pick up.",
+          "enum": [
+            "idle"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Holding an item, counting the swing down.",
+          "enum": [
+            "swing"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "InserterState": {
+      "description": "An inserter's retained state.",
+      "properties": {
+        "held": {
+          "description": "The held item, present only while swinging.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/InserterPhase"
+            }
+          ],
+          "description": "`idle` or `swing`."
+        },
+        "swing_left": {
+          "description": "Ticks remaining in the current swing (`0` while idle).",
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "phase",
+        "swing_left"
+      ],
+      "type": "object"
+    },
+    "SinkState": {
+      "description": "A sink's retained state: per-item running consumed counts.",
+      "properties": {
+        "consumed": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "description": "Item id → total consumed.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "consumed"
+      ],
+      "type": "object"
+    },
+    "Snapshot": {
+      "description": "The complete canonical state at one snapshot tick.",
+      "properties": {
+        "checksum": {
+          "description": "The FNV-1a checksum over the [canonical bytes](canonical_bytes) of this snapshot, formatted `fnv1a64:%016x`. This is the validator's comparison key.",
+          "type": "string"
+        },
+        "entities": {
+          "description": "The per-entity state, in scenario placement order.",
+          "items": {
+            "$ref": "#/definitions/EntityState"
+          },
+          "type": "array"
+        },
+        "tick": {
+          "description": "The tick this snapshot was taken at.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checksum",
+        "entities",
+        "tick"
+      ],
+      "type": "object"
+    },
+    "SplitterState": {
+      "description": "A splitter's retained state. A base splitter holds **no items between ticks** (it transfers within the tick it pulls), so only the two round-robin cursors are retained.",
+      "properties": {
+        "rr_in": {
+          "description": "Which input the splitter pulls from next (`0` or `1`).",
+          "format": "uint8",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "rr_out": {
+          "description": "Which output the splitter pushes to next (`0` or `1`).",
+          "format": "uint8",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rr_in",
+        "rr_out"
+      ],
+      "type": "object"
+    }
+  },
+  "items": {
+    "$ref": "#/definitions/Snapshot"
+  },
+  "title": "Array_of_Snapshot",
+  "type": "array"
+}

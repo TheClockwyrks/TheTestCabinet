@@ -217,6 +217,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         checks: Vec::new(),
         common_review_items: Vec::new(),
         domains: Vec::new(),
+        cases: Vec::new(),
     }
 }
 

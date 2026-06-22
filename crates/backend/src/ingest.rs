@@ -21,10 +21,10 @@ use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion};
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCheck, StoredContract,
-    StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof, StoredReference,
-    StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec, StoredTool,
-    StoredVariant, StoredWorkspaceFile,
+    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
+    StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
+    StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
+    StoredTool, StoredVariant, StoredWorkspaceFile,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -303,15 +303,29 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         output: resolved.output.as_ref().map(|output| StoredOutput {
             actions: output.actions.to_string_lossy().replace('\\', "/"),
         }),
-        contract: resolved.contract.as_ref().map(|contract| StoredContract {
-            entry: contract.entry.clone(),
-            world: contract.world.to_string_lossy().replace('\\', "/"),
-            action: contract.action.to_string_lossy().replace('\\', "/"),
+        contract: resolved.contract.as_ref().map(|contract| {
+            let forward = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/");
+            StoredContract {
+                entry: contract.entry.clone(),
+                world: contract.world.as_deref().map(forward),
+                action: contract.action.as_deref().map(forward),
+                input: contract.input.as_deref().map(forward),
+                output: contract.output.as_deref().map(forward),
+            }
         }),
         sandbox: resolved.sandbox.as_ref().map(|sandbox| StoredSandbox {
             fuel_per_tick: sandbox.fuel_per_tick,
+            fuel_limit: sandbox.fuel_limit,
             max_memory_bytes: sandbox.max_memory_bytes,
         }),
+        cases: resolved
+            .cases
+            .iter()
+            .map(|case| StoredCase {
+                input: case.input.to_string_lossy().replace('\\', "/"),
+                expected: case.expected.to_string_lossy().replace('\\', "/"),
+            })
+            .collect(),
         simulation: resolved
             .simulation
             .as_ref()

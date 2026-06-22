@@ -12,6 +12,12 @@ members = [
 	"crates/foray-ref-greedy-raider",
 	"crates/foray-ref-border-soldier",
 	"crates/foray-fuel-probe",
+	"crates/lattice-core",
+	"crates/lattice-host",
+	"crates/lattice-cli",
+	"crates/lattice-sdk",
+	"crates/lattice-ref-naive",
+	"crates/lattice-ref-transport",
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",
@@ -37,6 +43,28 @@ publish = false
 # one object and removes the race; it only affects `foray-core`'s native compile,
 # not the wasm build the browser performs.
 [profile.dev.package.foray-core]
+codegen-units = 1
+
+# `lattice-core` is a `cdylib` for the identical reason `foray-core` is (above):
+# it is retained as a `cdylib` for parity and a future browser replay renderer,
+# so on the NATIVE host rustc emits an (otherwise unused) `.so`, and incremental
+# codegen split across the dev profile's many codegen units intermittently drops
+# a `*.rcgu.o` object, failing the linker on a second incremental build. Pinning
+# this package to a single codegen unit removes the race — see the `foray-core`
+# rationale above. It only affects the native compile, not the wasm build.
+[profile.dev.package.lattice-core]
+codegen-units = 1
+
+# The two reference engines are `cdylib`s (they compile to
+# `wasm32-unknown-unknown` to load in the sandbox), so on the NATIVE host `cargo
+# test` hits the same intermittent incremental-codegen `*.rcgu.o` race the
+# `foray-core`/`lattice-core` pins above describe. Pin each to one codegen unit
+# for the dev profile so the native test build is reliable; it does not affect the
+# wasm release build the validator and container produce.
+[profile.dev.package.lattice-ref-naive]
+codegen-units = 1
+
+[profile.dev.package.lattice-ref-transport]
 codegen-units = 1
 
 # The desktop shell's library target is built as a `cdylib`/`staticlib` (the Tauri

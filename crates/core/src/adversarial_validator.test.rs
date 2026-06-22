@@ -41,11 +41,14 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         output: None,
         contract: Some(ContractSpec {
             entry: "tick".to_string(),
-            world: PathBuf::from("schemas/world.json"),
-            action: PathBuf::from("schemas/action.json"),
+            world: Some(PathBuf::from("schemas/world.json")),
+            action: Some(PathBuf::from("schemas/action.json")),
+            input: None,
+            output: None,
         }),
         sandbox: Some(SandboxSpec {
-            fuel_per_tick: 5_000_000,
+            fuel_per_tick: Some(5_000_000),
+            fuel_limit: None,
             max_memory_bytes: 67_108_864,
         }),
         simulation: Some(SimulationSpec {
@@ -66,6 +69,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         checks: Vec::new(),
         common_review_items: Vec::new(),
         domains: Vec::new(),
+        cases: Vec::new(),
     }
 }
 
