@@ -13,7 +13,7 @@
       "type": "object"
     },
     "RunAssetOut": {
-      "description": "An asset-generation media file exposed in a per-run document. `file` is the stable served name the result view requests — a single sprite's `regenerated.png`/`preview.png`/`actions.json` or a sprite sheet's per-frame `regenerated-<index>.png` (etc.); `key` is its snapshot-relative object key.",
+      "description": "An asset-generation media file exposed in a per-run document. `file` is the\nstable served name the result view requests — a single sprite's\n`regenerated.png`/`preview.png`/`actions.json` or a sprite sheet's per-frame\n`regenerated-<index>.png` (etc.); `key` is its snapshot-relative object key.",
       "properties": {
         "file": {
           "type": "string"
@@ -26,7 +26,7 @@
       "type": "object"
     },
     "RunProofOut": {
-      "description": "A proof media file exposed in a per-run document. `id` matches the proof's declared id (and its `validation.proofs[].id`); `kind` is image or video; `key` is the snapshot-relative object key of the media.",
+      "description": "A proof media file exposed in a per-run document. `id` matches the proof's\ndeclared id (and its `validation.proofs[].id`); `kind` is image or video;\n`key` is the snapshot-relative object key of the media.",
       "properties": {
         "id": {
           "type": "string"
@@ -38,29 +38,29 @@
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind"
         }
       },
-      "required": ["id", "key", "kind"],
+      "required": ["id", "kind", "key"],
       "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/snapshot/run.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A per-run document (`runs/<id>.json`): the run record, its reviews and links, the recorded event stream, and the snapshot-relative keys of its media.",
+  "description": "A per-run document (`runs/<id>.json`): the run record, its reviews and links,\nthe recorded event stream, and the snapshot-relative keys of its media.",
   "properties": {
     "assetMedia": {
-      "description": "An asset-generation run's media (regenerated/preview image + action log), named by snapshot-relative key. Empty for a non-asset-generation run.",
+      "description": "An asset-generation run's media (regenerated/preview image + action log),\nnamed by snapshot-relative key. Empty for a non-asset-generation run.",
       "items": {
         "$ref": "#/$defs/RunAssetOut"
       },
       "type": "array"
     },
     "events": {
-      "description": "The run's recorded normalized event stream (a JSON array), omitted when the run captured none. The site emits this as a per-run static asset its Events tab fetches; raw harness output is never included."
+      "description": "The run's recorded normalized event stream (a JSON array), omitted when the\nrun captured none. The site emits this as a per-run static asset its Events\ntab fetches; raw harness output is never included."
     },
     "links": {
       "$ref": "#/$defs/LinksOut"
     },
     "proofMedia": {
-      "description": "The run's uploaded proof-of-implementation media, named by snapshot-relative key. Empty when the run produced none.",
+      "description": "The run's uploaded proof-of-implementation media, named by snapshot-relative\nkey. Empty when the run produced none.",
       "items": {
         "$ref": "#/$defs/RunProofOut"
       },
@@ -70,7 +70,7 @@
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json"
     },
     "reviews": {
-      "description": "The run's reviews, oldest first. The site averages their scores and takes the worst rating across them; each entry names its reviewer.",
+      "description": "The run's reviews, oldest first. The site averages their scores and takes\nthe worst rating across them; each entry names its reviewer.",
       "items": {
         "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json"
       },
@@ -78,17 +78,17 @@
     },
     "schemaVersion": {
       "format": "uint32",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     }
   },
   "required": [
-    "assetMedia",
-    "links",
-    "proofMedia",
+    "schemaVersion",
     "record",
     "reviews",
-    "schemaVersion"
+    "links",
+    "proofMedia",
+    "assetMedia"
   ],
   "title": "PerRun",
   "type": "object"

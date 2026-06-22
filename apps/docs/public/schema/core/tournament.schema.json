@@ -1,21 +1,21 @@
 {
   "$defs": {
     "ControllerKind": {
-      "description": "Where a controller came from — surfaced so the arena UI can group baselines apart from controllers built by prior runs.",
+      "description": "Where a controller came from — surfaced so the arena UI can group baselines\napart from controllers built by prior runs.",
       "oneOf": [
         {
+          "const": "baseline",
           "description": "A baseline committed with the case (`references/<id>.wasm`).",
-          "enum": ["baseline"],
           "type": "string"
         },
         {
-          "description": "A controller a prior run produced, resolved from *this* host's run output dir. Local to the host that ran it — selectable only while browsing through that worker (the dropdown picks which worker contributes these).",
-          "enum": ["run"],
+          "const": "run",
+          "description": "A controller a prior run produced, resolved from *this* host's run output\ndir. Local to the host that ran it — selectable only while browsing through\nthat worker (the dropdown picks which worker contributes these).",
           "type": "string"
         },
         {
-          "description": "A controller a **pushed** run produced, resolved from the backend's stored `controller.wasm`. Always selectable from any host (the backend is the shared source), so a reviewer can watch a pushed implementation play without having produced it locally.",
-          "enum": ["pushed"],
+          "const": "pushed",
+          "description": "A controller a **pushed** run produced, resolved from the backend's stored\n`controller.wasm`. Always selectable from any host (the backend is the\nshared source), so a reviewer can watch a pushed implementation play\nwithout having produced it locally.",
           "type": "string"
         }
       ]
@@ -40,12 +40,12 @@
       "type": "object"
     },
     "MatchSummary": {
-      "description": "One match's result, summarized so a tournament list can show the outcome without loading (and replaying) the match. Serializes `camelCase` to mirror the `@test-cabinet/run-record` TypeScript contract.",
+      "description": "One match's result, summarized so a tournament list can show the outcome\nwithout loading (and replaying) the match. Serializes `camelCase` to mirror the\n`@test-cabinet/run-record` TypeScript contract.",
       "properties": {
         "blueFuel": {
           "description": "Blue's total fuel consumed over the match.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "blueId": {
@@ -55,21 +55,21 @@
         "blueKills": {
           "description": "Enemy raiders Blue tagged.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "blueScore": {
           "description": "Blue's banked score (the points Blue earned this match).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "detail": {
-          "description": "Why a controller lost on a technicality, or `None` for a clean result. This is set both when a controller failed to *load* (no match ran) and when one *forfeited mid-match* (fuel/memory/trap/contract-invalid action) — in the latter case the replay records only `Ended::Forfeit`, so this carries the reason a player would otherwise have no way to read.",
+          "description": "Why a controller lost on a technicality, or `None` for a clean result. This\nis set both when a controller failed to *load* (no match ran) and when one\n*forfeited mid-match* (fuel/memory/trap/contract-invalid action) — in the\nlatter case the replay records only `Ended::Forfeit`, so this carries the\nreason a player would otherwise have no way to read.",
           "type": ["string", "null"]
         },
         "matchId": {
-          "description": "Stable id for this match within its tournament (also the replay's storage segment): `\"{redId}__vs__{blueId}\"`.",
+          "description": "Stable id for this match within its tournament (also the replay's storage\nsegment): `\"{redId}__vs__{blueId}\"`.",
           "type": "string"
         },
         "outcomeForRed": {
@@ -77,9 +77,9 @@
           "description": "The outcome from Red's perspective."
         },
         "redFuel": {
-          "description": "Red's total fuel consumed over the match — the efficiency figure that breaks a level-score draw. `0` when no match ran (a load forfeit).",
+          "description": "Red's total fuel consumed over the match — the efficiency figure that breaks\na level-score draw. `0` when no match ran (a load forfeit).",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "redId": {
@@ -89,47 +89,47 @@
         "redKills": {
           "description": "Enemy raiders Red tagged (\"kills\").",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "redScore": {
           "description": "Red's banked score (the points Red earned this match).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "replayKey": {
-          "description": "The storage segment the replay is kept under, or `None` when no match ran (a controller failed to load, so there is nothing to play back).",
+          "description": "The storage segment the replay is kept under, or `None` when no match ran\n(a controller failed to load, so there is nothing to play back).",
           "type": ["string", "null"]
         },
         "ticks": {
           "description": "How many ticks the match ran for.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "winType": {
-          "description": "How the match was decided: `swept`, `time_limit` (a decisive score at the cap), `efficiency` (a level score broken by lower total fuel), or `forfeit`.",
+          "description": "How the match was decided: `swept`, `time_limit` (a decisive score at the\ncap), `efficiency` (a level score broken by lower total fuel), or `forfeit`.",
           "type": "string"
         },
         "winner": {
-          "description": "The winning controller's id, or `None` for a draw. On a level-score match this is the more fuel-efficient controller (the tie-break), so a draw means the scores *and* the fuel totals were level.",
+          "description": "The winning controller's id, or `None` for a draw. On a level-score match\nthis is the more fuel-efficient controller (the tie-break), so a draw means\nthe scores *and* the fuel totals were level.",
           "type": ["string", "null"]
         }
       },
       "required": [
-        "blueFuel",
-        "blueId",
-        "blueKills",
-        "blueScore",
         "matchId",
-        "outcomeForRed",
-        "redFuel",
         "redId",
-        "redKills",
+        "blueId",
+        "winType",
+        "outcomeForRed",
         "redScore",
+        "blueScore",
         "ticks",
-        "winType"
+        "redKills",
+        "blueKills",
+        "redFuel",
+        "blueFuel"
       ],
       "type": "object"
     },
@@ -139,13 +139,13 @@
         "draws": {
           "description": "Matches drawn (level score *and* level fuel, or a double forfeit).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "losses": {
           "description": "Matches lost.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "participantId": {
@@ -155,23 +155,23 @@
         "rank": {
           "description": "1-based rank (1 is best), assigned after sorting.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "wins": {
-          "description": "Matches won — the standings are ranked by this, highest first. A win is a decided match (higher score, a sweep, the leaner side of a level-score draw, or an opponent forfeit), so the efficiency tie-break feeds straight into this count.",
+          "description": "Matches won — the standings are ranked by this, highest first. A win is a\ndecided match (higher score, a sweep, the leaner side of a level-score draw,\nor an opponent forfeit), so the efficiency tie-break feeds straight into this\ncount.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         }
       },
-      "required": ["draws", "losses", "participantId", "rank", "wins"],
+      "required": ["participantId", "wins", "losses", "draws", "rank"],
       "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/core/tournament.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A persisted tournament: the field, the ranked standings, and every match's summary. The per-match replays are stored alongside (keyed by [`MatchSummary::replay_key`]); this record carries only the summaries so it loads cheaply. Serializes `camelCase` to mirror the TypeScript contract.",
+  "description": "A persisted tournament: the field, the ranked standings, and every match's\nsummary. The per-match replays are stored alongside (keyed by\n[`MatchSummary::replay_key`]); this record carries only the summaries so it\nloads cheaply. Serializes `camelCase` to mirror the TypeScript contract.",
   "properties": {
     "createdAt": {
       "description": "RFC 3339 timestamp the tournament was run at.",
@@ -216,14 +216,14 @@
     }
   },
   "required": [
-    "createdAt",
     "id",
-    "matches",
-    "participants",
-    "standings",
+    "createdAt",
     "testCaseSlug",
     "testCaseVersion",
-    "variant"
+    "variant",
+    "participants",
+    "standings",
+    "matches"
   ],
   "title": "TournamentRecord",
   "type": "object"

@@ -1,7 +1,7 @@
 {
   "$defs": {
     "ErrorBody": {
-      "description": "The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and a human-readable message.",
+      "description": "The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and\na human-readable message.",
       "properties": {
         "code": {
           "type": "string"

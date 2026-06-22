@@ -1,7 +1,7 @@
 {
   "$defs": {
     "Account": {
-      "description": "A user account as the auth service represents it on the wire: a stable id, the login `username`, and the human-facing `display_name` shown beside a review. The password hash never leaves the service, so it is not part of this shape.",
+      "description": "A user account as the auth service represents it on the wire: a stable id, the\nlogin `username`, and the human-facing `display_name` shown beside a review.\nThe password hash never leaves the service, so it is not part of this shape.",
       "properties": {
         "displayName": {
           "description": "The human-facing name shown beside the account's reviews.",
@@ -16,13 +16,13 @@
           "type": "string"
         }
       },
-      "required": ["displayName", "id", "username"],
+      "required": ["id", "username", "displayName"],
       "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/backend-api/auth.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The auth service's response to a successful register or login: the freshly minted bearer `token` (shown once; the service stores only its hash) and the resolved [`Account`]. Clients persist the token and send it as `Authorization: Bearer <token>` on every mutating request.",
+  "description": "The auth service's response to a successful register or login: the freshly\nminted bearer `token` (shown once; the service stores only its hash) and the\nresolved [`Account`]. Clients persist the token and send it as\n`Authorization: Bearer <token>` on every mutating request.",
   "properties": {
     "account": {
       "$ref": "#/$defs/Account",
@@ -33,7 +33,7 @@
       "type": "string"
     }
   },
-  "required": ["account", "token"],
+  "required": ["token", "account"],
   "title": "AuthResult",
   "type": "object"
 }

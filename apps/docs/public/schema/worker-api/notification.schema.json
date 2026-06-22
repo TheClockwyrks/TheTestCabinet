@@ -1,26 +1,26 @@
 {
   "$defs": {
     "NotificationKind": {
-      "description": "The kind of a [`WorkerNotification`]. Only [`Self::RunCompleted`] exists today; modeled as an enum (rather than a bare string) so it is part of the generated contract and the console can switch on it as more are added.",
+      "description": "The kind of a [`WorkerNotification`]. Only [`Self::RunCompleted`] exists today;\nmodeled as an enum (rather than a bare string) so it is part of the generated\ncontract and the console can switch on it as more are added.",
       "oneOf": [
         {
+          "const": "run-completed",
           "description": "A run reached a terminal state (produced a record, or failed before one).",
-          "enum": ["run-completed"],
           "type": "string"
         }
       ]
     },
     "NotificationOutcome": {
-      "description": "Whether a finished run produced a record. Mirrors the console's run outcome: `completed` carries a record id to open; `failed` carries a reason.",
+      "description": "Whether a finished run produced a record. Mirrors the console's run outcome:\n`completed` carries a record id to open; `failed` carries a reason.",
       "oneOf": [
         {
+          "const": "completed",
           "description": "The run produced a record (its own `status.state` may still be a failure).",
-          "enum": ["completed"],
           "type": "string"
         },
         {
+          "const": "failed",
           "description": "The run could not be driven to a record at all.",
-          "enum": ["failed"],
           "type": "string"
         }
       ]
@@ -28,7 +28,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/worker-api/notification.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A worker-wide notification that a run reached a terminal state.\n\nCarries the run's display identity (flattened, so the JSON matches the console's `InProgressRun`/notification shape) plus how it ended: a `completed` run includes the `recordId` to open; a `failed` run includes the `message`.",
+  "description": "A worker-wide notification that a run reached a terminal state.\n\nCarries the run's display identity (flattened, so the JSON matches the\nconsole's `InProgressRun`/notification shape) plus how it ended: a `completed`\nrun includes the `recordId` to open; a `failed` run includes the `message`.",
   "properties": {
     "harnessSlug": {
       "description": "The harness driving the run, as its slug string.",
@@ -40,7 +40,7 @@
     },
     "kind": {
       "$ref": "#/$defs/NotificationKind",
-      "description": "The notification kind. Only `run-completed` exists today; carried explicitly so the console can switch on it as more are added."
+      "description": "The notification kind. Only `run-completed` exists today; carried\nexplicitly so the console can switch on it as more are added."
     },
     "message": {
       "description": "A human-readable failure reason, present when `outcome` is `failed`.",
@@ -55,7 +55,7 @@
       "description": "How the run ended."
     },
     "recordId": {
-      "description": "The persisted run record's id — what the console links the alert to. For a `completed` run this is the produced record's own id; for a `failed` run it is the job id, which is also the id the failed record is persisted under (see [`crate::runner::drive_run`]), so a failure alert still opens the run.",
+      "description": "The persisted run record's id — what the console links the alert to. For a\n`completed` run this is the produced record's own id; for a `failed` run it\nis the job id, which is also the id the failed record is persisted under\n(see [`crate::runner::drive_run`]), so a failure alert still opens the run.",
       "type": ["string", "null"]
     },
     "testCaseSlug": {
@@ -68,13 +68,13 @@
     }
   },
   "required": [
-    "harnessSlug",
-    "jobId",
     "kind",
-    "modelId",
-    "outcome",
+    "jobId",
     "testCaseSlug",
-    "variant"
+    "variant",
+    "harnessSlug",
+    "modelId",
+    "outcome"
   ],
   "title": "WorkerNotification",
   "type": "object"

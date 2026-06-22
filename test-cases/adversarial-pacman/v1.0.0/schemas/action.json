@@ -1,42 +1,31 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "definitions": {
+  "$defs": {
     "Dir": {
-      "description": "A cardinal move or a hold. The only thing a controller can express per agent — there is no variant that touches game state, so an [`Action`] is structurally incapable of cheating.",
+      "description": "A cardinal move or a hold. The only thing a controller can express per agent —\nthere is no variant that touches game state, so an [`Action`] is structurally\nincapable of cheating.",
       "oneOf": [
         {
+          "const": "N",
           "description": "North: `y - 1`.",
-          "enum": [
-            "N"
-          ],
           "type": "string"
         },
         {
+          "const": "S",
           "description": "South: `y + 1`.",
-          "enum": [
-            "S"
-          ],
           "type": "string"
         },
         {
+          "const": "E",
           "description": "East: `x + 1`.",
-          "enum": [
-            "E"
-          ],
           "type": "string"
         },
         {
+          "const": "W",
           "description": "West: `x - 1`.",
-          "enum": [
-            "W"
-          ],
           "type": "string"
         },
         {
+          "const": "Stop",
           "description": "Hold position.",
-          "enum": [
-            "Stop"
-          ],
           "type": "string"
         }
       ]
@@ -47,15 +36,11 @@
         "agent": {
           "description": "The owned agent's id (`0..3`).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "dir": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/Dir"
-            }
-          ],
+          "$ref": "#/$defs/Dir",
           "description": "The direction to move it (or `Stop`)."
         }
       },
@@ -66,12 +51,13 @@
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A controller's output for one tick: one move per owned agent.",
   "properties": {
     "moves": {
-      "description": "One entry per owned agent. The host validates that exactly the team's three ids appear, each once.",
+      "description": "One entry per owned agent. The host validates that exactly the team's\nthree ids appear, each once.",
       "items": {
-        "$ref": "#/definitions/Move"
+        "$ref": "#/$defs/Move"
       },
       "type": "array"
     }

@@ -1,37 +1,37 @@
 {
   "$defs": {
     "AdversarialOutcome": {
-      "description": "The outcome of an adversarial run's canonical match, from the **submission's** perspective.",
+      "description": "The outcome of an adversarial run's canonical match, from the **submission's**\nperspective.",
       "oneOf": [
         {
+          "const": "win",
           "description": "The submission won the match.",
-          "enum": ["win"],
           "type": "string"
         },
         {
+          "const": "loss",
           "description": "The submission lost the match.",
-          "enum": ["loss"],
           "type": "string"
         },
         {
+          "const": "draw",
           "description": "The match was a draw.",
-          "enum": ["draw"],
           "type": "string"
         },
         {
-          "description": "The submission forfeited (it failed to build, did not export the contract entry, trapped, exhausted its fuel/memory, or returned an invalid action).",
-          "enum": ["forfeit"],
+          "const": "forfeit",
+          "description": "The submission forfeited (it failed to build, did not export the contract\nentry, trapped, exhausted its fuel/memory, or returned an invalid action).",
           "type": "string"
         }
       ]
     },
     "AdversarialReplay": {
-      "description": "One auto-generated proof replay: the submission played head-to-head against a single reference opponent. A finished adversarial run records one of these per opponent in [`AdversarialResult::replays`] — programmatic, reproducible evidence the implementation actually plays, which is what *replaces* proof-of-implementation for adversarial cases.",
+      "description": "One auto-generated proof replay: the submission played head-to-head against a\nsingle reference opponent. A finished adversarial run records one of these per\nopponent in [`AdversarialResult::replays`] — programmatic, reproducible\nevidence the implementation actually plays, which is what *replaces*\nproof-of-implementation for adversarial cases.",
       "properties": {
         "blueScore": {
           "description": "The opponent's (Blue's) banked score at the end of the match.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "ended": {
@@ -49,7 +49,7 @@
         "redScore": {
           "description": "The submission's (Red's) banked score at the end of the match.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "replayJson": {
@@ -57,13 +57,13 @@
           "type": "string"
         },
         "scored": {
-          "description": "Whether this match's outcome counts as recorded evidence. `false` for an exhibition opponent (e.g. `random`, a trivial bar): its replay is kept so a reviewer can watch it, but the outcome is informational only.",
+          "description": "Whether this match's outcome counts as recorded evidence. `false` for an\nexhibition opponent (e.g. `random`, a trivial bar): its replay is kept so a\nreviewer can watch it, but the outcome is informational only.",
           "type": "boolean"
         },
         "ticks": {
           "description": "How many ticks the match ran for.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "winner": {
@@ -79,38 +79,38 @@
         }
       },
       "required": [
+        "opponent",
+        "replayJson",
+        "redScore",
         "blueScore",
         "ended",
-        "opponent",
+        "ticks",
         "outcome",
-        "redScore",
-        "replayJson",
-        "scored",
-        "ticks"
+        "scored"
       ],
       "type": "object"
     },
     "AdversarialResult": {
-      "description": "The result of scoring an adversarial run.\n\nAn adversarial run's authoritative output is its compiled wasm controller. The validator (see `crate::adversarial_validator::AdversarialValidator`) loads it as Red and plays it against the case's committed reference opponents (Blue), each through the shared [Foray host](foray_host), writing one published replay per opponent into the run's asset directory (see [`Self::replays`]). The top-level fields mirror the **canonical** opponent's match (`border-soldier`), which scoring and the leaderboard read. A submission that fails to build, does not export the entry, or forfeits is recorded as a loss/forfeit — never a crash. Present only on an adversarial run's [`ValidationSummary`].",
+      "description": "The result of scoring an adversarial run.\n\nAn adversarial run's authoritative output is its compiled wasm controller. The\nvalidator (see `crate::adversarial_validator::AdversarialValidator`) loads it\nas Red and plays it against the case's committed reference opponents (Blue),\neach through the shared [Foray host](foray_host), writing one published replay\nper opponent into the run's asset directory (see [`Self::replays`]). The\ntop-level fields mirror the **canonical** opponent's match (`border-soldier`),\nwhich scoring and the leaderboard read. A submission that fails to build, does\nnot export the entry, or forfeits is recorded as a loss/forfeit — never a\ncrash. Present only on an adversarial run's [`ValidationSummary`].",
       "properties": {
         "blueScore": {
           "description": "The opponent's (Blue's) banked score at the end of the match.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "controllerModule": {
           "default": "",
-          "description": "Run-root-relative path to the produced controller wasm module (the case's `build.module`), or empty when the build emitted none. Lets the push flow upload the controller to the backend (so a pushed run is selectable in the arena) without re-resolving the case manifest.",
+          "description": "Run-root-relative path to the produced controller wasm module (the case's\n`build.module`), or empty when the build emitted none. Lets the push flow\nupload the controller to the backend (so a pushed run is selectable in the\narena) without re-resolving the case manifest.",
           "type": "string"
         },
         "detail": {
           "default": null,
-          "description": "Detail about a submission that could not be matched (for example a missing or unloadable module), or `None` when the match ran.",
+          "description": "Detail about a submission that could not be matched (for example a missing\nor unloadable module), or `None` when the match ran.",
           "type": ["string", "null"]
         },
         "ended": {
-          "description": "How the match ended (the replay's `ended`: `swept`, `time_limit`, or `forfeit`).",
+          "description": "How the match ended (the replay's `ended`: `swept`, `time_limit`, or\n`forfeit`).",
           "type": "string"
         },
         "opponent": {
@@ -124,16 +124,16 @@
         "redScore": {
           "description": "The submission's (Red's) banked score at the end of the match.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "replayJson": {
-          "description": "Run-root-relative path to the canonical published replay (`replay.json`) — the scored artifact mirrored by the top-level fields below. Also the first entry of [`Self::replays`].",
+          "description": "Run-root-relative path to the canonical published replay (`replay.json`) —\nthe scored artifact mirrored by the top-level fields below. Also the first\nentry of [`Self::replays`].",
           "type": "string"
         },
         "replays": {
           "default": [],
-          "description": "One proof replay per reference opponent the run was auto-replayed against (canonical opponent first). These are the run's evidence of play. Empty only when the submission never presented a loadable controller (a forfeit before any match could run).",
+          "description": "One proof replay per reference opponent the run was auto-replayed against\n(canonical opponent first). These are the run's evidence of play. Empty\nonly when the submission never presented a loadable controller (a forfeit\nbefore any match could run).",
           "items": {
             "$ref": "#/$defs/AdversarialReplay"
           },
@@ -141,12 +141,12 @@
         },
         "submissionTeam": {
           "$ref": "#/$defs/AdversarialTeam",
-          "description": "Which side the submission played (always [`AdversarialTeam::Red`] for the canonical match; recorded so a consumer never has to assume it)."
+          "description": "Which side the submission played (always [`AdversarialTeam::Red`] for the\ncanonical match; recorded so a consumer never has to assume it)."
         },
         "ticks": {
           "description": "How many ticks the match ran for.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "winner": {
@@ -162,34 +162,34 @@
         }
       },
       "required": [
+        "replayJson",
+        "opponent",
+        "submissionTeam",
+        "redScore",
         "blueScore",
         "ended",
-        "opponent",
-        "outcome",
-        "redScore",
-        "replayJson",
-        "submissionTeam",
-        "ticks"
+        "ticks",
+        "outcome"
       ],
       "type": "object"
     },
     "AdversarialTeam": {
-      "description": "Which side a match outcome is reported from, for an adversarial run.\n\nThe validator always runs the submission as Red against the committed baseline opponent as Blue (lead decision 4), so [`AdversarialResult::outcome`] is from the submission's perspective and this records that the submission was Red.",
+      "description": "Which side a match outcome is reported from, for an adversarial run.\n\nThe validator always runs the submission as Red against the committed baseline\nopponent as Blue (lead decision 4), so [`AdversarialResult::outcome`] is from\nthe submission's perspective and this records that the submission was Red.",
       "oneOf": [
         {
+          "const": "red",
           "description": "The west colony — the submission, in the canonical match.",
-          "enum": ["red"],
           "type": "string"
         },
         {
+          "const": "blue",
           "description": "The east colony — the baseline opponent, in the canonical match.",
-          "enum": ["blue"],
           "type": "string"
         }
       ]
     },
     "AssetFrameResult": {
-      "description": "The regenerate result for one frame of an asset-generation run.\n\nFor a single sprite this is the whole run's one frame (index 0); for a sprite sheet there is one per declared frame, each a completely separate file. One signal comes out of each, recorded rather than gated (the same stance as end-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence) between the regenerated image and the pixels the model left on disk — a high divergence means the model drew outside the tool. There is no target image and no fidelity score; the regenerated image is reviewed against the brief.",
+      "description": "The regenerate result for one frame of an asset-generation run.\n\nFor a single sprite this is the whole run's one frame (index 0); for a sprite\nsheet there is one per declared frame, each a completely separate file. One\nsignal comes out of each, recorded rather than gated (the same stance as\nend-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence)\nbetween the regenerated image and the pixels the model left on disk — a high\ndivergence means the model drew outside the tool. There is no target image and\nno fidelity score; the regenerated image is reviewed against the brief.",
       "properties": {
         "actionsLog": {
           "description": "Run-root-relative path to this frame's recorded action log.",
@@ -197,7 +197,7 @@
         },
         "cheatDivergence": {
           "default": null,
-          "description": "Divergence between the regenerated frame and the model's on-disk preview, in `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside the tool. `None` when the model left no readable preview to compare.",
+          "description": "Divergence between the regenerated frame and the model's on-disk preview,\nin `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside\nthe tool. `None` when the model left no readable preview to compare.",
           "format": "double",
           "type": ["number", "null"]
         },
@@ -207,45 +207,45 @@
           "type": ["string", "null"]
         },
         "index": {
-          "description": "The frame index this result records under: `0` for a single sprite, the declared `[[sheet.frame]]` index for a sprite sheet.",
+          "description": "The frame index this result records under: `0` for a single sprite, the\ndeclared `[[sheet.frame]]` index for a sprite sheet.",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "operationCount": {
           "description": "How many operations this frame's log recorded.",
           "format": "uint",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "previewImage": {
-          "description": "Run-root-relative path to the pixels the model left on disk (this frame's `preview`), kept for the side-by-side comparison and the divergence signal.",
+          "description": "Run-root-relative path to the pixels the model left on disk (this frame's\n`preview`), kept for the side-by-side comparison and the divergence signal.",
           "type": "string"
         },
         "regeneratedImage": {
-          "description": "Run-root-relative path to the image regenerated from this frame's action log — the scored output for this frame.",
+          "description": "Run-root-relative path to the image regenerated from this frame's action\nlog — the scored output for this frame.",
           "type": "string"
         }
       },
       "required": [
-        "actionsLog",
         "index",
-        "operationCount",
+        "regeneratedImage",
         "previewImage",
-        "regeneratedImage"
+        "actionsLog",
+        "operationCount"
       ],
       "type": "object"
     },
     "AssetGenResult": {
-      "description": "The result of regenerating an asset-generation run.\n\nAn asset-generation run's authoritative output is its recorded action log(s); the validator replays each through the same drawing logic the binary used (see `crate::validator::AssetGenValidator`) to produce the **regenerated** image(s), which are the output a human reviews against the brief. A single sprite produces one [frame](AssetFrameResult); a sprite sheet produces one per declared frame, each its own separate file. There is no target image and no automated fidelity score. Present only on an asset-generation run's [`ValidationSummary`].",
+      "description": "The result of regenerating an asset-generation run.\n\nAn asset-generation run's authoritative output is its recorded action log(s);\nthe validator replays each through the same drawing logic the binary used (see\n`crate::validator::AssetGenValidator`) to produce the **regenerated** image(s),\nwhich are the output a human reviews against the brief. A single sprite\nproduces one [frame](AssetFrameResult); a sprite sheet produces one per\ndeclared frame, each its own separate file. There is no target image and no\nautomated fidelity score. Present only on an asset-generation run's\n[`ValidationSummary`].",
       "properties": {
         "detail": {
           "default": null,
-          "description": "Detail about anything that could not be evaluated at the run level, or `None`. Per-frame detail lives on each [`AssetFrameResult`].",
+          "description": "Detail about anything that could not be evaluated at the run level, or\n`None`. Per-frame detail lives on each [`AssetFrameResult`].",
           "type": ["string", "null"]
         },
         "frames": {
-          "description": "The per-frame results: exactly one for a single sprite (frame index 0), one per declared frame for a sprite sheet, in declared order.",
+          "description": "The per-frame results: exactly one for a single sprite (frame index 0), one\nper declared frame for a sprite sheet, in declared order.",
           "items": {
             "$ref": "#/$defs/AssetFrameResult"
           },
@@ -260,32 +260,32 @@
               "type": "null"
             }
           ],
-          "description": "The sprite-sheet frame dimensions and named sequences, when the case draws a sprite sheet (`asset_kind = \"sprite-sheet\"`). Carried into the run record so the review UI can play the named animations from the per-frame images, without a separate catalog lookup. `None` for a single-sprite case."
+          "description": "The sprite-sheet frame dimensions and named sequences, when the case draws a\nsprite sheet (`asset_kind = \"sprite-sheet\"`). Carried into the run record so\nthe review UI can play the named animations from the per-frame images,\nwithout a separate catalog lookup. `None` for a single-sprite case."
         }
       },
       "required": ["frames"],
       "type": "object"
     },
     "AssetSheet": {
-      "description": "The resolved `[sheet]` of a sprite-sheet case: the frames the model draws — each a separate file the size of one [`CanvasSpec`] — and the named sequences a reviewer plays back. The frame dimensions are the canvas dimensions; the declared frame indices and the sequences that reference them drive per-frame scoring and animated playback.",
+      "description": "The resolved `[sheet]` of a sprite-sheet case: the frames the model draws —\neach a separate file the size of one [`CanvasSpec`] — and the named sequences a\nreviewer plays back. The frame dimensions are the canvas dimensions; the\ndeclared frame indices and the sequences that reference them drive per-frame\nscoring and animated playback.",
       "properties": {
         "frameHeight": {
           "description": "Height of one frame in pixels (the canvas height).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "frameWidth": {
           "description": "Width of one frame in pixels (the canvas width).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "frames": {
-          "description": "The declared frame indices, in declared order. At least one is present and all are unique.",
+          "description": "The declared frame indices, in declared order. At least one is present and\nall are unique.",
           "items": {
             "format": "uint32",
-            "minimum": 0.0,
+            "minimum": 0,
             "type": "integer"
           },
           "type": "array"
@@ -298,11 +298,11 @@
           "type": "array"
         }
       },
-      "required": ["frameHeight", "frameWidth", "frames", "sequences"],
+      "required": ["frameWidth", "frameHeight", "frames", "sequences"],
       "type": "object"
     },
     "AssetSheetSequence": {
-      "description": "A resolved named animation sequence within a [`SheetSpec`]: an ordered list of row-major frame indices played at [`Self::fps`].",
+      "description": "A resolved named animation sequence within a [`SheetSpec`]: an ordered list of\nrow-major frame indices played at [`Self::fps`].",
       "properties": {
         "fps": {
           "description": "Playback rate in frames per second. Always greater than zero.",
@@ -310,10 +310,10 @@
           "type": "number"
         },
         "frames": {
-          "description": "The ordered row-major frame indices this sequence plays. Non-empty, every index a valid cell.",
+          "description": "The ordered row-major frame indices this sequence plays. Non-empty, every\nindex a valid cell.",
           "items": {
             "format": "uint32",
-            "minimum": 0.0,
+            "minimum": 0,
             "type": "integer"
           },
           "type": "array"
@@ -327,20 +327,20 @@
           "type": "string"
         }
       },
-      "required": ["fps", "frames", "name", "slug"],
+      "required": ["slug", "name", "frames", "fps"],
       "type": "object"
     },
     "AuthMode": {
-      "description": "The authentication mode a run used, recorded so a published run is self-describing about how its cost should be interpreted.",
+      "description": "The authentication mode a run used, recorded so a published run is\nself-describing about how its cost should be interpreted.",
       "oneOf": [
         {
-          "description": "A provider API key, injected into the run container as an environment variable. Billing is charged directly against that key.",
-          "enum": ["apiKey"],
+          "const": "apiKey",
+          "description": "A provider API key, injected into the run container as an environment\nvariable. Billing is charged directly against that key.",
           "type": "string"
         },
         {
-          "description": "A harness account subscription, supplied as credential files copied into the run container. There is no per-run provider charge.",
-          "enum": ["subscription"],
+          "const": "subscription",
+          "description": "A harness account subscription, supplied as credential files copied into\nthe run container. There is no per-run provider charge.",
           "type": "string"
         }
       ]
@@ -353,15 +353,15 @@
           "type": ["string", "null"]
         },
         "name": {
-          "description": "Human-readable display name for the check, carried through from the declared [`Check`](crate::test_case::Check).",
+          "description": "Human-readable display name for the check, carried through from the\ndeclared [`Check`](crate::test_case::Check).",
           "type": "string"
         },
         "reached": {
-          "description": "Whether the check could drive the implementation into the view and capture it for comparison. When false, [`Self::similarity`] is `0.0` and [`Self::detail`] explains why.",
+          "description": "Whether the check could drive the implementation into the view and\ncapture it for comparison. When false, [`Self::similarity`] is `0.0` and\n[`Self::detail`] explains why.",
           "type": "boolean"
         },
         "similarity": {
-          "description": "Similarity signal in the range `0.0..=1.0` against the reference baseline. This is a signal, not a strict match requirement.",
+          "description": "Similarity signal in the range `0.0..=1.0` against the reference\nbaseline. This is a signal, not a strict match requirement.",
           "format": "double",
           "type": "number"
         },
@@ -370,82 +370,82 @@
           "type": "string"
         }
       },
-      "required": ["name", "reached", "similarity", "view"],
+      "required": ["view", "name", "reached", "similarity"],
       "type": "object"
     },
     "CostMetrics": {
       "description": "Cost of a run, recorded two ways.",
       "properties": {
         "actual": {
-          "description": "The amount actually charged for the run, recorded for reference. Equal to the comparable figure unless the harness reports its own exact cost.",
+          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.",
           "format": "double",
           "type": "number"
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is derived from token classes and OpenRouter's listed prices, except for harnesses that drive a single provider directly and report their own exact cost (such as Claude Code), where that reported cost — itself provider-stable — is used instead.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead.",
           "format": "double",
           "type": "number"
         }
       },
-      "required": ["actual", "comparable"],
+      "required": ["comparable", "actual"],
       "type": "object"
     },
     "HarnessSlug": {
-      "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the site (all eight happen to be single-word lowercase tokens).",
+      "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (all eight happen to be single-word lowercase tokens).",
       "oneOf": [
         {
+          "const": "claude",
           "description": "Anthropic Claude Code (`claude`).",
-          "enum": ["claude"],
           "type": "string"
         },
         {
+          "const": "codex",
           "description": "OpenAI Codex (`codex`).",
-          "enum": ["codex"],
           "type": "string"
         },
         {
+          "const": "cline",
           "description": "Cline (`cline`).",
-          "enum": ["cline"],
           "type": "string"
         },
         {
+          "const": "antigravity",
           "description": "Google Antigravity (`antigravity`).",
-          "enum": ["antigravity"],
           "type": "string"
         },
         {
+          "const": "goose",
           "description": "Goose (`goose`).",
-          "enum": ["goose"],
           "type": "string"
         },
         {
+          "const": "kilo",
           "description": "Kilo Code (`kilo`).",
-          "enum": ["kilo"],
           "type": "string"
         },
         {
+          "const": "opencode",
           "description": "OpenCode (`opencode`).",
-          "enum": ["opencode"],
           "type": "string"
         },
         {
+          "const": "pi",
           "description": "Pi (`pi`).",
-          "enum": ["pi"],
           "type": "string"
         }
       ]
     },
     "MediaKind": {
-      "description": "The kind of a piece of media — used for both reference media and proof artifacts so a UI knows whether to render an `<img>` or a `<video>`.",
+      "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>` or a `<video>`.",
       "oneOf": [
         {
+          "const": "image",
           "description": "A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).",
-          "enum": ["image"],
           "type": "string"
         },
         {
+          "const": "video",
           "description": "A video clip (`mp4`).",
-          "enum": ["video"],
           "type": "string"
         }
       ]
@@ -463,27 +463,27 @@
           "type": ["string", "null"]
         },
         "firstMismatchTick": {
-          "description": "The tick of the first snapshot whose answer diverged from the oracle, when the engine is incorrect for that reason. `None` when correct, or when the failure was structural rather than a checksum mismatch.",
+          "description": "The tick of the first snapshot whose answer diverged from the oracle, when\nthe engine is incorrect for that reason. `None` when correct, or when the\nfailure was structural rather than a checksum mismatch.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         },
         "fuel": {
-          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran (recorded for diagnostics even when incorrect); `None` when the engine could not be run on this case at all (a host failure).",
+          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran\n(recorded for diagnostics even when incorrect); `None` when the engine could\nnot be run on this case at all (a host failure).",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         },
         "input": {
-          "description": "The case-relative path of the input instance this result records under, so a reviewer can tie the result back to its case.",
+          "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
         }
       },
-      "required": ["correct", "input"],
+      "required": ["input", "correct"],
       "type": "object"
     },
     "PerformanceResult": {
-      "description": "The result of scoring a performance run.\n\nA performance run's authoritative output is its compiled wasm engine. The validator (see `crate::performance_validator::PerformanceValidator`) loads it, runs it once per held-out input case through the shared [Lattice host](lattice_host) under the manifest's per-case fuel/memory limits, and checks each case's output against the reference oracle. A run is **correct** only when every case is, and its [`total_fuel`](Self::total_fuel) — the fuel a correct engine consumes — is the comparable performance result. A built-but- wrong engine still loaded (it presented an engine); its correctness gate lives here, mirroring how an adversarial run records its outcome separately from the load signal. Present only on a performance run's [`ValidationSummary`].",
+      "description": "The result of scoring a performance run.\n\nA performance run's authoritative output is its compiled wasm engine. The\nvalidator (see `crate::performance_validator::PerformanceValidator`) loads it,\nruns it once per held-out input case through the shared [Lattice\nhost](lattice_host) under the manifest's per-case fuel/memory limits, and\nchecks each case's output against the reference oracle. A run is **correct**\nonly when every case is, and its [`total_fuel`](Self::total_fuel) — the fuel a\ncorrect engine consumes — is the comparable performance result. A built-but-\nwrong engine still loaded (it presented an engine); its correctness gate lives\nhere, mirroring how an adversarial run records its outcome separately from the\nload signal. Present only on a performance run's [`ValidationSummary`].",
       "properties": {
         "cases": {
           "description": "The per-case results, in the case's declared order.",
@@ -498,24 +498,24 @@
         },
         "detail": {
           "default": null,
-          "description": "Detail about a run that could not be scored at all (for example a missing or unloadable module), or `None` when every case ran.",
+          "description": "Detail about a run that could not be scored at all (for example a missing or\nunloadable module), or `None` when every case ran.",
           "type": ["string", "null"]
         },
         "totalFuel": {
-          "description": "The total fuel consumed across all cases — the comparable performance result. `Some` only when [`Self::correct`]; `None` for an incorrect run, where the fuel is meaningless.",
+          "description": "The total fuel consumed across all cases — the comparable performance\nresult. `Some` only when [`Self::correct`]; `None` for an incorrect run,\nwhere the fuel is meaningless.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         }
       },
-      "required": ["cases", "correct"],
+      "required": ["correct", "cases"],
       "type": "object"
     },
     "ProofResult": {
-      "description": "The presence result for a single declared proof-of-implementation artifact.\n\nA test case can ask the agent to write evidence (a screenshot or short clip) to a known path; validation records whether each declared proof turned up in the produced tree. This is **informational** — a missing proof never gates the run's status; it is surfaced so a reviewer sees the gap.",
+      "description": "The presence result for a single declared proof-of-implementation artifact.\n\nA test case can ask the agent to write evidence (a screenshot or short clip)\nto a known path; validation records whether each declared proof turned up in\nthe produced tree. This is **informational** — a missing proof never gates the\nrun's status; it is surfaced so a reviewer sees the gap.",
       "properties": {
         "dest": {
-          "description": "The run-root-relative path the proof was expected at, carried through from the declared proof. Locates the produced file for publishing and tells a UI where it lives.",
+          "description": "The run-root-relative path the proof was expected at, carried through from\nthe declared proof. Locates the produced file for publishing and tells a UI\nwhere it lives.",
           "type": "string"
         },
         "detail": {
@@ -523,7 +523,7 @@
           "type": ["string", "null"]
         },
         "id": {
-          "description": "The proof id this result records under (matches a declared [`ProofFile`](crate::test_case::ProofFile)).",
+          "description": "The proof id this result records under (matches a declared\n[`ProofFile`](crate::test_case::ProofFile)).",
           "type": "string"
         },
         "kind": {
@@ -539,30 +539,30 @@
           "type": "boolean"
         }
       },
-      "required": ["dest", "id", "kind", "name", "present"],
+      "required": ["id", "name", "kind", "dest", "present"],
       "type": "object"
     },
     "RunEnvironment": {
-      "description": "The container environment a run executed in.\n\nThese values are captured from inside the run container — not the host — so they describe the environment the harness actually built in. The harness version is not duplicated here; it lives in [`RunSubject::harness_version`].",
+      "description": "The container environment a run executed in.\n\nThese values are captured from inside the run container — not the host — so\nthey describe the environment the harness actually built in. The harness\nversion is not duplicated here; it lives in [`RunSubject::harness_version`].",
       "properties": {
         "authMode": {
           "$ref": "#/$defs/AuthMode",
-          "description": "Which authentication mode the run used. This is how the run's cost should be read: an API-key run is billed against that key, while a subscription run carries no per-run provider charge (a harness that still reports an exact charge — Claude Code does even on a subscription — is recorded as-is; one that reports none falls back to OpenRouter comparable pricing)."
+          "description": "Which authentication mode the run used. This is how the run's cost should\nbe read: an API-key run is billed against that key, while a subscription\nrun carries no per-run provider charge (a harness that still reports an\nexact charge — Claude Code does even on a subscription — is recorded\nas-is; one that reports none falls back to OpenRouter comparable pricing)."
         },
         "containerImage": {
-          "description": "The run-container image the run executed in: the single shared base image, the same for every harness. The full, pullable reference pulled by digest from the registry (for example, `ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build fallback tag for an offline run.",
+          "description": "The run-container image the run executed in: the single shared base image,\nthe same for every harness. The full, pullable reference pulled by digest\nfrom the registry (for example,\n`ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build\nfallback tag for an offline run.",
           "type": "string"
         },
         "nodeVersion": {
-          "description": "The Node.js version reported by `node --version` inside the container (for example, `v22.11.0`), or `None` when it could not be determined.",
+          "description": "The Node.js version reported by `node --version` inside the container\n(for example, `v22.11.0`), or `None` when it could not be determined.",
           "type": ["string", "null"]
         },
         "os": {
-          "description": "The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for example, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe could not determine it.",
+          "description": "The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for\nexample, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe\ncould not determine it.",
           "type": "string"
         }
       },
-      "required": ["authMode", "containerImage", "os"],
+      "required": ["os", "containerImage", "authMode"],
       "type": "object"
     },
     "RunLinks": {
@@ -596,25 +596,25 @@
           "description": "Normalized token usage."
         }
       },
-      "required": ["cost", "runTimeSeconds", "tokens"],
+      "required": ["runTimeSeconds", "tokens", "cost"],
       "type": "object"
     },
     "RunState": {
       "description": "The terminal state of a run.",
       "oneOf": [
         {
+          "const": "completed",
           "description": "The run completed and produced an implementation.",
-          "enum": ["completed"],
           "type": "string"
         },
         {
+          "const": "failed",
           "description": "The run failed before producing a usable implementation.",
-          "enum": ["failed"],
           "type": "string"
         },
         {
+          "const": "unevaluable",
           "description": "The run produced output that could not be evaluated.",
-          "enum": ["unevaluable"],
           "type": "string"
         }
       ]
@@ -651,7 +651,7 @@
         },
         "orchestratorSlug": {
           "default": "one-shot",
-          "description": "The resolved slug of the orchestrator that conducted the harness sessions (for example `one-shot` or `ralph`). For an external `--orchestrator-dir` this is the directory's own manifest slug, not the request's. Defaults to `one-shot` so records written before orchestrator selection existed — and hand-written fixtures — still deserialize. See [orchestrators](crate::OrchestratorCatalog).",
+          "description": "The resolved slug of the orchestrator that conducted the harness sessions\n(for example `one-shot` or `ralph`). For an external `--orchestrator-dir`\nthis is the directory's own manifest slug, not the request's. Defaults to\n`one-shot` so records written before orchestrator selection existed — and\nhand-written fixtures — still deserialize. See\n[orchestrators](crate::OrchestratorCatalog).",
           "type": "string"
         },
         "testCaseSlug": {
@@ -665,7 +665,7 @@
         "testType": {
           "$ref": "#/$defs/TestType",
           "default": "end-to-end",
-          "description": "The test type this case belongs to. Defaults to [`TestType::EndToEnd`](crate::TestType) so records written before the discriminator existed (all end-to-end) still deserialize. The UI branches on this to choose how to present a run's result."
+          "description": "The test type this case belongs to. Defaults to\n[`TestType::EndToEnd`](crate::TestType) so records written before the\ndiscriminator existed (all end-to-end) still deserialize. The UI branches\non this to choose how to present a run's result."
         },
         "variant": {
           "description": "The variant of the test case that was run (for example `base`).",
@@ -673,19 +673,19 @@
         }
       },
       "required": [
-        "harnessSlug",
-        "modelId",
         "testCaseSlug",
         "testCaseVersion",
-        "variant"
+        "variant",
+        "harnessSlug",
+        "modelId"
       ],
       "type": "object"
     },
     "RunTooling": {
-      "description": "Provenance for the Test Cabinet build that orchestrated a run.\n\nDistinct from [`RunSubject::harness_version`], which describes the agent harness: this identifies the build of the Test Cabinet orchestrator itself, so a run can be traced back to the exact code that produced it.",
+      "description": "Provenance for the Test Cabinet build that orchestrated a run.\n\nDistinct from [`RunSubject::harness_version`], which describes the agent\nharness: this identifies the build of the Test Cabinet orchestrator itself,\nso a run can be traced back to the exact code that produced it.",
       "properties": {
         "testCabinetCommit": {
-          "description": "The Test Cabinet commit the run's binary was built from, suffixed with `-dirty` when built from a modified working tree. `None` when the build could not determine it (for example, a build with no git repository).",
+          "description": "The Test Cabinet commit the run's binary was built from, suffixed with\n`-dirty` when built from a modified working tree. `None` when the build\ncould not determine it (for example, a build with no git repository).",
           "type": ["string", "null"]
         }
       },
@@ -703,7 +703,7 @@
               "type": "null"
             }
           ],
-          "description": "The canonical-match result of an adversarial run. `None` for any other type, so a non-adversarial summary serializes with no new field at all and its shape is unchanged."
+          "description": "The canonical-match result of an adversarial run. `None` for any other\ntype, so a non-adversarial summary serializes with no new field at all and\nits shape is unchanged."
         },
         "asset": {
           "anyOf": [
@@ -714,7 +714,7 @@
               "type": "null"
             }
           ],
-          "description": "The regenerate-and-score result of an asset-generation run. `None` for an end-to-end run, so an end-to-end summary serializes with no new field at all and its shape is unchanged."
+          "description": "The regenerate-and-score result of an asset-generation run. `None` for an\nend-to-end run, so an end-to-end summary serializes with no new field at\nall and its shape is unchanged."
         },
         "build": {
           "anyOf": [
@@ -726,7 +726,7 @@
             }
           ],
           "default": null,
-          "description": "Outcome of the required static-build step, or `None` if it was never reached (the install failed, or there was no `package.json`)."
+          "description": "Outcome of the required static-build step, or `None` if it was never\nreached (the install failed, or there was no `package.json`)."
         },
         "checks": {
           "description": "Per-check results for the validation checks the test case declares.",
@@ -736,7 +736,7 @@
           "type": "array"
         },
         "detail": {
-          "description": "Detail about a fatal load failure (build failure, uncaught runtime error, or a missing browser that prevented capture).",
+          "description": "Detail about a fatal load failure (build failure, uncaught runtime error,\nor a missing browser that prevented capture).",
           "type": ["string", "null"]
         },
         "install": {
@@ -749,10 +749,10 @@
             }
           ],
           "default": null,
-          "description": "Outcome of the required dependency-install step, or `None` if the build never reached it (for example, no `package.json` was found)."
+          "description": "Outcome of the required dependency-install step, or `None` if the build\nnever reached it (for example, no `package.json` was found)."
         },
         "loaded": {
-          "description": "Whether the implementation built, served, and rendered without a fatal error. This is the clearest possible signal about a run.",
+          "description": "Whether the implementation built, served, and rendered without a fatal\nerror. This is the clearest possible signal about a run.",
           "type": "boolean"
         },
         "performance": {
@@ -764,29 +764,29 @@
               "type": "null"
             }
           ],
-          "description": "The correctness-and-fuel result of a performance run. `None` for any other type, so a non-performance summary serializes with no new field at all and its shape is unchanged."
+          "description": "The correctness-and-fuel result of a performance run. `None` for any other\ntype, so a non-performance summary serializes with no new field at all and\nits shape is unchanged."
         },
         "proofs": {
           "default": [],
-          "description": "Per-proof presence results for the proof-of-implementation artifacts the test case requests. Empty when the case declares none. Informational: a missing proof does not change [`Self::loaded`].",
+          "description": "Per-proof presence results for the proof-of-implementation artifacts the\ntest case requests. Empty when the case declares none. Informational: a\nmissing proof does not change [`Self::loaded`].",
           "items": {
             "$ref": "#/$defs/ProofResult"
           },
           "type": "array"
         }
       },
-      "required": ["checks", "loaded"],
+      "required": ["loaded", "checks"],
       "type": "object"
     },
     "StepResult": {
-      "description": "The outcome of a single **required** build step — dependency install or the static build — that every run performs before the load check.\n\nBuilding an implementation is not a single opaque step: the install and the build each run a manifest-declared command and each can fail on its own, so each is reported in the [`ValidationSummary`] in its own right rather than being folded silently into the load signal. See `docs/validation.md`.",
+      "description": "The outcome of a single **required** build step — dependency install or the\nstatic build — that every run performs before the load check.\n\nBuilding an implementation is not a single opaque step: the install and the\nbuild each run a manifest-declared command and each can fail on its own, so\neach is reported in the [`ValidationSummary`] in its own right rather than\nbeing folded silently into the load signal. See `docs/validation.md`.",
       "properties": {
         "command": {
           "description": "The command that was run (the manifest's `install` or `build` command).",
           "type": "string"
         },
         "detail": {
-          "description": "Detail about a failure (a tail of the command's stderr), or `None` when the step succeeded.",
+          "description": "Detail about a failure (a tail of the command's stderr), or `None` when\nthe step succeeded.",
           "type": ["string", "null"]
         },
         "succeeded": {
@@ -798,55 +798,55 @@
       "type": "object"
     },
     "TestType": {
-      "description": "The type of a test case: which class of capability it measures and which manifest tables it declares.\n\nToday four types exist in code: the original [`Self::EndToEnd`] (build a working program), [`Self::AssetGeneration`] (drive a drawing tool toward a target image), [`Self::Adversarial`] (write a wasm controller pitted head-to-head against a baseline), and [`Self::Performance`] (write a wasm engine scored on correctness plus the fuel it burns). The type is the explicit discriminator everything branches on — resolution, validation, the run record, and the UI — rather than being inferred from which tables a manifest happens to declare. It defaults to [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.",
+      "description": "The type of a test case: which class of capability it measures and which\nmanifest tables it declares.\n\nToday four types exist in code: the original [`Self::EndToEnd`] (build a\nworking program), [`Self::AssetGeneration`] (drive a drawing tool toward a\ntarget image), [`Self::Adversarial`] (write a wasm controller pitted\nhead-to-head against a baseline), and [`Self::Performance`] (write a wasm\nengine scored on correctness plus the fuel it burns). The type is the explicit\ndiscriminator everything branches on\n— resolution, validation, the run record, and the UI — rather than being\ninferred from which tables a manifest happens to declare. It defaults to\n[`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.",
       "oneOf": [
         {
+          "const": "end-to-end",
           "description": "Build a working program judged by running it (the only type until now).",
-          "enum": ["end-to-end"],
           "type": "string"
         },
         {
-          "description": "Produce a graphical asset by driving a drawing tool one operation at a time; the recorded operations are the authoritative output.",
-          "enum": ["asset-generation"],
+          "const": "asset-generation",
+          "description": "Produce a graphical asset by driving a drawing tool one operation at a\ntime; the recorded operations are the authoritative output.",
           "type": "string"
         },
         {
-          "description": "Write a controller compiled to wasm that drives one side of a head-to-head game; the controller is run repeatedly against a baseline opponent and the match outcome is the authoritative result. See `docs/testing/adversarial/`.",
-          "enum": ["adversarial"],
+          "const": "adversarial",
+          "description": "Write a controller compiled to wasm that drives one side of a head-to-head\ngame; the controller is run repeatedly against a baseline opponent and the\nmatch outcome is the authoritative result. See\n`docs/testing/adversarial/`.",
           "type": "string"
         },
         {
-          "description": "Write an engine compiled to wasm that simulates a deterministic world; the engine's output is checked for correctness against a reference oracle and, when correct, scored by the fuel it consumes. The contract entry is invoked **once per input case** (not per tick), so the whole simulation runs in one call. See `docs/testing/performance/`.",
-          "enum": ["performance"],
+          "const": "performance",
+          "description": "Write an engine compiled to wasm that simulates a deterministic world; the\nengine's output is checked for correctness against a reference oracle and,\nwhen correct, scored by the fuel it consumes. The contract entry is invoked\n**once per input case** (not per tick), so the whole simulation runs in one\ncall. See `docs/testing/performance/`.",
           "type": "string"
         }
       ]
     },
     "TokenMetrics": {
-      "description": "The four normalized token classes recorded for every run.\n\nThe [`crate::harness`] layer is responsible for translating each harness's raw reporting into these classes. In particular:\n\n- cached reads must be subtracted from input so [`Self::uncached_input`] excludes them, and - reasoning tokens must be subtracted from output so [`Self::output`] excludes them.\n\nEach class is optional: `None` means the harness does **not** report that class at all (the value could not be determined), which is distinct from `Some(0)` (the harness reports the class and it was zero). Keeping the two apart matters for any consumer that aggregates across classes — a total that folds in an unknown class would be misleading, so such totals are themselves reported as unknown rather than silently treating the gap as zero.",
+      "description": "The four normalized token classes recorded for every run.\n\nThe [`crate::harness`] layer is responsible for translating each harness's\nraw reporting into these classes. In particular:\n\n- cached reads must be subtracted from input so [`Self::uncached_input`]\n  excludes them, and\n- reasoning tokens must be subtracted from output so [`Self::output`]\n  excludes them.\n\nEach class is optional: `None` means the harness does **not** report that\nclass at all (the value could not be determined), which is distinct from\n`Some(0)` (the harness reports the class and it was zero). Keeping the two\napart matters for any consumer that aggregates across classes — a total that\nfolds in an unknown class would be misleading, so such totals are themselves\nreported as unknown rather than silently treating the gap as zero.",
       "properties": {
         "cachedInput": {
-          "description": "Input tokens served from the provider's cache (billed at a lower rate), or `None` when the harness does not break cached reads out.",
+          "description": "Input tokens served from the provider's cache (billed at a lower rate), or\n`None` when the harness does not break cached reads out.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         },
         "output": {
-          "description": "Non-reasoning output tokens, or `None` when the harness does not report output usage.",
+          "description": "Non-reasoning output tokens, or `None` when the harness does not report\noutput usage.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         },
         "reasoning": {
-          "description": "Internal reasoning tokens (billed as output, tracked separately), or `None` when the harness does not break reasoning out — note that a harness which folds reasoning into `output` reports `None` here, not `Some(0)`.",
+          "description": "Internal reasoning tokens (billed as output, tracked separately), or `None`\nwhen the harness does not break reasoning out — note that a harness which\nfolds reasoning into `output` reports `None` here, not `Some(0)`.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         },
         "uncachedInput": {
-          "description": "Input tokens that were **not** served from the provider's cache, or `None` when the harness does not report input usage.",
+          "description": "Input tokens that were **not** served from the provider's cache, or `None`\nwhen the harness does not report input usage.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": ["integer", "null"]
         }
       },
@@ -855,7 +855,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its shape is deliberately fixed; the `packages/run-record` bindings and the published JSON Schema are generated from it (see the module docs).",
+  "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its\nshape is deliberately fixed; the `packages/run-record` bindings and the\npublished JSON Schema are generated from it (see the module docs).",
   "properties": {
     "environment": {
       "$ref": "#/$defs/RunEnvironment",
@@ -899,16 +899,16 @@
     }
   },
   "required": [
-    "environment",
-    "finishedAt",
     "id",
-    "links",
-    "metrics",
     "startedAt",
-    "status",
+    "finishedAt",
     "subject",
     "tooling",
-    "validation"
+    "environment",
+    "metrics",
+    "validation",
+    "links",
+    "status"
   ],
   "title": "RunRecord",
   "type": "object"

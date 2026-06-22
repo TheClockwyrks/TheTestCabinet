@@ -1,7 +1,7 @@
 {
   "$id": "https://docs.testcabinet.ai/schema/snapshot/index.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The top-level snapshot pointer (`index.json`): where the runs index, per-run documents, and case documents live under this snapshot's prefix.",
+  "description": "The top-level snapshot pointer (`index.json`): where the runs index, per-run\ndocuments, and case documents live under this snapshot's prefix.",
   "properties": {
     "casesPrefix": {
       "type": "string"
@@ -11,7 +11,7 @@
     },
     "runCount": {
       "format": "uint",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     },
     "runsKey": {
@@ -22,7 +22,7 @@
     },
     "schemaVersion": {
       "format": "uint32",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     },
     "snapshotId": {
@@ -30,13 +30,13 @@
     }
   },
   "required": [
-    "casesPrefix",
+    "schemaVersion",
+    "snapshotId",
     "generatedAt",
     "runCount",
     "runsKey",
     "runsPrefix",
-    "schemaVersion",
-    "snapshotId"
+    "casesPrefix"
   ],
   "title": "SnapshotIndex",
   "type": "object"

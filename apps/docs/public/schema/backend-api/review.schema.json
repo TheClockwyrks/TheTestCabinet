@@ -16,26 +16,26 @@
       "type": "object"
     },
     "Rating": {
-      "description": "A reviewer's subjective quality rating for a finished implementation.\n\nAssigned by hand while playing the build, ordered best to worst. It is a per-run signal shown alongside a run, never an aggregate or a ranking across runs (see `docs/site.md`).",
+      "description": "A reviewer's subjective quality rating for a finished implementation.\n\nAssigned by hand while playing the build, ordered best to worst. It is a\nper-run signal shown alongside a run, never an aggregate or a ranking across\nruns (see `docs/site.md`).",
       "oneOf": [
         {
+          "const": "flawless",
           "description": "Implemented according to spec with no noticeable bugs.",
-          "enum": ["flawless"],
           "type": "string"
         },
         {
-          "description": "Implemented according to spec; may have minor issues that don't impact playability.",
-          "enum": ["great"],
+          "const": "great",
+          "description": "Implemented according to spec; may have minor issues that don't impact\nplayability.",
           "type": "string"
         },
         {
-          "description": "Mostly implemented according to spec. Playable, but deviates from the spec or has bugs that impact playability.",
-          "enum": ["scuffed"],
+          "const": "scuffed",
+          "description": "Mostly implemented according to spec. Playable, but deviates from the\nspec or has bugs that impact playability.",
           "type": "string"
         },
         {
-          "description": "Doesn't follow the spec, or has bugs severe enough to render the game unplayable.",
-          "enum": ["broken"],
+          "const": "broken",
+          "description": "Doesn't follow the spec, or has bugs severe enough to render the game\nunplayable.",
           "type": "string"
         }
       ]
@@ -48,7 +48,7 @@
           "type": "string"
         },
         "note": {
-          "description": "An optional one-line note recording what the reviewer observed. `None` when the reviewer left no note.",
+          "description": "An optional one-line note recording what the reviewer observed. `None`\nwhen the reviewer left no note.",
           "type": ["string", "null"]
         },
         "status": {
@@ -60,16 +60,16 @@
       "type": "object"
     },
     "VerdictStatus": {
-      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the reviewer records one of these per item while judging the build. Ordered by neither severity nor preference — it simply states what the reviewer found.",
+      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the\nreviewer records one of these per item while judging the build. Ordered by\nneither severity nor preference — it simply states what the reviewer found.",
       "oneOf": [
         {
-          "description": "The item was checked and the build satisfies it. The item earns its weight toward the run's score.",
-          "enum": ["pass"],
+          "const": "pass",
+          "description": "The item was checked and the build satisfies it. The item earns its\nweight toward the run's score.",
           "type": "string"
         },
         {
-          "description": "The item was checked and the build does not satisfy it. The item earns none of its weight.",
-          "enum": ["fail"],
+          "const": "fail",
+          "description": "The item was checked and the build does not satisfy it. The item earns\nnone of its weight.",
           "type": "string"
         }
       ]
@@ -77,7 +77,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "One published review on a run: the reviewer's public identity, their per-domain ratings, the writeup, and their checklist verdicts. This is the canonical review wire shape (`backend-api/review.schema.json`), referenced by the per-run snapshot document.",
+  "description": "One published review on a run: the reviewer's public identity, their per-domain\nratings, the writeup, and their checklist verdicts. This is the canonical\nreview wire shape (`backend-api/review.schema.json`), referenced by the per-run\nsnapshot document.",
   "properties": {
     "checklist": {
       "items": {
@@ -86,7 +86,7 @@
       "type": "array"
     },
     "ratings": {
-      "description": "The reviewer's rating for each scoring domain. This review's overall rating is the worst across them.",
+      "description": "The reviewer's rating for each scoring domain. This review's overall\nrating is the worst across them.",
       "items": {
         "$ref": "#/$defs/DomainRating"
       },
@@ -109,12 +109,12 @@
     }
   },
   "required": [
-    "checklist",
-    "ratings",
-    "reviewedAt",
-    "reviewer",
     "reviewerId",
-    "writeup"
+    "reviewer",
+    "ratings",
+    "writeup",
+    "checklist",
+    "reviewedAt"
   ],
   "title": "Review",
   "type": "object"

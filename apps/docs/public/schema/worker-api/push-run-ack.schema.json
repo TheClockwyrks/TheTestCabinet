@@ -13,11 +13,11 @@
       "type": "string"
     },
     "sourceRepo": {
-      "description": "The released source repo URL; absent for an asset-generation run, which releases no code.",
+      "description": "The released source repo URL; absent for an asset-generation run, which\nreleases no code.",
       "type": ["string", "null"]
     }
   },
-  "required": ["newlyPushed", "runId"],
+  "required": ["runId", "newlyPushed"],
   "title": "PushAck",
   "type": "object"
 }

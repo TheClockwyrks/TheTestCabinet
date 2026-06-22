@@ -1,7 +1,7 @@
 {
   "$defs": {
     "ProducedRun": {
-      "description": "A run this worker has produced, in the shape the consoles' gallery reads: the produced [`RunRecord`] and a null review. A worker keeps no review store, so `review` is always absent here — a run only gains one when it is published.",
+      "description": "A run this worker has produced, in the shape the consoles' gallery reads:\nthe produced [`RunRecord`] and a null review. A worker keeps no review store,\nso `review` is always absent here — a run only gains one when it is published.",
       "properties": {
         "id": {
           "description": "The run record's id (its output-directory name).",

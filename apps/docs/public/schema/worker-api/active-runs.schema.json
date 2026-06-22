@@ -1,7 +1,7 @@
 {
   "$defs": {
     "ActiveRun": {
-      "description": "One currently-running job, as `GET /runs/active` reports it: the live stream/job id plus the run's display identity. `state` is always `running` — a job that reaches a terminal state is no longer active and drops out of the list. The flattened shape matches the console's `InProgressRun`.",
+      "description": "One currently-running job, as `GET /runs/active` reports it: the live\nstream/job id plus the run's display identity. `state` is always `running` —\na job that reaches a terminal state is no longer active and drops out of the\nlist. The flattened shape matches the console's `InProgressRun`.",
       "properties": {
         "harnessSlug": {
           "description": "The harness driving the run, as its slug string.",
@@ -29,21 +29,21 @@
         }
       },
       "required": [
+        "runId",
+        "testCaseSlug",
+        "variant",
         "harnessSlug",
         "modelId",
-        "runId",
-        "state",
-        "testCaseSlug",
-        "variant"
+        "state"
       ],
       "type": "object"
     },
     "ActiveRunState": {
-      "description": "The lifecycle state an [`ActiveRun`] reports — always [`Self::Running`], since a job that reaches a terminal state drops out of the active list. Modeled as a single-variant enum (rather than a bare string) so it is part of the generated contract.",
+      "description": "The lifecycle state an [`ActiveRun`] reports — always [`Self::Running`], since\na job that reaches a terminal state drops out of the active list. Modeled as a\nsingle-variant enum (rather than a bare string) so it is part of the generated\ncontract.",
       "oneOf": [
         {
+          "const": "running",
           "description": "The run is executing and has not yet reached a terminal state.",
-          "enum": ["running"],
           "type": "string"
         }
       ]

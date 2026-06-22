@@ -12,7 +12,7 @@
       "type": "string"
     }
   },
-  "required": ["password", "username"],
+  "required": ["username", "password"],
   "title": "LoginRequest",
   "type": "object"
 }

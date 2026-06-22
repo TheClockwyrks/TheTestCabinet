@@ -4,18 +4,18 @@
       "description": "A service's liveness marker — `ok` whenever it is serving.",
       "oneOf": [
         {
+          "const": "ok",
           "description": "The service is up and serving requests.",
-          "enum": ["ok"],
           "type": "string"
         }
       ]
     },
     "WorkerRole": {
-      "description": "Identifies the service behind a health probe as the worker, distinguishing it from a backend that shares the probe shape.",
+      "description": "Identifies the service behind a health probe as the worker, distinguishing it\nfrom a backend that shares the probe shape.",
       "oneOf": [
         {
+          "const": "worker",
           "description": "This service is a worker.",
-          "enum": ["worker"],
           "type": "string"
         }
       ]
@@ -23,10 +23,10 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/worker-api/health.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The body of `GET /healthz`: a worker's liveness/readiness probe and identity.\n\nReports `backendUrl`: the backend this worker resolves definitions from and publishes to. The UI compares it against the backend it is itself pointed at to confirm a worker shares its backend; without it the worker reads as \"unverified\" because there is nothing to check against.",
+  "description": "The body of `GET /healthz`: a worker's liveness/readiness probe and identity.\n\nReports `backendUrl`: the backend this worker resolves definitions from and\npublishes to. The UI compares it against the backend it is itself pointed at\nto confirm a worker shares its backend; without it the worker reads as\n\"unverified\" because there is nothing to check against.",
   "properties": {
     "backendUrl": {
-      "description": "The backend this worker resolves definitions from and publishes to (`TCAB_BACKEND_URL`). Always present — a worker requires a configured backend to start.",
+      "description": "The backend this worker resolves definitions from and publishes to\n(`TCAB_BACKEND_URL`). Always present — a worker requires a configured\nbackend to start.",
       "type": "string"
     },
     "role": {
@@ -38,11 +38,11 @@
       "description": "Liveness marker; `ok` when the worker is serving."
     },
     "version": {
-      "description": "The contract version the worker reports, independent of the crate's build version.",
+      "description": "The contract version the worker reports, independent of the crate's build\nversion.",
       "type": "string"
     }
   },
-  "required": ["backendUrl", "role", "status", "version"],
+  "required": ["status", "version", "role", "backendUrl"],
   "title": "WorkerHealth",
   "type": "object"
 }

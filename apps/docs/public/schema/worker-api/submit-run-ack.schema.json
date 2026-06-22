@@ -1,7 +1,7 @@
 {
   "$id": "https://docs.testcabinet.ai/schema/worker-api/submit-run-ack.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The response to a successful `POST /runs`: the accepted job's id and the URLs to observe it.",
+  "description": "The response to a successful `POST /runs`: the accepted job's id and the URLs\nto observe it.",
   "properties": {
     "eventsUrl": {
       "description": "Where to stream the job's live harness events (NDJSON).",
@@ -16,7 +16,7 @@
       "type": "string"
     }
   },
-  "required": ["eventsUrl", "jobId", "statusUrl"],
+  "required": ["jobId", "statusUrl", "eventsUrl"],
   "title": "SubmitAck",
   "type": "object"
 }

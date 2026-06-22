@@ -1,7 +1,7 @@
 {
   "$id": "https://docs.testcabinet.ai/schema/worker-api/submit-run-request.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The body of `POST /runs`: what to run, with what, against which model.\n\nThis is the HTTP shape of [`RunRequest`]. `version` and `variant` are required (a worker resolves an exact, immutable version from the backend); `maxRuntimeSeconds` optionally overrides the case's default cap.",
+  "description": "The body of `POST /runs`: what to run, with what, against which model.\n\nThis is the HTTP shape of [`RunRequest`]. `version` and `variant` are\nrequired (a worker resolves an exact, immutable version from the backend);\n`maxRuntimeSeconds` optionally overrides the case's default cap.",
   "properties": {
     "harness": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
@@ -11,7 +11,7 @@
       "default": null,
       "description": "Optional override for the maximum harness runtime, in seconds.",
       "format": "uint64",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": ["integer", "null"]
     },
     "model": {
@@ -20,7 +20,7 @@
     },
     "orchestrator": {
       "default": null,
-      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g. `one-shot` or `ralph`). Omit for the `one-shot` default. A worker resolves built-in orchestrators only — it has no access to a submitter's local directory, so there is no external-directory equivalent here.",
+      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default. A worker resolves\nbuilt-in orchestrators only — it has no access to a submitter's local\ndirectory, so there is no external-directory equivalent here.",
       "type": ["string", "null"]
     },
     "testCase": {
@@ -36,7 +36,7 @@
       "type": "string"
     }
   },
-  "required": ["harness", "model", "testCase", "variant", "version"],
+  "required": ["testCase", "version", "variant", "harness", "model"],
   "title": "SubmitBody",
   "type": "object"
 }

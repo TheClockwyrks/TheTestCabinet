@@ -10,7 +10,7 @@
       "type": "string"
     }
   },
-  "required": ["newlyPublished", "runId"],
+  "required": ["runId", "newlyPublished"],
   "title": "PublishAck",
   "type": "object"
 }

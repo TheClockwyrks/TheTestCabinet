@@ -1,19 +1,20 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "definitions": {
+  "$defs": {
     "AssemblerState": {
       "description": "An assembler's retained state. Buffers are item-id → count maps.",
       "properties": {
         "craft_left": {
           "description": "Ticks remaining in the current craft (`0` when not crafting).",
           "format": "uint16",
-          "minimum": 0.0,
+          "maximum": 65535,
+          "minimum": 0,
           "type": "integer"
         },
         "inputs": {
           "additionalProperties": {
             "format": "uint16",
-            "minimum": 0.0,
+            "maximum": 65535,
+            "minimum": 0,
             "type": "integer"
           },
           "description": "The input buffer: item id → count (empty map when nothing buffered).",
@@ -22,7 +23,8 @@
         "output": {
           "additionalProperties": {
             "format": "uint16",
-            "minimum": 0.0,
+            "maximum": 65535,
+            "minimum": 0,
             "type": "integer"
           },
           "description": "The output buffer: item id → count.",
@@ -30,9 +32,9 @@
         }
       },
       "required": [
-        "craft_left",
         "inputs",
-        "output"
+        "output",
+        "craft_left"
       ],
       "type": "object"
     },
@@ -46,30 +48,30 @@
         "pos": {
           "description": "Position in units from the lane's output end (`0..TILE`).",
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         }
       },
       "required": [
-        "item",
-        "pos"
+        "pos",
+        "item"
       ],
       "type": "object"
     },
     "BeltState": {
-      "description": "One belt's two lanes, each listing its items from the output end backward (ascending `pos`).",
+      "description": "One belt's two lanes, each listing its items from the output end backward\n(ascending `pos`).",
       "properties": {
         "left": {
           "description": "The left lane (relative to the belt's direction of travel).",
           "items": {
-            "$ref": "#/definitions/BeltItem"
+            "$ref": "#/$defs/BeltItem"
           },
           "type": "array"
         },
         "right": {
           "description": "The right lane.",
           "items": {
-            "$ref": "#/definitions/BeltItem"
+            "$ref": "#/$defs/BeltItem"
           },
           "type": "array"
         }
@@ -81,13 +83,13 @@
       "type": "object"
     },
     "EntityState": {
-      "description": "One entity's state, externally tagged so the array stays parallel to the scenario's `entities` (`{ \"belt\": {...} }`, `{ \"sink\": {...} }`, …).",
+      "description": "One entity's state, externally tagged so the array stays parallel to the\nscenario's `entities` (`{ \"belt\": {...} }`, `{ \"sink\": {...} }`, …).",
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
             "belt": {
-              "$ref": "#/definitions/BeltState"
+              "$ref": "#/$defs/BeltState"
             }
           },
           "required": [
@@ -99,7 +101,7 @@
           "additionalProperties": false,
           "properties": {
             "splitter": {
-              "$ref": "#/definitions/SplitterState"
+              "$ref": "#/$defs/SplitterState"
             }
           },
           "required": [
@@ -111,7 +113,7 @@
           "additionalProperties": false,
           "properties": {
             "inserter": {
-              "$ref": "#/definitions/InserterState"
+              "$ref": "#/$defs/InserterState"
             }
           },
           "required": [
@@ -123,7 +125,7 @@
           "additionalProperties": false,
           "properties": {
             "assembler": {
-              "$ref": "#/definitions/AssemblerState"
+              "$ref": "#/$defs/AssemblerState"
             }
           },
           "required": [
@@ -133,13 +135,13 @@
         },
         {
           "additionalProperties": false,
-          "description": "A source holds no item state at rest; `emit_phase` is `tick % period`, so a mid-period snapshot is self-describing.",
+          "description": "A source holds no item state at rest; `emit_phase` is `tick % period`, so\na mid-period snapshot is self-describing.",
           "properties": {
             "source": {
               "properties": {
                 "emit_phase": {
                   "format": "uint32",
-                  "minimum": 0.0,
+                  "minimum": 0,
                   "type": "integer"
                 }
               },
@@ -158,7 +160,7 @@
           "additionalProperties": false,
           "properties": {
             "sink": {
-              "$ref": "#/definitions/SinkState"
+              "$ref": "#/$defs/SinkState"
             }
           },
           "required": [
@@ -172,17 +174,13 @@
       "description": "An inserter's swing-arm phase.",
       "oneOf": [
         {
+          "const": "idle",
           "description": "Empty-handed, waiting to pick up.",
-          "enum": [
-            "idle"
-          ],
           "type": "string"
         },
         {
+          "const": "swing",
           "description": "Holding an item, counting the swing down.",
-          "enum": [
-            "swing"
-          ],
           "type": "string"
         }
       ]
@@ -198,17 +196,14 @@
           ]
         },
         "phase": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/InserterPhase"
-            }
-          ],
+          "$ref": "#/$defs/InserterPhase",
           "description": "`idle` or `swing`."
         },
         "swing_left": {
           "description": "Ticks remaining in the current swing (`0` while idle).",
           "format": "uint16",
-          "minimum": 0.0,
+          "maximum": 65535,
+          "minimum": 0,
           "type": "integer"
         }
       },
@@ -224,7 +219,7 @@
         "consumed": {
           "additionalProperties": {
             "format": "uint64",
-            "minimum": 0.0,
+            "minimum": 0,
             "type": "integer"
           },
           "description": "Item id → total consumed.",
@@ -240,43 +235,45 @@
       "description": "The complete canonical state at one snapshot tick.",
       "properties": {
         "checksum": {
-          "description": "The FNV-1a checksum over the [canonical bytes](canonical_bytes) of this snapshot, formatted `fnv1a64:%016x`. This is the validator's comparison key.",
+          "description": "The FNV-1a checksum over the [canonical bytes](canonical_bytes) of this\nsnapshot, formatted `fnv1a64:%016x`. This is the validator's comparison\nkey.",
           "type": "string"
         },
         "entities": {
           "description": "The per-entity state, in scenario placement order.",
           "items": {
-            "$ref": "#/definitions/EntityState"
+            "$ref": "#/$defs/EntityState"
           },
           "type": "array"
         },
         "tick": {
           "description": "The tick this snapshot was taken at.",
           "format": "uint64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         }
       },
       "required": [
+        "tick",
         "checksum",
-        "entities",
-        "tick"
+        "entities"
       ],
       "type": "object"
     },
     "SplitterState": {
-      "description": "A splitter's retained state. A base splitter holds **no items between ticks** (it transfers within the tick it pulls), so only the two round-robin cursors are retained.",
+      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only the two round-robin cursors\nare retained.",
       "properties": {
         "rr_in": {
           "description": "Which input the splitter pulls from next (`0` or `1`).",
           "format": "uint8",
-          "minimum": 0.0,
+          "maximum": 255,
+          "minimum": 0,
           "type": "integer"
         },
         "rr_out": {
           "description": "Which output the splitter pushes to next (`0` or `1`).",
           "format": "uint8",
-          "minimum": 0.0,
+          "maximum": 255,
+          "minimum": 0,
           "type": "integer"
         }
       },
@@ -287,8 +284,9 @@
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "items": {
-    "$ref": "#/definitions/Snapshot"
+    "$ref": "#/$defs/Snapshot"
   },
   "title": "Array_of_Snapshot",
   "type": "array"

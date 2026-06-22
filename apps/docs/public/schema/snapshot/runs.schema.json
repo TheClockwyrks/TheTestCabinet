@@ -38,9 +38,9 @@
           "description": "The run's overall rating: the worst rating any reviewer gave any domain."
         },
         "reviewCount": {
-          "description": "How many reviews the run carries. The site averages their scores; the aggregate sits between the harshest and most generous review.",
+          "description": "How many reviews the run carries. The site averages their scores; the\naggregate sits between the harshest and most generous review.",
           "format": "uint",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "startedAt": {
@@ -57,18 +57,18 @@
         }
       },
       "required": [
-        "caseName",
-        "finishedAt",
         "id",
-        "links",
-        "metrics",
         "publishedAt",
+        "startedAt",
+        "finishedAt",
+        "subject",
+        "caseName",
+        "metrics",
+        "validationLoaded",
+        "state",
         "rating",
         "reviewCount",
-        "startedAt",
-        "state",
-        "subject",
-        "validationLoaded"
+        "links"
       ],
       "type": "object"
     },
@@ -95,11 +95,11 @@
         }
       },
       "required": [
-        "harnessSlug",
-        "modelId",
         "testCaseSlug",
         "testCaseVersion",
-        "variant"
+        "variant",
+        "harnessSlug",
+        "modelId"
       ],
       "type": "object"
     }
@@ -116,11 +116,11 @@
     },
     "schemaVersion": {
       "format": "uint32",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     }
   },
-  "required": ["runs", "schemaVersion"],
+  "required": ["schemaVersion", "runs"],
   "title": "RunsIndex",
   "type": "object"
 }

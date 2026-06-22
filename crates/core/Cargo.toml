@@ -25,9 +25,8 @@ png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }
 # The drawing tool for asset-generation cases. Core links only the library (not
-# the `cli` feature's clap/serde_json/schemars) to regenerate the scored image
-# from a run's recorded action log through the exact same logic the in-container
-# binary used.
+# the `cli` feature's clap/serde_json) to regenerate the scored image from a run's
+# recorded action log through the exact same logic the in-container binary used.
 test-cabinet-draw = { path = "../draw", default-features = false }
 # The Foray adversarial game engine and its wasm host. The `AdversarialValidator`
 # loads a submission and the committed baseline opponent and runs the single

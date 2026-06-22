@@ -13,7 +13,7 @@
           "type": "string"
         }
       },
-      "required": ["name", "referenceView", "view"],
+      "required": ["view", "name", "referenceView"],
       "type": "object"
     },
     "CaseDomainOut": {
@@ -29,11 +29,11 @@
           "type": "string"
         }
       },
-      "required": ["description", "id", "name"],
+      "required": ["id", "name", "description"],
       "type": "object"
     },
     "CaseReferenceOut": {
-      "description": "A reference baseline exposed in case metadata. `variant` is `null` for a common reference (shown on every variant) or the variant slug for one scoped to a single variant; `kind` is how it is produced (rendered/image/video); `key` is the snapshot-relative object key of the media.",
+      "description": "A reference baseline exposed in case metadata. `variant` is `null` for a\ncommon reference (shown on every variant) or the variant slug for one scoped\nto a single variant; `kind` is how it is produced (rendered/image/video); `key`\nis the snapshot-relative object key of the media.",
       "properties": {
         "key": {
           "type": "string"
@@ -48,11 +48,11 @@
           "type": "string"
         }
       },
-      "required": ["key", "kind", "view"],
+      "required": ["view", "kind", "key"],
       "type": "object"
     },
     "CaseReviewItemOut": {
-      "description": "A reviewer checklist item exposed in case metadata, carrying its point weight and optional scoring domain so the site can compute and break down run scores.",
+      "description": "A reviewer checklist item exposed in case metadata, carrying its point weight\nand optional scoring domain so the site can compute and break down run scores.",
       "properties": {
         "domain": {
           "type": ["string", "null"]
@@ -60,7 +60,7 @@
         "frames": {
           "items": {
             "format": "uint32",
-            "minimum": 0.0,
+            "minimum": 0,
             "type": "integer"
           },
           "type": "array"
@@ -88,11 +88,11 @@
         },
         "weight": {
           "format": "uint32",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         }
       },
-      "required": ["frames", "id", "sequences", "text", "title", "weight"],
+      "required": ["id", "title", "text", "sequences", "frames", "weight"],
       "type": "object"
     },
     "CaseVariantOut": {
@@ -105,11 +105,11 @@
           "type": "string"
         },
         "prompt": {
-          "description": "The variant's prompt, rendered as a real run receives it, so the public gallery's Specifications tab shows the instruction the model was handed.",
+          "description": "The variant's prompt, rendered as a real run receives it, so the public\ngallery's Specifications tab shows the instruction the model was handed.",
           "type": "string"
         },
         "reviewItems": {
-          "description": "Reviewer checklist items additive to the common ones, with their point weights, surfaced only when this variant is selected.",
+          "description": "Reviewer checklist items additive to the common ones, with their point\nweights, surfaced only when this variant is selected.",
           "items": {
             "$ref": "#/$defs/CaseReviewItemOut"
           },
@@ -119,25 +119,25 @@
           "type": "string"
         }
       },
-      "required": ["name", "prompt", "reviewItems", "slug"],
+      "required": ["slug", "name", "prompt", "reviewItems"],
       "type": "object"
     },
     "ReferenceKind": {
       "description": "How a reference view's source is turned into the seeded/served artifact.",
       "oneOf": [
         {
-          "description": "An HTML mockup rendered to a PNG screenshot. The served media is always an image.",
-          "enum": ["rendered"],
+          "const": "rendered",
+          "description": "An HTML mockup rendered to a PNG screenshot. The served media is always an\nimage.",
           "type": "string"
         },
         {
+          "const": "image",
           "description": "A static image file used as-is.",
-          "enum": ["image"],
           "type": "string"
         },
         {
+          "const": "video",
           "description": "A static video file (`mp4`) used as-is.",
-          "enum": ["video"],
           "type": "string"
         }
       ]
@@ -145,7 +145,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/snapshot/case.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice of one ingested version — its identity, variants (with rendered prompts), checks, reference baselines, reviewer checklist, and scoring domains.",
+  "description": "A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice\nof one ingested version — its identity, variants (with rendered prompts),\nchecks, reference baselines, reviewer checklist, and scoring domains.",
   "properties": {
     "checks": {
       "items": {
@@ -154,7 +154,7 @@
       "type": "array"
     },
     "commonReviewItems": {
-      "description": "Reviewer checklist items shared by every variant, carrying their point weights so the site can compute run scores. A variant's own items ride on [`CaseVariantOut::review_items`].",
+      "description": "Reviewer checklist items shared by every variant, carrying their point\nweights so the site can compute run scores. A variant's own items ride on\n[`CaseVariantOut::review_items`].",
       "items": {
         "$ref": "#/$defs/CaseReviewItemOut"
       },
@@ -167,7 +167,7 @@
       "type": "string"
     },
     "domains": {
-      "description": "The case's scoring domains, rated independently; the overall rating is the worst across them.",
+      "description": "The case's scoring domains, rated independently; the overall rating is the\nworst across them.",
       "items": {
         "$ref": "#/$defs/CaseDomainOut"
       },
@@ -177,7 +177,7 @@
       "type": "string"
     },
     "references": {
-      "description": "Rendered reference baselines, named by snapshot-relative key. The site resolves these to absolute URLs to show baselines on the References tab.",
+      "description": "Rendered reference baselines, named by snapshot-relative key. The site\nresolves these to absolute URLs to show baselines on the References tab.",
       "items": {
         "$ref": "#/$defs/CaseReferenceOut"
       },
@@ -185,7 +185,7 @@
     },
     "schemaVersion": {
       "format": "uint32",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     },
     "slug": {
@@ -211,17 +211,17 @@
     }
   },
   "required": [
-    "checks",
-    "commonReviewItems",
-    "difficulty",
-    "domains",
-    "name",
-    "references",
     "schemaVersion",
     "slug",
+    "version",
+    "name",
+    "difficulty",
     "tags",
     "variants",
-    "version"
+    "checks",
+    "references",
+    "commonReviewItems",
+    "domains"
   ],
   "title": "CaseMetadata",
   "type": "object"

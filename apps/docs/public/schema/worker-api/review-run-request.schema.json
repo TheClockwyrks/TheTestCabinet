@@ -27,7 +27,7 @@
       "type": "string"
     }
   },
-  "required": ["ratings", "runId", "writeup"],
+  "required": ["runId", "ratings", "writeup"],
   "title": "ReviewBody",
   "type": "object"
 }

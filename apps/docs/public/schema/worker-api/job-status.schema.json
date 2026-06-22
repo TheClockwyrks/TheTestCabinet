@@ -4,18 +4,18 @@
       "description": "How a single submitted run is progressing.",
       "oneOf": [
         {
-          "description": "The job has been accepted and is executing (seeding, the harness session, validation). This covers the whole up-to-an-hour run.",
-          "enum": ["running"],
+          "const": "running",
+          "description": "The job has been accepted and is executing (seeding, the harness session,\nvalidation). This covers the whole up-to-an-hour run.",
           "type": "string"
         },
         {
-          "description": "The run finished and produced a [`RunRecord`]. The record's own `status.state` distinguishes a completed run from one the run lifecycle classified as failed/unevaluable.",
-          "enum": ["succeeded"],
+          "const": "succeeded",
+          "description": "The run finished and produced a [`RunRecord`]. The record's own\n`status.state` distinguishes a completed run from one the run lifecycle\nclassified as failed/unevaluable.",
           "type": "string"
         },
         {
-          "description": "The run could not be driven to a record at all (the definition would not resolve, the container would not start, the harness was unavailable, the runtime cap fired). `detail` carries the reason.",
-          "enum": ["failed"],
+          "const": "failed",
+          "description": "The run could not be driven to a record at all (the definition would not\nresolve, the container would not start, the harness was unavailable, the\nruntime cap fired). `detail` carries the reason.",
           "type": "string"
         }
       ]

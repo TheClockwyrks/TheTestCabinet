@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use schemars::JsonSchema;
-use schemars::r#gen::{SchemaGenerator, SchemaSettings};
+use schemars::generate::SchemaSettings;
+use schemars::{JsonSchema, SchemaGenerator};
 use serde_json::{Map, Value};
 use ts_rs::{Config, TS};
 
@@ -18,12 +18,6 @@ use ts_rs::{Config, TS};
 /// and every cross-schema `$ref` is rooted here, matching the URLs the worker,
 /// backend, and snapshot schemas reference.
 pub const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema";
-
-/// The JSON Schema dialect the published documents declare. Structurally the
-/// generated documents (object / string / enum / `$ref` / `$defs`) are identical
-/// across recent drafts; this keeps the declared dialect stable and matches the
-/// hand-written documents this generator replaces.
-const META_SCHEMA: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// The `ts_rs` config used for every binding: large integers (`i64`/`u64`) render
 /// as `number`, matching the run-record contract (the values are real run counts,
@@ -152,16 +146,17 @@ pub struct SchemaDoc {
     /// The subtype names this document owns (canonical `$defs`). Any other
     /// referenced type is rewritten to a `$ref` at its owning document's URL.
     pub owns: &'static [&'static str],
-    /// The raw `schemars` output for the root type (still using `definitions`).
+    /// The raw `schemars` output for the root type (subtypes under `$defs`).
     pub schema: Value,
 }
 
-/// Render a root type's schema with the settings every document shares: `$defs`
-/// (via post-processing), `Option<T>` as a nullable `type` array, no inlining.
+/// Render a root type's schema with the settings every document shares: draft
+/// 2020-12 with subtypes under `$defs`, `Option<T>` as a nullable `type` array,
+/// no inlining.
 pub fn root_schema<T: JsonSchema>() -> Value {
-    let generator = SchemaGenerator::new(SchemaSettings::draft2019_09());
+    let generator = SchemaGenerator::new(SchemaSettings::draft2020_12());
     serde_json::to_value(generator.into_root_schema_for::<T>())
-        .expect("a schemars RootSchema always serializes to JSON")
+        .expect("a schemars schema always serializes to JSON")
 }
 
 /// Where a type's canonical schema lives: the owning document's path and whether
@@ -182,10 +177,10 @@ fn ref_url(owner: &Owner, name: &str) -> String {
 }
 
 /// Finalize every schema document: build the global type-ownership map, then for
-/// each document rename `definitions` → `$defs`, stamp `$schema`/`$id`, drop the
-/// `$defs` entries owned by *other* documents, and rewrite every `$ref` to point
-/// at its owning document (a cross-document URL when foreign, `#/$defs/...` when
-/// local). Returns `(rel_path, value)` pairs ready to serialize.
+/// each document stamp `$id`, drop the `$defs` entries owned by *other* documents,
+/// and rewrite every `$ref` to point at its owning document (a cross-document URL
+/// when foreign, `#/$defs/...` when local). Returns `(rel_path, value)` pairs
+/// ready to serialize.
 pub fn finalize_schemas(docs: Vec<SchemaDoc>) -> Result<Vec<(&'static str, Value)>> {
     // Build the global ownership map and reject any type claimed by two documents
     // — that would make its canonical `$ref` ambiguous.
@@ -231,18 +226,17 @@ fn finalize_one(doc: &SchemaDoc, owner: &HashMap<&'static str, Owner>) -> Result
         .cloned()
         .context("a root schema is always a JSON object")?;
 
-    // Stamp the dialect and identity.
-    root.insert("$schema".into(), Value::String(META_SCHEMA.into()));
+    // Stamp the document identity. schemars 1.x already emits `$schema`
+    // (draft 2020-12), so only `$id` is added here.
     root.insert(
         "$id".into(),
         Value::String(format!("{SCHEMA_BASE_URL}/{}", doc.rel_path)),
     );
 
-    // `schemars` always emits its subtype map under `definitions`; the published
-    // documents use `$defs`. Rename, then drop the entries owned by *another*
-    // document (those become cross-document `$ref`s). A subtype that is local to
-    // this document — owned here, or shared by no one — stays inline.
-    if let Some(Value::Object(defs)) = root.remove("definitions") {
+    // schemars emits its subtype map under `$defs`. Drop the entries owned by
+    // *another* document (those become cross-document `$ref`s). A subtype that is
+    // local to this document — owned here, or shared by no one — stays inline.
+    if let Some(Value::Object(defs)) = root.remove("$defs") {
         let kept: Map<String, Value> = defs
             .into_iter()
             .filter(|(name, _)| !is_foreign(name, doc, owner))
@@ -266,7 +260,7 @@ fn is_foreign(name: &str, doc: &SchemaDoc, owner: &HashMap<&'static str, Owner>)
     owner.get(name).is_some_and(|o| o.rel_path != doc.rel_path)
 }
 
-/// Recursively rewrite `$ref` strings. `schemars` emits `#/definitions/<Name>`;
+/// Recursively rewrite `$ref` strings. `schemars` emits `#/$defs/<Name>`;
 /// a type owned by another document becomes that document's absolute URL, and
 /// everything else (this document's own subtypes) becomes a local `#/$defs/`
 /// reference.
@@ -274,7 +268,7 @@ fn rewrite_refs(value: &mut Value, doc: &SchemaDoc, owner: &HashMap<&'static str
     match value {
         Value::Object(map) => {
             if let Some(Value::String(reference)) = map.get("$ref") {
-                if let Some(name) = reference.strip_prefix("#/definitions/") {
+                if let Some(name) = reference.strip_prefix("#/$defs/") {
                     let rewritten = match owner.get(name) {
                         Some(target) if target.rel_path != doc.rel_path => ref_url(target, name),
                         _ => format!("#/$defs/{name}"),

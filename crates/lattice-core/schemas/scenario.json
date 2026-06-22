@@ -1,114 +1,93 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Scenario",
   "description": "The full scenario: blueprint, run length, and snapshot schedule.",
   "type": "object",
-  "required": [
-    "entities",
-    "grid",
-    "snapshots",
-    "ticks",
-    "version"
-  ],
   "properties": {
     "entities": {
       "description": "The placed entities, in placement order (= output order).",
       "type": "array",
       "items": {
-        "$ref": "#/definitions/Entity"
+        "$ref": "#/$defs/Entity"
       }
     },
     "grid": {
       "description": "The tile grid.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Grid"
-        }
-      ]
+      "$ref": "#/$defs/Grid"
     },
     "snapshots": {
-      "description": "The ticks at which to emit canonical state. Strictly ascending, each `> 0` and `<= ticks`.",
+      "description": "The ticks at which to emit canonical state. Strictly ascending, each\n`> 0` and `<= ticks`.",
       "type": "array",
       "items": {
         "type": "integer",
         "format": "uint64",
-        "minimum": 0.0
+        "minimum": 0
       }
     },
     "ticks": {
       "description": "Simulate this many ticks from an empty start.",
       "type": "integer",
       "format": "uint64",
-      "minimum": 0.0
+      "minimum": 0
     },
     "version": {
       "description": "The wire version; must equal [`SCENARIO_VERSION`].",
       "type": "integer",
       "format": "uint32",
-      "minimum": 0.0
+      "minimum": 0
     }
   },
   "additionalProperties": false,
-  "definitions": {
+  "required": [
+    "version",
+    "grid",
+    "ticks",
+    "snapshots",
+    "entities"
+  ],
+  "$defs": {
     "Dir": {
-      "description": "A cardinal direction. The grid is `x` rightward (E = +x) and `y` downward (S = +y); the canonical orientation in any reference material is flow-east.",
+      "description": "A cardinal direction. The grid is `x` rightward (E = +x) and `y` downward\n(S = +y); the canonical orientation in any reference material is flow-east.",
       "oneOf": [
         {
           "description": "North: `y - 1`.",
           "type": "string",
-          "enum": [
-            "N"
-          ]
+          "const": "N"
         },
         {
           "description": "South: `y + 1`.",
           "type": "string",
-          "enum": [
-            "S"
-          ]
+          "const": "S"
         },
         {
           "description": "East: `x + 1`.",
           "type": "string",
-          "enum": [
-            "E"
-          ]
+          "const": "E"
         },
         {
           "description": "West: `x - 1`.",
           "type": "string",
-          "enum": [
-            "W"
-          ]
+          "const": "W"
         }
       ]
     },
     "Entity": {
-      "description": "One placed entity. Internally tagged on `type`, so the JSON reads `{ \"type\": \"belt\", \"x\": .., .. }`. Each variant carries only its type-specific fields (serde's internally-tagged representation does not support per-variant `deny_unknown_fields`, so an entity is matched on the fields it declares).",
+      "description": "One placed entity. Internally tagged on `type`, so the JSON reads\n`{ \"type\": \"belt\", \"x\": .., .. }`. Each variant carries only its\ntype-specific fields (serde's internally-tagged representation does not\nsupport per-variant `deny_unknown_fields`, so an entity is matched on the\nfields it declares).",
       "oneOf": [
         {
-          "description": "A two-lane transport belt occupying one tile, facing `dir`, of belt `tier`.",
+          "description": "A two-lane transport belt occupying one tile, facing `dir`, of belt\n`tier`.",
           "type": "object",
-          "required": [
-            "dir",
-            "tier",
-            "type",
-            "x",
-            "y"
-          ],
           "properties": {
             "dir": {
-              "$ref": "#/definitions/Dir"
+              "$ref": "#/$defs/Dir"
             },
             "tier": {
-              "description": "A belt tier name from the prototype table (`\"slow\"`/`\"fast\"`/ `\"express\"`).",
+              "description": "A belt tier name from the prototype table (`\"slow\"`/`\"fast\"`/\n`\"express\"`).",
               "type": "string"
             },
             "type": {
               "type": "string",
-              "enum": [
-                "belt"
-              ]
+              "const": "belt"
             },
             "x": {
               "type": "integer",
@@ -118,26 +97,25 @@
               "type": "integer",
               "format": "int32"
             }
-          }
-        },
-        {
-          "description": "A two-tile balancer. Anchored at `(x, y)`; its second tile is one step perpendicular-clockwise of `dir` (for E/W: `(x, y+1)`; for N/S: `(x+1, y)`).",
-          "type": "object",
+          },
           "required": [
-            "dir",
             "type",
             "x",
-            "y"
-          ],
+            "y",
+            "dir",
+            "tier"
+          ]
+        },
+        {
+          "description": "A two-tile balancer. Anchored at `(x, y)`; its second tile is one step\nperpendicular-clockwise of `dir` (for E/W: `(x, y+1)`; for N/S:\n`(x+1, y)`).",
+          "type": "object",
           "properties": {
             "dir": {
-              "$ref": "#/definitions/Dir"
+              "$ref": "#/$defs/Dir"
             },
             "type": {
               "type": "string",
-              "enum": [
-                "splitter"
-              ]
+              "const": "splitter"
             },
             "x": {
               "type": "integer",
@@ -147,21 +125,20 @@
               "type": "integer",
               "format": "int32"
             }
-          }
-        },
-        {
-          "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile *in front*, set by `dir`.",
-          "type": "object",
+          },
           "required": [
-            "dir",
-            "tier",
             "type",
             "x",
-            "y"
-          ],
+            "y",
+            "dir"
+          ]
+        },
+        {
+          "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile\n*in front*, set by `dir`.",
+          "type": "object",
           "properties": {
             "dir": {
-              "$ref": "#/definitions/Dir"
+              "$ref": "#/$defs/Dir"
             },
             "tier": {
               "description": "An inserter tier name from the prototype table (`\"base\"`/`\"fast\"`).",
@@ -169,9 +146,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "inserter"
-              ]
+              "const": "inserter"
             },
             "x": {
               "type": "integer",
@@ -181,17 +156,18 @@
               "type": "integer",
               "format": "int32"
             }
-          }
+          },
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir",
+            "tier"
+          ]
         },
         {
           "description": "A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.",
           "type": "object",
-          "required": [
-            "recipe",
-            "type",
-            "x",
-            "y"
-          ],
           "properties": {
             "recipe": {
               "description": "A recipe name from the prototype table (`\"iron-gear\"`, …).",
@@ -199,9 +175,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "assembler"
-              ]
+              "const": "assembler"
             },
             "x": {
               "type": "integer",
@@ -211,23 +185,20 @@
               "type": "integer",
               "format": "int32"
             }
-          }
-        },
-        {
-          "description": "A test fixture that emits `item` onto `lane` of the downstream belt once every `period` ticks, respecting compaction (it stalls when the gap is too small). Infinite supply.",
-          "type": "object",
+          },
           "required": [
-            "dir",
-            "item",
-            "lane",
-            "period",
             "type",
             "x",
-            "y"
-          ],
+            "y",
+            "recipe"
+          ]
+        },
+        {
+          "description": "A test fixture that emits `item` onto `lane` of the downstream belt once\nevery `period` ticks, respecting compaction (it stalls when the gap is too\nsmall). Infinite supply.",
+          "type": "object",
           "properties": {
             "dir": {
-              "$ref": "#/definitions/Dir"
+              "$ref": "#/$defs/Dir"
             },
             "item": {
               "description": "The item id this source emits (from the prototype item table).",
@@ -235,23 +206,17 @@
             },
             "lane": {
               "description": "Which lane(s) of the downstream belt to emit onto.",
-              "allOf": [
-                {
-                  "$ref": "#/definitions/Lane"
-                }
-              ]
+              "$ref": "#/$defs/Lane"
             },
             "period": {
-              "description": "Ticks between emissions. An emission is attempted on every tick `t` with `t > 0 && t % period == 0`.",
+              "description": "Ticks between emissions. An emission is attempted on every tick `t`\nwith `t > 0 && t % period == 0`.",
               "type": "integer",
               "format": "uint32",
-              "minimum": 0.0
+              "minimum": 0
             },
             "type": {
               "type": "string",
-              "enum": [
-                "source"
-              ]
+              "const": "source"
             },
             "x": {
               "type": "integer",
@@ -261,26 +226,27 @@
               "type": "integer",
               "format": "int32"
             }
-          }
+          },
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir",
+            "item",
+            "lane",
+            "period"
+          ]
         },
         {
           "description": "A test fixture that consumes and counts every item that reaches it.",
           "type": "object",
-          "required": [
-            "dir",
-            "type",
-            "x",
-            "y"
-          ],
           "properties": {
             "dir": {
-              "$ref": "#/definitions/Dir"
+              "$ref": "#/$defs/Dir"
             },
             "type": {
               "type": "string",
-              "enum": [
-                "sink"
-              ]
+              "const": "sink"
             },
             "x": {
               "type": "integer",
@@ -290,17 +256,19 @@
               "type": "integer",
               "format": "int32"
             }
-          }
+          },
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
         }
       ]
     },
     "Grid": {
       "description": "The grid the scenario plays out on. Each tile holds at most one entity.",
       "type": "object",
-      "required": [
-        "height",
-        "width"
-      ],
       "properties": {
         "height": {
           "description": "Grid height in tiles.",
@@ -313,31 +281,29 @@
           "format": "int32"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ]
     },
     "Lane": {
-      "description": "Which lane(s) of a belt a fixture acts on. `left`/`right` are relative to the direction of travel: for an E-facing belt the left lane is the `-y` (north) side and the right lane is the `+y` (south) side; the other facings rotate that convention. `both` means act on left then right independently.",
+      "description": "Which lane(s) of a belt a fixture acts on. `left`/`right` are relative to the\ndirection of travel: for an E-facing belt the left lane is the `-y` (north)\nside and the right lane is the `+y` (south) side; the other facings rotate\nthat convention. `both` means act on left then right independently.",
       "oneOf": [
         {
           "description": "The left lane relative to the direction of travel.",
           "type": "string",
-          "enum": [
-            "left"
-          ]
+          "const": "left"
         },
         {
           "description": "The right lane relative to the direction of travel.",
           "type": "string",
-          "enum": [
-            "right"
-          ]
+          "const": "right"
         },
         {
           "description": "Both lanes (left then right, independently).",
           "type": "string",
-          "enum": [
-            "both"
-          ]
+          "const": "both"
         }
       ]
     }

@@ -118,13 +118,13 @@ png = "0.17"
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them
 # so the frame travels in the same JSON transport as every other live update.
 base64 = "0.22"
-# JSON Schema generation for the `draw` binary's operation set
-# (`crates/draw`). The `draw schema` subcommand emits this so each
-# asset-generation test case can seed a verbatim copy as its `[tool].operations`
-# contract; a test asserts the copy never drifts from the enum. Pulled in only
-# behind `crates/draw`'s `cli` feature, so `crates/core` (which links the draw
-# library for image regeneration) never compiles it.
-schemars = "0.8"
+# JSON Schema generation. Two uses, both feature-gated so normal/CLI/desktop/wasm
+# builds never compile it: the `schema` feature of `foray-core`/`lattice-core`
+# emits the per-tick contract schemas each adversarial/performance test case seeds
+# verbatim (a drift test asserts the on-disk copies never diverge from the engine
+# types), and the `contract` feature of `core`/`worker`/`backend` (driven by the
+# `contract-codegen` generator) emits the published API/run-record JSON Schemas.
+schemars = "1"
 # TypeScript binding generation from Rust types. Pulled in only behind the
 # `contract` feature of `core`/`worker`/`backend` (and the `contract-codegen`
 # generator that drives them), so normal/CLI/desktop/wasm builds never compile it.
