@@ -10,6 +10,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./review": {
+      "types": "./dist/review.d.ts",
+      "default": "./dist/review.js"
+    },
+    "./account": {
+      "types": "./dist/account.d.ts",
+      "default": "./dist/account.js"
+    },
+    "./worker-api": {
+      "types": "./dist/worker-api.d.ts",
+      "default": "./dist/worker-api.js"
+    },
+    "./backend-api": {
+      "types": "./dist/backend-api.d.ts",
+      "default": "./dist/backend-api.js"
+    },
+    "./snapshot": {
+      "types": "./dist/snapshot.d.ts",
+      "default": "./dist/snapshot.js"
     }
   },
   "files": [

@@ -4,11 +4,18 @@
 // carries a point weight, and the run's score is the weight of its passed items
 // over the total declared weight.
 //
-// This mirrors the `Rating` enum and scoring helpers in the Rust core
-// (crates/core/src/review.rs); keep the tiers and logic in lockstep.
+// The review *types* (Rating, VerdictStatus, DomainRating, ReviewVerdict) are
+// generated from the Rust core (crates/core/src/review.rs) and imported here; this
+// module owns only the UI-side display metadata and the scoring/aggregation logic.
 
-/** A quality tier, ordered best to worst. */
-export type Rating = "flawless" | "great" | "scuffed" | "broken";
+import type {
+  DomainRating,
+  Rating,
+  ReviewVerdict,
+  VerdictStatus,
+} from "@test-cabinet/run-record/review";
+
+export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
 
 /** Every rating, ordered best to worst. */
 export const RATINGS: readonly Rating[] = [
@@ -71,32 +78,11 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
   return worst;
 }
 
-/** A reviewer's quality rating for one of a case's scoring domains. */
-export interface DomainRating {
-  /** The declared domain's stable id. */
-  domain: string;
-  /** The reviewer's rating for this domain. */
-  rating: Rating;
-}
-
-/** A reviewer's verdict on one declared checklist item. */
-export type VerdictStatus = "pass" | "fail";
-
 /** Display metadata for a verdict status. */
 export const VERDICT_META: Record<VerdictStatus, { label: string }> = {
   pass: { label: "Pass" },
   fail: { label: "Fail" },
 };
-
-/** A reviewer's recorded verdict on one declared checklist item. */
-export interface ReviewVerdict {
-  /** The declared item's stable id. */
-  id: string;
-  /** The reviewer's verdict. */
-  status: VerdictStatus;
-  /** An optional one-line note, when the reviewer left one. */
-  note?: string;
-}
 
 /** Narrowing type guard for {@link VerdictStatus}. */
 export function isVerdictStatus(value: string): value is VerdictStatus {
