@@ -99,7 +99,7 @@ fn active_lists_running_jobs_and_drops_finished_ones() {
         .find(|a| a.run_id == running.id())
         .expect("the running job is listed");
     assert_eq!(running_entry.summary.model_id, "claude-haiku-4-5");
-    assert_eq!(running_entry.state, "running");
+    assert_eq!(running_entry.state, ActiveRunState::Running);
 
     // Once a job reaches a terminal state it is no longer active — it is now a
     // produced run, listed by `/runs` instead.

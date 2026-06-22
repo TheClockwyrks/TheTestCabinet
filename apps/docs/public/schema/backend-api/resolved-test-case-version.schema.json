@@ -169,7 +169,14 @@
     "Variant": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["slug", "name", "specs", "references", "proofs", "reviewItems"],
+      "required": [
+        "slug",
+        "name",
+        "specs",
+        "references",
+        "proofs",
+        "reviewItems"
+      ],
       "properties": {
         "slug": { "type": "string" },
         "name": { "type": "string" },

@@ -589,6 +589,7 @@ pub struct TestCase {
 /// [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum TestType {
     /// Build a working program judged by running it (the only type until now).
     #[default]
@@ -664,6 +665,7 @@ pub enum AssetKind {
 /// artifacts so a UI knows whether to render an `<img>` or a `<video>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum MediaKind {
     /// A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).
     Image,
@@ -944,6 +946,12 @@ pub struct ReplaySpec {
 /// scoring and animated playback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "AssetSheet"),
+    schemars(rename = "AssetSheet")
+)]
 pub struct SheetSpec {
     /// Width of one frame in pixels (the canvas width).
     pub frame_width: u32,
@@ -960,6 +968,12 @@ pub struct SheetSpec {
 /// row-major frame indices played at [`Self::fps`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "AssetSheetSequence"),
+    schemars(rename = "AssetSheetSequence")
+)]
 pub struct SheetSequence {
     /// Stable slug naming this sequence (for example `walk-right`).
     pub slug: String,

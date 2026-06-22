@@ -1,0 +1,14 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/push-run-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /push`: which finished run to push.",
+  "properties": {
+    "runId": {
+      "description": "The id of a run this worker previously produced.",
+      "type": "string"
+    }
+  },
+  "required": ["runId"],
+  "title": "PushBody",
+  "type": "object"
+}

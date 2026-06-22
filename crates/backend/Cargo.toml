@@ -45,6 +45,17 @@ hmac = { workspace = true }
 hex = { workspace = true }
 percent-encoding = { workspace = true }
 
+# Contract codegen for the backend HTTP API + snapshot wire types. See
+# `crates/core`'s `contract` feature; this turns on core's too so the shared
+# run-record types derive as well.
+ts-rs = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+
+[features]
+# Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire
+# types for the `contract-codegen` generator. Never enabled by a normal build.
+contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

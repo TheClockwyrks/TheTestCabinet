@@ -32,6 +32,7 @@ use crate::runner::{RunContext, drive_run};
 /// `maxRuntimeSeconds` optionally overrides the case's default cap.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct SubmitBody {
     /// Test-case slug to run (e.g. `pong`).
     pub test_case: String,
@@ -48,9 +49,11 @@ pub struct SubmitBody {
     /// built-in orchestrators only — it has no access to a submitter's local
     /// directory, so there is no external-directory equivalent here.
     #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub orchestrator: Option<String>,
     /// Optional override for the maximum harness runtime, in seconds.
     #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_seconds: Option<u64>,
 }
 
@@ -58,6 +61,7 @@ pub struct SubmitBody {
 /// to observe it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct SubmitAck {
     /// The id of the accepted run job.
     pub job_id: String,
@@ -161,12 +165,14 @@ pub async fn submit(
 /// so `review` is always absent here — a run only gains one when it is published.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProducedRun {
     /// The run record's id (its output-directory name).
     pub id: String,
     /// The produced run record, exactly as the run wrote it.
     pub record: RunRecord,
     /// Always `null`: a produced-but-unpublished run carries no review yet.
+    #[cfg_attr(feature = "contract", ts(type = "null"))]
     pub review: Option<serde_json::Value>,
 }
 

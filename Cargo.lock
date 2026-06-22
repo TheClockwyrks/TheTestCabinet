@@ -603,6 +603,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract-codegen"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "test-cabinet-backend",
+ "test-cabinet-core",
+ "test-cabinet-worker",
+ "ts-rs",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5166,6 +5180,7 @@ dependencies = [
  "opentelemetry",
  "percent-encoding",
  "reqwest 0.12.28",
+ "schemars 0.8.22",
  "sea-orm",
  "serde",
  "serde_json",
@@ -5181,6 +5196,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "ts-rs",
  "uuid",
 ]
 
@@ -5215,6 +5231,7 @@ dependencies = [
  "lattice-host",
  "png 0.17.16",
  "reqwest 0.12.28",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "tempfile",
@@ -5225,6 +5242,7 @@ dependencies = [
  "tokio",
  "toml 0.8.2",
  "tracing",
+ "ts-rs",
  "uuid",
  "wat",
  "which",
@@ -5304,6 +5322,7 @@ dependencies = [
  "futures-util",
  "http",
  "opentelemetry",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "tempfile",
@@ -5315,6 +5334,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "ts-rs",
  "uuid",
 ]
 
@@ -5757,6 +5777,28 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "ts-rs"
+version = "12.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
+dependencies = [
+ "thiserror 2.0.18",
+ "ts-rs-macros",
+]
+
+[[package]]
+name = "ts-rs-macros"
+version = "12.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d90eea51bc7988ef9e674bf80a85ba6804739e535e9cab48e4bb34a8b652aa"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "termcolor",
+]
 
 [[package]]
 name = "typeid"

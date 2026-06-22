@@ -141,3 +141,34 @@ jobs:
           version: 22.x
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
+
+  - job: contract
+    displayName: "Contract: regenerate & check for drift"
+    # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on
+    # any diff, so the contract's three representations can never drift apart.
+    # Needs both Rust (the generator) and Node (Prettier), so it runs on its own.
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - task: UseNode@1
+        displayName: Use Node 22
+        inputs:
+          version: 22.x
+      - task: Cache@2
+        displayName: Cache cargo home
+        inputs:
+          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-home | "$(Agent.OS)"
+          path: $(HOME)/.cargo
+      - task: Cache@2
+        displayName: Cache cargo target
+        inputs:
+          key: 'cargo-target | "$(Agent.OS)" | Cargo.lock'
+          restoreKeys: |
+            cargo-target | "$(Agent.OS)"
+          path: target
+      - script: rustup show
+        displayName: Show Rust toolchain
+      - script: ./scripts/ci/contract-drift.sh
+        displayName: Regenerate & check for drift

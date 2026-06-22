@@ -1,0 +1,23 @@
+[package]
+name = "contract-codegen"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "contract-codegen"
+path = "src/main.rs"
+
+# The generator drives the `contract` feature of the three contract crates, so the
+# `ts_rs::TS` / `schemars::JsonSchema` derives on their data-contract types are
+# available to emit TypeScript bindings and JSON Schemas from a single source.
+[dependencies]
+test-cabinet-core = { path = "../core", features = ["contract"] }
+test-cabinet-worker = { path = "../worker", features = ["contract"] }
+test-cabinet-backend = { path = "../backend", features = ["contract"] }
+ts-rs = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }

@@ -149,6 +149,25 @@ npm run build
 Other root scripts delegate to each workspace that defines them: `npm run dev`,
 `npm run lint`, `npm run test`, and `npm run typecheck`.
 
+## Generating the data contract
+
+The run-record (and arena/worker/backend) data contract has a single source of
+truth: the Rust types that derive `ts_rs::TS` + `schemars::JsonSchema` behind
+their `contract` feature (in `crates/core`, `crates/worker`, `crates/backend`).
+The TypeScript bindings under `packages/run-record/src/` and the JSON Schemas
+under `apps/docs/public/schema/` are **generated** from those types by
+`crates/contract-codegen` — never hand-edited. After changing any contract type,
+regenerate and commit:
+
+```sh
+npm run gen:contract
+```
+
+This runs the generator (`cargo run -p contract-codegen`) and formats the output
+with Prettier. CI (`scripts/ci/contract-drift.sh`) regenerates and fails on any
+diff, so a contract change that is not regenerated and committed turns the build
+red — the Rust, TypeScript, and JSON Schema representations can never drift apart.
+
 ## Desktop app (Tauri)
 
 The Tauri CLI drives the [desktop app](/components/tauri/overview/), building the

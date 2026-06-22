@@ -29,6 +29,7 @@ use crate::test_case::{Domain, ReviewItem};
 /// runs (see `docs/site.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum Rating {
     /// Implemented according to spec with no noticeable bugs.
     Flawless,
@@ -99,6 +100,7 @@ impl Rating {
 /// neither severity nor preference — it simply states what the reviewer found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum VerdictStatus {
     /// The item was checked and the build satisfies it. The item earns its
     /// weight toward the run's score.
@@ -132,6 +134,7 @@ impl VerdictStatus {
 /// A reviewer's recorded verdict on one declared checklist item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ReviewVerdict {
     /// The declared item's stable id (see [`crate::test_case::ReviewItem::id`]).
     pub id: String,
@@ -140,12 +143,14 @@ pub struct ReviewVerdict {
     /// An optional one-line note recording what the reviewer observed. `None`
     /// when the reviewer left no note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub note: Option<String>,
 }
 
 /// A reviewer's quality [`Rating`] for one of a case's scoring domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct DomainRating {
     /// The declared domain's stable id (see [`crate::test_case::Domain::id`]).
     pub domain: String,

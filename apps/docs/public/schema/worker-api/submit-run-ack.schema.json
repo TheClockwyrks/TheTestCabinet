@@ -1,24 +1,22 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/worker-api/submit-run-ack.schema.json",
-  "title": "SubmitRunAck",
-  "description": "The 202 Accepted response to POST /runs: the accepted job's id and the URLs to observe it. The run itself proceeds on a background task; poll `statusUrl` for its outcome and stream `eventsUrl` for live harness events.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["jobId", "statusUrl", "eventsUrl"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to a successful `POST /runs`: the accepted job's id and the URLs to observe it.",
   "properties": {
+    "eventsUrl": {
+      "description": "Where to stream the job's live harness events (NDJSON).",
+      "type": "string"
+    },
     "jobId": {
-      "type": "string",
-      "description": "The id of the accepted run job. The status and events endpoints key on it.",
-      "minLength": 1
+      "description": "The id of the accepted run job.",
+      "type": "string"
     },
     "statusUrl": {
-      "type": "string",
-      "description": "Where to poll the job's status (`/runs/{jobId}`), relative to the worker's base URL."
-    },
-    "eventsUrl": {
-      "type": "string",
-      "description": "Where to stream the job's live harness events as NDJSON (`/runs/{jobId}/events`), relative to the worker's base URL."
+      "description": "Where to poll the job's status.",
+      "type": "string"
     }
-  }
+  },
+  "required": ["eventsUrl", "jobId", "statusUrl"],
+  "title": "SubmitAck",
+  "type": "object"
 }

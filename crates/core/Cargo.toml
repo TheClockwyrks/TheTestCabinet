@@ -52,6 +52,19 @@ tracing = { workspace = true }
 # global propagator a binary may have installed.
 test-cabinet-telemetry = { path = "../telemetry", default-features = false }
 
+# Contract codegen (TS bindings + JSON Schema) for the run-record and arena data
+# contract. Both are derived on the same types behind the `contract` feature and
+# driven by the `contract-codegen` generator; off by default so normal/CLI/wasm
+# builds never compile them.
+ts-rs = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+
+[features]
+# Derive `ts_rs::TS` + `schemars::JsonSchema` on the public data-contract types so
+# the `contract-codegen` generator can emit the TypeScript bindings and JSON
+# Schemas from them. Never enabled by a normal build.
+contract = ["dep:ts-rs", "dep:schemars"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
 # `test-util` enables paused/auto-advancing time so the runtime cap can be tested

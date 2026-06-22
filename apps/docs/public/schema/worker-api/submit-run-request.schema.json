@@ -1,41 +1,42 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/worker-api/submit-run-request.schema.json",
-  "title": "SubmitRunRequest",
-  "description": "The body of POST /runs: what to run, with which harness, against which model. The worker resolves the exact, immutable test-case version and the harness image from the backend; the request never names an image. Returns a job id immediately (202 Accepted) — the run proceeds out of band, observed via the status and events endpoints.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["testCase", "version", "variant", "harness", "model"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /runs`: what to run, with what, against which model.\n\nThis is the HTTP shape of [`RunRequest`]. `version` and `variant` are required (a worker resolves an exact, immutable version from the backend); `maxRuntimeSeconds` optionally overrides the case's default cap.",
   "properties": {
-    "testCase": {
-      "type": "string",
-      "description": "Test-case slug to run (e.g. `pong`).",
-      "minLength": 1
-    },
-    "version": {
-      "type": "string",
-      "description": "Exact, immutable test-case version to run (e.g. `v1.0.0`). The worker resolves this against the backend; it does not run a floating `latest`.",
-      "minLength": 1
-    },
-    "variant": {
-      "type": "string",
-      "description": "Variant of the case to run (e.g. `base`).",
-      "minLength": 1
-    },
     "harness": {
-      "type": "string",
-      "description": "Agent harness slug to drive the run (see components/core/harnesses).",
-      "minLength": 1
-    },
-    "model": {
-      "type": "string",
-      "description": "Opaque model id passed through to the harness.",
-      "minLength": 1
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+      "description": "Agent harness to drive."
     },
     "maxRuntimeSeconds": {
-      "type": "integer",
-      "description": "Optional override for the maximum harness runtime, in seconds. Omitted, the case's declared default cap applies.",
-      "minimum": 1
+      "default": null,
+      "description": "Optional override for the maximum harness runtime, in seconds.",
+      "format": "uint64",
+      "minimum": 0.0,
+      "type": ["integer", "null"]
+    },
+    "model": {
+      "description": "Opaque model id passed to the harness.",
+      "type": "string"
+    },
+    "orchestrator": {
+      "default": null,
+      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g. `one-shot` or `ralph`). Omit for the `one-shot` default. A worker resolves built-in orchestrators only — it has no access to a submitter's local directory, so there is no external-directory equivalent here.",
+      "type": ["string", "null"]
+    },
+    "testCase": {
+      "description": "Test-case slug to run (e.g. `pong`).",
+      "type": "string"
+    },
+    "variant": {
+      "description": "Variant to run (e.g. `base`).",
+      "type": "string"
+    },
+    "version": {
+      "description": "Exact, immutable test-case version (e.g. `v1.0.0`).",
+      "type": "string"
     }
-  }
+  },
+  "required": ["harness", "model", "testCase", "variant", "version"],
+  "title": "SubmitBody",
+  "type": "object"
 }

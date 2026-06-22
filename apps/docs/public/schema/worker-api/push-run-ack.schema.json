@@ -1,0 +1,23 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/push-run-ack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to a successful push: the resolved links and idempotency flag.",
+  "properties": {
+    "newlyPushed": {
+      "type": "boolean"
+    },
+    "playableBuild": {
+      "type": ["string", "null"]
+    },
+    "runId": {
+      "type": "string"
+    },
+    "sourceRepo": {
+      "description": "The released source repo URL; absent for an asset-generation run, which releases no code.",
+      "type": ["string", "null"]
+    }
+  },
+  "required": ["newlyPushed", "runId"],
+  "title": "PushAck",
+  "type": "object"
+}

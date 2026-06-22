@@ -1,27 +1,29 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json",
-  "title": "ProducedRuns",
-  "description": "The runs a worker has produced, returned by GET /runs: every run record written to its output directory, newest first by finish time. Each carries a null review — a worker keeps no review store, so a run gains a review only when it is published.",
-  "type": "array",
-  "items": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["id", "record", "review"],
-    "properties": {
-      "id": {
-        "type": "string",
-        "description": "The run record's id (its output-directory name).",
-        "minLength": 1
+  "$defs": {
+    "ProducedRun": {
+      "description": "A run this worker has produced, in the shape the consoles' gallery reads: the produced [`RunRecord`] and a null review. A worker keeps no review store, so `review` is always absent here — a run only gains one when it is published.",
+      "properties": {
+        "id": {
+          "description": "The run record's id (its output-directory name).",
+          "type": "string"
+        },
+        "record": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
+          "description": "The produced run record, exactly as the run wrote it."
+        },
+        "review": {
+          "description": "Always `null`: a produced-but-unpublished run carries no review yet."
+        }
       },
-      "record": {
-        "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
-        "description": "The produced run record, exactly as the run wrote it."
-      },
-      "review": {
-        "type": "null",
-        "description": "Always null: a produced-but-unpublished run carries no review yet."
-      }
+      "required": ["id", "record"],
+      "type": "object"
     }
-  }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/produced-runs.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/ProducedRun"
+  },
+  "title": "Array_of_ProducedRun",
+  "type": "array"
 }

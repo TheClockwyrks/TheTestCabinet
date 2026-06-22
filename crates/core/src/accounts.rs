@@ -27,6 +27,7 @@ use crate::error::{Error, Result};
 /// The password hash never leaves the service, so it is not part of this shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct Account {
     /// The account's stable id (a UUID), the key a review is attributed to.
     pub id: String,
@@ -41,6 +42,7 @@ pub struct Account {
 /// create an account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RegisterRequest {
     /// The desired unique login handle.
     pub username: String,
@@ -54,6 +56,7 @@ pub struct RegisterRequest {
 /// A request to exchange credentials for a bearer token (`POST /auth/login`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LoginRequest {
     /// The account's login handle.
     pub username: String,
@@ -67,6 +70,12 @@ pub struct LoginRequest {
 /// `Authorization: Bearer <token>` on every mutating request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "AuthResult"),
+    schemars(rename = "AuthResult")
+)]
 pub struct AuthnResponse {
     /// The opaque bearer token to authenticate subsequent requests with.
     pub token: String,

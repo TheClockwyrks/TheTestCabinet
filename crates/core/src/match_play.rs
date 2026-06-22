@@ -94,6 +94,7 @@ pub fn replay_filename(index: usize) -> String {
 /// apart from controllers built by prior runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum ControllerKind {
     /// A baseline committed with the case (`references/<id>.wasm`).
     Baseline,
@@ -112,6 +113,7 @@ pub enum ControllerKind {
 /// A controller a match can be played with, identified but not yet loaded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ControllerRef {
     /// The stable id: a baseline name, or a prior run's id.
     pub id: String,
@@ -119,6 +121,7 @@ pub struct ControllerRef {
     pub kind: ControllerKind,
     /// An optional human-facing label (e.g. the model id of the run that built it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub label: Option<String>,
 }
 
@@ -137,6 +140,7 @@ pub struct ResolvedController {
 /// `@test-cabinet/run-record` TypeScript contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct MatchSummary {
     /// Stable id for this match within its tournament (also the replay's storage
     /// segment): `"{redId}__vs__{blueId}"`.
@@ -172,6 +176,7 @@ pub struct MatchSummary {
     /// The storage segment the replay is kept under, or `None` when no match ran
     /// (a controller failed to load, so there is nothing to play back).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub replay_key: Option<String>,
     /// Why a controller lost on a technicality, or `None` for a clean result. This
     /// is set both when a controller failed to *load* (no match ran) and when one
@@ -179,12 +184,14 @@ pub struct MatchSummary {
     /// latter case the replay records only `Ended::Forfeit`, so this carries the
     /// reason a player would otherwise have no way to read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
 }
 
 /// One row of a tournament's standings: a controller's win/loss/draw record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct Standing {
     /// The controller this row ranks.
     pub participant_id: String,
@@ -207,6 +214,7 @@ pub struct Standing {
 /// loads cheaply. Serializes `camelCase` to mirror the TypeScript contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct TournamentRecord {
     /// Unique tournament id (caller-assigned).
     pub id: String,

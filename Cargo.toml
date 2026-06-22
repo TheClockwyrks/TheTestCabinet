@@ -3,6 +3,7 @@ resolver = "2"
 members = [
 	"crates/core",
 	"crates/cli",
+	"crates/contract-codegen",
 	"crates/draw",
 	"crates/foray-core",
 	"crates/foray-host",
@@ -124,6 +125,12 @@ base64 = "0.22"
 # behind `crates/draw`'s `cli` feature, so `crates/core` (which links the draw
 # library for image regeneration) never compiles it.
 schemars = "0.8"
+# TypeScript binding generation from Rust types. Pulled in only behind the
+# `contract` feature of `core`/`worker`/`backend` (and the `contract-codegen`
+# generator that drives them), so normal/CLI/desktop/wasm builds never compile it.
+# Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
+# are generated from one source of truth and can never drift apart.
+ts-rs = "12"
 # Cross-platform PATH lookup for the container runtime binary. A hand-rolled
 # search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
 # that and the Unix case behind one API.

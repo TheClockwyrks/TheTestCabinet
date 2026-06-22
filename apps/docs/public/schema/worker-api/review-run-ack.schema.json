@@ -1,0 +1,13 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/review-run-ack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to a successful review submission.",
+  "properties": {
+    "runId": {
+      "type": "string"
+    }
+  },
+  "required": ["runId"],
+  "title": "ReviewAck",
+  "type": "object"
+}

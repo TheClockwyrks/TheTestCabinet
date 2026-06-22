@@ -32,6 +32,7 @@ pub struct CapturedView {
 /// being folded silently into the load signal. See `docs/validation.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct StepResult {
     /// The command that was run (the manifest's `install` or `build` command).
     pub command: String,
@@ -45,6 +46,7 @@ pub struct StepResult {
 /// The result of a single opt-in validation check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CheckResult {
     /// The view the check records under.
     pub view: String,
@@ -70,6 +72,7 @@ pub struct CheckResult {
 /// run's status; it is surfaced so a reviewer sees the gap.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProofResult {
     /// The proof id this result records under (matches a declared
     /// [`ProofFile`](crate::test_case::ProofFile)).
@@ -100,6 +103,7 @@ pub struct ProofResult {
 /// [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AssetGenResult {
     /// The per-frame results: exactly one for a single sprite (frame index 0), one
     /// per declared frame for a sprite sheet, in declared order.
@@ -109,6 +113,7 @@ pub struct AssetGenResult {
     /// the review UI can play the named animations from the per-frame images,
     /// without a separate catalog lookup. `None` for a single-sprite case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub sheet: Option<SheetSpec>,
     /// Detail about anything that could not be evaluated at the run level, or
     /// `None`. Per-frame detail lives on each [`AssetFrameResult`].
@@ -127,6 +132,7 @@ pub struct AssetGenResult {
 /// no fidelity score; the regenerated image is reviewed against the brief.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AssetFrameResult {
     /// The frame index this result records under: `0` for a single sprite, the
     /// declared `[[sheet.frame]]` index for a sprite sheet.
@@ -158,6 +164,7 @@ pub struct AssetFrameResult {
 /// the submission's perspective and this records that the submission was Red.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum AdversarialTeam {
     /// The west colony — the submission, in the canonical match.
     Red,
@@ -169,6 +176,7 @@ pub enum AdversarialTeam {
 /// perspective.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum AdversarialOutcome {
     /// The submission won the match.
     Win,
@@ -188,6 +196,7 @@ pub enum AdversarialOutcome {
 /// proof-of-implementation for adversarial cases.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AdversarialReplay {
     /// The id of the opponent the submission was matched against (Blue).
     pub opponent: String,
@@ -224,6 +233,7 @@ pub struct AdversarialReplay {
 /// crash. Present only on an adversarial run's [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AdversarialResult {
     /// Run-root-relative path to the canonical published replay (`replay.json`) —
     /// the scored artifact mirrored by the top-level fields below. Also the first
@@ -279,6 +289,7 @@ pub struct AdversarialResult {
 /// load signal. Present only on a performance run's [`ValidationSummary`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceResult {
     /// Whether **every** scored input case produced the oracle's exact answer.
     pub correct: bool,
@@ -297,6 +308,7 @@ pub struct PerformanceResult {
 /// The result of scoring one held-out input case of a performance run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
@@ -319,6 +331,12 @@ pub struct PerformanceCaseResult {
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "RunValidation"),
+    schemars(rename = "RunValidation")
+)]
 pub struct ValidationSummary {
     /// Whether the implementation built, served, and rendered without a fatal
     /// error. This is the clearest possible signal about a run.
@@ -345,16 +363,19 @@ pub struct ValidationSummary {
     /// end-to-end run, so an end-to-end summary serializes with no new field at
     /// all and its shape is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub asset: Option<AssetGenResult>,
     /// The canonical-match result of an adversarial run. `None` for any other
     /// type, so a non-adversarial summary serializes with no new field at all and
     /// its shape is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub adversarial: Option<AdversarialResult>,
     /// The correctness-and-fuel result of a performance run. `None` for any other
     /// type, so a non-performance summary serializes with no new field at all and
     /// its shape is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub performance: Option<PerformanceResult>,
 }
 

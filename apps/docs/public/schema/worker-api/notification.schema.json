@@ -1,50 +1,81 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "NotificationKind": {
+      "description": "The kind of a [`WorkerNotification`]. Only [`Self::RunCompleted`] exists today; modeled as an enum (rather than a bare string) so it is part of the generated contract and the console can switch on it as more are added.",
+      "oneOf": [
+        {
+          "description": "A run reached a terminal state (produced a record, or failed before one).",
+          "enum": ["run-completed"],
+          "type": "string"
+        }
+      ]
+    },
+    "NotificationOutcome": {
+      "description": "Whether a finished run produced a record. Mirrors the console's run outcome: `completed` carries a record id to open; `failed` carries a reason.",
+      "oneOf": [
+        {
+          "description": "The run produced a record (its own `status.state` may still be a failure).",
+          "enum": ["completed"],
+          "type": "string"
+        },
+        {
+          "description": "The run could not be driven to a record at all.",
+          "enum": ["failed"],
+          "type": "string"
+        }
+      ]
+    }
+  },
   "$id": "https://docs.testcabinet.ai/schema/worker-api/notification.schema.json",
-  "title": "WorkerNotification",
-  "description": "One worker-wide notification, the `data` payload of a Server-Sent Event on GET /notifications. The stream is live-only (no backlog): a completion that occurs while no client is connected is not delivered — the run still surfaces as a produced run and drops out of GET /runs/active. Today the only kind is `run-completed`, emitted once per run reaching a terminal state.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["kind", "jobId", "testCaseSlug", "variant", "harnessSlug", "modelId", "outcome"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A worker-wide notification that a run reached a terminal state.\n\nCarries the run's display identity (flattened, so the JSON matches the console's `InProgressRun`/notification shape) plus how it ended: a `completed` run includes the `recordId` to open; a `failed` run includes the `message`.",
   "properties": {
-    "kind": {
-      "type": "string",
-      "description": "The notification kind. Only `run-completed` exists today; carried explicitly so a client can switch on it as more are added.",
-      "enum": ["run-completed"]
+    "harnessSlug": {
+      "description": "The harness driving the run, as its slug string.",
+      "type": "string"
     },
     "jobId": {
-      "type": "string",
       "description": "The live stream/job id the run was observed under.",
-      "minLength": 1
+      "type": "string"
     },
-    "testCaseSlug": {
-      "type": "string",
-      "description": "The test-case slug that ran (e.g. `pong`)."
-    },
-    "variant": {
-      "type": "string",
-      "description": "The variant that ran (e.g. `base`)."
-    },
-    "harnessSlug": {
-      "type": "string",
-      "description": "The harness that drove the run, as its slug string."
-    },
-    "modelId": {
-      "type": "string",
-      "description": "The model id passed to the harness."
-    },
-    "outcome": {
-      "type": "string",
-      "description": "How the run ended. `completed` means it produced a record (the record's own `status.state` distinguishes a completed run from one classified as failed/unevaluable); `failed` means it could not be driven to a record at all.",
-      "enum": ["completed", "failed"]
-    },
-    "recordId": {
-      "type": "string",
-      "description": "The produced run record's id — what a client links the alert to. Present only when `outcome` is `completed`; omitted otherwise."
+    "kind": {
+      "$ref": "#/$defs/NotificationKind",
+      "description": "The notification kind. Only `run-completed` exists today; carried explicitly so the console can switch on it as more are added."
     },
     "message": {
-      "type": "string",
-      "description": "A human-readable failure reason. Present only when `outcome` is `failed`; omitted otherwise."
+      "description": "A human-readable failure reason, present when `outcome` is `failed`.",
+      "type": ["string", "null"]
+    },
+    "modelId": {
+      "description": "The opaque model id passed to the harness.",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/NotificationOutcome",
+      "description": "How the run ended."
+    },
+    "recordId": {
+      "description": "The persisted run record's id — what the console links the alert to. For a `completed` run this is the produced record's own id; for a `failed` run it is the job id, which is also the id the failed record is persisted under (see [`crate::runner::drive_run`]), so a failure alert still opens the run.",
+      "type": ["string", "null"]
+    },
+    "testCaseSlug": {
+      "description": "The test-case slug being run (e.g. `pong`).",
+      "type": "string"
+    },
+    "variant": {
+      "description": "The variant being run (e.g. `base`).",
+      "type": "string"
     }
-  }
+  },
+  "required": [
+    "harnessSlug",
+    "jobId",
+    "kind",
+    "modelId",
+    "outcome",
+    "testCaseSlug",
+    "variant"
+  ],
+  "title": "WorkerNotification",
+  "type": "object"
 }

@@ -14,6 +14,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev --workspaces --if-present",
+    "gen:contract": "node scripts/gen-contract.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "lint:md": "markdownlint-cli2",
     "lint:specs": "npm run lint:md && npm run spell",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "cspell": "^10.0.1",
-    "markdownlint-cli2": "^0.22.1"
+    "markdownlint-cli2": "^0.22.1",
+    "prettier": "3.8.4"
   }
 }

@@ -1,36 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/worker-api/publish-run-request.schema.json",
-  "title": "WorkerReviewRunRequest",
-  "description": "The body of the worker's POST /review: which finished run to review, and the reviewer's verdict. A worker keeps no review store, so the review is sent inline; the worker forwards it to the backend's POST /runs/{id}/reviews along with the caller's bearer token, which attributes the review to the authenticated account. Submitting a review does NOT publish the run — push (POST /push) releases and stores it privately, review attaches an assessment, and publish (POST /publish) flips it public once it has at least one review. A missing or invalid rating is a `422`; a missing bearer token is a `401`; an unknown run is a `404`.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["runId", "ratings", "writeup"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /publish`: which reviewed run to publish.",
   "properties": {
     "runId": {
-      "type": "string",
-      "description": "The id of a run this worker previously produced and pushed. Its record is loaded from the worker's output directory.",
-      "minLength": 1
-    },
-    "ratings": {
-      "type": "array",
-      "description": "The reviewer's quality rating for each of the test case's declared scoring domains. Within this review the overall is the worst across them; the run's overall rating is the worst across every review.",
-      "minItems": 1,
-      "items": {
-        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/DomainRating"
-      }
-    },
-    "writeup": {
-      "type": "string",
-      "description": "The markdown writeup body shown before the playable build, with any rating and checklist frontmatter stripped. Must be non-empty.",
-      "minLength": 1
-    },
-    "checklist": {
-      "type": "array",
-      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; a review must give every declared item a verdict. Empty or omitted for a case that declares no items.",
-      "items": {
-        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/ReviewVerdict"
-      }
+      "description": "The run to publish.",
+      "type": "string"
     }
-  }
+  },
+  "required": ["runId"],
+  "title": "PublishBody",
+  "type": "object"
 }

@@ -1,42 +1,59 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/worker-api/active-runs.schema.json",
-  "title": "ActiveRuns",
-  "description": "The runs a worker is currently executing, returned by GET /runs/active: each still-running job by the launch identity captured at submit (a run gains a record only at completion). A job that has reached a terminal state is no longer active and drops out of this list (it is then listed by GET /runs as a produced run). The consoles seed their in-progress list from this so a run being watched survives a page reload.",
-  "type": "array",
-  "items": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["runId", "testCaseSlug", "variant", "harnessSlug", "modelId", "state"],
-    "properties": {
-      "runId": {
-        "type": "string",
-        "description": "The live stream/job id (the same id POST /runs returned).",
-        "minLength": 1
+  "$defs": {
+    "ActiveRun": {
+      "description": "One currently-running job, as `GET /runs/active` reports it: the live stream/job id plus the run's display identity. `state` is always `running` — a job that reaches a terminal state is no longer active and drops out of the list. The flattened shape matches the console's `InProgressRun`.",
+      "properties": {
+        "harnessSlug": {
+          "description": "The harness driving the run, as its slug string.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "runId": {
+          "description": "The live stream/job id (`POST /runs` returns this).",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/ActiveRunState",
+          "description": "Always `running`; an active run has not yet reached a terminal state."
+        },
+        "testCaseSlug": {
+          "description": "The test-case slug being run (e.g. `pong`).",
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant being run (e.g. `base`).",
+          "type": "string"
+        }
       },
-      "testCaseSlug": {
-        "type": "string",
-        "description": "The test-case slug being run (e.g. `pong`).",
-        "minLength": 1
-      },
-      "variant": {
-        "type": "string",
-        "description": "The variant being run (e.g. `base`).",
-        "minLength": 1
-      },
-      "harnessSlug": {
-        "type": "string",
-        "description": "The harness driving the run, as its slug string."
-      },
-      "modelId": {
-        "type": "string",
-        "description": "The opaque model id passed to the harness."
-      },
-      "state": {
-        "type": "string",
-        "description": "Always `running`: an entry exists in this list only while the run is in flight.",
-        "enum": ["running"]
-      }
+      "required": [
+        "harnessSlug",
+        "modelId",
+        "runId",
+        "state",
+        "testCaseSlug",
+        "variant"
+      ],
+      "type": "object"
+    },
+    "ActiveRunState": {
+      "description": "The lifecycle state an [`ActiveRun`] reports — always [`Self::Running`], since a job that reaches a terminal state drops out of the active list. Modeled as a single-variant enum (rather than a bare string) so it is part of the generated contract.",
+      "oneOf": [
+        {
+          "description": "The run is executing and has not yet reached a terminal state.",
+          "enum": ["running"],
+          "type": "string"
+        }
+      ]
     }
-  }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/active-runs.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/ActiveRun"
+  },
+  "title": "Array_of_ActiveRun",
+  "type": "array"
 }

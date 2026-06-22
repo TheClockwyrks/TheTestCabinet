@@ -367,7 +367,7 @@ async fn list_active_reports_running_jobs_only() {
     assert_eq!(active.len(), 1, "only the still-running job is active");
     assert_eq!(active[0].run_id, running.id());
     assert_eq!(active[0].summary.test_case_slug, "pong");
-    assert_eq!(active[0].state, "running");
+    assert_eq!(active[0].state, crate::jobs::ActiveRunState::Running);
 }
 
 #[tokio::test]

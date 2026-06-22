@@ -1,324 +1,915 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
-  "title": "RunRecord",
-  "description": "The central data contract for a single Test Cabinet benchmark run.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "id",
-    "startedAt",
-    "finishedAt",
-    "subject",
-    "tooling",
-    "environment",
-    "metrics",
-    "validation",
-    "links",
-    "status"
-  ],
-  "properties": {
-    "id": { "type": "string" },
-    "startedAt": { "type": "string", "format": "date-time" },
-    "finishedAt": { "type": "string", "format": "date-time" },
-    "subject": { "$ref": "#/$defs/RunSubject" },
-    "tooling": { "$ref": "#/$defs/RunTooling" },
-    "environment": { "$ref": "#/$defs/RunEnvironment" },
-    "metrics": { "$ref": "#/$defs/RunMetrics" },
-    "validation": { "$ref": "#/$defs/RunValidation" },
-    "links": { "$ref": "#/$defs/RunLinks" },
-    "status": { "$ref": "#/$defs/RunStatus" }
-  },
   "$defs": {
-    "HarnessSlug": {
-      "type": "string",
-      "enum": [
-        "claude",
-        "codex",
-        "cline",
-        "antigravity",
-        "goose",
-        "kilo",
-        "opencode",
-        "pi"
+    "AdversarialOutcome": {
+      "description": "The outcome of an adversarial run's canonical match, from the **submission's** perspective.",
+      "oneOf": [
+        {
+          "description": "The submission won the match.",
+          "enum": ["win"],
+          "type": "string"
+        },
+        {
+          "description": "The submission lost the match.",
+          "enum": ["loss"],
+          "type": "string"
+        },
+        {
+          "description": "The match was a draw.",
+          "enum": ["draw"],
+          "type": "string"
+        },
+        {
+          "description": "The submission forfeited (it failed to build, did not export the contract entry, trapped, exhausted its fuel/memory, or returned an invalid action).",
+          "enum": ["forfeit"],
+          "type": "string"
+        }
       ]
     },
-    "RunState": {
-      "type": "string",
-      "enum": ["completed", "failed", "unevaluable"]
-    },
-    "TestType": {
-      "type": "string",
-      "enum": ["end-to-end", "asset-generation", "adversarial", "performance"]
-    },
-    "RunSubject": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "testCaseSlug",
-        "testCaseVersion",
-        "testType",
-        "variant",
-        "harnessSlug",
-        "harnessVersion",
-        "orchestratorSlug",
-        "modelId"
-      ],
-      "properties": {
-        "testCaseSlug": { "type": "string" },
-        "testCaseVersion": { "type": "string" },
-        "testType": { "$ref": "#/$defs/TestType" },
-        "variant": { "type": "string" },
-        "harnessSlug": { "$ref": "#/$defs/HarnessSlug" },
-        "harnessVersion": { "type": ["string", "null"] },
-        "orchestratorSlug": { "type": "string" },
-        "modelId": { "type": "string" }
-      }
-    },
-    "RunTooling": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["testCabinetCommit"],
-      "properties": {
-        "testCabinetCommit": { "type": ["string", "null"] }
-      }
-    },
-    "RunEnvironment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["os", "containerImage", "nodeVersion", "authMode"],
-      "properties": {
-        "os": { "type": "string" },
-        "containerImage": { "type": "string" },
-        "nodeVersion": { "type": ["string", "null"] },
-        "authMode": { "enum": ["apiKey", "subscription"] }
-      }
-    },
-    "TokenMetrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["uncachedInput", "cachedInput", "output", "reasoning"],
-      "properties": {
-        "uncachedInput": { "type": "integer" },
-        "cachedInput": { "type": "integer" },
-        "output": { "type": "integer" },
-        "reasoning": { "type": "integer" }
-      }
-    },
-    "CostMetrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["comparable", "actual"],
-      "properties": {
-        "comparable": { "type": "number" },
-        "actual": { "type": "number" }
-      }
-    },
-    "RunMetrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["runTimeSeconds", "tokens", "cost"],
-      "properties": {
-        "runTimeSeconds": { "type": "number" },
-        "tokens": { "$ref": "#/$defs/TokenMetrics" },
-        "cost": { "$ref": "#/$defs/CostMetrics" }
-      }
-    },
-    "CheckResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["view", "name", "reached", "similarity", "detail"],
-      "properties": {
-        "view": { "type": "string" },
-        "name": { "type": "string" },
-        "reached": { "type": "boolean" },
-        "similarity": { "type": "number" },
-        "detail": { "type": ["string", "null"] }
-      }
-    },
-    "ProofResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind", "dest", "present", "detail"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "kind": { "enum": ["image", "video"] },
-        "dest": { "type": "string" },
-        "present": { "type": "boolean" },
-        "detail": { "type": ["string", "null"] }
-      }
-    },
-    "StepResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["command", "succeeded", "detail"],
-      "properties": {
-        "command": { "type": "string" },
-        "succeeded": { "type": "boolean" },
-        "detail": { "type": ["string", "null"] }
-      }
-    },
-    "AssetGenResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "regeneratedImage",
-        "previewImage",
-        "actionsLog",
-        "operationCount",
-        "cheatDivergence",
-        "detail"
-      ],
-      "properties": {
-        "regeneratedImage": { "type": "string" },
-        "previewImage": { "type": "string" },
-        "actionsLog": { "type": "string" },
-        "operationCount": { "type": "integer" },
-        "cheatDivergence": { "type": ["number", "null"] },
-        "detail": { "type": ["string", "null"] }
-      }
-    },
-    "AdversarialTeam": {
-      "type": "string",
-      "enum": ["red", "blue"]
-    },
-    "AdversarialOutcome": {
-      "type": "string",
-      "enum": ["win", "loss", "draw", "forfeit"]
-    },
     "AdversarialReplay": {
-      "type": "object",
-      "additionalProperties": false,
+      "description": "One auto-generated proof replay: the submission played head-to-head against a single reference opponent. A finished adversarial run records one of these per opponent in [`AdversarialResult::replays`] — programmatic, reproducible evidence the implementation actually plays, which is what *replaces* proof-of-implementation for adversarial cases.",
+      "properties": {
+        "blueScore": {
+          "description": "The opponent's (Blue's) banked score at the end of the match.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "ended": {
+          "description": "How the match ended (`swept`, `time_limit`, or `forfeit`).",
+          "type": "string"
+        },
+        "opponent": {
+          "description": "The id of the opponent the submission was matched against (Blue).",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/AdversarialOutcome",
+          "description": "The outcome from the submission's perspective."
+        },
+        "redScore": {
+          "description": "The submission's (Red's) banked score at the end of the match.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "replayJson": {
+          "description": "Run-root-relative path to the published, browser-playable replay.",
+          "type": "string"
+        },
+        "scored": {
+          "description": "Whether this match's outcome counts as recorded evidence. `false` for an exhibition opponent (e.g. `random`, a trivial bar): its replay is kept so a reviewer can watch it, but the outcome is informational only.",
+          "type": "boolean"
+        },
+        "ticks": {
+          "description": "How many ticks the match ran for.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "winner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdversarialTeam"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The winning side, or `None` for a draw. `red` is the submission."
+        }
+      },
       "required": [
-        "opponent",
-        "replayJson",
-        "winner",
-        "redScore",
         "blueScore",
         "ended",
-        "ticks",
+        "opponent",
         "outcome",
-        "scored"
+        "redScore",
+        "replayJson",
+        "scored",
+        "ticks"
       ],
-      "properties": {
-        "opponent": { "type": "string" },
-        "replayJson": { "type": "string" },
-        "winner": {
-          "oneOf": [{ "$ref": "#/$defs/AdversarialTeam" }, { "type": "null" }]
-        },
-        "redScore": { "type": "number" },
-        "blueScore": { "type": "number" },
-        "ended": { "type": "string" },
-        "ticks": { "type": "integer" },
-        "outcome": { "$ref": "#/$defs/AdversarialOutcome" },
-        "scored": { "type": "boolean" }
-      }
+      "type": "object"
     },
     "AdversarialResult": {
-      "type": "object",
-      "additionalProperties": false,
+      "description": "The result of scoring an adversarial run.\n\nAn adversarial run's authoritative output is its compiled wasm controller. The validator (see `crate::adversarial_validator::AdversarialValidator`) loads it as Red and plays it against the case's committed reference opponents (Blue), each through the shared [Foray host](foray_host), writing one published replay per opponent into the run's asset directory (see [`Self::replays`]). The top-level fields mirror the **canonical** opponent's match (`border-soldier`), which scoring and the leaderboard read. A submission that fails to build, does not export the entry, or forfeits is recorded as a loss/forfeit — never a crash. Present only on an adversarial run's [`ValidationSummary`].",
+      "properties": {
+        "blueScore": {
+          "description": "The opponent's (Blue's) banked score at the end of the match.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "controllerModule": {
+          "default": "",
+          "description": "Run-root-relative path to the produced controller wasm module (the case's `build.module`), or empty when the build emitted none. Lets the push flow upload the controller to the backend (so a pushed run is selectable in the arena) without re-resolving the case manifest.",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about a submission that could not be matched (for example a missing or unloadable module), or `None` when the match ran.",
+          "type": ["string", "null"]
+        },
+        "ended": {
+          "description": "How the match ended (the replay's `ended`: `swept`, `time_limit`, or `forfeit`).",
+          "type": "string"
+        },
+        "opponent": {
+          "description": "The id of the canonical opponent the submission was scored against (Blue).",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/AdversarialOutcome",
+          "description": "The outcome from the submission's perspective."
+        },
+        "redScore": {
+          "description": "The submission's (Red's) banked score at the end of the match.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "replayJson": {
+          "description": "Run-root-relative path to the canonical published replay (`replay.json`) — the scored artifact mirrored by the top-level fields below. Also the first entry of [`Self::replays`].",
+          "type": "string"
+        },
+        "replays": {
+          "default": [],
+          "description": "One proof replay per reference opponent the run was auto-replayed against (canonical opponent first). These are the run's evidence of play. Empty only when the submission never presented a loadable controller (a forfeit before any match could run).",
+          "items": {
+            "$ref": "#/$defs/AdversarialReplay"
+          },
+          "type": "array"
+        },
+        "submissionTeam": {
+          "$ref": "#/$defs/AdversarialTeam",
+          "description": "Which side the submission played (always [`AdversarialTeam::Red`] for the canonical match; recorded so a consumer never has to assume it)."
+        },
+        "ticks": {
+          "description": "How many ticks the match ran for.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "winner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdversarialTeam"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The winning side, or `None` for a draw. `red` is the submission."
+        }
+      },
       "required": [
-        "replayJson",
-        "opponent",
-        "submissionTeam",
-        "winner",
-        "redScore",
         "blueScore",
         "ended",
-        "ticks",
+        "opponent",
         "outcome",
-        "detail"
+        "redScore",
+        "replayJson",
+        "submissionTeam",
+        "ticks"
       ],
-      "properties": {
-        "replayJson": { "type": "string" },
-        "opponent": { "type": "string" },
-        "submissionTeam": { "$ref": "#/$defs/AdversarialTeam" },
-        "winner": {
-          "oneOf": [{ "$ref": "#/$defs/AdversarialTeam" }, { "type": "null" }]
+      "type": "object"
+    },
+    "AdversarialTeam": {
+      "description": "Which side a match outcome is reported from, for an adversarial run.\n\nThe validator always runs the submission as Red against the committed baseline opponent as Blue (lead decision 4), so [`AdversarialResult::outcome`] is from the submission's perspective and this records that the submission was Red.",
+      "oneOf": [
+        {
+          "description": "The west colony — the submission, in the canonical match.",
+          "enum": ["red"],
+          "type": "string"
         },
-        "redScore": { "type": "number" },
-        "blueScore": { "type": "number" },
-        "ended": { "type": "string" },
-        "ticks": { "type": "integer" },
-        "outcome": { "$ref": "#/$defs/AdversarialOutcome" },
-        "detail": { "type": ["string", "null"] },
-        "controllerModule": { "type": "string" },
-        "replays": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/AdversarialReplay" }
+        {
+          "description": "The east colony — the baseline opponent, in the canonical match.",
+          "enum": ["blue"],
+          "type": "string"
         }
-      }
+      ]
+    },
+    "AssetFrameResult": {
+      "description": "The regenerate result for one frame of an asset-generation run.\n\nFor a single sprite this is the whole run's one frame (index 0); for a sprite sheet there is one per declared frame, each a completely separate file. One signal comes out of each, recorded rather than gated (the same stance as end-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence) between the regenerated image and the pixels the model left on disk — a high divergence means the model drew outside the tool. There is no target image and no fidelity score; the regenerated image is reviewed against the brief.",
+      "properties": {
+        "actionsLog": {
+          "description": "Run-root-relative path to this frame's recorded action log.",
+          "type": "string"
+        },
+        "cheatDivergence": {
+          "default": null,
+          "description": "Divergence between the regenerated frame and the model's on-disk preview, in `0.0..=1.0` (0.0 is identical). High divergence flags drawing outside the tool. `None` when the model left no readable preview to compare.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated for this frame.",
+          "type": ["string", "null"]
+        },
+        "index": {
+          "description": "The frame index this result records under: `0` for a single sprite, the declared `[[sheet.frame]]` index for a sprite sheet.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "operationCount": {
+          "description": "How many operations this frame's log recorded.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "previewImage": {
+          "description": "Run-root-relative path to the pixels the model left on disk (this frame's `preview`), kept for the side-by-side comparison and the divergence signal.",
+          "type": "string"
+        },
+        "regeneratedImage": {
+          "description": "Run-root-relative path to the image regenerated from this frame's action log — the scored output for this frame.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "actionsLog",
+        "index",
+        "operationCount",
+        "previewImage",
+        "regeneratedImage"
+      ],
+      "type": "object"
+    },
+    "AssetGenResult": {
+      "description": "The result of regenerating an asset-generation run.\n\nAn asset-generation run's authoritative output is its recorded action log(s); the validator replays each through the same drawing logic the binary used (see `crate::validator::AssetGenValidator`) to produce the **regenerated** image(s), which are the output a human reviews against the brief. A single sprite produces one [frame](AssetFrameResult); a sprite sheet produces one per declared frame, each its own separate file. There is no target image and no automated fidelity score. Present only on an asset-generation run's [`ValidationSummary`].",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated at the run level, or `None`. Per-frame detail lives on each [`AssetFrameResult`].",
+          "type": ["string", "null"]
+        },
+        "frames": {
+          "description": "The per-frame results: exactly one for a single sprite (frame index 0), one per declared frame for a sprite sheet, in declared order.",
+          "items": {
+            "$ref": "#/$defs/AssetFrameResult"
+          },
+          "type": "array"
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssetSheet"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sprite-sheet frame dimensions and named sequences, when the case draws a sprite sheet (`asset_kind = \"sprite-sheet\"`). Carried into the run record so the review UI can play the named animations from the per-frame images, without a separate catalog lookup. `None` for a single-sprite case."
+        }
+      },
+      "required": ["frames"],
+      "type": "object"
+    },
+    "AssetSheet": {
+      "description": "The resolved `[sheet]` of a sprite-sheet case: the frames the model draws — each a separate file the size of one [`CanvasSpec`] — and the named sequences a reviewer plays back. The frame dimensions are the canvas dimensions; the declared frame indices and the sequences that reference them drive per-frame scoring and animated playback.",
+      "properties": {
+        "frameHeight": {
+          "description": "Height of one frame in pixels (the canvas height).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "frameWidth": {
+          "description": "Width of one frame in pixels (the canvas width).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "frames": {
+          "description": "The declared frame indices, in declared order. At least one is present and all are unique.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "sequences": {
+          "description": "The named animation sequences, in declared order. At least one is present.",
+          "items": {
+            "$ref": "#/$defs/AssetSheetSequence"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["frameHeight", "frameWidth", "frames", "sequences"],
+      "type": "object"
+    },
+    "AssetSheetSequence": {
+      "description": "A resolved named animation sequence within a [`SheetSpec`]: an ordered list of row-major frame indices played at [`Self::fps`].",
+      "properties": {
+        "fps": {
+          "description": "Playback rate in frames per second. Always greater than zero.",
+          "format": "double",
+          "type": "number"
+        },
+        "frames": {
+          "description": "The ordered row-major frame indices this sequence plays. Non-empty, every index a valid cell.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Human-readable display name, surfaced in the review UI.",
+          "type": "string"
+        },
+        "slug": {
+          "description": "Stable slug naming this sequence (for example `walk-right`).",
+          "type": "string"
+        }
+      },
+      "required": ["fps", "frames", "name", "slug"],
+      "type": "object"
+    },
+    "AuthMode": {
+      "description": "The authentication mode a run used, recorded so a published run is self-describing about how its cost should be interpreted.",
+      "oneOf": [
+        {
+          "description": "A provider API key, injected into the run container as an environment variable. Billing is charged directly against that key.",
+          "enum": ["apiKey"],
+          "type": "string"
+        },
+        {
+          "description": "A harness account subscription, supplied as credential files copied into the run container. There is no per-run provider charge.",
+          "enum": ["subscription"],
+          "type": "string"
+        }
+      ]
+    },
+    "CheckResult": {
+      "description": "The result of a single opt-in validation check.",
+      "properties": {
+        "detail": {
+          "description": "Detail about a check that could not be completed.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "Human-readable display name for the check, carried through from the declared [`Check`](crate::test_case::Check).",
+          "type": "string"
+        },
+        "reached": {
+          "description": "Whether the check could drive the implementation into the view and capture it for comparison. When false, [`Self::similarity`] is `0.0` and [`Self::detail`] explains why.",
+          "type": "boolean"
+        },
+        "similarity": {
+          "description": "Similarity signal in the range `0.0..=1.0` against the reference baseline. This is a signal, not a strict match requirement.",
+          "format": "double",
+          "type": "number"
+        },
+        "view": {
+          "description": "The view the check records under.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "reached", "similarity", "view"],
+      "type": "object"
+    },
+    "CostMetrics": {
+      "description": "Cost of a run, recorded two ways.",
+      "properties": {
+        "actual": {
+          "description": "The amount actually charged for the run, recorded for reference. Equal to the comparable figure unless the harness reports its own exact cost.",
+          "format": "double",
+          "type": "number"
+        },
+        "comparable": {
+          "description": "The canonical figure shown on the site, stable across providers. It is derived from token classes and OpenRouter's listed prices, except for harnesses that drive a single provider directly and report their own exact cost (such as Claude Code), where that reported cost — itself provider-stable — is used instead.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": ["actual", "comparable"],
+      "type": "object"
+    },
+    "HarnessSlug": {
+      "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the site (all eight happen to be single-word lowercase tokens).",
+      "oneOf": [
+        {
+          "description": "Anthropic Claude Code (`claude`).",
+          "enum": ["claude"],
+          "type": "string"
+        },
+        {
+          "description": "OpenAI Codex (`codex`).",
+          "enum": ["codex"],
+          "type": "string"
+        },
+        {
+          "description": "Cline (`cline`).",
+          "enum": ["cline"],
+          "type": "string"
+        },
+        {
+          "description": "Google Antigravity (`antigravity`).",
+          "enum": ["antigravity"],
+          "type": "string"
+        },
+        {
+          "description": "Goose (`goose`).",
+          "enum": ["goose"],
+          "type": "string"
+        },
+        {
+          "description": "Kilo Code (`kilo`).",
+          "enum": ["kilo"],
+          "type": "string"
+        },
+        {
+          "description": "OpenCode (`opencode`).",
+          "enum": ["opencode"],
+          "type": "string"
+        },
+        {
+          "description": "Pi (`pi`).",
+          "enum": ["pi"],
+          "type": "string"
+        }
+      ]
+    },
+    "MediaKind": {
+      "description": "The kind of a piece of media — used for both reference media and proof artifacts so a UI knows whether to render an `<img>` or a `<video>`.",
+      "oneOf": [
+        {
+          "description": "A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).",
+          "enum": ["image"],
+          "type": "string"
+        },
+        {
+          "description": "A video clip (`mp4`).",
+          "enum": ["video"],
+          "type": "string"
+        }
+      ]
     },
     "PerformanceCaseResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["input", "correct", "fuel", "firstMismatchTick", "detail"],
+      "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
-        "input": { "type": "string" },
-        "correct": { "type": "boolean" },
-        "fuel": { "type": ["integer", "null"] },
-        "firstMismatchTick": { "type": ["integer", "null"] },
-        "detail": { "type": ["string", "null"] }
-      }
+        "correct": {
+          "description": "Whether the engine produced the oracle's exact answer for this case.",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about an incorrect or unrunnable case, or `None` when correct.",
+          "type": ["string", "null"]
+        },
+        "firstMismatchTick": {
+          "description": "The tick of the first snapshot whose answer diverged from the oracle, when the engine is incorrect for that reason. `None` when correct, or when the failure was structural rather than a checksum mismatch.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        },
+        "fuel": {
+          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran (recorded for diagnostics even when incorrect); `None` when the engine could not be run on this case at all (a host failure).",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        },
+        "input": {
+          "description": "The case-relative path of the input instance this result records under, so a reviewer can tie the result back to its case.",
+          "type": "string"
+        }
+      },
+      "required": ["correct", "input"],
+      "type": "object"
     },
     "PerformanceResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["correct", "totalFuel", "cases", "detail"],
+      "description": "The result of scoring a performance run.\n\nA performance run's authoritative output is its compiled wasm engine. The validator (see `crate::performance_validator::PerformanceValidator`) loads it, runs it once per held-out input case through the shared [Lattice host](lattice_host) under the manifest's per-case fuel/memory limits, and checks each case's output against the reference oracle. A run is **correct** only when every case is, and its [`total_fuel`](Self::total_fuel) — the fuel a correct engine consumes — is the comparable performance result. A built-but- wrong engine still loaded (it presented an engine); its correctness gate lives here, mirroring how an adversarial run records its outcome separately from the load signal. Present only on a performance run's [`ValidationSummary`].",
       "properties": {
-        "correct": { "type": "boolean" },
-        "totalFuel": { "type": ["integer", "null"] },
         "cases": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/PerformanceCaseResult" }
+          "description": "The per-case results, in the case's declared order.",
+          "items": {
+            "$ref": "#/$defs/PerformanceCaseResult"
+          },
+          "type": "array"
         },
-        "detail": { "type": ["string", "null"] }
-      }
+        "correct": {
+          "description": "Whether **every** scored input case produced the oracle's exact answer.",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about a run that could not be scored at all (for example a missing or unloadable module), or `None` when every case ran.",
+          "type": ["string", "null"]
+        },
+        "totalFuel": {
+          "description": "The total fuel consumed across all cases — the comparable performance result. `Some` only when [`Self::correct`]; `None` for an incorrect run, where the fuel is meaningless.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["cases", "correct"],
+      "type": "object"
     },
-    "RunValidation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["loaded", "detail", "install", "build", "checks", "proofs"],
+    "ProofResult": {
+      "description": "The presence result for a single declared proof-of-implementation artifact.\n\nA test case can ask the agent to write evidence (a screenshot or short clip) to a known path; validation records whether each declared proof turned up in the produced tree. This is **informational** — a missing proof never gates the run's status; it is surfaced so a reviewer sees the gap.",
       "properties": {
-        "loaded": { "type": "boolean" },
-        "detail": { "type": ["string", "null"] },
-        "install": {
-          "oneOf": [{ "$ref": "#/$defs/StepResult" }, { "type": "null" }]
+        "dest": {
+          "description": "The run-root-relative path the proof was expected at, carried through from the declared proof. Locates the produced file for publishing and tells a UI where it lives.",
+          "type": "string"
         },
-        "build": {
-          "oneOf": [{ "$ref": "#/$defs/StepResult" }, { "type": "null" }]
+        "detail": {
+          "description": "Detail about a missing or unreadable proof, or `None` when present.",
+          "type": ["string", "null"]
         },
-        "checks": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/CheckResult" }
+        "id": {
+          "description": "The proof id this result records under (matches a declared [`ProofFile`](crate::test_case::ProofFile)).",
+          "type": "string"
         },
-        "proofs": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/ProofResult" }
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "Whether the proof media is an image or a video."
         },
-        "asset": { "$ref": "#/$defs/AssetGenResult" },
-        "adversarial": { "$ref": "#/$defs/AdversarialResult" },
-        "performance": { "$ref": "#/$defs/PerformanceResult" }
-      }
+        "name": {
+          "description": "Human-readable display name, carried through from the declared proof.",
+          "type": "string"
+        },
+        "present": {
+          "description": "Whether the agent produced the proof at its declared `dest`.",
+          "type": "boolean"
+        }
+      },
+      "required": ["dest", "id", "kind", "name", "present"],
+      "type": "object"
+    },
+    "RunEnvironment": {
+      "description": "The container environment a run executed in.\n\nThese values are captured from inside the run container — not the host — so they describe the environment the harness actually built in. The harness version is not duplicated here; it lives in [`RunSubject::harness_version`].",
+      "properties": {
+        "authMode": {
+          "$ref": "#/$defs/AuthMode",
+          "description": "Which authentication mode the run used. This is how the run's cost should be read: an API-key run is billed against that key, while a subscription run carries no per-run provider charge (a harness that still reports an exact charge — Claude Code does even on a subscription — is recorded as-is; one that reports none falls back to OpenRouter comparable pricing)."
+        },
+        "containerImage": {
+          "description": "The run-container image the run executed in: the single shared base image, the same for every harness. The full, pullable reference pulled by digest from the registry (for example, `ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build fallback tag for an offline run.",
+          "type": "string"
+        },
+        "nodeVersion": {
+          "description": "The Node.js version reported by `node --version` inside the container (for example, `v22.11.0`), or `None` when it could not be determined.",
+          "type": ["string", "null"]
+        },
+        "os": {
+          "description": "The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for example, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe could not determine it.",
+          "type": "string"
+        }
+      },
+      "required": ["authMode", "containerImage", "os"],
+      "type": "object"
     },
     "RunLinks": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["sourceRepo", "playableBuild"],
+      "description": "Links to a run's published outputs.",
       "properties": {
-        "sourceRepo": { "type": ["string", "null"] },
-        "playableBuild": { "type": ["string", "null"] }
-      }
+        "playableBuild": {
+          "description": "The playable build, when one has been published.",
+          "type": ["string", "null"]
+        },
+        "sourceRepo": {
+          "description": "The public repository holding the run's generated source, when released.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "RunMetrics": {
+      "description": "The full metrics block recorded in a [`crate::run_record::RunRecord`].",
+      "properties": {
+        "cost": {
+          "$ref": "#/$defs/CostMetrics",
+          "description": "Cost, recorded as comparable and actual."
+        },
+        "runTimeSeconds": {
+          "description": "End-to-end wall-clock time of the run, in seconds.",
+          "format": "double",
+          "type": "number"
+        },
+        "tokens": {
+          "$ref": "#/$defs/TokenMetrics",
+          "description": "Normalized token usage."
+        }
+      },
+      "required": ["cost", "runTimeSeconds", "tokens"],
+      "type": "object"
+    },
+    "RunState": {
+      "description": "The terminal state of a run.",
+      "oneOf": [
+        {
+          "description": "The run completed and produced an implementation.",
+          "enum": ["completed"],
+          "type": "string"
+        },
+        {
+          "description": "The run failed before producing a usable implementation.",
+          "enum": ["failed"],
+          "type": "string"
+        },
+        {
+          "description": "The run produced output that could not be evaluated.",
+          "enum": ["unevaluable"],
+          "type": "string"
+        }
+      ]
     },
     "RunStatus": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["state", "detail"],
+      "description": "A run's status, with enough detail to understand a failure.",
       "properties": {
-        "state": { "$ref": "#/$defs/RunState" },
-        "detail": { "type": ["string", "null"] }
-      }
+        "detail": {
+          "description": "Optional human-readable detail, required in practice for failures.",
+          "type": ["string", "null"]
+        },
+        "state": {
+          "$ref": "#/$defs/RunState",
+          "description": "Whether the run completed, failed, or could not be evaluated."
+        }
+      },
+      "required": ["state"],
+      "type": "object"
+    },
+    "RunSubject": {
+      "description": "The subject of a run: what was run, with what, against which model.",
+      "properties": {
+        "harnessSlug": {
+          "$ref": "#/$defs/HarnessSlug",
+          "description": "The agent harness slug."
+        },
+        "harnessVersion": {
+          "description": "The harness version, where it could be determined.",
+          "type": ["string", "null"]
+        },
+        "modelId": {
+          "description": "The model ID passed to the harness, treated as an opaque string.",
+          "type": "string"
+        },
+        "orchestratorSlug": {
+          "default": "one-shot",
+          "description": "The resolved slug of the orchestrator that conducted the harness sessions (for example `one-shot` or `ralph`). For an external `--orchestrator-dir` this is the directory's own manifest slug, not the request's. Defaults to `one-shot` so records written before orchestrator selection existed — and hand-written fixtures — still deserialize. See [orchestrators](crate::OrchestratorCatalog).",
+          "type": "string"
+        },
+        "testCaseSlug": {
+          "description": "The test case slug.",
+          "type": "string"
+        },
+        "testCaseVersion": {
+          "description": "The exact, immutable test case version.",
+          "type": "string"
+        },
+        "testType": {
+          "$ref": "#/$defs/TestType",
+          "default": "end-to-end",
+          "description": "The test type this case belongs to. Defaults to [`TestType::EndToEnd`](crate::TestType) so records written before the discriminator existed (all end-to-end) still deserialize. The UI branches on this to choose how to present a run's result."
+        },
+        "variant": {
+          "description": "The variant of the test case that was run (for example `base`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harnessSlug",
+        "modelId",
+        "testCaseSlug",
+        "testCaseVersion",
+        "variant"
+      ],
+      "type": "object"
+    },
+    "RunTooling": {
+      "description": "Provenance for the Test Cabinet build that orchestrated a run.\n\nDistinct from [`RunSubject::harness_version`], which describes the agent harness: this identifies the build of the Test Cabinet orchestrator itself, so a run can be traced back to the exact code that produced it.",
+      "properties": {
+        "testCabinetCommit": {
+          "description": "The Test Cabinet commit the run's binary was built from, suffixed with `-dirty` when built from a modified working tree. `None` when the build could not determine it (for example, a build with no git repository).",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "RunValidation": {
+      "description": "The validation summary embedded in a [`crate::run_record::RunRecord`].",
+      "properties": {
+        "adversarial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdversarialResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The canonical-match result of an adversarial run. `None` for any other type, so a non-adversarial summary serializes with no new field at all and its shape is unchanged."
+        },
+        "asset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssetGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The regenerate-and-score result of an asset-generation run. `None` for an end-to-end run, so an end-to-end summary serializes with no new field at all and its shape is unchanged."
+        },
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Outcome of the required static-build step, or `None` if it was never reached (the install failed, or there was no `package.json`)."
+        },
+        "checks": {
+          "description": "Per-check results for the validation checks the test case declares.",
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "description": "Detail about a fatal load failure (build failure, uncaught runtime error, or a missing browser that prevented capture).",
+          "type": ["string", "null"]
+        },
+        "install": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Outcome of the required dependency-install step, or `None` if the build never reached it (for example, no `package.json` was found)."
+        },
+        "loaded": {
+          "description": "Whether the implementation built, served, and rendered without a fatal error. This is the clearest possible signal about a run.",
+          "type": "boolean"
+        },
+        "performance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PerformanceResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The correctness-and-fuel result of a performance run. `None` for any other type, so a non-performance summary serializes with no new field at all and its shape is unchanged."
+        },
+        "proofs": {
+          "default": [],
+          "description": "Per-proof presence results for the proof-of-implementation artifacts the test case requests. Empty when the case declares none. Informational: a missing proof does not change [`Self::loaded`].",
+          "items": {
+            "$ref": "#/$defs/ProofResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["checks", "loaded"],
+      "type": "object"
+    },
+    "StepResult": {
+      "description": "The outcome of a single **required** build step — dependency install or the static build — that every run performs before the load check.\n\nBuilding an implementation is not a single opaque step: the install and the build each run a manifest-declared command and each can fail on its own, so each is reported in the [`ValidationSummary`] in its own right rather than being folded silently into the load signal. See `docs/validation.md`.",
+      "properties": {
+        "command": {
+          "description": "The command that was run (the manifest's `install` or `build` command).",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Detail about a failure (a tail of the command's stderr), or `None` when the step succeeded.",
+          "type": ["string", "null"]
+        },
+        "succeeded": {
+          "description": "Whether the command exited successfully.",
+          "type": "boolean"
+        }
+      },
+      "required": ["command", "succeeded"],
+      "type": "object"
+    },
+    "TestType": {
+      "description": "The type of a test case: which class of capability it measures and which manifest tables it declares.\n\nToday four types exist in code: the original [`Self::EndToEnd`] (build a working program), [`Self::AssetGeneration`] (drive a drawing tool toward a target image), [`Self::Adversarial`] (write a wasm controller pitted head-to-head against a baseline), and [`Self::Performance`] (write a wasm engine scored on correctness plus the fuel it burns). The type is the explicit discriminator everything branches on — resolution, validation, the run record, and the UI — rather than being inferred from which tables a manifest happens to declare. It defaults to [`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.",
+      "oneOf": [
+        {
+          "description": "Build a working program judged by running it (the only type until now).",
+          "enum": ["end-to-end"],
+          "type": "string"
+        },
+        {
+          "description": "Produce a graphical asset by driving a drawing tool one operation at a time; the recorded operations are the authoritative output.",
+          "enum": ["asset-generation"],
+          "type": "string"
+        },
+        {
+          "description": "Write a controller compiled to wasm that drives one side of a head-to-head game; the controller is run repeatedly against a baseline opponent and the match outcome is the authoritative result. See `docs/testing/adversarial/`.",
+          "enum": ["adversarial"],
+          "type": "string"
+        },
+        {
+          "description": "Write an engine compiled to wasm that simulates a deterministic world; the engine's output is checked for correctness against a reference oracle and, when correct, scored by the fuel it consumes. The contract entry is invoked **once per input case** (not per tick), so the whole simulation runs in one call. See `docs/testing/performance/`.",
+          "enum": ["performance"],
+          "type": "string"
+        }
+      ]
+    },
+    "TokenMetrics": {
+      "description": "The four normalized token classes recorded for every run.\n\nThe [`crate::harness`] layer is responsible for translating each harness's raw reporting into these classes. In particular:\n\n- cached reads must be subtracted from input so [`Self::uncached_input`] excludes them, and - reasoning tokens must be subtracted from output so [`Self::output`] excludes them.\n\nEach class is optional: `None` means the harness does **not** report that class at all (the value could not be determined), which is distinct from `Some(0)` (the harness reports the class and it was zero). Keeping the two apart matters for any consumer that aggregates across classes — a total that folds in an unknown class would be misleading, so such totals are themselves reported as unknown rather than silently treating the gap as zero.",
+      "properties": {
+        "cachedInput": {
+          "description": "Input tokens served from the provider's cache (billed at a lower rate), or `None` when the harness does not break cached reads out.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        },
+        "output": {
+          "description": "Non-reasoning output tokens, or `None` when the harness does not report output usage.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        },
+        "reasoning": {
+          "description": "Internal reasoning tokens (billed as output, tracked separately), or `None` when the harness does not break reasoning out — note that a harness which folds reasoning into `output` reports `None` here, not `Some(0)`.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        },
+        "uncachedInput": {
+          "description": "Input tokens that were **not** served from the provider's cache, or `None` when the harness does not report input usage.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
     }
-  }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its shape is deliberately fixed and mirrored in `packages/run-record`.",
+  "properties": {
+    "environment": {
+      "$ref": "#/$defs/RunEnvironment",
+      "description": "The container environment the run executed in."
+    },
+    "finishedAt": {
+      "description": "RFC 3339 timestamp for when the run finished.",
+      "type": "string"
+    },
+    "id": {
+      "description": "A unique run ID.",
+      "type": "string"
+    },
+    "links": {
+      "$ref": "#/$defs/RunLinks",
+      "description": "Links to published outputs."
+    },
+    "metrics": {
+      "$ref": "#/$defs/RunMetrics",
+      "description": "Resource metrics for the run."
+    },
+    "startedAt": {
+      "description": "RFC 3339 timestamp for when the run started.",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus",
+      "description": "Terminal status."
+    },
+    "subject": {
+      "$ref": "#/$defs/RunSubject",
+      "description": "What was run."
+    },
+    "tooling": {
+      "$ref": "#/$defs/RunTooling",
+      "description": "Provenance for the Test Cabinet build that orchestrated the run."
+    },
+    "validation": {
+      "$ref": "#/$defs/RunValidation",
+      "description": "Summary of the validation pass."
+    }
+  },
+  "required": [
+    "environment",
+    "finishedAt",
+    "id",
+    "links",
+    "metrics",
+    "startedAt",
+    "status",
+    "subject",
+    "tooling",
+    "validation"
+  ],
+  "title": "RunRecord",
+  "type": "object"
 }

@@ -1,29 +1,48 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/worker-api/health.schema.json",
-  "title": "WorkerHealth",
-  "description": "The body of GET /healthz: a worker's liveness/readiness probe and identity. A UI uses `backendUrl` to confirm a worker resolves definitions from, and publishes to, the same backend the UI itself is pointed at; without a match the worker reads as `unverified`.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["status", "version", "role", "backendUrl"],
-  "properties": {
-    "status": {
-      "type": "string",
-      "description": "Liveness marker; `ok` when the worker is serving.",
-      "enum": ["ok"]
+  "$defs": {
+    "HealthStatus": {
+      "description": "A service's liveness marker — `ok` whenever it is serving.",
+      "oneOf": [
+        {
+          "description": "The service is up and serving requests.",
+          "enum": ["ok"],
+          "type": "string"
+        }
+      ]
     },
-    "version": {
-      "type": "string",
-      "description": "The contract version the worker reports (the v0.2.0 milestone), independent of the crate's build version."
+    "WorkerRole": {
+      "description": "Identifies the service behind a health probe as the worker, distinguishing it from a backend that shares the probe shape.",
+      "oneOf": [
+        {
+          "description": "This service is a worker.",
+          "enum": ["worker"],
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/worker-api/health.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `GET /healthz`: a worker's liveness/readiness probe and identity.\n\nReports `backendUrl`: the backend this worker resolves definitions from and publishes to. The UI compares it against the backend it is itself pointed at to confirm a worker shares its backend; without it the worker reads as \"unverified\" because there is nothing to check against.",
+  "properties": {
+    "backendUrl": {
+      "description": "The backend this worker resolves definitions from and publishes to (`TCAB_BACKEND_URL`). Always present — a worker requires a configured backend to start.",
+      "type": "string"
     },
     "role": {
-      "type": "string",
-      "description": "Identifies the service as a worker, distinguishing it from a backend on the same probe shape.",
-      "enum": ["worker"]
+      "$ref": "#/$defs/WorkerRole",
+      "description": "Identifies the service as a worker."
     },
-    "backendUrl": {
-      "type": "string",
-      "description": "The backend this worker resolves definitions from and publishes to (`TCAB_BACKEND_URL`). Always present — a worker requires a configured backend to start."
+    "status": {
+      "$ref": "#/$defs/HealthStatus",
+      "description": "Liveness marker; `ok` when the worker is serving."
+    },
+    "version": {
+      "description": "The contract version the worker reports, independent of the crate's build version.",
+      "type": "string"
     }
-  }
+  },
+  "required": ["backendUrl", "role", "status", "version"],
+  "title": "WorkerHealth",
+  "type": "object"
 }

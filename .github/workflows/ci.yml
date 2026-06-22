@@ -41,3 +41,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: ./scripts/ci/web-build.sh
+
+  contract:
+    name: Contract (regenerate & check for drift)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: ./scripts/ci/contract-drift.sh

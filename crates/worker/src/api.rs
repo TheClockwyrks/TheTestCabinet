@@ -33,6 +33,11 @@ mod publish_api;
 mod runs;
 mod tournaments;
 
+// Re-export the HTTP request/response contract types so the `contract-codegen`
+// generator can name them (the handler modules themselves stay private).
+pub use publish_api::{PublishAck, PublishBody, PushAck, PushBody, ReviewAck, ReviewBody};
+pub use runs::{ProducedRun, SubmitAck, SubmitBody};
+
 /// Shared application state handed to every handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -183,17 +188,59 @@ async fn record_request_metrics(
     response
 }
 
-/// `GET /healthz` — liveness/readiness probe.
+/// A service's liveness marker — `ok` whenever it is serving.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum HealthStatus {
+    /// The service is up and serving requests.
+    Ok,
+}
+
+/// Identifies the service behind a health probe as the worker, distinguishing it
+/// from a backend that shares the probe shape.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum WorkerRole {
+    /// This service is a worker.
+    Worker,
+}
+
+/// The body of `GET /healthz`: a worker's liveness/readiness probe and identity.
 ///
 /// Reports `backendUrl`: the backend this worker resolves definitions from and
 /// publishes to. The UI compares it against the backend it is itself pointed at
 /// to confirm a worker shares its backend; without it the worker reads as
 /// "unverified" because there is nothing to check against.
-async fn health(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::json!({
-        "status": "ok",
-        "version": CONTRACT_VERSION,
-        "role": "worker",
-        "backendUrl": state.config.backend_url,
-    }))
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "WorkerHealth"),
+    schemars(rename = "WorkerHealth")
+)]
+pub struct HealthResponse {
+    /// Liveness marker; `ok` when the worker is serving.
+    pub status: HealthStatus,
+    /// The contract version the worker reports, independent of the crate's build
+    /// version.
+    pub version: String,
+    /// Identifies the service as a worker.
+    pub role: WorkerRole,
+    /// The backend this worker resolves definitions from and publishes to
+    /// (`TCAB_BACKEND_URL`). Always present — a worker requires a configured
+    /// backend to start.
+    pub backend_url: String,
+}
+
+/// `GET /healthz` — liveness/readiness probe.
+async fn health(State(state): State<AppState>) -> axum::Json<HealthResponse> {
+    axum::Json(HealthResponse {
+        status: HealthStatus::Ok,
+        version: CONTRACT_VERSION.to_string(),
+        role: WorkerRole::Worker,
+        backend_url: state.config.backend_url.clone(),
+    })
 }

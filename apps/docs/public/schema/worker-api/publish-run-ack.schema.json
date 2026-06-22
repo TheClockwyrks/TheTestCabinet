@@ -1,28 +1,16 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://docs.testcabinet.ai/schema/worker-api/publish-run-ack.schema.json",
-  "title": "WorkerPublishRunAck",
-  "description": "The response to a successful worker POST /push or POST /publish: the resolved public links and whether the run was newly recorded/published. Both are idempotent, so a re-push or re-publish of a run already in that state succeeds with `newlyPublished: false`.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["runId", "sourceRepo", "newlyPublished"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to a successful publish.",
   "properties": {
-    "runId": {
-      "type": "string",
-      "description": "The published run's id.",
-      "minLength": 1
-    },
-    "sourceRepo": {
-      "type": "string",
-      "description": "The public repository URL holding the run's released source."
-    },
-    "playableBuild": {
-      "type": "string",
-      "description": "The deployment URL the build tool reported, recorded verbatim. Present only when a static build was produced and deployed; omitted otherwise."
-    },
     "newlyPublished": {
-      "type": "boolean",
-      "description": "Whether this call newly recorded the run (true), or was an idempotent re-publish of one already recorded (false)."
+      "type": "boolean"
+    },
+    "runId": {
+      "type": "string"
     }
-  }
+  },
+  "required": ["newlyPublished", "runId"],
+  "title": "PublishAck",
+  "type": "object"
 }

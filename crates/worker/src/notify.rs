@@ -27,11 +27,23 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
 /// `completed` carries a record id to open; `failed` carries a reason.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum NotificationOutcome {
     /// The run produced a record (its own `status.state` may still be a failure).
     Completed,
     /// The run could not be driven to a record at all.
     Failed,
+}
+
+/// The kind of a [`WorkerNotification`]. Only [`Self::RunCompleted`] exists today;
+/// modeled as an enum (rather than a bare string) so it is part of the generated
+/// contract and the console can switch on it as more are added.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum NotificationKind {
+    /// A run reached a terminal state (produced a record, or failed before one).
+    RunCompleted,
 }
 
 /// A worker-wide notification that a run reached a terminal state.
@@ -41,10 +53,11 @@ pub enum NotificationOutcome {
 /// run includes the `recordId` to open; a `failed` run includes the `message`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct WorkerNotification {
     /// The notification kind. Only `run-completed` exists today; carried
     /// explicitly so the console can switch on it as more are added.
-    pub kind: &'static str,
+    pub kind: NotificationKind,
     /// The live stream/job id the run was observed under.
     pub job_id: String,
     /// The run's display identity (test case, variant, harness, model).
@@ -57,9 +70,11 @@ pub struct WorkerNotification {
     /// is the job id, which is also the id the failed record is persisted under
     /// (see [`crate::runner::drive_run`]), so a failure alert still opens the run.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub record_id: Option<String>,
     /// A human-readable failure reason, present when `outcome` is `failed`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub message: Option<String>,
 }
 
@@ -67,7 +82,7 @@ impl WorkerNotification {
     /// A run that produced the record `record_id`.
     pub fn completed(job_id: &str, summary: &RunSummary, record_id: &str) -> Self {
         Self {
-            kind: "run-completed",
+            kind: NotificationKind::RunCompleted,
             job_id: job_id.to_string(),
             summary: summary.clone(),
             outcome: NotificationOutcome::Completed,
@@ -80,7 +95,7 @@ impl WorkerNotification {
     /// run is persisted as a record under the job id, so the alert links there.
     pub fn failed(job_id: &str, summary: &RunSummary, message: &str) -> Self {
         Self {
-            kind: "run-completed",
+            kind: NotificationKind::RunCompleted,
             job_id: job_id.to_string(),
             summary: summary.clone(),
             outcome: NotificationOutcome::Failed,

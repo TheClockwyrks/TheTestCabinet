@@ -21,6 +21,12 @@ use serde::{Deserialize, Serialize};
 /// apart matters for any consumer that aggregates across classes — a total that
 /// folds in an unknown class would be misleading, so such totals are themselves
 /// reported as unknown rather than silently treating the gap as zero.
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "TokenMetrics"),
+    schemars(rename = "TokenMetrics")
+)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCounts {
@@ -85,6 +91,12 @@ pub struct TokenPrices {
 }
 
 /// Cost of a run, recorded two ways.
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "CostMetrics"),
+    schemars(rename = "CostMetrics")
+)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cost {
@@ -115,6 +127,7 @@ impl Cost {
 }
 
 /// The full metrics block recorded in a [`crate::run_record::RunRecord`].
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunMetrics {

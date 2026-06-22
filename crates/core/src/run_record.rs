@@ -1,7 +1,12 @@
 //! The run record: the central data contract produced by every run.
 //!
-//! See `docs/run-records.md`. This type tree is mirrored exactly in TypeScript
-//! in `packages/run-record`. JSON is camelCase.
+//! See `docs/run-records.md`. This type tree is the **source of truth** for the
+//! contract: the TypeScript bindings (`packages/run-record/src/index.ts`) and the
+//! JSON Schema (`apps/docs/public/schema/core/run-record.schema.json`) are
+//! generated from these types (which derive `ts_rs::TS` + `schemars::JsonSchema`
+//! behind the `contract` feature) by `crates/contract-codegen` — never edited by
+//! hand. Regenerate with `npm run gen:contract` after any change here. JSON is
+//! camelCase.
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +19,7 @@ use crate::validation::ValidationSummary;
 /// site (all eight happen to be single-word lowercase tokens).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum HarnessSlug {
     /// Anthropic Claude Code (`claude`).
     Claude,
@@ -64,6 +70,7 @@ impl HarnessSlug {
 /// The subject of a run: what was run, with what, against which model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunSubject {
     /// The test case slug.
     pub test_case_slug: String,
@@ -106,6 +113,7 @@ fn default_orchestrator_slug() -> String {
 /// so a run can be traced back to the exact code that produced it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunTooling {
     /// The Test Cabinet commit the run's binary was built from, suffixed with
     /// `-dirty` when built from a modified working tree. `None` when the build
@@ -130,6 +138,7 @@ impl RunTooling {
 /// version is not duplicated here; it lives in [`RunSubject::harness_version`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunEnvironment {
     /// The container OS, taken from `/etc/os-release`'s `PRETTY_NAME` (for
     /// example, `Debian GNU/Linux 12 (bookworm)`). `unknown` when the probe
@@ -156,6 +165,7 @@ pub struct RunEnvironment {
 /// self-describing about how its cost should be interpreted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum AuthMode {
     /// A provider API key, injected into the run container as an environment
     /// variable. Billing is charged directly against that key.
@@ -168,6 +178,7 @@ pub enum AuthMode {
 /// Links to a run's published outputs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunLinks {
     /// The public repository holding the run's generated source, when released.
     pub source_repo: Option<String>,
@@ -178,6 +189,7 @@ pub struct RunLinks {
 /// The terminal state of a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum RunState {
     /// The run completed and produced an implementation.
     Completed,
@@ -190,6 +202,7 @@ pub enum RunState {
 /// A run's status, with enough detail to understand a failure.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunStatus {
     /// Whether the run completed, failed, or could not be evaluated.
     pub state: RunState,
@@ -200,9 +213,11 @@ pub struct RunStatus {
 /// The complete run record emitted by every run.
 ///
 /// This is the contract consumed by the site and published with each run. Its
-/// shape is deliberately fixed and mirrored in `packages/run-record`.
+/// shape is deliberately fixed; the `packages/run-record` bindings and the
+/// published JSON Schema are generated from it (see the module docs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunRecord {
     /// A unique run ID.
     pub id: String,

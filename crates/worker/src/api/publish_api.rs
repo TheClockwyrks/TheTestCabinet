@@ -31,6 +31,7 @@ use crate::error::ApiError;
 /// The body of `POST /push`: which finished run to push.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PushBody {
     /// The id of a run this worker previously produced.
     pub run_id: String,
@@ -39,6 +40,7 @@ pub struct PushBody {
 /// The body of `POST /review`: a review for an already-pushed run.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ReviewBody {
     /// The run to review.
     pub run_id: String,
@@ -54,6 +56,7 @@ pub struct ReviewBody {
 /// The body of `POST /publish`: which reviewed run to publish.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PublishBody {
     /// The run to publish.
     pub run_id: String,
@@ -62,13 +65,16 @@ pub struct PublishBody {
 /// The response to a successful push: the resolved links and idempotency flag.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PushAck {
     pub run_id: String,
     /// The released source repo URL; absent for an asset-generation run, which
     /// releases no code.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub source_repo: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub playable_build: Option<String>,
     pub newly_pushed: bool,
 }
@@ -76,6 +82,7 @@ pub struct PushAck {
 /// The response to a successful review submission.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ReviewAck {
     pub run_id: String,
 }
@@ -83,6 +90,7 @@ pub struct ReviewAck {
 /// The response to a successful publish.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PublishAck {
     pub run_id: String,
     pub newly_published: bool,

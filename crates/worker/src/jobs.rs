@@ -22,6 +22,7 @@ use tokio::sync::broadcast;
 /// How a single submitted run is progressing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum JobState {
     /// The job has been accepted and is executing (seeding, the harness session,
     /// validation). This covers the whole up-to-an-hour run.
@@ -41,6 +42,7 @@ pub enum JobState {
 /// Mirrors the console's `InProgressRun` shape (camelCase in JSON).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunSummary {
     /// The test-case slug being run (e.g. `pong`).
     pub test_case_slug: String,
@@ -52,12 +54,25 @@ pub struct RunSummary {
     pub model_id: String,
 }
 
+/// The lifecycle state an [`ActiveRun`] reports — always [`Self::Running`], since
+/// a job that reaches a terminal state drops out of the active list. Modeled as a
+/// single-variant enum (rather than a bare string) so it is part of the generated
+/// contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum ActiveRunState {
+    /// The run is executing and has not yet reached a terminal state.
+    Running,
+}
+
 /// One currently-running job, as `GET /runs/active` reports it: the live
 /// stream/job id plus the run's display identity. `state` is always `running` —
 /// a job that reaches a terminal state is no longer active and drops out of the
 /// list. The flattened shape matches the console's `InProgressRun`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ActiveRun {
     /// The live stream/job id (`POST /runs` returns this).
     pub run_id: String,
@@ -65,12 +80,13 @@ pub struct ActiveRun {
     #[serde(flatten)]
     pub summary: RunSummary,
     /// Always `running`; an active run has not yet reached a terminal state.
-    pub state: &'static str,
+    pub state: ActiveRunState,
 }
 
 /// A point-in-time view of a job, returned by the status endpoint.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct JobStatus {
     /// The job id (`POST /runs` returns this; the other endpoints key on it).
     pub id: String,
@@ -78,9 +94,11 @@ pub struct JobStatus {
     pub state: JobState,
     /// The produced run record, present once `state` is `succeeded`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub record: Option<RunRecord>,
     /// A human-readable failure reason, present when `state` is `failed`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
 }
 
@@ -153,7 +171,7 @@ impl Job {
         matches!(inner.state, JobStateInner::Running).then(|| ActiveRun {
             run_id: self.id.clone(),
             summary: (*self.summary).clone(),
-            state: "running",
+            state: ActiveRunState::Running,
         })
     }
 
