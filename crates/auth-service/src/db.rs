@@ -29,7 +29,8 @@ impl Db {
             && let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
-            std::fs::create_dir_all(parent).map_err(|err| sea_orm::DbErr::Custom(err.to_string()))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|err| sea_orm::DbErr::Custom(err.to_string()))?;
         }
         let conn = Database::connect(ConnectOptions::new(url.to_owned())).await?;
         apply_sqlite_pragmas(&conn).await?;

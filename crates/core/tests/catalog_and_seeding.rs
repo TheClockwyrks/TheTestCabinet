@@ -638,7 +638,11 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
             "charge-to-bloom",
             &["flare-charge", "flare-bloom", "flare-fade"],
         ),
-        ("trench-walls", "corners-junctions", &["corners", "junctions"]),
+        (
+            "trench-walls",
+            "corners-junctions",
+            &["corners", "junctions"],
+        ),
     ];
 
     for (slug, item_id, sequences) in expected {

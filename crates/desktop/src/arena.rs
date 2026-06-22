@@ -14,8 +14,8 @@ use std::path::Path;
 
 use foray_core::replay::Replay;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
 use std::collections::HashSet;
+use tauri::{AppHandle, Emitter};
 
 use test_cabinet_core::match_play::{
     ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, MatchSummary, ResolvedController,
@@ -196,7 +196,9 @@ pub async fn list_adversarial_controllers(
     // Merge the case's pushed controllers from the backend (when one is
     // configured), skipping any already present as a local run.
     if let Some(url) = config::backend_url()
-        && let Ok(pushed) = HttpBackendClient::new(url).list_adversarial_controllers(&slug).await
+        && let Ok(pushed) = HttpBackendClient::new(url)
+            .list_adversarial_controllers(&slug)
+            .await
     {
         let known: HashSet<String> = controllers.iter().map(|c| c.id.clone()).collect();
         for controller in pushed {

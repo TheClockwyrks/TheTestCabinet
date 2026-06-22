@@ -695,10 +695,7 @@ impl DefinitionStore {
     /// Adversarial runs upload this at push so a pushed implementation can be
     /// resolved and pitted in the arena from any host.
     pub fn run_controller_path(&self, run_id: &str) -> PathBuf {
-        self.root
-            .join("runs")
-            .join(run_id)
-            .join("controller.wasm")
+        self.root.join("runs").join(run_id).join("controller.wasm")
     }
 
     /// Persist a run's controller wasm module. Keyed by the run id a push carries,
@@ -727,8 +724,9 @@ impl DefinitionStore {
             return Err(BackendError::BadRequest("invalid run id".to_string()));
         }
         let path = self.run_controller_path(run_id);
-        std::fs::read(&path)
-            .map_err(|_| BackendError::NotFound(format!("controller for run `{run_id}` not stored")))
+        std::fs::read(&path).map_err(|_| {
+            BackendError::NotFound(format!("controller for run `{run_id}` not stored"))
+        })
     }
 
     /// Where a tournament's per-match replays live:

@@ -67,9 +67,8 @@ pub fn load_token() -> Option<String> {
 
 /// The stored bearer token, or a clear "log in first" error.
 pub fn require_token() -> Result<String> {
-    load_token().context(
-        "not logged in — run `tcab login --username <name>` (or `tcab register`) first",
-    )
+    load_token()
+        .context("not logged in — run `tcab login --username <name>` (or `tcab register`) first")
 }
 
 /// Persist the credentials, creating the config directory as needed.

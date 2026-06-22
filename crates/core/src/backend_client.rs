@@ -804,7 +804,10 @@ impl BackendClient for HttpBackendClient {
 
     async fn list_adversarial_controllers(&self, slug: &str) -> Result<Vec<ControllerRef>> {
         let body: ControllersBody = self
-            .get_json(&format!("/adversarial/controllers?testCase={}", encode(slug)))
+            .get_json(&format!(
+                "/adversarial/controllers?testCase={}",
+                encode(slug)
+            ))
             .await?;
         Ok(body.controllers)
     }

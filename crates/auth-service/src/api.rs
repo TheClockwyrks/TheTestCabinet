@@ -109,7 +109,10 @@ async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<AuthnResponse>> {
-    let account = state.db.find_user_by_username(request.username.trim()).await?;
+    let account = state
+        .db
+        .find_user_by_username(request.username.trim())
+        .await?;
     let Some(account) = account else {
         return Err(ApiError::unauthorized("invalid username or password"));
     };
@@ -175,7 +178,9 @@ fn account_of(account: &user::Model) -> Account {
 /// non-empty bearer credential.
 fn bearer(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(http::header::AUTHORIZATION)?.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ").or_else(|| value.strip_prefix("bearer "))?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))?;
     let token = token.trim();
     (!token.is_empty()).then_some(token)
 }
@@ -185,7 +190,9 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
 fn now_rfc3339() -> String {
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
-    OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_default()
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -4,8 +4,8 @@
 //! bearer tokens are 256 bits of OS randomness, returned to the client once and
 //! stored only as their SHA-256 hash, so a leaked database cannot authenticate.
 
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 
