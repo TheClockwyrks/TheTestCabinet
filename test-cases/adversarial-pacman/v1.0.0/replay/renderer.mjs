@@ -4,8 +4,14 @@
 // (the SAME authoritative engine the CLI ran), feeds it the replay's seed +
 // per-tick log via the hand-rolled C ABI (alloc / replay_load / replay_board /
 // replay_step / replay_reset — no wasm-bindgen), steps the engine forward exactly
-// as the CLI did, and draws each reconstructed tick to a <canvas> using the
-// committed sprite sheet. See:
+// as the CLI did, and draws the reconstructed match to a <canvas> using the
+// committed sprite sheet.
+//
+// It does NOT draw one tick per displayed frame: ticks are the simulation's
+// discrete steps, but agents are drawn at INTERPOLATED positions between the two
+// nearest reconstructed ticks, with a walk-cycle animation, so motion reads
+// smoothly instead of teleporting cell to cell. The board (walls, border seam,
+// nests) is pac-man-style AUTOTILED from the static wall set. See:
 //   architecture.md  -> "Browser playback"
 //   assets.md        -> sheet/atlas/palette format & required frames
 //
@@ -74,11 +80,11 @@ const hex = (h) => [
   parseInt(h.slice(5, 7), 16),
 ];
 
-// Load the sheet PNG into an ImageBitmap-backed canvas, plus its atlas + palette.
-// We bake one tinted copy per team by remapping the agent ramp's neutral greys
-// (the indices the generator reserved: body_dark/mid/light/accent) to that team's
-// ramp from palette.json — exactly the "palette swap" assets.md describes, done
-// once at load instead of per draw.
+// Load the sheet PNG into a canvas, plus its atlas + palette. We bake one tinted
+// copy per team by remapping the agent ramp's neutral greys (body_dark/mid/light/
+// accent) to that team's ramp from palette.json — the "palette swap" assets.md
+// describes, done once at load instead of per draw. The sheet is plain RGBA; the
+// swap matches by colour value, so it does not depend on an indexed palette.
 export async function loadSheet(sheetUrl, atlas, palette) {
   const img = await fetch(sheetUrl)
     .then((r) => r.blob())
@@ -92,7 +98,7 @@ export async function loadSheet(sheetUrl, atlas, palette) {
   bctx.drawImage(img, 0, 0);
   const baseData = bctx.getImageData(0, 0, img.width, img.height);
 
-  // The neutral base ramp the generator baked into the PNG (see gen-sheet.mjs:
+  // The neutral base ramp the packer bakes into the sheet (see gen-sheet.mjs:
   // body_dark #3a3a3a, body_mid #6a6a6a, body_light #9a9a9a, accent #cccccc).
   const NEUTRAL = {
     body_dark: hex("#3a3a3a"),
@@ -137,15 +143,15 @@ export async function loadSheet(sheetUrl, atlas, palette) {
 
 const CELL = 16;
 
-// Pick a facing for an agent from its (dx,dy) since the last frame. Decorative
-// only (rules are direction-agnostic); defaults to "s" when stationary.
-function facing(dx, dy) {
-  if (dx > 0) return "e";
-  if (dx < 0) return "w";
-  if (dy > 0) return "s";
-  if (dy < 0) return "n";
-  return "s";
+// Pick a facing for an agent from its (dx,dy). Decorative only (rules are
+// direction-agnostic); falls back to the caller's previous facing when stationary.
+function facing(dx, dy, prev) {
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "e" : "w";
+  if (dy !== 0) return dy > 0 ? "s" : "n";
+  return prev || "s";
 }
+
+const lerp = (a, b, t) => a + (b - a) * t;
 
 export class Renderer {
   constructor(canvas, sheet, board, scale = 2) {
@@ -153,91 +159,158 @@ export class Renderer {
     this.ctx = canvas.getContext("2d");
     this.ctx.imageSmoothingEnabled = false;
     this.sheet = sheet;
+    this.atlas = sheet.atlas;
     this.board = board;
     this.scale = scale;
-    this.prev = new Map(); // agent "team:id" -> {x,y} for facing
-    canvas.width = board.width * CELL * scale;
-    canvas.height = board.height * CELL * scale;
+    this.cellPx = CELL * scale;
+    this.prev = new Map(); // agent "team:id" -> last facing, for stationary frames
+    canvas.width = board.width * this.cellPx;
+    canvas.height = board.height * this.cellPx;
 
-    // Precompute fast lookups for the static board.
     this.wallSet = new Set(board.walls.map(([x, y]) => `${x},${y}`));
     this.jellyNodes = board.jelly_nodes || [];
+
+    // The board (floor, autotiled walls, border seam, team nests) is static for
+    // the whole match, so render it once to an offscreen canvas and blit it each
+    // frame; only seeds, jelly and agents are redrawn per frame.
+    this.boardCanvas = this.#renderBoard();
   }
 
-  blit(sheetCanvas, frameName, tx, ty) {
-    const f = this.sheet.atlas.frames[frameName];
-    if (!f) return;
-    const s = CELL * this.scale;
-    this.ctx.drawImage(
-      sheetCanvas,
-      f.x,
-      f.y,
-      f.w,
-      f.h,
-      tx * s,
-      ty * s,
-      s,
-      s,
+  #isWall(x, y) {
+    // Out-of-bounds reads as wall so the perimeter ring connects to itself
+    // instead of growing a cap that faces off the board.
+    if (x < 0 || y < 0 || x >= this.board.width || y >= this.board.height) return true;
+    return this.wallSet.has(`${x},${y}`);
+  }
+
+  // The 4-neighbor autotile bitmask for a wall cell: N=1, E=2, S=4, W=8.
+  #wallMask(x, y) {
+    return (
+      (this.#isWall(x, y - 1) ? 1 : 0) |
+      (this.#isWall(x + 1, y) ? 2 : 0) |
+      (this.#isWall(x, y + 1) ? 4 : 0) |
+      (this.#isWall(x - 1, y) ? 8 : 0)
     );
   }
 
-  // Draw a full frame: tiles, fixtures, then agents.
-  draw(snapshot) {
+  #isBorderFloor(x, y) {
     const b = this.board;
-    const ctx = this.ctx;
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    if (x !== b.border_x - 1 && x !== b.border_x) return false;
+    if (y < 0 || y >= b.height) return false;
+    return !this.wallSet.has(`${x},${y}`);
+  }
 
-    // Tiles: floor / wall / border. Border is the single column at border_x... the
-    // contested strip is the two adjacent columns (border_x-1 .. border_x), but a
-    // single no-man's-land seam reads fine for the dummy.
+  #renderBoard() {
+    const b = this.board;
+    const c = document.createElement("canvas");
+    c.width = this.canvas.width;
+    c.height = this.canvas.height;
+    const prevCtx = this.ctx;
+    this.ctx = c.getContext("2d");
+    this.ctx.imageSmoothingEnabled = false;
+
     for (let y = 0; y < b.height; y++) {
       for (let x = 0; x < b.width; x++) {
-        if (this.wallSet.has(`${x},${y}`)) this.blit(this.sheet.neutral, "wall", x, y);
-        else if (x === b.border_x - 1 || x === b.border_x) this.blit(this.sheet.neutral, "border", x, y);
-        else this.blit(this.sheet.neutral, "floor", x, y);
+        if (this.wallSet.has(`${x},${y}`)) {
+          this.#blitCell(this.sheet.neutral, this.atlas.wall_tiles[this.#wallMask(x, y)], x, y);
+        } else if (this.#isBorderFloor(x, y)) {
+          const top = this.#isBorderFloor(x, y - 1);
+          const bot = this.#isBorderFloor(x, y + 1);
+          const tiles = this.atlas.border_tiles;
+          const name = !top ? tiles.cap_top : !bot ? tiles.cap_bottom : tiles.mid;
+          this.#blitCell(this.sheet.neutral, name, x, y);
+        } else {
+          this.#blitCell(this.sheet.neutral, "floor", x, y);
+        }
       }
     }
+    // Team nests, tinted, are part of the static board.
+    this.#blitCell(this.sheet.red, "nest", b.red_nest[0], b.red_nest[1]);
+    this.#blitCell(this.sheet.blue, "nest", b.blue_nest[0], b.blue_nest[1]);
 
-    // Nests (tinted per team).
-    this.blit(this.sheet.red, "nest", b.red_nest[0], b.red_nest[1]);
-    this.blit(this.sheet.blue, "nest", b.blue_nest[0], b.blue_nest[1]);
+    this.ctx = prevCtx;
+    return c;
+  }
 
-    // Spent jelly: a node from the static set that is no longer in the active list.
-    const activeJelly = new Set(snapshot.jelly.map(([x, y]) => `${x},${y}`));
-    for (const [x, y] of this.jellyNodes) {
-      if (!activeJelly.has(`${x},${y}`)) this.blit(this.sheet.neutral, "jelly_spent", x, y);
+  // Blit a named frame at a pixel position (already scaled).
+  #blitPx(sheetCanvas, frameName, px, py) {
+    const f = this.atlas.frames[frameName];
+    if (!f) return;
+    const s = this.cellPx;
+    this.ctx.drawImage(sheetCanvas, f.x, f.y, f.w, f.h, px, py, s, s);
+  }
+
+  // Blit a named frame at a cell coordinate.
+  #blitCell(sheetCanvas, frameName, cx, cy) {
+    this.#blitPx(sheetCanvas, frameName, cx * this.cellPx, cy * this.cellPx);
+  }
+
+  // Resolve the frame for a walking/standing agent. `phase` 0..1 is the progress
+  // across the current cell; a moving agent cycles its walk anim by phase, a
+  // stationary one shows the rest pose (frame 0).
+  #agentFrame(role, laden, face, moving, phase) {
+    const key = role === "soldier" ? `soldier_walk_${face}` : laden ? `raider_laden_walk_${face}` : `raider_walk_${face}`;
+    const anim = this.atlas.anims && this.atlas.anims[key];
+    if (!anim || !anim.frames.length) {
+      // Fallback if walk anims are absent: a single static frame name.
+      return role === "soldier" ? `soldier_${face}_0` : laden ? `raider_laden_${face}_0` : `raider_${face}_0`;
     }
-    // Active jelly (shared, not tinted).
-    for (const [x, y] of snapshot.jelly) this.blit(this.sheet.neutral, "jelly_active", x, y);
+    const idx = moving ? Math.floor(phase * anim.frames.length) % anim.frames.length : 0;
+    return anim.frames[idx];
+  }
 
-    // Seeds (shared gold, not tinted).
-    for (const [x, y] of snapshot.seeds) this.blit(this.sheet.neutral, "seed", x, y);
+  // Draw one displayed frame: the static board, then the dynamic fixtures and the
+  // agents interpolated between snapshot `a` (tick i) and `b` (tick i+1) by `frac`.
+  // `b` may equal `a` at the final tick (frac is then 0).
+  draw(a, b, frac = 0) {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.drawImage(this.boardCanvas, 0, 0);
 
-    // Agents on top, tinted by team. role is "soldier" | "raider"; a laden raider
-    // (carrying > 0) uses the heavy frame — the carry-weight tell.
-    for (const a of snapshot.agents) {
-      const key = `${a.team}:${a.id}`;
-      const prev = this.prev.get(key) || { x: a.x, y: a.y };
-      const face = facing(a.x - prev.x, a.y - prev.y);
-      this.prev.set(key, { x: a.x, y: a.y });
+    // Spent jelly: a static node no longer in the active list. Active jelly and
+    // seeds come straight from the current tick (they pop in/out, not move).
+    const activeJelly = new Set(a.jelly.map(([x, y]) => `${x},${y}`));
+    for (const [x, y] of this.jellyNodes) {
+      if (!activeJelly.has(`${x},${y}`)) this.#blitCell(this.sheet.neutral, "jelly_spent", x, y);
+    }
+    for (const [x, y] of a.jelly) this.#blitCell(this.sheet.neutral, "jelly_active", x, y);
+    for (const [x, y] of a.seeds) this.#blitCell(this.sheet.neutral, "seed", x, y);
 
-      let frame;
-      if (a.role === "soldier") frame = `soldier_${face}`;
-      else if (a.carrying > 0) frame = `raider_laden_${face}`;
-      else frame = `raider_${face}`;
+    // Agents, interpolated and tinted by team. Match this tick's agent to the
+    // next tick's by team:id; lerp the position, animate the walk by cell
+    // progress. A respawn after a tag teleports across the board — detected as a
+    // manhattan jump > 1 — so snap to the current cell instead of sliding.
+    const nextById = new Map();
+    if (b && b !== a) for (const n of b.agents) nextById.set(`${n.team}:${n.id}`, n);
 
-      const tinted = a.team === "red" ? this.sheet.red : this.sheet.blue;
-      this.blit(tinted, frame, a.x, a.y);
+    for (const ag of a.agents) {
+      const id = `${ag.team}:${ag.id}`;
+      const nxt = nextById.get(id);
+      const teleport = nxt && Math.abs(nxt.x - ag.x) + Math.abs(nxt.y - ag.y) > 1;
+      const moving = !!nxt && !teleport && (nxt.x !== ag.x || nxt.y !== ag.y);
+
+      const px = (teleport || !nxt ? ag.x : lerp(ag.x, nxt.x, frac)) * this.cellPx;
+      const py = (teleport || !nxt ? ag.y : lerp(ag.y, nxt.y, frac)) * this.cellPx;
+
+      const face = moving ? facing(nxt.x - ag.x, nxt.y - ag.y, this.prev.get(id)) : this.prev.get(id) || "s";
+      if (moving) this.prev.set(id, face);
+
+      const laden = ag.carrying > 0;
+      const frame = this.#agentFrame(ag.role, laden, face, moving, frac);
+      const tinted = ag.team === "red" ? this.sheet.red : this.sheet.blue;
+      this.#blitPx(tinted, frame, px, py);
 
       // Immune overlay (jelly active) — additive glint over the agent.
-      if (a.immune_ticks > 0) {
+      if (ag.immune_ticks > 0) {
         ctx.globalCompositeOperation = "lighter";
-        this.blit(this.sheet.neutral, "immune_glint", a.x, a.y);
+        this.#blitPx(this.sheet.neutral, "immune_glint", px, py);
         ctx.globalCompositeOperation = "source-over";
       }
     }
   }
 
+  // Clear remembered facings when playback jumps (a scrub) so a discontinuity
+  // doesn't carry a stale direction across it.
   resetFacing() {
     this.prev.clear();
   }

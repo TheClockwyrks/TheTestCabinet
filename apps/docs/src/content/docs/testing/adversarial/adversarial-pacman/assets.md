@@ -29,53 +29,74 @@ The assets live with the case, beside the renderer:
 ```
 test-cases/adversarial-pacman/v1.0.0/replay/
   index.html          # the [replay] renderer entry
+  renderer.mjs        # canvas drawing: tick interpolation, walk cycles, wall autotiling
   assets/
-    sheet.png         # the packed sprite sheet (indexed-color PNG)
-    sheet.json        # the atlas: named frame -> { x, y, w, h }
+    gen-sheet.mjs     # the packer: composes source art (+ placeholders) -> sheet.png/json
+    sheet.png         # the packed sprite sheet (RGBA PNG)
+    sheet.json        # the atlas: frames + anims + wall_tiles + border_tiles
     palette.json      # named color slots + per-team ramps (see below)
+    source/           # committed finished per-asset art the packer composes in
 ```
 
-- **`sheet.png`** — one PNG, cells on a 16×16 grid, power-of-two canvas
-  (e.g. `256×256`) with frames packed top-left. **Indexed color** so the palette
-  swap is a colour-table operation.
-- **`sheet.json`** — the atlas. Each named frame maps to a pixel rectangle:
+- **`sheet.png`** — one PNG, cells on a 16×16 grid, frames packed top-left. Plain
+  **RGBA** (color type 6): the renderer's per-team recolour matches the neutral
+  ramp by **colour value** (see [Palette & recolour](#palette--recolour)), so the
+  sheet does *not* need to be indexed-color.
+- **`sheet.json`** — the atlas. Named frames map to pixel rectangles, plus the
+  **animations** (walk cycles the renderer plays as an agent crosses a tile) and
+  the **autotile maps** the renderer selects board tiles from:
 
   ```jsonc
   {
     "cell": 16,
     "frames": {
-      "soldier_n": { "x": 0,  "y": 0,  "w": 16, "h": 16 },
-      "soldier_e": { "x": 16, "y": 0,  "w": 16, "h": 16 },
-      "raider_e":  { "x": 0,  "y": 16, "w": 16, "h": 16 },
-      "raider_laden_e": { "x": 16, "y": 16, "w": 16, "h": 16 },
-      "seed":      { "x": 0,  "y": 96, "w": 16, "h": 16 },
-      "jelly_active": { "x": 16, "y": 96, "w": 16, "h": 16 }
+      "soldier_s_0": { "x": 0,  "y": 0,  "w": 16, "h": 16 },  // facing-major walk frames
+      "raider_e_2":  { "x": 96, "y": 16, "w": 16, "h": 16 },
+      "raider_laden_e_2": { "x": 96, "y": 32, "w": 16, "h": 16 },
+      "seed":        { "x": 16, "y": 48, "w": 16, "h": 16 },
+      "wall_5":      { "x": 0,  "y": 80, "w": 16, "h": 16 },   // bitmask-keyed wall tile
+      "floor":      { "x": 48, "y": 80, "w": 16, "h": 16 }
       // ...
-    }
+    },
+    "anims": {
+      // one ordered walk cycle per role+facing; the renderer ties the phase to
+      // motion (a frame per quarter-cell) and falls back to fps when free-running.
+      "soldier_walk_s": { "frames": ["soldier_s_0","soldier_s_1","soldier_s_2","soldier_s_3"], "fps": 8 },
+      "raider_walk_s":  { "frames": ["raider_s_0", "..."], "fps": 8 },
+      "raider_laden_walk_s": { "frames": ["raider_laden_s_0", "..."], "fps": 6 }
+      // ... + _n / _w / _e for each
+    },
+    "wall_tiles":   { "0": "wall_0", "5": "wall_5", "...": "...", "15": "wall_15" }, // N=1,E=2,S=4,W=8
+    "border_tiles": { "cap_top": "border_cap_top", "mid": "border_mid", "cap_bottom": "border_cap_bottom" }
   }
   ```
 
 ## Required frames
 
-The minimum set the renderer needs to draw a match. Team colour comes from the
-palette swap, so each frame below is authored **once** (in a neutral base ramp)
-and tinted Red or Blue at draw time — they are *not* duplicated per team.
+The set the renderer needs to draw a match. Team colour comes from the palette
+swap, so each agent/nest frame is authored **once** (in a neutral base ramp) and
+tinted Red or Blue at draw time — never duplicated per team. The moving casts
+(soldier, raider) are **walk cycles**: four frames per facing, named
+`<role>_<facing>_<step>` and grouped into the atlas's `anims`, which the renderer
+cycles as the agent crosses a tile so motion reads smoothly between ticks.
 
 | Group | Frames | Notes |
 | --- | --- | --- |
-| **Soldier** (defender) | `soldier_n/s/e/w` | Mandibled, angular silhouette. 4 facings. |
-| **Raider** (forager, empty) | `raider_n/s/e/w` | Lighter, leaner silhouette. 4 facings. |
-| **Raider, laden** | `raider_laden_n/s/e/w` | Visibly carrying a seed; reads as "slow & heavy" — the [carry-weight](/testing/adversarial/adversarial-pacman/overview/#carry-weight--the-signature-mechanic) tell. |
+| **Soldier** (defender) | `soldier_{s,n,w,e}_{0..3}` (16) | Mandibled, angular silhouette; a 4-step walk cycle per facing → `anims.soldier_walk_{s,n,w,e}`. |
+| **Raider** (forager, empty) | `raider_{s,n,w,e}_{0..3}` (16) | Lighter, leaner silhouette; 4-step walk cycle per facing → `anims.raider_walk_*`. |
+| **Raider, laden** | `raider_laden_{s,n,w,e}_{0..3}` (16) | The same cycles carrying a seed — slower, heavier: the [carry-weight](/testing/adversarial/adversarial-pacman/overview/#carry-weight--the-signature-mechanic) tell → `anims.raider_laden_walk_*`. |
 | **Immune raider** | overlay `immune_glint` | A small additive overlay drawn on any agent with `immune_ticks > 0` (jelly active). |
-| **Seed cache** | `seed`, optional `seed_small/large` | The scorable resource; size frames let big caches read at a glance. |
+| **Seed cache** | `seed` | The scorable resource. |
 | **Royal jelly** | `jelly_active`, `jelly_spent` | Active = glowing node; spent = dimmed husk after it is eaten. |
-| **Tiles** | `wall`, `floor`, `border` | Soil wall, dug-tunnel floor, no-man's-land border strip. |
+| **Maze walls** | `wall_{0..15}` | A 4-neighbor **autotile** set; the frame index is the N=1/E=2/S=4/W=8 connection bitmask, mapped in `wall_tiles`. The renderer picks each board cell's tile from its wall neighbors, so walls render as a connected pac-man-style maze. |
+| **Boundary seam** | `border_{cap_top,mid,cap_bottom}` | The no-man's-land divider down the middle, in `border_tiles`; capped top/bottom, tileable middle. |
+| **Floor** | `floor` | Dug-tunnel ground the maze sits on. |
 | **Nest** | `nest` | One frame, tinted per team, marking each spawn. |
-| **FX (optional)** | `tag_puff`, `bank_spark` | Short, renderer-driven effects on tag and on banking; nice-to-have, not required for a correct replay. |
 
-Facing is decorative — the rules are direction-agnostic — so a first cut may ship
-a **single facing** per agent and add the other three later without any contract
-change.
+The agent walk cycles and the wall/boundary/floor tiles are produced by their own
+asset-generation cases (next section); facing is still decorative (the rules are
+direction-agnostic), and the renderer falls back to a single static frame name if
+a walk anim is ever absent, so the contract tolerates a partial set.
 
 ## Palette & recolour
 
@@ -96,42 +117,54 @@ them, so the two colonies are one art set rendered twice:
 }
 ```
 
-At draw time the renderer maps the indexed sheet's agent colours through the
-chosen team's ramp; **seeds, jelly, and tiles use the shared ramp** and are not
-tinted. The board reads as **earthy soil + dug tunnels**, with the two colonies
+At draw time the renderer (`renderer.mjs`, `loadSheet`) bakes one tinted copy of
+the sheet per team by **matching the four neutral grey ramp values by colour** and
+rewriting them to that team's ramp — so the swap needs no indexed palette, just an
+RGBA sheet. **Seeds, jelly, and the soil tiles use the shared ramp** and are not
+tinted: they deliberately avoid the four neutral greys, so the value-match leaves
+them untouched. The board reads as **earthy soil + dug tunnels**, with the two
+colonies
 the only saturated colour — so attacker/defender allegiance is legible at a
 glance, and a laden raider's carried seed (`carried_seed` / shared `seed` gold)
 pops against either colony.
 
 ## Generation & review
 
-The assets are **generated artefacts committed to the case**, produced once
-against this spec and then regenerated only when the spec changes. The generator
-is an implementation choice (a pixel-art tool, or an image model prompted with
-this art bible) — what matters is that the output conforms to the
-[frame list](#required-frames), the 16×16 grid, the indexed palette, and the
-[atlas format](#files--layout), so the renderer can consume it unchanged. Because
-the sheet is small and committed, a reviewer can eyeball `sheet.png` directly, and
-a regeneration shows up as an ordinary diff.
+The finished art is **itself produced by The Test Cabinet**: each piece of the
+sheet is the output of an [asset-generation](/testing/asset-generation/overview/)
+case drawn against its own brief —
+
+| Asset | Case |
+| --- | --- |
+| Nest | `foray-nest` (single sprite) |
+| Seed cache | `foray-seed` (single sprite) |
+| Royal jelly (active + spent) | `foray-jelly` (2-frame sheet) |
+| Soldier walk cycles | `foray-soldier` (16-frame sheet) |
+| Raider walk cycles, empty + laden | `foray-raider` (32-frame sheet) |
+| Maze wall autotile + boundary + floor | `foray-walls` (20-frame sheet) |
+
+A run's **regenerated** frames are committed under `replay/assets/source/` (named
+for the atlas frame they fill — see `source/README.md`), and a reviewer can
+eyeball them or the packed `sheet.png` directly; a regeneration is an ordinary
+diff.
 
 ## The generation pipeline
 
-The v1 assets are produced by a committed Node generator,
-`replay/assets/gen-sheet.mjs`, run once with `node gen-sheet.mjs` from the
-`replay/assets/` directory. It writes exactly the files in
-[Files & layout](#files--layout) — the indexed-color `sheet.png` on the 16×16
-grid, the `sheet.json` atlas, and it is kept in sync with `palette.json` — so the
-renderer consumes them unchanged. Re-run it only when the spec or palette changes;
-`sheet.png`/`sheet.json` are committed artefacts and a regeneration shows up as an
-ordinary diff.
+A committed Node packer, `replay/assets/gen-sheet.mjs`, **composes** the sheet —
+run `node gen-sheet.mjs` from `replay/assets/`. For every frame in the
+[frame list](#required-frames) it blits the finished art from `source/<name>.png`
+when present and otherwise draws a structured **placeholder** glyph, then writes
+the RGBA `sheet.png` and the `sheet.json` atlas (frames + `anims` + `wall_tiles` +
+`border_tiles`), kept in sync with `palette.json`. So finished and
+not-yet-generated frames coexist in one committed sheet the renderer consumes
+unchanged; re-run the packer whenever `source/`, the spec, or the palette changes.
 
-:::note[The shipped sheet is a dummy placeholder]
-The committed `sheet.png` is a **valid but placeholder** sheet: each frame is a
-simple structured glyph (the agent frames drawn in the recolourable slot indices
-`1..4` so the per-team palette swap still lights them Red/Blue, the seeds/jelly/
-tiles in the shared ramp). It conforms to the full frame list, the 16×16 grid, the
-power-of-two canvas, and the indexed palette, so the renderer draws a correct,
-legible match against it today. The **art lead replaces it later** with finished
-pixel art — drop-in, since any sheet that satisfies this art bible and keeps the
-`sheet.json` atlas in agreement works without a renderer change.
+:::note[Some frames are still placeholders]
+The committed `sheet.png` mixes finished art (the nest, seed, and jelly today)
+with **placeholder** glyphs for the frames whose case has not been generated yet
+(the soldier/raider walk cycles and the wall tileset). Each placeholder still
+conforms to the frame list, grid, and palette — so the renderer draws a correct,
+legible, fully-animated match against it today — and is replaced drop-in by
+dropping the generated frames into `source/` and re-running the packer, with no
+renderer change.
 :::

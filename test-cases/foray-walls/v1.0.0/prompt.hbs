@@ -1,0 +1,60 @@
+Draw the **Foray maze wall tileset**, a 20-frame **sprite sheet** of pac-man-style
+soil-tunnel walls, using only the drawing tool.
+
+*Foray* is a top-down ant-colony raiding game played on a tile-locked maze of dug
+soil tunnels. You are drawing the **walls** of that maze (the renderer picks the
+right wall tile for each board cell from its neighbors — an autotile), plus the
+central territory boundary seam and the floor. These are **tiles, not sprites**:
+each one fills its whole 16×16 cell, edge to edge, to butt seamlessly against its
+neighbors.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
+is the sole channel: you build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue — recorded to a per-frame action log — are the **authoritative output that
+is scored**, not the pixels on disk. An image produced any other way (writing a
+PNG directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations count.
+
+Each frame is its **own separate 16×16 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-rect --frame 5 --x 5 --y 0 --w 6 --h 16 --color "#3a2a1c"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes all twenty tiles — the 16-piece wall autotile keyed by
+a N/E/S/W connection bitmask (the frame index), the boundary seam, and the
+floor — the shared earth palette, and how to work the tool. Run `draw-sheet
+--help` for the exact operation contract.
+
+## What to deliver
+
+Build the tileset up operation by operation until each `frames/<index>.png`
+matches the brief: a consistent 16-piece autotile of rounded, raised soil-tunnel
+walls (frames 0–15, the index being the connection bitmask) whose connected edges
+line up seamlessly, plus the three-piece central boundary seam (16–18) and the
+seamless dug floor (19), all in the shared earth palette. Settle one wall
+cross-section and reuse its exact thickness and rim in every tile so they tile
+without seams. When you are satisfied, stop: the recorded per-frame action logs
+are your finished submission.

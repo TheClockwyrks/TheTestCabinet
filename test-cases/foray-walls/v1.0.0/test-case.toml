@@ -1,0 +1,224 @@
+name = "Foray Maze Walls"
+difficulty = "hard"
+tags = ["asset-generation", "2d", "sprite-sheet", "tileset"]
+summary = """
+Draw the Foray maze wall tileset: pac-man-style rounded soil-tunnel walls for a \
+top-down ant-colony raiding game, as a twenty-frame 16x16 sprite sheet — the \
+sixteen 4-neighbor autotile pieces plus the territory-boundary seam and floor, \
+each a seamless edge-to-edge tile, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 5400
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 16x16 canvas (a separate file). These are TILES: every
+# frame fills the whole cell edge-to-edge and butts seamlessly against its
+# neighbors — not a centered sprite with margin. Fixing the size keeps runs
+# comparable and the tiles aligned to the board's 16-px grid.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — twenty separate 16x16 tiles.
+#   0-15  the 4-neighbor wall AUTOTILE set. The frame INDEX is the connection
+#         bitmask: N=1, E=2, S=4, W=8 (a set bit = the wall continues to that
+#         edge and must run flush to it so it merges with the neighbor there;
+#         an unset bit = that side is an open, rounded outer wall face). So
+#         frame 5 (N+S) is the vertical straight, 10 (E+W) the horizontal,
+#         3/6/12/9 the four elbows, 7/11/13/14 the four T-junctions, 15 the
+#         cross/interior, 0 the isolated pillar.
+#   16-18 the territory-BOUNDARY seam down the middle of the board (cap-top,
+#         middle, cap-bottom), tileable vertically.
+#   19    the dug-tunnel FLOOR the maze sits on, seamless when tiled.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
+[[sheet.frame]]
+index = 16
+
+[[sheet.frame]]
+index = 17
+
+[[sheet.frame]]
+index = 18
+
+[[sheet.frame]]
+index = 19
+
+# Review groupings the UI flips through. A tileset is not really "animated", but
+# rotating the four elbows / four T's makes inconsistencies obvious, and the seam
+# plays top->middle->bottom.
+[[sheet.sequence]]
+slug = "corners"
+name = "Corners (rotating)"
+frames = [3, 6, 12, 9]
+fps = 2
+
+[[sheet.sequence]]
+slug = "junctions"
+name = "T-junctions (rotating)"
+frames = [7, 14, 13, 11]
+fps = 2
+
+[[sheet.sequence]]
+slug = "straights"
+name = "Straights & cross"
+frames = [5, 10, 15]
+fps = 2
+
+[[sheet.sequence]]
+slug = "boundary"
+name = "Boundary seam"
+frames = [16, 17, 18]
+fps = 2
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated tileset matches the Foray maze — rounded, \
+pac-man-style raised soil-tunnel walls (not flat blocks); a correct, consistent \
+16-piece autotile set whose connected edges merge seamlessly into unbroken \
+corridors; a neutral central boundary seam; and a seamless floor, all in the \
+shared earth palette."""
+
+[[review_item]]
+id = "autotile-continuity"
+title = "Seamless autotile continuity"
+text = """
+The sixteen wall tiles form a correct 4-neighbor set: each connected edge (per \
+the frame's N/E/S/W bitmask) runs flush to the cell border at the SAME wall \
+thickness and position in every tile, so any two tiles whose facing edges both \
+connect butt together into an unbroken corridor with no seam, jog, or gap. The \
+isolated pillar (0), straights (5, 10), elbows (3, 6, 12, 9), T-junctions \
+(7, 11, 13, 14) and cross (15) each match their connection signature."""
+frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "maze-look"
+title = "Rounded pac-man-style walls"
+text = """
+The walls read as raised, rounded tunnel walls in the classic maze style — a \
+lighter beveled rim along each open (floor-facing) edge and rounded outer \
+corners give them depth, not flat featureless blocks. Open faces and corners are \
+clearly shaped against the floor."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "corners-junctions"
+title = "Consistent corners & junctions"
+text = """
+The four elbows are clean rotations of one corner piece and the four T-junctions \
+rotations of one T, so corridors turn and branch smoothly; played as the rotating \
+sequences no piece is lopsided or breaks the shared rim/thickness."""
+sequences = ["corners", "junctions"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "boundary-seam"
+title = "Boundary seam reads as a divider"
+text = """
+The three seam tiles (16–18) read as a neutral central territory line dividing \
+the two colonies' halves — visibly distinct from the soil walls — and stack \
+vertically into one continuous marker with rounded top and bottom caps and a \
+tileable middle."""
+sequences = ["boundary"]
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Shared earth palette"
+text = """
+Uses only the shared soil/earth palette from the brief (wall fill, shadow, rim \
+highlight, floor, seam, outline) — never recolored, no red or blue, no \
+out-of-palette colors or stray pixels. The walls are warm soil, distinct from the \
+darker dug floor."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "tileability"
+title = "Tiles fill the cell"
+text = """
+Every tile fills its full 16×16 cell edge-to-edge — these are tiles, not centered \
+sprites with margin — so walls butt seamlessly against neighbors and the floor \
+repeats without a visible grid. No tile is shrunk into the middle of its frame or \
+leaves transparent gutters at the edges where it should connect."""
+frames = [5, 10, 15, 19]
+weight = 1
+domain = "fidelity"

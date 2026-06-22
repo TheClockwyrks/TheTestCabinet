@@ -1,14 +1,14 @@
 name = "Foray Soldier"
-difficulty = "medium"
+difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
 Draw the Foray soldier: the heavy, mandibled defender caste of a top-down \
-ant-colony raiding game, as a four-frame 16x16 sprite sheet — one facing per \
-frame, drawn in a neutral recolorable ramp, produced one drawing operation at a \
-time."""
+ant-colony raiding game, as a sixteen-frame 16x16 sprite sheet — a four-step \
+walk cycle in each of four facings, drawn in a neutral recolorable ramp, \
+produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_seconds = 3600
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
@@ -31,9 +31,11 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 16x16 file, one per facing — and
-# a single sequence that turns the soldier through all four so a reviewer can
-# see the facings side by side.
+# The frames the model draws — sixteen separate 16x16 files: a four-step WALK
+# CYCLE in each of the four facings, laid out facing-major. Each facing's four
+# frames are a named sequence the review UI plays as a walk; the renderer plays
+# the matching cycle as the soldier crosses a tile.
+#   down:  0,1,2,3   up: 4,5,6,7   left: 8,9,10,11   right: 12,13,14,15
 [sheet]
 
 [[sheet.frame]]
@@ -48,11 +50,65 @@ index = 2
 [[sheet.frame]]
 index = 3
 
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
 [[sheet.sequence]]
-slug = "facings"
-name = "Facings"
-frames = [0, 2, 1, 3]
-fps = 2
+slug = "walk-down"
+name = "Walk — down"
+frames = [0, 1, 2, 3]
+fps = 8
+
+[[sheet.sequence]]
+slug = "walk-up"
+name = "Walk — up"
+frames = [4, 5, 6, 7]
+fps = 8
+
+[[sheet.sequence]]
+slug = "walk-left"
+name = "Walk — left"
+frames = [8, 9, 10, 11]
+fps = 8
+
+[[sheet.sequence]]
+slug = "walk-right"
+name = "Walk — right"
+frames = [12, 13, 14, 15]
+fps = 8
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -68,7 +124,8 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Foray soldier — its heavy \
-armored silhouette and forward mandibles, the four readable facings, and the \
+armored mandibled silhouette, the four facings each reading as the same soldier \
+turned that way, a believable scuttling walk cycle in each facing, and the \
 neutral recolorable grey ramp that lets the renderer tint it per colony."""
 
 [[review_item]]
@@ -78,7 +135,19 @@ text = """
 Every frame's ant carries two forward-curving mandibles on a broad, armored \
 head — the soldier's signature, marking it as the fighting caste and setting it \
 apart from the lean raider. The mandibles lead the facing direction."""
-frames = [0, 1, 2, 3]
+frames = [0, 4, 8, 12]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "walk-cycle"
+title = "Walk cycle reads as motion"
+text = """
+Played as a loop, each facing's four frames read as the soldier scuttling — its \
+legs alternate (an insect's tripod gait) and the body bobs slightly along the \
+travel axis between frames, so it walks rather than flickering between four \
+identical poses. The cycle loops cleanly (frame 4 would follow frame 1)."""
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
 weight = 3
 domain = "fidelity"
 
@@ -86,11 +155,12 @@ domain = "fidelity"
 id = "four-facings"
 title = "Four readable facings"
 text = """
-The frames read as the same soldier turned to face four distinct directions — \
-down, up, left, and right — each with its mandibled head leading that direction, \
-not the same blob repeated. Left mirrors right; up mirrors down."""
-sequences = ["facings"]
-weight = 3
+The four sequences read as the same soldier turned to face four distinct \
+directions — down, up, left, and right — each with its mandibled head leading \
+that direction, not the same blob repeated. Left mirrors right; up mirrors \
+down."""
+sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
@@ -119,6 +189,6 @@ title = "Frame framing"
 text = """
 Each ant fills most of its own 16x16 frame, centered with about a pixel of \
 margin, neither tiny in a corner nor clipped at the edge or spilling across the \
-grid into a neighboring frame."""
+grid into a neighboring frame; the small bob across a cycle stays in frame."""
 weight = 1
 domain = "fidelity"

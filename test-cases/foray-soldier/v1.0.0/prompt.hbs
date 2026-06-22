@@ -1,9 +1,10 @@
-Draw the **Foray soldier**, a 4-frame **sprite sheet** of a colony defender,
-using only the drawing tool.
+Draw the **Foray soldier**, a 16-frame animated **sprite sheet** of a colony
+defender, using only the drawing tool.
 
 The soldier is the **defender** in *Foray*, a top-down ant-colony raiding game —
 the heavy, mandibled caste that guards the nest. You are drawing the *defender*,
-seen from directly above, turned to face four directions.
+seen from directly above: a **four-step walk cycle** in each of four facings, so
+it reads as walking when the renderer plays the cycle.
 
 ## How drawing works
 
@@ -40,14 +41,16 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the four facing frames, the form and palette of the
-soldier, and how to work the tool. Run `draw-sheet --help` for the exact
+`specs/brief.md` describes the sixteen frames (a four-step walk cycle in each of
+four facings) and their exact layout, the walk cycle itself, the form and palette
+of the soldier, and how to work the tool. Run `draw-sheet --help` for the exact
 operation contract.
 
 ## What to deliver
 
 Build the soldier sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: a heavy, mandibled ant drawn in neutral
-grey in each of its four 16×16 facing frames — down, up, left, and right. When you
-are satisfied, stop: the recorded per-frame action logs are your finished
-submission.
+grey, animated as a four-step walk cycle in each of its four facings — down (0–3),
+up (4–7), left (8–11), right (12–15) — its legs alternating and body bobbing so
+each facing plays as a walk. When you are satisfied, stop: the recorded per-frame
+action logs are your finished submission.

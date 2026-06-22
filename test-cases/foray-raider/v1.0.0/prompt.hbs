@@ -1,10 +1,12 @@
-Draw the **Foray raider**, an 8-frame **sprite sheet** of a colony forager,
-using only the drawing tool.
+Draw the **Foray raider**, a 32-frame animated **sprite sheet** of a colony
+forager, using only the drawing tool.
 
 The raider is the **forager** in *Foray*, a top-down ant-colony raiding game —
 the lean, fast caste that crosses into enemy ground, grabs a seed, and hauls it
 home. You are drawing the *forager* in two states, empty and laden, seen from
-directly above and turned to face four directions.
+directly above: a **four-step walk cycle** in each of four facings, drawn twice
+(empty, then laden with a seed), so it reads as walking when the renderer plays
+the cycle.
 
 ## How drawing works
 
@@ -41,14 +43,16 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the eight frames (four empty facings, four laden), the
-form and palette of the raider, the carry-weight tell, and how to work the tool.
-Run `draw-sheet --help` for the exact operation contract.
+`specs/brief.md` describes the thirty-two frames (a four-step walk cycle in each
+of four facings, empty then laden) and their exact layout, the walk cycle itself,
+the form and palette of the raider, the carry-weight tell, and how to work the
+tool. Run `draw-sheet --help` for the exact operation contract.
 
 ## What to deliver
 
 Build the raider sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: a lean, mandible-less forager drawn in
-neutral grey — empty in frames 0–3 (down, up, left, right) and visibly laden with
-a gold seed, reading slow and heavy, in frames 4–7. When you are satisfied, stop:
-the recorded per-frame action logs are your finished submission.
+neutral grey, animated as a four-step walk cycle in each facing — empty in
+frames 0–15 and visibly laden with a gold seed, reading slow and heavy, in
+frames 16–31. When you are satisfied, stop: the recorded per-frame action logs
+are your finished submission.

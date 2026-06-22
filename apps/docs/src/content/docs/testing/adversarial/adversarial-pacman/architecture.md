@@ -249,10 +249,19 @@ core changed under the replay and is a bug, not a re-scoring.
 The site does not ship a second rules implementation. The `[replay] renderer`
 named in the [manifest](/testing/adversarial/manifests/) loads **`foray-core`
 compiled to wasm**, feeds it the replay's seed and per-tick log, and steps the
-engine forward exactly as the CLI did — turning each reconstructed tick into a
-frame. A thin JS/canvas layer draws those frames using the
+engine forward exactly as the CLI did, reconstructing every tick up front. A thin
+JS/canvas layer (`replay/renderer.mjs`) draws the match using the
 [pixel-art sprite sheet](/testing/adversarial/adversarial-pacman/assets/); the
-renderer holds **no game rules of its own**, only drawing. Because the engine is
-shared, what a visitor watches on the
-[public site](/components/site/overview/) is the same simulation that decided the
-match, not an approximation of it.
+renderer holds **no game rules of its own**, only drawing.
+
+Ticks are the simulation's discrete steps, but they are **not** drawn one-per-
+displayed-frame: that would teleport agents cell to cell. Instead the renderer
+runs a continuous clock and draws each agent at an **interpolated** position
+between the two nearest reconstructed ticks, cycling its **walk animation** as it
+crosses a tile, so motion reads smoothly. State that genuinely changes at a tick
+boundary (seeds eaten, jelly spent, the score) snaps on that tick; only movement
+is smoothed. The static board is **autotiled** into a connected pac-man-style maze
+from the wall set. None of this is a rule — the interpolation is pure presentation
+over the reconstructed ticks. Because the engine is shared, what a visitor watches
+on the [public site](/components/site/overview/) is the same simulation that
+decided the match, not an approximation of it.

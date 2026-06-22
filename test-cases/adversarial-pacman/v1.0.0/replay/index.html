@@ -99,7 +99,10 @@
     <script type="module">
       import { Engine, loadSheet, Renderer } from "./renderer.mjs";
 
-      const BASE_TPS = 30; // baseline frames-per-second at speed 1×.
+      // Simulation ticks advanced per real second at speed 1×. Deliberately
+      // slow: agents are drawn at INTERPOLATED positions between ticks, so a
+      // modest tick rate reads as smooth motion that is easy to follow, not a blur.
+      const TICKS_PER_SEC = 8;
 
       async function main() {
         const [replay, atlas, palette] = await Promise.all([
@@ -135,26 +138,29 @@
         const tickLabel = document.getElementById("tick-label");
         const resultEl = document.getElementById("result");
 
-        scrub.max = String(frames.length - 1);
+        const lastTick = frames.length - 1;
+        scrub.max = String(lastTick);
 
-        let cursor = 0;
+        // Playback position as a CONTINUOUS tick coordinate: the integer part is
+        // the current tick, the fraction is progress toward the next — what the
+        // renderer interpolates over.
+        let t = 0;
         let playing = false;
-        let acc = 0;
         let last = 0;
 
-        function show(i) {
-          cursor = Math.max(0, Math.min(frames.length - 1, i));
-          const f = frames[cursor];
-          // Facings are derived from frame-to-frame motion; clear when we jump so a
-          // scrub doesn't carry a stale direction across a discontinuity.
-          renderer.resetFacing();
-          renderer.draw(f);
-          redScore.textContent = f.score.red;
-          blueScore.textContent = f.score.blue;
-          tickLabel.textContent = `tick ${f.tick} / ${frames[frames.length - 1].tick}`;
-          scrub.value = String(cursor);
-          if (f.result) {
-            const r = f.result;
+        function render(time) {
+          t = Math.max(0, Math.min(lastTick, time));
+          const i = Math.floor(t);
+          const frac = i < lastTick ? t - i : 0;
+          const a = frames[i];
+          const b = frames[Math.min(i + 1, lastTick)];
+          renderer.draw(a, b, frac);
+          redScore.textContent = a.score.red;
+          blueScore.textContent = a.score.blue;
+          tickLabel.textContent = `tick ${a.tick} / ${frames[lastTick].tick}`;
+          scrub.value = String(i);
+          if (a.result) {
+            const r = a.result;
             const who = r.winner ? r.winner.toUpperCase() : "DRAW";
             resultEl.textContent =
               `${who} · ${r.ended} · red ${r.score.red} – blue ${r.score.blue} · ${r.ticks} ticks`;
@@ -168,10 +174,12 @@
         function setPlaying(on) {
           playing = on;
           playBtn.textContent = on ? "⏸ Pause" : "▶ Play";
-          if (on && cursor >= frames.length - 1) show(0);
           if (on) {
+            if (t >= lastTick) {
+              renderer.resetFacing();
+              t = 0;
+            }
             last = performance.now();
-            acc = 0;
             requestAnimationFrame(loop);
           }
         }
@@ -180,29 +188,29 @@
           if (!playing) return;
           const dt = (now - last) / 1000;
           last = now;
-          acc += dt * BASE_TPS * Number(speedSel.value);
-          while (acc >= 1) {
-            acc -= 1;
-            if (cursor >= frames.length - 1) {
-              setPlaying(false);
-              return;
-            }
-            show(cursor + 1);
+          t += dt * TICKS_PER_SEC * Number(speedSel.value);
+          if (t >= lastTick) {
+            render(lastTick);
+            setPlaying(false);
+            return;
           }
+          render(t);
           requestAnimationFrame(loop);
         }
 
         playBtn.onclick = () => setPlaying(!playing);
         restartBtn.onclick = () => {
           setPlaying(false);
-          show(0);
+          renderer.resetFacing();
+          render(0);
         };
         scrub.oninput = () => {
           setPlaying(false);
-          show(Number(scrub.value));
+          renderer.resetFacing();
+          render(Number(scrub.value));
         };
 
-        show(0);
+        render(0);
       }
 
       main().catch((err) => {

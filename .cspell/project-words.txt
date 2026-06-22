@@ -10,11 +10,17 @@ Galaga
 
 # Spec and gameplay vocabulary.
 autoplay
+autotile
+autotiled
+autotiles
 deadzone
 despawn
 despawns
 letterboxed
 playfield
+tileable
+tileability
+tileset
 travelling
 WASD
 
