@@ -1,0 +1,87 @@
+name = "Foray Nest"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite", "tile"]
+summary = """
+Draw the Foray nest: a colony's home-tile spawn mound in a top-down ant-colony \
+raiding game, as a 16x16 sprite — a centered domed earthwork with a central \
+entrance, drawn in a neutral recolorable ramp, produced one drawing operation at \
+a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 1800
+type = "asset-generation"
+
+# A 16x16 transparent canvas keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call. Run
+# `draw --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Foray nest — a raised domed \
+mound that reads as a colony home from above, its central entrance hole, and the \
+neutral recolorable grey ramp that lets the renderer tint it per colony."""
+
+[[review_item]]
+id = "reads-as-nest"
+title = "Reads as a colony home mound"
+text = """
+The sprite reads as a raised, domed earth-mound seen from above — a colony's home \
+tile — built up in concentric rings (dark outer rim, mid body, lighter raised \
+ring) so it reads as a 3-D mound, not a flat disc or an abstract blob."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "entrance"
+title = "Central entrance"
+text = """
+A clear dark entrance hole sits at the center — the tunnel mouth — ringed by a \
+bright accent rim so the tile reads as occupied and important. The entrance reads \
+as an opening, not a stray dot."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Neutral recolorable palette"
+text = """
+Uses only the neutral grey ramp from the brief (darkest, mid, light, accent) \
+plus the fixed dark entrance/outline — no red, no blue, and no out-of-palette \
+colors or halo of stray pixels — so the renderer's per-colony palette swap can \
+tint it."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The mound is centered and roughly symmetric, filling most of the 16x16 tile with \
+about a pixel of margin, neither tiny in a corner nor clipped at an edge."""
+weight = 1
+domain = "fidelity"

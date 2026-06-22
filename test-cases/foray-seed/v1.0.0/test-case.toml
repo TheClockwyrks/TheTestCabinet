@@ -1,0 +1,86 @@
+name = "Foray Seed Cache"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite", "item"]
+summary = """
+Draw the Foray seed cache: the scorable gold-seed resource of a top-down \
+ant-colony raiding game, as a 16x16 sprite — a centered cluster of rounded \
+golden seeds with a bright glint, in a fixed shared gold palette, produced one \
+drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 1800
+type = "asset-generation"
+
+# A 16x16 transparent canvas keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call. Run
+# `draw --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Foray seed cache — a centered \
+cluster of rounded golden seeds that reads as a valuable little heap, in the \
+fixed shared gold palette (never recolored)."""
+
+[[review_item]]
+id = "reads-as-cache"
+title = "Reads as a cache of seeds"
+text = """
+The sprite reads as a small heap of two or three rounded golden seeds nestled \
+together — a cache, not a single dot or one perfect circle — slightly irregular \
+as a real pile would be, with each seed outlined so the individuals read apart."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "valuable-glint"
+title = "Rounded, glinting gold"
+text = """
+A brighter gold glint sits on top of the seeds so they read as rounded and \
+catch the light, making the cache look valuable and worth raiding — not a flat \
+gold patch."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Shared gold palette"
+text = """
+Uses only the shared gold palette from the brief (seed gold, bright glint, dark \
+outline) — never recolored, no red or blue, no out-of-palette colors or halo of \
+stray pixels."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The cache is centered, filling most of the 16x16 tile with about a pixel of \
+margin, neither tiny in a corner nor clipped at an edge."""
+weight = 1
+domain = "fidelity"

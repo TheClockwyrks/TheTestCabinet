@@ -1,0 +1,124 @@
+name = "Foray Soldier"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+summary = """
+Draw the Foray soldier: the heavy, mandibled defender caste of a top-down \
+ant-colony raiding game, as a four-frame 16x16 sprite sheet — one facing per \
+frame, drawn in a neutral recolorable ramp, produced one drawing operation at a \
+time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 2400
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 16x16 transparent canvas (a separate file). Fixing the
+# frame size keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 16x16 file, one per facing — and
+# a single sequence that turns the soldier through all four so a reviewer can
+# see the facings side by side.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.sequence]]
+slug = "facings"
+name = "Facings"
+frames = [0, 2, 1, 3]
+fps = 2
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Foray soldier — its heavy \
+armored silhouette and forward mandibles, the four readable facings, and the \
+neutral recolorable grey ramp that lets the renderer tint it per colony."""
+
+[[review_item]]
+id = "mandibles"
+title = "Forward mandibles"
+text = """
+Every frame's ant carries two forward-curving mandibles on a broad, armored \
+head — the soldier's signature, marking it as the fighting caste and setting it \
+apart from the lean raider. The mandibles lead the facing direction."""
+frames = [0, 1, 2, 3]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "four-facings"
+title = "Four readable facings"
+text = """
+The frames read as the same soldier turned to face four distinct directions — \
+down, up, left, and right — each with its mandibled head leading that direction, \
+not the same blob repeated. Left mirrors right; up mirrors down."""
+sequences = ["facings"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "heavy-silhouette"
+title = "Heavy armored silhouette"
+text = """
+The body reads as a stout, segmented, angular soldier — bulkier and slower than \
+a forager — with a darker rim, mid body fill, and a lighter leading-edge \
+highlight giving it rounded armor."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Neutral recolorable palette"
+text = """
+Uses only the neutral grey ramp from the brief (darkest, mid, light, accent) \
+plus the fixed dark outline — no red, no blue, and no out-of-palette colors or \
+halo of stray pixels — so the renderer's per-colony palette swap can tint it."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Frame framing"
+text = """
+Each ant fills most of its own 16x16 frame, centered with about a pixel of \
+margin, neither tiny in a corner nor clipped at the edge or spilling across the \
+grid into a neighboring frame."""
+weight = 1
+domain = "fidelity"

@@ -1,0 +1,110 @@
+name = "Foray Royal Jelly"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite-sheet", "item"]
+summary = """
+Draw the Foray royal-jelly node: a shared bonus resource in a top-down \
+ant-colony raiding game, as a two-frame 16x16 sprite sheet — an active glowing \
+green node and the dull spent husk it becomes once eaten, produced one drawing \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 1800
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 16x16 transparent canvas (a separate file). Fixing the
+# frame size keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 16x16 file: frame 0 the active
+# node, frame 1 the spent husk. The sequence plays 0->1 so a reviewer sees the
+# node deplete.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.sequence]]
+slug = "deplete"
+name = "Deplete"
+frames = [0, 1]
+fps = 2
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Foray royal jelly — a luminous \
+green active node with a bright core, and the dull drained husk it becomes when \
+spent, the two reading clearly as before/after of one node in the shared \
+(never-recolored) palette."""
+
+[[review_item]]
+id = "active-glow"
+title = "Luminous active node"
+text = """
+Frame 0 reads as a glowing blob of royal jelly — a rounded, soft green body with \
+a bright pale core lighting it from within, the freshest, most valuable thing on \
+the board. It reads as luminous, not a flat green disc."""
+frames = [0]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "spent-husk"
+title = "Spent husk reads as drained"
+text = """
+Frame 1 reads as the same node drained — the same rounded shape and position in \
+a dull, darker husk color with no bright core and no luminous sheen, obviously \
+the dead leftover of the active node. Played 0→1 it reads as the node depleting."""
+sequences = ["deplete"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Shared jelly palette"
+text = """
+Uses only the shared jelly colors from the brief (active green, bright core, \
+spent husk, dark outline) — never recolored, no red or blue, no out-of-palette \
+colors or stray pixels. The spent frame must not reuse the bright green or white, \
+so the two states read clearly apart."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Frame framing"
+text = """
+Each node is centered and roughly symmetric, filling most of its own 16x16 frame \
+with about a pixel of margin, neither tiny in a corner nor clipped at the edge or \
+spilling across the grid into the neighboring frame."""
+weight = 1
+domain = "fidelity"
