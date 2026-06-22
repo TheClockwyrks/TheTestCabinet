@@ -57,7 +57,17 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 	# controller build can resolve and compile its dependencies at run time.
 	&& chmod -R a+rX /usr/local/rustup /usr/local/cargo \
 	&& mkdir -p /usr/local/cargo/registry \
-	&& chown -R node:node /usr/local/cargo/registry
+	&& chown -R node:node /usr/local/cargo/registry \
+	# The `ENV PATH` above only covers the container's main process and non-login
+	# execs (e.g. the harness's run-time install command). The agent harness runs
+	# its own shell commands through a *login* shell (`bash -lc`), which sources
+	# `/etc/profile`; on Debian that unconditionally re-sets PATH to a fixed
+	# default, dropping `/usr/local/cargo/bin` — so an agent that shells out to
+	# `cargo`/`rustc` to build its controller would not find them. Drop a
+	# profile.d snippet that re-adds cargo's bin dir; profile.d scripts run
+	# *after* `/etc/profile` sets its default PATH, so login shells see `cargo`.
+	&& printf 'export PATH=/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/rust-cargo.sh \
+	&& chmod a+r /etc/profile.d/rust-cargo.sh
 
 # Drop back to the unprivileged run user the base image runs as. The base already
 # sets `WORKDIR /work` and the keep-alive CMD, so nothing else is needed here.
