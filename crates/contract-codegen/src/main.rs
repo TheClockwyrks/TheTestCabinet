@@ -24,7 +24,7 @@ use test_cabinet_core::{
     accounts as acct, match_play as mp, metrics as m, review as rv, run_record as rr,
     test_case as tc, validation as val,
 };
-use test_cabinet_backend::snapshot as snap;
+use test_cabinet_backend::{api as bapi, error as berr, snapshot as snap};
 use test_cabinet_worker::{api as wapi, jobs as wjobs, notify as wnotify};
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -139,6 +139,14 @@ fn main() -> Result<()> {
                 snap::CaseMetadata,
             ],
         },
+        // The backend HTTP API response envelopes (error + catalog/versions).
+        TsModule {
+            file: "backend-api.ts",
+            decls: ts_decls![&cfg;
+                berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
+                bapi::VersionsResponse,
+            ],
+        },
         // The worker HTTP API: job lifecycle, notifications, and the
         // push/review/publish request/response envelopes.
         TsModule {
@@ -198,6 +206,9 @@ fn main() -> Result<()> {
         },
         anon("backend-api/auth-register-request.schema.json", root_schema::<acct::RegisterRequest>()),
         anon("backend-api/auth-login-request.schema.json", root_schema::<acct::LoginRequest>()),
+        anon("backend-api/error.schema.json", root_schema::<berr::ErrorEnvelope>()),
+        anon("backend-api/test-case-catalog.schema.json", root_schema::<bapi::CatalogResponse>()),
+        anon("backend-api/test-case-versions.schema.json", root_schema::<bapi::VersionsResponse>()),
         SchemaDoc {
             rel_path: "backend-api/review.schema.json",
             root: Some("Review"),

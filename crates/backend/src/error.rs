@@ -69,21 +69,25 @@ impl ApiError {
 
 /// The JSON body of an error response: `{ "error": { "code", "message" } }`.
 #[derive(Debug, Serialize)]
-struct ErrorEnvelope {
-    error: ErrorBody,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ErrorEnvelope {
+    pub error: ErrorBody,
 }
 
+/// The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
+/// a human-readable message.
 #[derive(Debug, Serialize)]
-struct ErrorBody {
-    code: &'static str,
-    message: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ErrorBody {
+    pub code: String,
+    pub message: String,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = ErrorEnvelope {
             error: ErrorBody {
-                code: self.code,
+                code: self.code.to_string(),
                 message: self.message,
             },
         };

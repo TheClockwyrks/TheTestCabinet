@@ -395,20 +395,23 @@ fn content_type_for(path: &str) -> &'static str {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CatalogResponse {
-    test_cases: Vec<CatalogCase>,
+    pub test_cases: Vec<CatalogCase>,
 }
 
 #[derive(Serialize)]
-struct CatalogCase {
-    slug: String,
-    versions: Vec<String>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CatalogCase {
+    pub slug: String,
+    pub versions: Vec<String>,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct VersionsResponse {
-    slug: String,
-    versions: Vec<String>,
+    pub slug: String,
+    pub versions: Vec<String>,
 }
 
 #[derive(Serialize)]
