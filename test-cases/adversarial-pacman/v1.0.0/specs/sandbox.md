@@ -12,14 +12,19 @@ The host applies these to **every** call to your `tick` entry, every tick:
 
 | Limit | Shipped value | On exceeding |
 | --- | --- | --- |
-| **Fuel** (wasmtime fuel per tick) | **5,000,000** | disqualifying forfeit |
+| **Fuel** (wasmtime fuel per tick) | **50,000,000** | disqualifying forfeit |
 | **Memory** (linear-memory cap) | **64 MiB** (`67,108,864` bytes) | disqualifying forfeit |
 
 - **Fuel** is a ceiling on the amount of work your controller may do in a single
-  tick. It is generous — a per-tick BFS over the `32 × 16` board (as the reference
-  controllers do) costs a small fraction of it — but it is a **hard** ceiling: a
-  controller that exhausts its fuel on a tick is disqualified for the match, not
-  paused. Do not run unbounded search per tick.
+  tick. It is generous — a per-tick BFS over the `32 × 16` board costs only a few
+  hundred thousand to a few million fuel, and a competent controller that runs
+  several per tick (pathfinding, avoiding a camped defender, assigning roles) peaks
+  around ten million, comfortably under the ceiling — but it is a **hard** ceiling:
+  a controller that exhausts its fuel on a tick is disqualified for the match, not
+  paused. Do not run unbounded search per tick. You can feel out your own
+  per-tick cost: the `foray` CLI prints each controller's peak fuel against the
+  ceiling, and raising `--fuel-per-tick` lets you see how far over budget an
+  over-the-limit controller actually runs.
 - **Memory** caps your module's linear memory. You may keep working state across
   ticks (the instance is reused — see `specs/contract.md`), but the total must stay
   under the cap. Growing memory without bound is a forfeit.

@@ -467,7 +467,7 @@ prompt = \"prompt.hbs\"\n\
 type = \"adversarial\"\n\
 [build]\ninstall = \"cargo fetch\"\nbuild = \"cargo build --release --target wasm32-unknown-unknown\"\nmodule = \"target/wasm32-unknown-unknown/release/controller.wasm\"\n\
 [contract]\nentry = \"tick\"\nworld = \"schemas/world.json\"\naction = \"schemas/action.json\"\n\
-[sandbox]\nfuel_per_tick = 5000000\nmax_memory_bytes = 67108864\n\
+[sandbox]\nfuel_per_tick = 50000000\nmax_memory_bytes = 67108864\n\
 [simulation]\ntimestep_ms = 16\nmax_ticks = 37500\n\
 [match]\nparticipants = 2\nstructure = \"round-robin\"\nrounds = 1\n\
 [replay]\nrenderer = \"replay/index.html\"\n\
@@ -504,7 +504,7 @@ fn adversarial_case_resolves_its_tables() {
     let contract = version.contract.as_ref().expect("contract");
     assert_eq!(contract.entry, "tick");
     let sandbox = version.sandbox.as_ref().expect("sandbox");
-    assert_eq!(sandbox.fuel_per_tick, 5_000_000);
+    assert_eq!(sandbox.fuel_per_tick, 50_000_000);
     assert_eq!(sandbox.max_memory_bytes, 67_108_864);
     let simulation = version.simulation.as_ref().expect("simulation");
     assert_eq!((simulation.timestep_ms, simulation.max_ticks), (16, 37_500));
@@ -538,7 +538,7 @@ const REQUIRED_ADVERSARIAL_TABLES: &[(&str, &str)] = &[
         "[contract] table is required",
     ),
     (
-        "[sandbox]\nfuel_per_tick = 5000000\nmax_memory_bytes = 67108864\n",
+        "[sandbox]\nfuel_per_tick = 50000000\nmax_memory_bytes = 67108864\n",
         "[sandbox] table is required",
     ),
     (

@@ -10,8 +10,11 @@
 //!    a laden raider stalls between steps as its [`move_speed`](crate::state::Agent::move_speed)
 //!    drops with load. A move into a wall or off the board (or any move for an
 //!    agent that has not banked a full step) clamps to `Stop` — never a forfeit.
-//!    Two agents may never *swap* tiles in one tick (no passing through another
-//!    agent); such a move is cancelled and both hold.
+//!    The only tile-*swap* forbidden is the tag-dodging one — a soldier and an
+//!    enemy raider trading places in one tick, which would let the raider pass
+//!    *through* the defender untagged; that swap is cancelled and both hold. Any
+//!    other head-on swap (two soldiers crossing the seam, two raiders passing as
+//!    each heads home) resolves, since no tag is at stake.
 //! 2. **Eating.** A raider that ends the tick on an enemy seed cache consumes it
 //!    into its carried load.
 //! 3. **Tagging.** A soldier sharing a tile with an enemy raider on the
@@ -121,21 +124,47 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
         moved.push(did_move);
     }
 
-    // Forbid position swaps. Two agents may *share* a tile, so moving onto another
-    // agent is fine — but two agents exchanging tiles in one tick would let each
-    // pass *through* the other (a soldier and an enemy raider trading places never
-    // share a tile, so the raider would slip past untagged). Cancel any such swap:
-    // both agents hold, and the interaction (a tag, say) happens on a later tick.
+    // Forbid only the *tag-evading* position swap. Two agents may share a tile, so
+    // moving onto another agent is fine; the danger a swap poses is exactly one: a
+    // soldier and an *enemy raider* trading places never share a tile, so the
+    // raider would slip past untagged. That — opposite teams, one soldier and one
+    // raider — is the only swap we cancel.
+    //
+    // Two agents of the *same* role crossing in opposite directions (most commonly
+    // two soldiers meeting head-on at the central seam, or two laden raiders
+    // passing as each heads home) put no tag at stake, so they pass through each
+    // other. Cancelling those was a deadlock trap: on the mirrored board, two
+    // controllers that both beeline for the nearest crossing would freeze face-to-
+    // face at the seam forever and neither could ever raid — every competent pair
+    // drew 0–0. Letting harmless swaps resolve keeps the anti-evasion guarantee
+    // while removing the standoff.
+    let role_at = |team: Team, pos: Pos| -> Role {
+        if board.team_of_column(pos.x) == team {
+            Role::Soldier
+        } else {
+            Role::Raider
+        }
+    };
     for i in 0..n {
         if !moved[i] {
             continue;
         }
         for j in (i + 1)..n {
             if moved[j] && targets[i] == from[j] && targets[j] == from[i] {
-                targets[i] = from[i];
-                moved[i] = false;
-                targets[j] = from[j];
-                moved[j] = false;
+                // A tag is at stake only across teams with mismatched roles (one
+                // soldier, one raider); that is the lone swap that lets a raider
+                // evade a tag, so only it is cancelled. Roles are read from the
+                // pre-move tiles, the positions the swap is between.
+                let opposing = state.agents[i].team != state.agents[j].team;
+                let tag_at_stake = opposing
+                    && role_at(state.agents[i].team, from[i])
+                        != role_at(state.agents[j].team, from[j]);
+                if tag_at_stake {
+                    targets[i] = from[i];
+                    moved[i] = false;
+                    targets[j] = from[j];
+                    moved[j] = false;
+                }
                 break; // agent i has only one target, so only one possible swap
             }
         }

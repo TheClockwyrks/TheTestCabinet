@@ -54,10 +54,13 @@ pub struct SandboxLimits {
 }
 
 impl Default for SandboxLimits {
-    /// The manifest's documented defaults (5,000,000 fuel; 64 MiB).
+    /// The manifest's documented defaults (50,000,000 fuel; 64 MiB). The fuel
+    /// ceiling sits well above a competent controller's measured per-tick peak
+    /// (~10M for one running several BFS) so a real submission has headroom; see
+    /// the case manifest's `[sandbox]` notes.
     fn default() -> SandboxLimits {
         SandboxLimits {
-            fuel_per_tick: 5_000_000,
+            fuel_per_tick: 50_000_000,
             max_memory_bytes: 64 * 1024 * 1024,
         }
     }
@@ -104,6 +107,25 @@ pub struct MatchSummary {
     /// replay records only *that* a forfeit happened; this is the *reason* a caller
     /// surfaces — the CLI prints it and the arena threads it into its summary.
     pub forfeit: Option<ForfeitInfo>,
+    /// Peak per-tick fuel each controller drew over the match, against the ceiling.
+    /// Lets a caller report how much headroom a submission had under the sandbox
+    /// limit — the diagnostic a model uses to size its per-tick work.
+    pub fuel: FuelStats,
+}
+
+/// The peak per-tick fuel each controller consumed over a match, paired with the
+/// ceiling they ran under. `red_peak`/`blue_peak` are the largest fuel any single
+/// tick of that controller drew (`alloc` + the contract entry); comparing them to
+/// `ceiling` tells a model whether it ran comfortably within budget or one heavy
+/// tick from a forfeit.
+#[derive(Debug, Clone, Copy)]
+pub struct FuelStats {
+    /// The per-tick fuel ceiling both controllers ran under.
+    pub ceiling: u64,
+    /// Red's peak single-tick fuel draw.
+    pub red_peak: u64,
+    /// Blue's peak single-tick fuel draw.
+    pub blue_peak: u64,
 }
 
 /// Run the single canonical match between two controller modules and return its

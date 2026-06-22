@@ -494,6 +494,64 @@ fn agents_cannot_swap_tiles() {
     );
 }
 
+#[test]
+fn soldiers_swap_across_the_seam() {
+    // Two soldiers meeting head-on at the central seam (each on its own half,
+    // crossing into the other's) put *no tag* at stake, so the swap resolves: they
+    // pass through each other. This is the case that must NOT be cancelled — if it
+    // were, two controllers both beelining for the nearest crossing would deadlock
+    // on the seam forever and neither could ever raid.
+    let board = open_board(); // border_x == 4: Red owns 0..4, Blue owns 4..8
+    let mut game = Match::new(board, rules(), sim());
+    let res = rules().move_resolution;
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(3, 1); // Red's half -> a soldier, against the seam
+        red0.move_accum = res;
+    }
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(4, 1); // Blue's half -> a soldier, against the seam
+        blue0.move_accum = res;
+    }
+
+    // Red 0: (3,1) -> (4,1) east; Blue 0: (4,1) -> (3,1) west — a soldier/soldier
+    // swap across the seam.
+    game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        red0.pos,
+        Pos::new(4, 1),
+        "the two soldiers pass through each other — Red crosses the seam"
+    );
+    assert_eq!(
+        blue0.pos,
+        Pos::new(3, 1),
+        "the two soldiers pass through each other — Blue crosses the seam"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Eating, banking.
 // ---------------------------------------------------------------------------

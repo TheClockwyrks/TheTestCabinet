@@ -138,14 +138,21 @@ it. A move you submit for an agent that has not banked a full step this tick is
 simply a no-op. (Because a soldier moves just under every tick, even a soldier
 reads `can_move_this_tick = false` on its occasional skipped step.)
 
-### No passing through another agent
+### No tagging *through* another agent
 
-Two agents may **share** a tile, so moving onto another agent is legal — but two
-agents may **never swap tiles in the same tick**. A move that would exchange an
-agent's tile with another agent's (each stepping onto where the other just
-was) is **cancelled for both** — they hold. You can therefore never slip a raider
-*through* a soldier (or vice versa) by trading places; to get past a defender you
-must go around it.
+Two agents may **share** a tile, so moving onto another agent is legal. The one
+move that is **cancelled** is the swap that would dodge a tag: a **soldier and an
+enemy raider** trying to exchange tiles in the same tick (each stepping onto where
+the other just was) both **hold** instead. You can therefore never slip a raider
+*through* a defending soldier by trading places; to get past a defender you must go
+around it.
+
+Any *other* head-on swap **resolves** — the two agents pass through each other.
+Two **soldiers** meeting at the central seam (each crossing into the other's half),
+or two **raiders** passing as each carries a load home, exchange tiles freely,
+because no tag is at stake. (This matters: without it, two controllers that both
+beeline for the nearest crossing would freeze face-to-face on the seam forever and
+neither could ever raid.)
 
 ### Royal jelly — the inverted capsule
 

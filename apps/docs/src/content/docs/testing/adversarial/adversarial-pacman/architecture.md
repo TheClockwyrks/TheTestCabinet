@@ -85,7 +85,11 @@ scores with, without building any tooling itself. It prints the winner, the fina
 score, and the outcome (`swept` / `time_limit` / `forfeit`); on a forfeit it also
 prints which controller forfeited, on what tick, and **why** (fuel, memory, a trap,
 or a contract-invalid action) — the one outcome the recorded replay cannot explain
-on its own.
+on its own. It also reports each controller's **peak per-tick fuel** against the
+ceiling, so a model can tell "comfortably within budget" from "one heavy tick from
+a forfeit"; pairing that with the `--fuel-per-tick` override (which raises the
+ceiling) lets a model measure how far over the limit an over-budget controller
+runs and decide whether to optimize.
 
 Each tick the CLI:
 
@@ -96,8 +100,9 @@ Each tick the CLI:
 2. Hands both action sets to `foray-core`, which advances the world by one
    **fixed, faked [timestep](/testing/adversarial/overview/#lockstep-simulation-and-replays)**
    (movement → eating → tagging → banking, with the carry-weight speed model
-   deciding which agents have banked enough charge to step this tick, and any
-   tile-swap between two agents cancelled so neither passes through the other).
+   deciding which agents have banked enough charge to step this tick, and only the
+   tag-dodging tile-swap — a soldier and an enemy raider trading places — cancelled
+   so a raider cannot pass *through* a defender; other head-on swaps resolve).
 3. Appends the tick's inputs to the replay log.
 
 The loop ends at a win condition or `max_ticks`. Because the timestep is faked,

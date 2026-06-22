@@ -11,6 +11,7 @@ members = [
 	"crates/foray-ref-random",
 	"crates/foray-ref-greedy-raider",
 	"crates/foray-ref-border-soldier",
+	"crates/foray-fuel-probe",
 	"crates/desktop",
 	"crates/backend",
 	"crates/worker",

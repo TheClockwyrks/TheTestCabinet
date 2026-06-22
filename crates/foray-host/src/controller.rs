@@ -59,6 +59,11 @@ pub struct Controller {
     alloc: TypedFunc<i32, i32>,
     tick: TypedFunc<(i32, i32), i64>,
     limits: SandboxLimits,
+    /// The most fuel any single tick of this controller consumed (`alloc` + the
+    /// contract entry), tracked so a caller can report how close a controller ran
+    /// to its per-tick ceiling — the signal a model needs to tell "comfortably
+    /// within budget" from "one optimization away from forfeiting".
+    peak_fuel: u64,
 }
 
 /// Per-store host state. wasmtime calls back into [`ResourceLimiter`] before each
@@ -140,7 +145,16 @@ impl Controller {
             alloc,
             tick,
             limits,
+            peak_fuel: 0,
         })
+    }
+
+    /// The most fuel any single tick of this controller has consumed so far,
+    /// against the per-tick ceiling in [`SandboxLimits::fuel_per_tick`]. A value
+    /// near the ceiling means the controller is one heavy tick from forfeiting; a
+    /// small fraction means it has ample headroom.
+    pub fn peak_fuel(&self) -> u64 {
+        self.peak_fuel
     }
 
     /// Run one tick: write `world_json` into the guest, call `tick`, and read the
@@ -164,6 +178,14 @@ impl Controller {
         self.write_guest(ptr, world_json)?;
 
         let packed = self.call_tick(ptr, len)?;
+        // Fuel was refilled to the ceiling at entry, so the shortfall now is what
+        // this tick (`alloc` + the contract entry) burned. Track the peak so a
+        // caller can report how close the controller ran to its budget.
+        if let Ok(remaining) = self.store.get_fuel() {
+            self.peak_fuel = self
+                .peak_fuel
+                .max(self.limits.fuel_per_tick.saturating_sub(remaining));
+        }
         let (out_ptr, out_len) = unpack(packed);
         self.read_guest(out_ptr, out_len)
     }

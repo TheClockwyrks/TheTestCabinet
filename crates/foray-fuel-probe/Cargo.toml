@@ -1,0 +1,27 @@
+[package]
+name = "foray-fuel-probe"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# INTERNAL CALIBRATION TOOL — NOT A SHIPPED BASELINE.
+#
+# This crate is a non-trivial reference *adversary* used only to calibrate the
+# adversarial-pacman case's per-tick fuel ceiling: it implements a genuinely
+# competent controller (dynamic role re-allocation, light-load banking, threat
+# prioritisation, royal-jelly exploitation) that defeats all three shipped
+# baselines, then we measure the per-tick fuel it actually consumes to confirm
+# the `[sandbox] fuel_per_tick` limit is generous enough for a real submission.
+#
+# It is deliberately NOT one of the `foray-ref-*` crates, NOT referenced by the
+# test-case manifest/specs, and NOT seeded into the run container or shown to a
+# model. Do not promote it into the case definition — that would hand models a
+# worked strong solution, which is exactly what the case must not leak.
+[lib]
+name = "foray_fuel_probe"
+crate-type = ["cdylib"]
+
+[dependencies]
+foray-core = { path = "../foray-core", default-features = false }
+foray-controller-sdk = { path = "../foray-controller-sdk" }

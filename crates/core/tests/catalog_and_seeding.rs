@@ -426,7 +426,7 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     // The per-tick sandbox limits, the simulation loop, the match structure, and
     // the browser replay renderer all resolve.
     let sandbox = version.sandbox.expect("adversarial case has a [sandbox]");
-    assert_eq!(sandbox.fuel_per_tick, 5_000_000);
+    assert_eq!(sandbox.fuel_per_tick, 50_000_000);
     assert_eq!(sandbox.max_memory_bytes, 67_108_864);
 
     let simulation = version

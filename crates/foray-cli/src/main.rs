@@ -168,6 +168,19 @@ fn simulate(args: SimulateArgs) -> Result<()> {
         "  score: red {}, blue {}",
         result.score.red, result.score.blue
     );
+    // Report each controller's peak per-tick fuel against the ceiling, so a model
+    // can tell "comfortably within budget" from "one heavy tick from a forfeit" and
+    // size its per-tick work (raise `--fuel-per-tick` to explore how far over the
+    // limit an over-budget controller runs).
+    let fuel = &summary.fuel;
+    println!(
+        "  peak fuel/tick: red {} ({:.0}%), blue {} ({:.0}%) of {} ceiling",
+        fuel.red_peak,
+        percent(fuel.red_peak, fuel.ceiling),
+        fuel.blue_peak,
+        percent(fuel.blue_peak, fuel.ceiling),
+        fuel.ceiling,
+    );
     // A forfeit is the one outcome the replay alone cannot explain (it records only
     // `Ended::Forfeit`), so when the host reports one, print which team forfeited,
     // on what tick, and the exact reason (fuel/memory/trap/bad action). This is the
@@ -213,6 +226,16 @@ fn playable_board(loaded: Board, seed: u64) -> Result<(Board, BoardParamsSerde)>
     // on playback by construction). This still rejects nothing the browser could
     // not reconstruct — `generated` *is* what the seed regenerates.
     Ok((generated, params.into()))
+}
+
+/// `used` as a percentage of `ceiling` (0 when the ceiling is 0, to avoid a
+/// divide-by-zero in the unreachable zero-fuel case).
+fn percent(used: u64, ceiling: u64) -> f64 {
+    if ceiling == 0 {
+        0.0
+    } else {
+        used as f64 / ceiling as f64 * 100.0
+    }
 }
 
 /// Emit a contract schema.

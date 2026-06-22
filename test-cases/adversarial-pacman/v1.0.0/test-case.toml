@@ -82,10 +82,15 @@ world = "schemas/world.json"
 action = "schemas/action.json"
 
 # Per-tick sandbox limits applied to every controller invocation. Exhausting fuel
-# or exceeding the memory cap is a disqualifying forfeit (see specs/sandbox.md). A
-# per-tick BFS over the small board costs a small fraction of this fuel.
+# or exceeding the memory cap is a disqualifying forfeit (see specs/sandbox.md).
+# Sizing: a per-tick BFS over the small board costs a few hundred k to a few M
+# fuel, and a competent controller that runs several (pathfinding, defender
+# avoidance, role assignment) peaks around 10M; the ceiling sits well above that so
+# a real submission has ample headroom and is not forced to micro-optimize. (An
+# earlier 5M ceiling was too tight — the reference baselines alone already drew up
+# to ~3M, and an agent-aware controller exceeded it.)
 [sandbox]
-fuel_per_tick = 5_000_000
+fuel_per_tick = 50_000_000
 max_memory_bytes = 67_108_864   # 64 MiB
 
 # The simulation loop. The timestep is the fixed, faked 16 ms delta; the tick cap

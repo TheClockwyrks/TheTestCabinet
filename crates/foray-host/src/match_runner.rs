@@ -15,7 +15,7 @@ use foray_core::state::{Ended, MatchResult};
 use wasmtime::Engine;
 
 use crate::controller::{Controller, InvokeError};
-use crate::{MatchSetup, MatchSummary, RunError};
+use crate::{FuelStats, MatchSetup, MatchSummary, RunError};
 
 /// Drive one match to completion against two already-loaded controllers, recording
 /// every tick's inputs and returning the published [`Replay`].
@@ -216,7 +216,16 @@ pub fn run_with_modules(
         .map_err(RunError::LoadBlue)?;
 
     let (replay, forfeit) = run_loaded_match(&mut game, &mut red, &mut blue, setup);
-    Ok(MatchSummary { replay, forfeit })
+    let fuel = FuelStats {
+        ceiling: setup.limits.fuel_per_tick,
+        red_peak: red.peak_fuel(),
+        blue_peak: blue.peak_fuel(),
+    };
+    Ok(MatchSummary {
+        replay,
+        forfeit,
+        fuel,
+    })
 }
 
 /// Build the shared wasm engine with fuel metering on. Fuel consumption must be

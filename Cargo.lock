@@ -1391,6 +1391,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "foray-fuel-probe"
+version = "0.0.0"
+dependencies = [
+ "foray-controller-sdk",
+ "foray-core",
+]
+
+[[package]]
 name = "foray-host"
 version = "0.0.0"
 dependencies = [

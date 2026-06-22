@@ -34,8 +34,10 @@ Two ant colonies — **Red** (west) and **Blue** (east) — share a single
 a mirror twin on the other, so neither colony starts with a structural
 advantage. Movement is **tile-locked**: each agent occupies one tile and on each
 tick moves one tile **N / S / E / W** or holds (**Stop**). Walls block movement;
-two agents may share a tile, but two agents may **never swap tiles** in one tick —
-there is no passing through another agent.
+two agents may share a tile. The one move that is cancelled is the tag-dodging
+swap — a **soldier and an enemy raider** exchanging tiles in one tick — so you
+cannot slip *through* a defender; every other head-on swap (two soldiers crossing
+the seam, two raiders passing on their way home) resolves normally.
 
 The map is laid out around three fixtures:
 

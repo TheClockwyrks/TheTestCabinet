@@ -41,7 +41,7 @@ action = "schemas/action.json"   # the actions the controller may return each ti
 # Sandbox limits applied to every controller, every tick. Exceeding either is a
 # disqualifying failure, not a recoverable one.
 [sandbox]
-fuel_per_tick    = 5_000_000     # wasmtime fuel ceiling per invocation; exhaustion disqualifies
+fuel_per_tick    = 50_000_000    # wasmtime fuel ceiling per invocation; exhaustion disqualifies
 max_memory_bytes = 67_108_864    # 64 MiB linear-memory cap
 
 # The simulation loop. The timestep is faked to a fixed value so a match runs at
