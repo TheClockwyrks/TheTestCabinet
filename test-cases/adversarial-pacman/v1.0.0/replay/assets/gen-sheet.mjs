@@ -79,7 +79,9 @@ const FRAME_PLAN = [];
 for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`soldier_${f}_${i}`);
 for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_${f}_${i}`);
 for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_laden_${f}_${i}`);
-FRAME_PLAN.push("immune_glint", "seed", "jelly_active", "jelly_spent", "nest");
+// Note: the immune (royal-jelly) aura is NOT a sheet frame — the renderer draws
+// it procedurally as a breathing additive glow over an immune agent.
+FRAME_PLAN.push("seed", "jelly_active", "jelly_spent", "nest");
 for (let m = 0; m < 16; m++) FRAME_PLAN.push(`wall_${m}`);
 FRAME_PLAN.push("border_cap_top", "border_mid", "border_cap_bottom", "floor");
 
@@ -173,13 +175,6 @@ function wallGlyph(cx, cy, mask) {
 }
 
 const PLACEHOLDER = {
-  immune_glint: (cx, cy) => {
-    rect(cx, cy, 1, 1, 14, 1, COL.accent);
-    rect(cx, cy, 1, 14, 14, 14, COL.accent);
-    rect(cx, cy, 1, 1, 1, 14, COL.accent);
-    rect(cx, cy, 14, 1, 14, 14, COL.accent);
-    rect(cx, cy, 7, 0, 8, 1, COL.jelly);
-  },
   seed: (cx, cy) => {
     rect(cx, cy, 5, 5, 10, 10, COL.seed);
     rect(cx, cy, 6, 4, 9, 4, COL.seed);

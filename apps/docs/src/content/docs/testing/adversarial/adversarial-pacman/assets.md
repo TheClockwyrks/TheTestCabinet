@@ -85,7 +85,7 @@ cycles as the agent crosses a tile so motion reads smoothly between ticks.
 | **Soldier** (defender) | `soldier_{s,n,w,e}_{0..3}` (16) | Mandibled, angular silhouette; a 4-step walk cycle per facing → `anims.soldier_walk_{s,n,w,e}`. |
 | **Raider** (forager, empty) | `raider_{s,n,w,e}_{0..3}` (16) | Lighter, leaner silhouette; 4-step walk cycle per facing → `anims.raider_walk_*`. |
 | **Raider, laden** | `raider_laden_{s,n,w,e}_{0..3}` (16) | The same cycles carrying a seed — slower, heavier: the [carry-weight](/testing/adversarial/adversarial-pacman/overview/#carry-weight--the-signature-mechanic) tell → `anims.raider_laden_walk_*`. |
-| **Immune raider** | overlay `immune_glint` | A small additive overlay drawn on any agent with `immune_ticks > 0` (jelly active). |
+| **Immune raider** | _(no frame)_ | Not a sheet frame: the renderer draws a breathing additive cyan aura procedurally over any agent with `immune_ticks > 0` (jelly active), pulsed by the tick clock so it haloes the sprite. |
 | **Seed cache** | `seed` | The scorable resource. |
 | **Royal jelly** | `jelly_active`, `jelly_spent` | Active = glowing node; spent = dimmed husk after it is eaten. |
 | **Maze walls** | `wall_{0..15}` | A 4-neighbor **autotile** set; the frame index is the N=1/E=2/S=4/W=8 connection bitmask, mapped in `wall_tiles`. The renderer picks each board cell's tile from its wall neighbors, so walls render as a connected pac-man-style maze. |

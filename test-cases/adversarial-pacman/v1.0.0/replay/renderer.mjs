@@ -143,6 +143,15 @@ export async function loadSheet(sheetUrl, atlas, palette) {
 
 const CELL = 16;
 
+// The immune (royal-jelly) aura: a breathing additive glow in the shared jelly
+// colour (palette.json `shared.jelly`, #7be0a0), drawn procedurally over any
+// agent with `immune_ticks > 0`. It is NOT a sheet frame — drawing it in code
+// lets it pulse over the continuous tick clock, so it reads as "alive" and is
+// identical on playback and on a paused scrub (the clock is tick+frac, not wall
+// time). IMMUNE_PULSE_RATE is radians per tick (~7-tick breath at 8 ticks/s).
+const IMMUNE_RGB = "123, 224, 160";
+const IMMUNE_PULSE_RATE = 0.9;
+
 // Pick a facing for an agent from its (dx,dy). Decorative only (rules are
 // direction-agnostic); falls back to the caller's previous facing when stationary.
 function facing(dx, dy, prev) {
@@ -300,13 +309,30 @@ export class Renderer {
       const tinted = ag.team === "red" ? this.sheet.red : this.sheet.blue;
       this.#blitPx(tinted, frame, px, py);
 
-      // Immune overlay (jelly active) — additive glint over the agent.
-      if (ag.immune_ticks > 0) {
-        ctx.globalCompositeOperation = "lighter";
-        this.#blitPx(this.sheet.neutral, "immune_glint", px, py);
-        ctx.globalCompositeOperation = "source-over";
-      }
+      // Immune (royal jelly active) — a breathing additive aura, drawn after the
+      // agent so it haloes it. Pulsed by the continuous tick clock.
+      if (ag.immune_ticks > 0) this.#drawImmuneAura(px, py, a.tick + frac);
     }
+  }
+
+  // A soft additive cyan halo over an immune agent, breathing by `clock`
+  // (tick+frac). Biased to a ring so it haloes the sprite rather than washing it.
+  #drawImmuneAura(px, py, clock) {
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(clock * IMMUNE_PULSE_RATE); // 0..1
+    const mx = px + this.cellPx / 2;
+    const my = py + this.cellPx / 2;
+    const r = this.cellPx * (0.5 + 0.18 * pulse);
+    const a = 0.15 + 0.3 * pulse;
+    const grad = ctx.createRadialGradient(mx, my, this.cellPx * 0.18, mx, my, r);
+    grad.addColorStop(0, `rgba(${IMMUNE_RGB}, ${a * 0.5})`);
+    grad.addColorStop(0.55, `rgba(${IMMUNE_RGB}, ${a})`);
+    grad.addColorStop(1, `rgba(${IMMUNE_RGB}, 0)`);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = grad;
+    ctx.fillRect(px - this.cellPx * 0.25, py - this.cellPx * 0.25, this.cellPx * 1.5, this.cellPx * 1.5);
+    ctx.restore();
   }
 
   // Clear remembered facings when playback jumps (a scrub) so a discontinuity

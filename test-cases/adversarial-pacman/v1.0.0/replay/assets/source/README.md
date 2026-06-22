@@ -18,9 +18,9 @@ them) for `nest`, and the shared non-recolored palette for `seed`/`jelly`.
 | `raider_*.png` (32) | `foray-raider` v1.0.0 (base) | `e132cb18-0e37-4ca0-a9be-c032500dbf37` |
 | `wall_*` / `border_*` / `floor.png` (20) | `foray-walls` v1.0.0 (base) | `af70f7bd-ca2b-497e-9d04-2950c8e5aea4` |
 
-The only frame the packer still draws as a **placeholder** is `immune_glint` — an
-additive overlay glint with no asset case of its own, drawn procedurally by
-`../gen-sheet.mjs`.
+Every packed frame is now backed by finished source art — the packer draws no
+placeholders. (The immune-jelly aura is drawn procedurally by the renderer as a
+breathing additive glow, not as a sheet frame, so it has no source art here.)
 
 Each case above was copied here from its run's **regenerated** per-frame PNGs (the
 packer reads `source/<name>.png`; see `../gen-sheet.mjs`). The asset cases write
