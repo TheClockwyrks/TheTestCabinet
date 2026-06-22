@@ -49,7 +49,7 @@
     },
     "TestType": {
       "type": "string",
-      "enum": ["end-to-end", "asset-generation", "adversarial"]
+      "enum": ["end-to-end", "asset-generation", "adversarial", "performance"]
     },
     "RunSubject": {
       "type": "object",
@@ -250,6 +250,32 @@
         }
       }
     },
+    "PerformanceCaseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "correct", "fuel", "firstMismatchTick", "detail"],
+      "properties": {
+        "input": { "type": "string" },
+        "correct": { "type": "boolean" },
+        "fuel": { "type": ["integer", "null"] },
+        "firstMismatchTick": { "type": ["integer", "null"] },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "PerformanceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correct", "totalFuel", "cases", "detail"],
+      "properties": {
+        "correct": { "type": "boolean" },
+        "totalFuel": { "type": ["integer", "null"] },
+        "cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PerformanceCaseResult" }
+        },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
     "RunValidation": {
       "type": "object",
       "additionalProperties": false,
@@ -272,7 +298,8 @@
           "items": { "$ref": "#/$defs/ProofResult" }
         },
         "asset": { "$ref": "#/$defs/AssetGenResult" },
-        "adversarial": { "$ref": "#/$defs/AdversarialResult" }
+        "adversarial": { "$ref": "#/$defs/AdversarialResult" },
+        "performance": { "$ref": "#/$defs/PerformanceResult" }
       }
     },
     "RunLinks": {
