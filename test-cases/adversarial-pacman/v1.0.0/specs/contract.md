@@ -8,10 +8,10 @@ and the game. You never see the authoritative state, the opponent's observation,
 or any way to mutate the world directly. Cheating cannot compile: there is no
 representable action that touches game state.
 
-The seeded starter workspace already wires all of this up for you with the
-controller SDK — read [Writing your controller](#writing-your-controller) below
-before the low-level ABI. The ABI section exists so you understand (or replace)
-what the SDK does, not because you have to write it by hand.
+Your controller crate is already wired up against the controller SDK (provided by
+the run environment — see [Writing your controller](#writing-your-controller)
+below) before the low-level ABI. The ABI section exists so you understand (or
+replace) what the SDK does, not because you have to write it by hand.
 
 ## `world` — the observation (input)
 
@@ -122,9 +122,10 @@ apply every tick.)
 
 ## Writing your controller
 
-You do not implement the ABI by hand. The seeded workspace ships a controller
-SDK (`foray-controller-sdk`) that owns `alloc`, `tick`, the JSON decode/encode,
-and a legal-action builder. You write **one function** and one macro call:
+You do not implement the ABI by hand. The run environment provides a controller
+SDK (`foray-controller-sdk`, under `$FORAY_HOME/buildkit`, already a dependency of
+your controller) that owns `alloc`, `tick`, the JSON decode/encode, and a
+legal-action builder. You write **one function** and one macro call:
 
 ```rust
 use foray_controller_sdk::controller;
@@ -141,7 +142,7 @@ controller!(decide);
 dispatcher; `alloc` and `memory` come from the SDK and rustc. The crate is a
 `cdylib` built for `wasm32-unknown-unknown`, and the build emits
 `target/wasm32-unknown-unknown/release/controller.wasm` — the artifact the harness
-loads. `controller/src/lib.rs` in the workspace is a working starter you replace.
+loads. `controller/src/lib.rs` is a working starter you replace.
 
 The SDK also gives you maze helpers you will want:
 
@@ -154,5 +155,6 @@ The SDK also gives you maze helpers you will want:
 You may write the controller in **any language that compiles to a
 `wasm32-unknown-unknown` core module** exporting `memory`, `alloc`, and `tick` with
 this ABI — Rust with the SDK is the supported, batteries-included path, and the
-vendored engine (`foray-core`) is the same one the harness scores you against, so
-its `World`/`Action` types are exactly right.
+engine the run environment provides (`foray-core`, under `$FORAY_HOME/buildkit`) is
+the same one the harness scores you against, so its `World`/`Action` types are
+exactly right.

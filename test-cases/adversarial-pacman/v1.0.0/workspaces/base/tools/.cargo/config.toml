@@ -1,4 +1,0 @@
-# The CLI hosts wasmtime and must build for the NATIVE host, not the wasm target
-# the controller workspace defaults to. Leaving `[build] target` unset here makes
-# `cargo build` use the host triple. (This file exists so a build run from inside
-# `tools/` does not pick up a wasm default from an ancestor config.)

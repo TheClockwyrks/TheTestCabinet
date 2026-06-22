@@ -9,9 +9,10 @@
 #     baked-in `draw-sheet` binary (`sprite-sheet/Dockerfile` is `FROM` the base);
 #     and
 #   - the adversarial image, which every adversarial run executes in — the base
-#     image plus the Rust + `wasm32-unknown-unknown` toolchain so a model's
-#     controller builds to wasm in-container (`adversarial/Dockerfile` is `FROM`
-#     the base built here).
+#     image plus the Rust + `wasm32-unknown-unknown` toolchain (so a model's
+#     controller builds to wasm in-container) and the Foray tooling compiled from
+#     `crates/`: the baked-in `foray` CLI, the controller buildkit, and the
+#     reference modules + map (`adversarial/Dockerfile` is `FROM` the base here).
 # None is a per-harness image: a run installs the selected harness's CLI into the
 # image at run time (see `harnesses/README.md`).
 #
@@ -141,12 +142,13 @@ build_adversarial() {
 	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_IMAGE})"
 	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
 	# arg, the local tag) plus the Rust + `wasm32-unknown-unknown` toolchain a
-	# model's controller compiles to wasm with. The adversarial image bakes in no
-	# binary of its own — the controller is built in-container at run time — so it
-	# needs no repository context, but the build context stays the repository root
-	# for consistency with the other images (a repo-root `.dockerignore` keeps it
-	# lean). Building from the local base tag avoids a registry round-trip and keeps
-	# the adversarial image pinned to the base produced in this same invocation.
+	# model's controller compiles to wasm with, AND the Foray tooling the image's
+	# first stage compiles from `crates/`: the `foray` CLI, the controller buildkit
+	# (`foray-core` + `foray-controller-sdk`), and the reference wasm modules + map.
+	# Like the asset-generation images it therefore needs the repository root as its
+	# build context (a repo-root `.dockerignore` keeps it lean). Building from the
+	# local base tag avoids a registry round-trip and keeps the adversarial image
+	# pinned to the base produced in this same invocation.
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
 		-t "${ADVERSARIAL_IMAGE}" \

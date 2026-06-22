@@ -12,7 +12,7 @@ use foray_core::state::Ended;
 use wasmtime::Engine;
 
 use super::Controller;
-use crate::{MatchSetup, SandboxLimits, board_for, run_match};
+use crate::{ForfeitReason, InvokeError, MatchSetup, SandboxLimits, board_for, run_match};
 
 /// A controller that returns a valid all-`Stop` action every tick. `alloc` hands
 /// back the same fixed scratch offset every call (the host overwrites it with the
@@ -121,8 +121,18 @@ fn a_trapping_controller_forfeits_and_the_match_still_produces_a_replay() {
     // Red traps; Blue is well-behaved. Red should forfeit and Blue should win.
     let summary =
         run_match(&trap_controller(), &stop_controller(), board, &setup).expect("the match runs");
-    let replay = summary.replay;
 
+    // The host reports *why* Red lost (the replay records only that a forfeit
+    // happened): Red trapped on tick 0, Blue did not forfeit.
+    let forfeit = summary.forfeit.as_ref().expect("a forfeit was recorded");
+    assert_eq!(forfeit.tick, 0);
+    assert!(matches!(
+        forfeit.red,
+        Some(ForfeitReason::Invoke(InvokeError::Trap(_)))
+    ));
+    assert!(forfeit.blue.is_none());
+
+    let replay = summary.replay;
     assert_eq!(replay.result.ended, Ended::Forfeit);
     assert_eq!(replay.result.winner, Some(Team::Blue));
     // The forfeit happens on the very first tick, so exactly one tick was recorded.

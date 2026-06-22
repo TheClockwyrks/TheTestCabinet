@@ -13,8 +13,9 @@
 //!
 //! You have the SDK's maze helpers available — [`Grid`] (a passability grid and a
 //! BFS over the board) and the [`act`]/`util` selectors — so you can pathfind and
-//! assemble a legal action without re-deriving any plumbing. The vendored
-//! reference controllers under `references/` are worked examples of using them.
+//! assemble a legal action without re-deriving any plumbing. The reference
+//! controllers the container provides under `$FORAY_HOME/references/` (with their
+//! readable source) are worked examples of using them.
 
 use foray_controller_sdk::controller;
 use foray_controller_sdk::grid::Grid;

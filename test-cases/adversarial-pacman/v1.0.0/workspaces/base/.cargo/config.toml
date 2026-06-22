@@ -1,13 +1,15 @@
-# Make the wasm controller target the implicit default for `cargo build` in the
-# CONTROLLER crate only.
+# Default `cargo build` in this workspace to the wasm controller target.
 #
-# This is scoped to the `controller` package (not set globally as `[build] target`)
-# on purpose: a global default would be inherited by the `tools/` CLI workspace
-# below this directory and force wasmtime to build for wasm, which it cannot. The
-# CLI builds for the host; the controller builds for wasm. So the default lives on
-# the controller package, and the harness build command names the target
-# explicitly regardless (`--target wasm32-unknown-unknown`).
-[target.wasm32-unknown-unknown]
+# The controller is the only crate here and it must compile to a
+# `wasm32-unknown-unknown` core module, so making that the default build target
+# lets a bare `cargo build --release` emit
+# `target/wasm32-unknown-unknown/release/controller.wasm` without naming the
+# target each time. The harness build command still passes `--target
+# wasm32-unknown-unknown` explicitly, so the produced artifact is the same either
+# way. (A global default is safe now that the workspace holds only the controller;
+# the engine/SDK it builds against live outside it, under `/opt/foray/buildkit`.)
+[build]
+target = "wasm32-unknown-unknown"
 
 [alias]
 # `cargo wasm` — build just the controller module for the wasm target.

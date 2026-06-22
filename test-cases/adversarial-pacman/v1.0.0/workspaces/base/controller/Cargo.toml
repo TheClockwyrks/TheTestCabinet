@@ -22,8 +22,15 @@ crate-type = ["cdylib"]
 # The controller contract: the `World` observation handed in each tick and the
 # `Action` you return. `default-features = false` drops the schema/TOML-loader
 # features a controller never needs, keeping the guest wasm lean.
-foray-core = { path = "../vendor/foray-core", default-features = false }
+#
+# These two crates are provided by the run container under `/opt/foray/buildkit`
+# (the baked-in controller "buildkit" — see `specs/contract.md`), NOT vendored into
+# this workspace. They are the SAME engine and SDK the harness scores you against;
+# you build against them, you do not edit them. The path is absolute because it is
+# the in-container location of the buildkit — this crate builds inside the run
+# container (where the `foray` CLI also lives), never on a bare host.
+foray-core = { path = "/opt/foray/buildkit/foray-core", default-features = false }
 # The guest side of the controller ABI plus the maze helpers (a passability grid
 # and a BFS) the baselines pathfind over. Link it, write `fn decide`, and invoke
 # `controller!(decide)` — see `src/lib.rs`.
-foray-controller-sdk = { path = "../vendor/foray-controller-sdk" }
+foray-controller-sdk = { path = "/opt/foray/buildkit/foray-controller-sdk" }

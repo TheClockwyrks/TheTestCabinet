@@ -33,7 +33,7 @@ mod controller;
 mod match_runner;
 
 pub use controller::{Controller, InvokeError, LoadError};
-pub use match_runner::ForfeitReason;
+pub use match_runner::{ForfeitInfo, ForfeitReason};
 
 use foray_core::board::{Board, BoardParams};
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
@@ -99,6 +99,11 @@ pub struct MatchSetup {
 pub struct MatchSummary {
     /// The recorded replay, ready to write to `replay.json` and play back.
     pub replay: Replay,
+    /// Why the match ended on a forfeit, when it did (which team, the tick, and the
+    /// reason). `None` for a normally-decided match (sweep or time limit). The
+    /// replay records only *that* a forfeit happened; this is the *reason* a caller
+    /// surfaces — the CLI prints it and the arena threads it into its summary.
+    pub forfeit: Option<ForfeitInfo>,
 }
 
 /// Run the single canonical match between two controller modules and return its

@@ -23,7 +23,7 @@ use foray_core::board::Team;
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::replay::{Replay, ReplayResult};
 use foray_core::state::Ended;
-use foray_host::{MatchSetup, RunError, SandboxLimits, board_for, run_match};
+use foray_host::{ForfeitInfo, MatchSetup, RunError, SandboxLimits, board_for, run_match};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
@@ -113,7 +113,11 @@ pub struct MatchSummary {
     /// (a controller failed to load, so there is nothing to play back).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replay_key: Option<String>,
-    /// Why a controller could not be matched (a load failure), or `None`.
+    /// Why a controller lost on a technicality, or `None` for a clean result. This
+    /// is set both when a controller failed to *load* (no match ran) and when one
+    /// *forfeited mid-match* (fuel/memory/trap/contract-invalid action) — in the
+    /// latter case the replay records only `Ended::Forfeit`, so this carries the
+    /// reason a player would otherwise have no way to read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
@@ -264,8 +268,13 @@ pub fn run_quick_match(
 
     match run_match(&red.wasm, &blue.wasm, board, &setup) {
         Ok(summary) => {
+            // A mid-match forfeit (fuel/memory/trap/bad action) still produces a
+            // replay, but the replay says only that a forfeit happened — capture the
+            // *reason* into the summary detail so the board can show why.
+            let detail = forfeit_detail(summary.forfeit.as_ref());
             let replay = summary.replay;
-            let summary = summarize_match(&match_id, red_id, blue_id, &replay, None);
+            let mut summary = summarize_match(&match_id, red_id, blue_id, &replay, None);
+            summary.detail = detail;
             Ok(MatchOutcome {
                 summary,
                 replay: Some(replay),
@@ -394,6 +403,21 @@ pub fn run_tournament(
 /// The stable match id (and replay storage segment) for a pair.
 pub fn match_id(red_id: &str, blue_id: &str) -> String {
     format!("{red_id}__vs__{blue_id}")
+}
+
+/// Render a mid-match forfeit into the human-readable `detail` the summary carries
+/// (which team forfeited, on what tick, and why). `None` for a normally-decided
+/// match, so the summary's `detail` stays empty unless a controller misbehaved.
+fn forfeit_detail(forfeit: Option<&ForfeitInfo>) -> Option<String> {
+    let forfeit = forfeit?;
+    let mut parts = Vec::new();
+    if let Some(reason) = &forfeit.red {
+        parts.push(format!("red forfeited at tick {}: {reason}", forfeit.tick));
+    }
+    if let Some(reason) = &forfeit.blue {
+        parts.push(format!("blue forfeited at tick {}: {reason}", forfeit.tick));
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
 }
 
 /// Summarize a decided match's replay from Red's perspective.

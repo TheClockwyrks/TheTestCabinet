@@ -25,14 +25,20 @@ use crate::{MatchSetup, MatchSummary, RunError};
 /// returns a contract-invalid action **forfeits** — its moves become all-`Stop`,
 /// the *other* team is declared the winner by forfeit, and the loop stops — but
 /// the inputs recorded so far still produce a playable replay.
+///
+/// The returned [`ForfeitInfo`] is `Some` exactly when the match ended on a
+/// forfeit; it carries the tick and the offending team's [`ForfeitReason`] so a
+/// caller can report *why* a controller lost. The recorded replay says only *that*
+/// a forfeit happened, never the reason, so this is the only channel for it.
 pub fn run_loaded_match(
     game: &mut Match,
     red: &mut Controller,
     blue: &mut Controller,
     setup: &MatchSetup,
-) -> Replay {
+) -> (Replay, Option<ForfeitInfo>) {
     let mut ticks: Vec<TickInput> = Vec::new();
     let mut result: Option<MatchResult> = None;
+    let mut forfeit: Option<ForfeitInfo> = None;
 
     // The engine itself ends the match on a sweep or at `max_ticks` (its `decide`
     // returns a result on the final step), so the loop only has to run until the
@@ -58,6 +64,13 @@ pub fn run_loaded_match(
                 red_forfeit.is_some(),
                 blue_forfeit.is_some(),
             ));
+            // Keep the offending team's reason(s) and the tick so the caller can
+            // report *why* — the replay records only that a forfeit happened.
+            forfeit = Some(ForfeitInfo {
+                tick: game.state.tick,
+                red: red_forfeit,
+                blue: blue_forfeit,
+            });
             break;
         }
 
@@ -72,7 +85,7 @@ pub fn run_loaded_match(
         .or(game.result())
         .expect("a finished match has a result");
 
-    Replay::record(record_header(setup), ticks, result)
+    (Replay::record(record_header(setup), ticks, result), forfeit)
 }
 
 /// A controller's decision for one tick: either a contract-valid action, or a
@@ -82,13 +95,32 @@ enum Decision {
     Forfeit(Action, ForfeitReason),
 }
 
-/// Why a controller forfeited, kept for the recorded outcome and diagnostics.
-#[derive(Debug)]
+/// Why a controller forfeited, kept for the recorded outcome and diagnostics. Its
+/// [`Display`](std::fmt::Display) is a one-line, model-facing explanation (the
+/// underlying invoke/contract error), so the `foray` CLI and the arena summary can
+/// print *why* a controller lost.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ForfeitReason {
     /// The invocation itself failed (trap, fuel, memory, bad region, bad JSON).
-    Invoke(InvokeError),
+    #[error("{0}")]
+    Invoke(#[source] InvokeError),
     /// The JSON parsed but was not a contract-valid action for the team.
-    Contract(ContractError),
+    #[error("returned a contract-invalid action: {0}")]
+    Contract(#[source] ContractError),
+}
+
+/// Which team(s) forfeited and why, returned alongside the replay when a match
+/// ended on a forfeit. The replay's recorded [`Ended::Forfeit`] says only *that* a
+/// forfeit decided the match; this carries the *reason*, which a caller reports
+/// (the `foray` CLI prints it; the arena threads it into the summary `detail`).
+#[derive(Debug, Clone)]
+pub struct ForfeitInfo {
+    /// The tick the forfeit occurred on.
+    pub tick: u32,
+    /// Red's forfeit reason, when Red forfeited this tick.
+    pub red: Option<ForfeitReason>,
+    /// Blue's forfeit reason, when Blue forfeited this tick.
+    pub blue: Option<ForfeitReason>,
 }
 
 /// Observe `team`'s view, invoke its controller, and validate the result. Any
@@ -183,8 +215,8 @@ pub fn run_with_modules(
     let mut blue = Controller::load(&engine, blue_wasm, &setup.entry, setup.limits)
         .map_err(RunError::LoadBlue)?;
 
-    let replay = run_loaded_match(&mut game, &mut red, &mut blue, setup);
-    Ok(MatchSummary { replay })
+    let (replay, forfeit) = run_loaded_match(&mut game, &mut red, &mut blue, setup);
+    Ok(MatchSummary { replay, forfeit })
 }
 
 /// Build the shared wasm engine with fuel metering on. Fuel consumption must be

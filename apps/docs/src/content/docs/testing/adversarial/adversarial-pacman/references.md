@@ -2,11 +2,12 @@
 title: "Reference controllers"
 ---
 
-Foray ships a handful of **baseline controllers** to the model in the seeded
-workspace, alongside the [`foray` CLI](/testing/adversarial/adversarial-pacman/architecture/#the-cli)
-and the map definitions. Their purpose is to give the model something concrete to
-**compile, run, and play against locally** while it develops its own controller —
-a yardstick, not a template.
+Foray provides a handful of **baseline controllers** to the model through the
+[adversarial run-container image](/testing/adversarial/adversarial-pacman/architecture/#the-cli),
+alongside the [`foray` CLI](/testing/adversarial/adversarial-pacman/architecture/#the-cli)
+and the map. Their purpose is to give the model something concrete to **run and
+play against locally** while it develops its own controller — a yardstick, not a
+template.
 
 Every baseline is **deliberately mediocre**. Each one has an obvious, exploitable
 weakness, and none of them accounts properly for Foray's
@@ -24,23 +25,30 @@ Treat them as opponents to dismantle, not as a starting architecture.
 
 ## What the model receives
 
-In the seeded workspace the model gets, for each baseline:
+The run image provides, under `$FORAY_HOME` (`/opt/foray`), for each baseline:
 
-- the **wasm-buildable Rust source** of the controller, and
-- a pre-built `.wasm` module (or the one-line command to build it),
+- the **readable Rust source** of the controller
+  (`$FORAY_HOME/references/<name>/lib.rs`), and
+- a **pre-built `.wasm` module** (`$FORAY_HOME/references/<name>.wasm`),
 
-so it can immediately run, e.g.:
+plus the canonical map (`$FORAY_HOME/maps/mirror-32x16.toml`) and the **controller
+buildkit** (`$FORAY_HOME/buildkit` — fresh copies of `foray-core` and
+`foray-controller-sdk` the model's `controller` crate path-depends on, so the
+seeded workspace vendors nothing). With `foray` preinstalled on `PATH`, the model
+can immediately run, e.g.:
 
 ```bash
-foray simulate --red ./target/.../my-controller.wasm \
-               --blue ./references/greedy-raider.wasm \
-               --map maps/mirror-32x16.toml --out replay.json
+foray simulate --red ./target/.../controller.wasm \
+               --blue "$FORAY_HOME/references/greedy-raider.wasm" \
+               --map "$FORAY_HOME/maps/mirror-32x16.toml" --out replay.json
 ```
 
-and iterate against a known opponent. All three are written against the same
+and iterate against a known opponent. All three baselines are built from the same
 [controller contract](/testing/adversarial/adversarial-pacman/architecture/#the-controller-contract)
 the model targets, so they double as worked examples of reading `world` and
-returning `action`.
+returning `action`. (The buildkit, CLI, and references are baked from this repo at
+image-build time so they stay in lockstep with the engine the validator scores
+with — see the run-container definition under `containers/adversarial/`.)
 
 ## The baselines
 
@@ -82,8 +90,9 @@ is from the submission's perspective. `border-soldier` is the canonical opponent
 precisely because it is the **strongest** of the three baselines — beating it is
 the bar v1 sets.
 
-`random` and `greedy-raider` ship in the workspace as local sparring partners (run
-them with `foray simulate` as above), but they are **not** the scored opponent.
+`random` and `greedy-raider` are provided under `$FORAY_HOME/references` as local
+sparring partners (run them with `foray simulate` as above), but they are **not**
+the scored opponent.
 Cross-model **round-robin / bracket tournaments** — the field-wide
 [standings](/testing/adversarial/evaluation/#standings) the test-type evaluation
 describes — are a **planned future step** and are out of scope for v1: the match

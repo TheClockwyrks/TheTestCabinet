@@ -157,16 +157,29 @@ fn simulate(args: SimulateArgs) -> Result<()> {
 
     let result = &summary.replay.result;
     let winner = match result.winner {
-        Some(team) => format!("{team:?}"),
+        Some(team) => format!("{team:?} wins"),
         None => "draw".to_string(),
     };
     println!(
-        "match decided after {} ticks: {} ({:?}); replay written to {}",
-        result.ticks,
-        winner,
-        result.ended,
-        args.out.display()
+        "match decided after {} ticks: {winner} ({:?})",
+        result.ticks, result.ended,
     );
+    println!(
+        "  score: red {}, blue {}",
+        result.score.red, result.score.blue
+    );
+    // A forfeit is the one outcome the replay alone cannot explain (it records only
+    // `Ended::Forfeit`), so when the host reports one, print which team forfeited,
+    // on what tick, and the exact reason (fuel/memory/trap/bad action). This is the
+    // signal the model needs to fix a controller that disqualifies itself.
+    if let Some(forfeit) = &summary.forfeit {
+        for (team, reason) in [("red", &forfeit.red), ("blue", &forfeit.blue)] {
+            if let Some(reason) = reason {
+                println!("  forfeit: {team} at tick {} — {reason}", forfeit.tick);
+            }
+        }
+    }
+    println!("  replay written to {}", args.out.display());
     Ok(())
 }
 

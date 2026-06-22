@@ -70,11 +70,22 @@ replay:
 ```bash
 foray simulate \
   --red   path/to/red.wasm \
-  --blue  path/to/blue.wasm \
-  --map   maps/mirror-32x16.toml \
+  --blue  "$FORAY_HOME/references/border-soldier.wasm" \
+  --map   "$FORAY_HOME/maps/mirror-32x16.toml" \
   --seed  0xC0FFEE \
   --out   replay.json
 ```
+
+`foray` is compiled from `foray-cli` and **baked into the adversarial run-container
+image** (on `PATH`), alongside the controller
+[buildkit](/testing/adversarial/adversarial-pacman/references/#what-the-model-receives)
+the model builds against and the reference modules + map under `$FORAY_HOME`
+(`/opt/foray`) — so a model runs local matches with the *same* host the validator
+scores with, without building any tooling itself. It prints the winner, the final
+score, and the outcome (`swept` / `time_limit` / `forfeit`); on a forfeit it also
+prints which controller forfeited, on what tick, and **why** (fuel, memory, a trap,
+or a contract-invalid action) — the one outcome the recorded replay cannot explain
+on its own.
 
 Each tick the CLI:
 

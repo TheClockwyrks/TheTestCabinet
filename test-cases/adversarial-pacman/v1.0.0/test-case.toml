@@ -47,18 +47,19 @@ type = "adversarial"
 max_runtime_seconds = 3600
 
 # Starter workspace seeded into the root of every run before the specs. It is a
-# self-contained Cargo project: the controller skeleton the model fills in, the
-# vendored engine + SDK it builds against, the three reference controllers (source
-# + pre-built wasm), the shipped map, and a separate `tools/` workspace for the
-# local `foray` match runner. Seeded files land at the run root
-# (`workspaces/base/controller/...` -> `controller/...`).
+# small Cargo project: just the controller skeleton the model fills in. Everything
+# it builds against and runs with — the engine + SDK (the controller "buildkit"),
+# the `foray` CLI, and the reference controllers + map — is provided by the
+# adversarial run-container image under `/opt/foray` (`$FORAY_HOME`) and on `PATH`,
+# not vendored here (see `containers/adversarial/Dockerfile`). Seeded files land at
+# the run root (`workspaces/base/controller/...` -> `controller/...`).
 workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded
-# and before the harness starts. `cargo fetch` pre-downloads the crate
-# dependencies (both the controller workspace and the `tools/` CLI workspace) so
-# the model's first build is offline-fast.
-init = "cargo fetch && cargo fetch --manifest-path tools/Cargo.toml"
+# and before the harness starts. `cargo fetch` pre-downloads the controller's crate
+# dependencies (it path-depends on the baked buildkit's `foray-core`/SDK and pulls
+# their registry deps) so the model's first build is offline-fast.
+init = "cargo fetch"
 
 # How the harness builds the model's submission into a wasm controller module.
 # `install` fetches dependencies; `build` emits the module; `module` names the

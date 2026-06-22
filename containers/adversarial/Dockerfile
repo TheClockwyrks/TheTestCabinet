@@ -1,41 +1,87 @@
 # The adversarial run-container image for The Test Cabinet.
 #
 # Every adversarial run executes in this one image (all adversarial test cases
-# share it). It is the base run-container image plus exactly one addition: the
-# Rust toolchain with the `wasm32-unknown-unknown` target, so a model's
-# controller compiles to a wasm core module *in-container* during the run (see
-# the adversarial docs under
-# `apps/docs/src/content/docs/testing/adversarial/`).
+# share it). It is the base run-container image plus, like the asset-generation
+# images, The Test Cabinet's own tooling baked in — here the Foray toolchain a
+# model develops a controller with (see the adversarial docs under
+# `apps/docs/src/content/docs/testing/adversarial/`):
 #
-# Unlike the asset-generation image, nothing of The Test Cabinet's own is baked
-# in here: the controller a model writes is built by the model inside the
-# container (the `[build]` commands its test case declares run here at run time),
-# and the host that *runs* the produced wasm (the `foray` engine + wasmtime) is
-# part of the orchestrator/validator, not this image. So the only thing this
-# image adds beyond the base is the build toolchain that turns the model's Rust
-# source into wasm — there is no compile stage and no repository context needed.
+#   - the **Rust toolchain** with the `wasm32-unknown-unknown` target, so a
+#     model's controller compiles to a wasm core module *in-container* during the
+#     run (the case's `[build]` commands run here at run time);
+#   - the **`foray` CLI** (`/usr/local/bin/foray`), the binary a model runs its
+#     controller through to play local matches against the baselines — the same
+#     `foray-host` engine the validator scores with, so a local win means what a
+#     scored win means;
+#   - the **controller buildkit** (`/opt/foray/buildkit`), fresh copies of
+#     `foray-core` and `foray-controller-sdk` the model's `controller` crate
+#     path-depends on to build, so the seeded workspace vendors nothing; and
+#   - the **reference controllers** (pre-built wasm + readable source) and the
+#     **canonical map** under `/opt/foray`, the baselines a model plays against.
+#
+# Baking these (rather than seeding them into every run's workspace, or building
+# them from source in-container) is the same lockstep argument as the
+# asset-generation `draw` binary: the `foray` CLI, the buildkit crates, and the
+# reference modules are part of The Test Cabinet itself and must match the engine
+# the validator scores against, so they are compiled from THIS repository at
+# image-build time and a run records the image digest. The build context is the
+# repository root so the compile stage can see `crates/` (see `containers/build.sh`).
 #
 # This image inherits everything from the base — the Node toolchain, the
 # unprivileged `node` run user, the `/work` working directory, and the keep-alive
-# CMD — so it only adds the Rust toolchain below. End-to-end runs use the base
-# image directly; the image a run resolves is selected by its test type (see
-# crate `harness::resolve_run_image`).
+# CMD. End-to-end runs use the base image directly; the image a run resolves is
+# selected by its test type (see crate `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend. It is declared here, BEFORE the first
-# `FROM`, so it is a global build arg the `FROM` for the run image below can
-# consume — an `ARG` declared after a `FROM` is scoped to that stage and would be
-# blank in a later `FROM`. `build.sh` passes the base image it just built (e.g.
-# the local `test-cabinet-base:latest`, or a registry-qualified tag) so this image
-# is always `FROM` the matching base.
+# `FROM`, so it is a global build arg the final `FROM` below can consume — an `ARG`
+# declared after a `FROM` is scoped to that stage and would be blank in a later
+# `FROM`. `build.sh` passes the base image it just built (e.g. the local
+# `test-cabinet-base:latest`, or a registry-qualified tag) so this image is always
+# `FROM` the matching base.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
+# --- Stage 1: compile the Foray tooling from this repository ----------------
+# A full Rust image (not the slim base) so the `foray` CLI, the reference wasm
+# modules, and the buildkit smoke build all compile here; only the artifacts are
+# copied into the final image. The glibc target matches the bookworm-based base.
+FROM docker.io/library/rust:1-bookworm AS foray-build
+WORKDIR /build
+# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
+# resolve the workspace graph.
+COPY . .
+RUN rustup target add wasm32-unknown-unknown \
+	# The `foray` CLI (host target) — the local match runner baked onto PATH below.
+	&& cargo build --release -p foray-cli \
+	# The three reference controllers, compiled to `wasm32-unknown-unknown` core
+	# modules — the baselines a model plays against. Each crate is a `cdylib` named
+	# `foray_ref_*`, so it emits `foray_ref_<name>.wasm`.
+	&& cargo build --release --target wasm32-unknown-unknown \
+		-p foray-ref-border-soldier -p foray-ref-greedy-raider -p foray-ref-random
+
+# Assemble the controller buildkit and smoke-build it standalone. The two crates
+# are copied VERBATIM (so they can never drift from the engine the validator
+# scores against) next to the de-workspaced root manifest that re-supplies their
+# `workspace = true` inheritance; building the SDK to wasm against that root proves
+# the buildkit resolves on its own before it is baked. A broken root (e.g. after a
+# workspace-dependency bump the root no longer mirrors) fails the image build here.
+RUN mkdir -p /opt/foray/buildkit \
+	&& cp -a crates/foray-core /opt/foray/buildkit/foray-core \
+	&& cp -a crates/foray-controller-sdk /opt/foray/buildkit/foray-controller-sdk \
+	&& cp containers/adversarial/buildkit/Cargo.toml /opt/foray/buildkit/Cargo.toml \
+	&& rm -rf /opt/foray/buildkit/foray-core/target \
+		/opt/foray/buildkit/foray-controller-sdk/target \
+	# Build into a throwaway target dir so the baked buildkit stays source-only.
+	&& cargo build --release --target wasm32-unknown-unknown \
+		--manifest-path /opt/foray/buildkit/foray-controller-sdk/Cargo.toml \
+		--target-dir /tmp/buildkit-smoke
+
+# --- Stage 2: the base run image, plus the Rust toolchain and the Foray tooling
 FROM ${BASE_IMAGE}
 
 # The pinned Rust toolchain version installed for in-container controller builds.
 # Pin it (rather than tracking `stable`) so every adversarial run compiles a
 # model's controller with the same compiler, keeping produced wasm reproducible;
-# bump it deliberately. This must stay compatible with the controller SDK and the
-# reference controller sources the run is seeded with.
+# bump it deliberately. This must stay compatible with the baked buildkit crates.
 ARG RUST_VERSION=1.96.0
 
 # Install the Rust toolchain into a system-wide, root-owned location so it is
@@ -68,6 +114,38 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 	# *after* `/etc/profile` sets its default PATH, so login shells see `cargo`.
 	&& printf 'export PATH=/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/rust-cargo.sh \
 	&& chmod a+r /etc/profile.d/rust-cargo.sh
+
+# Bake the `foray` CLI onto PATH. `/usr/local/bin` is root-owned (COPY writes as
+# root regardless of the inherited run user); the unprivileged run user only
+# executes it. A model invokes it as `foray simulate …` to play local matches.
+COPY --from=foray-build /build/target/release/foray /usr/local/bin/foray
+
+# Bake the controller buildkit — the verified, source-only `foray-core` +
+# `foray-controller-sdk` the seeded `controller` crate path-depends on (no vendor
+# folder in the run workspace). The model never writes here; cargo writes a
+# controller build's artifacts into the run workspace's own target dir.
+COPY --from=foray-build /opt/foray/buildkit /opt/foray/buildkit
+
+# Bake the reference controllers (pre-built wasm + readable Rust source) and the
+# canonical map — the baselines a model plays against with `foray simulate` and
+# reads as worked examples. The reference wasm modules are renamed from their
+# `foray_ref_*` crate artifact names to the short names the specs reference.
+COPY --from=foray-build /build/target/wasm32-unknown-unknown/release/foray_ref_border_soldier.wasm /opt/foray/references/border-soldier.wasm
+COPY --from=foray-build /build/target/wasm32-unknown-unknown/release/foray_ref_greedy_raider.wasm /opt/foray/references/greedy-raider.wasm
+COPY --from=foray-build /build/target/wasm32-unknown-unknown/release/foray_ref_random.wasm /opt/foray/references/random.wasm
+COPY crates/foray-ref-border-soldier/src/lib.rs /opt/foray/references/border-soldier/lib.rs
+COPY crates/foray-ref-greedy-raider/src/lib.rs /opt/foray/references/greedy-raider/lib.rs
+COPY crates/foray-ref-random/src/lib.rs /opt/foray/references/random/lib.rs
+COPY crates/foray-core/maps/mirror-32x16.toml /opt/foray/maps/mirror-32x16.toml
+
+# Make everything under /opt/foray world-readable (and directories traversable) so
+# the unprivileged run user can read the buildkit, references, and map and build a
+# controller against them. It is read-only to the run user — it never writes here.
+RUN chmod -R a+rX /opt/foray
+
+# Expose the baked Foray tree's root so specs and a model can reference it by name
+# (`$FORAY_HOME/references/border-soldier.wasm`) rather than hard-coding the path.
+ENV FORAY_HOME=/opt/foray
 
 # Drop back to the unprivileged run user the base image runs as. The base already
 # sets `WORKDIR /work` and the keep-alive CMD, so nothing else is needed here.

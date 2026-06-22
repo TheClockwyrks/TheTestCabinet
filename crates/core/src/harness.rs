@@ -36,8 +36,9 @@ const SPRITE_IMAGE_NAME: &str = "test-cabinet-sprite";
 const SPRITE_SHEET_IMAGE_NAME: &str = "test-cabinet-sprite-sheet";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
-/// so a model's controller builds to wasm in-container (see
-/// `containers/adversarial/Dockerfile`).
+/// (so a model's controller builds to wasm in-container) and the baked-in Foray
+/// tooling: the `foray` CLI, the controller buildkit, and the reference modules +
+/// map (see `containers/adversarial/Dockerfile`).
 const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 
 /// The environment variable that pins a verbatim override for the base (end-to-
@@ -70,7 +71,8 @@ struct ImageSpec {
 /// binary); sprite-sheet runs use the sprite-sheet image (the base plus the
 /// baked-in `draw-sheet` binary); adversarial runs use the adversarial image (the
 /// base plus the Rust + `wasm32-unknown-unknown` toolchain a controller compiles
-/// to wasm with). Each has its own override env var so a host can pin one image
+/// to wasm with, and the baked-in Foray CLI + buildkit + references). Each has its
+/// own override env var so a host can pin one image
 /// without disturbing the others. `asset_kind` is ignored outside an
 /// asset-generation run (it is always [`AssetKind::Sprite`] there).
 fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {

@@ -31,7 +31,7 @@ use crate::SandboxLimits;
 /// that controller: the match continues with the controller's moves replaced by
 /// all-`Stop`, so a replay is still produced. The variant is retained for the
 /// recorded forfeit reason and for diagnostics.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum InvokeError {
     /// The controller exhausted its per-tick fuel ceiling.
     #[error("controller exhausted its fuel ceiling")]

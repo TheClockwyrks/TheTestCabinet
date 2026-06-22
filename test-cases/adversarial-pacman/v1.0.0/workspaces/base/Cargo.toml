@@ -1,34 +1,27 @@
 # Starter Cargo workspace for a Foray controller submission.
 #
-# This is a SELF-CONTAINED workspace: it vendors the game engine (`foray-core`)
-# and the controller SDK (`foray-controller-sdk`) under `vendor/`, so the
-# controller you write in `controller/` builds with nothing but the Rust
-# toolchain and the `wasm32-unknown-unknown` target — no network, no path back
-# into the wider repository. Build it with:
+# You write only `controller/src/lib.rs`. The game engine (`foray-core`) and the
+# controller SDK (`foray-controller-sdk`) your controller builds against are NOT
+# in this workspace — the run container provides them under `/opt/foray/buildkit`,
+# along with the `foray` CLI you run local matches with and the baseline opponents
+# (see `specs/contract.md` and `specs/baselines.md`). They are the SAME engine and
+# SDK the harness scores you against; you build against them, you do not edit them.
 #
-#     cargo build --release --target wasm32-unknown-unknown
+# Build your controller with:
 #
-# which emits your controller at
-# `target/wasm32-unknown-unknown/release/controller.wasm` — the artifact the
-# harness loads and scores. `.cargo/config.toml` already defaults the build
-# target to wasm32, so a bare `cargo build --release` works too.
+#     cargo build --release --target wasm32-unknown-unknown -p controller
 #
-# You write only `controller/src/lib.rs`. The vendored crates are the contract you
-# build against (the `World` observation and `Action` output types, the maze
-# helpers the baselines pathfind over); do not edit them.
+# which emits `target/wasm32-unknown-unknown/release/controller.wasm` — the
+# artifact the harness loads and scores. `.cargo/config.toml` defaults the build
+# target to wasm32 for the `controller` package, so a bare `cargo build --release`
+# works too.
 
 [workspace]
 resolver = "2"
-# Only the controller is a build target. The vendored engine and SDK under
-# `vendor/` are path DEPENDENCIES of the controller, not members: built with only
-# the features the controller asks for (the controller drops `foray-core`'s
-# `playback` feature so the engine's browser `alloc`/`replay_*` exports never
-# collide with the SDK's own `alloc`). They are listed under `exclude` so a glob
-# never re-adds them as members. The `foray` CLI is excluded for a different
-# reason — it is its own native workspace (it hosts wasmtime and builds for the
-# host target, not wasm).
+# The controller is the only crate in this workspace; the engine and SDK it
+# path-depends on live outside it (in the container's `/opt/foray/buildkit`), so
+# they are ordinary out-of-workspace path dependencies, not members.
 members = ["controller"]
-exclude = ["tools", "vendor/foray-core", "vendor/foray-controller-sdk"]
 
 # Concrete values for the controller's `*.workspace = true` inheritance.
 [workspace.package]
@@ -36,12 +29,3 @@ edition = "2024"
 version = "0.0.0"
 license = "MIT"
 publish = false
-
-# `foray-core` is a `cdylib` (it can also compile to wasm for browser playback).
-# On a non-wasm host the same `cdylib` is still emitted, and rustc's incremental
-# codegen for a `cdylib` split across the dev profile's many codegen units can drop
-# an object file on a second build; pinning one codegen unit removes that race. It
-# only affects a native `cargo test`/`cargo build` of this crate, not the wasm
-# build the harness performs.
-[profile.dev.package.foray-core]
-codegen-units = 1

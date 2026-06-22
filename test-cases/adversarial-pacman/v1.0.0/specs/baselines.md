@@ -1,9 +1,11 @@
 # The reference controllers
 
-The workspace ships three **baseline controllers** under `references/`, each with
-its Rust source (`references/<name>/lib.rs`) and a pre-built module
-(`references/<name>.wasm`). They are there to give you a concrete opponent to
-compile, run, and play against while you develop — a yardstick, **not** a template.
+The run environment provides three **baseline controllers** under
+`$FORAY_HOME/references/`, each with its Rust source
+(`$FORAY_HOME/references/<name>/lib.rs`) and a pre-built module
+(`$FORAY_HOME/references/<name>.wasm`). They are there to give you a concrete
+opponent to run and play against while you develop — a yardstick, **not** a
+template. (`$FORAY_HOME` is `/opt/foray`; the `foray` CLI is on your `PATH`.)
 
 Every baseline is **deliberately mediocre**. Each has an obvious, exploitable
 weakness, and none of them accounts properly for Foray's twist (carry weight and
@@ -61,28 +63,28 @@ timing a bank against carry weight, and spending jelly to run a heavy load home
 
 ## Iterating locally
 
-Build the local `foray` CLI once (it hosts the same engine the harness scores
-with), then run matches against any baseline:
+The `foray` CLI is preinstalled on your `PATH` (it hosts the same engine the
+harness scores with). Build your controller, then run a match against any baseline:
 
 ```bash
-# build the CLI (host target) — one time
-cargo build --release --manifest-path tools/Cargo.toml --target-dir tools/target
-
 # build your controller to wasm
 cargo build --release --target wasm32-unknown-unknown -p controller
 
 # play your controller (Red) against a baseline (Blue) and write a replay
-./tools/target/release/foray simulate \
+foray simulate \
   --red  target/wasm32-unknown-unknown/release/controller.wasm \
-  --blue references/border-soldier.wasm \
-  --map  maps/mirror-32x16.toml \
+  --blue "$FORAY_HOME/references/border-soldier.wasm" \
+  --map  "$FORAY_HOME/maps/mirror-32x16.toml" \
   --seed 0xC0FFEE \
   --out  replay.json
 ```
 
-The CLI prints the winner, the outcome (`swept` / `time_limit` / `forfeit`), and
-the tick count, and writes a `replay.json` you can inspect. Swap `--blue` for
-`references/random.wasm` or `references/greedy-raider.wasm` to test against the
-other baselines, and try a few `--seed` values to make sure you are not overfitting
-one maze. The canonical scoring match uses `--seed 0xC0FFEE` against
-`border-soldier`.
+The CLI prints the winner, the final score, and the outcome (`swept` /
+`time_limit` / `forfeit`) with the tick count, and writes a `replay.json` you can
+inspect. **On a forfeit it also prints which controller forfeited, on what tick,
+and why** (out of fuel, over the memory cap, a trap, or a contract-invalid action)
+— so when your controller loses on a technicality you can see exactly which limit
+it broke. Swap `--blue` for `$FORAY_HOME/references/random.wasm` or
+`$FORAY_HOME/references/greedy-raider.wasm` to test against the other baselines,
+and try a few `--seed` values to make sure you are not overfitting one maze. The
+canonical scoring match uses `--seed 0xC0FFEE` against `border-soldier`.

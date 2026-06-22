@@ -22,7 +22,9 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
-  toolchain, so a model's controller builds to a wasm core module in-container.
+  toolchain (so a model's controller builds to a wasm core module in-container)
+  and the Foray tooling compiled from `crates/`: the baked-in `foray` CLI, the
+  controller buildkit, and the reference modules + map.
 
 None is a per-harness image — a run installs the selected harness's CLI into
 the image at run time, by running the harness's `install` command (see
@@ -39,7 +41,9 @@ containers/
 ├── base/Dockerfile          # the end-to-end run image (toolchain, run user)
 ├── sprite/Dockerfile        # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile  # the base image plus the baked-in `draw-sheet` binary
-├── adversarial/Dockerfile   # the base image plus the Rust + wasm32 toolchain
+├── adversarial/            # the base image plus the wasm toolchain + Foray tooling
+│   ├── Dockerfile          #   (foray CLI, references + map, controller buildkit)
+│   └── buildkit/Cargo.toml #   de-workspaced root for the baked buildkit crates
 └── build.sh                 # builds (and optionally pushes) all four images
 ```
 
@@ -105,23 +109,44 @@ images `FROM` the base it builds alongside them, so all three stay in lockstep.
 
 ## Adversarial image
 
-`adversarial/` is the base image plus one addition: the **Rust toolchain with
-the `wasm32-unknown-unknown` target** (`adversarial/Dockerfile` is `FROM` the
-base, so it inherits the toolchain, the `node` run user, the `/work` working
-directory, and the keep-alive `CMD`). An
+`adversarial/` is the base image plus the **Rust toolchain with the
+`wasm32-unknown-unknown` target** and **The Test Cabinet's own Foray tooling**
+(`adversarial/Dockerfile` is `FROM` the base, so it inherits the toolchain, the
+`node` run user, the `/work` working directory, and the keep-alive `CMD`). An
 [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md) run
 asks the model to write a controller in Rust; the case's `[build]` commands
 compile that controller to a wasm core module **inside this container at run
-time**, which is why the build toolchain is baked in.
+time**, which is why the Rust toolchain is baked in. The toolchain is installed
+system-wide and made world-readable so the unprivileged run user can invoke
+`cargo`/`rustc` and the wasm target without root; its cargo registry/cache is
+owned by the run user so a controller build can resolve dependencies at run time.
 
-Unlike the asset-generation image, **nothing of The Test Cabinet's own is baked
-in here**: there is no compile stage and no binary to copy. The wasm the model
-produces is run by the orchestrator/validator (the `foray` engine + a wasmtime
-host), not by anything in this image — the image only has to turn the model's
-Rust source into wasm. The toolchain is installed system-wide and made
-world-readable so the unprivileged run user can invoke `cargo`/`rustc` and the
-wasm target without root; its cargo registry/cache is owned by the run user so a
-controller build can resolve dependencies at run time.
+Like the asset-generation images, this one **also bakes in The Test Cabinet's own
+tooling**, compiled from `crates/` in a multi-stage build and copied under
+`/usr/local/bin` and `/opt/foray`:
+
+- the **`foray` CLI** (`/usr/local/bin/foray`) — the binary a model runs its
+  controller through to play local matches against the baselines. It hosts the
+  *same* `foray-host` engine the validator scores with, so it must be built from
+  this repo and kept in lockstep, not installed at run time;
+- the **controller buildkit** (`/opt/foray/buildkit`) — fresh, source-only copies
+  of `foray-core` and `foray-controller-sdk` (with a de-workspaced root manifest,
+  [`adversarial/buildkit/Cargo.toml`](adversarial/buildkit/Cargo.toml), that
+  re-supplies their `workspace = true` inheritance) that the seeded `controller`
+  crate path-depends on to build — so the run workspace vendors nothing; and
+- the **reference controllers** (`/opt/foray/references`, pre-built wasm + readable
+  source) and the **canonical map** (`/opt/foray/maps`) — the baselines a model
+  plays against. `$FORAY_HOME` is set to `/opt/foray` so specs and a model can name
+  these by `$FORAY_HOME/references/…` rather than a hard-coded path.
+
+The same coupling argument as the asset-generation binaries applies: the CLI, the
+buildkit crates, and the reference modules must match the engine the validator
+scores against, so **build this image from the same commit as the orchestrator**
+(a run records both the orchestrator commit and the image digest, so a mismatch is
+auditable). Compiling them is why the build context is the repository root rather
+than the image's directory (see `build.sh`); the build also smoke-compiles the
+buildkit standalone, so a buildkit root that has drifted from the repository's
+workspace dependencies fails the image build.
 
 ## Building
 
@@ -171,9 +196,14 @@ This definition is authored but **not yet built or validated** — that requires
 Docker host. When validating on Linux, build all four images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
 the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, and
-that `cargo`/`rustc` and the `wasm32-unknown-unknown` target are available to the
-unprivileged run user in the adversarial image (e.g. `cargo --version` and a
-trivial `cargo build --target wasm32-unknown-unknown` as `node`). Validating each
+that the adversarial image gives the unprivileged run user `cargo`/`rustc` and the
+`wasm32-unknown-unknown` target (e.g. `cargo --version` and a trivial
+`cargo build --target wasm32-unknown-unknown` as `node`), `foray` on `PATH`
+(`foray --version`), and a buildable controller against the baked buildkit — copy
+a case's `controller/` and confirm `cargo build --release --target
+wasm32-unknown-unknown -p controller` emits `controller.wasm` and
+`foray simulate --red … --blue $FORAY_HOME/references/border-soldier.wasm --map
+$FORAY_HOME/maps/mirror-32x16.toml --out replay.json` runs as `node`. Validating each
 **harness** — that its
 [install command](../harnesses/README.md) lands a working CLI on `PATH`, the
 exact non-interactive flags, its token/usage reporting format, and which

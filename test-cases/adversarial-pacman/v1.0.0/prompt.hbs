@@ -45,24 +45,28 @@ opponents you must beat — chiefly `border-soldier`, the canonical scoring oppo
 
 ## Your starting point
 
-The starter workspace at `{{workspace}}` is a self-contained Cargo project:
+The workspace at `{{workspace}}` is a small Cargo project — just the controller
+crate. Everything you build *against* and run *with* is provided by the run
+environment, not vendored here:
 
 - `controller/src/lib.rs` — the controller you fill in. It builds and runs as-is,
   but it is the floor (a trivial legal move per agent); replace it. You write a
   single `fn decide(world: &World) -> Action` and the `controller!` macro wires it
   to the wasm ABI — see `specs/contract.md`.
-- `vendor/foray-core` and `vendor/foray-controller-sdk` — the game engine (the
-  `World`/`Action` contract types, identical to what the harness scores you
-  against) and the SDK (the ABI plumbing plus maze helpers: a passability grid, a
-  BFS, and a legal-action builder). Path dependencies of your controller; do not
-  edit them.
-- `references/` — the three baseline controllers, each as readable Rust source and
-  a pre-built `.wasm`. Worked examples of reading the `world` and returning an
-  `action`; opponents to dismantle, not templates to copy.
-- `maps/mirror-32x16.toml` — the shipped board.
-- `tools/` — a separate workspace for the local `foray` CLI, so you can run matches
-  against the baselines exactly as the harness will. Build and use it as
-  `specs/baselines.md` describes.
+- The game engine (`foray-core` — the `World`/`Action` contract types, identical to
+  what the harness scores you against) and the SDK (`foray-controller-sdk` — the
+  ABI plumbing plus maze helpers: a passability grid, a BFS, and a legal-action
+  builder) are provided under `$FORAY_HOME/buildkit` and are already wired up as
+  your controller's path dependencies. You build against them; do not edit them.
+- The `foray` CLI is **preinstalled** on your `PATH` — run it as `foray simulate …`
+  to play your controller against a baseline (see `specs/baselines.md`). It hosts
+  the same engine the harness scores with, so a local win means what a scored win
+  means.
+- The three baseline controllers live under `$FORAY_HOME/references/` as a pre-built
+  `.wasm` plus readable Rust source, and the shipped board is at
+  `$FORAY_HOME/maps/mirror-32x16.toml`. The baselines are worked examples of reading
+  the `world` and returning an `action`; opponents to dismantle, not templates to
+  copy. (`$FORAY_HOME` is `/opt/foray`.)
 
 ## How to build
 
@@ -87,10 +91,13 @@ straight from a published capture-the-flag strategy will over-load and ignore
 jelly's inversion, and lose; the work of this case is to play *Foray*, not generic
 CTF.
 
-Iterate locally: build the `foray` CLI, run your controller against
-`references/border-soldier.wasm` (and the other two, and a few seeds), watch the
-result and the replay, and refine until you win clearly. Stay inside the per-tick
-fuel and memory limits in `specs/sandbox.md` — a controller that traps, runs out of
-fuel, or returns an invalid action forfeits. When `cargo build --release --target
+Iterate locally with the preinstalled `foray` CLI: run your controller against
+`$FORAY_HOME/references/border-soldier.wasm` (and the other two, and a few seeds),
+watch the result and the replay, and refine until you win clearly. The CLI prints
+the winner, the score, the outcome, and — if a controller forfeits — *which* one
+and *why* (fuel, memory, a trap, or a contract-invalid action), so a self-inflicted
+loss is easy to diagnose. Stay inside the per-tick fuel and memory limits in
+`specs/sandbox.md` — a controller that traps, runs out of fuel, or returns an
+invalid action forfeits. When `cargo build --release --target
 wasm32-unknown-unknown -p controller` produces a `controller.wasm` that beats the
 baselines, you are done; the module is your submission.
