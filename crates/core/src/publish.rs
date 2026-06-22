@@ -65,8 +65,9 @@ pub fn read_event_log(run_dir: &Path) -> Vec<HarnessEvent> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PushOutcome {
-    /// URL of the public repository holding the released source.
-    pub source_repo: String,
+    /// URL of the public repository holding the released source, or `None` for a
+    /// run that releases no code (an asset-generation run creates no repository).
+    pub source_repo: Option<String>,
     /// URL of the playable build made available for embedding, when one was
     /// deployed. `None` when the request carried no build directory.
     pub playable_build: Option<String>,
@@ -84,8 +85,9 @@ pub struct PushOutcome {
 #[async_trait::async_trait]
 pub trait Publisher: Send + Sync {
     /// Release the run's generated code to its own public repository, returning
-    /// the repository URL.
-    async fn release_code(&self, request: &PushRequest<'_>) -> Result<String>;
+    /// the repository URL — or `None` for a run type that produces no code to
+    /// release (asset-generation), which creates no repository.
+    async fn release_code(&self, request: &PushRequest<'_>) -> Result<Option<String>>;
 
     /// Deploy the run's playable build, returning the URL it is served at, or
     /// `None` when the request carried no build directory.
@@ -125,7 +127,7 @@ pub struct NoopPublisher;
 
 #[async_trait::async_trait]
 impl Publisher for NoopPublisher {
-    async fn release_code(&self, _request: &PushRequest<'_>) -> Result<String> {
+    async fn release_code(&self, _request: &PushRequest<'_>) -> Result<Option<String>> {
         Err(Error::Publish("publishing is not configured".to_string()))
     }
 
@@ -411,8 +413,18 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
 
 #[async_trait::async_trait]
 impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
-    async fn release_code(&self, request: &PushRequest<'_>) -> Result<String> {
+    async fn release_code(&self, request: &PushRequest<'_>) -> Result<Option<String>> {
         let record = request.record;
+
+        // Asset-generation runs produce no code — their authoritative output is the
+        // recorded drawing operations, uploaded separately to the backend. There is
+        // nothing to commit or push, so no per-run GitHub repository is created and
+        // the run carries no source link. Every other (code-writing) type releases
+        // its implementation; see `TestType::releases_source_repo`.
+        if !record.subject.test_type.releases_source_repo() {
+            return Ok(None);
+        }
+
         let impl_dir = request.artifacts.repo_path.as_path();
         let qualified = self.config.repo_qualified(record);
 
@@ -447,7 +459,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
             .await?;
         }
 
-        Ok(self.config.repo_url(record))
+        Ok(Some(self.config.repo_url(record)))
     }
 
     async fn release_playable_build(&self, request: &PushRequest<'_>) -> Result<Option<String>> {
@@ -505,7 +517,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         // backend writes them onto the stored record and exports them into the
         // site snapshot once the run is published.
         let links = RunLinks {
-            source_repo: Some(source_repo.clone()),
+            source_repo: source_repo.clone(),
             playable_build: playable_build.clone(),
         };
         let mut record = request.record.clone();

@@ -429,8 +429,8 @@ async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
 
     assert!(outcome.newly_pushed);
     assert_eq!(
-        outcome.source_repo,
-        "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
+        outcome.source_repo.as_deref(),
+        Some("https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9")
     );
     // The playable build URL is the one wrangler reported, not a constructed host.
     assert_eq!(
@@ -469,19 +469,13 @@ async fn push_creates_public_repo_deploys_build_and_stores_on_backend() {
     let (stored, links, pushed_events) = &pushed[0];
     assert_eq!(stored.id, record.id);
     assert_eq!(pushed_events, &events);
-    assert_eq!(
-        links.source_repo.as_deref(),
-        Some(outcome.source_repo.as_str())
-    );
+    assert_eq!(links.source_repo, outcome.source_repo);
     assert_eq!(
         links.playable_build.as_deref(),
         Some("https://abc123.test-cabinet-runs.pages.dev")
     );
     // The links are also written onto the stored record blob.
-    assert_eq!(
-        stored.links.source_repo.as_deref(),
-        Some(outcome.source_repo.as_str())
-    );
+    assert_eq!(stored.links.source_repo, outcome.source_repo);
 }
 
 #[tokio::test]
@@ -518,6 +512,45 @@ async fn push_skips_the_commit_when_the_working_tree_is_already_clean() {
             .iter()
             .any(|c| c.contains("gh repo create") && c.contains("--push")),
         "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn push_of_an_asset_generation_run_creates_no_repo_and_has_no_source_link() {
+    // Asset-generation runs produce no code — their output is the recorded drawing
+    // operations, uploaded separately. Pushing one must NOT create a GitHub repo
+    // (or touch git at all), and the run carries no source link.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false), MockBackend::new(false));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let mut record = sample_record();
+    record.subject.test_type = crate::test_case::TestType::AssetGeneration;
+    let request = PushRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+        events: &[],
+    };
+
+    let outcome = publisher.push(&request).await.expect("push");
+
+    // No source repo is returned, and none is recorded on the links or the record.
+    assert_eq!(outcome.source_repo, None);
+    let pushed = publisher.backend().pushed();
+    assert_eq!(pushed.len(), 1);
+    let (stored, links, _events) = &pushed[0];
+    assert_eq!(links.source_repo, None);
+    assert_eq!(stored.links.source_repo, None);
+    // Neither `git` nor `gh` was invoked — not even the repo-existence probe.
+    let calls = publisher.runner().calls();
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.starts_with("gh ") || c.starts_with("git ")),
+        "asset-generation push must not touch git/gh: {calls:?}"
     );
 }
 

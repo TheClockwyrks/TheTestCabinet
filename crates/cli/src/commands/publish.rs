@@ -61,7 +61,10 @@ pub async fn push(args: PushArgs) -> Result<()> {
             "already stored"
         };
         println!("  {} — {state}", run.record.id);
-        println!("    source: {}", outcome.source_repo);
+        match &outcome.source_repo {
+            Some(url) => println!("    source: {url}"),
+            None => println!("    source: (no source repo — asset generation)"),
+        }
         match &outcome.playable_build {
             Some(url) => println!("    build:  {url}"),
             None => println!("    build:  (no static build deployed)"),
@@ -119,7 +122,10 @@ pub async fn publish(args: PublishArgs) -> Result<()> {
         }
     }
     if !missing.is_empty() {
-        eprintln!("Refusing to publish: {} run(s) lack a review.", missing.len());
+        eprintln!(
+            "Refusing to publish: {} run(s) lack a review.",
+            missing.len()
+        );
         for (id, reason) in &missing {
             eprintln!("  {id} — {reason}");
         }
@@ -170,7 +176,10 @@ pub async fn publish(args: PublishArgs) -> Result<()> {
             "already published"
         };
         println!("  {} — {state}", run.record.id);
-        println!("    source: {}", outcome.source_repo);
+        match &outcome.source_repo {
+            Some(url) => println!("    source: {url}"),
+            None => println!("    source: (no source repo — asset generation)"),
+        }
         match &outcome.playable_build {
             Some(url) => println!("    build:  {url}"),
             None => println!("    build:  (no static build deployed)"),
@@ -265,7 +274,12 @@ fn load_writeup_at(path: &Path) -> Result<Writeup, String> {
     parse_writeup(&text).map_err(|err| err.to_string())
 }
 
-fn print_plan(config: &PublishConfig, record: &RunRecord, writeup: &Writeup, build_dir: Option<&Path>) {
+fn print_plan(
+    config: &PublishConfig,
+    record: &RunRecord,
+    writeup: &Writeup,
+    build_dir: Option<&Path>,
+) {
     println!("  {}", record.id);
     let overall = writeup
         .overall_rating()
@@ -286,6 +300,8 @@ fn print_plan(config: &PublishConfig, record: &RunRecord, writeup: &Writeup, bui
             config.pages_project,
             record.id
         ),
-        None => println!("    build:  (no static build output found; will publish without a build)"),
+        None => {
+            println!("    build:  (no static build output found; will publish without a build)")
+        }
     }
 }

@@ -192,13 +192,15 @@ export interface LaunchConfig {
 // The standalone push result: source + build released and the record stored
 // privately (no review). Mirrors `commands::PushResult`.
 export interface PushResult {
-  sourceRepo: string;
+  // `null` for an asset-generation run, which releases no code.
+  sourceRepo: string | null;
   playableBuild: string | null;
   newlyPushed: boolean;
 }
 
 export interface PublishResult {
-  sourceRepo: string;
+  // `null` for an asset-generation run, which releases no code.
+  sourceRepo: string | null;
   playableBuild: string | null;
   newlyPublished: boolean;
 }

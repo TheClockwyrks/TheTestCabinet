@@ -929,7 +929,9 @@ pub async fn save_review(
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PushResult {
-    pub source_repo: String,
+    /// The released source repo URL; `None` for an asset-generation run, which
+    /// releases no code.
+    pub source_repo: Option<String>,
     pub playable_build: Option<String>,
     pub newly_pushed: bool,
 }
@@ -997,7 +999,9 @@ pub async fn push_run(id: String, token: String) -> CmdResult<PushResult> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishResult {
-    pub source_repo: String,
+    /// The released source repo URL; `None` for an asset-generation run, which
+    /// releases no code.
+    pub source_repo: Option<String>,
     pub playable_build: Option<String>,
     pub newly_published: bool,
 }

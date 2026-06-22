@@ -227,7 +227,8 @@ export interface LaunchConfig {
 // released them (false when the run was already pushed). A push stores the run
 // privately — no review, not yet published.
 export interface PushResult {
-  sourceRepo: string;
+  // `null` for an asset-generation run, which releases no code (no repo created).
+  sourceRepo: string | null;
   playableBuild: string | null;
   newlyPushed: boolean;
 }

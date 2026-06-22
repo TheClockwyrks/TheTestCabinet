@@ -57,7 +57,8 @@ interface JobResponse {
 // The worker's `POST /push` ack. `PushResult` drops the echoed `runId`.
 interface PushAck {
   runId: string;
-  sourceRepo: string;
+  // Absent for an asset-generation run, which releases no code.
+  sourceRepo?: string | null;
   playableBuild?: string | null;
   newlyPushed: boolean;
 }
@@ -254,7 +255,7 @@ export function createHttpWorker(baseUrl: string): WorkerClient {
         token,
       );
       return {
-        sourceRepo: ack.sourceRepo,
+        sourceRepo: ack.sourceRepo ?? null,
         playableBuild: ack.playableBuild ?? null,
         newlyPushed: ack.newlyPushed,
       };

@@ -274,9 +274,9 @@ export function RunReviewEditor({
       const result = await client!.push(runId, token!);
       setPushed(true);
       setMessage(
-        `${result.newlyPushed ? "Pushed" : "Already pushed"} — source ${
-          result.sourceRepo || "(released)"
-        }` + (result.playableBuild ? `, build ${result.playableBuild}` : ""),
+        `${result.newlyPushed ? "Pushed" : "Already pushed"}` +
+          (result.sourceRepo ? ` — source ${result.sourceRepo}` : "") +
+          (result.playableBuild ? `, build ${result.playableBuild}` : ""),
       );
     });
 

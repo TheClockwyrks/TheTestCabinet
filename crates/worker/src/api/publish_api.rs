@@ -64,7 +64,10 @@ pub struct PublishBody {
 #[serde(rename_all = "camelCase")]
 pub struct PushAck {
     pub run_id: String,
-    pub source_repo: String,
+    /// The released source repo URL; absent for an asset-generation run, which
+    /// releases no code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_repo: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playable_build: Option<String>,
     pub newly_pushed: bool,

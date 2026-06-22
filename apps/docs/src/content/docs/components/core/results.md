@@ -16,14 +16,19 @@ who can *judge* it (see [Lifecycle](#lifecycle)).
 
 ## Generated Code
 
-Each published run's generated implementation must be released as its **own**
-public git repository.
+Each published run whose model **writes code** — every type except
+asset-generation — must be released as its **own** public git repository.
 
 - Releasing each run as a standalone repository keeps results independent and maps
   cleanly onto per run hosting and embedding. See [Site](/components/site/overview/#hosting).
 - The generated implementation must include a README and any other documentation
   that a user needs to clone the repository and run it locally. Requiring this
-  documentation is part of every test case.
+  documentation is part of every code-writing test case.
+- **Asset-generation runs are the exception**: their authoritative output is the
+  recorded sequence of drawing operations (uploaded to the backend as the run's
+  assets), not a source tree, so **no per-run repository is created** and the run
+  carries no source link. The local run folder is still a git repo (seeded like
+  any other), but pushing one never creates a repository on GitHub.
 
 ## Run Record
 
@@ -45,7 +50,8 @@ it is what keeps the public gallery to runs a human has actually assessed.
 
 Pushing a run is the **release** step: an operator takes a finished run and
 
-- Releases its generated code to its own public repository.
+- Releases its generated code to its own public repository (skipped for an
+  asset-generation run, which has no code to release).
 - Deploys its playable build so it can be embedded — and, crucially, *played and
   reviewed*.
 - Records its [run record](/components/core/run-records/), with its links
