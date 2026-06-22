@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Panel } from "@test-cabinet/ui";
-import type {
-  ControllerRef,
-  MatchSummary,
-} from "@test-cabinet/run-record";
-import {
-  useGalleryData,
-  type ArenaApi,
-} from "../../../data/galleryContext";
+import type { ControllerRef, MatchSummary } from "@test-cabinet/run-record";
+import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { routes } from "../../../routes";
@@ -54,9 +48,7 @@ function ArenaContent({
     );
   }
 
-  return (
-    <ArenaPanels arena={arena} testCase={testCase} variant={variant} />
-  );
+  return <ArenaPanels arena={arena} testCase={testCase} variant={variant} />;
 }
 
 function ArenaPanels({
@@ -119,8 +111,9 @@ function ArenaPanels({
             </select>
           </label>
           <p className={styles.muted}>
-            Matches run on this worker, and its locally-produced (unpushed) runs are
-            listed below. Pushed implementations are selectable on any worker.
+            Matches run on this worker, and its locally-produced (unpushed) runs
+            are listed below. Pushed implementations are selectable on any
+            worker.
           </p>
         </Panel>
       )}
@@ -286,7 +279,10 @@ function QuickMatchPanel({
 
       {result && (
         <div className={styles.matchResult}>
-          <MatchSummaryLine summary={result.summary} controllers={controllers} />
+          <MatchSummaryLine
+            summary={result.summary}
+            controllers={controllers}
+          />
           {result.replay == null ? (
             <p className={styles.muted}>
               No replay is available — a controller failed to load.
@@ -423,9 +419,8 @@ function TournamentPanel({
 
       {running && progress && (
         <p className={styles.muted}>
-          Played {progress.played} / {progress.total} —{" "}
-          {progress.summary.redId} vs {progress.summary.blueId}:{" "}
-          {progress.summary.winner ?? "draw"}
+          Played {progress.played} / {progress.total} — {progress.summary.redId}{" "}
+          vs {progress.summary.blueId}: {progress.summary.winner ?? "draw"}
         </p>
       )}
 
@@ -466,6 +461,17 @@ function MatchSummaryLine({
       <dt className={styles.recordTerm}>Kills</dt>
       <dd>
         {summary.redKills} – {summary.blueKills}
+      </dd>
+      <dt className={styles.recordTerm}>Fuel</dt>
+      <dd>
+        <span className={styles.scoreRed}>
+          {labelFor(summary.redId)} {summary.redFuel.toLocaleString()}
+        </span>
+        {" — "}
+        <span className={styles.scoreBlue}>
+          {labelFor(summary.blueId)} {summary.blueFuel.toLocaleString()}
+        </span>
+        {summary.winType === "efficiency" && " · decided the match"}
       </dd>
     </dl>
   );

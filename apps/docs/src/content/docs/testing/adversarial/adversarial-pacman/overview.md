@@ -145,7 +145,10 @@ A match ends the moment **either** condition is met:
   timestep.
 
 If the time limit is reached first, the colony with the **higher banked score**
-wins; an equal banked score is a **draw**. A controller that traps, exhausts its
+wins. An equal banked score is broken by **efficiency**: the colony whose
+controller consumed the **least total fuel** over the match wins, having reached
+the same score for less work. Only a level score *and* level fuel is a true
+**draw**. A controller that traps, exhausts its
 [fuel or memory](/testing/adversarial/overview/#sandbox-and-execution), or emits a
 contract-invalid action **forfeits** the match — see
 [Evaluation](/testing/adversarial/evaluation/).

@@ -64,6 +64,11 @@ pub struct Controller {
     /// to its per-tick ceiling — the signal a model needs to tell "comfortably
     /// within budget" from "one optimization away from forfeiting".
     peak_fuel: u64,
+    /// The total fuel this controller consumed across every tick of the match
+    /// (`alloc` + the contract entry, summed). This is the whole-match efficiency
+    /// measure used to break a level-score draw in favour of the leaner
+    /// controller — see [`MatchSummary::decided`](crate::MatchSummary::decided).
+    total_fuel: u64,
 }
 
 /// Per-store host state. wasmtime calls back into [`ResourceLimiter`] before each
@@ -146,6 +151,7 @@ impl Controller {
             tick,
             limits,
             peak_fuel: 0,
+            total_fuel: 0,
         })
     }
 
@@ -155,6 +161,14 @@ impl Controller {
     /// small fraction means it has ample headroom.
     pub fn peak_fuel(&self) -> u64 {
         self.peak_fuel
+    }
+
+    /// The total fuel this controller has consumed across every tick so far. Unlike
+    /// [`peak_fuel`](Self::peak_fuel) (a single-tick high-water mark for sizing the
+    /// ceiling), this is the whole-match draw — the efficiency measure that decides
+    /// a level-score draw in favour of the leaner controller.
+    pub fn total_fuel(&self) -> u64 {
+        self.total_fuel
     }
 
     /// Run one tick: write `world_json` into the guest, call `tick`, and read the
@@ -179,12 +193,13 @@ impl Controller {
 
         let packed = self.call_tick(ptr, len)?;
         // Fuel was refilled to the ceiling at entry, so the shortfall now is what
-        // this tick (`alloc` + the contract entry) burned. Track the peak so a
-        // caller can report how close the controller ran to its budget.
+        // this tick (`alloc` + the contract entry) burned. Track both the peak (how
+        // close the controller ran to its per-tick budget) and the running total
+        // (its whole-match efficiency, used to break a level-score draw).
         if let Ok(remaining) = self.store.get_fuel() {
-            self.peak_fuel = self
-                .peak_fuel
-                .max(self.limits.fuel_per_tick.saturating_sub(remaining));
+            let spent = self.limits.fuel_per_tick.saturating_sub(remaining);
+            self.peak_fuel = self.peak_fuel.max(spent);
+            self.total_fuel = self.total_fuel.saturating_add(spent);
         }
         let (out_ptr, out_len) = unpack(packed);
         self.read_guest(out_ptr, out_len)

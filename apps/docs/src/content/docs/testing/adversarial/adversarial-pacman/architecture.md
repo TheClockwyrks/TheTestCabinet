@@ -82,14 +82,18 @@ image** (on `PATH`), alongside the controller
 the model builds against and the reference modules + map under `$FORAY_HOME`
 (`/opt/foray`) — so a model runs local matches with the *same* host the validator
 scores with, without building any tooling itself. It prints the winner, the final
-score, and the outcome (`swept` / `time_limit` / `forfeit`); on a forfeit it also
-prints which controller forfeited, on what tick, and **why** (fuel, memory, a trap,
-or a contract-invalid action) — the one outcome the recorded replay cannot explain
-on its own. It also reports each controller's **peak per-tick fuel** against the
-ceiling, so a model can tell "comfortably within budget" from "one heavy tick from
-a forfeit"; pairing that with the `--fuel-per-tick` override (which raises the
-ceiling) lets a model measure how far over the limit an over-budget controller
-runs and decide whether to optimize.
+score, and the outcome (`swept` / `time_limit` / `forfeit`); when the time limit is
+reached on a **level score** it reports the winner "on efficiency" — the
+[tie-break](/testing/adversarial/evaluation/#standings) awards a level match to the
+controller that consumed the **least total fuel**. On a forfeit it also prints
+which controller forfeited, on what tick, and **why** (fuel, memory, a trap, or a
+contract-invalid action) — the one outcome the recorded replay cannot explain on
+its own. It reports each controller's **peak per-tick fuel** against the ceiling, so
+a model can tell "comfortably within budget" from "one heavy tick from a forfeit",
+and its **total fuel** over the match — the figure the efficiency tie-break
+compares. Pairing the peak with the `--fuel-per-tick` override (which raises the
+ceiling) lets a model measure how far over the limit an over-budget controller runs
+and decide whether to optimize.
 
 Each tick the CLI:
 
@@ -252,6 +256,16 @@ the original run need **not** have been deterministic, but **replaying the
 recorded log is**. The committed `result` lets a player verify its own
 reconstruction matches the recorded outcome — a drift between the two means the
 core changed under the replay and is a bug, not a re-scoring.
+
+The committed `result` is purely the **rules** outcome: `foray-core` knows banked
+score and forfeits, not fuel, so a level score at `max_ticks` is recorded with
+`"winner": null` (a draw) and reconstructs identically in the browser. The
+[efficiency tie-break](/testing/adversarial/evaluation/#standings) that crowns the
+leaner controller is a **host** concern (fuel is metered by `foray-host`, which is
+not part of the wasm-portable core), so it is applied *on top of* this result when
+the match verdict is recorded — never written into the replay. A match whose replay
+reconstructs to a draw can therefore still be credited to one side on efficiency;
+the two are consistent, not contradictory.
 
 ## Browser playback
 

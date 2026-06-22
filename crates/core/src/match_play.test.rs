@@ -4,8 +4,6 @@
 use std::path::PathBuf;
 
 use foray_core::board::Team;
-use foray_core::replay::ReplayResult;
-use foray_core::state::{Ended, Kills, Score};
 
 use super::*;
 use crate::test_case::{
@@ -88,43 +86,47 @@ fn baseline(version: &TestCaseVersion, id: &str) -> ResolvedController {
     }
 }
 
-fn result(winner: Option<Team>, ended: Ended) -> ReplayResult {
-    ReplayResult {
-        winner,
-        score: Score { red: 3, blue: 1 },
-        kills: Kills::default(),
-        ended,
-        ticks: 100,
-    }
+fn decided(winner: Option<Team>, by: DecidedBy) -> Decided {
+    Decided { winner, by }
 }
 
 #[test]
-fn outcome_for_reads_each_side_of_a_decided_match() {
-    let red_swept = result(Some(Team::Red), Ended::Swept);
-    assert_eq!(outcome_for(&red_swept, Team::Red), AdversarialOutcome::Win);
+fn outcome_from_reads_each_side_of_a_decided_match() {
+    let red_swept = decided(Some(Team::Red), DecidedBy::Sweep);
+    assert_eq!(outcome_from(red_swept, Team::Red), AdversarialOutcome::Win);
+    assert_eq!(outcome_from(red_swept, Team::Blue), AdversarialOutcome::Loss);
+
+    // A level-score match broken by the efficiency tie-break is a plain win/loss —
+    // the leaner side wins, the other loses, neither draws.
+    let red_efficient = decided(Some(Team::Red), DecidedBy::Efficiency);
     assert_eq!(
-        outcome_for(&red_swept, Team::Blue),
+        outcome_from(red_efficient, Team::Red),
+        AdversarialOutcome::Win
+    );
+    assert_eq!(
+        outcome_from(red_efficient, Team::Blue),
         AdversarialOutcome::Loss
     );
 
-    let draw = result(None, Ended::TimeLimit);
-    assert_eq!(outcome_for(&draw, Team::Red), AdversarialOutcome::Draw);
+    // A genuine draw is level score *and* level fuel (reported as `Score`).
+    let draw = decided(None, DecidedBy::Score);
+    assert_eq!(outcome_from(draw, Team::Red), AdversarialOutcome::Draw);
 
     // A decided forfeit is the *losing* side forfeiting; the winner wins outright.
-    let red_forfeited = result(Some(Team::Blue), Ended::Forfeit);
+    let red_forfeited = decided(Some(Team::Blue), DecidedBy::Forfeit);
     assert_eq!(
-        outcome_for(&red_forfeited, Team::Red),
+        outcome_from(red_forfeited, Team::Red),
         AdversarialOutcome::Forfeit
     );
     assert_eq!(
-        outcome_for(&red_forfeited, Team::Blue),
+        outcome_from(red_forfeited, Team::Blue),
         AdversarialOutcome::Win
     );
 
     // No winner on a forfeit means both forfeited.
-    let both_forfeited = result(None, Ended::Forfeit);
+    let both_forfeited = decided(None, DecidedBy::Forfeit);
     assert_eq!(
-        outcome_for(&both_forfeited, Team::Red),
+        outcome_from(both_forfeited, Team::Red),
         AdversarialOutcome::Forfeit
     );
 }
@@ -172,7 +174,7 @@ fn an_unloadable_controller_forfeits_with_no_replay() {
 }
 
 #[test]
-fn a_tournament_runs_every_pair_once_and_ranks_by_points() {
+fn a_tournament_runs_every_pair_once_and_ranks_by_wins() {
     let version = foray_version(1_500);
     let participants = vec![
         baseline(&version, "border-soldier"),
@@ -204,36 +206,36 @@ fn a_tournament_runs_every_pair_once_and_ranks_by_points() {
         assert!(summary.red_id < summary.blue_id, "lower id seats as Red");
     }
 
-    // Standings rank all three, 1..=3, sorted by points descending.
+    // Standings rank all three, 1..=3, sorted by wins descending.
     let standings = &build.record.standings;
     assert_eq!(standings.len(), 3);
     let ranks: Vec<u32> = standings.iter().map(|s| s.rank).collect();
     assert_eq!(ranks, vec![1, 2, 3]);
     for pair in standings.windows(2) {
         assert!(
-            pair[0].points >= pair[1].points,
-            "standings are sorted by points, highest first"
+            pair[0].wins >= pair[1].wins,
+            "standings are sorted by wins, highest first"
         );
     }
 
-    // A participant's points are exactly the seeds it banked across its matches.
     for standing in standings {
         let id = &standing.participant_id;
-        let earned: u32 = build
+        // A participant's wins are exactly the matches it was crowned the winner of
+        // — and with the efficiency tie-break, a level-score match still has one.
+        let won = build
             .record
             .matches
             .iter()
-            .map(|m| {
-                if &m.red_id == id {
-                    m.red_score
-                } else if &m.blue_id == id {
-                    m.blue_score
-                } else {
-                    0
-                }
-            })
-            .sum();
-        assert_eq!(standing.points, earned, "points == summed banked seeds");
+            .filter(|m| m.winner.as_deref() == Some(id.as_str()))
+            .count() as u32;
+        assert_eq!(standing.wins, won, "wins == matches won");
+        // Each controller meets the other two exactly once, so its record accounts
+        // for two matches.
+        assert_eq!(
+            standing.wins + standing.losses + standing.draws,
+            2,
+            "every participant plays two matches in a three-controller field",
+        );
     }
 }
 

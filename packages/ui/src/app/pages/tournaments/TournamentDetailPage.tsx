@@ -1,16 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { Panel } from "@test-cabinet/ui";
-import type {
-  MatchSummary,
-  TournamentRecord,
-} from "@test-cabinet/run-record";
+import type { MatchSummary, TournamentRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import {
-  useGalleryData,
-  type ArenaApi,
-} from "../../data/galleryContext";
+import { useGalleryData, type ArenaApi } from "../../data/galleryContext";
 import { ReplayOverlay } from "../runs/[runId]/AdversarialReplaySection";
 import styles from "./TournamentDetailPage.module.scss";
 
@@ -50,7 +44,10 @@ export function TournamentDetailPage() {
 
   return (
     <PageLayout>
-      <PromptHeader command="--tournament" comment={<>// standings &amp; matches</>} />
+      <PromptHeader
+        command="--tournament"
+        comment={<>// standings &amp; matches</>}
+      />
       {!arena ? (
         <Panel>
           <p className={styles.empty}>This tournament is not available here.</p>
@@ -108,7 +105,7 @@ function TournamentBody({
           >
             <span className={styles.rank}>#</span>
             <span>CONTROLLER</span>
-            <span className={styles.num}>POINTS</span>
+            <span className={styles.num}>WINS</span>
             <span className={styles.num}>W–L–D</span>
           </div>
           {record.standings.map((standing) => (
@@ -122,8 +119,10 @@ function TournamentBody({
                 {labelFor(standing.participantId)}
               </span>
               <span className={styles.num}>
-                <span className={styles.points}>{standing.points}</span>{" "}
-                <span className={styles.pointsUnit}>pts</span>
+                <span className={styles.wins}>{standing.wins}</span>{" "}
+                <span className={styles.winsUnit}>
+                  {standing.wins === 1 ? "win" : "wins"}
+                </span>
               </span>
               <span className={styles.num}>
                 {standing.wins}–{standing.losses}–{standing.draws}
@@ -184,6 +183,12 @@ function MatchRow({
   onReplay: () => void;
 }) {
   const winner = match.winner ? labelFor(match.winner) : "Draw";
+  // A match decided on efficiency was a level score broken by total fuel; surface
+  // the two totals so the verdict is legible rather than mysterious.
+  const fuelTitle =
+    match.winType === "efficiency"
+      ? `total fuel — ${labelFor(match.redId)}: ${match.redFuel.toLocaleString()}, ${labelFor(match.blueId)}: ${match.blueFuel.toLocaleString()}`
+      : undefined;
   return (
     <div className={styles.matchesRow} role="row">
       <span className={styles.match}>
@@ -191,7 +196,7 @@ function MatchRow({
         {" vs "}
         <span className={styles.scoreBlue}>{labelFor(match.blueId)}</span>
       </span>
-      <span>
+      <span title={fuelTitle}>
         {winner} · {match.winType}
       </span>
       <span className={styles.num}>{match.ticks}</span>

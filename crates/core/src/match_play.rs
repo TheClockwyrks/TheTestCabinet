@@ -21,9 +21,12 @@ use std::path::Path;
 
 use foray_core::board::Team;
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
-use foray_core::replay::{Replay, ReplayResult};
+use foray_core::replay::Replay;
 use foray_core::state::Ended;
-use foray_host::{ForfeitInfo, MatchSetup, RunError, SandboxLimits, board_for, run_match};
+use foray_host::{
+    Decided, DecidedBy, ForfeitInfo, FuelStats, MatchSetup, RunError, SandboxLimits, board_for,
+    run_match,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
@@ -142,9 +145,12 @@ pub struct MatchSummary {
     pub red_id: String,
     /// The controller that played Blue.
     pub blue_id: String,
-    /// The winning controller's id, or `None` for a draw.
+    /// The winning controller's id, or `None` for a draw. On a level-score match
+    /// this is the more fuel-efficient controller (the tie-break), so a draw means
+    /// the scores *and* the fuel totals were level.
     pub winner: Option<String>,
-    /// How the match ended (`swept`, `time_limit`, or `forfeit`).
+    /// How the match was decided: `swept`, `time_limit` (a decisive score at the
+    /// cap), `efficiency` (a level score broken by lower total fuel), or `forfeit`.
     pub win_type: String,
     /// The outcome from Red's perspective.
     pub outcome_for_red: AdversarialOutcome,
@@ -158,6 +164,11 @@ pub struct MatchSummary {
     pub red_kills: u32,
     /// Enemy raiders Blue tagged.
     pub blue_kills: u32,
+    /// Red's total fuel consumed over the match — the efficiency figure that breaks
+    /// a level-score draw. `0` when no match ran (a load forfeit).
+    pub red_fuel: u64,
+    /// Blue's total fuel consumed over the match.
+    pub blue_fuel: u64,
     /// The storage segment the replay is kept under, or `None` when no match ran
     /// (a controller failed to load, so there is nothing to play back).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -171,20 +182,20 @@ pub struct MatchSummary {
     pub detail: Option<String>,
 }
 
-/// One row of a tournament's standings: a controller's total points and record.
+/// One row of a tournament's standings: a controller's win/loss/draw record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Standing {
     /// The controller this row ranks.
     pub participant_id: String,
-    /// Total points — the sum of banked seeds the controller earned across all its
-    /// matches. The standings are ranked by this, highest first.
-    pub points: u32,
-    /// Matches won.
+    /// Matches won — the standings are ranked by this, highest first. A win is a
+    /// decided match (higher score, a sweep, the leaner side of a level-score draw,
+    /// or an opponent forfeit), so the efficiency tie-break feeds straight into this
+    /// count.
     pub wins: u32,
     /// Matches lost.
     pub losses: u32,
-    /// Matches drawn.
+    /// Matches drawn (level score *and* level fuel, or a double forfeit).
     pub draws: u32,
     /// 1-based rank (1 is best), assigned after sorting.
     pub rank: u32,
@@ -209,7 +220,7 @@ pub struct TournamentRecord {
     pub variant: String,
     /// The competing controllers (identity only, no bytes).
     pub participants: Vec<ControllerRef>,
-    /// The standings, ranked highest points first.
+    /// The standings, ranked by wins, highest first.
     pub standings: Vec<Standing>,
     /// Every match's summary, in the order they were played.
     pub matches: Vec<MatchSummary>,
@@ -327,8 +338,14 @@ pub fn run_quick_match(
             // replay, but the replay says only that a forfeit happened — capture the
             // *reason* into the summary detail so the board can show why.
             let detail = forfeit_detail(summary.forfeit.as_ref());
+            // The efficiency tie-break and the recorded fuel totals come from the
+            // host summary (the replay alone has neither), so resolve them before we
+            // unwrap the replay out of it.
+            let decided = summary.decided();
+            let fuel = summary.fuel;
             let replay = summary.replay;
-            let mut summary = summarize_match(&match_id, red_id, blue_id, &replay, None);
+            let mut summary =
+                summarize_match(&match_id, red_id, blue_id, &replay, decided, &fuel, None);
             summary.detail = detail;
             Ok(MatchOutcome {
                 summary,
@@ -351,9 +368,10 @@ pub fn run_quick_match(
 
 /// Run a round-robin tournament: every unordered pair of `participants` plays
 /// exactly once, with a deterministic seat assignment (the lower-sorted id is
-/// always Red) so the field is reproducible. Each participant's points are the sum
-/// of the seeds it banked across its matches; the standings rank by points,
-/// highest first.
+/// always Red) so the field is reproducible. The standings rank by **number of
+/// wins**, highest first — and because a level-score match is broken by the
+/// efficiency tie-break, a leaner controller banks a win where it would once have
+/// drawn.
 pub fn run_tournament(
     test_case: &TestCaseVersion,
     variant: &str,
@@ -367,12 +385,10 @@ pub fn run_tournament(
 
     let mut matches: Vec<MatchSummary> = Vec::new();
     let mut replays: Vec<(String, Replay)> = Vec::new();
-    let mut points: BTreeMap<String, u32> = BTreeMap::new();
     let mut wins: BTreeMap<String, u32> = BTreeMap::new();
     let mut losses: BTreeMap<String, u32> = BTreeMap::new();
     let mut draws: BTreeMap<String, u32> = BTreeMap::new();
     for participant in &participants {
-        points.entry(participant.controller.id.clone()).or_insert(0);
         wins.entry(participant.controller.id.clone()).or_insert(0);
         losses.entry(participant.controller.id.clone()).or_insert(0);
         draws.entry(participant.controller.id.clone()).or_insert(0);
@@ -388,8 +404,8 @@ pub fn run_tournament(
             let outcome = run_quick_match(test_case, red, blue)?;
             let summary = outcome.summary;
 
-            *points.get_mut(&summary.red_id).unwrap() += summary.red_score;
-            *points.get_mut(&summary.blue_id).unwrap() += summary.blue_score;
+            // `summary.winner` already carries the efficiency tie-break, so the
+            // win/loss/draw tally counts a level-score match for the leaner side.
             match summary.winner.as_deref() {
                 Some(w) if w == summary.red_id => {
                     *wins.get_mut(&summary.red_id).unwrap() += 1;
@@ -414,14 +430,13 @@ pub fn run_tournament(
         }
     }
 
-    // Rank by points desc, then wins desc, then id asc for a stable order.
+    // Rank by wins desc, then fewest losses, then id asc for a stable order.
     let mut standings: Vec<Standing> = participants
         .iter()
         .map(|participant| {
             let id = &participant.controller.id;
             Standing {
                 participant_id: id.clone(),
-                points: points[id],
                 wins: wins[id],
                 losses: losses[id],
                 draws: draws[id],
@@ -430,9 +445,9 @@ pub fn run_tournament(
         })
         .collect();
     standings.sort_by(|a, b| {
-        b.points
-            .cmp(&a.points)
-            .then_with(|| b.wins.cmp(&a.wins))
+        b.wins
+            .cmp(&a.wins)
+            .then_with(|| a.losses.cmp(&b.losses))
             .then_with(|| a.participant_id.cmp(&b.participant_id))
     });
     for (index, standing) in standings.iter_mut().enumerate() {
@@ -475,16 +490,21 @@ fn forfeit_detail(forfeit: Option<&ForfeitInfo>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("; "))
 }
 
-/// Summarize a decided match's replay from Red's perspective.
+/// Summarize a decided match from Red's perspective. `decided` carries the
+/// efficiency tie-break (computed by the host, which alone meters fuel) and `fuel`
+/// the per-controller totals that decided it; the replay supplies the rules facts
+/// (scores, kills, tick count, and how it ended).
 pub fn summarize_match(
     match_id: &str,
     red_id: &str,
     blue_id: &str,
     replay: &Replay,
+    decided: Decided,
+    fuel: &FuelStats,
     replay_key: Option<String>,
 ) -> MatchSummary {
     let result = &replay.result;
-    let winner = result.winner.map(|team| match team {
+    let winner = decided.winner.map(|team| match team {
         Team::Red => red_id.to_string(),
         Team::Blue => blue_id.to_string(),
     });
@@ -493,13 +513,15 @@ pub fn summarize_match(
         red_id: red_id.to_string(),
         blue_id: blue_id.to_string(),
         winner,
-        win_type: ended_to(result.ended),
-        outcome_for_red: outcome_for(result, Team::Red),
+        win_type: win_type_for(decided),
+        outcome_for_red: outcome_from(decided, Team::Red),
         red_score: result.score.red,
         blue_score: result.score.blue,
         ticks: result.ticks,
         red_kills: result.kills.red,
         blue_kills: result.kills.blue,
+        red_fuel: fuel.red_total,
+        blue_fuel: fuel.blue_total,
         replay_key,
         detail: None,
     }
@@ -531,24 +553,44 @@ fn forfeit_summary(
         ticks: 0,
         red_kills: 0,
         blue_kills: 0,
+        // No match ran, so neither controller burned any fuel.
+        red_fuel: 0,
+        blue_fuel: 0,
         replay_key: None,
         detail: Some(detail),
     }
 }
 
-/// The outcome of a decided match from `team`'s perspective. A forfeit win (the
-/// opponent forfeited) is a [`Win`](AdversarialOutcome::Win); losing by one's own
-/// forfeit is a [`Forfeit`](AdversarialOutcome::Forfeit), distinct from a normal
-/// [`Loss`](AdversarialOutcome::Loss).
-pub(crate) fn outcome_for(result: &ReplayResult, team: Team) -> AdversarialOutcome {
-    match (result.winner, result.ended) {
-        (Some(winner), _) if winner == team => AdversarialOutcome::Win,
-        // A forfeit with no winner means both forfeited.
-        (None, Ended::Forfeit) => AdversarialOutcome::Forfeit,
-        (None, _) => AdversarialOutcome::Draw,
+/// The outcome of a decided match from `team`'s perspective, after the efficiency
+/// tie-break. A forfeit win (the opponent forfeited) is a
+/// [`Win`](AdversarialOutcome::Win); losing by one's own forfeit is a
+/// [`Forfeit`](AdversarialOutcome::Forfeit), distinct from a normal
+/// [`Loss`](AdversarialOutcome::Loss). A level-score match resolved by fuel is a
+/// plain win or loss; only a genuine draw (level score *and* level fuel, or a
+/// double forfeit) returns [`Draw`](AdversarialOutcome::Draw)/`Forfeit`.
+pub(crate) fn outcome_from(decided: Decided, team: Team) -> AdversarialOutcome {
+    match (decided.winner, decided.by) {
+        (Some(winner), DecidedBy::Forfeit) if winner == team => AdversarialOutcome::Win,
         // A decided forfeit against this team is this team forfeiting.
-        (Some(_), Ended::Forfeit) => AdversarialOutcome::Forfeit,
+        (Some(_), DecidedBy::Forfeit) => AdversarialOutcome::Forfeit,
+        (Some(winner), _) if winner == team => AdversarialOutcome::Win,
         (Some(_), _) => AdversarialOutcome::Loss,
+        // No winner on a forfeit means both forfeited.
+        (None, DecidedBy::Forfeit) => AdversarialOutcome::Forfeit,
+        (None, _) => AdversarialOutcome::Draw,
+    }
+}
+
+/// The wire spelling of how a match was decided: the rules ending (`swept`,
+/// `time_limit`, `forfeit`), or `efficiency` when a level score was broken by the
+/// fuel tie-break.
+pub(crate) fn win_type_for(decided: Decided) -> String {
+    match decided.by {
+        DecidedBy::Efficiency => "efficiency".to_string(),
+        // The rules endings keep their wire spelling single-sourced in `ended_to`.
+        DecidedBy::Sweep => ended_to(Ended::Swept),
+        DecidedBy::Score => ended_to(Ended::TimeLimit),
+        DecidedBy::Forfeit => ended_to(Ended::Forfeit),
     }
 }
 

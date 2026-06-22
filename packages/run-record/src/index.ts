@@ -285,7 +285,7 @@ export interface AdversarialReplay {
   redScore: number;
   /** The opponent's (Blue's) banked score at the end of the match. */
   blueScore: number;
-  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  /** How the match was decided (`"swept"`, `"time_limit"`, `"efficiency"`, or `"forfeit"`). */
   ended: string;
   /** How many ticks the match ran for. */
   ticks: number;
@@ -320,7 +320,7 @@ export interface AdversarialResult {
   redScore: number;
   /** The opponent's (Blue's) banked score at the end of the match. */
   blueScore: number;
-  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  /** How the match was decided (`"swept"`, `"time_limit"`, `"efficiency"`, or `"forfeit"`). */
   ended: string;
   /** How many ticks the match ran for. */
   ticks: number;
@@ -430,9 +430,13 @@ export interface MatchSummary {
   redId: string;
   /** The controller that played Blue. */
   blueId: string;
-  /** The winning controller's id, or null for a draw. */
+  /** The winning controller's id, or null for a draw. On a level-score match this
+   * is the more fuel-efficient controller (the tie-break), so a draw means the
+   * scores *and* the fuel totals were level. */
   winner: string | null;
-  /** How the match ended (`"swept"`, `"time_limit"`, or `"forfeit"`). */
+  /** How the match was decided: `"swept"`, `"time_limit"` (a decisive score at the
+   * cap), `"efficiency"` (a level score broken by lower total fuel), or
+   * `"forfeit"`. */
   winType: string;
   /** The outcome from Red's perspective. */
   outcomeForRed: AdversarialOutcome;
@@ -446,24 +450,28 @@ export interface MatchSummary {
   redKills: number;
   /** Enemy raiders Blue tagged. */
   blueKills: number;
+  /** Red's total fuel consumed over the match — the efficiency figure that breaks a
+   * level-score draw. `0` when no match ran (a load forfeit). */
+  redFuel: number;
+  /** Blue's total fuel consumed over the match. */
+  blueFuel: number;
   /** The storage segment the replay is kept under, or absent when no match ran. */
   replayKey?: string | null;
   /** Why a controller could not be matched (a load failure), or null. */
   detail?: string | null;
 }
 
-/** One row of a tournament's standings: a controller's total points and record. */
+/** One row of a tournament's standings: a controller's win/loss/draw record. */
 export interface Standing {
   /** The controller this row ranks. */
   participantId: string;
-  /** Total points — the sum of banked seeds the controller earned across all its
-   * matches. The standings are ranked by this, highest first. */
-  points: number;
-  /** Matches won. */
+  /** Matches won — the standings are ranked by this, highest first. A win includes
+   * the leaner side of a level-score draw (the efficiency tie-break), so this count
+   * folds that in. */
   wins: number;
   /** Matches lost. */
   losses: number;
-  /** Matches drawn. */
+  /** Matches drawn (level score *and* level fuel, or a double forfeit). */
   draws: number;
   /** 1-based rank (1 is best). */
   rank: number;
@@ -488,7 +496,7 @@ export interface TournamentRecord {
   variant: string;
   /** The competing controllers (identity only). */
   participants: ControllerRef[];
-  /** The standings, ranked highest points first. */
+  /** The standings, ranked by wins, highest first. */
   standings: Standing[];
   /** Every match's summary, in the order they were played. */
   matches: MatchSummary[];

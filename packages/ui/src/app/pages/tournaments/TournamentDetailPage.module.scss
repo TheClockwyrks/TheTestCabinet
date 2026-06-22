@@ -19,7 +19,7 @@
   font-size: t.$font-lg;
 }
 
-// The standings: rank, controller, points, record — a dense column-aligned board
+// The standings: rank, controller, wins, record — a dense column-aligned board
 // modeled on the model leaderboard.
 .standings,
 .matches {
@@ -70,11 +70,11 @@
   white-space: nowrap;
 }
 
-.points {
+.wins {
   font-weight: 700;
 }
 
-.pointsUnit {
+.winsUnit {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
 }

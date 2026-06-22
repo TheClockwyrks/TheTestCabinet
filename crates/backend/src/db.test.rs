@@ -269,7 +269,6 @@ fn tournament_record(id: &str) -> TournamentRecord {
         standings: vec![
             Standing {
                 participant_id: "border-soldier".to_string(),
-                points: 20,
                 wins: 1,
                 losses: 0,
                 draws: 0,
@@ -277,7 +276,6 @@ fn tournament_record(id: &str) -> TournamentRecord {
             },
             Standing {
                 participant_id: "random".to_string(),
-                points: 3,
                 wins: 0,
                 losses: 1,
                 draws: 0,
@@ -296,6 +294,8 @@ fn tournament_record(id: &str) -> TournamentRecord {
             ticks: 1234,
             red_kills: 4,
             blue_kills: 1,
+            red_fuel: 8_000,
+            blue_fuel: 12_000,
             replay_key: Some("border-soldier__vs__random".to_string()),
             detail: None,
         }],

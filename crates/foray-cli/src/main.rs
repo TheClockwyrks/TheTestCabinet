@@ -18,7 +18,7 @@ use foray_core::board::{Board, BoardParams};
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::contract::{action_schema_string, world_schema_string};
 use foray_core::replay::parse_seed;
-use foray_host::{MatchSetup, SandboxLimits, run_match};
+use foray_host::{DecidedBy, MatchSetup, SandboxLimits, run_match};
 
 /// `foray` — run a single Foray match between two controllers and produce its
 /// replay.
@@ -156,9 +156,14 @@ fn simulate(args: SimulateArgs) -> Result<()> {
         .with_context(|| format!("writing replay {}", args.out.display()))?;
 
     let result = &summary.replay.result;
-    let winner = match result.winner {
-        Some(team) => format!("{team:?} wins"),
-        None => "draw".to_string(),
+    // The reported winner applies the efficiency tie-break: a level-score time-limit
+    // match is won by the leaner controller, so print *that* verdict (and why) rather
+    // than the rules engine's bare "draw".
+    let decided = summary.decided();
+    let winner = match (decided.winner, decided.by) {
+        (Some(team), DecidedBy::Efficiency) => format!("{team:?} wins on efficiency"),
+        (Some(team), _) => format!("{team:?} wins"),
+        (None, _) => "draw".to_string(),
     };
     println!(
         "match decided after {} ticks: {winner} ({:?})",
@@ -171,7 +176,8 @@ fn simulate(args: SimulateArgs) -> Result<()> {
     // Report each controller's peak per-tick fuel against the ceiling, so a model
     // can tell "comfortably within budget" from "one heavy tick from a forfeit" and
     // size its per-tick work (raise `--fuel-per-tick` to explore how far over the
-    // limit an over-budget controller runs).
+    // limit an over-budget controller runs). The whole-match total is the efficiency
+    // figure the tie-break compares — the lower total wins a level-score draw.
     let fuel = &summary.fuel;
     println!(
         "  peak fuel/tick: red {} ({:.0}%), blue {} ({:.0}%) of {} ceiling",
@@ -180,6 +186,10 @@ fn simulate(args: SimulateArgs) -> Result<()> {
         fuel.blue_peak,
         percent(fuel.blue_peak, fuel.ceiling),
         fuel.ceiling,
+    );
+    println!(
+        "  total fuel: red {}, blue {}",
+        fuel.red_total, fuel.blue_total,
     );
     // A forfeit is the one outcome the replay alone cannot explain (it records only
     // `Ended::Forfeit`), so when the host reports one, print which team forfeited,

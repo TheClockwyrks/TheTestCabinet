@@ -35,10 +35,13 @@ mod match_runner;
 pub use controller::{Controller, InvokeError, LoadError};
 pub use match_runner::{ForfeitInfo, ForfeitReason};
 
-use foray_core::board::{Board, BoardParams};
+use std::cmp::Ordering;
+
+use foray_core::board::{Board, BoardParams, Team};
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::engine::Match;
 use foray_core::replay::Replay;
+use foray_core::state::Ended;
 
 /// The per-controller, per-tick sandbox limits from the manifest's `[sandbox]`
 /// table. Applied to **every** invocation of **every** controller.
@@ -107,17 +110,52 @@ pub struct MatchSummary {
     /// replay records only *that* a forfeit happened; this is the *reason* a caller
     /// surfaces — the CLI prints it and the arena threads it into its summary.
     pub forfeit: Option<ForfeitInfo>,
-    /// Peak per-tick fuel each controller drew over the match, against the ceiling.
-    /// Lets a caller report how much headroom a submission had under the sandbox
-    /// limit — the diagnostic a model uses to size its per-tick work.
+    /// Per-controller fuel accounting over the match: the per-tick peak (sandbox
+    /// headroom) and the whole-match total (efficiency). Lets a caller report how
+    /// much headroom a submission had, and is what [`decided`](Self::decided) uses
+    /// to break a level-score draw in favour of the leaner controller.
     pub fuel: FuelStats,
 }
 
-/// The peak per-tick fuel each controller consumed over a match, paired with the
-/// ceiling they ran under. `red_peak`/`blue_peak` are the largest fuel any single
-/// tick of that controller drew (`alloc` + the contract entry); comparing them to
-/// `ceiling` tells a model whether it ran comfortably within budget or one heavy
-/// tick from a forfeit.
+/// How a match's winner was decided, once the efficiency tie-break is layered on
+/// top of the rules result.
+///
+/// The rules engine ([`foray_core`]) only knows banked score and forfeits — it
+/// compiles to wasm for browser replay and deliberately has no notion of fuel, so
+/// it reports a level-score time-limit match as a draw. The *efficiency* tie-break
+/// is a host concern (fuel is metered here, in [`FuelStats`]) and is resolved here,
+/// never entering the replay's committed result. So a replay that reconstructs to a
+/// "draw" can still have a [`Decided`] winner — the match verdict, not the rules
+/// outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecidedBy {
+    /// One colony banked every one of the enemy's seeds.
+    Sweep,
+    /// A higher banked score at the time limit.
+    Score,
+    /// The banked score was level at the time limit, so the win went to the
+    /// controller that consumed less total fuel.
+    Efficiency,
+    /// A controller forfeited (the other wins) — or both did (a draw).
+    Forfeit,
+}
+
+/// A match's winner with the efficiency tie-break applied — see [`DecidedBy`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Decided {
+    /// The winning team, or `None` for a true draw: a level score *and* level fuel,
+    /// or a double forfeit.
+    pub winner: Option<Team>,
+    /// How that winner was decided.
+    pub by: DecidedBy,
+}
+
+/// The fuel each controller consumed over a match, paired with the ceiling they ran
+/// under. `red_peak`/`blue_peak` are the largest fuel any single tick of that
+/// controller drew (`alloc` + the contract entry) — comparing them to `ceiling`
+/// tells a model whether it ran comfortably within budget or one heavy tick from a
+/// forfeit. `red_total`/`blue_total` are the whole-match draw, the efficiency
+/// measure that decides a level-score draw.
 #[derive(Debug, Clone, Copy)]
 pub struct FuelStats {
     /// The per-tick fuel ceiling both controllers ran under.
@@ -126,6 +164,60 @@ pub struct FuelStats {
     pub red_peak: u64,
     /// Blue's peak single-tick fuel draw.
     pub blue_peak: u64,
+    /// Red's total fuel drawn across the whole match.
+    pub red_total: u64,
+    /// Blue's total fuel drawn across the whole match.
+    pub blue_total: u64,
+}
+
+impl MatchSummary {
+    /// The match winner with the efficiency tie-break applied.
+    ///
+    /// A sweep or a decisive time-limit score returns the rules winner unchanged. A
+    /// *level* time-limit score — which the rules engine reports as a draw — is
+    /// broken in favour of the controller that consumed less total fuel, and stays a
+    /// draw only when the fuel totals are also exactly equal. A forfeit returns the
+    /// rules winner (the non-forfeiting team, or `None` if both failed).
+    ///
+    /// This is the one place the tie-break is computed; the `foray` CLI and the
+    /// arena/validator in `core` all call it so a given matchup is never scored two
+    /// different ways.
+    pub fn decided(&self) -> Decided {
+        let result = &self.replay.result;
+        match result.ended {
+            Ended::Swept => Decided {
+                winner: result.winner,
+                by: DecidedBy::Sweep,
+            },
+            Ended::Forfeit => Decided {
+                winner: result.winner,
+                by: DecidedBy::Forfeit,
+            },
+            Ended::TimeLimit => match result.winner {
+                // A decisive score at the time limit needs no tie-break.
+                Some(team) => Decided {
+                    winner: Some(team),
+                    by: DecidedBy::Score,
+                },
+                // Level score: the leaner controller (less total fuel) wins; only an
+                // exact fuel tie is a true draw.
+                None => match self.fuel.red_total.cmp(&self.fuel.blue_total) {
+                    Ordering::Less => Decided {
+                        winner: Some(Team::Red),
+                        by: DecidedBy::Efficiency,
+                    },
+                    Ordering::Greater => Decided {
+                        winner: Some(Team::Blue),
+                        by: DecidedBy::Efficiency,
+                    },
+                    Ordering::Equal => Decided {
+                        winner: None,
+                        by: DecidedBy::Score,
+                    },
+                },
+            },
+        }
+    }
 }
 
 /// Run the single canonical match between two controller modules and return its
@@ -176,4 +268,128 @@ pub enum RunError {
     /// Blue's controller module failed to load.
     #[error("blue controller failed to load: {0}")]
     LoadBlue(#[source] LoadError),
+}
+
+#[cfg(test)]
+mod decided_tests {
+    use super::*;
+    use foray_core::replay::{Participants, Replay, ReplayResult};
+    use foray_core::state::{Kills, Score};
+
+    /// A [`MatchSummary`] carrying just enough to exercise [`MatchSummary::decided`]:
+    /// the committed result and the per-controller fuel totals.
+    fn summary(winner: Option<Team>, ended: Ended, red_total: u64, blue_total: u64) -> MatchSummary {
+        let result = ReplayResult {
+            winner,
+            score: Score { red: 4, blue: 4 },
+            kills: Kills::default(),
+            ended,
+            ticks: 100,
+        };
+        let replay = Replay {
+            version: foray_core::replay::REPLAY_VERSION,
+            map: "mirror-32x16".to_string(),
+            seed: "0x1".to_string(),
+            timestep_ms: 16,
+            participants: Participants {
+                red: "red".to_string(),
+                blue: "blue".to_string(),
+            },
+            board: BoardParamsSerde::default(),
+            rules: Rules::default(),
+            simulation: Simulation::default(),
+            ticks: Vec::new(),
+            result,
+        };
+        MatchSummary {
+            replay,
+            forfeit: None,
+            fuel: FuelStats {
+                ceiling: 1_000,
+                red_peak: 0,
+                blue_peak: 0,
+                red_total,
+                blue_total,
+            },
+        }
+    }
+
+    #[test]
+    fn a_decisive_score_or_sweep_keeps_the_rules_winner() {
+        let swept = summary(Some(Team::Red), Ended::Swept, 999, 1);
+        assert_eq!(
+            swept.decided(),
+            Decided {
+                winner: Some(Team::Red),
+                by: DecidedBy::Sweep
+            },
+            "a sweep ignores fuel even when the winner burned far more"
+        );
+
+        let scored = summary(Some(Team::Blue), Ended::TimeLimit, 1, 999);
+        assert_eq!(
+            scored.decided(),
+            Decided {
+                winner: Some(Team::Blue),
+                by: DecidedBy::Score
+            },
+        );
+    }
+
+    #[test]
+    fn a_level_score_is_broken_in_favour_of_the_leaner_controller() {
+        let red_leaner = summary(None, Ended::TimeLimit, 100, 250);
+        assert_eq!(
+            red_leaner.decided(),
+            Decided {
+                winner: Some(Team::Red),
+                by: DecidedBy::Efficiency
+            },
+        );
+
+        let blue_leaner = summary(None, Ended::TimeLimit, 250, 100);
+        assert_eq!(
+            blue_leaner.decided(),
+            Decided {
+                winner: Some(Team::Blue),
+                by: DecidedBy::Efficiency
+            },
+        );
+    }
+
+    #[test]
+    fn an_exact_fuel_tie_stays_a_draw() {
+        let dead_heat = summary(None, Ended::TimeLimit, 200, 200);
+        assert_eq!(
+            dead_heat.decided(),
+            Decided {
+                winner: None,
+                by: DecidedBy::Score
+            },
+            "level score and level fuel is a genuine draw"
+        );
+    }
+
+    #[test]
+    fn a_forfeit_is_never_overridden_by_fuel() {
+        // The non-forfeiting team wins even if it burned more fuel.
+        let blue_forfeited = summary(Some(Team::Red), Ended::Forfeit, 999, 1);
+        assert_eq!(
+            blue_forfeited.decided(),
+            Decided {
+                winner: Some(Team::Red),
+                by: DecidedBy::Forfeit
+            },
+        );
+
+        // Both forfeited: a draw, regardless of fuel.
+        let both_forfeited = summary(None, Ended::Forfeit, 100, 250);
+        assert_eq!(
+            both_forfeited.decided(),
+            Decided {
+                winner: None,
+                by: DecidedBy::Forfeit
+            },
+        );
+    }
 }

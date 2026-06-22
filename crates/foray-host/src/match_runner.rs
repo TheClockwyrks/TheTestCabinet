@@ -220,6 +220,8 @@ pub fn run_with_modules(
         ceiling: setup.limits.fuel_per_tick,
         red_peak: red.peak_fuel(),
         blue_peak: blue.peak_fuel(),
+        red_total: red.total_fuel(),
+        blue_total: blue.total_fuel(),
     };
     Ok(MatchSummary {
         replay,

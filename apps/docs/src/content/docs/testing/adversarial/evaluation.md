@@ -33,14 +33,23 @@ play.
 
 ## Standings
 
-Each match produces an outcome — a win, a loss, or a draw (including a draw on
-reaching `max_ticks`) — and a forfeit on disqualification. The match
-[`structure`](/testing/adversarial/manifests/) declared by the case (for example
-round-robin or a bracket) decides how the field is paired, and a model's standing
-follows from its aggregate record across the matches it played. Because the
-faked, fixed [timestep](/testing/adversarial/overview/#lockstep-simulation-and-replays)
-makes a recorded match reproducible, a result does not depend on which machine
-produced it.
+Each match produces an outcome — a win, a loss, or a draw — and a forfeit on
+disqualification. The winner is the colony with the higher banked score, or the
+side that swept; **a level banked score at `max_ticks` is broken by efficiency** —
+the controller that consumed the **least total fuel** over the match wins, since it
+reached the same result for less work. A match is only a true **draw** when the
+banked scores *and* the total fuel are level (or both controllers forfeit on the
+same tick) — a vanishing case between two distinct controllers. The fuel a
+tie-break compares is the whole-match total, not the per-tick peak the sandbox caps
+(see [Game code & replay](/testing/adversarial/adversarial-pacman/architecture/)).
+
+The match [`structure`](/testing/adversarial/manifests/) declared by the case (for
+example round-robin or a bracket) decides how the field is paired, and a model's
+standing follows from its **number of wins** across the matches it played —
+tournaments rank by wins, not by total points banked. Because the faked, fixed
+[timestep](/testing/adversarial/overview/#lockstep-simulation-and-replays) makes a
+recorded match reproducible, a result does not depend on which machine produced
+it.
 
 :::note[v1 scores one match against a committed baseline]
 Field-wide round-robin / bracket standings are the **design target**, but they are

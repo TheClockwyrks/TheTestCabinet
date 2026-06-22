@@ -30,14 +30,14 @@
 //! result and playable replays.
 
 use foray_core::board::Team;
-use foray_core::replay::ReplayResult;
-use foray_host::{RunError, board_for, run_match};
+use foray_core::replay::Replay;
+use foray_host::{Decided, RunError, board_for, run_match};
 
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::match_play::{
-    AUTO_REPLAY_OPPONENTS, canonical_match_setup, ended_to, outcome_for, replay_filename,
-    resolve_baseline,
+    AUTO_REPLAY_OPPONENTS, canonical_match_setup, outcome_from, replay_filename, resolve_baseline,
+    win_type_for,
 };
 use crate::reference::RenderedReference;
 use crate::test_case::{ProofFile, TestCaseVersion};
@@ -157,8 +157,14 @@ impl Validator for AdversarialValidator {
             // starts; that is the submission forfeiting by failing to present a
             // controller. A controller that loads but breaks a rule mid-match
             // forfeits through the host, which still returns a replay.
-            let replay = match run_match(&red_wasm, &blue_wasm, board, &setup) {
-                Ok(summary) => summary.replay,
+            let (replay, decided) = match run_match(&red_wasm, &blue_wasm, board, &setup) {
+                // The host alone meters fuel, so the efficiency tie-break (which
+                // decides a level-score match) must be read off the host summary
+                // before we keep just the replay.
+                Ok(summary) => {
+                    let decided = summary.decided();
+                    (summary.replay, decided)
+                }
                 Err(RunError::LoadRed(err)) => {
                     // A controller was emitted (it just won't load): record its path
                     // so a reviewer could still inspect the artifact.
@@ -192,7 +198,7 @@ impl Validator for AdversarialValidator {
                 ));
             }
 
-            replays.push(replay_entry(opponent_id, &rel, *scored, &replay.result));
+            replays.push(replay_entry(opponent_id, &rel, *scored, &replay, decided));
         }
 
         let result = summarize(replays, module_str);
@@ -213,25 +219,28 @@ impl Validator for AdversarialValidator {
     }
 }
 
-/// Build one [`AdversarialReplay`] from a decided match's result, from the
-/// **submission's** (Red's) perspective. The `ended`/outcome derivation is the
-/// shared [`match_play`](crate::match_play) logic, so a run's recorded result and
-/// an arena match's summary describe the same match identically.
+/// Build one [`AdversarialReplay`] from a decided match, from the **submission's**
+/// (Red's) perspective. `decided` carries the efficiency tie-break, and the
+/// winner/ended/outcome derivation is the shared
+/// [`match_play`](crate::match_play) logic, so a run's recorded result and an arena
+/// match's summary describe (and decide) the same match identically.
 fn replay_entry(
     opponent: &str,
     replay_json: &str,
     scored: bool,
-    result: &ReplayResult,
+    replay: &Replay,
+    decided: Decided,
 ) -> AdversarialReplay {
+    let result = &replay.result;
     AdversarialReplay {
         opponent: opponent.to_string(),
         replay_json: replay_json.to_string(),
-        winner: result.winner.map(team_to),
+        winner: decided.winner.map(team_to),
         red_score: result.score.red,
         blue_score: result.score.blue,
-        ended: ended_to(result.ended),
+        ended: win_type_for(decided),
         ticks: result.ticks,
-        outcome: outcome_for(result, Team::Red),
+        outcome: outcome_from(decided, Team::Red),
         scored,
     }
 }

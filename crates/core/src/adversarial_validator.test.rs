@@ -6,21 +6,45 @@
 use std::path::PathBuf;
 
 use foray_core::board::Team;
-use foray_core::replay::ReplayResult;
+use foray_core::config::{BoardParamsSerde, Rules, Simulation};
+use foray_core::replay::{Participants, REPLAY_VERSION, Replay, ReplayResult};
 use foray_core::state::{Ended, Kills, Score};
+use foray_host::{Decided, DecidedBy};
 
-use super::{AdversarialValidator, ended_to, replay_entry, summarize};
+use super::{AdversarialValidator, replay_entry, summarize};
 use crate::execution::ArtifactCollection;
+use crate::match_play::ended_to;
 use crate::test_case::{
     AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
 };
 use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
 
-/// Build a scored replay entry for `result` against `border-soldier`, the helper
-/// most mapping tests assert on (the opponent id and `scored` flag are immaterial
-/// to the outcome derivation under test).
-fn entry(result: &ReplayResult) -> AdversarialReplay {
-    replay_entry("border-soldier", "replay.json", true, result)
+/// Wrap a bare [`ReplayResult`] in a minimal [`Replay`] — the entry mapping reads
+/// only the scores/kills/ticks the result already carries.
+fn replay_of(result: ReplayResult) -> Replay {
+    Replay {
+        version: REPLAY_VERSION,
+        map: "mirror-32x16".to_string(),
+        seed: "0x1".to_string(),
+        timestep_ms: 16,
+        participants: Participants {
+            red: "submission".to_string(),
+            blue: "border-soldier".to_string(),
+        },
+        board: BoardParamsSerde::default(),
+        rules: Rules::default(),
+        simulation: Simulation::default(),
+        ticks: Vec::new(),
+        result,
+    }
+}
+
+/// Build a scored replay entry for a match `decided` a given way over `result`'s
+/// facts, against `border-soldier` (the opponent id and `scored` flag are
+/// immaterial to the outcome derivation under test).
+fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
+    let replay = replay_of(result);
+    replay_entry("border-soldier", "replay.json", true, &replay, decided)
 }
 
 /// A minimal adversarial version rooted at `root`, whose submission module path
@@ -204,12 +228,36 @@ fn replay_entry_maps_a_red_sweep_to_a_submission_win() {
         ended: Ended::Swept,
         ticks: 9123,
     };
-    let summary = entry(&result);
+    let summary = entry(result, Decided {
+        winner: Some(Team::Red),
+        by: DecidedBy::Sweep,
+    });
     assert_eq!(summary.outcome, AdversarialOutcome::Win);
     assert_eq!(summary.winner, Some(AdversarialTeam::Red));
     assert_eq!((summary.red_score, summary.blue_score), (41, 39));
     assert_eq!(summary.ended, "swept");
     assert_eq!(summary.ticks, 9123);
+}
+
+#[test]
+fn replay_entry_maps_a_level_score_efficiency_win_to_a_submission_win() {
+    // A level-score time-limit match the host broke in Red's favour (Red ran
+    // leaner) is recorded as a submission win, tagged `efficiency` so a reviewer
+    // can tell it from a decisive score.
+    let result = ReplayResult {
+        winner: None,
+        score: Score { red: 12, blue: 12 },
+        kills: Kills::default(),
+        ended: Ended::TimeLimit,
+        ticks: 37_500,
+    };
+    let summary = entry(result, Decided {
+        winner: Some(Team::Red),
+        by: DecidedBy::Efficiency,
+    });
+    assert_eq!(summary.outcome, AdversarialOutcome::Win);
+    assert_eq!(summary.winner, Some(AdversarialTeam::Red));
+    assert_eq!(summary.ended, "efficiency");
 }
 
 #[test]
@@ -280,7 +328,10 @@ fn summarize_maps_a_blue_win_to_a_submission_loss() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    let summary = entry(&result);
+    let summary = entry(result, Decided {
+        winner: Some(Team::Blue),
+        by: DecidedBy::Score,
+    });
     assert_eq!(summary.outcome, AdversarialOutcome::Loss);
     // The recorded `ended` is the *same* snake_case spelling the published
     // `replay.json` carries (serde's `rename_all = "snake_case"` on `Ended`), so
@@ -289,7 +340,9 @@ fn summarize_maps_a_blue_win_to_a_submission_loss() {
 }
 
 #[test]
-fn summarize_maps_a_draw() {
+fn summarize_maps_a_genuine_draw() {
+    // A genuine draw is a level score the fuel tie-break could not break either
+    // (equal totals) — the host reports it with no winner.
     let result = ReplayResult {
         winner: None,
         score: Score { red: 5, blue: 5 },
@@ -297,7 +350,12 @@ fn summarize_maps_a_draw() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    assert_eq!(entry(&result).outcome, AdversarialOutcome::Draw);
+    let summary = entry(result, Decided {
+        winner: None,
+        by: DecidedBy::Score,
+    });
+    assert_eq!(summary.outcome, AdversarialOutcome::Draw);
+    assert_eq!(summary.winner, None);
 }
 
 #[test]
@@ -310,7 +368,10 @@ fn summarize_maps_a_red_forfeit_to_a_submission_forfeit() {
         ended: Ended::Forfeit,
         ticks: 400,
     };
-    let summary = entry(&result);
+    let summary = entry(result, Decided {
+        winner: Some(Team::Blue),
+        by: DecidedBy::Forfeit,
+    });
     assert_eq!(summary.outcome, AdversarialOutcome::Forfeit);
     assert_eq!(summary.winner, Some(AdversarialTeam::Blue));
 }
