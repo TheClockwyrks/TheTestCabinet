@@ -1,82 +1,121 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
-  "title": "Review",
-  "description": "A single hand-written review of a run: a per-domain quality rating, a markdown writeup, and the reviewer's checklist verdicts, attributed to the authenticated account that submitted it. A run may carry MANY reviews — one per account — so this is both the submission shape (POST /runs/{id}/reviews, where the reviewer identity is taken from the bearer token rather than the body) and the per-entry shape served back in the reviews array. A run's overall rating is the worst across every domain of every review; its score is the average of each review's earned-over-declared checklist weight. Publishing a run requires at least one review.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["ratings", "writeup"],
-  "properties": {
-    "reviewerId": {
-      "type": "string",
-      "description": "The stable account id this review is attributed to. Set by the backend from the verified bearer token; ignored if present on a submission. Populated when a review is read back."
-    },
-    "reviewer": {
-      "type": "string",
-      "description": "The reviewer account's display name, denormalized for presentation. Set by the backend; populated when a review is read back."
-    },
-    "reviewedAt": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the review was submitted. Set by the backend; populated when a review is read back."
-    },
-    "ratings": {
-      "type": "array",
-      "description": "The reviewer's quality rating for each of the test case's declared scoring domains (see the version manifest's domains). One entry per declared domain; a review must rate every declared domain. Within this single review the overall rating is the worst across these; the run's overall rating is the worst across every review.",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/DomainRating" }
-    },
-    "writeup": {
-      "type": "string",
-      "description": "The markdown writeup body, with any rating and checklist frontmatter stripped. Must be non-empty.",
-      "minLength": 1
-    },
-    "checklist": {
-      "type": "array",
-      "description": "The reviewer's verdicts on the test case's declared reviewer checklist items (see the version manifest's reviewItems). One entry per declared item; a review must give every declared item a verdict. Empty for a case that declares no items.",
-      "items": { "$ref": "#/$defs/ReviewVerdict" }
-    }
-  },
   "$defs": {
     "DomainRating": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["domain", "rating"],
-      "description": "A reviewer's quality rating for one of the case's scoring domains.",
+      "description": "A reviewer's quality [`Rating`] for one of a case's scoring domains.",
       "properties": {
         "domain": {
-          "type": "string",
-          "description": "The declared scoring domain's stable id.",
-          "minLength": 1
+          "description": "The declared domain's stable id (see [`crate::test_case::Domain::id`]).",
+          "type": "string"
         },
         "rating": {
-          "type": "string",
-          "description": "The reviewer's verdict for this domain.",
-          "enum": ["flawless", "great", "scuffed", "broken"]
+          "$ref": "#/$defs/Rating",
+          "description": "The reviewer's rating for this domain."
         }
-      }
+      },
+      "required": ["domain", "rating"],
+      "type": "object"
+    },
+    "Rating": {
+      "description": "A reviewer's subjective quality rating for a finished implementation.\n\nAssigned by hand while playing the build, ordered best to worst. It is a per-run signal shown alongside a run, never an aggregate or a ranking across runs (see `docs/site.md`).",
+      "oneOf": [
+        {
+          "description": "Implemented according to spec with no noticeable bugs.",
+          "enum": ["flawless"],
+          "type": "string"
+        },
+        {
+          "description": "Implemented according to spec; may have minor issues that don't impact playability.",
+          "enum": ["great"],
+          "type": "string"
+        },
+        {
+          "description": "Mostly implemented according to spec. Playable, but deviates from the spec or has bugs that impact playability.",
+          "enum": ["scuffed"],
+          "type": "string"
+        },
+        {
+          "description": "Doesn't follow the spec, or has bugs severe enough to render the game unplayable.",
+          "enum": ["broken"],
+          "type": "string"
+        }
+      ]
     },
     "ReviewVerdict": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "status"],
       "description": "A reviewer's recorded verdict on one declared checklist item.",
       "properties": {
         "id": {
-          "type": "string",
-          "description": "The declared checklist item's stable id.",
-          "minLength": 1
-        },
-        "status": {
-          "type": "string",
-          "description": "The verdict: pass (satisfied, earns the item's weight) or fail (not satisfied, earns none).",
-          "enum": ["pass", "fail"]
+          "description": "The declared item's stable id (see [`crate::test_case::ReviewItem::id`]).",
+          "type": "string"
         },
         "note": {
-          "type": "string",
-          "description": "An optional one-line note recording what the reviewer observed."
+          "description": "An optional one-line note recording what the reviewer observed. `None` when the reviewer left no note.",
+          "type": ["string", "null"]
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus",
+          "description": "The reviewer's verdict on the item."
         }
-      }
+      },
+      "required": ["id", "status"],
+      "type": "object"
+    },
+    "VerdictStatus": {
+      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the reviewer records one of these per item while judging the build. Ordered by neither severity nor preference — it simply states what the reviewer found.",
+      "oneOf": [
+        {
+          "description": "The item was checked and the build satisfies it. The item earns its weight toward the run's score.",
+          "enum": ["pass"],
+          "type": "string"
+        },
+        {
+          "description": "The item was checked and the build does not satisfy it. The item earns none of its weight.",
+          "enum": ["fail"],
+          "type": "string"
+        }
+      ]
     }
-  }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One published review on a run: the reviewer's public identity, their per-domain ratings, the writeup, and their checklist verdicts. This is the canonical review wire shape (`backend-api/review.schema.json`), referenced by the per-run snapshot document.",
+  "properties": {
+    "checklist": {
+      "items": {
+        "$ref": "#/$defs/ReviewVerdict"
+      },
+      "type": "array"
+    },
+    "ratings": {
+      "description": "The reviewer's rating for each scoring domain. This review's overall rating is the worst across them.",
+      "items": {
+        "$ref": "#/$defs/DomainRating"
+      },
+      "type": "array"
+    },
+    "reviewedAt": {
+      "description": "RFC 3339 of when the review was submitted.",
+      "type": "string"
+    },
+    "reviewer": {
+      "description": "The reviewer's display name, shown beside their review.",
+      "type": "string"
+    },
+    "reviewerId": {
+      "description": "The reviewing account's id (stable across their reviews).",
+      "type": "string"
+    },
+    "writeup": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "checklist",
+    "ratings",
+    "reviewedAt",
+    "reviewer",
+    "reviewerId",
+    "writeup"
+  ],
+  "title": "Review",
+  "type": "object"
 }

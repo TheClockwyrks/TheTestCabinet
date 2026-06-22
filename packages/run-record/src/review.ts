@@ -57,3 +57,31 @@ export type DomainRating = {
    */
   rating: Rating;
 };
+
+/**
+ * One published review on a run: the reviewer's public identity, their per-domain
+ * ratings, the writeup, and their checklist verdicts. This is the canonical
+ * review wire shape (`backend-api/review.schema.json`), referenced by the per-run
+ * snapshot document.
+ */
+export type Review = {
+  /**
+   * The reviewing account's id (stable across their reviews).
+   */
+  reviewerId: string;
+  /**
+   * The reviewer's display name, shown beside their review.
+   */
+  reviewer: string;
+  /**
+   * The reviewer's rating for each scoring domain. This review's overall
+   * rating is the worst across them.
+   */
+  ratings: Array<DomainRating>;
+  writeup: string;
+  checklist: Array<ReviewVerdict>;
+  /**
+   * RFC 3339 of when the review was submitted.
+   */
+  reviewedAt: string;
+};

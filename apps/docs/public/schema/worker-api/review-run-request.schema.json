@@ -1,80 +1,4 @@
 {
-  "$defs": {
-    "DomainRating": {
-      "description": "A reviewer's quality [`Rating`] for one of a case's scoring domains.",
-      "properties": {
-        "domain": {
-          "description": "The declared domain's stable id (see [`crate::test_case::Domain::id`]).",
-          "type": "string"
-        },
-        "rating": {
-          "$ref": "#/$defs/Rating",
-          "description": "The reviewer's rating for this domain."
-        }
-      },
-      "required": ["domain", "rating"],
-      "type": "object"
-    },
-    "Rating": {
-      "description": "A reviewer's subjective quality rating for a finished implementation.\n\nAssigned by hand while playing the build, ordered best to worst. It is a per-run signal shown alongside a run, never an aggregate or a ranking across runs (see `docs/site.md`).",
-      "oneOf": [
-        {
-          "description": "Implemented according to spec with no noticeable bugs.",
-          "enum": ["flawless"],
-          "type": "string"
-        },
-        {
-          "description": "Implemented according to spec; may have minor issues that don't impact playability.",
-          "enum": ["great"],
-          "type": "string"
-        },
-        {
-          "description": "Mostly implemented according to spec. Playable, but deviates from the spec or has bugs that impact playability.",
-          "enum": ["scuffed"],
-          "type": "string"
-        },
-        {
-          "description": "Doesn't follow the spec, or has bugs severe enough to render the game unplayable.",
-          "enum": ["broken"],
-          "type": "string"
-        }
-      ]
-    },
-    "ReviewVerdict": {
-      "description": "A reviewer's recorded verdict on one declared checklist item.",
-      "properties": {
-        "id": {
-          "description": "The declared item's stable id (see [`crate::test_case::ReviewItem::id`]).",
-          "type": "string"
-        },
-        "note": {
-          "description": "An optional one-line note recording what the reviewer observed. `None` when the reviewer left no note.",
-          "type": ["string", "null"]
-        },
-        "status": {
-          "$ref": "#/$defs/VerdictStatus",
-          "description": "The reviewer's verdict on the item."
-        }
-      },
-      "required": ["id", "status"],
-      "type": "object"
-    },
-    "VerdictStatus": {
-      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the reviewer records one of these per item while judging the build. Ordered by neither severity nor preference — it simply states what the reviewer found.",
-      "oneOf": [
-        {
-          "description": "The item was checked and the build satisfies it. The item earns its weight toward the run's score.",
-          "enum": ["pass"],
-          "type": "string"
-        },
-        {
-          "description": "The item was checked and the build does not satisfy it. The item earns none of its weight.",
-          "enum": ["fail"],
-          "type": "string"
-        }
-      ]
-    }
-  },
   "$id": "https://docs.testcabinet.ai/schema/worker-api/review-run-request.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The body of `POST /review`: a review for an already-pushed run.",
@@ -83,14 +7,14 @@
       "default": [],
       "description": "The reviewer's verdicts on the case's declared checklist items.",
       "items": {
-        "$ref": "#/$defs/ReviewVerdict"
+        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/ReviewVerdict"
       },
       "type": "array"
     },
     "ratings": {
       "description": "The reviewer's quality rating for each scoring domain.",
       "items": {
-        "$ref": "#/$defs/DomainRating"
+        "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/DomainRating"
       },
       "type": "array"
     },

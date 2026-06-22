@@ -689,6 +689,7 @@ impl MediaKind {
 /// How a reference view's source is turned into the seeded/served artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum ReferenceKind {
     /// An HTML mockup rendered to a PNG screenshot. The served media is always an
     /// image.

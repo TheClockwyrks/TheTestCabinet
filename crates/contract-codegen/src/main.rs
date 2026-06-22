@@ -21,9 +21,10 @@ use anyhow::{Context, Result};
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
 use test_cabinet_core::{
-    match_play as mp, metrics as m, review as rv, run_record as rr, test_case as tc,
-    validation as val,
+    accounts as acct, match_play as mp, metrics as m, review as rv, run_record as rr,
+    test_case as tc, validation as val,
 };
+use test_cabinet_backend::snapshot as snap;
 use test_cabinet_worker::{api as wapi, jobs as wjobs, notify as wnotify};
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -82,6 +83,11 @@ const RUN_RECORD_DEFS: &[&str] = &[
 /// cross-document `$ref` at that schema's URL.
 const TOURNAMENT_DEFS: &[&str] = &["MatchSummary", "Standing", "ControllerRef", "ControllerKind"];
 
+/// The review schema's `$defs`: the canonical home of the review value types, so
+/// the worker (review submission), backend, and snapshot documents all reference
+/// them here rather than each carrying a copy.
+const REVIEW_DEFS: &[&str] = &["Rating", "VerdictStatus", "ReviewVerdict", "DomainRating"];
+
 fn main() -> Result<()> {
     let root = workspace_root()?;
     let cfg = ts_config();
@@ -105,11 +111,32 @@ fn main() -> Result<()> {
             ],
         },
         // The review value types (shared by the worker, backend, and snapshot
-        // contracts). The scoring/aggregation logic stays hand-written in the UI.
+        // contracts) plus the published `Review` wire shape. The scoring and
+        // aggregation logic stays hand-written in the UI.
         TsModule {
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
+                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating, snap::Review,
+            ],
+        },
+        // The auth surface: accounts and the register/login request + token
+        // response.
+        TsModule {
+            file: "account.ts",
+            decls: ts_decls![&cfg;
+                acct::Account, acct::RegisterRequest, acct::LoginRequest, acct::AuthnResponse,
+            ],
+        },
+        // The published snapshot documents (the static gallery's data): the index,
+        // the runs index + summary cards, the per-run document, and case metadata.
+        TsModule {
+            file: "snapshot.ts",
+            decls: ts_decls![&cfg;
+                snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
+                snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut, snap::PerRun,
+                tc::ReferenceKind, snap::CaseCheckOut, snap::CaseDomainOut,
+                snap::CaseReviewItemOut, snap::CaseReferenceOut, snap::CaseVariantOut,
+                snap::CaseMetadata,
             ],
         },
         // The worker HTTP API: job lifecycle, notifications, and the
@@ -160,6 +187,30 @@ fn main() -> Result<()> {
         anon("worker-api/review-run-ack.schema.json", root_schema::<wapi::ReviewAck>()),
         anon("worker-api/publish-run-request.schema.json", root_schema::<wapi::PublishBody>()),
         anon("worker-api/publish-run-ack.schema.json", root_schema::<wapi::PublishAck>()),
+        // Backend API: the auth surface (the token response is the canonical home
+        // of Account) and the canonical review document (the home of the review
+        // value types the worker + snapshot reference).
+        SchemaDoc {
+            rel_path: "backend-api/auth.schema.json",
+            root: Some("AuthResult"),
+            owns: &["Account"],
+            schema: root_schema::<acct::AuthnResponse>(),
+        },
+        anon("backend-api/auth-register-request.schema.json", root_schema::<acct::RegisterRequest>()),
+        anon("backend-api/auth-login-request.schema.json", root_schema::<acct::LoginRequest>()),
+        SchemaDoc {
+            rel_path: "backend-api/review.schema.json",
+            root: Some("Review"),
+            owns: REVIEW_DEFS,
+            schema: root_schema::<snap::Review>(),
+        },
+        // Snapshot documents (the static gallery's published data). Each references
+        // the core run-record and review documents by URL; its own summary/envelope
+        // subtypes stay inline.
+        anon("snapshot/index.schema.json", root_schema::<snap::SnapshotIndex>()),
+        anon("snapshot/runs.schema.json", root_schema::<snap::RunsIndex>()),
+        anon("snapshot/run.schema.json", root_schema::<snap::PerRun>()),
+        anon("snapshot/case.schema.json", root_schema::<snap::CaseMetadata>()),
     ])?;
     for (rel_path, value) in schemas {
         write_schema(&root, rel_path, &value)?;

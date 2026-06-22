@@ -855,7 +855,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/core/run-record.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its shape is deliberately fixed and mirrored in `packages/run-record`.",
+  "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its shape is deliberately fixed; the `packages/run-record` bindings and the published JSON Schema are generated from it (see the module docs).",
   "properties": {
     "environment": {
       "$ref": "#/$defs/RunEnvironment",

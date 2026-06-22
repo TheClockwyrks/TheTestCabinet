@@ -1,130 +1,228 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/snapshot/case.schema.json",
-  "title": "SnapshotCase",
-  "description": "A per-case-version metadata file in the snapshot (`cases/<slug>/<version>.json`): the site-facing slice of a test-case version used to frame a run. Derived from the ingested manifest, with no spec bodies, no mockup HTML, and no host paths.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "slug",
-    "version",
-    "name",
-    "difficulty",
-    "tags",
-    "variants",
-    "checks",
-    "commonReviewItems",
-    "domains"
-  ],
-  "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
-    "slug": { "type": "string" },
-    "version": { "type": "string" },
-    "name": { "type": "string" },
-    "difficulty": { "type": "string" },
-    "tags": { "type": "array", "items": { "type": "string" } },
-    "summary": { "type": ["string", "null"] },
-    "description": {
-      "type": ["string", "null"],
-      "description": "The resolved description.md body."
-    },
-    "variants": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["slug", "name"],
-        "properties": {
-          "slug": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": ["string", "null"] },
-          "reviewItems": {
-            "type": "array",
-            "description": "Reviewer checklist items additive to the common ones, surfaced only when this variant is selected. Carry their point weights so the site can score and break down runs.",
-            "items": { "$ref": "#/$defs/ReviewItem" }
-          }
+  "$defs": {
+    "CaseCheckOut": {
+      "description": "A declared validation check exposed in case metadata.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "referenceView": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
         }
-      }
+      },
+      "required": ["name", "referenceView", "view"],
+      "type": "object"
     },
-    "checks": {
-      "type": "array",
-      "description": "The declared checks, without their action lists (those are a runner concern).",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["view", "name", "referenceView"],
-        "properties": {
-          "view": { "type": "string" },
-          "name": { "type": "string" },
-          "referenceView": { "type": "string" }
+    "CaseDomainOut": {
+      "description": "A scoring domain exposed in case metadata.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
         }
-      }
+      },
+      "required": ["description", "id", "name"],
+      "type": "object"
     },
-    "references": {
-      "type": "array",
-      "description": "Reference media exposed as snapshot-relative keys the site resolves to absolute URLs. A common reference carries a null `variant`; a variant-scoped one carries the variant slug.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["variant", "view", "kind", "key"],
-        "properties": {
-          "variant": { "type": ["string", "null"] },
-          "view": { "type": "string" },
-          "kind": {
-            "enum": ["rendered", "image", "video"],
-            "description": "How the reference is produced (a rendered mockup and a static image both display as an image; a video displays with controls)."
+    "CaseReferenceOut": {
+      "description": "A reference baseline exposed in case metadata. `variant` is `null` for a common reference (shown on every variant) or the variant slug for one scoped to a single variant; `kind` is how it is produced (rendered/image/video); `key` is the snapshot-relative object key of the media.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ReferenceKind"
+        },
+        "variant": {
+          "type": ["string", "null"]
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": ["key", "kind", "view"],
+      "type": "object"
+    },
+    "CaseReviewItemOut": {
+      "description": "A reviewer checklist item exposed in case metadata, carrying its point weight and optional scoring domain so the site can compute and break down run scores.",
+      "properties": {
+        "domain": {
+          "type": ["string", "null"]
+        },
+        "frames": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
           },
-          "key": {
-            "type": "string",
-            "description": "Snapshot-relative object key of the reference media."
-          }
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "proof": {
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "type": ["string", "null"]
+        },
+        "sequences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "weight": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
         }
-      }
+      },
+      "required": ["frames", "id", "sequences", "text", "title", "weight"],
+      "type": "object"
     },
-    "commonReviewItems": {
-      "type": "array",
-      "description": "Reviewer checklist items shared by every variant, with their point weights so the site can compute run scores.",
-      "items": { "$ref": "#/$defs/ReviewItem" }
+    "CaseVariantOut": {
+      "description": "One variant of a case as the gallery shows it.",
+      "properties": {
+        "description": {
+          "type": ["string", "null"]
+        },
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "description": "The variant's prompt, rendered as a real run receives it, so the public gallery's Specifications tab shows the instruction the model was handed.",
+          "type": "string"
+        },
+        "reviewItems": {
+          "description": "Reviewer checklist items additive to the common ones, with their point weights, surfaced only when this variant is selected.",
+          "items": {
+            "$ref": "#/$defs/CaseReviewItemOut"
+          },
+          "type": "array"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "prompt", "reviewItems", "slug"],
+      "type": "object"
     },
-    "domains": {
-      "type": "array",
-      "description": "The case's scoring domains. A reviewer rates each independently; the run's overall rating is the worst across them.",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/Domain" }
+    "ReferenceKind": {
+      "description": "How a reference view's source is turned into the seeded/served artifact.",
+      "oneOf": [
+        {
+          "description": "An HTML mockup rendered to a PNG screenshot. The served media is always an image.",
+          "enum": ["rendered"],
+          "type": "string"
+        },
+        {
+          "description": "A static image file used as-is.",
+          "enum": ["image"],
+          "type": "string"
+        },
+        {
+          "description": "A static video file (`mp4`) used as-is.",
+          "enum": ["video"],
+          "type": "string"
+        }
+      ]
     }
   },
-  "$defs": {
-    "ReviewItem": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "title", "text", "weight"],
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "text": { "type": "string" },
-        "reference": { "type": ["string", "null"] },
-        "proof": { "type": ["string", "null"] },
-        "weight": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Points this item is worth toward the run's score: a pass earns this weight, a fail earns none."
-        },
-        "domain": {
-          "type": ["string", "null"],
-          "description": "Optional scoring domain (by id) this item belongs to, or null for a general item."
-        }
-      }
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/case.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice of one ingested version — its identity, variants (with rendered prompts), checks, reference baselines, reviewer checklist, and scoring domains.",
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/CaseCheckOut"
+      },
+      "type": "array"
     },
-    "Domain": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "description"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" }
-      }
+    "commonReviewItems": {
+      "description": "Reviewer checklist items shared by every variant, carrying their point weights so the site can compute run scores. A variant's own items ride on [`CaseVariantOut::review_items`].",
+      "items": {
+        "$ref": "#/$defs/CaseReviewItemOut"
+      },
+      "type": "array"
+    },
+    "description": {
+      "type": ["string", "null"]
+    },
+    "difficulty": {
+      "type": "string"
+    },
+    "domains": {
+      "description": "The case's scoring domains, rated independently; the overall rating is the worst across them.",
+      "items": {
+        "$ref": "#/$defs/CaseDomainOut"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "references": {
+      "description": "Rendered reference baselines, named by snapshot-relative key. The site resolves these to absolute URLs to show baselines on the References tab.",
+      "items": {
+        "$ref": "#/$defs/CaseReferenceOut"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "summary": {
+      "type": ["string", "null"]
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/CaseVariantOut"
+      },
+      "type": "array"
+    },
+    "version": {
+      "type": "string"
     }
-  }
+  },
+  "required": [
+    "checks",
+    "commonReviewItems",
+    "difficulty",
+    "domains",
+    "name",
+    "references",
+    "schemaVersion",
+    "slug",
+    "tags",
+    "variants",
+    "version"
+  ],
+  "title": "CaseMetadata",
+  "type": "object"
 }

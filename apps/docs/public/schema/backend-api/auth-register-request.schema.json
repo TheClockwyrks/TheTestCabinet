@@ -1,0 +1,22 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/auth-register-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A request to create a new account (`POST /auth/register`). Self-registration is open on the private network: anyone who can reach the auth service may create an account.",
+  "properties": {
+    "displayName": {
+      "description": "The human-facing display name.",
+      "type": "string"
+    },
+    "password": {
+      "description": "The plaintext password, hashed with Argon2id by the service and never stored or logged in the clear.",
+      "type": "string"
+    },
+    "username": {
+      "description": "The desired unique login handle.",
+      "type": "string"
+    }
+  },
+  "required": ["displayName", "password", "username"],
+  "title": "RegisterRequest",
+  "type": "object"
+}

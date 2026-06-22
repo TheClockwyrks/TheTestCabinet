@@ -1,0 +1,18 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/auth-login-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A request to exchange credentials for a bearer token (`POST /auth/login`).",
+  "properties": {
+    "password": {
+      "description": "The account's plaintext password, verified against the stored hash.",
+      "type": "string"
+    },
+    "username": {
+      "description": "The account's login handle.",
+      "type": "string"
+    }
+  },
+  "required": ["password", "username"],
+  "title": "LoginRequest",
+  "type": "object"
+}

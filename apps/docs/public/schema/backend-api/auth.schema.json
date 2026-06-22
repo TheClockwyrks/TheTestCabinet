@@ -1,66 +1,39 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.testcabinet.ai/schema/backend-api/auth.schema.json",
-  "title": "Auth",
-  "description": "The account and token shapes the standalone auth service exposes, and the worker proxies. Registration and login take a username/password; login returns an opaque bearer token plus the account it identifies. The token is sent as `Authorization: Bearer <token>` on every mutating run request (push, review, publish), which the backend verifies against the auth service. Reads need no token.",
   "$defs": {
-    "RegisterRequest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["username", "password", "displayName"],
-      "description": "The body of POST /auth/register: open self-registration. The password is hashed with Argon2id; it is never stored or returned in plaintext.",
-      "properties": {
-        "username": {
-          "type": "string",
-          "description": "The unique login handle.",
-          "minLength": 1
-        },
-        "password": {
-          "type": "string",
-          "description": "The account password, hashed with Argon2id server-side.",
-          "minLength": 1
-        },
-        "displayName": {
-          "type": "string",
-          "description": "The name shown beside the account's reviews.",
-          "minLength": 1
-        }
-      }
-    },
-    "LoginRequest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["username", "password"],
-      "description": "The body of POST /auth/login.",
-      "properties": {
-        "username": { "type": "string", "minLength": 1 },
-        "password": { "type": "string", "minLength": 1 }
-      }
-    },
     "Account": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "username", "displayName"],
-      "description": "A user account. Reviews are attributed to its `id`; its `displayName` is shown beside them.",
+      "description": "A user account as the auth service represents it on the wire: a stable id, the login `username`, and the human-facing `display_name` shown beside a review. The password hash never leaves the service, so it is not part of this shape.",
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "username": { "type": "string", "minLength": 1 },
-        "displayName": { "type": "string", "minLength": 1 }
-      }
-    },
-    "AuthResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["token", "account"],
-      "description": "The response to a successful register or login: the opaque bearer token to present on mutating requests, and the account it identifies.",
-      "properties": {
-        "token": {
-          "type": "string",
-          "description": "An opaque bearer token. Presented as `Authorization: Bearer <token>`; the backend verifies it against the auth service's POST /auth/verify.",
-          "minLength": 1
+        "displayName": {
+          "description": "The human-facing name shown beside the account's reviews.",
+          "type": "string"
         },
-        "account": { "$ref": "#/$defs/Account" }
-      }
+        "id": {
+          "description": "The account's stable id (a UUID), the key a review is attributed to.",
+          "type": "string"
+        },
+        "username": {
+          "description": "The unique login handle.",
+          "type": "string"
+        }
+      },
+      "required": ["displayName", "id", "username"],
+      "type": "object"
     }
-  }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/auth.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The auth service's response to a successful register or login: the freshly minted bearer `token` (shown once; the service stores only its hash) and the resolved [`Account`]. Clients persist the token and send it as `Authorization: Bearer <token>` on every mutating request.",
+  "properties": {
+    "account": {
+      "$ref": "#/$defs/Account",
+      "description": "The account the token authenticates as."
+    },
+    "token": {
+      "description": "The opaque bearer token to authenticate subsequent requests with.",
+      "type": "string"
+    }
+  },
+  "required": ["account", "token"],
+  "title": "AuthResult",
+  "type": "object"
 }

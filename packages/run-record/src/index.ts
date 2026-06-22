@@ -924,7 +924,8 @@ export type RunStatus = {
  * The complete run record emitted by every run.
  *
  * This is the contract consumed by the site and published with each run. Its
- * shape is deliberately fixed and mirrored in `packages/run-record`.
+ * shape is deliberately fixed; the `packages/run-record` bindings and the
+ * published JSON Schema are generated from it (see the module docs).
  */
 export type RunRecord = {
   /**

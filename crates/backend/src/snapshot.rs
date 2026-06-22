@@ -113,12 +113,9 @@ impl SnapshotBuilder {
                 format!("{prefix}/runs/{}.json", run.record.id),
                 &PerRun {
                     schema_version: SCHEMA_VERSION,
-                    record: &run.record,
+                    record: run.record.clone(),
                     reviews: run.reviews.iter().map(review_out).collect(),
-                    links: LinksOut {
-                        source_repo: run.links.source_repo.as_deref(),
-                        playable_build: run.links.playable_build.as_deref(),
-                    },
+                    links: links_out(&run.links),
                     events,
                     proof_media,
                     asset_media,
@@ -146,7 +143,7 @@ impl SnapshotBuilder {
             "index.json".to_string(),
             &SnapshotIndex {
                 schema_version: SCHEMA_VERSION,
-                snapshot_id: &snapshot_id,
+                snapshot_id: snapshot_id.clone(),
                 generated_at: generated_at
                     .format(&Rfc3339)
                     .map_err(|e| BackendError::Snapshot(format!("formatting generatedAt: {e}")))?,
@@ -166,7 +163,7 @@ impl SnapshotBuilder {
     }
 
     /// The denormalized summary card for one run.
-    fn summary<'a>(&self, run: &'a StoredRun) -> RunSummary<'a> {
+    fn summary(&self, run: &StoredRun) -> RunSummary {
         let record = &run.record;
         let case_name = self
             .cases
@@ -187,15 +184,12 @@ impl SnapshotBuilder {
             finished_at: record.finished_at.clone(),
             subject: SubjectOut::from(record),
             case_name,
-            metrics: &record.metrics,
+            metrics: record.metrics,
             validation_loaded: record.validation.loaded,
-            state: state_str(record.status.state),
-            rating: aggregate_rating_str(&run.reviews),
+            state: record.status.state,
+            rating: aggregate_rating(&run.reviews),
             review_count: run.reviews.len(),
-            links: LinksOut {
-                source_repo: run.links.source_repo.as_deref(),
-                playable_build: run.links.playable_build.as_deref(),
-            },
+            links: links_out(&run.links),
         }
     }
 
@@ -441,54 +435,63 @@ pub async fn upload_snapshot(
 
 // --- Wire shapes (§3) -------------------------------------------------------
 
+/// The top-level snapshot pointer (`index.json`): where the runs index, per-run
+/// documents, and case documents live under this snapshot's prefix.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SnapshotIndex<'a> {
-    schema_version: u32,
-    snapshot_id: &'a str,
-    generated_at: String,
-    run_count: usize,
-    runs_key: String,
-    runs_prefix: String,
-    cases_prefix: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct SnapshotIndex {
+    pub schema_version: u32,
+    pub snapshot_id: String,
+    pub generated_at: String,
+    pub run_count: usize,
+    pub runs_key: String,
+    pub runs_prefix: String,
+    pub cases_prefix: String,
 }
 
+/// The flat index of run summary cards (`runs.json`), newest first.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunsIndex<'a> {
-    schema_version: u32,
-    runs: Vec<RunSummary<'a>>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunsIndex {
+    pub schema_version: u32,
+    pub runs: Vec<RunSummary>,
 }
 
+/// The denormalized summary card for one published run.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunSummary<'a> {
-    id: String,
-    published_at: String,
-    started_at: String,
-    finished_at: String,
-    subject: SubjectOut,
-    case_name: String,
-    metrics: &'a test_cabinet_core::metrics::RunMetrics,
-    validation_loaded: bool,
-    state: &'static str,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunSummary {
+    pub id: String,
+    pub published_at: String,
+    pub started_at: String,
+    pub finished_at: String,
+    pub subject: SubjectOut,
+    pub case_name: String,
+    pub metrics: test_cabinet_core::metrics::RunMetrics,
+    pub validation_loaded: bool,
+    pub state: test_cabinet_core::run_record::RunState,
     /// The run's overall rating: the worst rating any reviewer gave any domain.
-    rating: &'static str,
+    pub rating: test_cabinet_core::review::Rating,
     /// How many reviews the run carries. The site averages their scores; the
     /// aggregate sits between the harshest and most generous review.
-    review_count: usize,
-    links: LinksOut<'a>,
+    pub review_count: usize,
+    pub links: LinksOut,
 }
 
+/// The run subject as a summary card carries it (the slug enum, not a string).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SubjectOut {
-    test_case_slug: String,
-    test_case_version: String,
-    variant: String,
-    harness_slug: String,
-    harness_version: Option<String>,
-    model_id: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct SubjectOut {
+    pub test_case_slug: String,
+    pub test_case_version: String,
+    pub variant: String,
+    pub harness_slug: test_cabinet_core::run_record::HarnessSlug,
+    pub harness_version: Option<String>,
+    pub model_id: String,
 }
 
 impl SubjectOut {
@@ -497,33 +500,37 @@ impl SubjectOut {
             test_case_slug: record.subject.test_case_slug.clone(),
             test_case_version: record.subject.test_case_version.clone(),
             variant: record.subject.variant.clone(),
-            harness_slug: record.subject.harness_slug.as_str().to_string(),
+            harness_slug: record.subject.harness_slug,
             harness_version: record.subject.harness_version.clone(),
             model_id: record.subject.model_id.clone(),
         }
     }
 }
 
+/// A per-run document (`runs/<id>.json`): the run record, its reviews and links,
+/// the recorded event stream, and the snapshot-relative keys of its media.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PerRun<'a> {
-    schema_version: u32,
-    record: &'a RunRecord,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerRun {
+    pub schema_version: u32,
+    pub record: RunRecord,
     /// The run's reviews, oldest first. The site averages their scores and takes
     /// the worst rating across them; each entry names its reviewer.
-    reviews: Vec<ReviewOut<'a>>,
-    links: LinksOut<'a>,
+    pub reviews: Vec<Review>,
+    pub links: LinksOut,
     /// The run's recorded normalized event stream (a JSON array), omitted when the
     /// run captured none. The site emits this as a per-run static asset its Events
     /// tab fetches; raw harness output is never included.
     #[serde(skip_serializing_if = "Option::is_none")]
-    events: Option<serde_json::Value>,
+    #[cfg_attr(feature = "contract", ts(optional, type = "unknown"))]
+    pub events: Option<serde_json::Value>,
     /// The run's uploaded proof-of-implementation media, named by snapshot-relative
     /// key. Empty when the run produced none.
-    proof_media: Vec<RunProofOut>,
+    pub proof_media: Vec<RunProofOut>,
     /// An asset-generation run's media (regenerated/preview image + action log),
     /// named by snapshot-relative key. Empty for a non-asset-generation run.
-    asset_media: Vec<RunAssetOut>,
+    pub asset_media: Vec<RunAssetOut>,
 }
 
 /// A proof media file exposed in a per-run document. `id` matches the proof's
@@ -531,10 +538,11 @@ struct PerRun<'a> {
 /// `key` is the snapshot-relative object key of the media.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunProofOut {
-    id: String,
-    kind: test_cabinet_core::MediaKind,
-    key: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunProofOut {
+    pub id: String,
+    pub kind: test_cabinet_core::MediaKind,
+    pub key: String,
 }
 
 /// An asset-generation media file exposed in a per-run document. `file` is the
@@ -543,70 +551,87 @@ struct RunProofOut {
 /// `regenerated-<index>.png` (etc.); `key` is its snapshot-relative object key.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunAssetOut {
-    file: String,
-    key: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunAssetOut {
+    pub file: String,
+    pub key: String,
 }
 
+/// One published review on a run: the reviewer's public identity, their per-domain
+/// ratings, the writeup, and their checklist verdicts. This is the canonical
+/// review wire shape (`backend-api/review.schema.json`), referenced by the per-run
+/// snapshot document.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReviewOut<'a> {
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "Review"),
+    schemars(rename = "Review")
+)]
+pub struct Review {
     /// The reviewing account's id (stable across their reviews).
-    reviewer_id: &'a str,
+    pub reviewer_id: String,
     /// The reviewer's display name, shown beside their review.
-    reviewer: &'a str,
+    pub reviewer: String,
     /// The reviewer's rating for each scoring domain. This review's overall
     /// rating is the worst across them.
-    ratings: &'a [test_cabinet_core::review::DomainRating],
-    writeup: &'a str,
-    checklist: &'a [test_cabinet_core::review::ReviewVerdict],
+    pub ratings: Vec<test_cabinet_core::review::DomainRating>,
+    pub writeup: String,
+    pub checklist: Vec<test_cabinet_core::review::ReviewVerdict>,
     /// RFC 3339 of when the review was submitted.
-    reviewed_at: &'a str,
+    pub reviewed_at: String,
 }
 
 /// Map a stored review to its snapshot wire shape, exposing the reviewer's
 /// public identity (id + display name) but never any account internals.
-fn review_out(review: &crate::db::StoredReview) -> ReviewOut<'_> {
-    ReviewOut {
-        reviewer_id: &review.reviewer.user_id,
-        reviewer: &review.reviewer.display_name,
-        ratings: &review.ratings,
-        writeup: &review.writeup,
-        checklist: &review.checklist,
-        reviewed_at: &review.reviewed_at,
+fn review_out(review: &crate::db::StoredReview) -> Review {
+    Review {
+        reviewer_id: review.reviewer.user_id.clone(),
+        reviewer: review.reviewer.display_name.clone(),
+        ratings: review.ratings.clone(),
+        writeup: review.writeup.clone(),
+        checklist: review.checklist.clone(),
+        reviewed_at: review.reviewed_at.clone(),
     }
 }
 
+/// A run's outbound links as the snapshot carries them.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LinksOut<'a> {
-    source_repo: Option<&'a str>,
-    playable_build: Option<&'a str>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LinksOut {
+    pub source_repo: Option<String>,
+    pub playable_build: Option<String>,
 }
 
+/// A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice
+/// of one ingested version — its identity, variants (with rendered prompts),
+/// checks, reference baselines, reviewer checklist, and scoring domains.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseMetadata<'a> {
-    schema_version: u32,
-    slug: &'a str,
-    version: &'a str,
-    name: &'a str,
-    difficulty: &'a str,
-    tags: &'a [String],
-    summary: Option<&'a str>,
-    description: Option<&'a str>,
-    variants: Vec<CaseVariantOut<'a>>,
-    checks: Vec<CaseCheckOut<'a>>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseMetadata {
+    pub schema_version: u32,
+    pub slug: String,
+    pub version: String,
+    pub name: String,
+    pub difficulty: String,
+    pub tags: Vec<String>,
+    pub summary: Option<String>,
+    pub description: Option<String>,
+    pub variants: Vec<CaseVariantOut>,
+    pub checks: Vec<CaseCheckOut>,
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
-    references: Vec<CaseReferenceOut>,
+    pub references: Vec<CaseReferenceOut>,
     /// Reviewer checklist items shared by every variant, carrying their point
     /// weights so the site can compute run scores. A variant's own items ride on
     /// [`CaseVariantOut::review_items`].
-    common_review_items: Vec<CaseReviewItemOut<'a>>,
+    pub common_review_items: Vec<CaseReviewItemOut>,
     /// The case's scoring domains, rated independently; the overall rating is the
     /// worst across them.
-    domains: Vec<CaseDomainOut<'a>>,
+    pub domains: Vec<CaseDomainOut>,
 }
 
 /// A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -615,58 +640,65 @@ struct CaseMetadata<'a> {
 /// is the snapshot-relative object key of the media.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseReferenceOut {
-    variant: Option<String>,
-    view: String,
-    kind: test_cabinet_core::ReferenceKind,
-    key: String,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseReferenceOut {
+    pub variant: Option<String>,
+    pub view: String,
+    pub kind: test_cabinet_core::ReferenceKind,
+    pub key: String,
 }
 
+/// One variant of a case as the gallery shows it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseVariantOut<'a> {
-    slug: &'a str,
-    name: &'a str,
-    description: Option<&'a str>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseVariantOut {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
     /// The variant's prompt, rendered as a real run receives it, so the public
     /// gallery's Specifications tab shows the instruction the model was handed.
-    prompt: String,
+    pub prompt: String,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
-    review_items: Vec<CaseReviewItemOut<'a>>,
+    pub review_items: Vec<CaseReviewItemOut>,
 }
 
 /// A reviewer checklist item exposed in case metadata, carrying its point weight
 /// and optional scoring domain so the site can compute and break down run scores.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseReviewItemOut<'a> {
-    id: &'a str,
-    title: &'a str,
-    text: &'a str,
-    reference: Option<&'a str>,
-    proof: Option<&'a str>,
-    sequences: &'a [String],
-    frames: &'a [u32],
-    weight: u32,
-    domain: Option<&'a str>,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseReviewItemOut {
+    pub id: String,
+    pub title: String,
+    pub text: String,
+    pub reference: Option<String>,
+    pub proof: Option<String>,
+    pub sequences: Vec<String>,
+    pub frames: Vec<u32>,
+    pub weight: u32,
+    pub domain: Option<String>,
 }
 
 /// A scoring domain exposed in case metadata.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseDomainOut<'a> {
-    id: &'a str,
-    name: &'a str,
-    description: &'a str,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseDomainOut {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
+/// A declared validation check exposed in case metadata.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CaseCheckOut<'a> {
-    view: &'a str,
-    name: &'a str,
-    reference_view: &'a str,
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseCheckOut {
+    pub view: String,
+    pub name: String,
+    pub reference_view: String,
 }
 
 /// Build the case-metadata document for one ingested version (no spec bodies, no
@@ -674,10 +706,10 @@ struct CaseCheckOut<'a> {
 /// prompt is rendered exactly as a run receives it, so the public gallery shows
 /// the same instruction the consoles do; the spec bodies and seeded inputs it
 /// references are still resolved from the backend, not inlined here.
-fn case_metadata<'a>(
-    manifest: &'a StoredManifest,
+fn case_metadata(
+    manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
-) -> Result<CaseMetadata<'a>, BackendError> {
+) -> Result<CaseMetadata, BackendError> {
     let variants = manifest
         .variants
         .iter()
@@ -704,9 +736,9 @@ fn case_metadata<'a>(
                 ))
             })?;
             Ok(CaseVariantOut {
-                slug: &v.slug,
-                name: &v.name,
-                description: v.description.as_deref(),
+                slug: v.slug.clone(),
+                name: v.name.clone(),
+                description: v.description.clone(),
                 prompt,
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
             })
@@ -715,21 +747,21 @@ fn case_metadata<'a>(
 
     Ok(CaseMetadata {
         schema_version: SCHEMA_VERSION,
-        slug: &manifest.slug,
-        version: &manifest.version,
-        name: &manifest.name,
-        difficulty: &manifest.difficulty,
-        tags: &manifest.tags,
-        summary: manifest.summary.as_deref(),
-        description: manifest.description.as_deref(),
+        slug: manifest.slug.clone(),
+        version: manifest.version.clone(),
+        name: manifest.name.clone(),
+        difficulty: manifest.difficulty.clone(),
+        tags: manifest.tags.clone(),
+        summary: manifest.summary.clone(),
+        description: manifest.description.clone(),
         variants,
         checks: manifest
             .checks
             .iter()
             .map(|c| CaseCheckOut {
-                view: &c.view,
-                name: &c.name,
-                reference_view: &c.reference_view,
+                view: c.view.clone(),
+                name: c.name.clone(),
+                reference_view: c.reference_view.clone(),
             })
             .collect(),
         references,
@@ -742,9 +774,9 @@ fn case_metadata<'a>(
             .domains
             .iter()
             .map(|domain| CaseDomainOut {
-                id: &domain.id,
-                name: &domain.name,
-                description: &domain.description,
+                id: domain.id.clone(),
+                name: domain.name.clone(),
+                description: domain.description.clone(),
             })
             .collect(),
     })
@@ -752,39 +784,42 @@ fn case_metadata<'a>(
 
 /// Map a stored reviewer checklist item to its case-metadata wire shape, carrying
 /// its point weight and optional domain.
-fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItemOut<'_> {
+fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItemOut {
     CaseReviewItemOut {
-        id: &item.id,
-        title: &item.title,
-        text: &item.text,
-        reference: item.reference.as_deref(),
-        proof: item.proof.as_deref(),
-        sequences: &item.sequences,
-        frames: &item.frames,
+        id: item.id.clone(),
+        title: item.title.clone(),
+        text: item.text.clone(),
+        reference: item.reference.clone(),
+        proof: item.proof.clone(),
+        sequences: item.sequences.clone(),
+        frames: item.frames.clone(),
         weight: item.weight,
-        domain: item.domain.as_deref(),
+        domain: item.domain.clone(),
     }
 }
 
-/// The wire string for a run state.
-fn state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
-    use test_cabinet_core::run_record::RunState;
-    match state {
-        RunState::Completed => "completed",
-        RunState::Failed => "failed",
-        RunState::Unevaluable => "unevaluable",
+/// A run's outbound links in the snapshot wire shape (owned).
+fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
+    LinksOut {
+        source_repo: links.source_repo.clone(),
+        playable_build: links.playable_build.clone(),
     }
 }
 
-/// The run's overall rating — the worst rating any reviewer gave any domain —
-/// as a wire token. Falls back to `broken` for the (publish-gated, so
-/// unreachable) case of no reviews, so the runs index always carries a tier.
-fn aggregate_rating_str(reviews: &[crate::db::StoredReview]) -> &'static str {
+/// The run's overall rating — the worst rating any reviewer gave any domain.
+/// Falls back to [`Rating::Broken`] for the (publish-gated, so unreachable) case
+/// of no reviews, so the runs index always carries a tier.
+fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::review::Rating {
+    aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
+}
+
+/// The aggregate rating, or `None` when the run carries no reviews.
+fn aggregate_rating_inner(
+    reviews: &[crate::db::StoredReview],
+) -> Option<test_cabinet_core::review::Rating> {
     test_cabinet_core::review::aggregate_rating(
         reviews.iter().map(|review| review.ratings.as_slice()),
     )
-    .map(|rating| rating.as_str())
-    .unwrap_or("broken")
 }
 
 #[cfg(test)]
