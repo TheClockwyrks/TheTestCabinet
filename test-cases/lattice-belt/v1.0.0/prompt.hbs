@@ -1,0 +1,57 @@
+Draw the **Lattice transport belt**, an 8-frame **sprite sheet** of an animated
+factory conveyor surface, using only the drawing tool.
+
+The belt is a renderer sprite for **Lattice**, a top-down factory simulation. You
+are drawing one tile of a **straight transport belt that flows to the right
+(East)**: a dark two-lane metal surface with side rails and amber chevrons that
+scroll rightward across the eight frames so the animation loops seamlessly. The
+renderer rotates this one sprite for the other directions, so you draw the
+East-facing belt only.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
+is the sole channel: you build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue — recorded to a per-frame action log — are the **authoritative output that
+is scored**, not the pixels on disk. An image produced any other way (writing a
+PNG directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations count.
+
+Each frame is its **own separate 32×32 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-rect --frame 0 --x 0 --y 0 --width 32 --height 32 --color "#34383d"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the eight frames, how the chevron pattern scrolls
+between them, the form and palette of the belt, and how to work the tool. Run
+`draw-sheet --help` for the exact operation contract.
+
+## What to deliver
+
+Build the belt sprite sheet up operation by operation until each
+`frames/<index>.png` matches the brief: a dark two-lane metal belt with side
+rails and East-pointing amber chevrons, the chevron pattern scrolling right by
+the same step each frame so frames 0→7 loop seamlessly and the segment tiles
+horizontally. When you are satisfied, stop: the recorded per-frame action logs
+are your finished submission.

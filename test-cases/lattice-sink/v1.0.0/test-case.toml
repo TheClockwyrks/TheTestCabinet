@@ -1,0 +1,149 @@
+name = "Lattice Sink"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite-sheet", "fixture"]
+summary = """
+Draw the Lattice sink: the top-down test-fixture drain for a deterministic \
+factory simulation, as six 32x32 frames whose West intake aperture swallows a \
+single item in a red consume pulse that loops seamlessly, produced one drawing \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 3600
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
+# the sink fixture at Factorio normal resolution. Fixing the frame size keeps
+# every run comparable.
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 32x32 file — and the named
+# animation sequence a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.sequence]]
+slug = "consume"
+name = "Sink — consuming"
+frames = [0, 1, 2, 3, 4, 5]
+fps = 8
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Lattice sink — its top-down \
+test-rig drain housing with a West intake aperture, the red drain accent that \
+sets it apart from the green source emitter, the strict grey-blue-and-red \
+palette, and the six-frame consume pulse that swallows a single item from the \
+West and loops seamlessly."""
+
+[[review_item]]
+id = "reads-as-drain-fixture"
+title = "Reads as a test-fixture drain"
+text = """
+Every frame reads as measurement equipment — a sealed top-down housing/panel \
+with an intake aperture on its West (left) edge and a status indicator — not as a \
+length of conveyor belt or a crafting machine. It must look like a rig that \
+swallows and counts items, distinct from any normal Lattice entity."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "consume-pulse"
+title = "Consume pulse swallows one item"
+text = """
+Played in order, the six frames read as the sink consuming one item: frame 0 is \
+idle, then a single small steel-grey plate arrives at the West aperture and is \
+drawn inward / swallowed as the intake flashes red, then the aperture dims back \
+to idle. Frame 5 loops seamlessly back to frame 0 with no jump or backward slip, \
+so the cycle reads as 'consume one item' repeating."""
+sequences = ["consume"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "west-intake"
+title = "West-facing intake"
+text = """
+The intake aperture/port sits on the West (left) edge of the tile, and the item \
+arrives from the West and moves rightward (inward) as it is swallowed — never \
+from another edge and never emitted outward. The fixture clearly receives, it \
+does not output."""
+sequences = ["consume"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "red-drain-accent"
+title = "Red drain accent"
+text = """
+The sink's signature accent is red — a red status indicator and a red intake \
+flash on the swallow frames — marking it as the output/drain. The red must read \
+clearly and must not be confused with the green accent of the source emitter \
+fixture."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Frame framing"
+text = """
+The fixture fills most of its own 32x32 frame, centered with a small even margin \
+of a pixel or two, neither tiny in a corner nor clipped at the edges. The housing \
+sits the same in every frame; only the aperture, the indicator, and the item \
+change."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Strict palette adherence"
+text = """
+Uses only the sink palette from the brief — the dark outline/shadow, the three \
+grey-blue housing tones, the three red drain-accent tones, and the two steel-plate \
+item tones — with no out-of-palette colors and no halo of stray or anti-aliased \
+pixels."""
+weight = 1
+domain = "fidelity"

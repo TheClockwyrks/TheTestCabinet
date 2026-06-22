@@ -77,6 +77,21 @@ recolorable
 mandibled
 scorable
 
+# Lattice (performance-factorio) renderer asset sprites.
+Lattice
+Factorio
+splitter
+splitters
+inserter
+inserters
+assembler
+assemblers
+chevron
+chevrons
+sideload
+sideloaded
+sideloading
+
 # Adversarial (Foray) controller vocabulary and Rust toolchain.
 offence
 defence

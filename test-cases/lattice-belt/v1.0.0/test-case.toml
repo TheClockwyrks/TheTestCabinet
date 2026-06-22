@@ -1,0 +1,148 @@
+name = "Lattice Transport Belt"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite-sheet", "belt"]
+summary = """
+Draw the Lattice transport belt: an animated, top-down straight belt surface for \
+a deterministic factory simulation, as eight 32x32 frames whose amber chevrons \
+scroll East and loop seamlessly, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 3600
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
+# belt at Factorio normal resolution. Fixing the frame size keeps every run
+# comparable.
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 32x32 file — and the named
+# animation sequence a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.sequence]]
+slug = "belt-flow"
+name = "Belt — flowing"
+frames = [0, 1, 2, 3, 4, 5, 6, 7]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Lattice transport belt — its \
+two-lane top-down body with side rails, the strict amber-on-dark-metal palette, \
+the East-pointing chevrons, and the seamless rightward scroll that tiles both \
+across the frames and edge-to-edge."""
+
+[[review_item]]
+id = "scroll-loop"
+title = "Seamless scrolling loop"
+text = """
+Played in order, the eight frames read as one belt surface moving steadily to \
+the right: the chevron pattern advances by the same small step each frame and \
+frame 7 returns to frame 0 with no jump, stutter, or backward slip. The motion \
+must be a clean continuous loop."""
+sequences = ["belt-flow"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "east-chevrons"
+title = "East-pointing chevrons"
+text = """
+Every frame's movers are amber chevrons that point to the right (East), the \
+direction of travel — open ends trailing left, tips leading right. They must not \
+point any other way, and the same chevron shape repeats down the belt."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "two-lanes"
+title = "Two readable lanes"
+text = """
+The belt reads as two independent lanes — a top half and a bottom half — split \
+along the tile's horizontal centre, each carrying its own row(s) of chevrons. \
+The two-lane structure must be visible, not a single undivided band."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "metal-body-rails"
+title = "Dark-metal body with rails"
+text = """
+The belt body is dark metal in the base and mid tones, bounded by lighter side \
+rails along the top and bottom edges of the tile. The surface reads as a solid \
+mechanical belt, not bare chevrons floating on transparency."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "horizontal-tiling"
+title = "Horizontal tileability"
+text = """
+The segment tiles horizontally: the left and right tile edges line up so copies \
+placed edge-to-edge look continuous, with no seam in the body, the rails, or the \
+chevron rows. Within each frame the pattern is consistent across the full 32 px \
+width."""
+sequences = ["belt-flow"]
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Strict palette adherence"
+text = """
+Uses only the belt palette from the brief — the dark outline, the metal base, \
+mid, and rail tones, and the amber mover with its highlight and shadow — with no \
+out-of-palette colors and no halo of stray or anti-aliased pixels."""
+weight = 1
+domain = "fidelity"

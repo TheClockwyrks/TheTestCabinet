@@ -284,3 +284,31 @@ visualization is a **planned enhancement**, not part of the v1 scored path: a
 performance run's decisive signal remains correctness plus the fuel number (the
 [performance manifest](/testing/performance/manifests/) carries no replay renderer
 today), and the visualization is a way to make a run legible, not a way to score it.
+
+### Renderer sprites
+
+The art the canvas layer draws is **itself produced by The Test Cabinet**: each
+entity's sprite is the output of an
+[asset-generation](/testing/asset-generation/overview/) case — a
+[sprite sheet](/testing/asset-generation/manifests/) drawn one operation at a time
+against its own brief, the same way [Foray's
+sprites](/testing/adversarial/adversarial-pacman/assets/) are. They sit under the
+`lattice-*` slug, mirroring the in-fiction title:
+
+| Entity | Case | Frames |
+| --- | --- | --- |
+| Transport belt (scrolling surface) | `lattice-belt` | 8-frame loop |
+| Splitter (2-tile balancer) | `lattice-splitter` | 8-frame loop |
+| Inserter (swing arm) | `lattice-inserter` | 12-frame swing cycle |
+| Assembler (3×3 machine) | `lattice-assembler` | 8-frame craft loop |
+| Source fixture (emitter) | `lattice-source` | 6-frame emit pulse |
+| Sink fixture (drain) | `lattice-sink` | 6-frame consume pulse |
+| Belt items (icon set) | `lattice-items` | 8 item icons |
+
+The sprites are drawn at **32 px/tile** — Factorio's normal-resolution tile size,
+so a one-tile entity is a 32×32 frame, the 3×3 assembler is 96×96, and a sub-tile
+belt item is 16×16. Each directional entity is drawn in a **single canonical
+orientation** (the flow runs east); because these are flat top-down sprites, the
+renderer rotates them for the other three facings rather than the case drawing each
+four times. As with the engine itself, the renderer holds no art of its own — it
+composites these regenerated frames onto the grid the canonical state describes.
