@@ -1,0 +1,140 @@
+name = "Sonar Pulse"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite-sheet", "effect"]
+summary = """
+Draw the sonar pulse: the expanding ring effect a deep-sea forager and the \
+eyeless Listener both emit, as a 128x128 eight-frame sprite sheet — a clean \
+wavefront growing outward and fading, drawn in grayscale so the game tints it, \
+produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_seconds = 2400
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Each frame is its own 128x128 transparent canvas (a separate file). This is an
+# area EFFECT, not a creature: it covers a wide circle far larger than the 32x32
+# sprites, so it gets a large frame. Fixing the size keeps every run comparable.
+[canvas]
+width = 128
+height = 128
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — eight separate 128x128 frames of one expanding
+# pulse, played in order as the wavefront — and the named sequence a reviewer
+# plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.sequence]]
+slug = "pulse"
+name = "Sonar pulse"
+frames = [0, 1, 2, 3, 4, 5, 6, 7]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+dest = "specs/brief.md"
+
+[[variant]]
+slug = "base"
+name = "Base"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated effect matches the brief — a clean concentric \
+ring expanding outward from the center and fading frame to frame, drawn purely \
+in grayscale on transparency so the game can tint it to the sonar color."""
+
+[[review_item]]
+id = "expanding-wavefront"
+title = "Expanding wavefront"
+text = """
+Played in order, the frames read unmistakably as a single ring expanding outward \
+from the center — small in frame 0, larger in each following frame, reaching \
+toward the edges by the last — like a sound wavefront traveling out, not a static \
+circle or a flicker."""
+sequences = ["pulse"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "concentric-circular"
+title = "Clean concentric rings"
+text = """
+The ring is a clean, round circle centered in the 128x128 frame (center near \
+64,64), even in thickness, not lopsided, blocky, or off-center. Any trailing \
+inner ring is concentric with it."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "fades-outward"
+title = "Fades as it expands"
+text = """
+The wavefront dims as it grows: the ring is brightest while small and tightens \
+to fainter grays as it expands (and a trailing ring, if drawn, is fainter than \
+the leading one), so the pulse reads as energy spreading thin, not a solid \
+growing disc."""
+sequences = ["pulse"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "grayscale-only"
+title = "Grayscale only (tintable)"
+text = """
+The effect is drawn purely in grayscale — white through gray on full transparency, \
+no hue at all — because the game multiplies it by the sonar color at runtime. Any \
+colored pixel, or an opaque background fill behind the ring, is a failure: the \
+ring's pixels are the only opaque ones, on transparency."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Centered and uncropped"
+text = """
+The pulse is centered in the frame and the largest ring stays inside the canvas \
+(not clipped flat against an edge), with the rest of the frame fully transparent \
+so it composites cleanly over the dark trench."""
+weight = 1
+domain = "fidelity"

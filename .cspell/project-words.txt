@@ -59,12 +59,15 @@ heatbar
 heatlabel
 heatmeter
 
-# Asset-generation: deep-sea pursuer sprites and the drawing tool.
+# Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
 gloamfin
 lanternjaw
-emberfin
+flarefish
+glimmerfin
 anglerfish
 bioluminescent
+grayscale
+tintable
 echolocation
 eyelessness
 abyssal

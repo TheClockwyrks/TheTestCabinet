@@ -607,27 +607,38 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
     // (case, review item id, the sequence slugs it should reference).
     let expected: &[(&str, &str, &[&str])] = &[
         (
-            "emberfin",
+            "flarefish",
             "four-directions",
             &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "emberfin",
-            "flare-animation",
-            &["flare-charge", "flare-bloom", "flare-fade"],
         ),
         (
             "gloamfin",
             "four-directions",
             &["walk-down", "walk-up", "walk-left", "walk-right"],
         ),
-        ("gloamfin", "sonar-tell", &["sonar-pulse"]),
         (
             "lanternjaw",
             "four-directions",
             &["walk-down", "walk-up", "walk-left", "walk-right"],
         ),
         ("lanternjaw", "lure-bob-tell", &["lure-bob"]),
+        (
+            "glimmerfin",
+            "four-directions",
+            &["graze-down", "graze-up", "graze-left", "graze-right"],
+        ),
+        (
+            "glimmerfin",
+            "chomp",
+            &["graze-down", "graze-up", "graze-left", "graze-right"],
+        ),
+        ("sonar-pulse", "expanding-wavefront", &["pulse"]),
+        (
+            "flare-bloom",
+            "charge-to-bloom",
+            &["flare-charge", "flare-bloom", "flare-fade"],
+        ),
+        ("trench-walls", "corners-junctions", &["corners", "junctions"]),
     ];
 
     for (slug, item_id, sequences) in expected {

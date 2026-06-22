@@ -3,8 +3,9 @@ difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
 Draw the Gloamfin: the Listener, an eyeless deep-sea predator that hunts by \
-sound, as a 128x128 sprite sheet — four-direction movement plus a sonar-pulse \
-animation, produced one drawing operation at a time."""
+sound, as a 32x32 four-direction swim sprite sheet — eight frames carrying its \
+eyeless violet silhouette, produced one drawing operation at a time. The sonar \
+pulse it emits is a separate effect case (Sonar Pulse)."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_seconds = 3600
@@ -30,8 +31,12 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 32x32 file — and the named
-# animation sequences a reviewer plays back.
+# The frames the model draws — eight separate 32x32 frames, a two-frame swim
+# cycle in each of the four directions — and the named sequences a reviewer
+# plays back. The sonar pulse is NOT on this sheet: it floods outward across
+# many tiles, far larger than the creature, and is its own effect asset (see
+# the Sonar Pulse case); here the creature only carries a faint sonar cue at
+# the head.
 [sheet]
 
 [[sheet.frame]]
@@ -58,30 +63,6 @@ index = 6
 [[sheet.frame]]
 index = 7
 
-[[sheet.frame]]
-index = 8
-
-[[sheet.frame]]
-index = 9
-
-[[sheet.frame]]
-index = 10
-
-[[sheet.frame]]
-index = 11
-
-[[sheet.frame]]
-index = 12
-
-[[sheet.frame]]
-index = 13
-
-[[sheet.frame]]
-index = 14
-
-[[sheet.frame]]
-index = 15
-
 [[sheet.sequence]]
 slug = "walk-down"
 name = "Swim — down"
@@ -106,12 +87,6 @@ name = "Swim — right"
 frames = [6, 7]
 fps = 4
 
-[[sheet.sequence]]
-slug = "sonar-pulse"
-name = "Sonar pulse"
-frames = [8, 9, 10, 11, 12, 13]
-fps = 8
-
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
@@ -126,8 +101,8 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Gloamfin target — its eyeless \
-silhouette, the cold violet palette, the four readable swim directions, and the \
-sonar-pulse animation that marks it as the predator that hunts by sound."""
+silhouette, the cold violet palette, and the four readable swim directions that \
+mark it as the predator that hunts by sound."""
 
 [[review_item]]
 id = "eyeless"
@@ -144,22 +119,10 @@ id = "four-directions"
 title = "Four readable directions"
 text = """
 The movement frames read as the creature swimming in four distinct directions — \
-down (rows 0), up, left, and right — each with its blunt head leading its \
-direction of travel and a forked tail trailing behind, not the same blob \
-repeated."""
+down, up, left, and right — each with its blunt head leading its direction of \
+travel and a forked tail trailing behind, not the same blob repeated."""
 sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
 weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "sonar-tell"
-title = "Sonar-pulse animation"
-text = """
-The tell frames (row 2 into row 3) show a pale sonar pulse — concentric rings in \
-the sonar accent color emanating from the body and expanding frame to frame — the \
-signature of a creature that 'sees' by sound."""
-sequences = ["sonar-pulse"]
-weight = 2
 domain = "fidelity"
 
 [[review_item]]

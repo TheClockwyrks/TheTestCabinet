@@ -86,7 +86,11 @@ finds predators, at the cost of being heard. (The control is in
   Listener** and alerts nearby predators (see `specs/predators.md`). A pulse is
   never free — ping when you need to know, not constantly.
 - **Presentation.** Render an expanding ring from the forager to suggest the
-  wavefront; the actual reveal is the flooded tile set, not a drawn circle.
+  wavefront; the actual reveal is the flooded tile set, not a drawn circle. The
+  ring is a **large area effect** — it spreads across many tiles, well beyond a
+  single tile or the forager's own sprite — drawn as its own overlay (tinted to
+  the sonar-ring color), not as part of any character. The Listener emits the
+  **same** sonar-pulse effect as its tell (see `specs/predators.md`).
 
 ## The two rules, together
 

@@ -6,6 +6,12 @@ pursuer**, an eyeless predator that hunts the player by **sound** — it homes
 in on sonar and emits its own sonar pulses. Everything below describes the
 *enemy* — never the player character.
 
+You are drawing the **creature** here: its eyeless body swimming in four
+directions. The sonar pulse it emits — an expanding ring that floods outward
+across many tiles — covers a far larger area than this sprite and is **not**
+part of this sheet; it is a separate effect asset. Do not try to draw an
+expanding sonar ring here; just the creature, with a faint sonar cue at its head.
+
 ## The frames
 
 - Each frame is its own **32×32-pixel** image with a transparent background.
@@ -13,14 +19,14 @@ in on sonar and emits its own sonar pulses. Everything below describes the
   increases downward. Coordinates are **within the frame** (0–31) — there is no
   shared sheet to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The
-  sheet has **16 frames, numbered 0–15**. Keep a pixel or two of margin so the
+  sheet has **8 frames, numbered 0–7**. Keep a pixel or two of margin so the
   creature sits inside its frame, neither tiny in a corner nor clipped at the
   edge.
 
 ## What goes in each frame
 
-The sheet holds **four-direction movement** (two frames per direction, a small
-swim cycle) and a **sonar-pulse** animation:
+The sheet holds **four-direction movement**, two frames per direction (a small
+swim cycle):
 
 | Frames | Contents |
 | --- | --- |
@@ -28,19 +34,12 @@ swim cycle) and a **sonar-pulse** animation:
 | 2, 3 | **swim up** — two frames |
 | 4, 5 | **swim left** — two frames |
 | 6, 7 | **swim right** — two frames |
-| 8–13 | **sonar pulse** — six frames of an expanding ring |
-| 14, 15 | a resting body (idle) so no frame is empty |
 
 In each **movement** frame the creature faces its direction of travel: the
 **blunt head leads** (points the way it swims) and a **forked tail trails**
 behind. Across the two frames of a direction, flick the tail (a small 1–2 px
 change) so the pair reads as a swim cycle. The left frames are the mirror of
 the right; up is the mirror of down.
-
-In the **sonar-pulse** frames the creature sits roughly still while a pale
-**sonar ring expands** outward from its body — small in the first frame,
-larger in each following frame, then fading — so playing frames 8→13 reads as
-a pulse going out. This is the Listener's signature tell.
 
 ## The form
 
@@ -54,8 +53,9 @@ The Gloamfin reads, at a glance, as an **eyeless predator that hunts blind**:
 - **Belly:** a lighter patch under the head.
 - **Tail:** a swept, forked tail fin trailing behind the head.
 - **Mouth:** a small, dark slit near the front of the head.
-- **Sonar:** the pale accent color, used for a faint cue at the head in the
-  movement frames and for the expanding rings in the sonar-pulse frames.
+- **Sonar cue:** a small faint accent in the pale sonar color at the head — the
+  sensory spot it listens and pulses from. Keep it small and on the body; the
+  pulse itself is a separate effect, not drawn here.
 
 ## Palette
 
@@ -78,6 +78,5 @@ then the belly, tail, and details — drawing into the frame you select with
 rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
 `draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
 once per operation and read `frames/<index>.png` between calls to judge that
-frame against this brief. A good order is to finish one
-direction's two frames, check them, then do the others, and finish with the
-sonar-pulse frames.
+frame against this brief. A good order is to finish one direction's two frames,
+check them, then do the others (left mirrors right, up mirrors down).

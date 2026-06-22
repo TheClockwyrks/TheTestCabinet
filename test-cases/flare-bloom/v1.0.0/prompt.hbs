@@ -1,11 +1,11 @@
-Draw the **Gloamfin**, an 8-frame **sprite sheet** of a deep-sea enemy, using
-only the drawing tool.
+Draw the **flare bloom**, an 8-frame **sprite sheet** of a bright radial burst,
+using only the drawing tool.
 
-The Gloamfin is **the Listener**: a **non-playable pursuer** in a deep-sea
-maze-chase game — an eyeless predator that hunts the player by sound. You are
-drawing the *enemy* swimming in four directions, never the player. The sonar
-pulse it emits is a separate, much larger effect asset and is **not** part of
-this sheet — here you draw only the creature, with a faint sonar cue at its head.
+The flare bloom is the wide burst of warm light the **Flarefish** predator sets
+off to hunt in a lightless trench — an area effect that floods a radius far
+larger than its own little sprite, which is why it has a large canvas of its own.
+Draw it as a short animation in three beats — a charge-up, a bloom, and a fade —
+centered in the frame, as warm light on full transparency.
 
 ## How drawing works
 
@@ -17,7 +17,7 @@ is scored**, not the pixels on disk. An image produced any other way (writing a
 PNG directly, editing a preview by hand) is discarded and flagged; only the
 recorded operations count.
 
-Each frame is its **own separate 32×32 image**. After each call the binary
+Each frame is its **own separate 128×128 image**. After each call the binary
 re-renders that frame to `frames/<index>.png` and appends the operation to that
 frame's log. Blank starting frames and empty logs are already in place at
 `{{workspace}}`.
@@ -25,7 +25,7 @@ frame's log. Blank starting frames and empty logs are already in place at
 Each operation is an ordinary subcommand with flags, naming its frame:
 
 ```
-draw-sheet fill-circle --frame 0 --cx 20 --cy 16 --r 8 --color "#c46bff"
+draw-sheet fill-circle --frame 5 --cx 64 --cy 64 --r 12 --color "#ffffff"
 ```
 
 Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
@@ -42,14 +42,16 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the frames and which frame holds which pose, the form
-and palette of the Gloamfin, and how to work the tool. Run `draw-sheet --help` for
-the exact operation contract.
+`specs/brief.md` describes the eight frames of the flare — the charge-up, bloom,
+and fade beats — the warm palette, and how to work the tool. Run `draw-sheet
+--help` for the exact operation contract.
 
 ## What to deliver
 
-Build the Gloamfin sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: an eyeless violet predator drawn in each
-of its 32×32 frames — swimming down, up, left, and right (two frames each). When
+Build the flare up operation by operation until each `frames/<index>.png` matches
+the brief: a warm glow charging at the center (frames 0–2), a white-cored radial
+bloom spreading to its widest, brightest peak (frames 3–5), and a fade back toward
+dark (frames 6–7), all centered on (64, 64) in the warm palette on full
+transparency. Played in order the frames must read as one flare going off. When
 you are satisfied, stop: the recorded per-frame action logs are your finished
 submission.

@@ -75,7 +75,9 @@ waiting for.
   you cannot creep straight past it. Otherwise it patrols. **Ink does not affect
   it.**
 - **Tell (anti-blindside).** The Listener emits **its own sonar pulses** about
-  every **`3 s`**: you see the ring and it briefly lights a small area around the
+  every **`3 s`** — the **same large expanding sonar-ring effect** the forager's
+  pulse uses (`specs/sensing.md`), spreading well beyond the Listener's own
+  sprite: you see the ring and it briefly lights a small area around the
   Listener for you too — so its hunting reveals its own position, and ironically
   helps you see.
 - **Counter — the juke.** The Listener is **faster than you at top speed but slow
@@ -98,10 +100,12 @@ flare catches you. Its flare is a gift and a threat at once.
 
 - **Flare.** About every **`7 s`** the Flarefish emits a **flare**: a bright bloom
   lighting a radius of about **`192 px`** (6 tiles) around itself for **`1 s`**,
-  preceded by a roughly **`0.5 s`** charge-up glow that telegraphs it. The flare
-  **reveals that area to you** — its geometry is revealed and remembered, and any
-  predator or the drifter inside it is shown live during the bloom — so a
-  Flarefish flaring nearby is free reconnaissance.
+  preceded by a roughly **`0.5 s`** charge-up glow that telegraphs it. The bloom
+  is a **large radial light effect** — charge-up, bloom, then fade — drawn as its
+  own overlay centered on the Flarefish and far larger than the creature's own
+  sprite, not part of it. The flare **reveals that area to you** — its geometry
+  is revealed and remembered, and any predator or the drifter inside it is shown
+  live during the bloom — so a Flarefish flaring nearby is free reconnaissance.
 - **Sense.** If the **forager is within the flare's lit radius at the bloom**, the
   Flarefish **acquires a fix** and hunts you for **`4 s`** (refreshed if a later
   flare catches you again). If you are **not** in the light at the bloom, it

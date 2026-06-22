@@ -24,8 +24,9 @@ A case draws **either a single sprite or a sprite sheet** (a set of animation
 frames, each its own separate file), chosen by the manifest's `asset_kind` field —
 a version-level choice, not a variant. The worked examples: the `spectra-fighter`,
 `spectra-shard`, `spectra-flux`, and `spectra-prism` cases are **single sprites**
-(`asset_kind = "sprite"`, the default), drawn with `draw`; the `gloamfin`,
-`lanternjaw`, and `emberfin` cases are **sprite sheets**
+(`asset_kind = "sprite"`, the default), drawn with `draw`; the `lanternjaw`,
+`gloamfin`, and `flarefish` creature cases, the `trench-walls` tileset, and the
+`sonar-pulse` and `flare-bloom` effect cases are **sprite sheets**
 (`asset_kind = "sprite-sheet"`), drawn with `draw-sheet --frame <index>`, with a
 `[sheet]` table of declared frames and named animation sequences. Read the one
 matching the kind you are authoring alongside this guide; a new case should look

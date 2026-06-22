@@ -48,10 +48,13 @@ case is one or the other, never both. The worked examples:
 - **Single sprite** (`asset_kind = "sprite"`, the default): the `spectra-fighter`,
   `spectra-shard`, `spectra-flux`, and `spectra-prism` cases — one 64×64 sprite
   each, drawn with `draw`.
-- **Sprite sheet** (`asset_kind = "sprite-sheet"`): the `gloamfin`, `lanternjaw`,
-  and `emberfin` cases — 16 separate 32×32 frames with four-direction movement and
-  a signature "tell" animation, drawn with `draw-sheet --frame <index>` and
-  declared as named sequences the review UI plays back.
+- **Sprite sheet** (`asset_kind = "sprite-sheet"`): the `lanternjaw`, `gloamfin`,
+  and `flarefish` creature cases — 32×32 frames of four-direction movement
+  (`lanternjaw` also carries a signature on-body "tell" animation); the
+  `trench-walls` tileset — a 32×32 autotile of seamless wall pieces plus the
+  floor, fog, and gate; and the `sonar-pulse` and `flare-bloom` cases — large
+  128×128 area-effect animations. All are drawn with `draw-sheet --frame <index>`
+  and declared as named sequences the review UI plays back.
 
 Read the one matching the kind you are authoring alongside this skill — a new case
 should look like it.

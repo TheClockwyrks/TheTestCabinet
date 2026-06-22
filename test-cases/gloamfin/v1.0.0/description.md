@@ -1,9 +1,11 @@
 **Gloamfin** is the Listener — an eyeless deep-sea predator that hunts by
 sound, one of the chasers in a lightless maze-chase game. This
 asset-generation case asks a model to draw it as a **sprite sheet** using only
-the drawing tool, one operation at a time: 16 separate 32×32 frames holding
-four-direction swim cycles and a sonar-pulse animation. The recorded operations
-are regenerated into each frame, which a reviewer judges against the brief: the
-eyeless silhouette, the four readable directions, and the sonar tell are what
-they weigh, and the named sequences play back as live animations in the
-review UI.
+the drawing tool, one operation at a time: 8 separate 32×32 frames holding a
+four-direction swim cycle. The eyeless violet creature carries only a faint
+sonar cue at its head — the sonar pulse it emits, which floods outward across
+many tiles, is a separate effect asset (the Sonar Pulse case), not drawn here.
+The recorded operations are regenerated into each frame, which a reviewer judges
+against the brief: the eyeless silhouette, the four readable directions, and the
+cold violet palette are what they weigh, and the named sequences play back as
+live animations in the review UI.

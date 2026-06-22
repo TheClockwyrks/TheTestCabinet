@@ -1,9 +1,11 @@
-Draw the **Emberfin**, a 16-frame **sprite sheet** of a deep-sea enemy, using
-only the drawing tool.
+Draw the **Glimmerfin**, an 8-frame **sprite sheet** of a deep-sea player
+character, using only the drawing tool.
 
-The Emberfin is **the Flarefish**: a **non-playable pursuer** in a deep-sea
-maze-chase game — a predator that is blind between flares and hunts in the light
-of its own flare. You are drawing the *enemy*, never the player.
+The Glimmerfin is **the player**: a small bioluminescent forager that grazes the
+corridors of a pitch-dark trench in a maze-chase game. You are drawing the *hero*
+the player steers, swimming in four directions with a chomp as it grazes. Its
+brightness **glow** is a separate runtime effect, so do **not** draw any glow,
+halo, or light rings on this sheet — just the creature.
 
 ## How drawing works
 
@@ -23,7 +25,7 @@ frame's log. Blank starting frames and empty logs are already in place at
 Each operation is an ordinary subcommand with flags, naming its frame:
 
 ```
-draw-sheet fill-circle --frame 0 --cx 16 --cy 20 --r 8 --color "#ff7a59"
+draw-sheet fill-circle --frame 0 --cx 16 --cy 16 --r 9 --color "#46f0e0"
 ```
 
 Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
@@ -40,15 +42,15 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the frames and which frame holds which pose, the form
-and palette of the Emberfin, and how to work the tool. Run `draw-sheet --help` for
-the exact operation contract.
+`specs/brief.md` describes the frames and which frame holds which swim/chomp
+pose, the form and palette of the Glimmerfin, and how to work the tool. Run
+`draw-sheet --help` for the exact operation contract.
 
 ## What to deliver
 
-Build the Emberfin sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: an orange
-flare-making predator drawn in each of its 32×32 frames — swimming down, up, left,
-and right (two frames each), and the charge-up-to-flare-bloom animation. When you
-are satisfied, stop: the recorded per-frame action logs are your finished
-submission.
+Build the Glimmerfin sprite sheet up operation by operation until each
+`frames/<index>.png` matches the brief: a bright cyan forager drawn in each of
+its 32×32 frames — grazing down, up, left, and right, each direction a
+mouth-closed and a mouth-open frame that read as a chomp, with no glow baked in.
+When you are satisfied, stop: the recorded per-frame action logs are your
+finished submission.

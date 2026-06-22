@@ -1,10 +1,11 @@
-name = "Emberfin"
+name = "Flarefish"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
-Draw the Emberfin: the Flarefish, a deep-sea predator that hunts in the light of \
-its own flare, as a 128x128 sprite sheet — four-direction movement plus a \
-charge-up-to-flare-bloom animation, produced one drawing operation at a time."""
+Draw the Flarefish, a deep-sea predator that hunts in the light of its own \
+flare, as a 32x32 four-direction swim sprite sheet — eight frames carrying the \
+orange body and its glowing flare organ, produced one drawing operation at a \
+time. The flare bloom itself is a separate effect case (Flare Bloom)."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_seconds = 3600
@@ -30,8 +31,11 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 32x32 file — and the named
-# animation sequences a reviewer plays back.
+# The frames the model draws — eight separate 32x32 frames, a two-frame swim
+# cycle in each of the four directions — and the named sequences a reviewer
+# plays back. The flare bloom is NOT on this sheet: it covers a far larger area
+# than the creature and is its own effect asset (see the Flare Bloom case);
+# here the creature only carries the dim flare organ on its body.
 [sheet]
 
 [[sheet.frame]]
@@ -58,30 +62,6 @@ index = 6
 [[sheet.frame]]
 index = 7
 
-[[sheet.frame]]
-index = 8
-
-[[sheet.frame]]
-index = 9
-
-[[sheet.frame]]
-index = 10
-
-[[sheet.frame]]
-index = 11
-
-[[sheet.frame]]
-index = 12
-
-[[sheet.frame]]
-index = 13
-
-[[sheet.frame]]
-index = 14
-
-[[sheet.frame]]
-index = 15
-
 [[sheet.sequence]]
 slug = "walk-down"
 name = "Swim — down"
@@ -106,24 +86,6 @@ name = "Swim — right"
 frames = [6, 7]
 fps = 4
 
-[[sheet.sequence]]
-slug = "flare-charge"
-name = "Flare — charge-up"
-frames = [8, 9, 10]
-fps = 6
-
-[[sheet.sequence]]
-slug = "flare-bloom"
-name = "Flare — bloom"
-frames = [11, 12, 13]
-fps = 8
-
-[[sheet.sequence]]
-slug = "flare-fade"
-name = "Flare — fade"
-frames = [14, 15]
-fps = 6
-
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
@@ -137,18 +99,17 @@ name = "Base"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Emberfin target — its orange \
-silhouette and flare organ, the four readable swim directions, and the \
-charge-up-to-flare-bloom animation that marks it as the predator that hunts in \
-its own light."""
+How faithfully the regenerated sheet matches the Flarefish target — its orange \
+silhouette and the warm flare organ it carries, and the four readable swim \
+directions that mark it as the predator that hunts in its own light."""
 
 [[review_item]]
 id = "flare-organ"
 title = "Flare organ"
 text = """
 Every frame's creature carries a bright flare organ on its body — a warm glowing \
-spot — so it reads as the flare-maker even between flares. It is the brightest \
-fixed element of the sprite against the orange body."""
+spot — so it reads as the flare-maker even with no flare going off. It is the \
+brightest fixed element of the sprite against the orange body."""
 weight = 2
 domain = "fidelity"
 
@@ -164,24 +125,12 @@ weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "flare-animation"
-title = "Charge-to-bloom animation"
-text = """
-The tell frames read as a flare in three beats: a charge-up glow that grows \
-(frames 8–10), a bright radial bloom of expanding rings peaking toward white \
-(frames 11–13), then a fade back toward the dim organ (frames 14–15). Playing \
-them reads unmistakably as a flare going off."""
-sequences = ["flare-charge", "flare-bloom", "flare-fade"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
 id = "palette"
 title = "Orange-and-flare palette"
 text = """
 Uses the Flarefish's palette from the brief (orange body, lighter underside, dark \
-outline, warm flare glow, bright flare peak) with no out-of-palette colors and no \
-halo of stray pixels."""
+outline, warm flare organ) with no out-of-palette colors and no halo of stray \
+pixels."""
 weight = 1
 domain = "fidelity"
 
@@ -190,7 +139,7 @@ id = "framing"
 title = "Frame framing"
 text = """
 Each creature fills most of its own 32x32 frame cell, centered with a small \
-margin; the flare bloom may reach toward the cell edges, but a swimming body \
-never spills across the grid lines into the neighboring frame."""
+margin; a swimming body never spills across the grid lines into the neighboring \
+frame."""
 weight = 1
 domain = "fidelity"
