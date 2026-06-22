@@ -36,7 +36,7 @@ FROM ${BASE_IMAGE}
 # model's controller with the same compiler, keeping produced wasm reproducible;
 # bump it deliberately. This must stay compatible with the controller SDK and the
 # reference controller sources the run is seeded with.
-ARG RUST_VERSION=1.83.0
+ARG RUST_VERSION=1.96.0
 
 # Install the Rust toolchain into a system-wide, root-owned location so it is
 # shared by every run rather than re-downloaded per run, and add the
