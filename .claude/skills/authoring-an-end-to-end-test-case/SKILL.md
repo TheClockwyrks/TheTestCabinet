@@ -63,7 +63,7 @@ test-cases/<slug>/<version>/
     screenshots/         #   git-ignored; rendered by the harness per variant
   workspaces/            # starter files seeded into the run root — SEEDED (omit if none)
     base/                #   the common workspace (e.g. a package.json to build on)
-      .gitignore         #   SEEDED — the one dotfile that is; lists build artifacts
+      .gitignore         #   SEEDED — an allowlisted dotfile; lists build artifacts
     <variant>/           #   a per-variant override (replaces base for that variant)
   assets/                # sprites etc. the model must use — SEEDED (omit if none)
 ```
@@ -73,10 +73,12 @@ and seeded specs, the case's assets, and the **rendered reference screenshots**.
 The case's `init` command then runs in the container to prepare the workspace
 (for example installing dependencies). Everything marked *NOT seeded* is
 authoring- or site-side only. Dotfiles in a workspace are skipped on seeding —
-**except `.gitignore`**, which is seeded: a run's implementation is a git
-repository that is published as the case's per-run source repo, so ship a
-`.gitignore` listing the build artifacts the run produces (`node_modules/`, the
-`dist/`/`build/`/`out/` output, …) to keep them out of that repo. The prompt
+**except an allowlist**: `.gitignore` (the one an end-to-end case wants) and
+`.cargo` (Cargo build config, for the Rust-based test types). A run's
+implementation is a git repository that is published as the case's per-run source
+repo, so ship a `.gitignore` listing the build artifacts the run produces
+(`node_modules/`, the `dist/`/`build/`/`out/` output, …) to keep them out of that
+repo. The prompt
 should tell the model to commit its work and leave a clean tree. The prompt is rendered and handed to the
 harness as the instruction; it is never written to the run's disk. The reference
 **source** is deliberately withheld so a model cannot copy the UI in place of

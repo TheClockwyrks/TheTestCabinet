@@ -901,11 +901,12 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 }
 
 #[test]
-fn workspace_dotfiles_are_not_seeded_except_gitignore() {
+fn workspace_dotfiles_are_not_seeded_except_the_allowlist() {
     // A dotfile in the workspace is skipped (matching how the backend copies a
     // version into its store), so it is not listed as a seeded workspace file —
-    // with the single exception of `.gitignore`, which IS seeded so the published
-    // implementation repo can exclude the build artifacts a run produces.
+    // except the allowlist a case may ship: `.gitignore` (so the published repo
+    // can exclude build artifacts) and `.cargo` (Cargo build config a Rust case
+    // needs). A `.cargo` directory is descended into and its contents seeded.
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\n",
         "[[variant]]\nslug = \"base\"\n",
@@ -913,8 +914,9 @@ fn workspace_dotfiles_are_not_seeded_except_gitignore() {
     let (_dir, catalog) = catalog_with_files(
         &manifest,
         &[
-            ("workspaces/base/package.json", "{}"),
-            ("workspaces/base/.gitignore", "node_modules/\ntarget/\n"),
+            ("workspaces/base/Cargo.toml", "[package]"),
+            ("workspaces/base/.gitignore", "/target/\n"),
+            ("workspaces/base/.cargo/config.toml", "[build]\n"),
             ("workspaces/base/.env", "SECRET=1"),
         ],
     );
@@ -927,9 +929,19 @@ fn workspace_dotfiles_are_not_seeded_except_gitignore() {
     dests.sort();
     assert_eq!(
         dests,
-        [".gitignore", "package.json"],
-        "`.gitignore` is seeded; other dotfiles are skipped: {dests:?}"
+        [".cargo/config.toml", ".gitignore", "Cargo.toml"],
+        "`.gitignore` and `.cargo` are seeded; other dotfiles are skipped: {dests:?}"
     );
+}
+
+#[test]
+fn only_the_allowlisted_dotfiles_are_seeded() {
+    use super::is_seeded_dotfile;
+    assert!(is_seeded_dotfile(".gitignore"));
+    assert!(is_seeded_dotfile(".cargo"));
+    assert!(!is_seeded_dotfile(".git"));
+    assert!(!is_seeded_dotfile(".tcab"));
+    assert!(!is_seeded_dotfile(".env"));
 }
 
 #[test]

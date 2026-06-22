@@ -2856,12 +2856,9 @@ fn resolve_sheet(
 /// backend copies a version folder into its store: a dotfile would be listed
 /// here but never distributed, so a backend-driven run would fail to fetch it.
 /// Keeping the two in lockstep means a workspace seeds the same set locally and
-/// remotely. The one exception is `.gitignore`, which **is** seeded (and is
-/// likewise preserved by the backend's `copy_tree`): it declares the build
-/// artifacts a run produces (Rust's `target/`, a JS `node_modules/`, …), and a
-/// run's implementation is released as a git repository at
-/// [publish](crate::publish) time — without the ignore file those artifacts
-/// would be committed into the public per-run source repo.
+/// remotely. A short allowlist of dotfiles a case legitimately ships is excepted
+/// (and likewise preserved by the backend's `copy_tree`); see
+/// [`is_seeded_dotfile`].
 /// Render a relative path with forward slashes so a workspace file's dest is
 /// stable across hosts (a Windows `\` separator would otherwise leak into the
 /// run-relative dest and the serialized manifest).
@@ -2874,6 +2871,27 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
     )
 }
 
+/// Whether a hidden entry (a name beginning with `.`) is nonetheless **seeded**
+/// into a run — and preserved when the backend ingests a version — rather than
+/// skipped by the general dotfile rule.
+///
+/// Skipping dotfiles keeps repo metadata and host cruft (`.git`, the store's
+/// `.tcab` sidecar, `.env`, editor/OS files) out of what a run receives. A short
+/// allowlist of dotfiles a case legitimately ships is excepted:
+/// - `.gitignore` — declares the build artifacts the published per-run source
+///   repo must exclude (Rust's `target/`, a JS `node_modules/`, …).
+/// - `.cargo` — Cargo build configuration (`.cargo/config.toml`, e.g. the default
+///   `wasm32-unknown-unknown` build target) a Rust case's build and local
+///   iteration rely on.
+///
+/// This is the single source of truth for both local seeding
+/// ([`collect_workspace_files`]) and backend ingest (`copy_tree`), so the two
+/// always seed the same set. Matching is by the entry's own name, so a `.cargo`
+/// directory is descended into and its (non-hidden) contents seeded.
+pub fn is_seeded_dotfile(name: &str) -> bool {
+    matches!(name, ".gitignore" | ".cargo")
+}
+
 fn collect_workspace_files(
     base: &Path,
     dir: &Path,
@@ -2881,14 +2899,12 @@ fn collect_workspace_files(
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        // Hidden entries are skipped to match how a version folder is
-        // distributed, except `.gitignore` — it must be seeded so the published
-        // implementation repo excludes the build artifacts a run produces. See
-        // this function's doc comment, and keep this in lockstep with the
-        // backend's `copy_tree`.
+        // Hidden entries are skipped to match how a version folder is distributed,
+        // except the small allowlist a case may ship (`.gitignore`, `.cargo`); see
+        // `is_seeded_dotfile`. Kept in lockstep with the backend's `copy_tree`.
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
-        if file_name.starts_with('.') && file_name != ".gitignore" {
+        if file_name.starts_with('.') && !is_seeded_dotfile(&file_name) {
             continue;
         }
         let path = entry.path();

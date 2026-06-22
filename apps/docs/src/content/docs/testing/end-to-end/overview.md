@@ -172,12 +172,13 @@ model has to know is already on the machine.
 Workspace files are seeded **verbatim** — unlike specs, they are never rendered
 as templates. Hidden entries (names beginning with `.`) are **not** seeded: they
 are skipped to match how a version folder is distributed, so a workspace cannot
-rely on shipping a dotfile. The one exception is **`.gitignore`**, which *is*
-seeded: a run's implementation is released as a git repository when it is
-[published](/components/core/results/), and the `.gitignore` keeps the build
-artifacts a run produces (Rust's `target/`, a JS `node_modules/`, …) out of the
-public per-run source repo. A case that builds inside its run tree should ship a
-`.gitignore` covering its artifacts.
+rely on shipping a dotfile, with a short allowlist of exceptions that **are**
+seeded: **`.gitignore`** and **`.cargo`** (Cargo build configuration, used by the
+Rust-based test types). A run's implementation is released as a git repository
+when it is [published](/components/core/results/), and the `.gitignore` keeps the
+build artifacts a run produces (Rust's `target/`, a JS `node_modules/`, …) out of
+the public per-run source repo. A case that builds inside its run tree should
+ship a `.gitignore` covering its artifacts.
 
 Because the workspace, the specs, the assets, and the rendered reference
 screenshots are all seeded into the one run tree, **no two of them may land on
