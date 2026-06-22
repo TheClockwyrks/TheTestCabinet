@@ -54,6 +54,19 @@ fn build_table_sets_the_commands() {
     assert_eq!(version.test_type, TestType::EndToEnd);
 }
 
+#[test]
+fn only_asset_generation_releases_no_source_repo() {
+    // Code-writing types release a per-run public source repo on publish;
+    // asset-generation (whose output is the recorded drawing operations, uploaded
+    // separately) does not, and creates no GitHub repo. The rule is "everything but
+    // asset-generation", so a new code-writing type — performance was the latest —
+    // opts in automatically.
+    assert!(TestType::EndToEnd.releases_source_repo());
+    assert!(TestType::Adversarial.releases_source_repo());
+    assert!(TestType::Performance.releases_source_repo());
+    assert!(!TestType::AssetGeneration.releases_source_repo());
+}
+
 // --- asset-generation resolution -------------------------------------------
 
 /// A complete, valid asset-generation manifest. Tests clone this and mutate one

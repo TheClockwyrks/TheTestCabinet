@@ -118,3 +118,15 @@ Stay inside the per-scenario fuel and memory limits in `specs/sandbox` (the
 scenario. When `cargo build --release --target wasm32-unknown-unknown -p engine`
 produces an `engine.wasm` that is correct on the training set for a low fuel
 number, you are done; the module is your submission.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you
+started, with the starter crate in its first commit. The wasm module is your
+scored submission, but the **source you wrote is published as this run's public
+repository**, so work you leave uncommitted is not published. When your engine is
+correct and lean, commit everything: run `git add -A` then `git commit`, and
+confirm `git status` reports a clean working tree with nothing uncommitted or
+untracked. The `.gitignore` already excludes `/target/` (the harness rebuilds the
+engine from source), so a clean tree does not mean committing build output — but
+it does mean committing your `engine/` sources, `Cargo.toml`, and `Cargo.lock`.

@@ -624,12 +624,12 @@ impl TestType {
     /// Whether a run of this type releases its implementation as a per-run public
     /// GitHub source repository when published.
     ///
-    /// Every type whose model writes code does — end-to-end and adversarial today,
-    /// and a future code-writing type such as performance. The sole exception is
-    /// [`Self::AssetGeneration`]: its authoritative output is the recorded drawing
-    /// operations (uploaded to the backend), not a source tree, so there is no code
-    /// to release and **no GitHub repo is created** for it. Expressed as "everything
-    /// but asset-generation" so a new code-writing type opts in automatically.
+    /// Every type whose model writes code does — end-to-end, adversarial, and
+    /// performance. The sole exception is [`Self::AssetGeneration`]: its
+    /// authoritative output is the recorded drawing operations (uploaded to the
+    /// backend), not a source tree, so there is no code to release and **no GitHub
+    /// repo is created** for it. Expressed as "everything but asset-generation" so a
+    /// new code-writing type opts in automatically.
     pub fn releases_source_repo(self) -> bool {
         !matches!(self, Self::AssetGeneration)
     }
