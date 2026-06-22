@@ -26,8 +26,11 @@ import sheetPngUrl from "../foray/assets/sheet.png?url";
 import atlas from "../foray/assets/sheet.json";
 import palette from "../foray/assets/palette.json";
 
-// Baseline playback rate at 1× speed, matching the bundle's own player.
-const BASE_TICKS_PER_SECOND = 30;
+// Simulation ticks advanced per real second at 1× speed, matching the bundle's
+// own player (`replay/index.html`). Deliberately slow: agents are drawn at
+// INTERPOLATED positions between ticks, so a modest tick rate reads as smooth
+// motion that is easy to follow, not a blur.
+const BASE_TICKS_PER_SECOND = 8;
 const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
 /**
@@ -162,12 +165,23 @@ export function ReplayOverlay({
   // so buffering makes scrubbing instant and lets the result show immediately.
   const framesRef = useRef<Snapshot[]>([]);
   const rendererRef = useRef<Renderer | null>(null);
+  // Playback position as a CONTINUOUS tick coordinate: the integer part is the
+  // current tick, the fraction is progress toward the next — what the renderer
+  // interpolates over. The canvas is painted imperatively from this each animation
+  // frame; `cursor` (below) only mirrors its integer part to drive the React chrome
+  // (scoreboard, scrub) without re-rendering the tree 60× a second.
+  const tRef = useRef(0);
 
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+
+  // A live mirror of `cursor` for the rAF loop, so the loop can compare the
+  // current integer tick without resubscribing every time the tick advances.
+  const cursorRef = useRef(0);
+  cursorRef.current = cursor;
 
   // Lock document scroll for the overlay's lifetime so the fixed overlay never
   // scrolls the page underneath it.
@@ -232,49 +246,72 @@ export function ReplayOverlay({
     };
   }, [replayUrl, replayData]);
 
-  // Draw the frame at `cursor` whenever it (or readiness) changes. Facings are
-  // derived from frame-to-frame motion, so clear them before each draw — a scrub
-  // must not carry a stale direction across a discontinuity.
-  useEffect(() => {
-    if (!ready) return;
-    const frame = framesRef.current[cursor];
+  // Paint the canvas at a continuous tick position `t`: split into the current
+  // tick `i` and the fraction toward the next, and let the renderer interpolate
+  // the agents between snapshot `i` and `i+1`. Pure canvas work — no React state —
+  // so it is safe to call every animation frame.
+  const paint = useCallback((t: number) => {
+    const frames = framesRef.current;
     const renderer = rendererRef.current;
-    if (!frame || !renderer) return;
-    renderer.resetFacing();
-    renderer.draw(frame);
-  }, [ready, cursor]);
+    if (!renderer || frames.length === 0) return;
+    const lastTick = frames.length - 1;
+    const clamped = Math.max(0, Math.min(lastTick, t));
+    const i = Math.floor(clamped);
+    const frac = i < lastTick ? clamped - i : 0;
+    renderer.draw(frames[i]!, frames[Math.min(i + 1, lastTick)], frac);
+  }, []);
 
-  // The playback loop: advance the cursor at the chosen rate, pausing at the end.
+  // Paint a still frame whenever playback is paused (initial ready, a scrub, a
+  // restart, or the end of a run). The rAF loop owns painting while playing, so
+  // this stays out of its way. Facings are derived from frame-to-frame motion, so
+  // clear them first — a scrub must not carry a stale direction across a jump.
+  useEffect(() => {
+    if (!ready || playing) return;
+    tRef.current = cursor;
+    rendererRef.current?.resetFacing();
+    paint(cursor);
+  }, [ready, playing, cursor, paint]);
+
+  // The playback loop: advance the continuous position at the chosen rate,
+  // painting the interpolated canvas every animation frame and mirroring the
+  // integer tick into `cursor` only when it changes (to refresh the chrome),
+  // pausing at the end.
   useEffect(() => {
     if (!playing || !ready) return;
     let raf = 0;
     let last = performance.now();
-    let acc = 0;
-    const total = framesRef.current.length;
+    const lastTick = framesRef.current.length - 1;
     const loop = (now: number) => {
-      acc += ((now - last) / 1000) * BASE_TICKS_PER_SECOND * speed;
+      const dt = (now - last) / 1000;
       last = now;
-      let next = cursor;
-      while (acc >= 1) {
-        acc -= 1;
-        next += 1;
-        if (next >= total - 1) {
-          setCursor(total - 1);
-          setPlaying(false);
-          return;
-        }
+      const t = tRef.current + dt * BASE_TICKS_PER_SECOND * speed;
+      if (t >= lastTick) {
+        tRef.current = lastTick;
+        paint(lastTick);
+        setCursor(lastTick);
+        setPlaying(false);
+        return;
       }
-      if (next !== cursor) setCursor(next);
+      tRef.current = t;
+      paint(t);
+      const tick = Math.floor(t);
+      if (tick !== cursorRef.current) setCursor(tick);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [playing, ready, speed, cursor]);
+  }, [playing, ready, speed, paint]);
 
   const togglePlay = useCallback(() => {
     setPlaying((on) => {
-      // Restart from the top if play is pressed at the end of the match.
-      if (!on && cursor >= framesRef.current.length - 1) setCursor(0);
+      // Restart from the top if play is pressed at the end of the match. Reset
+      // the continuous position too, or the loop would resume past the end and
+      // stop immediately.
+      if (!on && cursor >= framesRef.current.length - 1) {
+        tRef.current = 0;
+        rendererRef.current?.resetFacing();
+        setCursor(0);
+      }
       return !on;
     });
   }, [cursor]);
