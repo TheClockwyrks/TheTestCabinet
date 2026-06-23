@@ -55,7 +55,15 @@ marker="$(mktemp)"
 trap 'rm -f "$marker"' EXIT
 printf 'incomplete' >"$marker"
 
-curl -fsS -N -X POST "${backend}/ingest" \
+# A whole-catalog render legitimately takes minutes, so a hard `--max-time` is the
+# wrong guard — it would abort a healthy long ingest. Instead `--connect-timeout`
+# fails fast when the connection cannot be established, and `--speed-time` aborts
+# only a *stalled* transfer (under `--speed-limit` bytes/sec for that many seconds),
+# which a stream emitting a per-case line every few seconds never trips. Together
+# they bound a dead/squatted endpoint (e.g. an editor port-forward that accepts then
+# never answers) instead of hanging forever, while a progressing stream runs as long
+# as it needs.
+curl -fsS -N --connect-timeout 5 --speed-limit 1 --speed-time 120 -X POST "${backend}/ingest" \
   -H 'content-type: application/json' \
   -H 'accept: application/x-ndjson' \
   -d "${body}" \

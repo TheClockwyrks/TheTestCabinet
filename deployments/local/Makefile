@@ -180,11 +180,36 @@ apply: secrets
 # defers to `scripts/reingest.sh`, which streams the backend's NDJSON progress
 # feed and prints a line per case — so a minute-plus scan reports progress instead
 # of looking like a hang.
+#
+# Three guards turn the failure modes into immediate, legible errors instead of a
+# silent hang: a pre-flight check that host port 8787 is free (a devcontainer's
+# editor often auto-forwards it, squatting the port the port-forward needs to
+# bind, and connections to that squatter accept-then-stall forever); a watch that
+# the port-forward process stays alive (its bind error is no longer discarded); and
+# a bounded healthz poll (`--connect-timeout`/`--max-time`) so a stalled connection
+# can never block the loop indefinitely.
 local-ingest:
-	@kubectl -n '$(NS)' port-forward svc/tcab-backend 8787:8787 >/dev/null 2>&1 & \
-	  pf=$$!; trap 'kill $$pf 2>/dev/null' EXIT; \
-	  for i in $$(seq 1 30); do curl -fsS http://127.0.0.1:8787/healthz >/dev/null 2>&1 && break; sleep 1; done; \
-	  BACKEND_URL=http://127.0.0.1:8787 '$(REPO)/scripts/reingest.sh'
+	@port=8787; \
+	  if command -v ss >/dev/null 2>&1; then \
+	    busy="$$(ss -ltnp "sport = :$$port" 2>/dev/null | grep -i listen || true)"; \
+	    if [ -n "$$busy" ]; then \
+	      echo "ERROR: host port $$port is already in use; the ephemeral port-forward cannot bind:" >&2; \
+	      echo "  $$busy" >&2; \
+	      echo "Free it and retry. In a devcontainer this is usually the editor auto-forwarding $$port — stop it in the PORTS panel." >&2; \
+	      exit 1; \
+	    fi; \
+	  fi; \
+	  pflog="$$(mktemp)"; \
+	  kubectl -n '$(NS)' port-forward svc/tcab-backend $$port:8787 >"$$pflog" 2>&1 & \
+	  pf=$$!; trap 'kill $$pf 2>/dev/null; rm -f "$$pflog"' EXIT; \
+	  ready=""; \
+	  for i in $$(seq 1 30); do \
+	    if ! kill -0 $$pf 2>/dev/null; then echo "ERROR: kubectl port-forward exited before the backend was reachable:" >&2; cat "$$pflog" >&2; exit 1; fi; \
+	    if curl -fsS --connect-timeout 2 --max-time 4 http://127.0.0.1:$$port/healthz >/dev/null 2>&1; then ready=1; break; fi; \
+	    sleep 1; \
+	  done; \
+	  if [ -z "$$ready" ]; then echo "ERROR: backend not reachable on 127.0.0.1:$$port after 30s." >&2; cat "$$pflog" >&2; exit 1; fi; \
+	  BACKEND_URL=http://127.0.0.1:$$port '$(REPO)/scripts/reingest.sh'
 
 # Hold the services open on localhost until interrupted (Ctrl-C).
 local-forward:
