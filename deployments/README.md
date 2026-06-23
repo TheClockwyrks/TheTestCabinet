@@ -27,7 +27,7 @@ lives on the docs site and this README is just a map.
 deployments/
 ├── local/
 │   └── compose.yml            # backend + auth service in containers; worker runs on the host
-├── images/
+├── images/                    # service images, published to GHCR by CI (see below)
 │   ├── backend.Dockerfile     # tcab-backend + headless Chromium
 │   ├── auth.Dockerfile        # tcab-auth-service, slimmer runtime (no Chromium/fonts)
 │   └── worker.Dockerfile      # tcab-worker + publish CLIs (git/gh/wrangler); no container engine
@@ -59,6 +59,21 @@ See the docs' [Backups](../apps/docs/src/content/docs/deployment/backups.md) and
 `backups/` and `telemetry/` are for. The `env/` files mirror the values the
 `k8s/` manifests set as container env vars; they are a convenient single-file view
 of each service's configuration.
+
+## Service images
+
+The three service images under `images/` are published to GHCR by the
+[`build-service-images.yml`](../.github/workflows/build-service-images.yml) GitHub
+Actions workflow on every push to `master` that touches the crates or a
+Dockerfile, as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`, and
+`…/tcab-worker` (each tagged `:latest` and the immutable `:<git-sha>`). Point the
+`k8s/` manifests' `image:` fields (the `REPLACE_REGISTRY` placeholder) at that
+namespace, pinning the `:<git-sha>` tag in a real deployment. To build and push
+them by hand instead, see the build instructions in each Dockerfile's header.
+
+These are the long-running **service** images, distinct from the **run-container**
+images a run executes inside ([`containers/`](../containers/README.md)), which are
+published separately by [`build-containers.yml`](../.github/workflows/build-containers.yml).
 
 ## Secrets
 

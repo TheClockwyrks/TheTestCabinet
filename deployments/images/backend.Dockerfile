@@ -5,7 +5,10 @@
 # binary on a runtime that includes Chromium and the fonts it needs, and points
 # TCAB_REFERENCE_BROWSER at it.
 #
-# Build (from the repo root) and push to the registry the cluster pulls from:
+# The canonical image is published to GHCR by the build-service-images.yml GitHub
+# Actions workflow (as ghcr.io/<owner>/tcab-backend, tagged :latest and :<git-sha>)
+# on every push to master that touches the crates or this Dockerfile. To build and
+# push it by hand instead (from the repo root):
 #   docker build -t <registry>/tcab-backend:<tag> -f deployments/images/backend.Dockerfile .
 #   docker push <registry>/tcab-backend:<tag>
 

@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest
+          image: REPLACE_REGISTRY/tcab-backend:latest # CI publishes ghcr.io/<owner>/tcab-backend; pin a :<git-sha> tag
           ports:
             - containerPort: 8787
           env:

@@ -6,7 +6,10 @@
 # the worker shells out to when it PUBLISHES a run (git, the GitHub CLI `gh`, and
 # the Cloudflare `wrangler`). A worker that never publishes can drop those.
 #
-# Build (from the repo root) and push to the registry the cluster pulls from:
+# The canonical image is published to GHCR by the build-service-images.yml GitHub
+# Actions workflow (as ghcr.io/<owner>/tcab-worker, tagged :latest and :<git-sha>)
+# on every push to master that touches the crates or this Dockerfile. To build and
+# push it by hand instead (from the repo root):
 #   docker build -t <registry>/tcab-worker:<tag> -f deployments/images/worker.Dockerfile .
 #   docker push <registry>/tcab-worker:<tag>
 

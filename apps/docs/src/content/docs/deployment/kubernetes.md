@@ -69,7 +69,14 @@ first, confirm the flow, then repeat for prod with prod's own secrets and a
   conformant cluster works, including GKE Autopilot, EKS, and AKS.
 - A container registry the cluster can pull the service images and the
   [run-container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
-  from. If it is private, an `imagePullSecret` (referenced by
+  from. The canonical builds are published to GHCR by CI — the three **service**
+  images (`tcab-backend`, `tcab-auth-service`, `tcab-worker`) by
+  [`build-service-images.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-service-images.yml)
+  and the run-container images by
+  [`build-containers.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-containers.yml),
+  each tagged `:latest` and an immutable `:<git-sha>`. Point the manifests'
+  `image:` fields (`REPLACE_REGISTRY`) at that namespace and pin a `:<git-sha>`
+  tag. If the registry is private, an `imagePullSecret` (referenced by
   `TCAB_K8S_IMAGE_PULL_SECRETS` for run pods).
 - A `StorageClass` for the backend and auth `PersistentVolumeClaim`s
   (`ReadWriteOnce` is sufficient; neither volume is shared).
@@ -199,9 +206,13 @@ three things are non-negotiable and follow directly from that:
    `TCAB_BACKEND_CHECKOUT` point to, so the database, store, and checkout survive
    a restart or reschedule. A volume survives restarts but is **not** a backup;
    see [Backups](/deployment/backups/).
-3. **An image with a browser.** The stock binary has no Chromium. Build the
-   backend image so it layers the `tcab-backend` binary and a headless Chromium;
-   set `TCAB_REFERENCE_BROWSER` to that browser if it is not auto-detected.
+3. **An image with a browser.** The stock binary has no Chromium. The published
+   `tcab-backend` image
+   ([`deployments/images/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/backend.Dockerfile))
+   layers the `tcab-backend` binary over a headless Chromium and the fonts it
+   needs, and points `TCAB_REFERENCE_BROWSER` at it; the auth and worker images
+   stay slim and ship no browser. Set `TCAB_REFERENCE_BROWSER` yourself only if
+   you build a backend image where the browser is not auto-detected.
 
 Constraints 1 and 2 are properties of the **SQLite** store, not the backend
 itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance

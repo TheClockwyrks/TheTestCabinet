@@ -1,7 +1,9 @@
-# Keep the run-container build context lean. The base image build (see
-# containers/base/Dockerfile) uses the repository root as its context so it can
-# compile the `draw` binary from crates/draw; everything below is irrelevant to
-# that build and would otherwise bloat the context or invalidate its cache.
+# Keep the build context lean. Both the run-container builds (see
+# containers/base/Dockerfile, which compiles the `draw` binary from crates/draw)
+# and the service-image builds (deployments/images/*.Dockerfile, which compile the
+# backend/auth/worker crates) use the repository root as their context; everything
+# below is irrelevant to those builds and would otherwise bloat the context or
+# invalidate its cache.
 target/
 **/node_modules/
 **/dist/

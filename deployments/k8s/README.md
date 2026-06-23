@@ -25,8 +25,12 @@ here uses **placeholder values** (`REPLACE_REGISTRY`, `REPLACE_ME`, the
 
 The service container images are built from
 [`../images/`](../images/) (`backend.Dockerfile`, `auth.Dockerfile`,
-`worker.Dockerfile`) and pushed to the registry the cluster pulls from. The
-**run-container** images the worker launches are separate — see
+`worker.Dockerfile`) and published to GHCR by the
+[`build-service-images.yml`](../../.github/workflows/build-service-images.yml)
+workflow as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`, and
+`…/tcab-worker`. Point each manifest's `image:` field (`REPLACE_REGISTRY`) at that
+namespace — pin the immutable `:<git-sha>` tag rather than `:latest` in a real
+deployment. The **run-container** images the worker launches are separate — see
 [`containers/`](../../containers/README.md).
 
 ## Apply order

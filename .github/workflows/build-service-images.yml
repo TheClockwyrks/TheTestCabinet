@@ -1,0 +1,113 @@
+name: Build service images
+
+# Builds the three long-running *service* images and pushes them to GHCR:
+#   - tcab-backend       — the backend (tcab-backend) plus a headless Chromium and
+#                          the fonts it renders reference screenshots with;
+#   - tcab-auth-service  — the auth service (tcab-auth-service), a slim runtime
+#                          with no browser and no fonts; and
+#   - tcab-worker        — the worker (tcab-worker) plus the publish CLIs
+#                          (git/gh/wrangler); under TCAB_WORKER_RUNTIME=kubernetes
+#                          it spawns each run as a pod via the API and needs no
+#                          container engine of its own.
+# Each is built from its Dockerfile under deployments/images/ with the repository
+# root as the build context (the Dockerfiles compile their crate from source), and
+# tagged both `:latest` and `:<git-sha>` so a deployment can pin an immutable
+# digest/tag. The Kubernetes manifests under deployments/k8s/ pull these from the
+# registry the cluster is pointed at (see deployment/kubernetes.md).
+#
+# These are NOT the run-container images a run executes inside — those (base,
+# sprite, sprite-sheet, adversarial, performance) are built by the separate
+# build-containers.yml workflow and documented in containers/README.md.
+#
+# Like build-containers.yml this lives on GitHub Actions rather than the primary
+# Azure DevOps pipeline by deliberate exception: the images are meant for anyone
+# running their own deployment to pull, so building them in public makes the
+# supply chain visible, and GH Actions authenticates to GHCR for free via the
+# built-in GITHUB_TOKEN (no PAT to manage). Dormant until the repository is
+# mirrored to GitHub, like the other workflows here.
+#
+# One-time setup: after the first successful push, set each published package's
+# visibility (tcab-backend, tcab-auth-service, tcab-worker) to Public in the org's
+# GHCR package settings if the cluster should pull them unauthenticated; otherwise
+# reference them through an imagePullSecret (see deployments/k8s/secrets.example.yaml).
+on:
+  push:
+    branches: [master]
+    # The images compile the backend/auth/worker crates (and their workspace
+    # dependencies) from source, so any change under crates/ or to the workspace
+    # manifests must rebuild them — not just a change to the Dockerfiles.
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deployments/images/**"
+      - ".github/workflows/build-service-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One service-image build at a time; let an in-progress run finish so a later push
+# doesn't race it to the latest tag.
+concurrency:
+  group: build-service-images
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      # Build all three even if one fails, so a single broken image doesn't hide
+      # the status of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            image: tcab-backend
+            dockerfile: deployments/images/backend.Dockerfile
+          - name: auth
+            image: tcab-auth-service
+            dockerfile: deployments/images/auth.Dockerfile
+          - name: worker
+            image: tcab-worker
+            dockerfile: deployments/images/worker.Dockerfile
+    steps:
+      - uses: actions/checkout@v6
+
+      # Authenticate to GHCR with the built-in token (packages: write above).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The registry namespace is the repository owner, lowercased (GHCR requires
+      # lowercase), which is the namespace the deployment manifests pull from.
+      - name: Compute registry namespace
+        id: registry
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "ref=ghcr.io/${owner}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build from the repository root (the Dockerfiles compile their crate from
+      # source, so the context must include crates/); the repo-root .dockerignore
+      # keeps it lean. Tag both `:latest` and the immutable `:<git-sha>` so a
+      # deployment can pin a specific build. GitHub Actions cache makes the
+      # otherwise-cold release Rust build incremental across runs (scoped per image
+      # so the three don't clobber each other's cache).
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.registry.outputs.ref }}:latest
+            ${{ steps.registry.outputs.ref }}:${{ github.sha }}
+          cache-from: type=gha,scope=service-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=service-${{ matrix.name }}

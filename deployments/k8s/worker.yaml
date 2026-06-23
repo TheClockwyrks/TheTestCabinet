@@ -43,7 +43,7 @@ spec:
       serviceAccountName: tcab-worker # RBAC to manage run pods
       containers:
         - name: worker
-          image: REPLACE_REGISTRY/tcab-worker:latest
+          image: REPLACE_REGISTRY/tcab-worker:latest # CI publishes ghcr.io/<owner>/tcab-worker; pin a :<git-sha> tag
           ports:
             - containerPort: 8788
           env:
