@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Arena-service image for the Kubernetes deployment (and the local stack).
 #
 # The arena service runs adversarial matches and tournaments (CPU-bound in-process
@@ -19,8 +20,18 @@
 FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
-# Build just the arena-service crate in release mode.
-RUN cargo build --release -p test-cabinet-arena
+# Build just the arena-service crate in release mode. The cargo registry/git, the
+# rustup toolchain, and the build's target/ are BuildKit cache mounts, so a source
+# change recompiles only what changed instead of re-downloading the toolchain and
+# rebuilding every dependency from scratch. target/ is a cache mount (not a layer),
+# so the freshly built binary is copied to a stable path inside the same RUN,
+# before the mount is detached — the runtime stage COPYs it from there.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/src/target \
+    cargo build --release -p test-cabinet-arena \
+    && cp /src/target/release/tcab-arena /tcab-arena
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM docker.io/library/debian:bookworm-slim
@@ -33,7 +44,7 @@ RUN apt-get update \
        ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /src/target/release/tcab-arena /usr/local/bin/tcab-arena
+COPY --from=build /tcab-arena /usr/local/bin/tcab-arena
 
 ENV TCAB_ARENA_BIND=0.0.0.0:8791
 

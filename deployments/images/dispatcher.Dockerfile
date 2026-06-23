@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Dispatcher image for the Kubernetes deployment.
 #
 # The dispatcher is a thin, long-running controller: it claims queued jobs from
@@ -17,8 +18,18 @@
 FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
-# Build just the dispatcher crate in release mode.
-RUN cargo build --release -p test-cabinet-dispatcher
+# Build just the dispatcher crate in release mode. The cargo registry/git, the
+# rustup toolchain, and the build's target/ are BuildKit cache mounts, so a source
+# change recompiles only what changed instead of re-downloading the toolchain and
+# rebuilding every dependency from scratch. target/ is a cache mount (not a layer),
+# so the freshly built binary is copied to a stable path inside the same RUN,
+# before the mount is detached — the runtime stage COPYs it from there.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/src/target \
+    cargo build --release -p test-cabinet-dispatcher \
+    && cp /src/target/release/tcab-dispatcher /tcab-dispatcher
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 FROM docker.io/library/debian:bookworm-slim
@@ -30,7 +41,7 @@ RUN apt-get update \
        ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /src/target/release/tcab-dispatcher /usr/local/bin/tcab-dispatcher
+COPY --from=build /tcab-dispatcher /usr/local/bin/tcab-dispatcher
 
 # Run as an unprivileged user: the dispatcher needs only API access (its
 # ServiceAccount token), never host privileges.

@@ -1,14 +1,38 @@
-# Keep the build context lean. Both the run-container builds (see
-# containers/base/Dockerfile, which compiles the `draw` binary from crates/draw)
-# and the service-image builds (deployments/images/*.Dockerfile, which compile the
-# backend/auth/worker crates) use the repository root as their context; everything
-# below is irrelevant to those builds and would otherwise bloat the context or
-# invalidate its cache.
-target/
+# Keep the build context lean AND stable. Both the run-container builds
+# (containers/*/Dockerfile, which compile the `draw`/`foray` binaries from
+# crates/) and the service-image builds (deployments/images/*.Dockerfile, which
+# compile the backend/auth/dispatcher/driver/artifacts/arena crates) use the
+# repository root as their context. Every one of those builds is just a `cargo
+# build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
+# everything, then re-include only the paths cargo actually reads.
+#
+# Flipping to an allowlist (rather than enumerating things to exclude) means a
+# change to anything cargo does NOT compile — the frontend, the docs, test cases,
+# k8s manifests, models, this devcontainer — can never invalidate a build layer.
+# Only a change to a file in the list below busts the `COPY . .` cache, which is
+# the whole point: those edits genuinely shouldn't trigger an image rebuild.
+
+# Ignore everything by default…
+*
+
+# …then re-include the Rust workspace and the few files a build embeds. All
+# workspace members live under crates/, and no manifest reaches outside it, so
+# this is the complete set cargo needs to resolve and compile any crate.
+!/Cargo.toml
+!/Cargo.lock
+!/rust-toolchain.toml
+!/.cargo
+!/crates
+# crates/core bakes these two trees into the binary verbatim via include_str!
+# (the built-in orchestrator runner scripts and the harness manifests), so they
+# must be present in the context even though they are not Rust sources.
+!/orchestrators
+!/harnesses
+
+# Re-exclude build outputs and scratch that can appear UNDER the re-included
+# paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
+# the context or churns the layer cache. These come last so they win.
+**/target/
 **/node_modules/
 **/dist/
 **/.astro/
-.git/
-tmp/
-# Per-run scratch and seeded repositories.
-runs/
