@@ -50,6 +50,12 @@ staging and prod — see [Deployment](/deployment/overview/).
 
 ## The whole stack on k3d (deployment parity)
 
+For a task-oriented walkthrough of this — bringing the stack up, connecting the
+console, and enqueuing a run — see the guide
+[Running the Local Service Stack](/guides/running-the-local-service-stack/) (or the
+[quickstart](/quickstarts/run-the-local-service-stack/) for just the steps). This
+section is the reference the guide sits on top of.
+
 Run execution is now a cluster concern: a run schedules as a per-run **Job**, so
 the service-driven flow runs the services **the way a
 [deployment](/deployment/kubernetes/) runs them** — in a real (local) Kubernetes

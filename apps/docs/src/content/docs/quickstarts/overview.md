@@ -21,6 +21,8 @@ API key.
   and sign in, so push, review, and publish are attributed to you.
 - [Run a Test Case](/quickstarts/run-a-test-case/) — drive a single test case
   through a harness and write a run record.
+- [Run the Local Service Stack](/quickstarts/run-the-local-service-stack/) — bring
+  up the backend, dispatcher, driver, and console on local k3d and enqueue a run.
 - [Author an End-to-End Test Case](/quickstarts/author-an-end-to-end-test-case/)
   — scaffold a new playable-game case or version under `test-cases/`.
 - [Author an Asset-Generation Test Case](/quickstarts/author-an-asset-generation-test-case/)

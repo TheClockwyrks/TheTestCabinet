@@ -17,6 +17,9 @@ guide when you are doing the task for the first time, or when you need to know
 - [First Time Setup](/guides/first-time-setup/) — install the toolchain,
   container runtime, run-container image, browser, and credentials, then make a
   first run.
+- [Running the Local Service Stack](/guides/running-the-local-service-stack/) —
+  stand up the backend, auth, dispatcher, driver, artifact service, and web
+  console on local k3d, and drive runs the way a deployment does.
 - [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/)
   — write a new playable-game case or version: its specification, prompt,
   references, and manifest.

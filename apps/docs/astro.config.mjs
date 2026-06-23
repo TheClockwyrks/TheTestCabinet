@@ -137,6 +137,7 @@ export default defineConfig({
             "quickstarts/set-up-authentication",
             "quickstarts/register-and-login",
             "quickstarts/run-a-test-case",
+            "quickstarts/run-the-local-service-stack",
             "quickstarts/author-an-end-to-end-test-case",
             "quickstarts/author-an-asset-generation-test-case",
             "quickstarts/create-an-end-to-end-variant",
@@ -152,6 +153,7 @@ export default defineConfig({
           items: [
             "guides/overview",
             "guides/first-time-setup",
+            "guides/running-the-local-service-stack",
             "guides/authoring-an-end-to-end-test-case",
             "guides/authoring-an-asset-generation-test-case",
             "guides/creating-an-end-to-end-variant",
