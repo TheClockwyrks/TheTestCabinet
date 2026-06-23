@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
+import { useGalleryData } from "../../data/galleryContext";
 import { type ParsedWriteup, worstRating } from "../../data/ratings";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
 import { useRuns } from "../../data/useRuns";
@@ -49,16 +50,49 @@ export function RunDetailLayout({
 }: RunDetailLayoutProps) {
   const { runId } = useParams<{ runId: string }>();
   const { runs, localIds, localWriteups, loading } = useRuns();
+  const { readRun } = useGalleryData();
   const findReview = useFindReview();
-  const run = runId
+  const listed = runId
     ? runs.find((candidate) => candidate.id === runId)
     : undefined;
+
+  // A run reached by a direct link — the live monitor's "open the failed run"
+  // link is the common case — may not be in the loaded list: an infrastructure
+  // failure is retained for inspection but appears in no worklist, and a run can
+  // simply be off the current page. Fall back to fetching it by id so any
+  // persisted run stays openable, not only listed ones.
+  const [fetched, setFetched] = useState<RunRecord | null>(null);
+  const [fetching, setFetching] = useState(false);
+  useEffect(() => {
+    if (listed || !runId || !readRun || loading) {
+      setFetched(null);
+      setFetching(false);
+      return;
+    }
+    let active = true;
+    setFetching(true);
+    readRun(runId)
+      .then((record) => active && setFetched(record))
+      .catch(() => active && setFetched(null))
+      .finally(() => {
+        if (active) setFetching(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [listed, runId, readRun, loading]);
+
+  const run = listed ?? fetched ?? undefined;
 
   if (!run) {
     return (
       <PageLayout>
         <p className={styles.notFound}>
-          {loading ? "Loading…" : <>No run found for &ldquo;{runId}&rdquo;.</>}
+          {loading || fetching ? (
+            "Loading…"
+          ) : (
+            <>No run found for &ldquo;{runId}&rdquo;.</>
+          )}
         </p>
       </PageLayout>
     );

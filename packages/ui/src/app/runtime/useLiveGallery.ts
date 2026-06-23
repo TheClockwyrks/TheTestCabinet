@@ -315,6 +315,29 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
     [backend, workerClient, localIds],
   );
 
+  // Resolve a single run's record by id for a run the loaded list doesn't carry
+  // (an infrastructure failure, in no worklist; or a run off the current page).
+  // A produced (local) run is read from its worker, any other from the backend;
+  // both expose the run store's `GET /runs/{id}`, which serves a stored run
+  // whatever its state. A transport that can't reach it resolves to null so the
+  // detail page falls back cleanly to its "no run found" state.
+  const readRun = useCallback(
+    async (runId: string): Promise<RunRecord | null> => {
+      try {
+        if (localIds.has(runId) && workerClient) {
+          return (await workerClient.readRun(runId)).record;
+        }
+        if (backend) return (await backend.readRun(runId)).record;
+        if (workerClient) return (await workerClient.readRun(runId)).record;
+        return null;
+      } catch (e) {
+        if (e instanceof NotSupportedError) return null;
+        return null;
+      }
+    },
+    [backend, workerClient, localIds],
+  );
+
   return {
     runs,
     localIds,
@@ -325,6 +348,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
     testCasesUsingSamples,
     canExecute: true,
     fetchRunEvents,
+    readRun,
     proofMediaUrl,
     assetMediaUrl,
     arena,

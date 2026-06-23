@@ -182,6 +182,17 @@ export interface GalleryDataInput {
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
   /**
+   * Resolve one run's record by id, directly from the host's store, for a run
+   * reached by a direct link that the loaded list does not carry. The run-detail
+   * page resolves a run from the in-memory list first and falls back to this when
+   * it misses — so a run that appears in no worklist (an infrastructure failure,
+   * retained for inspection but never publishable) or simply isn't on the current
+   * page stays openable by its id. Resolves `null` when no run with that id is
+   * stored. Omitted by a host that can only serve the runs it already listed (the
+   * static gallery site).
+   */
+  readRun?: (runId: string) => Promise<RunRecord | null>;
+  /**
    * Resolve the loadable URL for one run's proof media file (`<proof-id>.<ext>`),
    * or null when the host cannot serve it (so the UI shows presence only). Each
    * host wires its own source: the consoles point at the backend (published) or
