@@ -1,8 +1,20 @@
 # Per-run-Job refactor — working context
 
-A handoff document for the in-progress refactor of how runs execute. Self-contained
-so it survives a fresh session. Companion files `task-1.md … task-6.md` hold the
-remaining work in (roughly) execution order.
+A handoff document for the refactor of how runs execute. The refactor itself —
+replacing the long-lived worker pool with per-run Kubernetes Jobs — is **complete
+and committed** (see Status below). Self-contained so it survives a fresh session.
+
+The completed phase files (task-1 … task-5) have been **removed**; the companion
+files that remain hold the **follow-up work** the refactor surfaced or deferred:
+
+- `task-7.md` — **subscription harness auth** in the service flow (CRITICAL): the
+  driver/cluster path is API-key-only today; subscription mode (incl. the
+  subscription-only Antigravity harness) doesn't work for backend-driven runs.
+- `task-8.md` — restore **adversarial arena execution** (quick matches +
+  tournaments): worker-only, dropped in the cutover, so the console's arena run
+  actions hit backend endpoints that don't exist (arena reads still work).
+- `task-6.md` — **deferred** (unchanged): publish & score failures as first-class
+  results, a separate design pass.
 
 ## Objective
 
@@ -78,7 +90,17 @@ artifacts (blobs)   driver ──upload──> tcab-artifacts ◀──read─�
   dispatcher/artifacts Dockerfiles + GHCR matrix; **`crates/worker` deleted**;
   docs rewritten (driver/dispatcher/artifacts pages replace the worker page).
 
-**All of tasks 1–5 are complete.** Task 6 stays deferred by decision (see below).
+**All of tasks 1–5 are complete and committed.** Two follow-up commits landed on
+top of the refactor:
+- `9f6a104` — the local k3d stack now reads all Secrets (harness API key +
+  dispatcher service token) from the host **environment** instead of a tracked
+  overlay file (`deployments/local/Makefile` `secrets` target).
+- `c0cf565` — task-oriented docs for the service-driven flow: a
+  `Run the Local Service Stack` quickstart + a `Running the Local Service Stack`
+  guide (the docs were CLI-only before).
+
+Remaining work is now **task-7** (subscription auth, critical), **task-8** (arena
+execution), and the still-**deferred task-6**.
 
 **Verified here:** whole-workspace `cargo build`/`clippy -D warnings`/`test`
 green with the worker gone (52 test binaries); `npm run gen:contract` drift-clean;
@@ -91,8 +113,8 @@ deployments/local local-up` → enqueue a run → a driver Job + sandbox pod →
 events/preview → record pushed + reviewable). A couple of behavior changes to eye
 while testing: the console now reaches the auth service directly (`VITE_AUTH_URL`);
 the web adversarial-arena run actions point at backend `/matches`/`/tournaments`
-endpoints that don't exist yet (arena execution was worker-only and is out of this
-refactor's scope — reads still work).
+endpoints that don't exist yet (now tracked as **task-8**); and backend-driven runs
+only support **API-key** auth, not subscription (now tracked as **task-7**).
 
 **Needs validation on a real machine (no docker/k3d/kubectl in the dev env):**
 `make -C deployments/local local-up` — especially the k3d `--volume` → pod
@@ -126,21 +148,32 @@ versions.
   so artifact bytes never transit the control plane and serving scales
   independently. Its backing store is local disk first, R2 deferrable as an
   internal detail. (Resolved 2026-06-23 — this is why the PVC-vs-R2 question is no
-  longer open: it became an internal detail of that binary.) See `task-5.md`.
+  longer open: it became an internal detail of that binary.) Shipped in `099148b`.
 
 ## Remaining work
 
-- `task-1.md` — Phase 3: the per-run **driver** crate. ✅ DONE (`51eab83`).
-- `task-2.md` — Phase 4: the **dispatcher** crate. ✅ DONE (`266f2f2`).
-- `task-3.md` — Phase 5: **console rewire** to the backend (+ contract codegen).
-  ✅ DONE (`c60ca5b`).
-- `task-4.md` — Phase 6: **cutover** (manifests, images, worker removal, docs).
-  ✅ DONE (`3e7e86e`).
-- `task-5.md` — the **`tcab-artifacts` service** (artifact retention off
-  ephemeral pods; local-disk backing first, R2 later). ✅ DONE (`099148b`).
+Active follow-ups (companion files):
+
+- `task-7.md` — **subscription harness auth** in the service flow. CRITICAL —
+  backend-driven runs are API-key-only; subscription mode (and the
+  subscription-only Antigravity harness) can't run via the console. The worker
+  never supported it either, so this is a first build for the server topology.
+- `task-8.md` — restore **adversarial arena execution** (matches + tournaments).
+  Worker-only and dropped in the cutover (`3e7e86e`); resurrect the surface from
+  `3e7e86e^:crates/worker/src/{api/matches,api/tournaments,tournaments}.rs`. The
+  core engine (`crates/core/src/match_play.rs`) and the read/publish endpoints
+  already exist — only the execution + live-stream surface is missing.
 - `task-6.md` — **deferred**: publish & score failures as first-class results
-  (a separate design pass, not part of this refactor). Still deferred by decision
-  — not started; the refactor retains all the data it will need.
+  (a separate design pass). Still deferred by decision; the refactor retains all
+  the data it will need.
+
+Completed and committed (phase files removed — kept here as the history):
+
+- Phase 3 — per-run **driver** crate. ✅ `51eab83`.
+- Phase 4 — **dispatcher** crate. ✅ `266f2f2`.
+- Phase 5 — **console rewire** to the backend (+ contract codegen). ✅ `c60ca5b`.
+- Phase 5 — **`tcab-artifacts` service** + driver upload. ✅ `099148b`.
+- Phase 6 — **cutover** (manifests, images, worker removal, docs). ✅ `3e7e86e`.
 
 ## References (session-local, not in the repo)
 

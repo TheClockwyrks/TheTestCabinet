@@ -44,6 +44,6 @@ explicit **model-vs-infra classification** to the run record / validation.
 ## Already handled by the refactor (so this pass loses no data)
 
 The backend retains **every** produced record regardless of outcome, with the
-event timeline and a specific failure `detail`. Artifact retention (`task-5.md`)
-keeps the generated code. So when this pass is picked up, the data is all there —
+event timeline and a specific failure `detail`. Artifact retention (the
+`tcab-artifacts` service, Phase 5, committed `099148b`) keeps the generated code. So when this pass is picked up, the data is all there —
 it is purely a publish/scoring/UI design problem.
