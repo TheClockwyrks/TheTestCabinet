@@ -13,6 +13,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20260619_000001_create_initial_schema;
 mod m20260621_000002_create_tournament;
+mod m20260623_000003_create_job;
 
 pub struct Migrator;
 
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260619_000001_create_initial_schema::Migration),
             Box::new(m20260621_000002_create_tournament::Migration),
+            Box::new(m20260623_000003_create_job::Migration),
         ]
     }
 }

@@ -61,6 +61,12 @@ pub struct Config {
     /// backend verifies each mutating request's bearer token against it. Defaults
     /// to the auth service's loopback address for local dev.
     pub auth_url: String,
+    /// The shared service token the **dispatcher** authenticates with to claim
+    /// queued jobs (`TCAB_BACKEND_SERVICE_TOKEN`). `None` disables the dispatcher
+    /// endpoints (the job queue cannot be drained until it is set) — a deployment
+    /// supplies it from the same secret the dispatcher reads. Per-job driver
+    /// tokens are minted at enqueue and need no configuration.
+    pub service_token: Option<String>,
     /// R2 upload configuration, or `None` when snapshot upload is disabled
     /// because the R2 variables were not all supplied (only valid in dev: see
     /// [`Config::from_env`]).
@@ -98,6 +104,7 @@ impl Config {
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
         let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
+        let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
 
         let r2 = R2Config::from_env();
         let deploy_hook_url = std::env::var("TCAB_SITE_DEPLOY_HOOK_URL")
@@ -119,6 +126,7 @@ impl Config {
             checkout,
             store,
             auth_url,
+            service_token,
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),

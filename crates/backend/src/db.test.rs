@@ -349,3 +349,120 @@ async fn list_tournaments_orders_newest_first_and_paginates() {
     let (page2, _) = db.list_tournaments(1, Some(&cursor)).await.unwrap();
     assert_eq!(page2[0].record.id, "t1");
 }
+
+// --- Run queue (the `job` table) -------------------------------------------
+
+/// A queued run with the given id and enqueue time. The lifted identity columns
+/// are fixed; tests that care about ordering vary `created_at`.
+fn new_job(id: &str, created_at: &str) -> NewJob {
+    NewJob {
+        id: id.to_string(),
+        request_json: format!("{{\"jobId\":\"{id}\"}}"),
+        test_case_slug: "pong".to_string(),
+        variant: "base".to_string(),
+        harness_slug: "claude".to_string(),
+        model_id: "claude-sonnet-4-5".to_string(),
+        job_token: format!("token-{id}"),
+        created_at: created_at.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn enqueue_then_claim_flips_queued_to_dispatched_then_drains() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let claimed = db
+        .claim_next_job("2026-06-23T00:00:05Z")
+        .await
+        .unwrap()
+        .expect("the queued job is claimable");
+    assert_eq!(claimed.id, "j1");
+    assert_eq!(claimed.state, "dispatched");
+    assert_eq!(claimed.job_token, "token-j1");
+
+    // A claimed job is no longer queued, so a second claim finds nothing.
+    assert!(
+        db.claim_next_job("2026-06-23T00:00:06Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "the queue is drained"
+    );
+}
+
+#[tokio::test]
+async fn claim_takes_the_oldest_queued_job_first() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Enqueue out of chronological order to prove the claim sorts by created_at.
+    db.enqueue_job(new_job("newer", "2026-06-23T00:10:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("older", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let first = db.claim_next_job("2026-06-23T01:00:00Z").await.unwrap();
+    assert_eq!(first.unwrap().id, "older", "oldest enqueued is claimed first");
+    let second = db.claim_next_job("2026-06-23T01:00:01Z").await.unwrap();
+    assert_eq!(second.unwrap().id, "newer");
+}
+
+#[tokio::test]
+async fn set_job_state_records_terminal_detail_and_record_id() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    db.set_job_state("j1", "running", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+    let succeeded = db
+        .set_job_state(
+            "j1",
+            "succeeded",
+            "2026-06-23T00:50:00Z",
+            None,
+            Some("record-7"),
+        )
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert_eq!(succeeded.state, "succeeded");
+    assert_eq!(succeeded.record_id.as_deref(), Some("record-7"));
+    assert!(succeeded.detail.is_none());
+
+    // An unknown job yields None rather than erroring.
+    assert!(
+        db.set_job_state("missing", "running", "2026-06-23T00:00:00Z", None, None)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn active_jobs_excludes_terminal_jobs_oldest_first() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("a", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("b", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("c", "2026-06-23T00:02:00Z"))
+        .await
+        .unwrap();
+    // b finishes; a and c stay in flight.
+    db.set_job_state("b", "succeeded", "2026-06-23T00:30:00Z", None, Some("r-b"))
+        .await
+        .unwrap();
+
+    let active = db.active_jobs().await.unwrap();
+    let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
+    assert_eq!(ids, vec!["a", "c"], "terminal jobs are excluded, oldest first");
+}

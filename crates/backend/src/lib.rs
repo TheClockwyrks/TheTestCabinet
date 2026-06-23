@@ -27,6 +27,7 @@ pub mod ingest;
 pub mod metrics;
 pub mod publisher;
 pub mod r2;
+pub mod relay;
 pub mod render;
 pub mod snapshot;
 pub mod store;
@@ -98,6 +99,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         store,
         publisher,
         auth,
+        relay: crate::relay::Relay::new(),
         config: Arc::new(config),
     };
     let router = api::router(state);

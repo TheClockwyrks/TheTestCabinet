@@ -17,15 +17,21 @@ use tower_http::trace::TraceLayer;
 use crate::config::Config;
 use crate::db::Db;
 use crate::publisher::Publisher;
+use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
 mod ingest_api;
+mod jobs;
 mod runs;
 mod test_cases;
 mod tournaments;
 
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
+pub use jobs::{
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
+    StatusUpdate,
+};
 pub use runs::{LinksIn, PushRequest};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
@@ -41,6 +47,9 @@ pub struct AppState {
     /// Verifies bearer tokens against the standalone auth service. The mutating
     /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
     pub auth: Arc<test_cabinet_core::AccountsClient>,
+    /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
+    /// and `/notifications` streams), fed by the drivers' progress ingestion.
+    pub relay: Relay,
     /// The resolved configuration (checkout path for ingest, etc.).
     pub config: Arc<Config>,
 }
@@ -114,6 +123,24 @@ pub fn router(state: AppState) -> Router {
             "/tournaments/{id}/matches/{matchId}/replay.json",
             get(tournaments::match_replay).post(tournaments::put_match_replay),
         )
+        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated); the
+        // dispatcher claims the oldest (`POST /jobs/next`, service-token); a
+        // per-run driver streams progress and the terminal record back
+        // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
+        // observes it via the live stream, the status, and the active-run list.
+        // `/jobs/active` and `/jobs/next` are static, so they outrank the
+        // `/jobs/{id}` dynamic route regardless of registration order.
+        .route("/jobs", post(jobs::launch))
+        .route("/jobs/active", get(jobs::active))
+        .route("/jobs/next", post(jobs::claim))
+        .route("/jobs/{id}", get(jobs::status))
+        .route("/jobs/{id}/live", get(jobs::live))
+        .route("/jobs/{id}/events", post(jobs::ingest_events))
+        .route("/jobs/{id}/preview", post(jobs::ingest_preview))
+        .route("/jobs/{id}/status", post(jobs::update_status))
+        // The worker-wide run-completion feed (SSE), so the console can alert on
+        // any run finishing without holding a per-run subscription open.
+        .route("/notifications", get(jobs::notifications))
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for

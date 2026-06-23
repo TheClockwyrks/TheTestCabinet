@@ -1,0 +1,611 @@
+//! The run-queue endpoints: enqueue, claim, ingest progress, advance state, and
+//! the live stream.
+//!
+//! A run is no longer driven by a worker the console talks to directly; the
+//! console **enqueues** a run here (`POST /jobs`), the **dispatcher** claims it
+//! (`POST /jobs/next`, service-token), and a per-run **driver** pod streams the
+//! run's events, preview frames, and terminal status back
+//! (`POST /jobs/{id}/events|preview|status`, per-job token). The console observes
+//! it entirely through the backend: the live NDJSON stream (`GET /jobs/{id}/live`),
+//! the status (`GET /jobs/{id}`), the active-run list (`GET /jobs/active`), and
+//! the worker-wide completion feed (`GET /notifications`).
+//!
+//! The durable job lifecycle is the `job` table; the live event/preview fan-out
+//! is the in-memory [`crate::relay`]. A produced run's record lands in the `run`
+//! table via [`crate::db::Db::push`] on success, the same store a locally-driven
+//! `tcab` run pushes to.
+
+use std::convert::Infallible;
+
+use axum::Json;
+use axum::body::Body;
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
+use futures_util::stream::{self, Stream, StreamExt};
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+use tokio::sync::broadcast::error::RecvError;
+use uuid::Uuid;
+
+use test_cabinet_core::event::HarnessEvent;
+use test_cabinet_core::preview::AssetPreview;
+use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
+use test_cabinet_entities::job;
+
+use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
+use crate::error::ApiError;
+use crate::relay::{JobSummary, Notification, StreamItem};
+
+use super::AppState;
+
+/// `POST /jobs` — enqueue a run. Requires a bearer token (the launching account);
+/// validates the request, mints a job id and per-job driver token, stores it in
+/// the `queued` state, and returns the job id. The run itself is driven later by
+/// a driver pod the dispatcher creates; observe it via the endpoints below.
+#[tracing::instrument(
+    name = "jobs.launch",
+    skip(state, _user, body),
+    fields(case.slug = %body.test_case, case.version = %body.version, variant = %body.variant),
+    err(Debug),
+)]
+pub async fn launch(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Json(body): Json<LaunchBody>,
+) -> Result<Response, ApiError> {
+    if body.test_case.trim().is_empty() {
+        return Err(ApiError::bad_request("`testCase` must not be empty"));
+    }
+    if body.version.trim().is_empty() {
+        return Err(ApiError::bad_request("`version` must not be empty"));
+    }
+    if body.variant.trim().is_empty() {
+        return Err(ApiError::bad_request("`variant` must not be empty"));
+    }
+    if body.model.trim().is_empty() {
+        return Err(ApiError::bad_request("`model` must not be empty"));
+    }
+
+    let id = Uuid::new_v4().to_string();
+    let job_token = Uuid::new_v4().to_string();
+    let now = now_rfc3339()?;
+    let request_json = serde_json::to_string(&body)
+        .map_err(|e| ApiError::internal(format!("serializing launch request: {e}")))?;
+
+    state
+        .db
+        .enqueue_job(crate::db::NewJob {
+            id: id.clone(),
+            request_json,
+            test_case_slug: body.test_case.clone(),
+            variant: body.variant.clone(),
+            harness_slug: body.harness.as_str().to_string(),
+            model_id: body.model.clone(),
+            job_token,
+            created_at: now,
+        })
+        .await
+        .map_err(ApiError::from)?;
+
+    let ack = LaunchAck {
+        job_id: id.clone(),
+        status_url: format!("/jobs/{id}"),
+        live_url: format!("/jobs/{id}/live"),
+    };
+    Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
+}
+
+/// `GET /jobs/active` — the runs still in flight (queued, dispatched, or
+/// running), each described by the identity captured at enqueue. The console
+/// seeds its in-progress list from this so a run it is watching survives a reload.
+pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
+    let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
+    Ok(Json(
+        jobs.iter()
+            .map(|job| ActiveJobOut {
+                run_id: job.id.clone(),
+                summary: job_summary(job),
+                state: JobState::from_db(&job.state),
+            })
+            .collect(),
+    ))
+}
+
+/// `GET /jobs/{id}` — one job's current status: its state and, once it succeeded,
+/// the produced run record's id (else the terminal failure reason). `404` for an
+/// unknown job.
+pub async fn status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<JobStatusOut>, ApiError> {
+    let job = state
+        .db
+        .get_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    Ok(Json(JobStatusOut {
+        id: job.id,
+        state: JobState::from_db(&job.state),
+        record_id: job.record_id,
+        detail: job.detail,
+    }))
+}
+
+/// `GET /jobs/{id}/live` — the live harness-event + asset-preview stream as
+/// NDJSON. A subscriber is first replayed the backlog (and the latest preview per
+/// frame), then receives new items as the driver produces them; the stream closes
+/// when the run reaches a terminal state. A connection to an already-finished job
+/// closes after the backlog. `404` for an unknown job.
+pub async fn live(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let job = state
+        .db
+        .get_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    // If the job is already terminal but its in-memory buffer was lost (e.g. a
+    // backend restart), close the stream after the (possibly empty) backlog
+    // instead of waiting forever for a `Done` that will never come; the console
+    // then falls back to the persisted run record.
+    let db_terminal = JobState::from_db(&job.state).is_terminal();
+    let live = state.relay.live(&id);
+    let body = Body::from_stream(event_stream(live, db_terminal));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/x-ndjson"),
+            // Disable proxy buffering so items are delivered as they arrive.
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// `POST /jobs/next` — the dispatcher claims the oldest queued job. Requires the
+/// service token. Returns `200` with the claimed job (id, driver token, and the
+/// launch request to run) or `204 No Content` when the queue is empty.
+pub async fn claim(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+) -> Result<Response, ApiError> {
+    let now = now_rfc3339()?;
+    let Some(job) = state.db.claim_next_job(&now).await.map_err(ApiError::from)? else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+    let request: LaunchBody = serde_json::from_str(&job.request_json)
+        .map_err(|e| ApiError::internal(format!("decoding stored launch request: {e}")))?;
+    Ok(Json(ClaimedJob {
+        job_id: job.id,
+        job_token: job.job_token,
+        request,
+    })
+    .into_response())
+}
+
+/// `POST /jobs/{id}/events` — the driver streams a batch of harness events.
+/// Authenticated by the per-job token. The events join the live stream and are
+/// retained as the backlog persisted with the run on completion.
+pub async fn ingest_events(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(events): Json<Vec<HarnessEvent>>,
+) -> Result<StatusCode, ApiError> {
+    authorize_job(&state, &id, &headers).await?;
+    state.relay.live(&id).push_events(events);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /jobs/{id}/preview` — the driver streams one live asset-preview frame.
+/// Authenticated by the per-job token. Previews are relayed but never persisted.
+pub async fn ingest_preview(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(preview): Json<AssetPreview>,
+) -> Result<StatusCode, ApiError> {
+    authorize_job(&state, &id, &headers).await?;
+    state.relay.live(&id).push_preview(preview);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /jobs/{id}/status` — the driver advances the job's state. Authenticated
+/// by the per-job token.
+///
+/// `running` records that execution began. `succeeded` carries the produced
+/// [`RunRecord`]: a completed run is persisted to the `run` store (reviewable,
+/// like any pushed run), using the events relayed so far as its recorded stream;
+/// the job then carries the record's id. `failed` records the terminal reason. A
+/// terminal update closes the live stream and fires a completion notification.
+#[tracing::instrument(name = "jobs.status", skip(state, headers, update), fields(job.id = %id), err(Debug))]
+pub async fn update_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(update): Json<StatusUpdate>,
+) -> Result<StatusCode, ApiError> {
+    let job = authorize_job(&state, &id, &headers).await?;
+    let now = now_rfc3339()?;
+
+    match update.state {
+        DriverState::Running => {
+            state
+                .db
+                .set_job_state(&id, "running", &now, None, None)
+                .await
+                .map_err(ApiError::from)?;
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        DriverState::Failed => {
+            let detail = update.detail.as_deref().unwrap_or("run failed");
+            state
+                .db
+                .set_job_state(&id, "failed", &now, Some(detail), None)
+                .await
+                .map_err(ApiError::from)?;
+            finish_and_notify(&state, Notification::failed(&id, job_summary(&job), detail));
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        DriverState::Succeeded => {}
+    }
+
+    // Succeeded: the driver must hand back the record it produced.
+    let record = update
+        .record
+        .ok_or_else(|| ApiError::unprocessable("a succeeded status must carry the run record"))?;
+    let record_id = record.id.clone();
+
+    // A completed run is persisted to the reviewable store using the events the
+    // relay accumulated as its recorded stream (the same backlog viewers saw, so
+    // the driver need not re-send them). A produced-but-unevaluable run is marked
+    // succeeded but, like a locally-driven non-completed run, is not pushed.
+    if record.status.state == RunState::Completed {
+        let events = state.relay.live(&id).events_snapshot();
+        let events_json = if events.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&events)
+                    .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
+            )
+        };
+        let links = record.links.clone();
+        state
+            .db
+            .push(&record, &links, events_json.as_deref())
+            .await
+            .map_err(ApiError::from)?;
+        state
+            .db
+            .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
+            .await
+            .map_err(ApiError::from)?;
+        finish_and_notify(
+            &state,
+            Notification::completed(&id, job_summary(&job), &record_id),
+        );
+    } else {
+        state
+            .db
+            .set_job_state(&id, "succeeded", &now, None, None)
+            .await
+            .map_err(ApiError::from)?;
+        finish_and_notify(
+            &state,
+            Notification::completed(&id, job_summary(&job), &record_id),
+        );
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /notifications` — stream worker-wide run-completion notifications as SSE.
+/// Each event's `data` is one [`Notification`] as JSON. Live-only (no backlog); a
+/// keep-alive holds idle connections open between runs.
+pub async fn notifications(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let receiver = state.relay.notifier().subscribe();
+    let stream = stream::unfold(receiver, |mut receiver| async move {
+        loop {
+            match receiver.recv().await {
+                Ok(notification) => {
+                    let event = Event::default()
+                        .json_data(&notification)
+                        .unwrap_or_else(|_| Event::default());
+                    return Some((Ok(event), receiver));
+                }
+                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+// --- Helpers ----------------------------------------------------------------
+
+/// Mark a job's live stream finished and publish its completion notification.
+fn finish_and_notify(state: &AppState, notification: Notification) {
+    state.relay.live(&notification.job_id).finish();
+    state.relay.notifier().notify(notification);
+}
+
+/// Load a job and verify the request carries its per-job token. `404` for an
+/// unknown job, `401` for a missing or wrong token.
+async fn authorize_job(
+    state: &AppState,
+    id: &str,
+    headers: &HeaderMap,
+) -> Result<job::Model, ApiError> {
+    let job = state
+        .db
+        .get_job(id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    let token = bearer_token(headers).ok_or_else(|| ApiError::unauthorized("missing job token"))?;
+    if !token_matches(&token, &job.job_token) {
+        return Err(ApiError::unauthorized("invalid job token"));
+    }
+    Ok(job)
+}
+
+/// The run's display identity, lifted from the stored job columns.
+fn job_summary(job: &job::Model) -> JobSummary {
+    JobSummary {
+        test_case_slug: job.test_case_slug.clone(),
+        variant: job.variant.clone(),
+        harness_slug: job.harness_slug.clone(),
+        model_id: job.model_id.clone(),
+    }
+}
+
+/// The current UTC time as an RFC 3339 string, or a `500` if formatting fails.
+fn now_rfc3339() -> Result<String, ApiError> {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
+}
+
+/// Build the NDJSON byte stream for a job: the replayed backlog and latest
+/// previews, then the live tail, each item one `\n`-terminated JSON line, ending
+/// when the run does. `force_terminated` closes the stream after the backlog when
+/// the job is already terminal but its live buffer is gone.
+fn event_stream(
+    live: crate::relay::LiveJob,
+    force_terminated: bool,
+) -> impl Stream<Item = Result<Bytes, Infallible>> {
+    let sub = live.subscribe();
+    let terminated = sub.terminated || force_terminated;
+    let backlog = stream::iter(sub.backlog.into_iter().map(|event| Ok(encode_line(&event))));
+    let previews = stream::iter(
+        sub.previews
+            .into_iter()
+            .map(|preview| Ok(encode_preview_line(&preview))),
+    );
+    let live_tail = stream::unfold(
+        (terminated, sub.receiver),
+        |(done, mut receiver)| async move {
+            if done {
+                return None;
+            }
+            loop {
+                match receiver.recv().await {
+                    Ok(StreamItem::Event(event)) => {
+                        return Some((Ok(encode_line(&event)), (false, receiver)));
+                    }
+                    Ok(StreamItem::Preview(preview)) => {
+                        return Some((Ok(encode_preview_line(&preview)), (false, receiver)));
+                    }
+                    Ok(StreamItem::Done) => return None,
+                    Err(RecvError::Closed) => return None,
+                    Err(RecvError::Lagged(_)) => continue,
+                }
+            }
+        },
+    );
+    backlog.chain(previews).chain(live_tail)
+}
+
+/// Encode one event as a `\n`-terminated NDJSON line. A `HarnessEvent`'s fields
+/// are plain JSON-safe scalars, so a defensive empty line stands in for the
+/// impossible serialization error rather than aborting the stream.
+fn encode_line(event: &HarnessEvent) -> Bytes {
+    match serde_json::to_string(event) {
+        Ok(mut line) => {
+            line.push('\n');
+            Bytes::from(line)
+        }
+        Err(_) => Bytes::from_static(b"\n"),
+    }
+}
+
+/// Encode one live preview frame as a `\n`-terminated NDJSON line, tagged
+/// `type: "asset_preview"` so a subscriber tells it apart from a `HarnessEvent`
+/// (whose `type` is always one of the closed set of event kinds).
+fn encode_preview_line(preview: &AssetPreview) -> Bytes {
+    let mut value = serde_json::to_value(preview).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(object) = value.as_object_mut() {
+        object.insert("type".to_string(), serde_json::Value::from("asset_preview"));
+    }
+    match serde_json::to_string(&value) {
+        Ok(mut line) => {
+            line.push('\n');
+            Bytes::from(line)
+        }
+        Err(_) => Bytes::from_static(b"\n"),
+    }
+}
+
+// --- Wire shapes ------------------------------------------------------------
+
+/// The body of `POST /jobs`: what to run, with what, against which model. The
+/// canonical launch shape — stored verbatim and handed to the driver when the job
+/// is claimed.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LaunchBody {
+    /// Test-case slug to run (e.g. `pong`).
+    pub test_case: String,
+    /// Exact, immutable test-case version (e.g. `v1.0.0`).
+    pub version: String,
+    /// Variant to run (e.g. `base`).
+    pub variant: String,
+    /// Agent harness to drive.
+    pub harness: HarnessSlug,
+    /// Opaque model id passed to the harness.
+    pub model: String,
+    /// Built-in orchestrator slug that conducts the harness sessions (e.g.
+    /// `one-shot` or `ralph`). Omit for the `one-shot` default.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub orchestrator: Option<String>,
+    /// Optional override for the maximum harness runtime, in seconds.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_runtime_seconds: Option<u64>,
+}
+
+/// The response to a successful `POST /jobs`: the enqueued job's id and where to
+/// observe it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LaunchAck {
+    /// The id of the enqueued job.
+    pub job_id: String,
+    /// Where to poll the job's status.
+    pub status_url: String,
+    /// Where to stream the job's live progress (NDJSON).
+    pub live_url: String,
+}
+
+/// A job's lifecycle state on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum JobState {
+    /// Enqueued, awaiting a dispatcher to claim it.
+    Queued,
+    /// Claimed by the dispatcher; the driver Job is being created.
+    Dispatched,
+    /// The driver is executing the run.
+    Running,
+    /// The run produced a record.
+    Succeeded,
+    /// The run could not be driven to a record.
+    Failed,
+    /// The job was canceled before completing.
+    Canceled,
+}
+
+impl JobState {
+    /// Map the stored state string to the wire enum. An unrecognized value (which
+    /// the backend never writes) is treated as `queued`.
+    fn from_db(state: &str) -> Self {
+        match state {
+            "dispatched" => Self::Dispatched,
+            "running" => Self::Running,
+            "succeeded" => Self::Succeeded,
+            "failed" => Self::Failed,
+            "canceled" => Self::Canceled,
+            _ => Self::Queued,
+        }
+    }
+
+    /// Whether this is a terminal state (the run is over).
+    fn is_terminal(self) -> bool {
+        matches!(self, Self::Succeeded | Self::Failed | Self::Canceled)
+    }
+}
+
+/// One in-flight job, as `GET /jobs/active` reports it: the live/job id, the
+/// run's display identity (flattened), and its current state.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ActiveJobOut {
+    /// The job/stream id (`POST /jobs` returns this).
+    pub run_id: String,
+    /// The run's display identity.
+    #[serde(flatten)]
+    pub summary: JobSummary,
+    /// The job's current lifecycle state.
+    pub state: JobState,
+}
+
+/// A job's status, as `GET /jobs/{id}` reports it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct JobStatusOut {
+    /// The job id.
+    pub id: String,
+    /// Where the job is in its lifecycle.
+    pub state: JobState,
+    /// The produced run record's id, present once `state` is `succeeded` and the
+    /// run was completed (the row the console navigates to).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub record_id: Option<String>,
+    /// A human-readable failure reason, present when `state` is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub detail: Option<String>,
+}
+
+/// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the
+/// per-job driver token, and the launch request to run.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ClaimedJob {
+    /// The claimed job's id.
+    pub job_id: String,
+    /// The per-job token the driver presents to stream this job's progress back.
+    pub job_token: String,
+    /// The launch request to run.
+    pub request: LaunchBody,
+}
+
+/// The state a driver reports for a job via `POST /jobs/{id}/status`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum DriverState {
+    /// Execution has begun.
+    Running,
+    /// The run produced a record (carried in the same update).
+    Succeeded,
+    /// The run could not be driven to a record (reason in `detail`).
+    Failed,
+}
+
+/// The body of `POST /jobs/{id}/status`: the new driver state, plus the produced
+/// record on success or the reason on failure.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StatusUpdate {
+    /// The state the driver is reporting.
+    pub state: DriverState,
+    /// The produced run record, required when `state` is `succeeded`. Its `links`
+    /// are authoritative and stored with it.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub record: Option<RunRecord>,
+    /// A human-readable failure reason, used when `state` is `failed`.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub detail: Option<String>,
+}

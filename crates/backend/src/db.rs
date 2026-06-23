@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{review, run, run_link, snapshot_state, tournament};
+use test_cabinet_entities::{job, review, run, run_link, snapshot_state, tournament};
 
 use crate::error::Result;
 
@@ -764,6 +764,125 @@ fn sqlite_file_path(url: &str) -> Option<PathBuf> {
         return None;
     }
     Some(Path::new(path).to_path_buf())
+}
+
+/// A run to enqueue: the minted id and token, the verbatim launch request, and
+/// the identity columns lifted out of it for the active-run list.
+pub struct NewJob {
+    /// The job id, minted by the backend at enqueue.
+    pub id: String,
+    /// The launch request serialized verbatim (the `RunRequest` HTTP shape).
+    pub request_json: String,
+    /// The test-case slug, lifted for the active-run list.
+    pub test_case_slug: String,
+    /// The variant, lifted for the active-run list.
+    pub variant: String,
+    /// The harness slug, lifted for the active-run list.
+    pub harness_slug: String,
+    /// The opaque model id, lifted for the active-run list.
+    pub model_id: String,
+    /// The per-job bearer token the driver authenticates its streaming with.
+    pub job_token: String,
+    /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
+    pub created_at: String,
+}
+
+/// The run-queue operations on the store: enqueue, claim, advance, read. A job is
+/// the lifecycle of a requested run; the produced [`RunRecord`] lands via
+/// [`Db::push`] like any other.
+impl Db {
+    /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim.
+    pub async fn enqueue_job(&self, new: NewJob) -> Result<()> {
+        job::Entity::insert(job::ActiveModel {
+            id: Set(new.id),
+            state: Set("queued".to_string()),
+            request_json: Set(new.request_json),
+            test_case_slug: Set(new.test_case_slug),
+            variant: Set(new.variant),
+            harness_slug: Set(new.harness_slug),
+            model_id: Set(new.model_id),
+            job_token: Set(new.job_token),
+            record_id: Set(None),
+            detail: Set(None),
+            created_at: Set(new.created_at.clone()),
+            updated_at: Set(new.created_at),
+        })
+        .exec(&self.conn)
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically claim the oldest `queued` job, flipping it to `dispatched`, and
+    /// return it (or `None` when the queue is empty). The select-then-update runs
+    /// in one transaction; SQLite serializes writers (single-writer WAL), so two
+    /// dispatchers cannot claim the same job.
+    pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+        let txn = self.conn.begin().await?;
+        let candidate = job::Entity::find()
+            .filter(job::Column::State.eq("queued"))
+            .order_by_asc(job::Column::CreatedAt)
+            .order_by_asc(job::Column::Id)
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("dispatched".to_string());
+        active.updated_at = Set(now.to_string());
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
+    /// Advance a job to a new state, stamping `updated_at` and — when supplied —
+    /// the terminal `detail` (a failure reason) and `record_id` (the produced
+    /// run). Returns the updated row, or `None` when no job with `id` is stored.
+    pub async fn set_job_state(
+        &self,
+        id: &str,
+        state: &str,
+        now: &str,
+        detail: Option<&str>,
+        record_id: Option<&str>,
+    ) -> Result<Option<job::Model>> {
+        let Some(model) = job::Entity::find_by_id(id.to_string())
+            .one(&self.conn)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set(state.to_string());
+        active.updated_at = Set(now.to_string());
+        if let Some(detail) = detail {
+            active.detail = Set(Some(detail.to_string()));
+        }
+        if let Some(record_id) = record_id {
+            active.record_id = Set(Some(record_id.to_string()));
+        }
+        Ok(Some(active.update(&self.conn).await?))
+    }
+
+    /// Fetch one job by id.
+    pub async fn get_job(&self, id: &str) -> Result<Option<job::Model>> {
+        Ok(job::Entity::find_by_id(id.to_string())
+            .one(&self.conn)
+            .await?)
+    }
+
+    /// Every job still in flight (`queued`, `dispatched`, or `running`),
+    /// oldest-first by enqueue time. This is the console's active-run list: a run
+    /// it is watching survives a page reload because the backend remembers it.
+    pub async fn active_jobs(&self) -> Result<Vec<job::Model>> {
+        Ok(job::Entity::find()
+            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .order_by_asc(job::Column::CreatedAt)
+            .order_by_asc(job::Column::Id)
+            .all(&self.conn)
+            .await?)
+    }
 }
 
 #[cfg(test)]

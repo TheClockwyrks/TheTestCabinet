@@ -10,6 +10,7 @@
 //! and links in sibling tables keyed by the run id, and a single-row
 //! `snapshot_state` holding the snapshot coalescing flags.
 
+pub mod job;
 pub mod review;
 pub mod run;
 pub mod run_link;

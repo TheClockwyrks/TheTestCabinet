@@ -11,6 +11,7 @@
 //! missing/invalid token short-circuits with `401` before the handler body runs.
 
 use axum::extract::FromRequestParts;
+use axum::http::HeaderMap;
 use axum::http::request::Parts;
 
 use test_cabinet_core::Account;
@@ -45,10 +46,43 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
+/// The dispatcher's service identity, produced by the [`FromRequestParts`]
+/// extractor below: a request carrying the shared service token
+/// (`TCAB_BACKEND_SERVICE_TOKEN`). A handler that takes `ServiceAuth` is
+/// reachable only by the dispatcher. Distinct from [`AuthUser`] (a human
+/// account) — the service token is a backend↔dispatcher secret, not an account.
+#[derive(Debug, Clone, Copy)]
+pub struct ServiceAuth;
+
+impl FromRequestParts<AppState> for ServiceAuth {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let token =
+            bearer(parts).ok_or_else(|| ApiError::unauthorized("missing service token"))?;
+        let expected = state.config.service_token.as_deref().ok_or_else(|| {
+            ApiError::unauthorized("the dispatcher service token is not configured on this backend")
+        })?;
+        if !token_matches(&token, expected) {
+            return Err(ApiError::unauthorized("invalid service token"));
+        }
+        Ok(ServiceAuth)
+    }
+}
+
 /// Extract the bearer token from an `Authorization: Bearer <token>` header.
 fn bearer(parts: &Parts) -> Option<String> {
-    let value = parts
-        .headers
+    bearer_token(&parts.headers)
+}
+
+/// Extract the bearer token from a header map. Public so handlers that read the
+/// header before consuming the body (the driver's per-job-token streaming
+/// endpoints) can pull it without the [`AuthUser`]/[`ServiceAuth`] extractors.
+pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    let value = headers
         .get(axum::http::header::AUTHORIZATION)?
         .to_str()
         .ok()?;
@@ -57,4 +91,19 @@ fn bearer(parts: &Parts) -> Option<String> {
         .or_else(|| value.strip_prefix("bearer "))?
         .trim();
     (!token.is_empty()).then(|| token.to_string())
+}
+
+/// Constant-time string equality, so comparing a presented token against the
+/// expected one (the service token, or a job's stored token) leaks nothing about
+/// it through timing. A length mismatch is an immediate non-match.
+pub fn token_matches(presented: &str, expected: &str) -> bool {
+    let (presented, expected) = (presented.as_bytes(), expected.as_bytes());
+    if presented.len() != expected.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in presented.iter().zip(expected.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
 }
