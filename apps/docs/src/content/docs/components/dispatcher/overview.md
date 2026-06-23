@@ -58,7 +58,7 @@ reconcile driver `Job`s) and `core`/`pods` + `pods/log` get/list (to read a dead
 driver pod's status and logs for failure reporting). It creates **no** pods
 directly — the [driver](/components/driver/overview/) does that, under its own
 identity. The manifests are in
-[`deployments/k8s/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/rbac.yaml)
+[`deployments/k8s/base/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/rbac.yaml)
 and [Kubernetes: staging & prod](/deployment/kubernetes/#rbac).
 
 ## Status

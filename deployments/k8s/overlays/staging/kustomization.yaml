@@ -7,14 +7,14 @@
 # registry the cluster pulls from.
 #
 # Apply with:  kubectl apply -k deployments/k8s/overlays/staging
-# (after creating the real Secrets — see deployments/k8s/secrets.example.yaml).
+# (after creating the real Secrets — see deployments/k8s/base/secrets.example.yaml).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: tcab-staging
 
 resources:
-  - ../../
+  - ../../base
 
 # Retag TCAB_ENV (which the base sets to `prod`) and the dispatcher's driver-image
 # env value to staging values. patch-env.yaml is a multi-doc strategic merge, one

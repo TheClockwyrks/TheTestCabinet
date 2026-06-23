@@ -8,9 +8,9 @@
 #
 # With the dispatcher + driver/artifacts in the cluster, a run enqueued at the
 # backend schedules as a per-run driver Job in-cluster — full local/deploy parity,
-# no host worker. (The cluster's ingest CronJob and NetworkPolicy are omitted: the
-# Makefile ingests from the mounted checkout, and a local single-node CNI usually
-# does not enforce NetworkPolicy.)
+# no host worker. (The cluster's ingest CronJob and NetworkPolicies are omitted —
+# see the delete patches below: the Makefile ingests from the mounted checkout, and
+# a local single-node CNI usually does not enforce NetworkPolicy.)
 #
 # Brought up/down with one command via ../../../local/Makefile (`make local-up`).
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -18,14 +18,13 @@ kind: Kustomization
 
 namespace: tcab-local
 
+# Compose from the shared base directory, exactly as the staging/prod overlays do
+# (the base lives in a sibling `base/` dir, not a parent, so kustomize does not
+# flag an overlay→ancestor cycle). The base's Namespace object is renamed to
+# `tcab-local` by the `namespace:` directive above (the same way staging renames it
+# to `tcab-staging`), so the overlay needs no namespace.yaml of its own.
 resources:
-  - namespace.yaml
-  - ../../rbac.yaml
-  - ../../backend.yaml
-  - ../../auth.yaml
-  - ../../dispatcher.yaml
-  - ../../artifacts.yaml
-  - ../../arena.yaml
+  - ../../base
 
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
@@ -64,8 +63,70 @@ images:
 # keys stay absent locally (the backend skips the snapshot upload when unset).
 
 patches:
+  # Per-environment overrides for the always-on workloads (TCAB_ENV, the repo mount,
+  # the local namespaces + driver image, etc.).
   - path: patch-backend.yaml
   - path: patch-auth.yaml
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
   - path: patch-arena.yaml
+
+  # Drop the base resources the local stack does without. The Makefile force-ingests
+  # the catalog from the mounted checkout, so the ingest CronJob is redundant; and a
+  # single-node k3d CNI does not enforce NetworkPolicy, so the base policies are
+  # inert here — remove them rather than ship dead objects. Each delete targets a
+  # single resource by kind+name so it matches regardless of namespace.
+  - target:
+      kind: CronJob
+      name: tcab-ingest
+    patch: |-
+      $patch: delete
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: tcab-ingest
+  - target:
+      kind: NetworkPolicy
+      name: tcab-default-deny-ingress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-default-deny-ingress
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-services-from-runners
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-services-from-runners
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-arena-from-console
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-arena-from-console
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-artifacts-from-drivers
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-artifacts-from-drivers
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-driver-from-sandbox
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-driver-from-sandbox

@@ -31,7 +31,7 @@ RUN apt-get update \
 COPY --from=build /src/target/release/tcab-auth-service /usr/local/bin/tcab-auth-service
 
 # State paths are mounted at runtime (a PersistentVolumeClaim in the cluster, a
-# named volume locally). The compose file and deployments/k8s/auth.yaml set the
+# named volume locally). The compose file and deployments/k8s/base/auth.yaml set the
 # matching TCAB_AUTH_DATABASE_URL value.
 ENV TCAB_AUTH_BIND=0.0.0.0:8789
 

@@ -22,7 +22,7 @@ whose driver creates one sandbox pod." Any conformant Kubernetes cluster —
 managed (GKE, EKS, AKS) or self-hosted — works the same way.
 
 The example manifests referenced below live as a **kustomize base** under
-[`deployments/k8s/`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s),
+[`deployments/k8s/base/`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/base),
 with per-environment overlays under
 [`deployments/k8s/overlays/`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/overlays)
 and the environment values under
@@ -117,7 +117,7 @@ kubectl apply    -k deployments/k8s/overlays/prod    # or .../overlays/staging
 ```
 
 The base
-([`deployments/k8s/kustomization.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/kustomization.yaml))
+([`deployments/k8s/base/kustomization.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/kustomization.yaml))
 lists the namespace, RBAC, backend, auth, dispatcher, artifacts, arena, ingest
 CronJob, and NetworkPolicy resources; the overlay sets the namespace and `TCAB_ENV` and
 patches in the environment's images and secret references. Apply the **overlay**,
@@ -127,7 +127,7 @@ not the individual base files.
 
 Run execution now involves **two** in-cluster identities, each a namespaced
 `Role` (not a `ClusterRole`), bound to its own `ServiceAccount`. The example is
-[`deployments/k8s/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/rbac.yaml).
+[`deployments/k8s/base/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/rbac.yaml).
 
 ### Dispatcher (`tcab-dispatcher`)
 
@@ -163,7 +163,7 @@ The dispatcher is a thin, stateless **1-replica `Deployment`** with **no
 `Service`** — it binds no socket. It polls the backend's run queue, claims a
 queued run, and creates one driver Job for it; the trust model lives entirely in
 the driver and sandbox pod, so the dispatcher stays minimal. The example is
-[`deployments/k8s/dispatcher.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/dispatcher.yaml).
+[`deployments/k8s/base/dispatcher.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/dispatcher.yaml).
 
 Configure it with the dispatcher's environment (the full list is in
 [`crates/dispatcher/src/config.rs`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/crates/dispatcher/src/config.rs)
@@ -197,7 +197,7 @@ API (the same trust model the old worker used — a trusted process creates an
 untrusted sandbox), execs the harness in, copies the produced tree out, deletes
 the sandbox pod, and uploads the produced tree to the artifact service before
 reporting terminal status. The example Job template is
-[`deployments/k8s/dispatcher.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/dispatcher.yaml)
+[`deployments/k8s/base/dispatcher.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/dispatcher.yaml)
 (the dispatcher renders it).
 
 The dispatcher forwards the `TCAB_K8S_*` passthroughs and `TCAB_ARTIFACTS_URL`
@@ -242,7 +242,7 @@ proof/asset media) has to land somewhere durable before the run is reported
 terminal. That is the artifact service: a **1-replica `StatefulSet`** with a
 **`ClusterIP` `Service`** and a `PersistentVolumeClaim` at `TCAB_ARTIFACTS_ROOT`,
 bound to `0.0.0.0:8790`. The example is
-[`deployments/k8s/artifacts.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/artifacts.yaml).
+[`deployments/k8s/base/artifacts.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/artifacts.yaml).
 
 It runs under its **own `ServiceAccount` with no Kubernetes API access** — it only
 stores and serves bytes. The driver **uploads** to it; the **console reads** from
@@ -257,7 +257,7 @@ run on the arena service rather than the single-replica control-plane backend. I
 a **stateless** `Deployment` (not a `StatefulSet`, **no PVC**) with a **`ClusterIP`
 `Service`**, its own `ServiceAccount` (no Kubernetes API access), and real CPU
 `requests`/`limits`, bound to `0.0.0.0:8791`. The example is
-[`deployments/k8s/arena.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/arena.yaml).
+[`deployments/k8s/base/arena.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/arena.yaml).
 
 It runs **exactly one replica**: its in-flight tournament registry and live progress
 channel are in-memory and per-pod. It fetches every controller input from the backend
@@ -274,7 +274,7 @@ The backend with its default **SQLite** store is
 [stateful](/deployment/overview/): it owns a database file, an on-disk definition
 store, a checkout it ingests from, the **run queue**, and a headless browser for
 rendering references. As a `StatefulSet`
-([`deployments/k8s/backend.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/backend.yaml))
+([`deployments/k8s/base/backend.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/backend.yaml))
 three things are non-negotiable and follow directly from that:
 
 1. **A single replica.** SQLite is single-writer and the store is local, so the
@@ -319,7 +319,7 @@ deploy-hook calls need no inbound exposure.
 
 The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
 populated by calling `POST /ingest`. Run this as a `CronJob`
-([`deployments/k8s/ingest-cronjob.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/ingest-cronjob.yaml))
+([`deployments/k8s/base/ingest-cronjob.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/ingest-cronjob.yaml))
 that pulls the repository onto the backend's volume and then calls `POST /ingest`.
 Because the volume is persistent, this is a periodic refresh, not something that
 happens on every restart.
@@ -332,14 +332,14 @@ takes the same single-replica `StatefulSet` + `PersistentVolumeClaim` shape as t
 backend, or — pointed at a managed database via `TCAB_AUTH_DATABASE_URL` — runs as
 a plain `Deployment`. It renders nothing, holds no third-party secret (only
 Argon2id password hashes), and has no egress. The example is
-[`deployments/k8s/auth.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/auth.yaml);
+[`deployments/k8s/base/auth.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/auth.yaml);
 point the backend at it with `TCAB_BACKEND_AUTH_URL=http://tcab-auth:8789`.
 
 ## NetworkPolicy
 
 With no public `Ingress`, reachability is already limited to the cluster network.
 A namespace `NetworkPolicy`
-([`deployments/k8s/networkpolicy.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/networkpolicy.yaml))
+([`deployments/k8s/base/networkpolicy.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/networkpolicy.yaml))
 tightens it further with **default-deny ingress** and a small set of allowed
 flows. The pods carry selectable labels: sandbox pods are labelled
 `app.kubernetes.io/managed-by: tcab-driver`, and driver Job pods

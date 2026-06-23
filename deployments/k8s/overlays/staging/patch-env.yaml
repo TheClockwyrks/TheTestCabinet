@@ -5,6 +5,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: tcab-backend
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:
@@ -22,6 +24,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: tcab-auth
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:
@@ -35,6 +39,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: tcab-artifacts
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:
@@ -48,6 +54,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-arena
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:
@@ -61,6 +69,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:

@@ -79,7 +79,7 @@ kubectl -n tcab-prod create secret generic tcab-driver-subscription \
 ```
 
 Point the dispatcher at it (`TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`, see
-[`deployments/k8s/dispatcher.yaml`](https://github.com/) and the
+[`deployments/k8s/base/dispatcher.yaml`](https://github.com/) and the
 [dispatcher config](/components/dispatcher/overview/)); the dispatcher mounts it
 read-only into every driver Job and the driver maps each basename back to the
 harness's full container path. Mode selection is unchanged from the CLI path — a

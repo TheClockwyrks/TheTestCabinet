@@ -7,14 +7,14 @@
 #
 # Apply with:  kubectl apply -k deployments/k8s/overlays/prod
 # (after creating the real Secrets from your secret manager — see
-# deployments/k8s/secrets.example.yaml and the README).
+# deployments/k8s/base/secrets.example.yaml and the README).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: tcab-prod
 
 resources:
-  - ../../
+  - ../../base
 
 # Rewrite the placeholder REPLACE_REGISTRY image names to the registry the cluster
 # pulls from. Pin an immutable digest/tag in production rather than `latest`.

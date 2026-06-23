@@ -2,7 +2,7 @@
 # building — `tcab-staging` or `tcab-prod` — and pass `-n <name>` (or edit each
 # manifest's metadata.namespace) when applying the rest.
 #
-#   kubectl apply -f deployments/k8s/namespace.yaml
+#   kubectl apply -f deployments/k8s/base/namespace.yaml
 #
 # Tearing an environment down is `kubectl delete namespace tcab-<env>`.
 apiVersion: v1

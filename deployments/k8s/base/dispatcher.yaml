@@ -11,7 +11,7 @@
 # same claim (the backend's claim is atomic, so a second replica is merely wasted
 # work, not a correctness risk). It binds no socket, so it has no Service.
 #
-# It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/rbac.yaml),
+# It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/base/rbac.yaml),
 # which grants exactly jobs create/get/list/watch/delete plus pods + pods/log get
 # for failure reporting. See deployment/kubernetes.md and the dispatcher's
 # config docs (crates/dispatcher/src/config.rs) for every variable.
@@ -72,7 +72,7 @@ spec:
             # This is how the harness provider API key (e.g. ANTHROPIC_API_KEY) reaches
             # the run engine, which reads it from the driver pod's own environment —
             # exactly as the worker did. tcab-driver-secrets is defined in
-            # deployments/k8s/secrets.example.yaml.
+            # deployments/k8s/base/secrets.example.yaml.
             - name: TCAB_DISPATCHER_DRIVER_SECRETS
               value: "tcab-driver-secrets"
             # ── Subscription auth (ADDITIVE, parallel to the API-key path above) ──

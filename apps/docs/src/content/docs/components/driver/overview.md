@@ -75,7 +75,7 @@ Under the Kubernetes runtime the driver runs under the `tcab-driver`
 sandbox needs: `core`/`pods` create/get/list/delete and `core`/`pods/exec` create.
 The [dispatcher](/components/dispatcher/overview/) names this ServiceAccount on
 every `Job` it creates. The manifests are in
-[`deployments/k8s/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/rbac.yaml)
+[`deployments/k8s/base/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/rbac.yaml)
 and [Kubernetes: staging & prod](/deployment/kubernetes/#rbac).
 
 ## Status

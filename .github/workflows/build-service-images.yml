@@ -39,7 +39,7 @@ name: Build service images
 # tcab-artifacts, tcab-arena) to Public in the org's GHCR package settings if the
 # cluster should
 # pull them unauthenticated; otherwise reference them through an imagePullSecret
-# (see deployments/k8s/secrets.example.yaml).
+# (see deployments/k8s/base/secrets.example.yaml).
 on:
   push:
     branches: [master]

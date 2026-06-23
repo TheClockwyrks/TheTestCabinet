@@ -14,11 +14,13 @@ here uses **placeholder values** (`REPLACE_REGISTRY`, `REPLACE_OWNER`,
 
 ## Layout (kustomize base + overlays)
 
-The flat manifests in this directory are the shared **base**
-([`kustomization.yaml`](kustomization.yaml)); apply an **overlay**, never the base
-directly.
+The flat manifests live in [`base/`](base/) — the shared **base**
+([`base/kustomization.yaml`](base/kustomization.yaml)); apply an **overlay**, never
+the base directly. `base/` is a sibling of `overlays/` (not a parent) so an overlay
+can reference it as `../../base` without kustomize flagging an overlay→ancestor
+cycle.
 
-| File | What it is |
+| File (under `base/`) | What it is |
 | --- | --- |
 | `kustomization.yaml` | The base: lists every resource below for the overlays to reference. |
 | `namespace.yaml` | The per-environment namespace (`tcab-staging` / `tcab-prod`). |

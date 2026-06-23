@@ -35,7 +35,7 @@ RUN apt-get update \
 COPY --from=build /src/target/release/tcab-backend /usr/local/bin/tcab-backend
 
 # State paths are mounted at runtime (a PersistentVolumeClaim in the cluster, a
-# named volume locally). The compose file and deployments/k8s/backend.yaml set the
+# named volume locally). The compose file and deployments/k8s/base/backend.yaml set the
 # matching TCAB_BACKEND_DATABASE_URL / _STORE / _CHECKOUT values.
 ENV TCAB_BACKEND_BIND=0.0.0.0:8787 \
     TCAB_REFERENCE_BROWSER=/usr/bin/chromium

@@ -35,7 +35,7 @@ RUN apt-get update \
 COPY --from=build /src/target/release/tcab-artifacts /usr/local/bin/tcab-artifacts
 
 # The store root is mounted at runtime (a PersistentVolumeClaim in the cluster);
-# deployments/k8s/artifacts.yaml sets the matching TCAB_ARTIFACTS_ROOT.
+# deployments/k8s/base/artifacts.yaml sets the matching TCAB_ARTIFACTS_ROOT.
 ENV TCAB_ARTIFACTS_BIND=0.0.0.0:8790
 
 EXPOSE 8790

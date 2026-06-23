@@ -9,7 +9,7 @@
 //! uses), runs the harness session with `exec`, and deletes the pod when the run
 //! ends. The driver pod (the trusted pod that creates this untrusted sandbox)
 //! needs no container engine and no privilege — only RBAC to manage pods in its
-//! run namespace (see `deployments/k8s/rbac.yaml`).
+//! run namespace (see `deployments/k8s/base/rbac.yaml`).
 //!
 //! This is a duplicate of the worker's `src/kubernetes.rs`: the per-run-Job
 //! refactor moves the sandbox runtime into the driver, but the worker keeps its

@@ -7,6 +7,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
 spec:
   template:
     spec:
