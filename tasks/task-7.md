@@ -1,8 +1,24 @@
 # Task 7 — Subscription-based harness auth in the service flow (CRITICAL)
 
-**Status:** not started. **Priority:** critical. **Depends on:** the driver +
-dispatcher (done, tasks 1–2). **Relates to:** the local k3d secrets path
+**Status:** ✅ **DONE** (2026-06-23, uncommitted) — **option 1 (operator-provided
+subscription Secret)** shipped. Per-account vault (option 2) **deferred** to its
+own follow-up (tracked in `context.md`). **Depends on:** the driver + dispatcher
+(done, tasks 1–2). **Relates to:** the local k3d secrets path
 (`deployments/local/Makefile`).
+
+> **What landed:** a `CredBytesSource` seam in `crates/core/src/auth.rs`
+> (`HostCreds` keeps the CLI/desktop host path byte-for-byte; `MapCreds` +
+> `resolve_auth_with` feed injected bytes), a defaulted `RunEngine.creds` field,
+> driver `mounted_creds` (reads `TCAB_DRIVER_SUBSCRIPTION_DIR`, keyed by
+> `basename(container_path)`, no `~` access), dispatcher forwarding via
+> `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_{SECRET,DIR}` (optional Secret volume,
+> `optional: true`), `LaunchBody.auth_mode`, the local-Makefile optional
+> subscription-secret block, docs, and unit tests. Verified: workspace
+> build/clippy(-D warnings)/tests, `gen:contract` drift-clean, docs build.
+> **Still needs a real k8s/docker machine:** the k3d e2e (Antigravity + a Claude
+> subscription run via the console; API-key runs unaffected).
+>
+> The original design write-up is kept below as the record.
 
 ## Goal
 

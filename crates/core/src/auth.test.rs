@@ -127,62 +127,84 @@ fn locking_subscription_fails_without_credentials_even_if_key_present() {
 
 // --- Subscription credential presence and reading -----------------------------
 
-/// Build a resolved credential pointing at a host path.
-fn cred(host_path: std::path::PathBuf, required: bool) -> ResolvedCred {
-    ResolvedCred {
-        host_path,
-        container_path: "/home/node/cred",
+use std::collections::HashMap;
+
+/// A static `CredFile` for a container path, with the required flag under test.
+fn cred(container_path: &'static str, required: bool) -> CredFile {
+    CredFile {
+        source: CredSource::HomeRelative("unused"),
+        container_path,
         mode: 0o600,
         required,
     }
 }
 
-#[test]
-fn subscription_absent_without_any_required_file() {
-    // An optional-only set is never "present": there is nothing that must exist.
-    let dir = tempfile::tempdir().unwrap();
-    let creds = [cred(dir.path().join("optional"), false)];
-    assert!(!subscription_present(&creds));
+/// A spec over a leaked slice of files (the trait carries `&'static [CredFile]`).
+fn spec(files: Vec<CredFile>) -> SubscriptionSpec {
+    SubscriptionSpec {
+        files: Box::leak(files.into_boxed_slice()),
+    }
+}
+
+/// A [`MapCreds`] keyed by container path from `(path, bytes)` pairs.
+fn map_creds(entries: &[(&str, &[u8])]) -> MapCreds {
+    MapCreds::new(
+        entries
+            .iter()
+            .map(|(path, bytes)| (path.to_string(), bytes.to_vec()))
+            .collect::<HashMap<_, _>>(),
+    )
 }
 
 #[test]
-fn subscription_present_only_when_every_required_file_exists() {
-    let dir = tempfile::tempdir().unwrap();
-    let present = dir.path().join("present");
-    let missing = dir.path().join("missing");
-    std::fs::write(&present, b"token").unwrap();
+fn subscription_absent_without_any_required_file() {
+    // An optional-only set is never "present": there is nothing that must exist.
+    let spec = spec(vec![cred("/home/node/optional", false)]);
+    let creds = map_creds(&[("/home/node/optional", b"x")]);
+    assert!(!subscription_present(&spec, &creds));
+}
 
-    assert!(subscription_present(&[cred(present.clone(), true)]));
-    assert!(!subscription_present(&[
-        cred(present.clone(), true),
-        cred(missing, true),
-    ]));
+#[test]
+fn subscription_present_only_when_every_required_file_is_supplied() {
+    let spec = spec(vec![
+        cred("/home/node/a", true),
+        cred("/home/node/b", true),
+    ]);
+    assert!(subscription_present(
+        &spec,
+        &map_creds(&[("/home/node/a", b"x"), ("/home/node/b", b"y")]),
+    ));
+    // One required file missing from the source ⇒ not present.
+    assert!(!subscription_present(
+        &spec,
+        &map_creds(&[("/home/node/a", b"x")]),
+    ));
 }
 
 #[test]
 fn subscription_plan_reads_required_and_present_optional_files() {
-    let dir = tempfile::tempdir().unwrap();
-    let required = dir.path().join("required");
-    let optional = dir.path().join("optional");
-    std::fs::write(&required, b"required-bytes").unwrap();
-    std::fs::write(&optional, b"optional-bytes").unwrap();
+    let spec = SubscriptionSpec {
+        files: &[
+            CredFile {
+                source: CredSource::HomeRelative("unused"),
+                container_path: "/home/node/.codex/auth.json",
+                mode: 0o600,
+                required: true,
+            },
+            CredFile {
+                source: CredSource::HomeRelative("unused"),
+                container_path: "/home/node/.claude.json",
+                mode: 0o640,
+                required: false,
+            },
+        ],
+    };
+    let creds = map_creds(&[
+        ("/home/node/.codex/auth.json", b"required-bytes"),
+        ("/home/node/.claude.json", b"optional-bytes"),
+    ]);
 
-    let creds = vec![
-        ResolvedCred {
-            host_path: required,
-            container_path: "/home/node/.codex/auth.json",
-            mode: 0o600,
-            required: true,
-        },
-        ResolvedCred {
-            host_path: optional,
-            container_path: "/home/node/.claude.json",
-            mode: 0o640,
-            required: false,
-        },
-    ];
-
-    let plan = subscription_plan(HarnessSlug::Codex, creds).unwrap();
+    let plan = subscription_plan(HarnessSlug::Codex, spec, &creds).unwrap();
     let AuthPlan::Subscription { files } = plan else {
         panic!("expected a subscription plan");
     };
@@ -195,22 +217,15 @@ fn subscription_plan_reads_required_and_present_optional_files() {
 
 #[test]
 fn subscription_plan_skips_an_absent_optional_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let required = dir.path().join("required");
-    std::fs::write(&required, b"token").unwrap();
+    let spec = spec(vec![
+        cred("/home/node/.codex/auth.json", true),
+        // Optional, not in the source — must be silently skipped, not an error.
+        cred("/home/node/never-supplied", false),
+    ]);
+    let creds = map_creds(&[("/home/node/.codex/auth.json", b"token")]);
 
-    let creds = vec![
-        ResolvedCred {
-            host_path: required,
-            container_path: "/home/node/.codex/auth.json",
-            mode: 0o600,
-            required: true,
-        },
-        // Optional, never created — must be silently skipped, not an error.
-        cred(dir.path().join("never-created"), false),
-    ];
-
-    let AuthPlan::Subscription { files } = subscription_plan(HarnessSlug::Codex, creds).unwrap()
+    let AuthPlan::Subscription { files } =
+        subscription_plan(HarnessSlug::Codex, spec, &creds).unwrap()
     else {
         panic!("expected a subscription plan");
     };
@@ -219,11 +234,121 @@ fn subscription_plan_skips_an_absent_optional_file() {
 
 #[test]
 fn subscription_plan_errors_when_a_required_file_is_missing() {
-    let dir = tempfile::tempdir().unwrap();
-    let creds = vec![cred(dir.path().join("missing"), true)];
-    let err = subscription_plan(HarnessSlug::Codex, creds).unwrap_err();
+    let spec = spec(vec![cred("/home/node/required", true)]);
+    let creds = map_creds(&[]);
+    let err = subscription_plan(HarnessSlug::Codex, spec, &creds).unwrap_err();
     // The error names the credential that could not be read.
-    assert!(err.to_string().contains("missing"), "got: {err}");
+    assert!(err.to_string().contains("/home/node/required"), "got: {err}");
+}
+
+#[test]
+fn host_creds_skip_absent_optional_and_read_present_files() {
+    // HostCreds reads from the filesystem; point a file at a real temp path and an
+    // absent one at a path that does not exist, confirming the host path is
+    // preserved exactly.
+    let dir = tempfile::tempdir().unwrap();
+    let present = dir.path().join("present");
+    std::fs::write(&present, b"host-bytes").unwrap();
+
+    let present_file = CredFile {
+        source: CredSource::HomeRelative("present"),
+        container_path: "/home/node/present",
+        mode: 0o600,
+        required: true,
+    };
+    // Override $HOME so the HomeRelative path resolves under the temp dir. Env is
+    // process-global, so serialize and restore.
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prev_home = std::env::var_os("HOME");
+    unsafe { std::env::set_var("HOME", dir.path()) };
+    assert_eq!(
+        HostCreds.read(&present_file).unwrap(),
+        Some(b"host-bytes".to_vec())
+    );
+    let absent_file = CredFile {
+        source: CredSource::HomeRelative("never-created"),
+        container_path: "/home/node/x",
+        mode: 0o600,
+        required: false,
+    };
+    assert_eq!(HostCreds.read(&absent_file).unwrap(), None);
+    match prev_home {
+        Some(home) => unsafe { std::env::set_var("HOME", home) },
+        None => unsafe { std::env::remove_var("HOME") },
+    }
+}
+
+// --- resolve_auth_with over an injected source --------------------------------
+//
+// These exercise the real subscription-only Antigravity adapter (no API-key
+// mode), so the selection policy is tested end-to-end with the injected source
+// standing in for the host filesystem — exactly what the driver does. They never
+// read the host filesystem: the credential bytes come from a `MapCreds`.
+
+use crate::harness::HarnessRegistry;
+use crate::harness_registry::DefaultHarnessRegistry;
+
+/// Antigravity's single required credential, by container path.
+const ANTIGRAVITY_CRED: &str = "/home/node/.gemini/antigravity-cli/antigravity-oauth-token";
+
+/// The env lock and cleaner for the tests that must touch `TCAB_AUTH_MODE`
+/// (process-global, so serialized).
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn clear_auth_env() {
+    for var in ["TCAB_AUTH_MODE", "TCAB_AUTH_MODE_ANTIGRAVITY"] {
+        unsafe { std::env::remove_var(var) };
+    }
+}
+
+#[test]
+fn resolve_auth_with_selects_subscription_from_the_map() {
+    // No env set ⇒ auto; Antigravity has no API key, so an available subscription
+    // is chosen, and the plan carries exactly the injected bytes + mode.
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    clear_auth_env();
+    let registry = DefaultHarnessRegistry::new();
+    let harness = registry.get(HarnessSlug::Antigravity).unwrap();
+    let creds = map_creds(&[(ANTIGRAVITY_CRED, b"oauth")]);
+    let plan = resolve_auth_with(harness, &creds).unwrap();
+    let AuthPlan::Subscription { files } = plan else {
+        panic!("expected subscription");
+    };
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].container_path, ANTIGRAVITY_CRED);
+    assert_eq!(files[0].contents, b"oauth");
+    assert_eq!(files[0].mode, 0o600);
+}
+
+#[test]
+fn resolve_auth_with_unavailable_when_map_empty_and_no_api_key() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    clear_auth_env();
+    let registry = DefaultHarnessRegistry::new();
+    let harness = registry.get(HarnessSlug::Antigravity).unwrap();
+    let err = resolve_auth_with(harness, &MapCreds::default()).unwrap_err();
+    assert!(matches!(err, Error::HarnessUnavailable { .. }), "got: {err}");
+}
+
+#[test]
+fn resolve_auth_with_honors_locked_subscription_mode() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    clear_auth_env();
+    unsafe { std::env::set_var("TCAB_AUTH_MODE", "subscription") };
+    let registry = DefaultHarnessRegistry::new();
+    let harness = registry.get(HarnessSlug::Antigravity).unwrap();
+    let creds = map_creds(&[(ANTIGRAVITY_CRED, b"oauth")]);
+    let plan = resolve_auth_with(harness, &creds);
+    clear_auth_env();
+    assert!(matches!(plan, Ok(AuthPlan::Subscription { .. })));
 }
 
 #[test]

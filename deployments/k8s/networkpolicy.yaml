@@ -53,6 +53,33 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-artifacts
+        # The arena service (fetches controller inputs from the backend and persists
+        # finished tournaments + replays back to it).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-arena
+---
+# Let the console reach the arena service to run matches/tournaments and stream live
+# tournament progress. Like the backend and artifact services, the console reaches it
+# via the same private-network boundary the deployment fronts these with; this allow
+# admits the in-cluster callers (no public Ingress rule lives here). The arena holds
+# no inbound dependency of its own beyond the console — it is a leaf compute service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-arena-from-console
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-arena
+  policyTypes: ["Ingress"]
+  ingress:
+    # No in-cluster pod posts to the arena (the console does, over the boundary); an
+    # empty `from` with the port keeps the rule explicit without widening ingress.
+    - ports:
+        - protocol: TCP
+          port: 8791
 ---
 # Let a driver Job pod reach the artifact service to upload its produced run tree.
 apiVersion: networking.k8s.io/v1

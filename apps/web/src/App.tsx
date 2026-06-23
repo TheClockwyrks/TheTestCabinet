@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter } from "react-router";
 import {
   AuthProvider,
@@ -13,6 +13,7 @@ import {
   useLiveGallery,
 } from "@test-cabinet/ui/app";
 import { createHttpArena } from "./transport/httpArena";
+import { fetchArenaUrl } from "./transport/httpBackend";
 import {
   useBackendConnection,
   useExecConnection,
@@ -48,14 +49,28 @@ export function App() {
 }
 
 function WebGallery() {
-  // The arena runs matches and reads persisted tournaments against the single
-  // backend URL; it is offered only when a backend is configured (the gallery
-  // additionally gates the run UI on `canExecute`). Rebuilt when the backend
-  // changes so it always targets the current connection.
+  // The arena reads persisted tournaments from the backend but runs matches and
+  // tournaments against the dedicated `tcab-arena` service, whose base URL the
+  // backend reports at `GET /config`. Resolve it once per backend (best-effort:
+  // null leaves the run methods to fail loudly and the gallery to degrade the
+  // adversarial run UI, which it already gates on `canExecute`). The arena handle is
+  // rebuilt when either URL changes so it always targets the current connection.
   const { url: backendUrl } = useBackend();
+  const [arenaUrl, setArenaUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setArenaUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchArenaUrl(backendUrl)
+      .then((u) => active && setArenaUrl(u))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
   const arena = useMemo(
-    () => (backendUrl ? createHttpArena(backendUrl) : undefined),
-    [backendUrl],
+    () => (backendUrl ? createHttpArena(backendUrl, arenaUrl) : undefined),
+    [backendUrl, arenaUrl],
   );
   const data = useLiveGallery(arena);
   return (

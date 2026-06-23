@@ -87,6 +87,14 @@ pub struct Config {
     /// unresolved. This is the one data-plane URL the control plane exposes; the
     /// artifact bytes themselves never transit the backend.
     pub artifacts_url: Option<String>,
+    /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
+    /// reported to the console via `GET /config` so it can POST adversarial
+    /// matches/tournaments and stream live tournament progress against the data
+    /// plane. `None` when no arena service is configured (e.g. a single-box dev
+    /// setup) — the console then degrades the adversarial run UI. Like
+    /// `artifacts_url` this is a data-plane URL the control plane merely advertises;
+    /// the arena talks HTTP back to this backend for its inputs and results.
+    pub arena_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -131,6 +139,9 @@ impl Config {
         let artifacts_url = nonempty("TCAB_ARTIFACTS_PUBLIC_URL")
             .map(|url| url.trim_end_matches('/').to_string());
 
+        let arena_url = nonempty("TCAB_ARENA_PUBLIC_URL")
+            .map(|url| url.trim_end_matches('/').to_string());
+
         Ok(Self {
             bind,
             database_url,
@@ -143,6 +154,7 @@ impl Config {
             coalesce: Duration::from_millis(coalesce_ms),
             reference_browser,
             artifacts_url,
+            arena_url,
         })
     }
 }

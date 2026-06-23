@@ -23,6 +23,7 @@
 pub mod artifacts;
 pub mod client;
 pub mod config;
+pub mod creds;
 pub mod kubernetes;
 pub mod run;
 pub mod sink;

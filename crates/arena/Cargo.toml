@@ -1,0 +1,57 @@
+[package]
+name = "test-cabinet-arena"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab-arena"
+path = "src/main.rs"
+
+[lib]
+name = "test_cabinet_arena"
+path = "src/lib.rs"
+
+[dependencies]
+# The shared adversarial engine lives in core: `match_play` (`run_quick_match`,
+# `run_tournament`) plus `HttpBackendClient`, which transitively brings in
+# `foray-host`/`wasmtime` (the CPU-bound wasm sandbox a match executes in). So
+# the arena reuses the engine, not reinvents it.
+test-cabinet-core = { path = "../core" }
+# A quick match's response carries a `foray-core` `Replay` (the browser-playable
+# recording); depend on it for that one type, as the worker did.
+foray-core = { path = "../foray-core" }
+# A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
+# propagation-only default is for libraries like `core`), exactly as the other
+# services' mains do.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+dotenvy = { workspace = true }
+
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+opentelemetry = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+# The live tournament NDJSON stream chains a backlog and a live tail.
+futures-util = { workspace = true }
+# Tournament `created_at` timestamps, RFC3339, as in the worker.
+time = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+# `util` brings `ServiceExt::oneshot` so the router can be exercised end-to-end in
+# tests without binding a socket, exactly as the artifact service's tests do.
+tower = { workspace = true, features = ["util"] }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

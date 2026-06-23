@@ -9,6 +9,15 @@
 //! sandbox's live-preview frames back to itself. Any configured driver `Secret`s
 //! (the harness provider API key) are mounted into the pod's env via `envFrom`.
 //!
+//! When a subscription `Secret` is configured, it is mounted as a **read-only
+//! volume** (not env) at the configured directory, with `optional: true` so a
+//! missing Secret never wedges an API-key-only driver pod, and the driver is told
+//! where to find it via `TCAB_DRIVER_SUBSCRIPTION_DIR`. This is an additive,
+//! parallel path to the API-key `envFrom` path — the two are independent. The
+//! kubelet projects the Secret as files itself, so the dispatcher's
+//! ServiceAccount needs **no** Secret-read RBAC for the volume mount (only an
+//! API-read of a Secret would); none is added.
+//!
 //! [`build_driver_job`] is **pure** given a [`ClaimedJob`] and the [`Config`], so
 //! the manifest shape is unit-tested without a cluster — the same discipline the
 //! driver/worker apply to their pod builders.
@@ -26,7 +35,7 @@ use std::collections::BTreeMap;
 use k8s_openapi::api::batch::v1::{Job, JobSpec};
 use k8s_openapi::api::core::v1::{
     Container, EnvFromSource, EnvVar, EnvVarSource, ObjectFieldSelector, PodSpec, PodTemplateSpec,
-    ResourceRequirements, SecretEnvSource,
+    ResourceRequirements, SecretEnvSource, SecretVolumeSource, Volume, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -45,6 +54,9 @@ pub const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 
 /// The name of the single container in each driver `Job`'s pod.
 const DRIVER_CONTAINER: &str = "driver";
+
+/// The volume name the subscription `Secret` is mounted under, when configured.
+const SUBSCRIPTION_VOLUME: &str = "subscription-creds";
 
 /// The label selector that matches exactly the driver `Job`s this dispatcher owns.
 pub fn managed_selector() -> String {
@@ -95,11 +107,28 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
             .collect()
     });
 
+    // Subscription auth (additive, parallel to the API-key `envFrom` path above):
+    // when a subscription Secret is configured, mount it read-only as a volume of
+    // credential files and tell the driver where to find it. `optional: true` keeps
+    // the pod schedulable when no such Secret exists, and `TCAB_AUTH_MODE` is
+    // forwarded only when the operator locked a mode.
+    let (volumes, volume_mounts) = subscription_volumes(config);
+    if config.driver_subscription_secret.is_some() {
+        env.push(plain_env(
+            "TCAB_DRIVER_SUBSCRIPTION_DIR",
+            &config.subscription_dir,
+        ));
+    }
+    if let Some(mode) = &config.driver_auth_mode {
+        env.push(plain_env("TCAB_AUTH_MODE", mode));
+    }
+
     let container = Container {
         name: DRIVER_CONTAINER.to_string(),
         image: Some(config.driver_image.clone()),
         env: Some(env),
         env_from,
+        volume_mounts,
         // The driver pod needs no resource requests of its own here; it is a thin
         // control process. Leaving `resources` unset omits the field.
         resources: None::<ResourceRequirements>,
@@ -108,6 +137,7 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
 
     let pod_spec = PodSpec {
         containers: vec![container],
+        volumes,
         // A driver that fails has already reported (or will be reported by the
         // dispatcher's death detection); never restart its container in place.
         restart_policy: Some("Never".to_string()),
@@ -183,6 +213,37 @@ fn plain_env(name: &str, value: &str) -> EnvVar {
         value: Some(value.to_string()),
         value_from: None,
     }
+}
+
+/// The read-only subscription-Secret volume and its mount, when a subscription
+/// Secret is configured — else `(None, None)` so the fields are omitted entirely
+/// (an API-key-only driver pod carries no extra volume). The Secret is mounted
+/// with mode `0o600` (credential files are never group- or world-readable) and
+/// `optional: true`, so a missing Secret never blocks the pod from scheduling.
+fn subscription_volumes(config: &Config) -> (Option<Vec<Volume>>, Option<Vec<VolumeMount>>) {
+    let Some(secret_name) = &config.driver_subscription_secret else {
+        return (None, None);
+    };
+    let volume = Volume {
+        name: SUBSCRIPTION_VOLUME.to_string(),
+        secret: Some(SecretVolumeSource {
+            secret_name: Some(secret_name.clone()),
+            // 0o600 in decimal: credentials stay owner-only, matching the modes the
+            // run engine applies when copying them into the sandbox.
+            default_mode: Some(0o600),
+            // A missing Secret must not wedge non-subscription driver pods.
+            optional: Some(true),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mount = VolumeMount {
+        name: SUBSCRIPTION_VOLUME.to_string(),
+        mount_path: config.subscription_dir.clone(),
+        read_only: Some(true),
+        ..Default::default()
+    };
+    (Some(vec![volume]), Some(vec![mount]))
 }
 
 /// The `TCAB_K8S_POD_IP` env var sourced from the downward API

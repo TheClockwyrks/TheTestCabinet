@@ -53,6 +53,15 @@ pub struct LaunchBody {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_seconds: Option<u64>,
+    /// Optional harness authentication mode for this run (`auto`, `subscription`,
+    /// or `api-key`). Omitted keeps the default behavior (API-key, preferring a
+    /// subscription only when its credentials are available). The driver applies
+    /// it by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console
+    /// can request subscription mode for a backend-driven run (the only way to run
+    /// the subscription-only Antigravity harness on the cluster path).
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub auth_mode: Option<String>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

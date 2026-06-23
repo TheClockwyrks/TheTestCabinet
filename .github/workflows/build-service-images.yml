@@ -12,7 +12,11 @@ name: Build service images
 #                          TCAB_DRIVER_RUNTIME=kubernetes it spawns one sandbox pod
 #                          per run via the API and needs no container engine; and
 #   - tcab-artifacts     — the artifact service (tcab-artifacts), a slim runtime
-#                          that serves produced run trees off a persistent volume.
+#                          that serves produced run trees off a persistent volume;
+#                          and
+#   - tcab-arena         — the arena service (tcab-arena), a slim STATELESS runtime
+#                          that runs adversarial matches/tournaments (CPU-bound wasm)
+#                          and talks HTTP to the backend only (no volume, no browser).
 # Each is built from its Dockerfile under deployments/images/ with the repository
 # root as the build context (the Dockerfiles compile their crate from source), and
 # tagged both `:latest` and `:<git-sha>` so a deployment can pin an immutable
@@ -32,7 +36,8 @@ name: Build service images
 #
 # One-time setup: after the first successful push, set each published package's
 # visibility (tcab-backend, tcab-auth-service, tcab-dispatcher, tcab-driver,
-# tcab-artifacts) to Public in the org's GHCR package settings if the cluster should
+# tcab-artifacts, tcab-arena) to Public in the org's GHCR package settings if the
+# cluster should
 # pull them unauthenticated; otherwise reference them through an imagePullSecret
 # (see deployments/k8s/secrets.example.yaml).
 on:
@@ -84,6 +89,9 @@ jobs:
           - name: artifacts
             image: tcab-artifacts
             dockerfile: deployments/images/artifacts.Dockerfile
+          - name: arena
+            image: tcab-arena
+            dockerfile: deployments/images/arena.Dockerfile
     steps:
       - uses: actions/checkout@v6
 

@@ -90,7 +90,7 @@ pub enum CredSource {
 
 impl CredSource {
     /// Resolve the host path this source points at, from the current environment.
-    fn host_path(&self) -> PathBuf {
+    pub(crate) fn host_path(&self) -> PathBuf {
         match self {
             CredSource::HomeRelative(rel) => home_dir().join(rel),
             CredSource::HomeDir {
@@ -104,6 +104,94 @@ impl CredSource {
                 dir.join(file)
             }
         }
+    }
+}
+
+impl SubscriptionSpec {
+    /// The credential files this subscription declares, in order. Used by the
+    /// driver to enumerate a harness's subscription files (their
+    /// [`container_path`](CredFile::container_path) and mode) without duplicating
+    /// the per-harness list — it maps a mounted Secret's keys back to these paths.
+    pub fn files(&self) -> &'static [CredFile] {
+        self.files
+    }
+}
+
+/// A source of subscription credential bytes, keyed by the
+/// [`CredFile`](CredFile) being read.
+///
+/// This is the seam that lets a subscription be authenticated from somewhere
+/// other than the host filesystem. The CLI/desktop path reads the credential
+/// files the user signed in with on a trusted host ([`HostCreds`]); the driver,
+/// which runs in an ephemeral pod with no such files, reads bytes from an
+/// operator-provided Secret mounted into the pod ([`MapCreds`]).
+///
+/// A required file the source cannot supply fails the run with the same
+/// [`Error::HarnessUnavailable`] the host path returns; an optional file the
+/// source cannot supply is simply not copied.
+pub trait CredBytesSource {
+    /// Read the bytes for one credential file, or `Ok(None)` when the source has
+    /// no such file (the equivalent of a host file that does not exist). An I/O
+    /// error is surfaced; for a required file it fails the run.
+    fn read(&self, file: &CredFile) -> std::io::Result<Option<Vec<u8>>>;
+
+    /// Whether the source can supply this file, without reading its contents.
+    /// Used by the cost-free readiness check; the default reads the bytes (cheap
+    /// for the small credential files), and [`HostCreds`] overrides it with a
+    /// filesystem-existence check so readiness never opens the file.
+    fn present(&self, file: &CredFile) -> bool {
+        matches!(self.read(file), Ok(Some(_)))
+    }
+}
+
+/// A [`CredBytesSource`] backed by the host filesystem — the CLI/desktop path.
+///
+/// It resolves each [`CredFile`]'s [`CredSource`] against the current host
+/// environment and reads it with `std::fs`, mapping `NotFound` to `Ok(None)` so
+/// an absent optional file is skipped (the exact behavior the in-process run path
+/// has always had).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HostCreds;
+
+impl CredBytesSource for HostCreds {
+    fn read(&self, file: &CredFile) -> std::io::Result<Option<Vec<u8>>> {
+        match std::fs::read(file.source.host_path()) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Cost-free existence check: the readiness listing only needs to know whether
+    /// the file is there, never its contents.
+    fn present(&self, file: &CredFile) -> bool {
+        file.source.host_path().exists()
+    }
+}
+
+/// A [`CredBytesSource`] backed by an in-memory map keyed by each file's
+/// [`container_path`](CredFile::container_path) — the driver/cluster path.
+///
+/// The driver builds this from an operator-provided Secret mounted into its pod
+/// (the Secret's keys are credential basenames, which the driver maps back to the
+/// full container paths). A missing key returns `Ok(None)`, so an optional file
+/// the operator did not include is skipped and core enforces required-ness.
+#[derive(Debug, Clone, Default)]
+pub struct MapCreds {
+    /// Credential bytes keyed by [`CredFile::container_path`].
+    by_container_path: std::collections::HashMap<String, Vec<u8>>,
+}
+
+impl MapCreds {
+    /// Build a `MapCreds` from credential bytes keyed by container path.
+    pub fn new(by_container_path: std::collections::HashMap<String, Vec<u8>>) -> Self {
+        Self { by_container_path }
+    }
+}
+
+impl CredBytesSource for MapCreds {
+    fn read(&self, file: &CredFile) -> std::io::Result<Option<Vec<u8>>> {
+        Ok(self.by_container_path.get(file.container_path).cloned())
     }
 }
 
@@ -147,14 +235,6 @@ impl AuthPlan {
     }
 }
 
-/// A credential file resolved against the current host environment.
-struct ResolvedCred {
-    host_path: PathBuf,
-    container_path: &'static str,
-    mode: u32,
-    required: bool,
-}
-
 /// Which mode a [`select`] decision landed on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Selection {
@@ -186,15 +266,40 @@ fn select(mode: RequestedAuthMode, api_available: bool, subscription_available: 
 /// subscription when present, else an API key. Returns a clear
 /// [`Error::HarnessUnavailable`] naming what to set or sign in to when the
 /// requested mode's credentials are not available.
+///
+/// This is the CLI/desktop path: the subscription credentials are read from the
+/// host filesystem ([`HostCreds`]). The driver, which has no such files, uses
+/// [`resolve_auth_with`] with a [`MapCreds`] built from a mounted Secret.
 pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
+    resolve_auth_with(harness, &HostCreds)
+}
+
+/// Resolve the authentication plan for a harness, drawing any subscription
+/// credentials from `creds` rather than assuming the host filesystem.
+///
+/// The mode selection is identical to [`resolve_auth`] — the requested mode
+/// (`TCAB_AUTH_MODE[_<SLUG>]`) is still honored from the environment and `auto`
+/// still prefers a subscription when present — only *where the credential bytes
+/// come from* differs. The driver passes a [`MapCreds`] over its mounted Secret;
+/// the CLI/desktop pass [`HostCreds`] (the [`resolve_auth`] default).
+//
+// The per-account credential vault (the deferred multi-tenant follow-up) would
+// slot in here as another `CredBytesSource` — one keyed to the enqueuing account
+// rather than a single operator Secret — with no change to the selection policy.
+pub fn resolve_auth_with(harness: &dyn AgentHarness, creds: &dyn CredBytesSource) -> Result<AuthPlan> {
     let slug = harness.slug();
     let mode = requested_mode(slug);
     let api_key = api_key_value(harness);
-    let creds = harness.subscription_spec().map(resolved_creds);
-    let subscription_available = creds.as_deref().is_some_and(subscription_present);
+    let subscription_available = harness
+        .subscription_spec()
+        .is_some_and(|spec| subscription_present(&spec, creds));
 
     match select(mode, api_key.is_some(), subscription_available) {
-        Selection::Subscription => subscription_plan(slug, creds.unwrap_or_default()),
+        Selection::Subscription => subscription_plan(
+            slug,
+            harness.subscription_spec().unwrap_or(SubscriptionSpec { files: &[] }),
+            creds,
+        ),
         Selection::ApiKey => {
             let (container_env, key) = api_key.expect("api key present for an ApiKey selection");
             Ok(AuthPlan::ApiKey { container_env, key })
@@ -212,9 +317,7 @@ pub fn auth_readiness(harness: &dyn AgentHarness) -> Availability {
     let api_available = api_key_value(harness).is_some();
     let subscription_available = harness
         .subscription_spec()
-        .map(resolved_creds)
-        .as_deref()
-        .is_some_and(subscription_present);
+        .is_some_and(|spec| subscription_present(&spec, &HostCreds));
 
     match select(mode, api_available, subscription_available) {
         Selection::None => Availability {
@@ -241,51 +344,55 @@ fn api_key_value(harness: &dyn AgentHarness) -> Option<(String, String)> {
     Some((container_env, key))
 }
 
-/// Resolve a subscription spec's files against the current host environment.
-fn resolved_creds(spec: SubscriptionSpec) -> Vec<ResolvedCred> {
-    spec.files
-        .iter()
-        .map(|file| ResolvedCred {
-            host_path: file.source.host_path(),
-            container_path: file.container_path,
-            mode: file.mode,
-            required: file.required,
-        })
-        .collect()
-}
-
-/// Whether a subscription is present: there is at least one required file and
-/// every required file exists on the host.
-fn subscription_present(creds: &[ResolvedCred]) -> bool {
+/// Whether a subscription is present: there is at least one required file and the
+/// `creds` source can supply every required file. Drawn from `creds` so the same
+/// policy works for the host filesystem ([`HostCreds`]) and a mounted Secret
+/// ([`MapCreds`]).
+fn subscription_present(spec: &SubscriptionSpec, creds: &dyn CredBytesSource) -> bool {
     let mut any_required = false;
-    for cred in creds.iter().filter(|c| c.required) {
+    for file in spec.files.iter().filter(|f| f.required) {
         any_required = true;
-        if !cred.host_path.exists() {
+        if !creds.present(file) {
             return false;
         }
     }
     any_required
 }
 
-/// Read the subscription credential files into a plan, skipping optional files
-/// that are absent. A required file that cannot be read fails the run.
-fn subscription_plan(slug: HarnessSlug, creds: Vec<ResolvedCred>) -> Result<AuthPlan> {
-    let mut files = Vec::with_capacity(creds.len());
-    for cred in creds {
-        match std::fs::read(&cred.host_path) {
-            Ok(contents) => files.push(ContainerFile {
+/// Read the subscription credential files into a plan from `creds`, skipping
+/// optional files the source cannot supply. A required file that cannot be read
+/// fails the run with the same [`Error::HarnessUnavailable`] the host path
+/// returns.
+fn subscription_plan(
+    slug: HarnessSlug,
+    spec: SubscriptionSpec,
+    creds: &dyn CredBytesSource,
+) -> Result<AuthPlan> {
+    let mut files = Vec::with_capacity(spec.files.len());
+    for cred in spec.files {
+        match creds.read(cred) {
+            Ok(Some(contents)) => files.push(ContainerFile {
                 container_path: cred.container_path.to_string(),
                 contents,
                 mode: cred.mode,
             }),
-            // An optional file the user has not created is simply not copied.
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound && !cred.required => {}
+            // An optional file the source does not supply is simply not copied.
+            Ok(None) if !cred.required => {}
+            Ok(None) => {
+                return Err(unavailable(
+                    slug,
+                    format!(
+                        "subscription credential `{}` is not available",
+                        cred.container_path
+                    ),
+                ));
+            }
             Err(err) => {
                 return Err(unavailable(
                     slug,
                     format!(
                         "could not read subscription credential `{}`: {err}",
-                        cred.host_path.display()
+                        cred.container_path
                     ),
                 ));
             }
@@ -395,12 +502,14 @@ fn auto_detail(harness: &dyn AgentHarness) -> String {
 }
 
 /// A comma-separated list of a subscription's required host credential paths,
-/// for a readiness/error detail.
+/// for a readiness/error detail. These name where the CLI/desktop expects the
+/// files signed in on the host; the driver/cluster path supplies the same files
+/// from a mounted Secret instead.
 fn required_host_paths(spec: SubscriptionSpec) -> String {
-    resolved_creds(spec)
-        .into_iter()
+    spec.files
+        .iter()
         .filter(|cred| cred.required)
-        .map(|cred| cred.host_path.display().to_string())
+        .map(|cred| cred.source.host_path().display().to_string())
         .collect::<Vec<_>>()
         .join(", ")
 }

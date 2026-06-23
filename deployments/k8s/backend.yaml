@@ -58,6 +58,12 @@ spec:
             # the backend — this is just the URL the console fetches them from.
             - name: TCAB_ARTIFACTS_PUBLIC_URL
               value: "http://tcab-artifacts:8790"
+            # The public base URL of the arena service, reported to the console via
+            # GET /config so it can POST adversarial matches/tournaments and stream
+            # live tournament progress against the data plane. The arena talks HTTP
+            # back to this backend; only this URL crosses to the console.
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "http://tcab-arena:8791"
             # The shared service token the dispatcher claims queued jobs with. MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN (tcab-dispatcher-secrets)
             # or the queue never drains. Without it the dispatcher endpoints are

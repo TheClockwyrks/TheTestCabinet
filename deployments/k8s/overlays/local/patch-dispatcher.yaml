@@ -23,3 +23,17 @@ spec:
             # kubelet's IfNotPresent default uses the imported image, no pull).
             - name: TCAB_DRIVER_IMAGE
               value: "tcab-driver:local"
+            # Subscription auth: point the dispatcher at the OPTIONAL
+            # tcab-driver-subscription Secret the Makefile's `secrets` target builds
+            # from the host's signed-in CLI credential files. The Secret is mounted
+            # with optional:true, so when it is absent (no subscription creds on the
+            # host) driver pods still run API-key-only. Leaving the mode at Auto is
+            # enough to exercise it locally: with the subscription creds present and
+            # no API key, the engine prefers subscription on its own — so
+            # TCAB_DISPATCHER_DRIVER_AUTH_MODE stays commented.
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET
+              value: "tcab-driver-subscription"
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR
+              value: "/var/run/tcab/subscription"
+            # - name: TCAB_DISPATCHER_DRIVER_AUTH_MODE
+            #   value: "subscription"

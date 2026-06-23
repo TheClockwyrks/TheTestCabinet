@@ -78,6 +78,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  # NOTE: the harness API-key (tcab-driver-secrets) and subscription
+  # (tcab-driver-subscription) Secrets need NO `secrets` rule here. The dispatcher
+  # only *references* them by name on the Job it creates (envFrom / a volume); the
+  # kubelet, not the dispatcher, reads and projects them into the driver pod. Only
+  # an API-read of a Secret would require a `secrets` verb — do not add one.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

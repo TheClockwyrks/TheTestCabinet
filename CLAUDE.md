@@ -30,6 +30,7 @@ Read the doc first; the code location is where the implementation lives.
 | Dispatcher (claims queued runs → one driver Job each) | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md) | `crates/dispatcher/` |
 | Driver (per-run-Job executor; streams to the backend) | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md) | `crates/driver/` |
 | Artifacts (serves produced run trees off a volume) | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md) | `crates/artifacts/` |
+| Arena (runs adversarial matches/tournaments — CPU-bound wasm — off the backend) | [`components/arena/overview.md`](apps/docs/src/content/docs/components/arena/overview.md) | `crates/arena/` |
 | Tauri desktop app | [`components/tauri/overview.md`](apps/docs/src/content/docs/components/tauri/overview.md) | `crates/desktop/` (Rust shell) + `apps/desktop/` (React UI) |
 | Web console | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `apps/web/` |
 | Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |

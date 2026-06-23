@@ -85,6 +85,15 @@ These limits make a controller's misbehaviour the model's problem, not The Test
 Cabinet's: a controller that is too slow, too memory-hungry, crashes, or returns
 an illegal action loses, and the match continues.
 
+In a deployment, this CPU-bound match execution — both quick **matches** and whole
+**tournaments** — runs on the dedicated **[`tcab-arena`](/components/arena/overview/)**
+service, kept off the single-replica control-plane backend. The arena fetches each
+controller's wasm from the backend, runs the field, and persists the finished
+tournament and its per-match replays back to the backend, which serves the arena
+**reads** (published tournaments + stored replays). A console reaches the arena via
+the URL the backend reports at `GET /config`. (The desktop app runs the same engine
+in-process instead.)
+
 ## Lockstep simulation and replays
 
 Adversarial cases are designed around the same idea as **RTS lockstep engines**:

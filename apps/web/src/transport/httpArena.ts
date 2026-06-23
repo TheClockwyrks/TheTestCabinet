@@ -1,9 +1,12 @@
-// The ArenaApi over HTTP, against the single backend URL the console talks to:
-// head-to-head matches and tournaments run there, with persisted tournaments and
-// per-match replays read back from it. Since the per-run-Job refactor there is no
-// separate worker the arena runs on — the backend is the one host for both the run
-// and read methods. The shared gallery degrades the UI when the capability is
-// absent.
+// The ArenaApi over HTTP, split across two hosts. The four RUN methods — list
+// pittable controllers, run a head-to-head match, submit a tournament, and stream
+// its live progress (including the terminal JOB status read) — target the dedicated
+// `tcab-arena` service, which executes the CPU-bound wasm off the control-plane
+// backend. The three READ methods — list published tournaments, read one, and the
+// per-match replay URL — stay on the backend, which owns that persisted data. The
+// backend reports the arena's base URL at `GET /config` (see `fetchArenaUrl`); when
+// no arena service is configured (`arenaUrl` null) the gallery degrades the
+// adversarial run UI.
 import type {
   ControllerRef,
   MatchSummary,
@@ -12,16 +15,16 @@ import type {
 import type { ArenaApi, ArenaWorkerOption } from "@test-cabinet/ui/app";
 import { getJson, joinUrl, postJson } from "./http";
 
-// The backend's `POST /tournaments` ack: the id plus the URLs to observe it.
+// The arena service's `POST /tournaments` ack: the id plus the URLs to observe it.
 interface TournamentAck {
   tournamentId: string;
   statusUrl: string;
   eventsUrl: string;
 }
 
-// The backend's `GET /tournaments/{id}` status. On success it already carries the
-// finished record, so the subscriber reads it straight off this — no second fetch
-// (and no read-after-publish race).
+// The arena service's `GET /tournaments/{id}` JOB status. On success it already
+// carries the finished record, so the subscriber reads it straight off this — no
+// second fetch (and no read-after-publish race).
 interface TournamentStatus {
   id: string;
   state: "running" | "succeeded" | "failed";
@@ -41,23 +44,41 @@ interface TournamentListPage {
 }
 
 /**
- * Build the web host's arena capability against the single backend URL it talks
- * to. Both the run methods (matches/tournaments) and the read methods (persisted
- * tournaments + replays) target `backendUrl`. The optional `workerId` on each call
+ * Build the web host's arena capability. The run methods (list controllers, run a
+ * match, submit a tournament, stream its progress) target the dedicated
+ * `tcab-arena` service at `arenaUrl`; the read methods (persisted tournaments +
+ * replays) target the backend at `backendUrl`. The optional `workerId` on each call
  * is vestigial — there is one execution host now — so it is ignored. The gallery
- * only offers the run UI when both `canExecute` and the arena are present.
+ * only offers the run UI when both `canExecute` and the arena are present; with no
+ * arena configured the run methods throw a clear error and the read methods still
+ * work.
  */
-export function createHttpArena(backendUrl: string): ArenaApi {
+export function createHttpArena(
+  backendUrl: string,
+  arenaUrl: string | null,
+): ArenaApi {
+  // Guard the run methods when no arena service is configured: the gallery already
+  // gates the run UI on `canExecute`, but make a stray call fail loudly rather than
+  // hit the backend (which serves no execution endpoints).
+  const requireArena = (): string => {
+    if (!arenaUrl) {
+      throw new Error(
+        "arena execution is not configured (the backend reported no arenaUrl)",
+      );
+    }
+    return arenaUrl;
+  };
+
   return {
     listWorkers(): ArenaWorkerOption[] {
-      // A single execution host (the backend); kept as a one-entry list so the
+      // A single execution host (the arena service); kept as a one-entry list so the
       // arena's worker dropdown still renders a (fixed) choice.
-      return [{ id: "backend", label: "Backend" }];
+      return [{ id: "arena", label: "Arena" }];
     },
 
     async listControllers(slug): Promise<ControllerRef[]> {
       const { controllers } = await getJson<{ controllers: ControllerRef[] }>(
-        backendUrl,
+        requireArena(),
         `/matches/controllers?testCase=${encodeURIComponent(slug)}`,
       );
       return controllers;
@@ -67,7 +88,7 @@ export function createHttpArena(backendUrl: string): ArenaApi {
       input,
     ): Promise<{ replay: unknown | null; summary: MatchSummary }> {
       return postJson<{ replay: unknown | null; summary: MatchSummary }>(
-        backendUrl,
+        requireArena(),
         "/matches",
         {
           testCase: input.testCase,
@@ -79,7 +100,7 @@ export function createHttpArena(backendUrl: string): ArenaApi {
     },
 
     async runTournament(input): Promise<string> {
-      const ack = await postJson<TournamentAck>(backendUrl, "/tournaments", {
+      const ack = await postJson<TournamentAck>(requireArena(), "/tournaments", {
         testCase: input.testCase,
         version: input.version,
         variant: input.variant,
@@ -90,7 +111,7 @@ export function createHttpArena(backendUrl: string): ArenaApi {
 
     subscribeTournament(id, handlers): () => void {
       const controller = new AbortController();
-      void streamTournament(backendUrl, id, handlers, controller);
+      void streamTournament(requireArena(), id, handlers, controller);
       return () => controller.abort();
     },
 
@@ -119,9 +140,10 @@ export function createHttpArena(backendUrl: string): ArenaApi {
   };
 }
 
-// Consume the backend's NDJSON `/tournaments/{id}/events` progress stream, then
-// read the terminal status back. The status response already carries the finished
-// record on success, so the subscriber resolves it straight from there.
+// Consume the arena service's NDJSON `/tournaments/{id}/events` progress stream,
+// then read the terminal JOB status back from the arena (not the backend — the job
+// tracker is the arena's). The status response already carries the finished record
+// on success, so the subscriber resolves it straight from there.
 async function streamTournament(
   baseUrl: string,
   id: string,

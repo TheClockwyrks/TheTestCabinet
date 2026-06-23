@@ -3,6 +3,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The body of `POST /jobs`: what to run, with what, against which model. The\ncanonical launch shape — stored verbatim and handed to the driver when the job\nis claimed.",
   "properties": {
+    "authMode": {
+      "default": null,
+      "description": "Optional harness authentication mode for this run (`auto`, `subscription`,\nor `api-key`). Omitted keeps the default behavior (API-key, preferring a\nsubscription only when its credentials are available). The driver applies\nit by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console\ncan request subscription mode for a backend-driven run (the only way to run\nthe subscription-only Antigravity harness on the cluster path).",
+      "type": ["string", "null"]
+    },
     "harness": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
       "description": "Agent harness to drive."

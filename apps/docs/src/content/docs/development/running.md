@@ -15,8 +15,9 @@ worth separating, because they need very different amounts of setup:
 - **The full service-driven flow** — the [backend](/components/backend/overview/)
   (which now owns the **run queue**), the [auth service](/components/auth/overview/),
   the [dispatcher](/components/dispatcher/overview/), the
-  [artifact service](/components/artifacts/overview/), and the
-  [web console](/components/web/overview/), running exactly as a deployed
+  [artifact service](/components/artifacts/overview/), the
+  [arena service](/components/arena/overview/) (adversarial matches/tournaments),
+  and the [web console](/components/web/overview/), running exactly as a deployed
   environment runs them. A console no longer talks to a worker: it **enqueues** a
   run at the backend, and an in-cluster dispatcher claims it and creates a per-run
   Kubernetes **Job** running the [driver](/components/driver/overview/), which
@@ -75,7 +76,7 @@ export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
 
 ```sh
 make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
-make -C deployments/local local-forward   # hold backend→:8787 and auth→:8789 open on localhost
+make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, arena→:8791 open on localhost
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
 make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
@@ -95,10 +96,12 @@ in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 **schedules as a Job in this same cluster** — exactly as a cloud deployment runs
 it. The host no longer runs any worker process.
 
-`make local-forward` holds the backend open on `127.0.0.1:8787` and the auth
-service on `127.0.0.1:8789`, which is all the web console needs: it enqueues runs
-against the one backend URL, and the in-cluster dispatcher and driver execute
-them. After editing a test case, re-ingest with
+`make local-forward` holds the backend open on `127.0.0.1:8787`, the auth service
+on `127.0.0.1:8789`, and the arena service on `127.0.0.1:8791`, which is all the web
+console needs: it enqueues runs against the one backend URL (the in-cluster
+dispatcher and driver execute them), and runs adversarial matches/tournaments against
+the arena (the backend reports its URL at `GET /config`). After editing a test case,
+re-ingest with
 `make -C deployments/local local-ingest`.
 
 ## Iterating on the backend and auth services as bare processes

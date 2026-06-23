@@ -14,6 +14,16 @@
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
 //! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. the local CLI/desktop path) skips the upload entirely. | — |
+//! | `TCAB_DRIVER_SUBSCRIPTION_DIR` | no | A directory the operator-provided subscription Secret is mounted into (one file per credential, keyed by basename). When set, the driver makes subscription auth available by reading these files instead of a host home; unset leaves the run API-key-only, unchanged. | — |
+//!
+//! The driver never *decides* the auth mode — [`resolve_auth_with`] does, from
+//! `TCAB_AUTH_MODE[_<SLUG>]` and what is available. `TCAB_DRIVER_SUBSCRIPTION_DIR`
+//! only makes the subscription credentials *available* (the cluster analogue of a
+//! signed-in host home); the request's [`LaunchBody::auth_mode`] can lock the mode
+//! per run, which the driver applies by setting `TCAB_AUTH_MODE` before resolving.
+//!
+//! [`resolve_auth_with`]: test_cabinet_core::resolve_auth_with
+//! [`LaunchBody::auth_mode`]: test_cabinet_core::LaunchBody::auth_mode
 //!
 //! When `TCAB_DRIVER_RUNTIME=kubernetes`, the sandbox-pod settings (`TCAB_K8S_*`,
 //! documented on [`KubernetesConfig`](crate::kubernetes::KubernetesConfig)) are
@@ -81,6 +91,12 @@ pub struct Config {
     /// CLI/desktop path, where nothing serves the artifacts off the worker disk
     /// any more) skips the upload entirely, leaving behavior unchanged.
     pub artifacts_url: Option<String>,
+    /// The directory the operator-provided subscription Secret is mounted into
+    /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
+    /// `None` (no Secret configured) leaves the run API-key-only, unchanged; when
+    /// set, the driver builds a [`MapCreds`](test_cabinet_core::MapCreds) from it
+    /// so a subscription harness can authenticate without a host home.
+    pub subscription_dir: Option<PathBuf>,
     /// Sandbox-pod settings used when [`runtime`](Self::runtime) is
     /// [`DriverRuntime::Kubernetes`]; left at defaults (and unused) otherwise.
     pub kubernetes: KubernetesConfig,
@@ -124,6 +140,7 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from(".tcab-driver"));
         let artifacts_url =
             non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
+        let subscription_dir = non_empty("TCAB_DRIVER_SUBSCRIPTION_DIR").map(PathBuf::from);
         let kubernetes = kubernetes_from_env()?;
         Ok(Self {
             backend_url,
@@ -133,6 +150,7 @@ impl Config {
             runtime,
             work_dir,
             artifacts_url,
+            subscription_dir,
             kubernetes,
         })
     }

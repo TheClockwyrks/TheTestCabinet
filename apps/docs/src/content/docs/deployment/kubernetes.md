@@ -118,8 +118,8 @@ kubectl apply    -k deployments/k8s/overlays/prod    # or .../overlays/staging
 
 The base
 ([`deployments/k8s/kustomization.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/kustomization.yaml))
-lists the namespace, RBAC, backend, auth, dispatcher, artifacts, ingest CronJob,
-and NetworkPolicy resources; the overlay sets the namespace and `TCAB_ENV` and
+lists the namespace, RBAC, backend, auth, dispatcher, artifacts, arena, ingest
+CronJob, and NetworkPolicy resources; the overlay sets the namespace and `TCAB_ENV` and
 patches in the environment's images and secret references. Apply the **overlay**,
 not the individual base files.
 
@@ -250,6 +250,24 @@ it. The backend exposes the console-facing base URL as `TCAB_ARTIFACTS_PUBLIC_UR
 (reported to the console via `GET /config`), and **no artifact bytes pass through
 the backend** — they flow driver → artifacts → console directly.
 
+## Arena service
+
+Adversarial **matches** and **tournaments** are CPU-bound in-process wasm, so they
+run on the arena service rather than the single-replica control-plane backend. It is
+a **stateless** `Deployment` (not a `StatefulSet`, **no PVC**) with a **`ClusterIP`
+`Service`**, its own `ServiceAccount` (no Kubernetes API access), and real CPU
+`requests`/`limits`, bound to `0.0.0.0:8791`. The example is
+[`deployments/k8s/arena.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/arena.yaml).
+
+It runs **exactly one replica**: its in-flight tournament registry and live progress
+channel are in-memory and per-pod. It fetches every controller input from the backend
+and persists finished tournaments + replays back to it (no bytes of its own to store).
+The backend exposes the console-facing base URL as `TCAB_ARENA_PUBLIC_URL` (reported
+via `GET /config`); arena **reads** (published tournaments + replays) are served by
+the backend, only **execution** lives here. A capacity semaphore
+(`TCAB_ARENA_MAX_CONCURRENT`, default `2`) rejects past the cap with `503` rather than
+queueing. See [Arena overview](/components/arena/overview/).
+
 ## Backend
 
 The backend with its default **SQLite** store is
@@ -332,6 +350,8 @@ flows. The pods carry selectable labels: sandbox pods are labelled
 - **driver pods → artifacts** — uploading the produced run tree.
 - **sandbox pods → driver pod** — streaming live preview frames.
 - **artifacts → backend/auth** — token verification.
+- **arena → backend** — fetching controller inputs and persisting tournaments.
+- **console → arena** — running matches/tournaments (over the private boundary).
 
 Everything else is denied. The sandbox pods themselves need **no** inbound access
 except the driver's `exec`/preview connections, which Kubernetes routes over the

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use test_cabinet_core::{
-    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime, CredBytesSource,
     DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient, NoopPublisher,
     OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
     RunEngine, RunRecord, RunRequest, TestCaseCatalog, TestCaseVersion, materialize_version,
@@ -24,6 +24,7 @@ use test_cabinet_core::{
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::config::{Config, DriverRuntime};
+use crate::creds::mounted_creds;
 use crate::kubernetes::{
     KubernetesArtifactCollector, KubernetesContainerRuntime,
 };
@@ -68,6 +69,27 @@ pub async fn drive(
     request: &RunRequest,
     outbound: &UnboundedSender<Outbound>,
 ) -> Result<RunRecord, RunFailure> {
+    // When the run requests an explicit auth mode, lock it for the engine by
+    // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
+    // mode itself, it only hands core the request's preference. Default (no
+    // `auth_mode`) leaves the engine's API-key-preferring selection unchanged. A
+    // driver pod runs exactly one run, so mutating its own process env here is
+    // safe (there is no concurrent run to race).
+    if let Some(mode) = config.launch.auth_mode.as_deref().filter(|m| !m.is_empty()) {
+        // SAFETY: single-run process, set before any auth resolution; no other
+        // thread reads `TCAB_AUTH_MODE` concurrently.
+        unsafe { std::env::set_var("TCAB_AUTH_MODE", mode) };
+    }
+
+    // Make subscription auth available from the mounted Secret, when configured.
+    // This is the cluster analogue of a signed-in host home: the bytes come from
+    // the operator-provided Secret the dispatcher mounted, never from `~`. Core
+    // still decides whether subscription is the selected mode.
+    let creds: Option<Box<dyn CredBytesSource + Send + Sync>> =
+        config.subscription_dir.as_deref().map(|dir| {
+            Box::new(mounted_creds(dir, request.harness)) as Box<dyn CredBytesSource + Send + Sync>
+        });
+
     let work_dir = &config.work_dir;
     // One run per driver, so the job id namespaces this pod's scratch (harmless,
     // and keeps the layout identical to the worker's per-job dirs).
@@ -134,6 +156,7 @@ pub async fn drive(
                 screenshot_dir,
                 runtime,
                 collector,
+                creds,
                 outbound,
             )
             .await
@@ -154,6 +177,7 @@ pub async fn drive(
                 screenshot_dir,
                 runtime,
                 collector,
+                creds,
                 outbound,
             )
             .await
@@ -177,6 +201,7 @@ async fn drive_engine<R, C>(
     screenshot_dir: PathBuf,
     runtime: R,
     collector: C,
+    creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
     outbound: &UnboundedSender<Outbound>,
 ) -> Result<RunRecord, test_cabinet_core::Error>
 where
@@ -203,6 +228,10 @@ where
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
+        // The cluster path has no host credential files; a subscription run reads
+        // its credentials from the mounted Secret instead (`None` when no
+        // subscription Secret is configured — the run stays API-key-only).
+        creds,
     };
 
     let mut events = BackendEventSink::new(outbound.clone());

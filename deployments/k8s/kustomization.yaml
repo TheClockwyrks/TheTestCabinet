@@ -19,5 +19,6 @@ resources:
   - auth.yaml
   - dispatcher.yaml
   - artifacts.yaml
+  - arena.yaml
   - ingest-cronjob.yaml
   - networkpolicy.yaml

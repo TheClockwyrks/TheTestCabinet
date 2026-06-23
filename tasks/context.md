@@ -7,12 +7,17 @@ and committed** (see Status below). Self-contained so it survives a fresh sessio
 The completed phase files (task-1 … task-5) have been **removed**; the companion
 files that remain hold the **follow-up work** the refactor surfaced or deferred:
 
-- `task-7.md` — **subscription harness auth** in the service flow (CRITICAL): the
-  driver/cluster path is API-key-only today; subscription mode (incl. the
-  subscription-only Antigravity harness) doesn't work for backend-driven runs.
-- `task-8.md` — restore **adversarial arena execution** (quick matches +
-  tournaments): worker-only, dropped in the cutover, so the console's arena run
-  actions hit backend endpoints that don't exist (arena reads still work).
+- `task-7.md` — **subscription harness auth** in the service flow. ✅ **DONE**
+  (2026-06-23, uncommitted): operator-provided subscription Secret → dispatcher
+  mounts it into each driver Job → driver builds `ContainerSpec.files` from the
+  mount with no host-fs read. Antigravity (subscription-only) is now console-runnable.
+  One **deferred follow-up remains**: the per-account credential vault (option 2 in
+  the file) — a real multi-tenant build, not started.
+- `task-8.md` — **adversarial arena execution** (quick matches + tournaments).
+  ✅ **DONE** (2026-06-23, uncommitted): restored as a **new standalone
+  `tcab-arena` service** (the `tcab-artifacts`-style split, *diverging* from the
+  file's in-backend recommendation — operator chose the isolated service). The
+  console reaches it via a `/config`-exposed URL; reads stay on the backend.
 - `task-6.md` — **deferred** (unchanged): publish & score failures as first-class
   results, a separate design pass.
 
@@ -99,8 +104,10 @@ top of the refactor:
   `Run the Local Service Stack` quickstart + a `Running the Local Service Stack`
   guide (the docs were CLI-only before).
 
-Remaining work is now **task-7** (subscription auth, critical), **task-8** (arena
-execution), and the still-**deferred task-6**.
+**task-7** (subscription auth) and **task-8** (arena execution) are now **done**
+(2026-06-23, uncommitted — see each file's status header). What remains: the
+still-**deferred task-6**, and the **per-account credential vault** carried over
+from task-7 (the multi-tenant successor to the operator-Secret v1).
 
 **Verified here:** whole-workspace `cargo build`/`clippy -D warnings`/`test`
 green with the worker gone (52 test binaries); `npm run gen:contract` drift-clean;
@@ -152,20 +159,21 @@ versions.
 
 ## Remaining work
 
-Active follow-ups (companion files):
+Remaining (companion files):
 
-- `task-7.md` — **subscription harness auth** in the service flow. CRITICAL —
-  backend-driven runs are API-key-only; subscription mode (and the
-  subscription-only Antigravity harness) can't run via the console. The worker
-  never supported it either, so this is a first build for the server topology.
-- `task-8.md` — restore **adversarial arena execution** (matches + tournaments).
-  Worker-only and dropped in the cutover (`3e7e86e`); resurrect the surface from
-  `3e7e86e^:crates/worker/src/{api/matches,api/tournaments,tournaments}.rs`. The
-  core engine (`crates/core/src/match_play.rs`) and the read/publish endpoints
-  already exist — only the execution + live-stream surface is missing.
 - `task-6.md` — **deferred**: publish & score failures as first-class results
   (a separate design pass). Still deferred by decision; the refactor retains all
   the data it will need.
+- **Per-account credential vault** (carried over from `task-7.md`, option 2) —
+  the multi-tenant successor to the shipped operator-Secret v1: users upload their
+  subscription files, the backend stores them encrypted keyed to the account, and
+  the dispatcher mounts a per-job Secret. A real build (secure storage, upload
+  UI/CLI, rotation); not started.
+
+Done (companion files keep their status headers):
+
+- `task-7.md` — **subscription harness auth** (operator-Secret v1). ✅ 2026-06-23.
+- `task-8.md` — **adversarial arena execution** (standalone `tcab-arena`). ✅ 2026-06-23.
 
 Completed and committed (phase files removed — kept here as the history):
 

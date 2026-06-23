@@ -207,12 +207,16 @@ async fn health() -> axum::Json<serde_json::Value> {
 /// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
 /// paths) a driver sets. `artifactsUrl` is `null` when no artifact service is
 /// configured (`TCAB_ARTIFACTS_PUBLIC_URL` unset) — e.g. a single-box dev setup —
-/// in which case the console leaves those links unresolved.
+/// in which case the console leaves those links unresolved. `arenaUrl` likewise
+/// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
+/// adversarial matches/tournaments to and streams live tournament progress from;
+/// `null` degrades the adversarial run UI.
 async fn client_config(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<ClientConfig> {
     axum::Json(ClientConfig {
         artifacts_url: state.config.artifacts_url.clone(),
+        arena_url: state.config.arena_url.clone(),
     })
 }
 
@@ -226,4 +230,9 @@ pub struct ClientConfig {
     /// links against it.
     #[cfg_attr(feature = "contract", ts(optional))]
     pub artifacts_url: Option<String>,
+    /// The arena service's public base URL, or `null` when adversarial execution is
+    /// not served separately. The console POSTs matches/tournaments and streams live
+    /// tournament progress against it; the adversarial run UI degrades when absent.
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub arena_url: Option<String>,
 }

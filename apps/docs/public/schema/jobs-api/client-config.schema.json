@@ -3,6 +3,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The body of `GET /config`: the console's client-side configuration.",
   "properties": {
+    "arenaUrl": {
+      "description": "The arena service's public base URL, or `null` when adversarial execution is\nnot served separately. The console POSTs matches/tournaments and streams live\ntournament progress against it; the adversarial run UI degrades when absent.",
+      "type": ["string", "null"]
+    },
     "artifactsUrl": {
       "description": "The artifact service's public base URL, or `null` when artifacts are not\nserved separately. The console resolves a pre-publish run's build and media\nlinks against it.",
       "type": ["string", "null"]

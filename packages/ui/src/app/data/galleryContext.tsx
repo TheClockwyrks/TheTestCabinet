@@ -52,12 +52,16 @@ export type { InProgressRun } from "../../client/types";
  * The static site omits it, so the arena UI hides. Run methods (`runMatch`,
  * `runTournament`) additionally require {@link GalleryDataInput.canExecute}; the
  * read methods only need this object to be present. Each host wires its own
- * transport behind these: the web host hits the active worker (for runs and live
- * progress) and the backend (for reading persisted tournaments and replays); the
- * desktop host invokes the local core's Tauri commands and channels.
+ * transport behind these: the web host runs matches/tournaments on the dedicated
+ * `tcab-arena` service and reads persisted tournaments and replays from the backend
+ * (there are no run-local controllers in the web topology — only baselines and
+ * pushed controllers are resolvable there); the desktop host invokes the local
+ * core's Tauri commands and channels, where a single built-in local worker can also
+ * resolve a `"run"` controller from its own output dir.
  */
-/** A worker the arena can run matches/tournaments on. The web host has one per
- * configured worker; the desktop host has a single built-in local worker. */
+/** A worker the arena can run matches/tournaments on. The web host presents a single
+ * fixed execution host (the arena service); the desktop host has a single built-in
+ * local worker. */
 export interface ArenaWorkerOption {
   /** Stable id (the local worker uses the reserved id `"local"`). */
   id: string;
@@ -67,12 +71,14 @@ export interface ArenaWorkerOption {
 
 export interface ArenaApi {
   /** The workers this host can run matches on, so the arena can offer a worker to
-   * pick. A run resolves a controller of kind `"run"` against the chosen worker's
-   * local output dir; pushed and baseline controllers resolve the same on any. */
+   * pick. The desktop host resolves a controller of kind `"run"` against its local
+   * worker's output dir; the web host has none of those (its single arena-service
+   * host resolves only baselines and pushed controllers). Pushed and baseline
+   * controllers resolve the same on any host. */
   listWorkers(): ArenaWorkerOption[];
   /** The controllers available to pit for a case: the committed baselines, the
-   * chosen worker's produced adversarial runs (kind `"run"`), and the case's
-   * pushed adversarial controllers (kind `"pushed"`). `workerId` selects which
+   * chosen worker's produced adversarial runs (kind `"run"`, desktop only), and the
+   * case's pushed adversarial controllers (kind `"pushed"`). `workerId` selects which
    * worker contributes its local runs (defaults to the active worker). */
   listControllers(
     slug: string,

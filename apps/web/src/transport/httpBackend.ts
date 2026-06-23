@@ -349,6 +349,10 @@ function normalizeUrl(url: string): string {
 // when artifacts are not served separately (a single-box dev setup).
 interface ClientConfigResponse {
   artifactsUrl?: string | null;
+  // The arena service's public base URL — non-null when adversarial matches and
+  // tournaments are executed separately from the control-plane backend — or null
+  // when adversarial execution is not served (a single-box dev setup).
+  arenaUrl?: string | null;
 }
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
@@ -399,6 +403,21 @@ export async function fetchArtifactsUrl(
   try {
     const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
     return config.artifactsUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the arena service's base URL from the backend's `GET /config`, or null
+// when adversarial execution is not served separately. Best-effort: a backend that
+// can't be reached resolves null, so the adversarial run UI simply degrades (the
+// same behavior as before the arena service existed).
+export async function fetchArenaUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.arenaUrl ?? null;
   } catch {
     return null;
   }

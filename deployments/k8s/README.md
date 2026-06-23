@@ -28,6 +28,7 @@ directly.
 | `auth.yaml` | Auth-service StatefulSet (1 replica) + PVC + ClusterIP Service. |
 | `dispatcher.yaml` | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket). |
 | `artifacts.yaml` | Artifact-service StatefulSet (1 replica) + PVC + ClusterIP Service + its own SA (no API access). |
+| `arena.yaml` | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits. |
 | `ingest-cronjob.yaml` | Periodic `POST /ingest` to refresh the catalog. |
 | `networkpolicy.yaml` | Optional default-deny-ingress + explicit allows (needs a NetworkPolicy-enforcing CNI). |
 
@@ -41,10 +42,11 @@ Overlays:
 
 The service container images are built from [`../images/`](../images/)
 (`backend.Dockerfile`, `auth.Dockerfile`, `dispatcher.Dockerfile`,
-`driver.Dockerfile`, `artifacts.Dockerfile`) and published to GHCR by the
+`driver.Dockerfile`, `artifacts.Dockerfile`, `arena.Dockerfile`) and published to
+GHCR by the
 [`build-service-images.yml`](../../.github/workflows/build-service-images.yml)
 workflow as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, and `…/tcab-artifacts`. The overlays' `images:`
+`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, and `…/tcab-arena`. The overlays' `images:`
 blocks point each at that namespace — pin the immutable `:<git-sha>` tag rather
 than `:latest` in a real deployment. The **run-container** images the sandbox runs
 inside are separate — see [`containers/`](../../containers/README.md).

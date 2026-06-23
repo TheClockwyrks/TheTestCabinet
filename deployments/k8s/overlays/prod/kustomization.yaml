@@ -34,6 +34,9 @@ images:
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
     newTag: latest
+  - name: REPLACE_REGISTRY/tcab-arena
+    newName: ghcr.io/REPLACE_OWNER/tcab-arena
+    newTag: latest
 
 # TCAB_DRIVER_IMAGE is an env value (not a container image: field), so the images
 # transformer above cannot reach it — patch it to match the driver image.

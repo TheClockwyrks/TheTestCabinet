@@ -59,6 +59,44 @@ provider charge, though a harness that still reports an exact charge (Claude Cod
 does) is recorded as-is, and one that reports none falls back to OpenRouter
 pricing.
 
+### Subscription in the service flow (the cluster path)
+
+The steps above are the CLI/desktop path: the run executes on the trusted host
+that signed in, so it reads the credential files straight from `~`. A
+**backend-driven run** executes in an ephemeral driver pod that has no host home,
+so subscription credentials are supplied to it from an operator-provided
+**Secret** instead — one shared subscription per deployment.
+
+The operator creates a `tcab-driver-subscription` Secret holding the same files
+the CLI reads, keyed by each credential's **basename**, from a trusted host where
+the harness CLIs are signed in:
+
+```sh
+kubectl -n tcab-prod create secret generic tcab-driver-subscription \
+  --from-file=.credentials.json="$HOME/.claude/.credentials.json" \
+  --from-file=auth.json="$CODEX_HOME/auth.json" \
+  --from-file=antigravity-oauth-token="$HOME/.gemini/antigravity-cli/antigravity-oauth-token"
+```
+
+Point the dispatcher at it (`TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`, see
+[`deployments/k8s/dispatcher.yaml`](https://github.com/) and the
+[dispatcher config](/components/dispatcher/overview/)); the dispatcher mounts it
+read-only into every driver Job and the driver maps each basename back to the
+harness's full container path. Mode selection is unchanged from the CLI path — a
+console can request subscription per run (the launch request's `authMode`), or the
+operator can lock it cluster-wide with `TCAB_DISPATCHER_DRIVER_AUTH_MODE`. This is
+what unblocks the subscription-only Antigravity harness for console-driven runs.
+
+The local k3d stack wires this for you: the `secrets` target in
+[`deployments/local/Makefile`](https://github.com/) **optionally** builds
+`tcab-driver-subscription` from your host's signed-in CLI files (it never errors
+when they are absent — subscription stays opt-in). See
+[Run the Local Service Stack](/guides/running-the-local-service-stack/).
+
+The per-account credential vault (each user uploading their own subscription) is a
+deferred follow-up; today's service-flow subscription is the single shared
+operator Secret.
+
 ## Choosing a mode
 
 When both an API key and a subscription are present, The Test Cabinet **prefers

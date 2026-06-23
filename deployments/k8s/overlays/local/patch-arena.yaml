@@ -1,0 +1,15 @@
+# Local arena-service override: tag the environment. Everything else (its bind
+# address, backend URL, concurrency cap, CPU resources) carries over from the base
+# manifest unchanged.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-arena
+spec:
+  template:
+    spec:
+      containers:
+        - name: arena
+          env:
+            - name: TCAB_ENV
+              value: "local"

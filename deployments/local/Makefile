@@ -6,8 +6,9 @@
 #
 # Requirements on the host: docker (or a docker-compatible runtime), k3d, and
 # kubectl. Everything runs in the cluster — the backend + auth, the dispatcher, the
-# artifact service, and one per-run driver Job per enqueued run. There is no
-# worker-on-host wiring; a run enqueued at the backend schedules as a Job here.
+# artifact service, the arena service, and one per-run driver Job per enqueued run.
+# There is no worker-on-host wiring; a run enqueued at the backend schedules as a Job
+# here, and an adversarial match/tournament runs on the arena service.
 #
 # Secrets come from the host ENVIRONMENT, never a tracked file. Before `local-up`,
 # export the harness provider API key the run needs — at least one of:
@@ -22,7 +23,7 @@
 #   local-up        create the cluster, build+import images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import images and restart the services (after a code change)
-#   local-forward   foreground-forward backend→:8787 and auth→:8789 to localhost
+#   local-forward   foreground-forward backend→:8787, auth→:8789, arena→:8791 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
@@ -41,6 +42,7 @@ AUTH_IMG       := tcab-auth-service:local
 DISPATCHER_IMG := tcab-dispatcher:local
 DRIVER_IMG     := tcab-driver:local
 ARTIFACTS_IMG  := tcab-artifacts:local
+ARENA_IMG      := tcab-arena:local
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -52,7 +54,8 @@ local-up: cluster images apply local-ingest
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)'."
 	@echo "Reach it with:  make -C deployments/local local-forward"
-	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789"
+	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   arena → http://127.0.0.1:8791"
+	@echo "  (the backend reports the arena URL at GET /config; the console fetches it for matches/tournaments)"
 
 # Create the k3d cluster if it does not already exist, mapping the repository to
 # /repo on the server node so the backend can ingest from a read-only mount of it
@@ -74,17 +77,25 @@ images:
 	docker build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
 	docker build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
 	docker build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
-	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' '$(DISPATCHER_IMG)' '$(DRIVER_IMG)' '$(ARTIFACTS_IMG)' -c '$(CLUSTER)'
+	docker build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
+	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' '$(DISPATCHER_IMG)' '$(DRIVER_IMG)' '$(ARTIFACTS_IMG)' '$(ARENA_IMG)' -c '$(CLUSTER)'
 
-# Create the cluster Secrets from the host ENVIRONMENT, so no API key or token is
-# ever written to a tracked file (the local overlay deliberately omits them). Runs
-# automatically as part of `apply`; run it on its own after rotating a key, then
-# enqueue a run (driver Jobs pick up tcab-driver-secrets fresh each run) or
-# `local-rebuild` to restart the long-lived services. Idempotent — re-running
-# updates each Secret in place.
+# Create the cluster Secrets from the host ENVIRONMENT and signed-in CLI files, so
+# no API key or token is ever written to a tracked file (the local overlay
+# deliberately omits them). Runs automatically as part of `apply`; run it on its
+# own after rotating a key, then enqueue a run (driver Jobs pick up the Secrets
+# fresh each run) or `local-rebuild` to restart the long-lived services. Idempotent
+# — re-running updates each Secret in place.
 #
-# Requires at least one harness key in the environment (ANTHROPIC_API_KEY /
+# Requires at least one harness API key in the environment (ANTHROPIC_API_KEY /
 # OPENAI_API_KEY / OPENROUTER_API_KEY); only the key(s) present are included.
+#
+# OPTIONALLY also builds tcab-driver-subscription from the host's signed-in harness
+# CLI credential files (the same files the local `tcab run` reads): Claude's
+# ~/.claude/.credentials.json (+ ~/.claude.json), Codex's $CODEX_HOME/auth.json
+# (default ~/.codex/auth.json), and the Antigravity OAuth token. Unlike the API-key
+# block this NEVER errors when the files are absent — subscription is opt-in; the
+# Secret is mounted optional, so missing creds just leave runs API-key-only.
 secrets:
 	@kubectl create namespace '$(NS)' --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 	@kubectl -n '$(NS)' create secret generic tcab-backend-secrets \
@@ -107,6 +118,24 @@ secrets:
 	  kubectl -n '$(NS)' create secret generic tcab-driver-secrets $$args \
 	    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 	@echo "Secrets applied to namespace '$(NS)' from the environment."
+	@# OPTIONAL subscription creds, keyed by credential BASENAME (the driver maps
+	@# each back to its full container path). Opt-in: include only the files that
+	@# exist; NEVER error when none do. CODEX_HOME relocates Codex's home (default
+	@# ~/.codex).
+	@set -e; \
+	  codex_home="$${CODEX_HOME:-$$HOME/.codex}"; \
+	  args=""; \
+	  if [ -f "$$HOME/.claude/.credentials.json" ]; then args="$$args --from-file=.credentials.json=$$HOME/.claude/.credentials.json"; fi; \
+	  if [ -f "$$HOME/.claude.json" ];               then args="$$args --from-file=.claude.json=$$HOME/.claude.json"; fi; \
+	  if [ -f "$$codex_home/auth.json" ];            then args="$$args --from-file=auth.json=$$codex_home/auth.json"; fi; \
+	  if [ -f "$$HOME/.gemini/antigravity-cli/antigravity-oauth-token" ]; then args="$$args --from-file=antigravity-oauth-token=$$HOME/.gemini/antigravity-cli/antigravity-oauth-token"; fi; \
+	  if [ -n "$$args" ]; then \
+	    kubectl -n '$(NS)' create secret generic tcab-driver-subscription $$args \
+	      --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	    echo "Subscription creds applied to tcab-driver-subscription (opt-in)."; \
+	  else \
+	    echo "No host subscription creds found — skipping tcab-driver-subscription (runs stay API-key-only)."; \
+	  fi
 
 # Apply the local overlay and wait for every service to become ready. Secrets are
 # created first (from the environment) so the pods find them on their first start.
@@ -115,6 +144,7 @@ apply: secrets
 	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
@@ -130,19 +160,21 @@ local-ingest:
 
 # Hold the services open on localhost until interrupted (Ctrl-C).
 local-forward:
-	@echo "Forwarding backend→127.0.0.1:8787 and auth→127.0.0.1:8789 (Ctrl-C to stop)…"
+	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
 	@kubectl -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  kubectl -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
+	  kubectl -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
 	  wait
 
 # Rebuild after a code change: new images, re-import, rolling restart. (Driver pods
 # are per-run Jobs the dispatcher creates fresh each run, so they pick up the new
 # tcab-driver:local image on the next run with no restart here.)
 local-rebuild: images
-	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-dispatcher
+	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
 	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
 local-status:

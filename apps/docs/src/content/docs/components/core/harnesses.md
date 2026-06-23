@@ -139,6 +139,29 @@ so that refreshed copy is discarded — credentials are copied **in** only, neve
 written back to the host. The supported subscription harnesses use long-lived
 refresh tokens, so the host credentials stay valid for the next run.
 
+### Where the subscription credentials come from
+
+Mode *selection* is the same everywhere; only *where the credential bytes are
+read from* differs by run path, behind a single seam (`CredBytesSource`):
+
+- **CLI/desktop (in-process).** The run executes on the trusted host that signed
+  in, so the credentials are read straight from the user's home directory
+  (`HostCreds`). This is the default and is unchanged.
+- **Driver/cluster (backend-driven).** A driver pod is ephemeral and has no host
+  home, so the credentials are supplied by an operator-provided **Secret** the
+  dispatcher mounts into the pod, and the driver reads them from the mount
+  (`MapCreds`) instead of `~`. Core selects the mode identically via
+  `resolve_auth_with`, so a subscription harness — including the subscription-only
+  [Antigravity](/harnesses/antigravity/overview/) — now runs on the cluster path
+  too, not just locally. The Secret holds the same files `CredFile` names, keyed by
+  basename; one shared subscription per deployment. See
+  [Set Up Authentication → the service flow](/quickstarts/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)
+  and the [dispatcher](/components/dispatcher/overview/) config.
+
+A **per-account credential vault** (each user supplying their own subscription,
+keyed to their account) is a deferred follow-up — it would slot in as another
+`CredBytesSource` with no change to the selection policy or this seam.
+
 ## Usage Reporting
 
 Every invocation must return normalized usage data so that runs are comparable

@@ -69,8 +69,21 @@ each service's container image from `deployments/images/`. You need:
   ```
 
   The Makefile reads this from your environment and creates the cluster Secret
-  from it, so **no key is ever written to a tracked file**. (Subscription auth is
-  not wired into the local stack — use an API key here.)
+  from it, so **no key is ever written to a tracked file**.
+
+- *(Optional)* **Subscription auth.** The `secrets` target also wires subscription
+  mode into the local stack: if your host has signed-in harness CLI credential
+  files — `~/.claude/.credentials.json` (+ `~/.claude.json`),
+  `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), and/or the Antigravity
+  OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` — it builds a
+  `tcab-driver-subscription` Secret from whichever exist and the dispatcher mounts
+  it (read-only, `optional`) into each driver Job. This is opt-in and never errors
+  when the files are absent, so an API-key-only setup is unaffected. It is the only
+  way to run the subscription-only [Antigravity](/harnesses/antigravity/overview/)
+  harness locally. With the creds present and no API key, the engine prefers
+  subscription on its own; lock it with `TCAB_AUTH_MODE` or the dispatcher's
+  `TCAB_DISPATCHER_DRIVER_AUTH_MODE` if needed. See
+  [Set Up Authentication](/quickstarts/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path).
 
 The harness [run-container image](/guides/first-time-setup/#3-the-run-container-image)
 is pulled from the registry the first time a run needs it, so there is nothing to
@@ -116,7 +129,7 @@ The console needs the backend and the auth service reachable on localhost. Hold
 them open in their own terminal:
 
 ```sh
-make -C deployments/local local-forward     # backend → 127.0.0.1:8787, auth → 127.0.0.1:8789
+make -C deployments/local local-forward     # backend → 127.0.0.1:8787, auth → 127.0.0.1:8789, arena → 127.0.0.1:8791
 ```
 
 Leave this running (Ctrl-C stops it). Everything else the console needs — the live
@@ -188,12 +201,17 @@ immutable per `(slug, version)`, so a backend-driven run keeps serving the
 previous definition until you force the overwrite (see
 [Running → re-ingest](/development/running/#start-the-backend)).
 
-## Known limitations
+## Adversarial arena
 
-- **Adversarial-arena execution** (quick matches and tournaments) was a
-  worker-only path and is **not yet** wired to the backend, so those run actions
-  in the console will not work against this stack; arena **reads** still do. See
-  the [adversarial](/testing/adversarial/overview/) type for what that covers.
+**Adversarial-arena execution** (quick matches and tournaments) runs on the
+**`tcab-arena`** service in the stack — the dedicated, CPU-bound execution host for
+head-to-head controller matches. The local overlay brings it up alongside the other
+services; reach it locally via `make -C deployments/local local-forward`, which adds
+`arena → 127.0.0.1:8791`. The backend reports the arena's URL at `GET /config`
+(`TCAB_ARENA_PUBLIC_URL`), and the console fetches it for its match/tournament run
+actions; arena **reads** (published tournaments + stored replays) stay on the
+backend. See the [adversarial](/testing/adversarial/overview/) type for what the
+arena covers.
 
 ## Next steps
 

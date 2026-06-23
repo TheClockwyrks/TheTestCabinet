@@ -56,8 +56,8 @@ use tracing::instrument;
 pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, RegisterRequest};
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
-    AuthPlan, CredFile, CredSource, RequestedAuthMode, SubscriptionSpec, auth_readiness,
-    resolve_auth,
+    AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,
+    SubscriptionSpec, auth_readiness, resolve_auth, resolve_auth_with,
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
@@ -207,6 +207,19 @@ where
     pub prices: OpenRouterPrices,
     /// Directory each run's record and collected implementation are written to.
     pub output_dir: PathBuf,
+    /// An optional source of subscription credential bytes for the run.
+    ///
+    /// `None` (the CLI/desktop in-process path) reads any subscription
+    /// credentials from the host filesystem, unchanged. The driver, which runs in
+    /// an ephemeral pod with no such files, sets this to a [`MapCreds`] built from
+    /// an operator-provided Secret mounted into the pod, so a subscription harness
+    /// (including the subscription-only Antigravity) can run on the cluster path.
+    /// See [`auth::resolve_auth_with`].
+    //
+    // The deferred per-account credential vault would slot in here as a different
+    // `CredBytesSource` — one keyed to the enqueuing account — with no change to
+    // this seam or the selection policy.
+    pub creds: Option<Box<dyn auth::CredBytesSource + Send + Sync>>,
 }
 
 impl<S, R, C, V, P> RunEngine<S, R, C, V, P>
@@ -321,8 +334,14 @@ where
         // copied into the container. The mode is chosen from the harness's
         // declared capabilities and the host environment (preferring a
         // subscription when present, unless locked with `TCAB_AUTH_MODE`); see
-        // [`auth::resolve_auth`]. The recorded mode is captured for the run.
-        let auth = auth::resolve_auth(harness)?;
+        // [`auth::resolve_auth`]. The recorded mode is captured for the run. When
+        // an explicit credential source is configured (the driver/cluster path,
+        // which has no host credential files), the subscription bytes are drawn
+        // from it instead of the host filesystem; the mode selection is identical.
+        let auth = match &self.creds {
+            Some(source) => auth::resolve_auth_with(harness, source.as_ref())?,
+            None => auth::resolve_auth(harness)?,
+        };
         let auth_mode = auth.mode();
 
         // The image is the run's explicit per-run override when it carries one,

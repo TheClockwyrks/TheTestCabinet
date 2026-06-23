@@ -1,7 +1,29 @@
 # Task 8 — Restore adversarial arena execution in the new topology
 
-**Status:** not started. **Depends on:** Phase 2 backend (done). **Relates to:**
-the deleted worker (resurrect from `3e7e86e^`).
+**Status:** ✅ **DONE** (2026-06-23, uncommitted) — shipped as **option 2, a new
+standalone `tcab-arena` service**, NOT the in-backend option 1 this file
+recommended. The operator chose the isolated `tcab-artifacts`-style split.
+**Depends on:** Phase 2 backend (done). **Relates to:** the deleted worker
+(resurrected from `3e7e86e^`).
+
+> **What landed:** a new stateless `crates/arena` crate (binary `tcab-arena`,
+> modeled on `crates/artifacts`) hosting `POST /matches`, `GET /matches/controllers`,
+> the executing `POST /tournaments`, `GET /tournaments/{id}`, and the live
+> `GET /tournaments/{id}/events` NDJSON. It fetches controllers from and persists
+> tournaments back to the backend over HTTP via `HttpBackendClient` (no new backend
+> handlers, no shared store); the `ControllerKind::Run` local-out_dir arm is dropped
+> (clean 400 — Baseline + PushedRun only). A `MatchExecutor` semaphore
+> (`TCAB_ARENA_MAX_CONCURRENT`, default 2) rejects at capacity with 503 + a warn log.
+> Single-replica Deployment (per-pod in-memory registry), CPU resources, Dockerfile,
+> GHCR matrix, k8s base + overlays + NetworkPolicy. Backend exposes `arena_url` via
+> `GET /config`; `apps/web/httpArena.ts` points its four RUN methods there and keeps
+> the three READ methods on the backend. Verified: workspace build/clippy(-D
+> warnings)/tests (arena + backend), `gen:contract` drift-clean, web typecheck +
+> `vite build`, docs build. **Still needs a real k8s/docker machine:** `kustomize
+> build` each overlay, the GHCR image build, and the k3d e2e (match + live
+> tournament from the console against the forwarded arena on :8791).
+>
+> The original design write-up is kept below as the record.
 
 ## Goal
 

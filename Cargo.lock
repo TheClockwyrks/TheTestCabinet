@@ -5532,6 +5532,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-arena"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "dotenvy",
+ "foray-core",
+ "futures-util",
+ "http",
+ "opentelemetry",
+ "serde",
+ "serde_json",
+ "test-cabinet-core",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "test-cabinet-artifacts"
 version = "0.0.0"
 dependencies = [

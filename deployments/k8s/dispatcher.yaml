@@ -75,6 +75,24 @@ spec:
             # deployments/k8s/secrets.example.yaml.
             - name: TCAB_DISPATCHER_DRIVER_SECRETS
               value: "tcab-driver-secrets"
+            # ── Subscription auth (ADDITIVE, parallel to the API-key path above) ──
+            # The operator-provided Secret holding the harness SUBSCRIPTION
+            # credential files (keyed by credential basename). When set, the
+            # dispatcher mounts it as a READ-ONLY VOLUME (not env) into every driver
+            # Job at the dir below, with optional:true so a missing Secret never
+            # wedges API-key-only driver pods, and forwards that dir to the driver.
+            # The kubelet projects the Secret as files — no RBAC Secret-read needed.
+            # Leave commented (and create no Secret) for an API-key-only deployment;
+            # uncomment + create tcab-driver-subscription (secrets.example.yaml) to
+            # unblock subscription harnesses, including the subscription-only
+            # Antigravity. Console-requested subscription runs set auth_mode on the
+            # launch request; TCAB_DISPATCHER_DRIVER_AUTH_MODE force-locks it cluster-wide.
+            # - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET
+            #   value: "tcab-driver-subscription"
+            # - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR
+            #   value: "/var/run/tcab/subscription"
+            # - name: TCAB_DISPATCHER_DRIVER_AUTH_MODE
+            #   value: "subscription"
             # ── Passed THROUGH into each driver Job verbatim ──────────────────────
             # The dispatcher does not consume these; the driver does. They scope the
             # SANDBOX pods the driver creates, not the driver pod or the dispatcher.

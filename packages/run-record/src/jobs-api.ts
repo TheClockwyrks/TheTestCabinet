@@ -49,6 +49,15 @@ export type LaunchBody = {
    * Optional override for the maximum harness runtime, in seconds.
    */
   maxRuntimeSeconds?: number;
+  /**
+   * Optional harness authentication mode for this run (`auto`, `subscription`,
+   * or `api-key`). Omitted keeps the default behavior (API-key, preferring a
+   * subscription only when its credentials are available). The driver applies
+   * it by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console
+   * can request subscription mode for a backend-driven run (the only way to run
+   * the subscription-only Antigravity harness on the cluster path).
+   */
+  authMode?: string;
 };
 
 /**
@@ -266,4 +275,10 @@ export type ClientConfig = {
    * links against it.
    */
   artifactsUrl?: string;
+  /**
+   * The arena service's public base URL, or `null` when adversarial execution is
+   * not served separately. The console POSTs matches/tournaments and streams live
+   * tournament progress against it; the adversarial run UI degrades when absent.
+   */
+  arenaUrl?: string;
 };

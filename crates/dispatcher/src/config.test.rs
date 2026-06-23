@@ -19,6 +19,9 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_POLL_INTERVAL_SECONDS",
     "TCAB_DISPATCHER_JOB_TTL_SECONDS",
     "TCAB_DISPATCHER_DRIVER_SECRETS",
+    "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET",
+    "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR",
+    "TCAB_DISPATCHER_DRIVER_AUTH_MODE",
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
@@ -68,7 +71,49 @@ fn resolves_with_required_and_defaults() {
         assert_eq!(config.job_ttl_seconds, 300);
         assert!(config.driver_service_account.is_none());
         assert!(config.driver_secrets.is_empty());
+        // Subscription unset by default; the mount dir falls back to its default.
+        assert!(config.driver_subscription_secret.is_none());
+        assert_eq!(config.subscription_dir, "/var/run/tcab/subscription");
+        assert!(config.driver_auth_mode.is_none());
         assert!(config.passthrough_k8s_env.is_empty());
+    });
+}
+
+#[test]
+fn subscription_vars_parse_when_set() {
+    with_env(|| {
+        set_required();
+        set(
+            "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET",
+            "tcab-driver-subscription",
+        );
+        set(
+            "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR",
+            "/etc/tcab/subscription",
+        );
+        set("TCAB_DISPATCHER_DRIVER_AUTH_MODE", "subscription");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(
+            config.driver_subscription_secret.as_deref(),
+            Some("tcab-driver-subscription")
+        );
+        assert_eq!(config.subscription_dir, "/etc/tcab/subscription");
+        assert_eq!(config.driver_auth_mode.as_deref(), Some("subscription"));
+    });
+}
+
+#[test]
+fn blank_subscription_vars_are_treated_as_unset() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET", "   ");
+        set("TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR", "");
+        set("TCAB_DISPATCHER_DRIVER_AUTH_MODE", " ");
+        let config = Config::from_env().expect("config should resolve");
+        assert!(config.driver_subscription_secret.is_none());
+        // Blank dir falls back to the default, not the empty string.
+        assert_eq!(config.subscription_dir, "/var/run/tcab/subscription");
+        assert!(config.driver_auth_mode.is_none());
     });
 }
 

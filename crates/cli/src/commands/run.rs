@@ -135,6 +135,9 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir,
+        // The in-process CLI path reads any subscription credentials from the host
+        // filesystem; only the driver injects an explicit credential source.
+        creds: None,
     };
 
     // Print the run's activity live as it proceeds, rather than waiting in

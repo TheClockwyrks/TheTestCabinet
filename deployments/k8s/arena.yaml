@@ -1,0 +1,85 @@
+# Arena service: runs adversarial matches and tournaments (CPU-bound in-process
+# wasm) on demand, so the heavy compute lives off the single-replica control-plane
+# backend.
+#
+# This is a DATA-plane peer, deliberately separate from the backend: the console
+# POSTs a match/tournament here and streams live tournament progress from here; the
+# service fetches every controller input from the backend and persists finished
+# tournaments + replays back to it over HTTP. It is STATELESS — no database, no PVC —
+# so it is a plain Deployment, NOT a StatefulSet. It binds 0.0.0.0:8791 and is reached
+# over the cluster network (and, for the console, via the same private boundary the
+# other services sit behind — TCAB_ARENA_PUBLIC_URL on the backend is what the console
+# resolves it against).
+#
+# It needs NO Kubernetes API access — it only talks HTTP to the backend. It IS the
+# CPU-bound pod of the topology, so it carries real CPU requests/limits.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-arena
+  ports:
+    - name: http
+      port: 8791
+      targetPort: 8791
+  # ClusterIP only — the console reaches it over the cluster network; the deployment
+  # supplies any public boundary, never a raw LoadBalancer here.
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+spec:
+  # MUST stay 1: the in-flight tournament registry and its live NDJSON progress
+  # channel are in-memory and per-pod, so a tournament submitted to one replica would
+  # be invisible to another (status/events 404). Scale the cap (TCAB_ARENA_MAX_CONCURRENT)
+  # and the pod's CPU, not the replica count.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-arena
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-arena
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      serviceAccountName: tcab-arena # no API access — its own identity only
+      containers:
+        - name: arena
+          image: REPLACE_REGISTRY/tcab-arena:latest # CI publishes ghcr.io/<owner>/tcab-arena; pin a :<git-sha> tag
+          ports:
+            - containerPort: 8791
+          env:
+            - name: TCAB_ARENA_BIND
+              value: "0.0.0.0:8791"
+            # The backend it fetches controller inputs from and persists results to.
+            - name: TCAB_BACKEND_URL
+              value: "http://tcab-backend:8787"
+            # The capacity guard: matches/tournaments running CPU-bound wasm at once
+            # before the service rejects with 503. Tune with the CPU limit below.
+            - name: TCAB_ARENA_MAX_CONCURRENT
+              value: "2"
+            - name: TCAB_ENV
+              value: "prod"
+          resources:
+            # This is the CPU-bound pod of the topology — a match is in-process wasm.
+            # Give it real headroom (two concurrent matches by default); a request that
+            # would exceed the cap is rejected with 503 rather than throttled.
+            requests:
+              cpu: "1"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "512Mi"

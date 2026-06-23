@@ -547,6 +547,9 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
         publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir,
+        // The desktop in-process path reads any subscription credentials from the
+        // host filesystem; only the driver injects an explicit credential source.
+        creds: None,
     };
     // Stamped now so a failed run records when it started, matching a completed
     // run's `startedAt`.

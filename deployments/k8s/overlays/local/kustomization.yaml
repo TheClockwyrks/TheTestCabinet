@@ -25,6 +25,7 @@ resources:
   - ../../auth.yaml
   - ../../dispatcher.yaml
   - ../../artifacts.yaml
+  - ../../arena.yaml
 
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
@@ -45,6 +46,9 @@ images:
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: tcab-artifacts
     newTag: local
+  - name: REPLACE_REGISTRY/tcab-arena
+    newName: tcab-arena
+    newTag: local
 
 # Secrets are deliberately NOT generated here — a secretGenerator would bake the
 # values into this tracked file. The Makefile creates them in-cluster from the host
@@ -64,3 +68,4 @@ patches:
   - path: patch-auth.yaml
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
+  - path: patch-arena.yaml

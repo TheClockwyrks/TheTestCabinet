@@ -17,6 +17,9 @@
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after an empty claim or a full in-flight cap before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
 //! | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job`'s env via `envFrom`. This is how the harness provider API key (e.g. `ANTHROPIC_API_KEY`) reaches the driver, which the run engine reads from its own environment exactly as the worker did. Unset injects no secret env. | — |
+//! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | The name of an operator-provided `Secret` holding the harness **subscription** credential files (keyed by credential basename). When set, the dispatcher mounts it as a read-only volume into each driver `Job` at `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` (with `optional: true`, so a missing Secret never wedges API-key-only driver pods) and forwards that dir to the driver. Unset leaves runs API-key-only — this is an additive parallel path to `TCAB_DISPATCHER_DRIVER_SECRETS`. | — |
+//! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | The path the subscription Secret is mounted at inside each driver `Job`, forwarded to the driver as `TCAB_DRIVER_SUBSCRIPTION_DIR`. Only used when the subscription Secret is configured. | `/var/run/tcab/subscription` |
+//! | `TCAB_DISPATCHER_DRIVER_AUTH_MODE` | no | When set, forwarded into each driver `Job` as `TCAB_AUTH_MODE`, locking the harness auth mode (`auto`, `subscription`, `api-key`) for every run. Unset leaves the per-run/default selection unchanged. | — |
 //!
 //! The `TCAB_K8S_RUN_*` set below is **passed through** into each driver `Job`'s
 //! env verbatim — the dispatcher does not consume it, the driver does (see the
@@ -109,6 +112,25 @@ pub struct Config {
     /// provider API key(s) the run engine reads from the driver's own environment,
     /// exactly as the worker did. Empty injects no secret env.
     pub driver_secrets: Vec<String>,
+    /// The name of the operator-provided subscription `Secret`
+    /// (`TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`). When `Some`, the dispatcher
+    /// mounts it as a read-only volume into each driver `Job` at
+    /// [`subscription_dir`](Self::subscription_dir) and forwards that dir to the
+    /// driver, enabling subscription auth. `None` leaves runs API-key-only.
+    ///
+    // The deferred per-account credential vault would replace this single shared
+    // Secret with a per-job Secret the backend attaches at enqueue; the mount
+    // mechanism below is the seam that would carry it.
+    pub driver_subscription_secret: Option<String>,
+    /// The path the subscription `Secret` is mounted at inside each driver `Job`
+    /// (`TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR`), forwarded to the driver as
+    /// `TCAB_DRIVER_SUBSCRIPTION_DIR`. Only used when
+    /// [`driver_subscription_secret`](Self::driver_subscription_secret) is set.
+    pub subscription_dir: String,
+    /// The harness auth mode to lock for every run
+    /// (`TCAB_DISPATCHER_DRIVER_AUTH_MODE`), forwarded into each driver `Job` as
+    /// `TCAB_AUTH_MODE`. `None` leaves the default/per-run selection unchanged.
+    pub driver_auth_mode: Option<String>,
     /// The `TCAB_K8S_RUN_*` (and sibling) sandbox-pod variables that are set,
     /// captured at startup to pass through into each driver `Job`'s env. The driver
     /// reads them; the dispatcher only forwards them.
@@ -153,6 +175,11 @@ impl Config {
             })
             .unwrap_or_default();
 
+        let driver_subscription_secret = non_empty("TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET");
+        let subscription_dir = non_empty("TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR")
+            .unwrap_or_else(|| "/var/run/tcab/subscription".to_string());
+        let driver_auth_mode = non_empty("TCAB_DISPATCHER_DRIVER_AUTH_MODE");
+
         let passthrough_k8s_env = PASSTHROUGH_K8S_VARS
             .iter()
             .filter_map(|&key| non_empty(key).map(|value| (key.to_string(), value)))
@@ -168,6 +195,9 @@ impl Config {
             poll_interval: Duration::from_secs(poll_seconds),
             job_ttl_seconds,
             driver_secrets,
+            driver_subscription_secret,
+            subscription_dir,
+            driver_auth_mode,
             passthrough_k8s_env,
         })
     }

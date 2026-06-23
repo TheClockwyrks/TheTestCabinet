@@ -25,6 +25,7 @@ fn claim() -> ClaimedJob {
             model: "anthropic/claude".to_string(),
             orchestrator: Some("one-shot".to_string()),
             max_runtime_seconds: Some(600),
+            auth_mode: None,
         },
     }
 }
@@ -41,6 +42,9 @@ fn config() -> Config {
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
+        driver_subscription_secret: None,
+        subscription_dir: "/var/run/tcab/subscription".to_string(),
+        driver_auth_mode: None,
         passthrough_k8s_env: vec![
             ("TCAB_K8S_RUN_CPU_REQUEST".to_string(), "500m".to_string()),
             ("TCAB_K8S_RUN_CPU_LIMIT".to_string(), "2".to_string()),
@@ -181,6 +185,65 @@ fn no_driver_secrets_omits_env_from() {
     config.driver_secrets.clear();
     let job = build_driver_job(&claim(), &config).unwrap();
     assert!(container(&job).env_from.is_none());
+}
+
+#[test]
+fn no_subscription_secret_omits_the_volume_and_env() {
+    // The default config configures no subscription Secret: no volume, no mount,
+    // and no TCAB_DRIVER_SUBSCRIPTION_DIR env.
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let pod = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    assert!(pod.volumes.is_none(), "expected no volumes");
+    assert!(container(&job).volume_mounts.is_none(), "expected no mounts");
+    assert!(!env_map(container(&job).env.as_ref().unwrap()).contains_key("TCAB_DRIVER_SUBSCRIPTION_DIR"));
+}
+
+#[test]
+fn subscription_secret_mounts_a_readonly_volume_with_default_mode_0600() {
+    let mut config = config();
+    config.driver_subscription_secret = Some("tcab-driver-subscription".to_string());
+    config.subscription_dir = "/var/run/tcab/subscription".to_string();
+    let job = build_driver_job(&claim(), &config).unwrap();
+
+    let pod = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    let volume = &pod.volumes.as_ref().expect("expected a volume")[0];
+    assert_eq!(volume.name, "subscription-creds");
+    let secret = volume.secret.as_ref().expect("expected a secret volume source");
+    assert_eq!(secret.secret_name.as_deref(), Some("tcab-driver-subscription"));
+    // Owner-only credential files, and optional so a missing Secret never wedges
+    // the pod.
+    assert_eq!(secret.default_mode, Some(0o600));
+    assert_eq!(secret.optional, Some(true));
+
+    let mount = &container(&job).volume_mounts.as_ref().expect("expected a mount")[0];
+    assert_eq!(mount.name, "subscription-creds");
+    assert_eq!(mount.mount_path, "/var/run/tcab/subscription");
+    assert_eq!(mount.read_only, Some(true));
+
+    // The driver is told where the Secret is mounted.
+    let env = env_map(container(&job).env.as_ref().unwrap());
+    assert_eq!(
+        env["TCAB_DRIVER_SUBSCRIPTION_DIR"].value.as_deref(),
+        Some("/var/run/tcab/subscription")
+    );
+    // The API-key envFrom path is untouched (still present).
+    assert!(container(&job).env_from.is_some());
+}
+
+#[test]
+fn driver_auth_mode_is_forwarded_as_tcab_auth_mode() {
+    let mut config = config();
+    config.driver_auth_mode = Some("subscription".to_string());
+    let job = build_driver_job(&claim(), &config).unwrap();
+    let env = env_map(container(&job).env.as_ref().unwrap());
+    assert_eq!(env["TCAB_AUTH_MODE"].value.as_deref(), Some("subscription"));
+}
+
+#[test]
+fn no_driver_auth_mode_omits_tcab_auth_mode() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let env = env_map(container(&job).env.as_ref().unwrap());
+    assert!(!env.contains_key("TCAB_AUTH_MODE"));
 }
 
 #[test]
