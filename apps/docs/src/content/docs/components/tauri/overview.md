@@ -19,8 +19,9 @@ through the [UI library](/components/ui/overview/): the two are the same console
 and the only substantive difference is what they connect to. The Tauri app ships
 with a **built-in local worker** — its host's embedded core — pre-added, so it
 can run a test case out of the box; the web console starts with no workers. Both
-resolve the catalog from a [backend](/components/backend/overview/) and can add
-further remote [workers](/components/worker/overview/).
+resolve the catalog from a [backend](/components/backend/overview/), which can
+also run a test case server-side via a per-run
+[driver](/components/driver/overview/) `Job`.
 
 ## What it does
 

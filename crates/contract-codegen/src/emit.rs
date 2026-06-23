@@ -1,6 +1,6 @@
 //! Emission machinery shared by the TypeScript and JSON Schema generators.
 //!
-//! The contract types live in `crates/core`, `crates/worker`, and `crates/backend`
+//! The contract types live in `crates/core` and `crates/backend`
 //! and derive both [`ts_rs::TS`] and [`schemars::JsonSchema`] behind their
 //! `contract` feature. This module turns those derives into the published
 //! artifacts: a TypeScript declaration per type ([`ts_block`]) and a
@@ -15,8 +15,8 @@ use serde_json::{Map, Value};
 use ts_rs::{Config, TS};
 
 /// The absolute base URL the published schemas live under. Each schema's `$id`
-/// and every cross-schema `$ref` is rooted here, matching the URLs the worker,
-/// backend, and snapshot schemas reference.
+/// and every cross-schema `$ref` is rooted here, matching the URLs the
+/// backend and snapshot schemas reference.
 pub const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema";
 
 /// The `ts_rs` config used for every binding: large integers (`i64`/`u64`) render

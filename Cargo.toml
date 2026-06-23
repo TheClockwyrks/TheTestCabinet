@@ -23,7 +23,6 @@ members = [
 	"crates/backend",
 	"crates/driver",
 	"crates/dispatcher",
-	"crates/worker",
 	"crates/artifacts",
 	"crates/auth-service",
 	"crates/telemetry",
@@ -131,8 +130,8 @@ tempfile = "3"
 # `png` crate is a small, pure-Rust decoder with no system dependencies, keeping
 # the workspace buildable on minimal hosts.
 png = "0.17"
-# Base64 for inlining a live asset-generation preview frame into the JSON event a
-# worker streams (or the desktop shell emits) to the run monitor: the run host
+# Base64 for inlining a live asset-generation preview frame into the JSON event the
+# driver streams (or the desktop shell emits) to the run monitor: the run host
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them
 # so the frame travels in the same JSON transport as every other live update.
 base64 = "0.22"
@@ -140,11 +139,11 @@ base64 = "0.22"
 # builds never compile it: the `schema` feature of `foray-core`/`lattice-core`
 # emits the per-tick contract schemas each adversarial/performance test case seeds
 # verbatim (a drift test asserts the on-disk copies never diverge from the engine
-# types), and the `contract` feature of `core`/`worker`/`backend` (driven by the
+# types), and the `contract` feature of `core`/`backend` (driven by the
 # `contract-codegen` generator) emits the published API/run-record JSON Schemas.
 schemars = "1"
 # TypeScript binding generation from Rust types. Pulled in only behind the
-# `contract` feature of `core`/`worker`/`backend` (and the `contract-codegen`
+# `contract` feature of `core`/`backend` (and the `contract-codegen`
 # generator that drives them), so normal/CLI/desktop/wasm builds never compile it.
 # Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
 # are generated from one source of truth and can never drift apart.
@@ -179,8 +178,8 @@ tauri-build = { version = "2", features = [] }
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
 # the request-tracing/limit middleware and the CORS layer the browser UIs need to
-# reach a backend/worker on a different localhost port. The backend and worker are
-# the only crates that bind a socket, so these stay out of the leaner crates.
+# reach the backend on a different localhost port. The backend, auth, and artifact
+# services are the socket-binding crates, so these stay out of the leaner crates.
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
@@ -228,8 +227,8 @@ percent-encoding = "2"
 argon2 = "0.5"
 rand = "0.8"
 
-# Worker HTTP server. The worker streams a run's live harness events back to the
-# caller as the run proceeds; `futures-util` adapts an mpsc receiver into the
+# Streaming HTTP bodies. The backend relays a run's live harness events to the
+# console as the run proceeds; `futures-util` adapts an mpsc receiver into the
 # `Stream` axum's `Body::from_stream` consumes, and `bytes` frames each NDJSON
 # line. Both are already in the dependency graph (transitively, via axum/tokio),
 # so naming them here adds no new fetch.

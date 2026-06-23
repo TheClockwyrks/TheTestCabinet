@@ -1,0 +1,87 @@
+# Artifact service: serves the produced run trees (playable builds, proof/asset
+# media) off a persistent volume, so artifacts survive the ephemeral driver Jobs
+# that produced them.
+#
+# This is a DATA-plane peer, deliberately separate from the control-plane backend:
+# the driver UPLOADS each run's tree here before reporting terminal status, and the
+# console READS it here. Artifact bytes never transit the backend. It binds
+# 0.0.0.0:8790 and is reached over the cluster network (and, for the console, via
+# the same private boundary the other services sit behind — TCAB_ARTIFACTS_PUBLIC_URL
+# on the backend is what the console resolves links against).
+#
+# It needs NO Kubernetes API access — it only talks HTTP to the backend (to verify
+# a driver's per-job upload token) and to the auth service (to gate a reviewer's
+# read of a pre-publish run). It does need durable storage: a single PVC mounted at
+# TCAB_ARTIFACTS_ROOT. Single replica + ReadWriteOnce, because a local-disk store is
+# single-node; point it at an object store (R2) later to scale out and drop the PVC.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-artifacts
+  ports:
+    - name: http
+      port: 8790
+      targetPort: 8790
+  # ClusterIP only — the driver and console reach it over the cluster network; the
+  # deployment supplies any public boundary, never a raw LoadBalancer here.
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  serviceName: tcab-artifacts
+  replicas: 1 # local-disk store is single-node; do not scale out (use R2 to scale).
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-artifacts
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-artifacts
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      serviceAccountName: tcab-artifacts # no API access — its own identity only
+      containers:
+        - name: artifacts
+          image: REPLACE_REGISTRY/tcab-artifacts:latest # CI publishes ghcr.io/<owner>/tcab-artifacts; pin a :<git-sha> tag
+          ports:
+            - containerPort: 8790
+          env:
+            - name: TCAB_ARTIFACTS_BIND
+              value: "0.0.0.0:8790"
+            # The PVC mount below — each run's tree lives at <root>/<run-id>/.
+            - name: TCAB_ARTIFACTS_ROOT
+              value: "/artifacts"
+            # The backend it forwards a driver's per-job token to for upload auth.
+            - name: TCAB_BACKEND_URL
+              value: "http://tcab-backend:8787"
+            # The auth service it verifies a reviewer's account token against for reads.
+            - name: TCAB_AUTH_URL
+              value: "http://tcab-auth:8789"
+            - name: TCAB_ENV
+              value: "prod"
+          volumeMounts:
+            - name: artifacts
+              mountPath: /artifacts
+  volumeClaimTemplates:
+    - metadata:
+        name: artifacts
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+        # storageClassName: <your-block-storage-class>

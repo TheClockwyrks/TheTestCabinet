@@ -36,9 +36,11 @@ Then run **Dev Containers: Reopen in Container** in VS Code.
 ```sh
 cargo build --workspace        # CLI, core, and the Tauri desktop shell
 cargo test --workspace
-cargo build-portable           # static musl tcab         (see https://docs.testcabinet.ai/development/building/)
-cargo build-portable-worker    # static musl tcab-worker  (run it on the host, drive it from the web UI)
-cargo build-portable-backend   # static musl tcab-backend (definition/run store + API)
+cargo build-portable           # static musl tcab            (see https://docs.testcabinet.ai/development/building/)
+cargo build-portable-backend   # static musl tcab-backend    (definition/run store + API + run queue)
+cargo build-portable-dispatcher # static musl tcab-dispatcher (claims queued runs → one driver Job each)
+cargo build-portable-driver    # static musl tcab-driver     (the per-run executor)
+cargo build-portable-artifacts # static musl tcab-artifacts  (serves produced run trees)
 npm install && npm run build    # the TypeScript workspaces
 ```
 
@@ -69,8 +71,7 @@ admin — no login). To start exporting, uncomment `OTEL_EXPORTER_OTLP_ENDPOINT`
 in the relevant `.env.*` file, choosing the address by where the process runs:
 
 - **Inside the container** (backend, web console): `http://lgtm:4318`.
-- **On the host** (worker, `tcab` CLI, desktop app, browser):
-  `http://localhost:4318`.
+- **On the host** (`tcab` CLI, desktop app, browser): `http://localhost:4318`.
 
 The Rust binaries and the browser export over OTLP **HTTP/protobuf** (`:4318`);
 the gRPC port (`:4317`) is published too if you wire up a gRPC exporter. See the

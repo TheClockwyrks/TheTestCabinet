@@ -1,8 +1,9 @@
 //! The Test Cabinet driver: a one-shot run executor that streams to the backend.
 //!
-//! The driver is the per-run-Job counterpart of the [worker](test_cabinet_worker):
-//! where the worker is a long-lived HTTP server with an in-memory job registry,
-//! the driver executes **exactly one** run and exits. The dispatcher creates a
+//! The driver is the per-run-Job counterpart of the worker (`test-cabinet-worker`,
+//! now removed): where the worker was a long-lived HTTP server with an in-memory
+//! job registry, the driver executes **exactly one** run and exits. The dispatcher
+//! creates a
 //! driver Job per claimed run; the driver resolves the definition from the
 //! backend, runs it through [`test_cabinet_core::RunEngine`] (creating an
 //! untrusted sandbox pod or shelling out to a host runtime), streams the run's

@@ -5,8 +5,9 @@
 # the way they will be in the cloud. `make local-down` tears it all down.
 #
 # Requirements on the host: docker (or a docker-compatible runtime), k3d, and
-# kubectl. Unlike the compose template, this needs no worker-on-host wiring —
-# everything runs in the cluster (run execution joins once the dispatcher lands).
+# kubectl. Everything runs in the cluster — the backend + auth, the dispatcher, the
+# artifact service, and one per-run driver Job per enqueued run. There is no
+# worker-on-host wiring; a run enqueued at the backend schedules as a Job here.
 #
 # Targets:
 #   local-up        create the cluster, build+import images, apply, ingest catalog
@@ -25,8 +26,11 @@ CLUSTER ?= tcab
 NS      ?= tcab-local
 OVERLAY := $(REPO)/deployments/k8s/overlays/local
 
-BACKEND_IMG := tcab-backend:local
-AUTH_IMG    := tcab-auth-service:local
+BACKEND_IMG    := tcab-backend:local
+AUTH_IMG       := tcab-auth-service:local
+DISPATCHER_IMG := tcab-dispatcher:local
+DRIVER_IMG     := tcab-driver:local
+ARTIFACTS_IMG  := tcab-artifacts:local
 
 .PHONY: local-up local-down local-rebuild local-forward local-ingest local-status cluster images apply
 
@@ -51,15 +55,20 @@ cluster:
 # Build the service images from the same Dockerfiles the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
 images:
-	docker build -t '$(BACKEND_IMG)' -f '$(REPO)/deployments/images/backend.Dockerfile' '$(REPO)'
-	docker build -t '$(AUTH_IMG)'    -f '$(REPO)/deployments/images/auth.Dockerfile'    '$(REPO)'
-	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' -c '$(CLUSTER)'
+	docker build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
+	docker build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
+	docker build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
+	docker build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
+	docker build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
+	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' '$(DISPATCHER_IMG)' '$(DRIVER_IMG)' '$(ARTIFACTS_IMG)' -c '$(CLUSTER)'
 
-# Apply the local overlay and wait for both services to become ready.
+# Apply the local overlay and wait for every service to become ready.
 apply:
 	kubectl apply -k '$(OVERLAY)'
-	kubectl -n '$(NS)' rollout status statefulset/tcab-backend --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-auth    --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
 # Uses an ephemeral port-forward that is torn down when the recipe exits.
@@ -79,11 +88,15 @@ local-forward:
 	  kubectl -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
 	  wait
 
-# Rebuild after a code change: new images, re-import, rolling restart.
+# Rebuild after a code change: new images, re-import, rolling restart. (Driver pods
+# are per-run Jobs the dispatcher creates fresh each run, so they pick up the new
+# tcab-driver:local image on the next run with no restart here.)
 local-rebuild: images
-	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth
-	kubectl -n '$(NS)' rollout status statefulset/tcab-backend --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-auth    --timeout=300s
+	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-dispatcher
+	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
 local-status:
 	kubectl -n '$(NS)' get pods,svc,pvc

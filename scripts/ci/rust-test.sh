@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds and tests every headless Rust crate: the `tcab` CLI, the `tcab-worker`
-# and `tcab-backend` servers, and the `test-cabinet-core`/`test-cabinet-telemetry`
-# libraries they share.
+# Builds and tests every headless Rust crate: the `tcab` CLI, the `tcab-backend`
+# server, the `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology
+# services, and the `test-cabinet-core`/`test-cabinet-telemetry` libraries they
+# share.
 #
 # Scoped with `--workspace --exclude test-cabinet-desktop`: the only crate left
 # out is the Tauri desktop shell (`crates/desktop`), so the per-change CI runners

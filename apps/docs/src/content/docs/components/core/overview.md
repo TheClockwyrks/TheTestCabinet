@@ -41,8 +41,8 @@ contracts the rest of the system is built around:
 The wrapping components are deliberately thin:
 
 - The [CLI](/components/cli/overview/) exposes the core as the `tcab` binary.
-- The [worker](/components/worker/overview/) exposes the same run functionality
-  over an HTTP API.
+- The [driver](/components/driver/overview/) exposes the same run functionality
+  as a per-run executor that the backend dispatches into a Kubernetes `Job`.
 - The [Tauri app](/components/tauri/overview/) exposes it as an interactive
   desktop GUI.
 

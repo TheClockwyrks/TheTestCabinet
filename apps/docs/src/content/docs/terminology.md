@@ -2,6 +2,15 @@
 title: Terminology
 ---
 
+## Artifact Service
+
+The [artifact service](/components/artifacts/overview/) serves the produced run
+trees — a run's playable build and its proof/asset media — off a persistent volume,
+so they survive the ephemeral [driver](#driver) `Job`s that produced them. The
+driver uploads each run's tree to it; a [console](#web-console) reads it from there
+to play and review a run. It is a data-plane peer kept separate from the
+[backend](#backend), so artifact bytes never transit the control plane.
+
 ## Auth Service
 
 The [auth service](/components/auth/overview/) is the standalone private service
@@ -31,6 +40,25 @@ domains; the reviewer assigns a [rating](#rating) to each while playing the
 build, and the run's **overall rating** is the *worst* across them, so a flawless
 mode cannot mask a broken one. A [review item](#reviewer-checklist) may roll up
 to a domain, or stay general when it applies to every mode.
+
+## Dispatcher
+
+The [dispatcher](/components/dispatcher/overview/) is a thin controller that drains
+the [backend](#backend)'s run queue: it claims each queued run and creates one
+Kubernetes `Job` running a [driver](#driver) to execute it. It is stateless (the
+backend's job table is the source of truth) and replaces the earlier long-lived
+[worker](#worker) pool, so concurrency scales with the cluster instead of a
+hand-sized set of workers.
+
+## Driver
+
+The [driver](/components/driver/overview/) is the per-run executor: a one-shot
+process, created by the [dispatcher](#dispatcher) as a Kubernetes `Job`, that runs
+**exactly one** test case. It resolves the definition from the [backend](#backend),
+drives the run through the [core](/components/core/overview/) (creating an untrusted
+sandbox pod for the run), streams its live progress back to the backend, uploads the
+produced tree to the [artifact service](#artifact-service), and exits. It is the
+per-run-`Job` successor to the [worker](#worker).
 
 ## Harness
 
@@ -129,8 +157,9 @@ token/cost data.
 ## Runners
 
 The term "runner" is used to refer to any The Test Cabinet component that is
-capable of running test cases — the [CLI](/components/cli/overview/), a
-[worker](#worker), the desktop app's built-in local worker, and the
+capable of running test cases — the [CLI](/components/cli/overview/), the desktop
+app's built-in local runner, the per-run [driver](#driver) a
+[dispatcher](#dispatcher) creates for a server-side run, and the
 [core](/components/core/overview/) they all build on.
 
 ## Score
@@ -182,13 +211,7 @@ of a test case.
 The [web console](/components/web/overview/) is The Test Cabinet's
 runner/reporter GUI running in a plain browser. It is the same console as the
 [Tauri desktop app](/components/tauri/overview/), sharing its entire UI, but is
-delivered as a static web app and executes runs on remote [workers](#worker)
-rather than a built-in local one. It is an operator tool, served on the private
-network, not a public site.
-
-## Worker
-
-A [worker](/components/worker/overview/) exposes the core's run functionality
-over an HTTP API, so a test case can be executed on a remote machine. Workers are
-the execution backend for the [web console](#web-console); the desktop app ships
-with its own built-in local worker.
+delivered as a static web app and **enqueues** runs at the [backend](#backend) —
+which a [dispatcher](#dispatcher) drains into per-run [driver](#driver) `Job`s —
+rather than driving a built-in local runner. It is an operator tool, served on the
+private network, not a public site.

@@ -1,0 +1,16 @@
+# The dispatcher's TCAB_DRIVER_IMAGE is a plain env VALUE, not a container
+# `image:` field, so kustomize's `images:` transformer does not rewrite it. Patch
+# it here to the same registry + tag the driver image is published under. Keep it
+# in lockstep with the dispatcher image tag so they version together.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_DRIVER_IMAGE
+              value: "ghcr.io/REPLACE_OWNER/tcab-driver:latest"

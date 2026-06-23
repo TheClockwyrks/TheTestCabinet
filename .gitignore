@@ -129,7 +129,8 @@ web_modules/
 .env.runner
 .env.backend
 .env.auth
-.env.worker
+.env.dispatcher
+.env.artifacts
 .env.site
 .env.development.local
 .env.test.local
@@ -276,8 +277,9 @@ tcab-backend.sqlite*
 # repo root so it can't match a nested source directory of the same name.
 /tcab-store/
 
-# Ignore worker-generated files
-/.tcab-worker/
+# Ignore driver-generated run scratch + the local artifact-service store
+/.tcab-driver/
+/tcab-artifacts/
 
 # Claude memories — host-mounted for container-rebuild persistence, not committed
 .claude/memories/

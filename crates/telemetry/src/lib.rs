@@ -23,9 +23,9 @@
 //! async fn main() -> std::process::ExitCode {
 //!     // Bind the guard for the whole program; it flushes telemetry on drop.
 //!     let _telemetry = test_cabinet_telemetry::init(test_cabinet_telemetry::Config::new(
-//!         "tcab-worker",
+//!         "tcab-dispatcher",
 //!         env!("CARGO_PKG_VERSION"),
-//!         "info,test_cabinet_worker=info",
+//!         "info,test_cabinet_dispatcher=info",
 //!     ))
 //!     .expect("initialize telemetry");
 //!

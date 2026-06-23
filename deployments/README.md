@@ -1,9 +1,12 @@
 # Deployment assets
 
-Copy-pasteable templates for deploying The Test Cabinet's three long-running
-services — the **backend** (`tcab-backend`), the **worker** (`tcab-worker`), and
-the **auth service** (`tcab-auth-service`) — to **Kubernetes**, where the worker
-spawns each run as a separate pod via the Kubernetes API.
+Copy-pasteable templates for deploying The Test Cabinet's long-running services —
+the **backend** (`tcab-backend`), the **auth service** (`tcab-auth-service`), the
+**dispatcher** (`tcab-dispatcher`), and the **artifact service** (`tcab-artifacts`)
+— to **Kubernetes**, where a run is a **per-run Kubernetes Job**: the dispatcher
+creates one **driver** (`tcab-driver`) Job per queued run, and each driver spawns a
+separate **sandbox pod** via the Kubernetes API. There is no worker pool and no
+headless Service.
 
 This folder holds the *assets*; the authoritative, narrative documentation is the
 **Deployment** section of the docs site, which explains what these files are for
@@ -26,23 +29,29 @@ lives on the docs site and this README is just a map.
 ```
 deployments/
 ├── local/
-│   ├── compose.yml            # backend + auth service in containers; worker runs on the host
-│   └── Makefile               # the same services on a local k3d cluster (`make local-up`)
+│   ├── compose.yml            # backend + auth service in containers (a minimal stack)
+│   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
 ├── images/                    # service images, published to GHCR by CI (see below)
 │   ├── backend.Dockerfile     # tcab-backend + headless Chromium
-│   ├── auth.Dockerfile        # tcab-auth-service, slimmer runtime (no Chromium/fonts)
-│   └── worker.Dockerfile      # tcab-worker + publish CLIs (git/gh/wrangler); no container engine
+│   ├── auth.Dockerfile        # tcab-auth-service, slim runtime (no Chromium/fonts)
+│   ├── dispatcher.Dockerfile  # tcab-dispatcher, slim controller; no container engine
+│   ├── driver.Dockerfile      # tcab-driver, the per-run executor; no container engine
+│   └── artifacts.Dockerfile   # tcab-artifacts, slim run-tree server
 ├── k8s/
+│   ├── kustomization.yaml     # the kustomize BASE (the flat manifests below)
 │   ├── namespace.yaml         # per-environment namespace
-│   ├── rbac.yaml              # tcab-worker ServiceAccount + Role to manage run pods
+│   ├── rbac.yaml              # tcab-driver SA/Role (sandbox pods) + tcab-dispatcher SA/Role (Jobs)
 │   ├── secrets.example.yaml   # Secret templates (placeholders only)
 │   ├── backend.yaml           # backend StatefulSet (1 replica) + PVC + Service
 │   ├── auth.yaml              # auth StatefulSet (1 replica) + PVC + Service
-│   ├── worker.yaml            # worker StatefulSet + headless Service
+│   ├── dispatcher.yaml        # dispatcher Deployment (1 replica), no Service
+│   ├── artifacts.yaml         # artifact StatefulSet (1 replica) + PVC + Service + SA
 │   ├── ingest-cronjob.yaml    # periodic POST /ingest to refresh the catalog
 │   ├── networkpolicy.yaml     # optional default-deny-ingress + allows
 │   ├── overlays/
-│   │   └── local/             # kustomize overlay: backend + auth on local k3d (driven by ../local/Makefile)
+│   │   ├── prod/              # production overlay (registry pinned)
+│   │   ├── staging/           # staging overlay (tcab-staging, TCAB_ENV=staging)
+│   │   └── local/             # k3d development mirror (driven by ../local/Makefile)
 │   └── README.md              # apply order + per-environment notes
 ├── backups/
 │   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
@@ -53,8 +62,8 @@ deployments/
     ├── backend.prod.env.example
     ├── auth.staging.env.example
     ├── auth.prod.env.example
-    ├── worker.staging.env.example
-    └── worker.prod.env.example
+    ├── dispatcher.staging.env.example
+    └── dispatcher.prod.env.example
 ```
 
 See the docs' [Backups](../apps/docs/src/content/docs/deployment/backups.md) and
@@ -65,14 +74,15 @@ of each service's configuration.
 
 ## Service images
 
-The three service images under `images/` are published to GHCR by the
+The service images under `images/` are published to GHCR by the
 [`build-service-images.yml`](../.github/workflows/build-service-images.yml) GitHub
 Actions workflow on every push to `master` that touches the crates or a
-Dockerfile, as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`, and
-`…/tcab-worker` (each tagged `:latest` and the immutable `:<git-sha>`). Point the
-`k8s/` manifests' `image:` fields (the `REPLACE_REGISTRY` placeholder) at that
-namespace, pinning the `:<git-sha>` tag in a real deployment. To build and push
-them by hand instead, see the build instructions in each Dockerfile's header.
+Dockerfile, as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,
+`…/tcab-dispatcher`, `…/tcab-driver`, and `…/tcab-artifacts` (each tagged `:latest`
+and the immutable `:<git-sha>`). The kustomize overlays' `images:` blocks point
+each at that namespace, pinning the `:<git-sha>` tag in a real deployment. To build
+and push them by hand instead, see the build instructions in each Dockerfile's
+header.
 
 These are the long-running **service** images, distinct from the **run-container**
 images a run executes inside ([`containers/`](../containers/README.md)), which are
@@ -83,8 +93,9 @@ published separately by [`build-containers.yml`](../.github/workflows/build-cont
 Every file here is a **template with placeholder values only** — never commit a
 real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
-[`.env.auth.example`](../.env.auth.example), and
-[`.env.worker.example`](../.env.worker.example) remain the authoritative
+[`.env.auth.example`](../.env.auth.example),
+[`.env.dispatcher.example`](../.env.dispatcher.example), and
+[`.env.artifacts.example`](../.env.artifacts.example) remain the authoritative
 reference for every variable each service reads. Supply real values through
 Kubernetes `Secret`s populated from your secret manager (External Secrets, Sealed
 Secrets, `kubectl create secret`, …).

@@ -52,6 +52,21 @@ spec:
             # The auth service this backend verifies tokens against.
             - name: TCAB_BACKEND_AUTH_URL
               value: "http://tcab-auth:8789"
+            # The public base URL of the artifact service, reported to the console via
+            # GET /config so it can resolve a pre-publish run's playable build and its
+            # proof/asset media against the data plane. The artifact BYTES never transit
+            # the backend — this is just the URL the console fetches them from.
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://tcab-artifacts:8790"
+            # The shared service token the dispatcher claims queued jobs with. MUST
+            # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN (tcab-dispatcher-secrets)
+            # or the queue never drains. Without it the dispatcher endpoints are
+            # disabled. From the backend secret below.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
             - name: TCAB_ENV
               value: "prod"
           envFrom:

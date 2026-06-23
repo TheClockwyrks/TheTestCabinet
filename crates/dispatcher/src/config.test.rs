@@ -18,8 +18,10 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_MAX_INFLIGHT",
     "TCAB_DISPATCHER_POLL_INTERVAL_SECONDS",
     "TCAB_DISPATCHER_JOB_TTL_SECONDS",
+    "TCAB_DISPATCHER_DRIVER_SECRETS",
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
+    "TCAB_ARTIFACTS_URL",
 ];
 
 fn clear_all() {
@@ -65,7 +67,22 @@ fn resolves_with_required_and_defaults() {
         assert_eq!(config.poll_interval.as_secs(), 2);
         assert_eq!(config.job_ttl_seconds, 300);
         assert!(config.driver_service_account.is_none());
+        assert!(config.driver_secrets.is_empty());
         assert!(config.passthrough_k8s_env.is_empty());
+    });
+}
+
+#[test]
+fn driver_secrets_are_split_on_commas() {
+    with_env(|| {
+        set_required();
+        set(
+            "TCAB_DISPATCHER_DRIVER_SECRETS",
+            "tcab-driver-secrets, tcab-extra ",
+        );
+        let config = Config::from_env().expect("config should resolve");
+        // Trimmed, blanks dropped.
+        assert_eq!(config.driver_secrets, vec!["tcab-driver-secrets", "tcab-extra"]);
     });
 }
 
@@ -125,6 +142,22 @@ fn overrides_and_passthrough_are_collected() {
                 .contains(&("TCAB_K8S_RUN_MEMORY_LIMIT".to_string(), "4Gi".to_string()))
         );
         assert_eq!(config.passthrough_k8s_env.len(), 2);
+    });
+}
+
+#[test]
+fn artifacts_url_is_passed_through() {
+    with_env(|| {
+        set_required();
+        set("TCAB_ARTIFACTS_URL", "http://tcab-artifacts:8790");
+
+        let config = Config::from_env().expect("config should resolve");
+        // The artifact-service URL is forwarded into each driver Job's env exactly
+        // like the sandbox-pod settings; the dispatcher never interprets it.
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_ARTIFACTS_URL".to_string(),
+            "http://tcab-artifacts:8790".to_string()
+        )));
     });
 }
 

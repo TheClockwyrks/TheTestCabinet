@@ -1,0 +1,61 @@
+# Retag TCAB_ENV from the base's `prod` to `staging` on every workload. Each doc is
+# a strategic-merge patch keyed by the workload name + its container name; kustomize
+# merges the env list by the `name` field, so only TCAB_ENV is touched.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://tcab-artifacts:8790"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-auth
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-artifacts
+spec:
+  template:
+    spec:
+      containers:
+        - name: artifacts
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+            # The base names sandbox pods in tcab-prod; retag to the staging namespace.
+            - name: TCAB_K8S_NAMESPACE
+              value: "tcab-staging"
+            - name: TCAB_DISPATCHER_NAMESPACE
+              value: "tcab-staging"

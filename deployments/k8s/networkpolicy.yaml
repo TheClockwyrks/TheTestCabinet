@@ -2,10 +2,15 @@
 # to the cluster network; this tightens it. Your cluster needs a NetworkPolicy-
 # enforcing CNI (Calico, Cilium, etc.) for these to take effect.
 #
-# Run pods carry app.kubernetes.io/managed-by: tcab-worker (set by the worker), so
-# a policy can select them. They need NO inbound access except the worker's
-# exec/preview connections — exec rides the API server, preview is the worker pod
-# reaching the run pod — and only the egress their harness needs.
+# Pod labels this policy selects on (set by the dispatcher + driver):
+#   - dispatcher pod:  app.kubernetes.io/name: tcab-dispatcher
+#   - driver Job pods: app.kubernetes.io/managed-by: tcab-dispatcher (the Jobs it creates)
+#   - sandbox pods:    app.kubernetes.io/managed-by: tcab-driver     (created by a driver)
+#   - artifact pods:   app.kubernetes.io/name: tcab-artifacts
+#
+# Sandbox pods need NO inbound access except the driver's exec/preview connections —
+# exec rides the API server, preview is the driver pod reaching the sandbox pod —
+# and only the egress their harness needs.
 
 # Default-deny ingress for the namespace; allow egress (DNS, model APIs, registries).
 apiVersion: networking.k8s.io/v1
@@ -18,11 +23,13 @@ spec:
   policyTypes: ["Ingress"]
   # No ingress rules => deny all inbound by default; add explicit allows below.
 ---
-# Let the workers reach the backend and auth service.
+# Let the control-plane callers reach the backend and auth service: the dispatcher
+# (claim + status), the driver Job pods (stream events/preview/status, push the
+# record), and the artifact service (verify upload/read tokens).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tcab-allow-services-from-workers
+  name: tcab-allow-services-from-runners
   namespace: tcab-prod
 spec:
   podSelector:
@@ -33,23 +40,51 @@ spec:
   policyTypes: ["Ingress"]
   ingress:
     - from:
+        # The dispatcher.
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: tcab-worker
+              app.kubernetes.io/name: tcab-dispatcher
+        # Every driver Job pod (the dispatcher labels them managed-by itself).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: tcab-dispatcher
+        # The artifact service (forwards a driver's per-job token to the backend and
+        # a reviewer's account token to auth).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-artifacts
 ---
-# Let the worker reach its run pods (the live asset-preview stream).
+# Let a driver Job pod reach the artifact service to upload its produced run tree.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tcab-allow-runpods-from-worker
+  name: tcab-allow-artifacts-from-drivers
   namespace: tcab-prod
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/managed-by: tcab-worker
+      app.kubernetes.io/name: tcab-artifacts
   policyTypes: ["Ingress"]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: tcab-worker
+              app.kubernetes.io/managed-by: tcab-dispatcher
+---
+# Let a driver reach its sandbox pods (the live asset-preview stream): the sandbox
+# pod connects back to the driver pod's IP, so the driver pod is the ingress target.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-driver-from-sandbox
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: tcab-dispatcher
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: tcab-driver

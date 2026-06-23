@@ -22,13 +22,15 @@ The Test Cabinet is made up of the following components.
 | --------- | ---------- |
 | [Core](/components/core/overview/) | The Rust library that implements ~95% of the functionality. Everything else wraps it. |
 | [CLI](/components/cli/overview/) | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch. |
-| [Worker](/components/worker/overview/) | An Axum server that exposes the core's run functionality over an HTTP API, for running test cases on a remote machine. |
+| [Dispatcher](/components/dispatcher/overview/) | A thin controller that claims queued runs from the backend and creates one driver `Job` per run. |
+| [Driver](/components/driver/overview/) | The per-run executor: it runs exactly one test case in a `Job`, streams its progress to the backend, and exits. |
+| [Artifacts](/components/artifacts/overview/) | A data-plane service that serves produced run trees (playable builds, proof/asset media) off a persistent volume. |
 | [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. |
-| [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by remote workers rather than a built-in local one. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions and stores run results (pushed, reviewed, and published). |
+| [Web console](/components/web/overview/) | The same runner/reporter console as the Tauri app, running in a browser and backed by the backend's run queue rather than a built-in local runner. |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results (pushed, reviewed, and published). |
 | [Auth service](/components/auth/overview/) | A small standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
-| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend/worker client interfaces the Tauri and web consoles share. |
+| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend client interfaces the Tauri and web consoles share. |
 | [Docs](/components/docs/overview/) | This documentation site. |
 
 ## Runners and Reporters
@@ -36,11 +38,12 @@ The Test Cabinet is made up of the following components.
 Two roles recur across the components:
 
 - A **runner** is any component that can execute a test case: the
-  [CLI](/components/cli/overview/), the [worker](/components/worker/overview/),
-  and the [Tauri app](/components/tauri/overview/). A runner needs a container
-  runtime on the machine it runs on, resolves the requested test case version
-  from the backend, drives the run through the core, and reports the result back
-  to the backend when the run is [pushed](/components/core/results/#lifecycle).
+  [CLI](/components/cli/overview/), the [Tauri app](/components/tauri/overview/),
+  and — for a server-side run — the [driver](/components/driver/overview/) the
+  [dispatcher](/components/dispatcher/overview/) creates per run. A runner needs a
+  container runtime (a host Docker/Podman, or the Kubernetes API) on the machine it
+  runs on, resolves the requested test case version from the backend, drives the
+  run through the core, and reports the result back to the backend.
 - A **reporter** is any component that displays run results: the
   [Tauri app](/components/tauri/overview/), the
   [web console](/components/web/overview/), and the
@@ -51,11 +54,12 @@ The Tauri app is both, which is why it is expected to be the primary way The
 Test Cabinet is used: it launches runs, reviews them, and shows results in one
 place. The [web console](/components/web/overview/) is the same console in a
 browser — it reviews and reports like the Tauri app and launches runs too, but
-drives them on remote [workers](/components/worker/overview/) instead of a
-built-in local runner. All three GUIs in fact mount the *same* routed gallery
-application from the [UI library](/components/ui/overview/); the consoles are
-that app with run execution enabled, and the public site is the same app with it
-off.
+enqueues them at the [backend](/components/backend/overview/) (which a
+[dispatcher](/components/dispatcher/overview/) drains into per-run
+[driver](/components/driver/overview/) `Job`s) instead of a built-in local runner.
+All three GUIs in fact mount the *same* routed gallery application from the
+[UI library](/components/ui/overview/); the consoles are that app with run
+execution enabled, and the public site is the same app with it off.
 
 ## The Backend
 
@@ -81,11 +85,26 @@ no live dependency on the private backend.
 ## Local Operation
 
 A run is driven by whichever runner launched it through a container runtime on
-that runner's own machine — the host for the CLI and the Tauri app, the worker's
-host for a worker-driven run. A runner therefore requires a supported container
-runtime (Docker or a compatible runtime such as Podman) to be available, while
-components that only report results do not. See
-[Execution](/components/core/execution/).
+that runner's own machine — the host for the CLI and the Tauri app. A runner
+therefore requires a supported container runtime (Docker or a compatible runtime
+such as Podman) to be available, while components that only report results do not.
+See [Execution](/components/core/execution/).
+
+## Server-side Run Topology
+
+A run launched from a [web console](/components/web/overview/) does not execute on
+the console's machine. The console **enqueues** the run at the
+[backend](/components/backend/overview/), which owns a run queue; a thin
+[dispatcher](/components/dispatcher/overview/) claims the queued run and creates one
+Kubernetes `Job` running a [driver](/components/driver/overview/); the driver
+executes the run (creating an untrusted sandbox pod via the Kubernetes API), streams
+its live progress back to the backend (which relays it to the console), uploads the
+produced tree to the [artifact service](/components/artifacts/overview/), and pushes
+the produced record. Each run is one schedulable `Job`, so concurrency scales with
+the cluster rather than with a hand-sized pool — there is no per-pod registration
+and no long-lived worker. Local development runs the **same** manifests on
+[k3d](/development/running/), so a run is a `Job` everywhere. This topology replaces
+the earlier worker-pool design; see [Kubernetes: staging & prod](/deployment/kubernetes/).
 
 ## A Run
 

@@ -1,0 +1,15 @@
+# TCAB_DRIVER_IMAGE is an env value (not a container image: field), so the images
+# transformer cannot reach it — patch it to the driver image the staging cluster
+# pulls. Keep it in lockstep with the dispatcher image tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_DRIVER_IMAGE
+              value: "ghcr.io/REPLACE_OWNER/tcab-driver:latest"

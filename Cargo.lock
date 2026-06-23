@@ -5770,38 +5770,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-worker"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "bytes",
- "dotenvy",
- "foray-core",
- "futures-util",
- "http",
- "k8s-openapi",
- "kube",
- "opentelemetry",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "tar",
- "tempfile",
- "test-cabinet-core",
- "test-cabinet-telemetry",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "ts-rs",
- "uuid",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

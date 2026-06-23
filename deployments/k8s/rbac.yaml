@@ -1,34 +1,80 @@
-# RBAC for the worker's run-pod lifecycle.
+# RBAC for the per-run-Job run topology: a DRIVER identity and a DISPATCHER
+# identity, each scoped to exactly what it does and nothing more. Both are
+# namespaced Roles (not ClusterRoles), confined to the run namespace; neither
+# creates Deployments, Services, or RBAC objects, and neither touches anything
+# outside this namespace.
 #
-# Under TCAB_WORKER_RUNTIME=kubernetes the worker creates one pod per run, waits
-# for it to be Running, exec's the harness session into it, and deletes it. This
-# grants EXACTLY that and nothing more: a namespaced Role (not a ClusterRole),
-# scoped to the run namespace. The worker creates no Deployments, Services, or
-# RBAC objects and never touches anything outside this namespace.
-#
-# The worker StatefulSet runs under this ServiceAccount; in-cluster the Kubernetes
-# client picks up the mounted token automatically (no kubeconfig needed).
+# ── Driver ───────────────────────────────────────────────────────────────────
+# The dispatcher creates one driver Job per run (see dispatcher.yaml). Each driver
+# pod runs under the `tcab-driver` ServiceAccount and, under
+# TCAB_DRIVER_RUNTIME=kubernetes, creates one untrusted *sandbox* pod for the run,
+# waits for it to be Running, exec's the harness session into it, and deletes it
+# when the run ends — exactly what the worker did, repurposed onto the driver. The
+# sandbox pod itself gets NO ServiceAccount token; only the trusted driver reaches
+# the API. The dispatcher names this ServiceAccount in TCAB_DISPATCHER_DRIVER_SA and
+# assigns it to every Job it creates; in-cluster the Kubernetes client picks up the
+# mounted token automatically (no kubeconfig needed).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: tcab-worker
+  name: tcab-driver
   namespace: tcab-prod
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: tcab-worker-run-pods
+  name: tcab-driver-sandbox-pods
   namespace: tcab-prod
 rules:
-  # Start a run pod, watch it reach Running, delete it when the run ends.
+  # Start a sandbox pod, watch it reach Running, delete it when the run ends.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  # Seed the working tree and run the harness session in the pod.
+    verbs: ["create", "get", "list", "delete"]
+  # Seed the working tree and run the harness session in the sandbox pod.
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
-  # Surface a failed pod's logs in the run's failure detail.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tcab-driver-sandbox-pods
+  namespace: tcab-prod
+subjects:
+  - kind: ServiceAccount
+    name: tcab-driver
+    namespace: tcab-prod
+roleRef:
+  kind: Role
+  name: tcab-driver-sandbox-pods
+  apiGroup: rbac.authorization.k8s.io
+---
+# ── Dispatcher ───────────────────────────────────────────────────────────────
+# The dispatcher Deployment runs under the `tcab-dispatcher` ServiceAccount. It
+# claims queued jobs from the backend and turns each into one driver Job, watches
+# the Jobs it created, reaps finished ones, and reads a dead driver pod's logs to
+# report the failure. That is the whole of its API surface.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-dispatcher
+  namespace: tcab-prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tcab-dispatcher-jobs
+  namespace: tcab-prod
+rules:
+  # Create one driver Job per claimed run; watch them; delete finished ones.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Find a driver Job's pod (to read its status) when a Job fails.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Surface a dead driver pod's logs in the job's failure detail.
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
@@ -36,13 +82,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: tcab-worker-run-pods
+  name: tcab-dispatcher-jobs
   namespace: tcab-prod
 subjects:
   - kind: ServiceAccount
-    name: tcab-worker
+    name: tcab-dispatcher
     namespace: tcab-prod
 roleRef:
   kind: Role
-  name: tcab-worker-run-pods
+  name: tcab-dispatcher-jobs
   apiGroup: rbac.authorization.k8s.io

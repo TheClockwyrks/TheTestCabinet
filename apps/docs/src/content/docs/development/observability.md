@@ -42,7 +42,8 @@ observability never requires a code change or a rebuild.
 | Process | Service name | Instrumentation |
 | ------- | ------------ | --------------- |
 | [Core](/components/core/overview/) (in-process in every runner) | — | Orchestration spans for the run lifecycle (seeding, container execution, harness invocation, validation, publish), outbound context propagation on its HTTP calls, and `TRACEPARENT` on the subprocesses it shells out to. |
-| [Worker](/components/worker/overview/) | `tcab-worker` | Axum server spans, inbound trace-context extraction, request metrics, and job/publisher spans. |
+| [Dispatcher](/components/dispatcher/overview/) | `tcab-dispatcher` | Control-loop spans for claiming queued runs and creating per-run driver `Job`s. |
+| [Driver](/components/driver/overview/) | `tcab-driver` | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans. |
 | [Backend](/components/backend/overview/) | `tcab-backend` | Axum server spans, inbound trace-context extraction, and request metrics. |
 | [CLI](/components/cli/overview/) (`tcab`) | `tcab` | Init plus a span per command, driving the core's run spans. |
 | [Tauri app](/components/tauri/overview/) | `tcab-desktop` | Init plus command spans, driving the core's run spans. |
@@ -50,7 +51,7 @@ observability never requires a code change or a rebuild.
 
 The core has no service name of its own because it is a library that runs
 in-process inside whichever runner launched it (the CLI, the desktop app, or the
-worker); its spans are emitted under that host's service name.
+driver); its spans are emitted under that host's service name.
 
 ## Trace topology
 
@@ -66,15 +67,16 @@ into the core and out to the backend:
   backend's request spans (`tcab-backend`) join the same trace as children.
 
 - **Web-console run.** The browser's `fetch` span is the root. It injects a
-  `traceparent` header on the request to a [worker](/components/worker/overview/),
-  whose Axum handler extracts that context so the worker's job span (`tcab-worker`)
-  becomes a child of the browser span. The core then runs inside the worker
-  exactly as above, and the worker's own outbound calls to the backend continue
-  the trace into `tcab-backend`. The end-to-end path is therefore
-  **browser → worker → backend**, with the core's run spans nested inside the
-  worker leg.
+  `traceparent` header on the enqueue request to the backend, which carries the
+  context into the [driver](/components/driver/overview/) the dispatcher creates
+  for the run, so the driver's run span (`tcab-driver`) becomes a descendant of
+  the browser span. The core then runs inside the driver exactly as above, and the
+  driver's own outbound calls to the backend continue the trace into
+  `tcab-backend`. The end-to-end path is therefore
+  **browser → backend → driver → backend**, with the core's run spans nested
+  inside the driver leg.
 
-- **Worker → backend** and **runner → backend** propagation both use the
+- **Driver → backend** and **runner → backend** propagation both use the
   standard W3C `traceparent` header. The propagation helpers are no-ops unless
   the process opted in (they need the global propagator that `init()` installs),
   so in stdout-only mode no headers are added.
@@ -154,7 +156,7 @@ To bring it up and view telemetry:
    the process so it re-reads its env file.
 3. **Open Grafana at <http://localhost:3000>** (anonymous admin, no login). Use
    *Explore* with the Tempo data source to find traces (search by service name,
-   e.g. `tcab-worker`, then open a trace to see the cross-service span tree),
+   e.g. `tcab-driver`, then open a trace to see the cross-service span tree),
    Mimir for the request metrics, and Loki for the exported logs.
 
 The image publishes both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports to the

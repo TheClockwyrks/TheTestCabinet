@@ -16,6 +16,7 @@
 //! | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | The maximum number of non-terminal driver `Job`s the dispatcher keeps in flight (queue admission). | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after an empty claim or a full in-flight cap before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
+//! | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job`'s env via `envFrom`. This is how the harness provider API key (e.g. `ANTHROPIC_API_KEY`) reaches the driver, which the run engine reads from its own environment exactly as the worker did. Unset injects no secret env. | — |
 //!
 //! The `TCAB_K8S_RUN_*` set below is **passed through** into each driver `Job`'s
 //! env verbatim — the dispatcher does not consume it, the driver does (see the
@@ -31,6 +32,7 @@
 //! | `TCAB_K8S_RUN_MEMORY_REQUEST` / `TCAB_K8S_RUN_MEMORY_LIMIT` | Memory request/limit per sandbox pod. |
 //! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits for a sandbox pod to reach `Running`. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
+//! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
 //!
 //! `TCAB_K8S_POD_IP` is **not** taken from the environment here: the driver's own
 //! pod IP is set on the `Job` via the downward API (`fieldRef: status.podIP`), so
@@ -38,10 +40,11 @@
 
 use std::time::Duration;
 
-/// The set of `TCAB_K8S_RUN_*` (and sibling sandbox-pod) variables the dispatcher
-/// passes through into each driver `Job`'s env verbatim. Listed once so the Job
-/// builder and the config doc stay in sync; the dispatcher never interprets their
-/// values, only forwards the ones that are set.
+/// The set of sandbox-pod (`TCAB_K8S_RUN_*` and siblings) plus artifact-service
+/// (`TCAB_ARTIFACTS_URL`) variables the dispatcher passes through into each driver
+/// `Job`'s env verbatim. Listed once so the Job builder and the config doc stay in
+/// sync; the dispatcher never interprets their values, only forwards the ones that
+/// are set.
 pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_NAMESPACE",
     "TCAB_K8S_RUN_SERVICE_ACCOUNT",
@@ -52,6 +55,10 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_K8S_POD_READY_TIMEOUT_SECONDS",
     "TCAB_K8S_RUN_POD_PREFIX",
+    // Not a sandbox-pod setting, but forwarded the same way: the driver uploads the
+    // produced run tree to this artifact service before reporting terminal status.
+    // Unset (a single-box dev cluster with no artifact service) skips the upload.
+    "TCAB_ARTIFACTS_URL",
 ];
 
 /// A dispatcher configuration error: a required variable is unset or unusable.
@@ -97,6 +104,11 @@ pub struct Config {
     pub poll_interval: Duration,
     /// `ttlSecondsAfterFinished` on each driver `Job` (`TCAB_DISPATCHER_JOB_TTL_SECONDS`).
     pub job_ttl_seconds: i32,
+    /// `Secret` names mounted into each driver `Job`'s env via `envFrom`
+    /// (`TCAB_DISPATCHER_DRIVER_SECRETS`, comma-separated). Carries the harness
+    /// provider API key(s) the run engine reads from the driver's own environment,
+    /// exactly as the worker did. Empty injects no secret env.
+    pub driver_secrets: Vec<String>,
     /// The `TCAB_K8S_RUN_*` (and sibling) sandbox-pod variables that are set,
     /// captured at startup to pass through into each driver `Job`'s env. The driver
     /// reads them; the dispatcher only forwards them.
@@ -130,6 +142,17 @@ impl Config {
         let poll_seconds = parse_or("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", 2u64)?;
         let job_ttl_seconds = parse_or("TCAB_DISPATCHER_JOB_TTL_SECONDS", 300i32)?;
 
+        let driver_secrets = non_empty("TCAB_DISPATCHER_DRIVER_SECRETS")
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let passthrough_k8s_env = PASSTHROUGH_K8S_VARS
             .iter()
             .filter_map(|&key| non_empty(key).map(|value| (key.to_string(), value)))
@@ -144,6 +167,7 @@ impl Config {
             max_inflight,
             poll_interval: Duration::from_secs(poll_seconds),
             job_ttl_seconds,
+            driver_secrets,
             passthrough_k8s_env,
         })
     }

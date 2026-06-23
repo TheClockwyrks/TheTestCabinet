@@ -1,0 +1,23 @@
+# Base kustomization for The Test Cabinet's per-environment deployment.
+#
+# These flat manifests are the shared BASE; the per-environment overlays under
+# overlays/{prod,staging,local} reference this directory and patch only what
+# differs (namespace, image tags, TCAB_ENV, secrets). Apply an overlay, never this
+# base directly — the base carries the placeholder `tcab-prod` namespace and
+# REPLACE_REGISTRY image refs that an overlay rewrites.
+#
+# secrets.example.yaml is deliberately NOT a base resource: it is a placeholder
+# template you create for real from your secret manager (or, in the local overlay,
+# generate empty/dev values for). See the README and deployment/kubernetes.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - backend.yaml
+  - auth.yaml
+  - dispatcher.yaml
+  - artifacts.yaml
+  - ingest-cronjob.yaml
+  - networkpolicy.yaml

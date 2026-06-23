@@ -1,9 +1,9 @@
 name: Release
 
 # On-demand release pipeline for The Test Cabinet's distributable artifacts:
-# the headless binaries — the `tcab` CLI, the `tcab-worker` server, and the
-# `tcab-backend` store/API — plus the Tauri desktop app, each built for every
-# platform. Public releases are cut on GitHub (the Azure DevOps repository is
+# the headless binaries — the `tcab` CLI, the `tcab-backend` store/API, and the
+# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology services — plus the
+# Tauri desktop app, each built for every platform. Public releases are cut on GitHub (the Azure DevOps repository is
 # private to the org), so this is where downloadable artifacts are built and
 # published.
 #
@@ -16,9 +16,10 @@ name: Release
 # Even though Azure already smoke-tests the Linux and Windows CLI binaries
 # continuously, this re-runs the same check (scripts/ci/smoke-binary.sh) on every
 # platform's actual shipped `tcab`: a green Azure run must never be the only
-# thing standing between a broken binary and users. The worker and backend are
-# servers (they need a runtime/store to do anything), so the build is their gate;
-# the desktop app is exercised by hand from the published prerelease.
+# thing standing between a broken binary and users. The backend and the
+# dispatcher/driver/artifacts services need a runtime/store/cluster to do anything,
+# so a clean build is their gate; the desktop app is exercised by hand from the
+# published prerelease.
 #
 # Dormant until the repository is mirrored to GitHub.
 on:
@@ -65,12 +66,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
-      # All three headless binaries share `test-cabinet-core`, so one compile
+      # All the headless binaries share `test-cabinet-core`, so one compile
       # produces the whole set.
       - name: Build release binaries
         run: >-
           cargo build --release --locked --target ${{ matrix.target }}
-          -p test-cabinet-cli -p test-cabinet-worker -p test-cabinet-backend
+          -p test-cabinet-cli -p test-cabinet-backend
+          -p test-cabinet-dispatcher -p test-cabinet-driver -p test-cabinet-artifacts
       # Re-run the shared smoke check on the exact `tcab` about to be shipped. The
       # servers have no equivalent dependency-free smoke (they bind ports and need
       # a runtime/store), so a clean build is their release gate.
@@ -84,7 +86,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist
-          for bin in tcab tcab-worker tcab-backend; do
+          for bin in tcab tcab-backend tcab-dispatcher tcab-driver tcab-artifacts; do
             tar -czf "dist/${bin}-${VERSION}-${{ matrix.name }}.tar.gz" \
               -C "target/${{ matrix.target }}/release" "$bin"
           done
@@ -95,7 +97,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          foreach ($bin in "tcab", "tcab-worker", "tcab-backend") {
+          foreach ($bin in "tcab", "tcab-backend", "tcab-dispatcher", "tcab-driver", "tcab-artifacts") {
             Compress-Archive -Path "target/${{ matrix.target }}/release/$bin.exe" `
               -DestinationPath "dist/$bin-$env:VERSION-${{ matrix.name }}.zip"
           }
@@ -206,7 +208,7 @@ jobs:
         # Idempotent: re-running for the same candidate refreshes its assets rather
         # than failing because the prerelease already exists.
         run: |
-          notes="Candidate build of ${VERSION}: the tcab CLI, the worker and backend servers, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build."
+          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build."
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else

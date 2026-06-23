@@ -1,0 +1,106 @@
+# Dispatcher: a single-replica Deployment that drains the backend's run queue.
+#
+# The dispatcher is a thin, STATELESS controller — it holds no durable state of
+# its own (the backend's `job` table is the source of truth), so it is a plain
+# Deployment, not a StatefulSet, and needs no volume. It claims queued jobs from
+# the backend with the shared service token, turns each into ONE driver Job (under
+# the `tcab-driver` ServiceAccount, in this namespace), watches those Jobs, and
+# reports a dead driver pod's failure back to the backend. Run execution then lives
+# entirely in those per-run driver Jobs — there is no worker pool and no headless
+# Service. Keep replicas at 1: a single drainer avoids two dispatchers racing the
+# same claim (the backend's claim is atomic, so a second replica is merely wasted
+# work, not a correctness risk). It binds no socket, so it has no Service.
+#
+# It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/rbac.yaml),
+# which grants exactly jobs create/get/list/watch/delete plus pods + pods/log get
+# for failure reporting. See deployment/kubernetes.md and the dispatcher's
+# config docs (crates/dispatcher/src/config.rs) for every variable.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+  namespace: tcab-prod
+spec:
+  replicas: 1 # one drainer; do not scale out (claims are atomic, extra replicas waste work)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-dispatcher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-dispatcher
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      serviceAccountName: tcab-dispatcher # RBAC to create+watch driver Jobs
+      containers:
+        - name: dispatcher
+          image: REPLACE_REGISTRY/tcab-dispatcher:latest # CI publishes ghcr.io/<owner>/tcab-dispatcher; pin a :<git-sha> tag
+          env:
+            # The backend the dispatcher claims jobs from and reports driver deaths to.
+            - name: TCAB_BACKEND_URL
+              value: "http://tcab-backend:8787"
+            # The shared service token authenticating the claim. The backend reads the
+            # same value (its tcab-backend-secrets) — they MUST match for the queue to
+            # drain. Stored in the dispatcher's own secret below.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-dispatcher-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
+            # The driver image each created Job's pod runs. Pin the same :<git-sha>
+            # the dispatcher image is pinned to so they version together.
+            - name: TCAB_DRIVER_IMAGE
+              value: "REPLACE_REGISTRY/tcab-driver:latest"
+            # The namespace the dispatcher creates driver Jobs in (defaults to its own
+            # namespace when unset; set explicitly to be unambiguous).
+            - name: TCAB_DISPATCHER_NAMESPACE
+              value: "tcab-prod"
+            # The ServiceAccount assigned to each driver pod — the tcab-driver identity
+            # (rbac.yaml) that can create/exec/delete the untrusted sandbox pods.
+            - name: TCAB_DISPATCHER_DRIVER_SA
+              value: "tcab-driver"
+            # Queue admission: the most non-terminal driver Jobs kept in flight.
+            - name: TCAB_DISPATCHER_MAX_INFLIGHT
+              value: "8"
+            # Back-off after an empty claim or a full in-flight cap, in seconds.
+            - name: TCAB_DISPATCHER_POLL_INTERVAL_SECONDS
+              value: "2"
+            # ttlSecondsAfterFinished on each driver Job, for automatic cleanup.
+            - name: TCAB_DISPATCHER_JOB_TTL_SECONDS
+              value: "300"
+            # Secret(s) mounted into each driver Job's env (comma-separated names).
+            # This is how the harness provider API key (e.g. ANTHROPIC_API_KEY) reaches
+            # the run engine, which reads it from the driver pod's own environment —
+            # exactly as the worker did. tcab-driver-secrets is defined in
+            # deployments/k8s/secrets.example.yaml.
+            - name: TCAB_DISPATCHER_DRIVER_SECRETS
+              value: "tcab-driver-secrets"
+            # ── Passed THROUGH into each driver Job verbatim ──────────────────────
+            # The dispatcher does not consume these; the driver does. They scope the
+            # SANDBOX pods the driver creates, not the driver pod or the dispatcher.
+            # Namespace the driver creates sandbox pods in.
+            - name: TCAB_K8S_NAMESPACE
+              value: "tcab-prod"
+            # Resource requests/limits applied to each sandbox pod.
+            - name: TCAB_K8S_RUN_CPU_REQUEST
+              value: "500m"
+            - name: TCAB_K8S_RUN_CPU_LIMIT
+              value: "2"
+            - name: TCAB_K8S_RUN_MEMORY_REQUEST
+              value: "1Gi"
+            - name: TCAB_K8S_RUN_MEMORY_LIMIT
+              value: "4Gi"
+            # Pull secret(s) for the run-container images, if the registry is private
+            # (comma-separated dockerconfigjson Secret names). Forwarded to each Job.
+            # - name: TCAB_K8S_IMAGE_PULL_SECRETS
+            #   value: "tcab-registry"
+            # The artifact service each driver uploads its produced run tree to before
+            # reporting terminal status. Forwarded into every driver Job. Unset skips
+            # the upload (a single-box cluster with no artifact service).
+            - name: TCAB_ARTIFACTS_URL
+              value: "http://tcab-artifacts:8790"
+            - name: TCAB_ENV
+              value: "prod"
+# The tcab-dispatcher-secrets Secret this reads (TCAB_BACKEND_SERVICE_TOKEN) lives
+# in secrets.example.yaml alongside the other placeholders; its value MUST equal the
+# backend's copy or the queue never drains.

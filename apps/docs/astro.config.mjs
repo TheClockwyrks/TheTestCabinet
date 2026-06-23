@@ -201,9 +201,19 @@ export default defineConfig({
               items: ["components/cli/overview"],
             },
             {
-              label: "Worker",
+              label: "Dispatcher",
               collapsed: true,
-              items: ["components/worker/overview"],
+              items: ["components/dispatcher/overview"],
+            },
+            {
+              label: "Driver",
+              collapsed: true,
+              items: ["components/driver/overview"],
+            },
+            {
+              label: "Artifacts",
+              collapsed: true,
+              items: ["components/artifacts/overview"],
             },
             {
               label: "Tauri",
@@ -259,8 +269,9 @@ export default defineConfig({
             "development/observability",
           ],
         },
-        // Standing up the backend and worker services as real, REMOTE
-        // environments. Releasing (above) covers the static sites + binary, and
+        // Standing up the backend, auth, dispatcher, and artifact services as
+        // real, REMOTE environments (runs are per-run Jobs). Releasing (above)
+        // covers the static sites + binary, and
         // Running (above) covers the local mirror on one machine; this section is
         // staging + prod. Runnable templates live in the repo's `deployments/`
         // folder, which these pages link to.

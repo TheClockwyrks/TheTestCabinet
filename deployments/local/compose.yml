@@ -1,17 +1,17 @@
-# Local backend + auth service for service-driven testing.
+# Local backend + auth service — a minimal two-service stack.
 #
 # This brings up the backend and the auth service, in containers, each with a
 # local volume for its state (the backend's SQLite DB + definition store +
-# ingest checkout; the auth service's own SQLite DB). The WORKER is NOT here on
-# purpose: a worker starts a container per run, so it runs directly on the host
-# using the host's container runtime. See
-# apps/docs/src/content/docs/development/running.md.
+# ingest checkout; the auth service's own SQLite DB). It is a quick way to exercise
+# the control plane and the read APIs without a cluster.
 #
 #   docker compose -f deployments/local/compose.yml up backend auth
 #
-# Then, in a separate shell, run the worker on the host:
-#
-#   ./target/debug/tcab-worker      # with .env.worker in the working directory
+# Run EXECUTION is not part of this minimal stack: a run is a per-run Kubernetes
+# Job (the dispatcher creates one driver Job per run), so to exercise runs locally
+# use the k3d stack instead, which brings up the dispatcher + driver + artifact
+# service alongside these two: `make -C deployments/local local-up`. See
+# apps/docs/src/content/docs/development/running.md.
 
 services:
   backend:

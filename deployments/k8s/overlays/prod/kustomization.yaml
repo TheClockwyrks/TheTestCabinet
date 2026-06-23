@@ -1,0 +1,41 @@
+# Production overlay.
+#
+# Production is the base manifests as-is (the base already carries the `tcab-prod`
+# namespace and prod TCAB_ENV), with only the image registry pinned. Point each
+# image at the registry the cluster pulls from and pin an immutable :<git-sha> tag
+# rather than :latest in a real deployment (replace `latest` below).
+#
+# Apply with:  kubectl apply -k deployments/k8s/overlays/prod
+# (after creating the real Secrets from your secret manager — see
+# deployments/k8s/secrets.example.yaml and the README).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-prod
+
+resources:
+  - ../../
+
+# Rewrite the placeholder REPLACE_REGISTRY image names to the registry the cluster
+# pulls from. Pin an immutable digest/tag in production rather than `latest`.
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: ghcr.io/REPLACE_OWNER/tcab-backend
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: ghcr.io/REPLACE_OWNER/tcab-driver
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
+    newTag: latest
+
+# TCAB_DRIVER_IMAGE is an env value (not a container image: field), so the images
+# transformer above cannot reach it — patch it to match the driver image.
+patches:
+  - path: patch-dispatcher-driver-image.yaml

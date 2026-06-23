@@ -39,11 +39,11 @@ pub struct Config {
 impl Config {
     /// Create a config.
     ///
-    /// - `service_name`: the OTel `service.name` (e.g. `"tcab-worker"`).
+    /// - `service_name`: the OTel `service.name` (e.g. `"tcab-dispatcher"`).
     /// - `service_version`: the OTel `service.version`; pass
     ///   `env!("CARGO_PKG_VERSION")` from the binary.
     /// - `default_filter`: the `EnvFilter` directive used when `RUST_LOG` is
-    ///   unset, e.g. `"info,test_cabinet_worker=info"`. This preserves each
+    ///   unset, e.g. `"info,test_cabinet_dispatcher=info"`. This preserves each
     ///   binary's existing log defaults verbatim.
     pub fn new(
         service_name: impl Into<String>,

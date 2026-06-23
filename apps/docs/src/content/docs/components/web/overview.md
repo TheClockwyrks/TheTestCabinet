@@ -26,10 +26,12 @@ The console talks to two distinct services, mirroring
   definitions, and published results. The console resolves the catalog and reads
   published data from here, over the [backend HTTP API](/components/backend/api/).
   It is **never** asked to a worker.
-- A set of **workers** — the [runners](/components/worker/overview/) that actually
-  execute a run. A launched run is submitted to the selected worker over the
-  [worker API](/components/worker/overview/), and its live events stream back
-  from there. A worker also **proxies** account register/login to the
+- The **backend** also owns the run queue — a launched run is **enqueued** at the
+  backend over the [backend HTTP API](/components/backend/api/), where a
+  [dispatcher](/components/dispatcher/overview/) claims it and creates a per-run
+  [driver](/components/driver/overview/) `Job`; the driver's live events stream
+  back through the backend to the console. The backend also **proxies** account
+  register/login to the
   [auth service](/components/auth/overview/) and forwards the signed-in account's
   bearer token to the backend when the console pushes, reviews, or publishes, so
   the console authenticates through the same worker it runs on.
@@ -72,10 +74,11 @@ add/remove/select), then mounts the shared `GalleryApp`. The whole console UI �
 the routed gallery plus the run-execution screens — comes from the
 [UI library](/components/ui/overview/), so it is the same app the desktop renders.
 
-It runs against the now-implemented [backend](/components/backend/overview/) and
-[worker](/components/worker/overview/) contracts: the backend serves the catalog
-and published runs, and the worker exposes its run-execution, produced-run
-listing, recorded-event, notification, auth-proxy, and push/review/publish
-endpoints. Where a host can't
+It runs against the now-implemented [backend](/components/backend/overview/)
+contract: the backend serves the catalog and published runs, owns the run queue
+that the [dispatcher](/components/dispatcher/overview/) drains into per-run
+[driver](/components/driver/overview/) `Job`s, and exposes its run-enqueue,
+produced-run listing, recorded-event, notification, auth-proxy, and
+push/review/publish endpoints. Where a host can't
 provide a piece of data — for example a worker that returns no recorded events
 for an older run — the shared UI degrades gracefully rather than erroring.

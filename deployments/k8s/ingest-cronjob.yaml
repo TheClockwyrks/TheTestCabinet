@@ -22,11 +22,15 @@ spec:
           restartPolicy: Never
           containers:
             - name: ingest
-              image: REPLACE_REGISTRY/tcab-worker:latest # any image with git + curl
+              # Any image with git + curl. A stock alpine plus `apk add` keeps this
+              # decoupled from the service images (none of which is guaranteed to
+              # ship both git and curl). Pin a digest in a real deployment.
+              image: alpine:3
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -eu
+                  apk add --no-cache git curl
                   REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
                   rm -rf /work/repo
                   git clone --depth 1 "$REPO" /work/repo

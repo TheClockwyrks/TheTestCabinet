@@ -1,0 +1,41 @@
+# Staging overlay.
+#
+# Staging is the SAME manifests prod uses, so it rehearses prod faithfully; only
+# the namespace, the TCAB_ENV tag, and the image registry differ. The `namespace`
+# directive rewrites every resource (including the Namespace object) to
+# `tcab-staging`; the patches retag TCAB_ENV; the images block points at the
+# registry the cluster pulls from.
+#
+# Apply with:  kubectl apply -k deployments/k8s/overlays/staging
+# (after creating the real Secrets — see deployments/k8s/secrets.example.yaml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-staging
+
+resources:
+  - ../../
+
+# Retag TCAB_ENV (which the base sets to `prod`) and the dispatcher's driver-image
+# env value to staging values. patch-env.yaml is a multi-doc strategic merge, one
+# doc per workload keyed by name, so kustomize merges only the named env vars.
+patches:
+  - path: patch-env.yaml
+  - path: patch-dispatcher-driver-image.yaml
+
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: ghcr.io/REPLACE_OWNER/tcab-backend
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: ghcr.io/REPLACE_OWNER/tcab-driver
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
+    newTag: latest

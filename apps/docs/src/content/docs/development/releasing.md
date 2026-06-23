@@ -7,8 +7,9 @@ app, and the one-time configuration behind the project's three deployed
 **static** sites. It is the release-time half of shipping the project: the
 downloadable artifacts and the CI-built sites. Standing up the always-on
 **services** — the
-[backend](/components/backend/overview/) and
-[workers](/components/worker/overview/) — as staging or production environments
+[backend](/components/backend/overview/), the run-queue
+[dispatcher](/components/dispatcher/overview/), and the per-run
+[driver](/components/driver/overview/) `Job`s it creates — as staging or production environments
 is covered separately under [Deployment](/deployment/overview/), and running any
 of this on your own machine is covered under [Running](/development/running/).
 For building locally see [Building](/development/building/); for what a *run*
@@ -29,7 +30,7 @@ so artifacts are tested before they reach users:
    (static musl — see
    [Portable builds](/development/building/#portable-static-builds)), Windows,
    and macOS it builds:
-   - the three headless binaries — the `tcab` CLI, the `tcab-worker` server, and
+   - the three headless binaries — the `tcab` CLI, the `tcab-driver` run executor, and
      the `tcab-backend` store/API — as archives, smoke-testing each platform's
      `tcab` with `scripts/ci/smoke-binary.sh`;
    - the [Tauri desktop app](/components/tauri/overview/) as the platform's

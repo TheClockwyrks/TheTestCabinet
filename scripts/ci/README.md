@@ -59,8 +59,9 @@ binary path rather than resolving the repo root, so it does not use `lib.sh`.
 
 These cover every **headless** component. On the Rust side that is the whole
 Cargo workspace except the Tauri desktop shell — the `tcab` CLI (`crates/cli`),
-the `tcab-worker` (`crates/worker`) and `tcab-backend` (`crates/backend`) servers,
-and the `crates/core`/`crates/telemetry` libraries they share. On the TypeScript
+the `tcab-backend` (`crates/backend`) server, the run-topology services
+(`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`), and the
+`crates/core`/`crates/telemetry` libraries they share. On the TypeScript
 side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
 operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
 `packages/run-record` and the source-consumed `packages/ui`.

@@ -19,7 +19,7 @@ The backend serves two kinds of client, as described in
 [Runners and Reporters](/components/architecture/#runners-and-reporters):
 
 - **Runners** ([CLI](/components/cli/overview/),
-  [worker](/components/worker/overview/), [Tauri app](/components/tauri/overview/))
+  [driver](/components/driver/overview/), [Tauri app](/components/tauri/overview/))
   resolve test case definitions from the backend, then push their
   [run records](/components/core/run-records/) back to it when a run is
   [pushed](/components/core/results/#push), reviewed, and published.

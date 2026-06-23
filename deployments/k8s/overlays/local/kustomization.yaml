@@ -1,15 +1,16 @@
 # Local k3d overlay — the development mirror of a Kubernetes deployment.
 #
-# It deploys the two STATEFUL services (backend + auth) that persist across the
-# per-run-Job refactor, reusing the same manifests staging/prod use
-# (../../backend.yaml, ../../auth.yaml) and overriding only what differs locally:
-# the namespace, locally-built images, the TCAB_ENV tag, an empty backend secret,
-# and a read-only mount of the repository checkout the backend ingests from.
+# It deploys the WHOLE run topology — backend + auth (stateful), the dispatcher,
+# the artifact service, and the driver/dispatcher RBAC — reusing the same flat
+# manifests staging/prod use and overriding only what differs locally: the
+# namespace, locally-built images, the TCAB_ENV tag, dev secrets, and a read-only
+# mount of the repository checkout the backend ingests from.
 #
-# Run EXECUTION is intentionally not here yet: until the dispatcher + per-run
-# driver land (the worker-pool → Job refactor), exercise runs with the host `cli`
-# worker pointed at this backend (see development/running.md). Once they land, the
-# dispatcher joins this overlay and runs schedule as Jobs in-cluster.
+# With the dispatcher + driver/artifacts in the cluster, a run enqueued at the
+# backend schedules as a per-run driver Job in-cluster — full local/deploy parity,
+# no host worker. (The cluster's ingest CronJob and NetworkPolicy are omitted: the
+# Makefile ingests from the mounted checkout, and a local single-node CNI usually
+# does not enforce NetworkPolicy.)
 #
 # Brought up/down with one command via ../../../local/Makefile (`make local-up`).
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -19,8 +20,11 @@ namespace: tcab-local
 
 resources:
   - namespace.yaml
+  - ../../rbac.yaml
   - ../../backend.yaml
   - ../../auth.yaml
+  - ../../dispatcher.yaml
+  - ../../artifacts.yaml
 
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
@@ -32,17 +36,41 @@ images:
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: tcab-auth-service
     newTag: local
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: tcab-dispatcher
+    newTag: local
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: tcab-driver
+    newTag: local
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: tcab-artifacts
+    newTag: local
 
-# The backend StatefulSet pulls env from a `tcab-backend-secrets` Secret
-# (R2 credentials + deploy hook). Locally there are none — the backend skips the
-# snapshot upload when they are unset — but the `envFrom` reference must still
-# resolve, so generate an empty Secret of that exact name. disableNameSuffixHash
-# keeps the name stable so the reference matches.
+# Dev secrets. The backend + dispatcher share TCAB_BACKEND_SERVICE_TOKEN (a fixed
+# dev value, so the dispatcher can claim jobs); the backend's R2/deploy-hook keys
+# are absent (the backend skips the snapshot upload when unset). The driver secret
+# carries the harness API key — supply yours via the literal below or an env var.
+# disableNameSuffixHash keeps each name stable so the manifests' references match.
 secretGenerator:
   - name: tcab-backend-secrets
+    literals:
+      - TCAB_BACKEND_SERVICE_TOKEN=local-dev-service-token
+    options:
+      disableNameSuffixHash: true
+  - name: tcab-dispatcher-secrets
+    literals:
+      - TCAB_BACKEND_SERVICE_TOKEN=local-dev-service-token
+    options:
+      disableNameSuffixHash: true
+  - name: tcab-driver-secrets
+    literals:
+      # Replace with your real key, or pass it in from the Makefile/env.
+      - ANTHROPIC_API_KEY=REPLACE_ME
     options:
       disableNameSuffixHash: true
 
 patches:
   - path: patch-backend.yaml
   - path: patch-auth.yaml
+  - path: patch-dispatcher.yaml
+  - path: patch-artifacts.yaml

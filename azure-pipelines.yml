@@ -1,8 +1,9 @@
 # Azure DevOps CI pipeline for The Test Cabinet — the primary CI system.
 #
 # Validates the project's headless components: every Rust crate except the Tauri
-# desktop shell (the `tcab` CLI, the `tcab-worker` and `tcab-backend` servers, and
-# the libraries they share) plus the TypeScript front ends (the gallery, the
+# desktop shell (the `tcab` CLI, the `tcab-backend` server, the
+# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` services, and the libraries they
+# share) plus the TypeScript front ends (the gallery, the
 # operator web console, and these docs). The Tauri desktop app is deliberately not
 # built in this per-change CI, so runners need no GUI system libraries; it is
 # built and bundled for every platform in the GitHub Release workflow
@@ -42,7 +43,7 @@ variables:
 
 jobs:
   - job: rust
-    displayName: "Rust: lint, build & test (CLI, worker, backend, core)"
+    displayName: "Rust: lint, build & test (CLI, backend, dispatcher/driver/artifacts, core)"
     steps:
       - checkout: self
         fetchDepth: 1

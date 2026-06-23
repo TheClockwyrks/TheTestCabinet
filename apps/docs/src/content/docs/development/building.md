@@ -26,9 +26,15 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/cli` — `test-cabinet-cli` (binary `tcab`). The
   [command line interface](/components/cli/overview/) over the core so runs can
   be scripted and benchmark sweeps run in batch.
-- `crates/worker` — `test-cabinet-worker` (binary `tcab-worker`). The
-  [worker](/components/worker/overview/), an HTTP server that exposes the core's
-  run functionality so runs can be driven on a remote host.
+- `crates/dispatcher` — `test-cabinet-dispatcher` (binary `tcab-dispatcher`). The
+  [dispatcher](/components/dispatcher/overview/), which claims queued runs from the
+  backend and creates a per-run Kubernetes `Job`.
+- `crates/driver` — `test-cabinet-driver` (binary `tcab-driver`). The
+  [driver](/components/driver/overview/), the per-run executor that exposes the
+  core's run functionality so a single run can be executed server-side.
+- `crates/artifacts` — `test-cabinet-artifacts` (binary `tcab-artifacts`). The
+  [artifact service](/components/artifacts/overview/), which retains and serves the
+  trees a run produces.
 - `crates/backend` — `test-cabinet-backend` (binary `tcab-backend`). The
   [backend](/components/backend/overview/), the private definition/run store and
   API. Its system of record is a SeaORM database — embedded SQLite by default, or
@@ -40,8 +46,9 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
 
-The `cli`, `worker`, `backend`, and `desktop` crates all depend on
-`test-cabinet-core` (and on `test-cabinet-telemetry` for instrumentation). Shared
+The `cli`, `dispatcher`, `driver`, `artifacts`, `backend`, and `desktop` crates all
+depend on `test-cabinet-core` (and on `test-cabinet-telemetry` for instrumentation,
+where they bind a socket or run a control loop). Shared
 dependency versions are declared once in the root `Cargo.toml` under
 `[workspace.dependencies]` and inherited by member crates with
 `{ workspace = true }`.
@@ -65,7 +72,7 @@ dependency versions are declared once in the root `Cargo.toml` under
   [gallery site](/components/site/overview/) that displays published run records.
 - `apps/web` — `@test-cabinet/web`. The browser
   [web console](/components/web/overview/) (React + TypeScript + Vite) that
-  drives runs against remote workers.
+  enqueues runs at the backend (drained into per-run driver Jobs).
 - `apps/docs` — `@test-cabinet/docs`. This Astro Starlight documentation site.
 
 ## Building Rust
@@ -91,7 +98,7 @@ run such a binary directly.
 For those, build a fully static binary via the musl target. A static binary has
 no dynamic linker, so it runs anywhere, including NixOS. This is opt-in and does
 not change the default build. Three headless binaries can be built this way — the
-`tcab` CLI, the `tcab-worker` server, and the `tcab-backend` store/API. (The
+`tcab` CLI, the `tcab-driver` run executor, and the `tcab-backend` store/API. (The
 backend's SeaORM SQLite driver compiles SQLite from vendored C source with the
 same musl toolchain, so it links statically too; its PostgreSQL driver is pure
 Rust over rustls.) Prerequisites:
@@ -109,18 +116,18 @@ Then build with the aliases defined in `.cargo/config.toml`:
 cargo build-portable
 # -> target/x86_64-unknown-linux-musl/release/tcab          (statically linked)
 
-cargo build-portable-worker
-# -> target/x86_64-unknown-linux-musl/release/tcab-worker   (statically linked)
+cargo build-portable-driver
+# -> target/x86_64-unknown-linux-musl/release/tcab-driver   (statically linked)
 
 cargo build-portable-backend
 # -> target/x86_64-unknown-linux-musl/release/tcab-backend  (statically linked)
 ```
 
-The `tcab-worker` server lets you drive runs from the web UI against a worker
-running on your own host (point the UI at its `TCAB_WORKER_BIND` address; see the
-[worker configuration](/components/worker/overview/) for the environment it
+The `tcab-driver` executor runs a single run server-side (under its `cli` runtime
+it shells out to a host container runtime; see the
+[driver configuration](/components/driver/overview/) for the environment it
 expects). The static binary removes the glibc/loader dependency but **not** the
-container runtime the worker orchestrates — the host still needs Podman or Docker
+container runtime the driver orchestrates — the host still needs Podman or Docker
 on `PATH`, plus the harness API key(s) for the harnesses you run.
 
 The Tauri desktop shell is **not** portable to musl: its Linux backend links the
@@ -151,9 +158,9 @@ Other root scripts delegate to each workspace that defines them: `npm run dev`,
 
 ## Generating the data contract
 
-The run-record (and arena/worker/backend) data contract has a single source of
+The run-record (and arena/job-API/backend) data contract has a single source of
 truth: the Rust types that derive `ts_rs::TS` + `schemars::JsonSchema` behind
-their `contract` feature (in `crates/core`, `crates/worker`, `crates/backend`).
+their `contract` feature (in `crates/core` and `crates/backend`).
 The TypeScript bindings under `packages/run-record/src/` and the JSON Schemas
 under `apps/docs/public/schema/` are **generated** from those types by
 `crates/contract-codegen` — never hand-edited. After changing any contract type,

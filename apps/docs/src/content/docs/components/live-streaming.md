@@ -68,8 +68,8 @@ in-container binary ──TCP──▶ host listener (core) ──▶ Sink
    streams a run's [harness events](/components/core/events/) to its viewer; the
    live payload rides the same rail rather than inventing a new transport:
 
-   - The [worker](/components/worker/overview/) interleaves it on its
-     `GET /runs/{job}/events` NDJSON stream as a tagged line a subscriber tells
+   - The [driver](/components/driver/overview/) interleaves it on the run's
+     event stream it relays to the backend as a tagged line a subscriber tells
      apart from a `HarnessEvent` by its `type`.
    - The [Tauri app](/components/tauri/overview/) emits it on a per-run Tauri event
      (a sibling of the run's event channel).

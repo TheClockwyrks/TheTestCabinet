@@ -63,9 +63,9 @@ the system's contracts. Tokens are presented as `Authorization: Bearer <token>`.
 
 The account and token shapes are specified in
 [`backend-api/auth.schema.json`](https://docs.testcabinet.ai/schema/backend-api/auth.schema.json).
-The [worker](/components/worker/overview/) **proxies** `POST /auth/register` and
-`POST /auth/login` so the consoles have a single origin to talk to, and forwards a
-user's bearer token to the backend on push, review, and publish.
+The [backend](/components/backend/overview/) **proxies** `POST /auth/register` and
+`POST /auth/login` so the consoles have a single origin to talk to, and verifies a
+user's bearer token against the auth service on push, review, and publish.
 
 ## Who talks to it
 
@@ -75,10 +75,9 @@ user's bearer token to the backend on push, review, and publish.
   the resulting bearer token on push/review/publish. They are pointed at it with
   `TCAB_AUTH_URL`. The CLI stores its token at `~/.config/tcab/credentials.json`
   (overridable with `$TCAB_CONFIG_DIR`).
-- The [worker](/components/worker/overview/) proxies register/login to it and
-  forwards bearer tokens onward (also `TCAB_AUTH_URL`).
-- The [backend](/components/backend/overview/) verifies tokens against it
-  (`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`).
+- The [backend](/components/backend/overview/) proxies register/login to it and
+  verifies tokens against it (`TCAB_BACKEND_AUTH_URL`, default
+  `http://127.0.0.1:8789`).
 
 ## Status
 

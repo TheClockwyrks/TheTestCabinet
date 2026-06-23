@@ -122,8 +122,8 @@ this project.
 ## Selecting an orchestrator
 
 An orchestrator is selected per run, defaulting to `one-shot`. Every runner —
-the [CLI](/components/cli/overview/) (`--orchestrator`, `--orchestrator-dir`), a
-[worker](/components/worker/overview/) (built-in slugs only, as a worker has no
+the [CLI](/components/cli/overview/) (`--orchestrator`, `--orchestrator-dir`), the
+[driver](/components/driver/overview/) (built-in slugs only, as the driver has no
 access to a submitter's local directory), and the run-execution UI — selects one,
 and the resolved slug is recorded on the run.
 

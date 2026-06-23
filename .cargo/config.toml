@@ -8,10 +8,12 @@
 # so it runs on distributions that do not ship the generic FHS loader — notably
 # NixOS — as well as on mainstream distributions.
 #
-# Three binaries can be built this way:
-#   - `tcab`         — the CLI (`build-portable`)
-#   - `tcab-worker`  — the run/publish worker server (`build-portable-worker`)
-#   - `tcab-backend` — the definition/run store + API (`build-portable-backend`)
+# The portably-buildable binaries:
+#   - `tcab`            — the CLI (`build-portable`)
+#   - `tcab-backend`    — the definition/run store + API + run queue (`build-portable-backend`)
+#   - `tcab-dispatcher` — claims queued runs, creates one driver Job each (`build-portable-dispatcher`)
+#   - `tcab-driver`     — the per-run executor (`build-portable-driver`)
+#   - `tcab-artifacts`  — the produced-run-tree server (`build-portable-artifacts`)
 # All share `test-cabinet-core` and so the same prerequisites. The backend also
 # pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
 # SQLite from vendored C source via the same musl toolchain — so it links
@@ -25,15 +27,21 @@
 #   needed because the `ring` TLS backend (and bundled SQLite) compile a little C.
 #
 # Build with:
-#   cargo build-portable           # -> target/x86_64-unknown-linux-musl/release/tcab
-#   cargo build-portable-worker    # -> target/x86_64-unknown-linux-musl/release/tcab-worker
-#   cargo build-portable-backend   # -> target/x86_64-unknown-linux-musl/release/tcab-backend
+#   cargo build-portable             # -> target/x86_64-unknown-linux-musl/release/tcab
+#   cargo build-portable-backend     # -> .../release/tcab-backend
+#   cargo build-portable-dispatcher  # -> .../release/tcab-dispatcher
+#   cargo build-portable-driver      # -> .../release/tcab-driver
+#   cargo build-portable-artifacts   # -> .../release/tcab-artifacts
 #
-# NOTE: `tcab-worker` drives runs by shelling out to a container runtime, so the
-# host it runs on still needs Podman or Docker on PATH (the static binary removes
-# only the glibc/loader dependency, not the runtime it orchestrates).
+# NOTE: under its `cli` runtime `tcab-driver` drives a run by shelling out to a
+# container runtime, so the host it runs on then still needs Podman or Docker on
+# PATH (the static binary removes only the glibc/loader dependency, not the runtime
+# it orchestrates). Under the `kubernetes` runtime it talks to the API instead and
+# needs neither.
 
 [alias]
 build-portable = "build -p test-cabinet-cli --release --target x86_64-unknown-linux-musl"
-build-portable-worker = "build -p test-cabinet-worker --release --target x86_64-unknown-linux-musl"
 build-portable-backend = "build -p test-cabinet-backend --release --target x86_64-unknown-linux-musl"
+build-portable-dispatcher = "build -p test-cabinet-dispatcher --release --target x86_64-unknown-linux-musl"
+build-portable-driver = "build -p test-cabinet-driver --release --target x86_64-unknown-linux-musl"
+build-portable-artifacts = "build -p test-cabinet-artifacts --release --target x86_64-unknown-linux-musl"

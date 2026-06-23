@@ -6,7 +6,8 @@
 //! per-job token, the serialized launch request, `TCAB_DRIVER_RUNTIME=kubernetes`,
 //! and the `TCAB_K8S_*` sandbox-pod passthroughs — plus `TCAB_K8S_POD_IP` wired to
 //! the driver pod's own IP through the downward API, so the driver routes a
-//! sandbox's live-preview frames back to itself.
+//! sandbox's live-preview frames back to itself. Any configured driver `Secret`s
+//! (the harness provider API key) are mounted into the pod's env via `envFrom`.
 //!
 //! [`build_driver_job`] is **pure** given a [`ClaimedJob`] and the [`Config`], so
 //! the manifest shape is unit-tested without a cluster — the same discipline the
@@ -24,8 +25,8 @@ use std::collections::BTreeMap;
 
 use k8s_openapi::api::batch::v1::{Job, JobSpec};
 use k8s_openapi::api::core::v1::{
-    Container, EnvVar, EnvVarSource, ObjectFieldSelector, PodSpec, PodTemplateSpec,
-    ResourceRequirements,
+    Container, EnvFromSource, EnvVar, EnvVarSource, ObjectFieldSelector, PodSpec, PodTemplateSpec,
+    ResourceRequirements, SecretEnvSource,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -76,10 +77,29 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
     // assigned its pod.
     env.push(pod_ip_env());
 
+    // Mount each configured Secret's keys into the driver's env. This is how the
+    // harness provider API key reaches the run engine, which reads it from the
+    // driver pod's own environment exactly as the worker did. Omitted (`None`) when
+    // no driver secrets are configured.
+    let env_from = (!config.driver_secrets.is_empty()).then(|| {
+        config
+            .driver_secrets
+            .iter()
+            .map(|name| EnvFromSource {
+                secret_ref: Some(SecretEnvSource {
+                    name: name.clone(),
+                    optional: None,
+                }),
+                ..Default::default()
+            })
+            .collect()
+    });
+
     let container = Container {
         name: DRIVER_CONTAINER.to_string(),
         image: Some(config.driver_image.clone()),
         env: Some(env),
+        env_from,
         // The driver pod needs no resource requests of its own here; it is a thin
         // control process. Leaving `resources` unset omits the field.
         resources: None::<ResourceRequirements>,

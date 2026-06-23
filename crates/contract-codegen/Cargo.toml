@@ -14,7 +14,7 @@ path = "src/main.rs"
 # available to emit TypeScript bindings and JSON Schemas from a single source. The
 # job-API control plane that replaced the worker lives in `core` (the shared wire
 # types) and `backend` (the server outputs + relay), so the generator no longer
-# references the (soon-removed) worker crate.
+# references the (now-removed) worker crate.
 [dependencies]
 test-cabinet-core = { path = "../core", features = ["contract"] }
 test-cabinet-backend = { path = "../backend", features = ["contract"] }

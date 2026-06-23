@@ -27,7 +27,9 @@ Read the doc first; the code location is where the implementation lives.
 | --- | --- | --- |
 | Core (headless orchestration; owns the data contracts) | [`components/core/`](apps/docs/src/content/docs/components/core/) | `crates/core/` |
 | CLI (`tcab`) | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md) | `crates/cli/` |
-| Worker (HTTP run server) | [`components/worker/overview.md`](apps/docs/src/content/docs/components/worker/overview.md) | `crates/worker/` |
+| Dispatcher (claims queued runs → one driver Job each) | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md) | `crates/dispatcher/` |
+| Driver (per-run-Job executor; streams to the backend) | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md) | `crates/driver/` |
+| Artifacts (serves produced run trees off a volume) | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md) | `crates/artifacts/` |
 | Tauri desktop app | [`components/tauri/overview.md`](apps/docs/src/content/docs/components/tauri/overview.md) | `crates/desktop/` (Rust shell) + `apps/desktop/` (React UI) |
 | Web console | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `apps/web/` |
 | Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |

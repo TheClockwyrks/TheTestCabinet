@@ -60,7 +60,7 @@ draw render --actions <log> --out <png> --width <w> --height <h>   # regenerate 
 
 ## Live preview
 
-When a run is being **watched** — driven by a [worker](/components/worker/overview/)
+When a run is being **watched** — driven by a [driver](/components/driver/overview/)
 or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` —
 the model's drawing can be streamed to the viewer in real time, so a person sees
 the sprite take shape operation by operation rather than only the finished asset.
@@ -88,7 +88,7 @@ length }`) followed by the frame's raw PNG bytes. The container is given a route
 the host with `--add-host host.docker.internal:host-gateway` (both Docker and
 Podman resolve `host-gateway` to a host-reachable address); the listener validates
 the token, decodes the frame, and relays it to the viewer over the run's existing
-[live channel](/components/worker/overview/#run-job-endpoints) (the worker's event
+[live channel](/components/driver/overview/) (the driver's event
 stream, the Tauri app's preview event). For a sprite sheet each frame carries its
 own index, so the viewer can show the most-recently-drawn frame and the status of
 every frame at once.

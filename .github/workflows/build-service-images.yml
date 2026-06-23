@@ -1,14 +1,18 @@
 name: Build service images
 
-# Builds the three long-running *service* images and pushes them to GHCR:
+# Builds the long-running *service* images and pushes them to GHCR:
 #   - tcab-backend       — the backend (tcab-backend) plus a headless Chromium and
 #                          the fonts it renders reference screenshots with;
 #   - tcab-auth-service  — the auth service (tcab-auth-service), a slim runtime
-#                          with no browser and no fonts; and
-#   - tcab-worker        — the worker (tcab-worker) plus the publish CLIs
-#                          (git/gh/wrangler); under TCAB_WORKER_RUNTIME=kubernetes
-#                          it spawns each run as a pod via the API and needs no
-#                          container engine of its own.
+#                          with no browser and no fonts;
+#   - tcab-dispatcher    — the dispatcher (tcab-dispatcher), a slim controller that
+#                          claims queued jobs and creates one driver Job per run via
+#                          the Kubernetes API; no container engine of its own;
+#   - tcab-driver        — the per-run driver (tcab-driver); under
+#                          TCAB_DRIVER_RUNTIME=kubernetes it spawns one sandbox pod
+#                          per run via the API and needs no container engine; and
+#   - tcab-artifacts     — the artifact service (tcab-artifacts), a slim runtime
+#                          that serves produced run trees off a persistent volume.
 # Each is built from its Dockerfile under deployments/images/ with the repository
 # root as the build context (the Dockerfiles compile their crate from source), and
 # tagged both `:latest` and `:<git-sha>` so a deployment can pin an immutable
@@ -27,15 +31,17 @@ name: Build service images
 # mirrored to GitHub, like the other workflows here.
 #
 # One-time setup: after the first successful push, set each published package's
-# visibility (tcab-backend, tcab-auth-service, tcab-worker) to Public in the org's
-# GHCR package settings if the cluster should pull them unauthenticated; otherwise
-# reference them through an imagePullSecret (see deployments/k8s/secrets.example.yaml).
+# visibility (tcab-backend, tcab-auth-service, tcab-dispatcher, tcab-driver,
+# tcab-artifacts) to Public in the org's GHCR package settings if the cluster should
+# pull them unauthenticated; otherwise reference them through an imagePullSecret
+# (see deployments/k8s/secrets.example.yaml).
 on:
   push:
     branches: [master]
-    # The images compile the backend/auth/worker crates (and their workspace
-    # dependencies) from source, so any change under crates/ or to the workspace
-    # manifests must rebuild them — not just a change to the Dockerfiles.
+    # The images compile the backend/auth/dispatcher/driver/artifacts crates (and
+    # their workspace dependencies) from source, so any change under crates/ or to
+    # the workspace manifests must rebuild them — not just a change to the
+    # Dockerfiles.
     paths:
       - "crates/**"
       - "Cargo.toml"
@@ -58,8 +64,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     strategy:
-      # Build all three even if one fails, so a single broken image doesn't hide
-      # the status of the others.
+      # Build them all even if one fails, so a single broken image doesn't hide the
+      # status of the others.
       fail-fast: false
       matrix:
         include:
@@ -69,9 +75,15 @@ jobs:
           - name: auth
             image: tcab-auth-service
             dockerfile: deployments/images/auth.Dockerfile
-          - name: worker
-            image: tcab-worker
-            dockerfile: deployments/images/worker.Dockerfile
+          - name: dispatcher
+            image: tcab-dispatcher
+            dockerfile: deployments/images/dispatcher.Dockerfile
+          - name: driver
+            image: tcab-driver
+            dockerfile: deployments/images/driver.Dockerfile
+          - name: artifacts
+            image: tcab-artifacts
+            dockerfile: deployments/images/artifacts.Dockerfile
     steps:
       - uses: actions/checkout@v6
 

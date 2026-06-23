@@ -9,93 +9,97 @@ worth separating, because they need very different amounts of setup:
 - **A single run**, driven by the [CLI](/components/cli/overview/) (`tcab`) or the
   [Tauri desktop app](/components/tauri/overview/). Both embed the
   [core](/components/core/overview/) runner directly, so they need **no backend or
-  worker process** — just a container runtime and a harness API key. This is the
-  fastest way to launch one run; the [quickstarts](/quickstarts/overview/) walk
-  through it and [Building](/development/building/) covers producing the binaries.
-- **The full service-driven flow** — the [backend](/components/backend/overview/),
-  the [auth service](/components/auth/overview/), a
-  [worker](/components/worker/overview/), and the
-  [web console](/components/web/overview/) running as their own processes, exactly
-  as a deployed environment runs them, just all on `localhost`. This is the
-  environment to reach for when developing or debugging the services themselves,
-  and it is what the rest of this page sets up. (The auth service is what lets you
-  register, log in, and push/review/publish; without it the read-only flow still
-  works, but mutations are rejected `401`.)
+  cluster** — just a container runtime and a harness API key. This is the fastest
+  way to launch one run; the [quickstarts](/quickstarts/overview/) walk through it
+  and [Building](/development/building/) covers producing the binaries.
+- **The full service-driven flow** — the [backend](/components/backend/overview/)
+  (which now owns the **run queue**), the [auth service](/components/auth/overview/),
+  the [dispatcher](/components/dispatcher/overview/), the
+  [artifact service](/components/artifacts/overview/), and the
+  [web console](/components/web/overview/), running exactly as a deployed
+  environment runs them. A console no longer talks to a worker: it **enqueues** a
+  run at the backend, and an in-cluster dispatcher claims it and creates a per-run
+  Kubernetes **Job** running the [driver](/components/driver/overview/), which
+  executes that one run. Because execution is now a cluster concern, the local
+  service-driven story runs on a **k3d** cluster (k3s-in-Docker) from the same
+  manifests a deployment uses. (The auth service is what lets you register, log
+  in, and push/review/publish; without it the read-only flow still works, but
+  mutations are rejected `401`.)
 
 Running the services on one machine is the local mirror of a real
-[deployment](/deployment/overview/): the same binaries and the same configuration,
-only bound to `localhost`. When you are ready to put them on real hosts — staging
-and prod — see [Deployment](/deployment/overview/).
+[deployment](/deployment/overview/): the same images and the same configuration,
+only on a throwaway local cluster. When you are ready to put them on real hosts —
+staging and prod — see [Deployment](/deployment/overview/).
 
 ## Prerequisites
 
-- A **container runtime** (Docker or Podman) on the host — the worker needs it to
-  execute runs. See [Execution](/components/core/execution/) and
+- A **container runtime** (Docker) on the host. k3d runs the cluster as
+  containers, and a single CLI/desktop run needs a runtime to execute the run
+  container. See [Execution](/components/core/execution/) and
   [first-time setup](/guides/first-time-setup/).
+- [`k3d`](https://k3d.io) and `kubectl` on the host, for the service-driven flow.
 - The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
   built or pullable for whichever harness you intend to run.
 - The service binaries, built per [Building](/development/building/):
-  `cargo build -p test-cabinet-backend`, `cargo build -p test-cabinet-worker`, and
-  `cargo build -p tcab-auth-service` (or the `build-portable-*` aliases for static
-  binaries). The web console is a Vite app under `apps/web`.
+  `cargo build -p test-cabinet-backend`, `cargo build -p tcab-auth-service`,
+  `cargo build -p test-cabinet-dispatcher`, `cargo build -p test-cabinet-driver`,
+  and `cargo build -p test-cabinet-artifacts` (or the `build-portable-*` aliases
+  for static binaries). The web console is a Vite app under `apps/web`.
 - A harness API key for the harness you will run (for example
   `ANTHROPIC_API_KEY` for `claude`).
 
-## Why the worker runs on the host
-
-A natural instinct is to put everything in one `docker compose` stack. The
-backend is happy in a container, but the worker starts a **container per run**,
-so containerizing it means giving it access to the host's container runtime
-(bind-mounting the Docker socket) and ensuring the run's
-[work directory](/components/worker/overview/) is a path the host shares — the
-nested run containers are started by the host's daemon, so `TCAB_WORK_DIR` must
-resolve to the *same* path on the host, not just inside the worker container.
-That is the same caveat the
-[`.env.worker.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.worker.example)
-flags for macOS/Windows.
-
-To keep the moving parts obvious, **run the worker directly on the host** and
-only optionally containerize the backend. The
-[`deployments/local/compose.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/compose.yml)
-template brings the backend up in a container with a local volume for its state;
-the worker stays a host process throughout.
-
 ## The whole stack on k3d (deployment parity)
 
-The numbered steps below run each service as a bare host process — the quickest
-way to iterate on a single service. To instead run the services **the way a
+Run execution is now a cluster concern: a run schedules as a per-run **Job**, so
+the service-driven flow runs the services **the way a
 [deployment](/deployment/kubernetes/) runs them** — in a real (local) Kubernetes
-cluster, from the same manifests — use the k3d stack. It needs only `docker`,
-[`k3d`](https://k3d.io), and `kubectl` on the host:
+cluster, from the same manifests. The
+[`deployments/local/Makefile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/Makefile)
+drives the whole thing; it needs only `docker`, [`k3d`](https://k3d.io), and
+`kubectl` on the host:
 
 ```sh
 make -C deployments/local local-up        # create cluster, build+load images, apply, ingest
 make -C deployments/local local-forward   # hold backend→:8787 and auth→:8789 open on localhost
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
+make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
+make -C deployments/local local-ingest    # force re-ingest the catalog after editing a case
 make -C deployments/local local-down      # delete the cluster and everything in it
 ```
 
-`local-up` creates a throwaway k3d cluster (k3s-in-Docker), builds the backend
-and auth images from `deployments/images/`, loads them with `k3d image import`
-(no registry needed), applies the `deployments/k8s/overlays/local` kustomize
-overlay, and force-ingests the catalog from a read-only mount of this repository.
-After editing a test case, re-ingest with `make -C deployments/local local-ingest`.
+`local-up` creates a throwaway k3d cluster, builds the **backend**, **auth**,
+**dispatcher**, **driver**, and **artifact** images from
+[`deployments/images/`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images),
+loads them with `k3d image import` (no registry needed), applies the
+`deployments/k8s/overlays/local` kustomize overlay, and force-ingests the catalog
+from a read-only mount of this repository. The dispatcher and driver run
+in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
+**schedules as a Job in this same cluster** — exactly as a cloud deployment runs
+it. The host no longer runs any worker process.
 
-Today the k3d stack brings up the **backend and auth service** only; run
-execution still uses the host `cli` worker (step 4 below) pointed at the
-forwarded backend on `127.0.0.1:8787`. Once the run **dispatcher** lands, runs
-schedule as Jobs inside this same cluster — exactly as a cloud deployment runs
-them — and the host worker goes away.
+`make local-forward` holds the backend open on `127.0.0.1:8787` and the auth
+service on `127.0.0.1:8789`, which is all the web console needs: it enqueues runs
+against the one backend URL, and the in-cluster dispatcher and driver execute
+them. After editing a test case, re-ingest with
+`make -C deployments/local local-ingest`.
 
-## 1. Configure the services
+## Iterating on the backend and auth services as bare processes
+
+You can run the **backend and auth** services as ordinary host processes — the
+quickest way to iterate on those two binaries — but note that **run execution
+still requires the dispatcher and driver**, i.e. a cluster (the k3d stack above
+or a remote one). The bare-process path below stands up the two stateful services
+and the console for read/review work; to actually launch a run, point the console
+at a backend whose queue an in-cluster dispatcher is draining.
+
+### Configure the services
 
 Copy the repo-root example env files and fill them in. These remain the
 authoritative list of every variable each service reads.
 
 ```sh
 cp .env.backend.example .env.backend
-cp .env.worker.example  .env.worker
 ```
 
 In `.env.backend`, the only required value is the checkout the backend ingests
@@ -111,30 +115,20 @@ TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # records to its database and regenerates the snapshot on disk (a dev-only mode).
 ```
 
-In `.env.worker`, point the worker at the local backend and provide the harness
-key for whatever you will run:
+The dispatcher and artifact service take their own env — see
+[`.env.dispatcher.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.dispatcher.example)
+and
+[`.env.artifacts.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.artifacts.example)
+for the full lists — but they assume the cluster context the k3d overlay wires up
+(the dispatcher's Kubernetes API access, the driver ServiceAccount, the artifact
+volume), so the k3d stack is the supported way to run them.
 
-```sh
-TCAB_BACKEND_URL=http://127.0.0.1:8787
-# Leave TCAB_WORKER_BIND at its default 127.0.0.1:8788.
-# Leave TCAB_AUTH_URL at its default http://127.0.0.1:8789 so the worker proxies
-# register/login to, and forwards bearer tokens against, the auth service.
-ANTHROPIC_API_KEY=sk-ant-...
-```
+### Start the backend
 
-## 2. Start the backend
-
-Either run the binary directly from a directory containing `.env.backend`:
+Run the binary directly from a directory containing `.env.backend`:
 
 ```sh
 ./target/debug/tcab-backend
-```
-
-or bring it up with the compose template, which mounts a local volume for the
-default SQLite database and the definition store so they survive a restart:
-
-```sh
-docker compose -f deployments/local/compose.yml up backend
 ```
 
 Once it is up, ingest the repository so the catalog is populated:
@@ -169,7 +163,7 @@ published against. Once a published run references a version it is immutable —
 revise by creating a **new version** instead, never by editing and re-ingesting
 the published one (see [Test Cases](/testing/end-to-end/overview/)).
 
-## 3. Start the auth service
+### Start the auth service
 
 So you can register, log in, and push/review/publish, start the auth service. It
 takes its own bind address and its own database, separate from the backend's:
@@ -192,20 +186,7 @@ The backend (pointed at it by `TCAB_BACKEND_AUTH_URL`) now verifies the token th
 CLI stored, so mutations are accepted. Without the auth service running, reads
 still work but push/review/publish are rejected `401`.
 
-## 4. Start the worker
-
-From a directory containing `.env.worker`, on the host:
-
-```sh
-./target/debug/tcab-worker
-```
-
-It reads `TCAB_BACKEND_URL`, resolves definitions from the backend you just
-started, and binds `127.0.0.1:8788`. Check `curl http://127.0.0.1:8788/healthz` —
-the response reports the worker's identity and the backend it is bound to, which
-is a quick way to confirm the two agree.
-
-## 5. Start the web console
+### Start the web console
 
 Run the console's dev server and open it in a browser:
 
@@ -213,27 +194,30 @@ Run the console's dev server and open it in a browser:
 npm run dev -w @test-cabinet/web
 ```
 
-In the UI, set the backend to `http://127.0.0.1:8787` and add the worker at
-`http://127.0.0.1:8788`. The console verifies the worker is bound to the same
-backend before it will launch runs on it. From there you can launch a run on the
-local worker, watch its [event stream](/components/core/events/) live, and review
-the result exactly as you would against a remote environment.
+In the UI, set the backend to `http://127.0.0.1:8787` — the **one** URL the
+console needs. The console enqueues a run by posting it to the backend's queue;
+the in-cluster dispatcher claims it, the driver Job executes it, and the console
+watches its [event stream](/components/core/events/) live and reads the produced
+build and media from the [artifact service](/components/artifacts/overview/) (the
+backend reports its public URL to the console via `GET /config`). There is no
+worker to register.
 
 ## Telemetry (optional)
 
-To watch traces across `tcab-backend` → `tcab-worker` locally, enable the
-bundled Grafana LGTM stack and point each process at it. That is fully described
-under [Observability](/development/observability/) — note the
+To watch traces across `tcab-backend` → `tcab-dispatcher` → `tcab-driver`
+locally, enable the bundled Grafana LGTM stack and point each process at it. That
+is fully described under [Observability](/development/observability/) — in
+particular the
 [endpoint-duality rule](/development/observability/#endpoint-duality-host-vs-container):
-a backend running inside the devcontainer uses `http://lgtm:4318`, while a worker
-on the host uses `http://localhost:4318`. Leaving `OTEL_EXPORTER_OTLP_ENDPOINT`
-unset keeps both on plain stdout logging.
+in-cluster pods use the collector's in-cluster endpoint, while a host process
+uses `http://localhost:4318`. Leaving `OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps
+everything on plain stdout logging.
 
 ## Next
 
 When this works end to end, the same service images deploy unchanged to
 [staging and prod on Kubernetes](/deployment/kubernetes/) — what changes is the
-namespace they live in and that the worker switches to spawning a run pod per run
-(`TCAB_WORKER_RUNTIME=kubernetes`) instead of using the host's container runtime,
-not how the rest is configured. See [Deployment](/deployment/overview/) for the
-remote build.
+namespace they live in, not how the flow is wired. A run is a per-run **Job**
+everywhere: the dispatcher claims a queued run and creates a Job running the
+driver, which (under the Kubernetes runtime) creates one ephemeral sandbox pod
+per run. See [Deployment](/deployment/overview/) for the remote build.

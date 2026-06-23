@@ -40,6 +40,7 @@ fn config() -> Config {
         max_inflight: 8,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
+        driver_secrets: vec!["tcab-driver-secrets".to_string()],
         passthrough_k8s_env: vec![
             ("TCAB_K8S_RUN_CPU_REQUEST".to_string(), "500m".to_string()),
             ("TCAB_K8S_RUN_CPU_LIMIT".to_string(), "2".to_string()),
@@ -157,6 +158,29 @@ fn pod_ip_comes_from_the_downward_api() {
         .and_then(|src| src.field_ref.as_ref())
         .expect("TCAB_K8S_POD_IP must use a fieldRef");
     assert_eq!(field_ref.field_path, "status.podIP");
+}
+
+#[test]
+fn mounts_driver_secrets_via_env_from() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let env_from = container(&job)
+        .env_from
+        .as_ref()
+        .expect("configured driver secrets must produce an envFrom");
+    let names: Vec<&str> = env_from
+        .iter()
+        .filter_map(|src| src.secret_ref.as_ref())
+        .map(|secret| secret.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["tcab-driver-secrets"]);
+}
+
+#[test]
+fn no_driver_secrets_omits_env_from() {
+    let mut config = config();
+    config.driver_secrets.clear();
+    let job = build_driver_job(&claim(), &config).unwrap();
+    assert!(container(&job).env_from.is_none());
 }
 
 #[test]

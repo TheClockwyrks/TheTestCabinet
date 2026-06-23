@@ -83,8 +83,8 @@ const RUN_RECORD_DEFS: &[&str] = &[
 const TOURNAMENT_DEFS: &[&str] = &["MatchSummary", "Standing", "ControllerRef", "ControllerKind"];
 
 /// The review schema's `$defs`: the canonical home of the review value types, so
-/// the worker (review submission), backend, and snapshot documents all reference
-/// them here rather than each carrying a copy.
+/// the backend and snapshot documents (and the console that submits reviews) all
+/// reference them here rather than each carrying a copy.
 const REVIEW_DEFS: &[&str] = &["Rating", "VerdictStatus", "ReviewVerdict", "DomainRating"];
 
 fn main() -> Result<()> {
@@ -109,7 +109,7 @@ fn main() -> Result<()> {
                 rr::RunRecord,
             ],
         },
-        // The review value types (shared by the worker, backend, and snapshot
+        // The review value types (shared by the backend and snapshot
         // contracts) plus the published `Review` wire shape. The scoring and
         // aggregation logic stays hand-written in the UI.
         TsModule {
@@ -207,7 +207,7 @@ fn main() -> Result<()> {
         anon("jobs-api/client-config.schema.json", root_schema::<bapi::ClientConfig>()),
         // Backend API: the auth surface (the token response is the canonical home
         // of Account) and the canonical review document (the home of the review
-        // value types the worker + snapshot reference).
+        // value types the backend + snapshot reference).
         SchemaDoc {
             rel_path: "backend-api/auth.schema.json",
             root: Some("AuthResult"),
