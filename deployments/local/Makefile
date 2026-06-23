@@ -37,12 +37,26 @@ CLUSTER ?= tcab
 NS      ?= tcab-local
 OVERLAY := $(REPO)/deployments/k8s/overlays/local
 
-BACKEND_IMG    := tcab-backend:local
-AUTH_IMG       := tcab-auth-service:local
-DISPATCHER_IMG := tcab-dispatcher:local
-DRIVER_IMG     := tcab-driver:local
-ARTIFACTS_IMG  := tcab-artifacts:local
-ARENA_IMG      := tcab-arena:local
+# Container runtime used to build the images. Prefers podman when installed,
+# falling back to docker; override with `CONTAINER_TOOL=… make …`. (podman is
+# checked first on purpose: a host that points `docker` at podman would otherwise
+# always resolve to docker, so the fallback would never pick the real runtime.)
+CONTAINER_TOOL ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
+
+# Images are tagged with the fully-qualified `docker.io/library/` prefix so podman
+# does not store them under a `localhost/` prefix (which `k3d image import` then
+# can't find by name). This normalizes to the same containerd reference the local
+# overlay's `tcab-<svc>:local` image names resolve to, so the manifests match.
+REGISTRY_PREFIX ?= docker.io/library
+
+BACKEND_IMG    := $(REGISTRY_PREFIX)/tcab-backend:local
+AUTH_IMG       := $(REGISTRY_PREFIX)/tcab-auth-service:local
+DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
+DRIVER_IMG     := $(REGISTRY_PREFIX)/tcab-driver:local
+ARTIFACTS_IMG  := $(REGISTRY_PREFIX)/tcab-artifacts:local
+ARENA_IMG      := $(REGISTRY_PREFIX)/tcab-arena:local
+
+ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -71,14 +85,28 @@ cluster:
 
 # Build the service images from the same Dockerfiles the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
+#
+# Images are imported as saved tarballs rather than by name: `k3d image import`
+# does its own `save` from a name through the runtime, which fails on podman (the
+# name resolves under a `localhost/` prefix). Saving with $(CONTAINER_TOOL)
+# ourselves and importing the tar sidesteps that entirely and works on both docker
+# and podman.
 images:
-	docker build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
-	docker build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
-	docker build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
-	docker build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
-	docker build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
-	docker build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
-	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' '$(DISPATCHER_IMG)' '$(DRIVER_IMG)' '$(ARTIFACTS_IMG)' '$(ARENA_IMG)' -c '$(CLUSTER)'
+	$(CONTAINER_TOOL) build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
+	$(CONTAINER_TOOL) build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
+	$(CONTAINER_TOOL) build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
+	$(CONTAINER_TOOL) build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
+	$(CONTAINER_TOOL) build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
+	$(CONTAINER_TOOL) build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
+	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
+	  i=0; tars=""; \
+	  for img in $(ALL_IMGS); do \
+	    i=$$((i+1)); \
+	    echo "Saving $$img …"; \
+	    $(CONTAINER_TOOL) save -o "$$tmp/img-$$i.tar" "$$img"; \
+	    tars="$$tars $$tmp/img-$$i.tar"; \
+	  done; \
+	  k3d image import $$tars -c '$(CLUSTER)'
 
 # Create the cluster Secrets from the host ENVIRONMENT and signed-in CLI files, so
 # no API key or token is ever written to a tracked file (the local overlay

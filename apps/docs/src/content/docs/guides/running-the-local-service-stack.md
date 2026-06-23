@@ -51,8 +51,10 @@ run you enqueue schedules as a Job inside the cluster, exactly as in the cloud.
 You do **not** need to build the service binaries by hand — the bring-up builds
 each service's container image from `deployments/images/`. You need:
 
-- A **container runtime** (Docker, or a Docker-compatible one). k3d runs the
-  cluster nodes as containers and builds the images through this runtime.
+- A **container runtime** (Docker, or a Docker-compatible one such as Podman). k3d
+  runs the cluster nodes as containers, and the bring-up builds the images through
+  this runtime — it uses `podman` when present and falls back to `docker`
+  automatically (override with `CONTAINER_TOOL=… make …`).
 - [`k3d`](https://k3d.io) and `kubectl` on `PATH`.
 - `make` (the bring-up is driven by a Makefile).
 - A **harness API key** exported in your shell — the run injects it into the
@@ -91,10 +93,12 @@ pre-build for it.
 
 :::caution[k3d and Podman]
 k3d's first-class runtime is **Docker**. It often works on **Podman**, but needs
-**rootful** Podman and the Docker-compatible socket; if `k3d cluster create` or
-`k3d image import` fails, exporting `DOCKER_HOST=unix:///run/podman/podman.sock`
-(rootful) is the usual fix. If Podman keeps fighting the cluster bring-up, enable
-real Docker for this flow.
+**rootful** Podman and the Docker-compatible socket; if `k3d cluster create` fails,
+exporting `DOCKER_HOST=unix:///run/podman/podman.sock` (rootful) is the usual fix.
+(Image loading is unaffected: the Makefile builds with the detected runtime and
+hands k3d a saved tarball rather than an image name, so Podman's `localhost/`
+naming doesn't trip up the import.) If Podman keeps fighting the cluster bring-up,
+enable real Docker for this flow.
 :::
 
 ## 1. Bring the stack up
