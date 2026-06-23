@@ -210,8 +210,10 @@ pub async fn publish(
 /// `GET /runs?limit=&before=&state=` — list runs, newest first, paginated.
 ///
 /// `state` defaults to `published` (the public read side: only published runs,
-/// ordered by publish time). `state=review` returns **all** runs — pending and
-/// published — ordered by finish time, for the reviewer worklist.
+/// ordered by publish time). `state=review` returns **completed** runs — pending
+/// and published — ordered by finish time, for the reviewer worklist.
+/// `state=failures` returns the **publishable failure** runs (catastrophic and
+/// timed-out, pending and published) for the publish-failures affordance.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
@@ -221,6 +223,11 @@ pub async fn list(
         Some("review") | Some("all") => state
             .db
             .list_for_review(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
+        Some("failures") => state
+            .db
+            .list_publishable_failures(limit, params.before.as_deref())
             .await
             .map_err(ApiError::from)?,
         _ => state

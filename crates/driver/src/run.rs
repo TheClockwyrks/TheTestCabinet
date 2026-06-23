@@ -19,7 +19,8 @@ use test_cabinet_core::{
     ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime, CredBytesSource,
     DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient, NoopPublisher,
     OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
-    RunEngine, RunRecord, RunRequest, TestCaseCatalog, TestCaseVersion, materialize_version,
+    RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog, TestCaseVersion,
+    materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -37,6 +38,12 @@ use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
 /// backend will not serve the definition) has none and falls back to what the
 /// request carried.
 pub struct RunFailure {
+    /// The classified terminal state. Every pre-implementation failure the driver
+    /// reaches is [`RunState::Infrastructure`] except a model that ran past the
+    /// runtime cap, which is [`RunState::TimedOut`] (see
+    /// [`RunState::classify_failure`]). Carried through so the persisted record's
+    /// state — and therefore its publishability — is correct.
+    pub state: RunState,
     /// A specific, human-readable reason for the failure — the diagnostic detail
     /// the backend records, distinguishing "couldn't pull the image" from
     /// "harness unavailable" and the like.
@@ -46,9 +53,12 @@ pub struct RunFailure {
 }
 
 impl RunFailure {
-    /// A failure before the version was resolved.
+    /// A failure before the version was resolved. Always infrastructure: nothing
+    /// the model did could cause a failure this early (scratch dirs, definition
+    /// resolution).
     fn setup(detail: String) -> Self {
         Self {
+            state: RunState::Infrastructure,
             detail,
             test_case: None,
         }
@@ -138,7 +148,10 @@ pub async fn drive(
     // deployment. Only the runtime and its artifact collector differ; everything
     // else the engine wires is identical, so each arm hands its pair to the same
     // generic `drive_engine`.
+    // Locating/connecting a container runtime is the Test Cabinet's plumbing, not
+    // the model — these are infrastructure failures.
     let with_test_case = |detail: String| RunFailure {
+        state: RunState::Infrastructure,
         detail,
         test_case: Some(test_case.clone()),
     };
@@ -183,7 +196,14 @@ pub async fn drive(
             .await
         }
     }
-    .map_err(|err| with_test_case(format!("run failed: {err}")))
+    // The engine returned a typed error: classify it (a runtime-cap timeout is a
+    // model outcome, everything else is infrastructure) before it is flattened to
+    // a diagnostic string for the record.
+    .map_err(|err| RunFailure {
+        state: RunState::classify_failure(&err),
+        detail: format!("run failed: {err}"),
+        test_case: Some(test_case.clone()),
+    })
 }
 
 /// Assemble the [`RunEngine`] around the selected container `runtime` and

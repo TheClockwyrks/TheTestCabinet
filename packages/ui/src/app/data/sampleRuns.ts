@@ -298,7 +298,7 @@ export const sampleRuns: RunRecord[] = [
       playableBuild: null,
     },
     status: {
-      state: "failed",
+      state: "catastrophic",
       detail: "Implementation does not boot.",
     },
   },
@@ -415,8 +415,8 @@ export const sampleRuns: RunRecord[] = [
       playableBuild: "https://builds.testcabinet.ai/sample-belt-antigravity/",
     },
     status: {
-      state: "unevaluable",
-      detail: "Renders but core mechanic is non-functional.",
+      state: "completed",
+      detail: null,
     },
   },
   {

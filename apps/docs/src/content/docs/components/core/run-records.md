@@ -109,8 +109,21 @@ The harness version is not duplicated here; it lives in the subject.
 
 ### Status
 
-- Whether the run completed, failed, or could not be evaluated, with enough
-  detail to understand a failure.
+- The run's terminal state, with enough detail to understand a failure. One of:
+  - **`completed`** — the harness exited cleanly and the run produced a usable,
+    evaluable implementation. Reviewed and scored on the reviewer checklist.
+  - **`catastrophic`** — the harness exited cleanly (the model claimed
+    completion), but the output did not build or could not be evaluated. A
+    publishable model failure with no review checklist; reported as a separate
+    catastrophic-failure statistic.
+  - **`timed_out`** — the run hit its maximum runtime and was stopped before the
+    harness finished (the model never converged). A distinct publishable tier from
+    `catastrophic`, likewise unscored.
+  - **`infrastructure`** — the Test Cabinet's own infrastructure failed (the
+    harness errored or exited non-zero, the container would not start or pull, a
+    pod was OOM-killed, or seeding/init failed). Not the model's fault: retained
+    with a diagnostic detail, but **never** publishable and excluded from every
+    model statistic.
 
 ## Co-located Run Files
 

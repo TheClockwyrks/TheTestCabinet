@@ -61,3 +61,29 @@
 .none {
   color: t.$color-text-muted;
 }
+
+// --- Reliability: the unranked failure tally below the ranked board ----------
+
+.reliabilityHeading {
+  font-size: t.$font-md;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+  margin: 0 0 t.$space-md;
+}
+
+// Mirrors the board's dense, column-aligned treatment, minus the rank column
+// (this is a tally, not a ranking): model, then a count per failure tier.
+.reliabilityBoard {
+  display: flex;
+  flex-direction: column;
+}
+
+.reliabilityRow {
+  display: grid;
+  grid-template-columns: 1fr 8rem 8rem;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-xs 0;
+  border-bottom: 1px solid t.$color-border;
+}

@@ -5,6 +5,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { type ParsedWriteup, worstRating } from "../../data/ratings";
+import { describeRunState, hasPlayableOutcome } from "../../data/runState";
 import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
@@ -75,8 +76,11 @@ export function RunDetailLayout({
   // Neither an asset-generation run (a static asset) nor an adversarial run (a
   // match replay) produces a hostable playable build, so neither has a Play tab;
   // each shows its result on the Verdict tab instead (the asset, or the embedded
-  // replay player).
+  // replay player). A failed run (catastrophic, timed-out, or infrastructure)
+  // never produced a build to host either, so it has no Play tab regardless of
+  // type.
   const hasPlayableBuild =
+    hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&
     run.subject.testType !== "adversarial";
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
@@ -118,15 +122,22 @@ export function RunDetailLayout({
         </div>
       </header>
 
-      {run.status.state === "failed" && (
-        <div className={styles.failureBanner} role="alert">
-          <span className={styles.failureTitle}>Run failed</span>
-          <span className={styles.failureDetail}>
-            {run.status.detail ??
-              "This run failed before producing a result. No reason was recorded."}
-          </span>
-        </div>
-      )}
+      {(() => {
+        const presentation = describeRunState(run.status.state);
+        if (!presentation.isFailure) return null;
+        return (
+          <div
+            className={styles.failureBanner}
+            data-state={run.status.state}
+            role="alert"
+          >
+            <span className={styles.failureTitle}>{presentation.label}</span>
+            <span className={styles.failureDetail}>
+              {run.status.detail ?? presentation.description}
+            </span>
+          </div>
+        );
+      })()}
 
       <div className={styles.controls}>
         <nav className={styles.tabs} aria-label="Run sections">

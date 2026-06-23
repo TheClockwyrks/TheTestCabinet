@@ -416,6 +416,15 @@
   flex-wrap: wrap;
 }
 
+// Groups the header's actions (the Publish-failures link beside the New-run
+// button) so they sit together at the right, wrapping as one unit.
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
 // --- Review flow: one question at a time, with a navigable item rail ---------
 
 // Two-column shell: the item rail on the left, the current question on the right.

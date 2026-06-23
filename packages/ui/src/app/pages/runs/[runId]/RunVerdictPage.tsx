@@ -7,6 +7,7 @@ import {
   type ParsedWriteup,
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
+import { describeRunState } from "../../../data/runState";
 import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -41,7 +42,9 @@ export function RunVerdictPage() {
   const gallery = useGalleryData();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review }) => (
+      {({ run, review }) => {
+        const presentation = describeRunState(run.status.state);
+        return (
         <div className={styles.tabStack}>
           {/* For an asset-generation run, the generated asset and its
               cheat-divergence signal lead the verdict (it has no Play tab).
@@ -52,16 +55,18 @@ export function RunVerdictPage() {
               nothing for other run types. */}
           <AdversarialReplaySection run={run} />
           {
-            // A failed run produced no result: there is nothing to review or
-            // publish, so neither the editor nor an empty-verdict panel applies.
-            // The failure reason is shown by the detail layout's banner above; the
-            // Events tab carries whatever timeline was recorded.
-            run.status.state === "failed" ? (
+            // A failed run produced no reviewable result: there is no checklist to
+            // complete, so the review editor never applies. Catastrophic and
+            // timed-out runs are still publishable model signal, but from the
+            // dedicated Publish failures list rather than here; infrastructure
+            // failures are kept for inspection only. The failure reason is in the
+            // banner above; the Events tab carries whatever timeline was recorded.
+            presentation.isFailure ? (
               <Panel>
                 <p className={styles.empty}>
-                  This run failed before producing a result, so there is nothing
-                  to review or publish. See the failure reason above, and the
-                  Events tab for what was recorded.
+                  {presentation.isPublishableFailure
+                    ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
+                    : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
                 </p>
               </Panel>
             ) : // A produced, not-yet-published run the active worker owns is
@@ -89,7 +94,8 @@ export function RunVerdictPage() {
             )
           }
         </div>
-      )}
+        );
+      }}
     </RunDetailLayout>
   );
 }

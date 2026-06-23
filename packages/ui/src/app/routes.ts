@@ -43,6 +43,9 @@ export const routes = {
   register: (next?: string): string =>
     next ? `/register?next=${encodeURIComponent(next)}` : "/register",
   runs: (): string => "/runs",
+  // The publishable-failures worklist (consoles only): produced catastrophic /
+  // timed-out runs awaiting publish. The static site never links to it.
+  runFailures: (): string => "/runs/failures",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -105,6 +108,7 @@ export const routePatterns = {
   login: "/login",
   register: "/register",
   runs: "/runs",
+  runFailures: "/runs/failures",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",

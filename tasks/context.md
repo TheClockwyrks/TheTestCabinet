@@ -18,8 +18,15 @@ files that remain hold the **follow-up work** the refactor surfaced or deferred:
   `tcab-arena` service** (the `tcab-artifacts`-style split, *diverging* from the
   file's in-backend recommendation — operator chose the isolated service). The
   console reaches it via a `/config`-exposed URL; reads stay on the backend.
-- `task-6.md` — **deferred** (unchanged): publish & score failures as first-class
-  results, a separate design pass.
+- `task-6.md` — ✅ **DONE** (2026-06-23, uncommitted): publish & score failures as
+  first-class results, on the **backend-driven path**. Four-tier `RunState`
+  (`completed | catastrophic | timed_out | infrastructure`); catastrophic &
+  timed-out publish manually with no reviews, infra never publishable/excluded
+  from stats; `state=failures` listing + console "Publish failures" page +
+  leaderboard reliability stats. Desktop failure publishing split out to `task-9`.
+- `task-9.md` — **deferred** (new, 2026-06-23): unify desktop run execution onto
+  the k3d/backend path (one execution path instead of the desktop in-process
+  `RunEngine`). Surfaced by task-6; unblocks desktop-produced failure publishing.
 
 ## Objective
 
@@ -161,9 +168,9 @@ versions.
 
 Remaining (companion files):
 
-- `task-6.md` — **deferred**: publish & score failures as first-class results
-  (a separate design pass). Still deferred by decision; the refactor retains all
-  the data it will need.
+- `task-9.md` — **deferred**: unify desktop run execution onto the k3d/backend
+  path (removes the desktop in-process `RunEngine` divergence; unblocks
+  desktop-produced failure publishing). Not to be tackled immediately.
 - **Per-account credential vault** (carried over from `task-7.md`, option 2) —
   the multi-tenant successor to the shipped operator-Secret v1: users upload their
   subscription files, the backend stores them encrypted keyed to the account, and
@@ -172,6 +179,8 @@ Remaining (companion files):
 
 Done (companion files keep their status headers):
 
+- `task-6.md` — **publish & score failures as first-class results** (backend-driven
+  path; four-tier `RunState`). ✅ 2026-06-23.
 - `task-7.md` — **subscription harness auth** (operator-Secret v1). ✅ 2026-06-23.
 - `task-8.md` — **adversarial arena execution** (standalone `tcab-arena`). ✅ 2026-06-23.
 

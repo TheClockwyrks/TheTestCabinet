@@ -74,9 +74,14 @@ export function RunsPage() {
           comment={<>// every result the cabinet has produced</>}
         />
         {canExecute && (
-          <Link className={exec.primary} to={routes.runNew()}>
-            + New run
-          </Link>
+          <span className={exec.headerActions}>
+            <Link className={exec.secondary} to={routes.runFailures()}>
+              Publish failures
+            </Link>
+            <Link className={exec.primary} to={routes.runNew()}>
+              + New run
+            </Link>
+          </span>
         )}
       </div>
 

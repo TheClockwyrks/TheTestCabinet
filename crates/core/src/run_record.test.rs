@@ -177,7 +177,51 @@ fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
 #[test]
 fn run_state_serializes_snake_case() {
     assert_eq!(
-        serde_json::to_value(RunState::Unevaluable).unwrap(),
-        json!("unevaluable")
+        serde_json::to_value(RunState::Catastrophic).unwrap(),
+        json!("catastrophic")
+    );
+    assert_eq!(
+        serde_json::to_value(RunState::TimedOut).unwrap(),
+        json!("timed_out")
+    );
+    assert_eq!(
+        serde_json::to_value(RunState::Infrastructure).unwrap(),
+        json!("infrastructure")
+    );
+}
+
+#[test]
+fn run_state_publishability() {
+    assert!(RunState::Completed.is_publishable());
+    assert!(RunState::Catastrophic.is_publishable());
+    assert!(RunState::TimedOut.is_publishable());
+    assert!(!RunState::Infrastructure.is_publishable());
+
+    assert!(!RunState::Completed.is_publishable_failure());
+    assert!(RunState::Catastrophic.is_publishable_failure());
+    assert!(RunState::TimedOut.is_publishable_failure());
+    assert!(!RunState::Infrastructure.is_publishable_failure());
+}
+
+#[test]
+fn classify_failure_only_runtime_cap_is_a_timeout() {
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::RunTimedOut {
+            slug: "claude".to_string(),
+            seconds: 1800,
+        }),
+        RunState::TimedOut
+    );
+    // A harness install timeout is the Test Cabinet's plumbing, not the model.
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessInstallTimedOut {
+            slug: "claude".to_string(),
+            seconds: 60,
+        }),
+        RunState::Infrastructure
+    );
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::ContainerRuntime("boom".to_string())),
+        RunState::Infrastructure
     );
 }

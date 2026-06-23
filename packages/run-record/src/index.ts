@@ -24,9 +24,19 @@ export type HarnessSlug =
   | "pi";
 
 /**
- * The terminal state of a run.
+ * The terminal state of a run — the single axis that decides publishability and
+ * how a run scores. Classified objectively at the point a run ends: a clean
+ * harness exit splits into [`Completed`](RunState::Completed) vs
+ * [`Catastrophic`](RunState::Catastrophic) on whether the output could be
+ * evaluated; a run stopped before the harness finished is
+ * [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+ * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
-export type RunState = "completed" | "failed" | "unevaluable";
+export type RunState =
+  | "completed"
+  | "catastrophic"
+  | "timed_out"
+  | "infrastructure";
 
 /**
  * The authentication mode a run used, recorded so a published run is
@@ -911,7 +921,7 @@ export type RunLinks = {
  */
 export type RunStatus = {
   /**
-   * Whether the run completed, failed, or could not be evaluated.
+   * The run's terminal state.
    */
   state: RunState;
   /**

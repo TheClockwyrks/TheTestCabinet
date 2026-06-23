@@ -94,10 +94,25 @@ run accumulates more than one independent human judgement before it goes public.
 
 ### Publish
 
-Publishing is the **gate** that flips a pushed, reviewed run **public**. It is a
-small, explicit step — it adds nothing to the run beyond making it visible — and
-the backend **refuses to publish a run that has no review** (`422`). The public
-snapshot, and therefore the gallery, contains **only published runs**.
+Publishing is the **gate** that flips a pushed run **public**. It is a small,
+explicit step — it adds nothing to the run beyond making it visible. What it
+requires depends on the run's [terminal state](/components/core/run-records/#status):
+
+- A **`completed`** run is published through review: the backend **refuses to
+  publish one that has no review** (`422`).
+- A **`catastrophic`** or **`timed_out`** run is a publishable model *failure*
+  (real signal at the benchmark's edge — a model that produced unbuildable output
+  or never converged). It has no review checklist to complete, so publishing it
+  needs **no review**; it is published from a separate "publish failures"
+  affordance rather than the review flow.
+- An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
+  publishable** (`422`), no matter what reviews it carries.
+
+The public snapshot, and therefore the gallery, contains **only published runs**.
+A published failure shows its generated source but has no playable build (it
+produced none); its catastrophic/timeout outcome is reported as a per-model
+statistic, separate from the score that ranks the runs that were at least
+workable.
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity

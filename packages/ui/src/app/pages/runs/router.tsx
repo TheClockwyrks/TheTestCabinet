@@ -1,6 +1,7 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { RunsPage } from "./RunsPage";
+import { RunFailuresPage } from "./RunFailuresPage";
 import { NewRunPage } from "./NewRunPage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
 import { RunMetadataPage } from "./[runId]/RunMetadataPage";
@@ -26,6 +27,15 @@ export function runsRoutes(canExecute: boolean) {
   return (
     <>
       <Route path={routePatterns.runs} element={<RunsPage />} />
+      {/* The publishable-failures worklist is console-only — it lists locally
+          produced failures and publishes them, which the static site cannot do.
+          Its static path outranks the `/runs/:runId` dynamic route. */}
+      {canExecute && (
+        <Route
+          path={routePatterns.runFailures}
+          element={<RunFailuresPage />}
+        />
+      )}
       {canExecute && (
         <Route path={routePatterns.runNew} element={<NewRunPage />} />
       )}

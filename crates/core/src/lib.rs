@@ -915,6 +915,10 @@ where
         let validation = self.validate(test_case, &artifacts, &references, &proofs)?;
         let finished_at = OffsetDateTime::now_utc();
 
+        // A clean harness exit that produced nothing evaluable is a model
+        // catastrophe, not a completion (computed before `validation` is moved into
+        // the record).
+        let terminal_state = completed_state(test_case.test_type, &validation);
         let run_id = uuid::Uuid::new_v4().to_string();
         tracing::Span::current().record("run.id", run_id.as_str());
         let record = RunRecord {
@@ -937,7 +941,7 @@ where
             validation,
             links: RunLinks::default(),
             status: RunStatus {
-                state: RunState::Completed,
+                state: terminal_state,
                 detail: None,
             },
         };
@@ -954,17 +958,39 @@ where
     }
 }
 
+/// The terminal state for a run whose harness exited cleanly, given the test type
+/// and its validation summary.
+///
+/// A clean exit means the model claimed completion. For a **human-reviewed** type
+/// (end-to-end, asset-generation) an output that never loaded leaves nothing to
+/// review — the model's output is broken — so the run is
+/// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
+/// **auto-scored** types (adversarial, performance) carry their authoritative
+/// result in the validation summary even when `loaded` is false (a forfeit or an
+/// incorrect engine is a real, low score, not a catastrophe), so they stay
+/// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
+fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
+    match test_type {
+        TestType::EndToEnd | TestType::AssetGeneration if !validation.loaded => {
+            RunState::Catastrophic
+        }
+        _ => RunState::Completed,
+    }
+}
+
 /// Build and persist the record for a run that failed before producing an
 /// implementation, under `output_dir`, and return it.
 ///
 /// A run that errors before [`RunEngine::run_resolved`] reaches its success path
 /// never writes a [`RunRecord`], so it vanishes from the produced-runs listing
 /// the consoles read — leaving no way to see that it ran or why it stopped. This
-/// records such a run as a [`RunState::Failed`] record (the contract already
-/// models one) carrying the failure `detail`, plus whatever `events` were
-/// captured before the failure, written as `events.jsonl` beside it so a reviewer
-/// can inspect the timeline. Metrics, validation, and the container environment
-/// are left at their empty/unknown defaults — a failed run produced none.
+/// records such a run carrying the classified terminal `state` ([`RunState::TimedOut`]
+/// for a model that ran past the runtime cap, [`RunState::Infrastructure`] for a
+/// Test-Cabinet fault — see [`RunState::classify_failure`]) and the failure
+/// `detail`, plus whatever `events` were captured before the failure, written as
+/// `events.jsonl` beside it so a reviewer can inspect the timeline. Metrics,
+/// validation, and the container environment are left at their empty/unknown
+/// defaults — a failed run produced none.
 ///
 /// This is a free function rather than a [`RunEngine`] method because the
 /// failures that most need recording happen *before* an engine exists — the
@@ -973,12 +999,14 @@ where
 /// reason. `test_case` is the resolved version when the failure happened after
 /// resolution (so the record carries its real version and test type), or `None`
 /// before it could be resolved; the subject then falls back to the request.
+#[allow(clippy::too_many_arguments)]
 pub fn write_failed_record(
     output_dir: &std::path::Path,
     id: &str,
     request: &RunRequest,
     test_case: Option<&TestCaseVersion>,
     started_at: OffsetDateTime,
+    state: RunState,
     detail: impl Into<String>,
     events: &[HarnessEvent],
 ) -> Result<RunRecord> {
@@ -988,6 +1016,7 @@ pub fn write_failed_record(
         test_case,
         started_at,
         OffsetDateTime::now_utc(),
+        state,
         detail,
     );
     let run_dir = output_dir.join(&record.id);
@@ -1012,6 +1041,7 @@ fn build_failed_record(
     test_case: Option<&TestCaseVersion>,
     started_at: OffsetDateTime,
     finished_at: OffsetDateTime,
+    state: RunState,
     detail: impl Into<String>,
 ) -> RunRecord {
     let orchestrator_slug = if request.orchestrator.slug.is_empty() {
@@ -1048,7 +1078,7 @@ fn build_failed_record(
         validation: ValidationSummary::default(),
         links: RunLinks::default(),
         status: RunStatus {
-            state: RunState::Failed,
+            state,
             detail: Some(detail.into()),
         },
     }

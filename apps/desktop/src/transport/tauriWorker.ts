@@ -94,6 +94,11 @@ export function createTauriWorker(): WorkerClient {
     },
 
     listRuns: () => api.listRuns(),
+    // The local core exposes no separate publishable-failures worklist command —
+    // the desktop's solo flow publishes a produced run straight from its detail
+    // page — so report it unsupported, the same way other commands the core does
+    // not define degrade. The caller treats this as "none" and renders on.
+    listFailures: () => Promise.reject(new NotSupportedError("listFailures")),
     readRun: (id) => api.readRun(id),
     // A produced run's recorded streams come straight off the local core's run
     // directory (events.jsonl + raw.jsonl) via the `read_run_events` command.

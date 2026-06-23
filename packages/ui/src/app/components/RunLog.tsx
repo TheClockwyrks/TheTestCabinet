@@ -4,6 +4,7 @@ import { RatingBadge } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { UnpublishedTag } from "./UnpublishedTag";
 import { type Rating, worstRating } from "../data/ratings";
+import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import {
   formatSlug,
@@ -164,10 +165,11 @@ function RunRow({
   showModel: boolean;
 }) {
   const { subject, metrics } = run;
-  // A failed run (execution errored before producing a result) is listed inline
-  // so the failure can be inspected, marked with the same negative styling an
-  // active row uses. It can carry no rating — it was never reviewable.
-  const failed = run.status.state === "failed";
+  // A failed run (any non-completed tier) is listed inline so the failure can be
+  // inspected, marked with the same negative styling an active row uses. It
+  // carries no rating — its tier is shown in the rating cell instead.
+  const presentation = describeRunState(run.status.state);
+  const failed = presentation.isFailure;
   return (
     <Link
       to={routes.runDetail(run.id)}
@@ -206,7 +208,9 @@ function RunRow({
       </span>
       <span className={styles.rating} data-label="Rating">
         {failed ? (
-          <span className={styles.activeStatus}>failed</span>
+          <span className={styles.activeStatus} data-state={run.status.state}>
+            {presentation.chip}
+          </span>
         ) : rating ? (
           <RatingBadge rating={rating} />
         ) : (

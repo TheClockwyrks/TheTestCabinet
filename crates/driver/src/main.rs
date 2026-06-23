@@ -168,6 +168,7 @@ async fn report_failure(
         request,
         failure.test_case.as_ref(),
         started_at,
+        failure.state,
         &failure.detail,
         &[],
     ) {

@@ -587,6 +587,10 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
             },
             Err(e) => {
                 let message = e.to_string();
+                // Classify the failure so the persisted record's state — and thus
+                // its publishability — is correct: a runtime-cap timeout is a
+                // model outcome, everything else is infrastructure.
+                let state = test_cabinet_core::RunState::classify_failure(&e);
                 // Persist the failed run so it appears in the runs list with the
                 // reason and the captured event timeline, mirroring the worker.
                 // Keyed by the live-stream id so the monitor and the detail page
@@ -598,6 +602,7 @@ pub async fn launch_run(app: AppHandle, config: LaunchConfig) -> CmdResult<Strin
                     &request,
                     Some(&test_case),
                     started_at,
+                    state,
                     &message,
                     sink.events(),
                 ) {

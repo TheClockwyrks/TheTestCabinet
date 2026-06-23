@@ -306,11 +306,12 @@ fn failed_record_captures_subject_and_reason_from_a_resolved_run() {
         Some(&case),
         started,
         finished,
+        RunState::Infrastructure,
         "locating a container runtime: none found",
     );
 
     assert_eq!(record.id, "job-123");
-    assert_eq!(record.status.state, RunState::Failed);
+    assert_eq!(record.status.state, RunState::Infrastructure);
     assert_eq!(
         record.status.detail.as_deref(),
         Some("locating a container runtime: none found"),
@@ -334,9 +335,17 @@ fn failed_record_falls_back_to_the_request_when_unresolved() {
     let request = request_with_override(None);
     let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("now");
 
-    let record = build_failed_record("job-9", &request, None, now, now, "backend unreachable");
+    let record = build_failed_record(
+        "job-9",
+        &request,
+        None,
+        now,
+        now,
+        RunState::Infrastructure,
+        "backend unreachable",
+    );
 
-    assert_eq!(record.status.state, RunState::Failed);
+    assert_eq!(record.status.state, RunState::Infrastructure);
     assert_eq!(record.subject.test_case_version, "v1.0.0");
     // Unresolved: the test type defaults rather than guessing.
     assert_eq!(

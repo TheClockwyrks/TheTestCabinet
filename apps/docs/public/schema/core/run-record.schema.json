@@ -600,21 +600,26 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run.",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) vs\n[`Catastrophic`](RunState::Catastrophic) on whether the output could be\nevaluated; a run stopped before the harness finished is\n[`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
-          "description": "The run completed and produced an implementation.",
+          "description": "The harness exited cleanly and the run produced a usable, evaluable\nimplementation. Published through the review gate and scored on the\nreviewer checklist.",
           "type": "string"
         },
         {
-          "const": "failed",
-          "description": "The run failed before producing a usable implementation.",
+          "const": "catastrophic",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load and could not be evaluated. The *model* is the\nreason: a catastrophic failure is real signal at the benchmark's edge, so it\nis publishable (carrying its broken source), but it has no review checklist\nto score and is reported as a separate catastrophic-failure statistic.",
           "type": "string"
         },
         {
-          "const": "unevaluable",
-          "description": "The run produced output that could not be evaluated.",
+          "const": "timed_out",
+          "description": "The run hit its maximum runtime and was stopped before the harness finished\n— the model never converged (a small model can legitimately loop on a hard\ntask). A distinct, publishable tier from [`Catastrophic`](RunState::Catastrophic);\nlikewise unscored and reported as its own timeout statistic.",
+          "type": "string"
+        },
+        {
+          "const": "infrastructure",
+          "description": "The Test Cabinet's own infrastructure failed: the harness binary errored or\nexited non-zero, the container would not start or pull, a pod was OOM-killed,\nor seeding / the case's init step failed. Not the model's fault — retained\nwith a diagnostic [`RunStatus::detail`] for debugging, but **never**\npublishable and excluded from every model statistic.",
           "type": "string"
         }
       ]
@@ -628,7 +633,7 @@
         },
         "state": {
           "$ref": "#/$defs/RunState",
-          "description": "Whether the run completed, failed, or could not be evaluated."
+          "description": "The run's terminal state."
         }
       },
       "required": ["state"],

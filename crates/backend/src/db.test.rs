@@ -468,21 +468,68 @@ async fn active_jobs_excludes_terminal_jobs_oldest_first() {
 }
 
 #[tokio::test]
-async fn publish_refuses_a_non_completed_run_even_with_a_review() {
+async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
     let db = Db::connect_in_memory().await.unwrap();
-    // A retained-but-unevaluable run: stored and reviewable, but not yet
-    // publishable (the interim "completed only" guard).
-    let mut rec = record("u1");
-    rec.status.state = RunState::Unevaluable;
+    // An infrastructure failure is the Test Cabinet's fault, never publishable —
+    // even if someone attached a review.
+    let mut rec = record("i1");
+    rec.status.state = RunState::Infrastructure;
     db.push(&rec, &RunLinks::default(), None).await.unwrap();
-    db.add_review("u1", &review()).await.unwrap();
+    db.add_review("i1", &review()).await.unwrap();
 
     let err = db
-        .publish("u1", "2026-06-23T00:00:00Z")
+        .publish("i1", "2026-06-23T00:00:00Z")
         .await
-        .expect_err("an unevaluable run must not be publishable");
+        .expect_err("an infrastructure failure must never be publishable");
     assert!(
         matches!(err, crate::error::BackendError::Unprocessable(_)),
         "got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn publish_allows_a_failure_tier_without_any_review() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Catastrophic and timed-out runs are publishable model signal with no review
+    // checklist — they publish through the failures path with zero reviews.
+    for (id, state) in [
+        ("cat1", RunState::Catastrophic),
+        ("to1", RunState::TimedOut),
+    ] {
+        let mut rec = record(id);
+        rec.status.state = state;
+        db.push(&rec, &RunLinks::default(), None).await.unwrap();
+
+        let outcome = db.publish(id, "2026-06-23T00:00:00Z").await.unwrap();
+        assert!(outcome.newly_published, "{id} should publish with no review");
+        assert!(db.get_run(id).await.unwrap().unwrap().published);
+    }
+}
+
+#[tokio::test]
+async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for (id, state) in [
+        ("done", RunState::Completed),
+        ("cat", RunState::Catastrophic),
+        ("slow", RunState::TimedOut),
+        ("infra", RunState::Infrastructure),
+    ] {
+        let mut rec = record(id);
+        rec.status.state = state;
+        db.push(&rec, &RunLinks::default(), None).await.unwrap();
+    }
+
+    let (review, _) = db.list_for_review(50, None).await.unwrap();
+    let review_ids: Vec<&str> = review.iter().map(|r| r.record.id.as_str()).collect();
+    assert_eq!(review_ids, vec!["done"], "only completed runs are reviewable");
+
+    let (failures, _) = db.list_publishable_failures(50, None).await.unwrap();
+    let mut failure_ids: Vec<&str> = failures.iter().map(|r| r.record.id.as_str()).collect();
+    failure_ids.sort_unstable();
+    assert_eq!(
+        failure_ids,
+        vec!["cat", "slow"],
+        "publishable failures exclude infrastructure failures"
     );
 }

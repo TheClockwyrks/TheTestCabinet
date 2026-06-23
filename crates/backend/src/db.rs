@@ -352,11 +352,12 @@ impl Db {
     }
 
     /// Publish a stored run: flip it public. Refused with
-    /// [`crate::error::BackendError::Unprocessable`] unless the run has at least
-    /// one review, and [`crate::error::BackendError::NotFound`] when no run with
-    /// `run_id` is stored. Idempotent: re-publishing an already-published run
-    /// preserves its original `published_at`. Stamps `published_at` with
-    /// `published_at` on the first publish.
+    /// [`crate::error::BackendError::Unprocessable`] when the run is an
+    /// infrastructure failure (never publishable) or when a *completed* run has no
+    /// review yet; the publishable failure tiers (catastrophic, timed-out) need no
+    /// review. [`crate::error::BackendError::NotFound`] when no run with `run_id` is
+    /// stored. Idempotent: re-publishing an already-published run preserves its
+    /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
         let txn = self.conn.begin().await?;
 
@@ -367,26 +368,30 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        // Interim guard: only a completed run is publishable. Unevaluable and
-        // failed runs are retained (and reviewable) but not yet publishable —
-        // turning model failures into first-class publishable results is a
-        // separate design pass (see the project notes); infra failures must never
-        // be publishable at all.
-        if run.run_state != "completed" {
+        // Publishability is decided by the run's terminal state. Infrastructure
+        // failures are the Test Cabinet's fault, not a model result, and are never
+        // publishable. Completed runs publish through the review gate (≥1 review).
+        // The publishable failure tiers — catastrophic and timed-out — are real
+        // model signal: publishable, but with no review checklist to complete, so
+        // the review-count requirement is waived for them (they publish through the
+        // separate publish-failures path).
+        if run.run_state == "infrastructure" {
             return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` is `{}`, not completed — only completed runs can currently be published",
-                run.run_state
+                "run `{run_id}` is an infrastructure failure and can never be published"
             )));
         }
-
-        let review_count = review::Entity::find()
-            .filter(review::Column::RunId.eq(run_id))
-            .count(&txn)
-            .await?;
-        if review_count == 0 {
-            return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
-            )));
+        let is_publishable_failure =
+            matches!(run.run_state.as_str(), "catastrophic" | "timed_out");
+        if !is_publishable_failure {
+            let review_count = review::Entity::find()
+                .filter(review::Column::RunId.eq(run_id))
+                .count(&txn)
+                .await?;
+            if review_count == 0 {
+                return Err(crate::error::BackendError::Unprocessable(format!(
+                    "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
+                )));
+            }
         }
 
         let newly_published = !run.published;
@@ -448,17 +453,49 @@ impl Db {
         Ok((runs, next_before))
     }
 
-    /// List **all** runs (pending and published) newest-first by `finished_at`,
-    /// paginated by a `finished_at` cursor. This is the reviewer's worklist: it
-    /// includes runs awaiting review, each carrying its current reviews and its
-    /// published flag.
+    /// List **completed** runs (pending and published) newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. This is the reviewer's
+    /// worklist: it includes runs awaiting review, each carrying its current reviews
+    /// and its published flag. Only completed runs appear — the failure tiers have
+    /// no review checklist to complete (infrastructure failures are never
+    /// publishable; catastrophic/timed-out runs publish through
+    /// [`list_publishable_failures`](Self::list_publishable_failures)) — so the
+    /// queue is not cluttered with runs a reviewer cannot act on.
     pub async fn list_for_review(
         &self,
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        self.list_by_states(&["completed"], limit, before).await
+    }
+
+    /// List the **publishable failure** runs — catastrophic and timed-out (pending
+    /// and published) — newest-first by `finished_at`, paginated by a `finished_at`
+    /// cursor. These have no review checklist, so they are kept out of the reviewer
+    /// worklist and surfaced in their own "publish failures" affordance, where each
+    /// can be published with a single click. Infrastructure failures are excluded:
+    /// they are retained for inspection but never publishable.
+    pub async fn list_publishable_failures(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        self.list_by_states(&["catastrophic", "timed_out"], limit, before)
+            .await
+    }
+
+    /// Shared worklist query: runs whose `run_state` is one of `states` (pending
+    /// and published), newest-first by `finished_at`, paginated by a `finished_at`
+    /// cursor.
+    async fn list_by_states(
+        &self,
+        states: &[&str],
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find();
+        let mut query = run::Entity::find()
+            .filter(run::Column::RunState.is_in(states.iter().copied()));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -758,8 +795,9 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
     use test_cabinet_core::run_record::RunState;
     match state {
         RunState::Completed => "completed",
-        RunState::Failed => "failed",
-        RunState::Unevaluable => "unevaluable",
+        RunState::Catastrophic => "catastrophic",
+        RunState::TimedOut => "timed_out",
+        RunState::Infrastructure => "infrastructure",
     }
 }
 

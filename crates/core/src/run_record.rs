@@ -186,17 +186,68 @@ pub struct RunLinks {
     pub playable_build: Option<String>,
 }
 
-/// The terminal state of a run.
+/// The terminal state of a run — the single axis that decides publishability and
+/// how a run scores. Classified objectively at the point a run ends: a clean
+/// harness exit splits into [`Completed`](RunState::Completed) vs
+/// [`Catastrophic`](RunState::Catastrophic) on whether the output could be
+/// evaluated; a run stopped before the harness finished is
+/// [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+/// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum RunState {
-    /// The run completed and produced an implementation.
+    /// The harness exited cleanly and the run produced a usable, evaluable
+    /// implementation. Published through the review gate and scored on the
+    /// reviewer checklist.
     Completed,
-    /// The run failed before producing a usable implementation.
-    Failed,
-    /// The run produced output that could not be evaluated.
-    Unevaluable,
+    /// The harness exited cleanly — the model claimed completion — but the produced
+    /// output did not build/load and could not be evaluated. The *model* is the
+    /// reason: a catastrophic failure is real signal at the benchmark's edge, so it
+    /// is publishable (carrying its broken source), but it has no review checklist
+    /// to score and is reported as a separate catastrophic-failure statistic.
+    Catastrophic,
+    /// The run hit its maximum runtime and was stopped before the harness finished
+    /// — the model never converged (a small model can legitimately loop on a hard
+    /// task). A distinct, publishable tier from [`Catastrophic`](RunState::Catastrophic);
+    /// likewise unscored and reported as its own timeout statistic.
+    TimedOut,
+    /// The Test Cabinet's own infrastructure failed: the harness binary errored or
+    /// exited non-zero, the container would not start or pull, a pod was OOM-killed,
+    /// or seeding / the case's init step failed. Not the model's fault — retained
+    /// with a diagnostic [`RunStatus::detail`] for debugging, but **never**
+    /// publishable and excluded from every model statistic.
+    Infrastructure,
+}
+
+impl RunState {
+    /// Whether a run in this state may be published at all. Every state except
+    /// [`Infrastructure`](RunState::Infrastructure) is publishable — completed runs
+    /// through the review gate, the failure tiers through the separate
+    /// publish-failures path.
+    pub fn is_publishable(self) -> bool {
+        !matches!(self, RunState::Infrastructure)
+    }
+
+    /// Whether this state is one of the publishable *failure* tiers
+    /// ([`Catastrophic`](RunState::Catastrophic) or [`TimedOut`](RunState::TimedOut)):
+    /// publishable without a review and excluded from the reviewer checklist score.
+    pub fn is_publishable_failure(self) -> bool {
+        matches!(self, RunState::Catastrophic | RunState::TimedOut)
+    }
+
+    /// Classify a run that failed *before* producing an implementation. Only a
+    /// harness session stopped at the run's maximum runtime is a model outcome (the
+    /// model never converged) → [`TimedOut`](RunState::TimedOut); every other error
+    /// — including the harness's own non-zero exit, the harness-install or case-init
+    /// timeouts, and container/cluster faults — is the Test Cabinet's
+    /// [`Infrastructure`](RunState::Infrastructure).
+    pub fn classify_failure(err: &crate::Error) -> RunState {
+        match err {
+            crate::Error::RunTimedOut { .. } => RunState::TimedOut,
+            _ => RunState::Infrastructure,
+        }
+    }
 }
 
 /// A run's status, with enough detail to understand a failure.
@@ -204,7 +255,7 @@ pub enum RunState {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunStatus {
-    /// Whether the run completed, failed, or could not be evaluated.
+    /// The run's terminal state.
     pub state: RunState,
     /// Optional human-readable detail, required in practice for failures.
     pub detail: Option<String>,

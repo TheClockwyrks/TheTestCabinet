@@ -341,6 +341,26 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+// One page of the backend's publishable-failures worklist (`GET
+// /runs?state=failures`). Shape-identical to `GET /runs`, so it reuses the same
+// row mapping and `nextBefore` cursor; the `state=failures` filter is the only
+// difference from the (now completed-only) review worklist.
+async function listFailuresPage(
+  baseUrl: string,
+  opts: { before?: string },
+): Promise<RunPage> {
+  const params = new URLSearchParams({ state: "failures" });
+  if (opts.before) params.set("before", opts.before);
+  const body = await getJson<RunPageResponse>(
+    baseUrl,
+    `/runs?${params.toString()}`,
+  );
+  return {
+    runs: body.runs.map(toStoredRun),
+    nextCursor: body.nextBefore ?? null,
+  };
+}
+
 // --- Run execution (the backend's `/jobs` control plane) --------------------
 
 // The backend's `GET /config` body (mirrors `ClientConfig`). `artifactsUrl` is
@@ -558,6 +578,22 @@ export function createBackendExec(
       // pre-publish build link against the artifact service for inline playback.
       const page = await backend.listRuns({});
       return page.runs.map(resolveBuild);
+    },
+
+    async listFailures(): Promise<StoredRun[]> {
+      // The publishable failures (catastrophic + timed-out, pending and
+      // published) the review worklist `listRuns` no longer carries. Paginated
+      // the same way; resolve each run's pre-publish build link for inline
+      // playback, exactly as `listRuns` does.
+      const acc: StoredRun[] = [];
+      let before: string | undefined;
+      for (;;) {
+        const page = await listFailuresPage(backendUrl, { before });
+        for (const run of page.runs) acc.push(resolveBuild(run));
+        if (!page.nextCursor || page.runs.length === 0) break;
+        before = page.nextCursor;
+      }
+      return acc;
     },
 
     async readRun(id: string): Promise<StoredRun> {
