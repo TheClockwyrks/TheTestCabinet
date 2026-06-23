@@ -2,13 +2,13 @@
 
 This directory holds the committed material the case ships **alongside the
 held-out scored set** (which lives in `../cases/`, NOT here): the training
-scenarios the model practises against and the two worked-example reference
+scenarios the model practices against and the two worked-example reference
 engines. None of this is the answer key for the scored run — the scored
 scenarios are in `../cases/` and are deliberately unseen.
 
 ## `training/` — practice scenarios (baked into the run image)
 
-Behaviour-focused labelled examples the model iterates against during the
+Behavior-focused labelled examples the model iterates against during the
 harness session. Each `<name>/` holds a `scenario.json` and the reference
 oracle's `expected.json` (the full `state` array with the per-snapshot
 `fnv1a64:…` checksums, as produced by `lattice solve`). The container's

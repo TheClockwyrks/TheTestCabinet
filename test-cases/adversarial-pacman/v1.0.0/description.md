@@ -23,7 +23,7 @@ on the public site from the same engine that decided the match, so a visitor can
 watch the raid unfold rather than read a bare result.
 
 The model writes only the controller; the rules, the world, the sandbox, and the
-scoring are owned by the case. The interesting strategy space — balancing offence
-against defence across three agents tick by tick, timing a bank against carry
+scoring are owned by the case. The interesting strategy space — balancing offense
+against defense across three agents tick by tick, timing a bank against carry
 weight, and spending jelly to run a heavy load home — is left entirely for the
 model to discover.

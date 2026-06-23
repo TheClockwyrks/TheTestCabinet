@@ -47,11 +47,11 @@ lane, or buffer.
 A set of labelled **training scenarios** lives under `$LATTICE_HOME/training/`
 (`$LATTICE_HOME` is `/opt/lattice`). Each is a directory with a `scenario.json`
 and the reference oracle's `expected.json` (the full `state` with the
-per-snapshot checksums). They span the entity set and the tricky behaviours on
+per-snapshot checksums). They span the entity set and the tricky behaviors on
 purpose — a single side-loaded lane, a backed-up inserter holding its item, a
 saturated splitter with both round-robin cursors active, an assembler starved
 then flooded, the multi-input `circuit` recipe — so you can confirm your engine
-is bit-exact against the exact behaviours `specs/rules.md` describes.
+is bit-exact against the exact behaviors `specs/rules.md` describes.
 
 These are **practice, not the scored set.** The scenarios the validator grades
 you on are **held out** — committed with the case, never in this image,

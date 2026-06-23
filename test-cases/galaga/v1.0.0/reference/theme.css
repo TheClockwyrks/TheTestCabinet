@@ -197,7 +197,7 @@ body {
   box-shadow: 0 0 16px rgba(255, 78, 199, 0.95);
 }
 
-/* Player bullet: a thin bar travelling up, in its band's color. */
+/* Player bullet: a thin bar traveling up, in its band's color. */
 .pbullet {
   position: absolute;
   width: 4px;
@@ -213,7 +213,7 @@ body {
   box-shadow: 0 0 10px rgba(255, 78, 199, 0.9);
 }
 
-/* Enemy bullet: a short bar travelling down, in its band's color. */
+/* Enemy bullet: a short bar traveling down, in its band's color. */
 .ebullet {
   position: absolute;
   width: 6px;

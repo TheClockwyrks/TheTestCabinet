@@ -9,7 +9,7 @@ Lattice descends from **Factorio**'s belt-and-machine logistics, the canonical
 example of a game built on a fully deterministic fixed-point simulation — the
 same property that lets Factorio run multiplayer in lockstep, every client
 simulating independently and staying bit-for-bit identical. That determinism is
-what makes it a good performance case: a factory's behaviour is a pure function
+what makes it a good performance case: a factory's behavior is a pure function
 of its layout and a tick count, so a reference engine can produce an unambiguous
 expected output for any scenario, and a submission is correct iff it reproduces
 that output exactly.

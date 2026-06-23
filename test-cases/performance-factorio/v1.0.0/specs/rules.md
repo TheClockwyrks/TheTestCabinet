@@ -8,7 +8,7 @@ factory's exact state at each scheduled snapshot tick.
 
 This document is the **complete and authoritative** definition of how every
 entity behaves and the exact order each tick runs in. Nothing about an entity's
-behaviour is left to infer from the training examples — Lattice is a
+behavior is left to infer from the training examples — Lattice is a
 _reimplement-this-exactly_ problem. The fixed constants (`TILE`, `SPACING`,
 belt/inserter tiers, recipes, buffer caps, the direction/lane convention, the
 multi-tile footprints) live in `specs/prototypes.md`; this document references
@@ -91,7 +91,7 @@ than `SPACING` cannot accept a forced item — the inserter or source **stalls**
 and holds its item until room opens.
 
 Concretely, a forced item lands at a target position `pos` on a lane iff
-**both** neighbours (the nearest item with a smaller `pos` and the nearest with
+**both** neighbors (the nearest item with a smaller `pos` and the nearest with
 a larger `pos`, if any) are strictly more than `SPACING` away — and there is no
 item exactly at `pos`. Otherwise the force fails and the item is not placed this
 tick.
@@ -99,7 +99,7 @@ tick.
 - A **source** and an **inserter dropping onto a belt** force at the belt's
   **input end**, at the standard entry coordinate `pos = TILE - SPACING` (one
   standard spacing inside the input edge). The force lands iff that slot's
-  neighbours are more than `SPACING` away.
+  neighbors are more than `SPACING` away.
 
 ### Belt-to-belt feeding
 

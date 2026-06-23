@@ -154,8 +154,8 @@ description = "The shipped mirror-32x16 maze, fully observable, scored against t
 id = "play"
 name = "Play"
 description = """
-How the controller actually played the match — whether it balanced offence and \
-defence across its three agents, banked loads before they got too heavy to run \
+How the controller actually played the match — whether it balanced offense and \
+defense across its three agents, banked loads before they got too heavy to run \
 home, used or ignored royal jelly, and beat the baseline on the merits rather than \
 by a fluke of the seed."""
 
@@ -176,7 +176,7 @@ domain = "play"
 
 [[review_item]]
 id = "balances-roles"
-title = "Balances offence and defence"
+title = "Balances offense and defense"
 text = """
 Across the match the controller uses its three agents as both raiders and \
 defenders rather than sending everyone to forage or everyone to guard — the \

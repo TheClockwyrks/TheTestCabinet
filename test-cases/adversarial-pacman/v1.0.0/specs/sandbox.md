@@ -47,7 +47,7 @@ the match still produces a replay:
 
 A **blocked move** (into a wall, off the board, or for a stalled laden raider) is
 **not** a forfeit — it is clamped to `Stop`. Only illegal *intent* and runtime
-misbehaviour forfeit; ordinary navigation bugs just cost tempo.
+misbehavior forfeit; ordinary navigation bugs just cost tempo.
 
 ## Practical guidance
 

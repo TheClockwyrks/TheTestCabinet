@@ -21,7 +21,6 @@ playfield
 tileable
 tileability
 tileset
-travelling
 WASD
 
 # Tooling.
@@ -96,18 +95,11 @@ sideloaded
 sideloading
 
 # Lattice (performance-factorio) simulation & spec vocabulary.
-behaviour
-behaviours
 desync
-neighbours
-practises
 sandboxed
 varint
 
 # Adversarial (Foray) controller vocabulary and Rust toolchain.
-offence
-defence
-misbehaviour
 overfitting
 passability
 pathfind

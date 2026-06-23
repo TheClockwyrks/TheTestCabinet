@@ -27,7 +27,7 @@ back to `Stop` when boxed in). It does not seek seeds, defend, or even prefer
 crossing the border. It is the absolute floor: any serious controller should beat
 it overwhelmingly, and one that does not has a bug.
 
-### `greedy-raider` — all offence, no sense
+### `greedy-raider` — all offense, no sense
 
 Sends **every** agent to forage: each one beelines (shortest path) to the
 **nearest enemy seed cache**, eats whatever it reaches, and only heads home when
@@ -41,7 +41,7 @@ raiders into easy tags. A competent defender shreds it.
 A naive "balanced" strategy: it **statically** assigns one agent to patrol the
 border and chase the nearest visible intruder, and sends the other two in as
 `greedy-raider`-style foragers. It is the **strongest** baseline, but its role
-split **never adapts** — it does not reinforce a collapsing defence, recall a
+split **never adapts** — it does not reinforce a collapsing defense, recall a
 raider to bank before it is caught, reason about jelly, or weigh load against the
 distance home. It rewards a controller that reads the match state and reallocates
 its three agents dynamically.
@@ -57,7 +57,7 @@ you beat it.
 The three span the obvious failure space on purpose — pure noise (`random`), pure
 greed (`greedy-raider`), and rigid role-splitting (`border-soldier`) — so you can
 see what losing looks like from three directions without being handed a winning
-shape. The real strategy space — balancing offence against defence tick by tick,
+shape. The real strategy space — balancing offense against defense tick by tick,
 timing a bank against carry weight, and spending jelly to run a heavy load home
 — is left entirely for you to discover.
 

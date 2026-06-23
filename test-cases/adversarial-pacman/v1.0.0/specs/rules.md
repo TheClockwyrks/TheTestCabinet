@@ -109,7 +109,7 @@ resolution**). The charge earned per tick is the agent's **speed**:
 - A **light raider** — carrying **at most 3** seeds — earns the full `8`, so it
   moves **every tick**: the one-tile-per-tick cap, and strictly faster than a
   soldier. The first three seeds are free of any speed penalty, so a raider can
-  grab a small load and still outrun the defence.
+  grab a small load and still outrun the defense.
 - Past 3 seeds, a raider loses `1` charge per extra seed. So **4 seeds matches a
   soldier exactly**, **5 seeds is as much slower than a soldier as an unladen
   raider was faster**, and it keeps dropping from there — down to a floor of `1`
