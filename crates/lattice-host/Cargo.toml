@@ -41,3 +41,6 @@ serde_json = { workspace = true }
 # with `wat` (a baked state-JSON data segment), so the test needs no extra build
 # step or committed binary.
 wat = "1"
+
+[lints]
+workspace = true

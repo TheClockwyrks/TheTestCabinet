@@ -14,3 +14,6 @@ path = "src/lib.rs"
 # (drivers + rustls runtime) so the derive macros and column types resolve to the
 # same SeaORM the backend and migration use.
 sea-orm = { workspace = true }
+
+[lints]
+workspace = true

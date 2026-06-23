@@ -94,10 +94,11 @@ pub fn finalize_ts(modules: Vec<TsModule>, header: &str) -> Vec<(&'static str, S
                     if own.contains(dep) {
                         continue;
                     }
-                    if let Some(&source) = home.get(dep) {
-                        if source != module.file && mentions(&body, dep) {
-                            imports.entry(source).or_default().insert(dep);
-                        }
+                    if let Some(&source) = home.get(dep)
+                        && source != module.file
+                        && mentions(&body, dep)
+                    {
+                        imports.entry(source).or_default().insert(dep);
                     }
                 }
             }
@@ -267,14 +268,14 @@ fn is_foreign(name: &str, doc: &SchemaDoc, owner: &HashMap<&'static str, Owner>)
 fn rewrite_refs(value: &mut Value, doc: &SchemaDoc, owner: &HashMap<&'static str, Owner>) {
     match value {
         Value::Object(map) => {
-            if let Some(Value::String(reference)) = map.get("$ref") {
-                if let Some(name) = reference.strip_prefix("#/$defs/") {
-                    let rewritten = match owner.get(name) {
-                        Some(target) if target.rel_path != doc.rel_path => ref_url(target, name),
-                        _ => format!("#/$defs/{name}"),
-                    };
-                    map.insert("$ref".into(), Value::String(rewritten));
-                }
+            if let Some(Value::String(reference)) = map.get("$ref")
+                && let Some(name) = reference.strip_prefix("#/$defs/")
+            {
+                let rewritten = match owner.get(name) {
+                    Some(target) if target.rel_path != doc.rel_path => ref_url(target, name),
+                    _ => format!("#/$defs/{name}"),
+                };
+                map.insert("$ref".into(), Value::String(rewritten));
             }
             for child in map.values_mut() {
                 rewrite_refs(child, doc, owner);

@@ -23,3 +23,6 @@ lattice-host = { path = "../lattice-host" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

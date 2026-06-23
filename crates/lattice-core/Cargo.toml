@@ -57,3 +57,6 @@ schemars = { workspace = true, optional = true }
 [dev-dependencies]
 # The schema-drift test and the round-trip tests deserialize fixtures.
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

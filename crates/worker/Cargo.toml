@@ -57,3 +57,6 @@ contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

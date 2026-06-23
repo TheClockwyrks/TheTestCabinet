@@ -35,3 +35,6 @@ serde_json = { workspace = true }
 # match against it; `wat` assembles the controller from inline WebAssembly text so
 # the test needs no extra build step or committed binary.
 wat = "1"
+
+[lints]
+workspace = true

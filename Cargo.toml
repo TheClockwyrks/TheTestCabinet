@@ -34,6 +34,21 @@ version = "0.0.0"
 license = "MIT"
 publish = false
 
+# Warnings-as-errors, baked into the manifests for every member crate that opts
+# in with `[lints] workspace = true`. CI already denies warnings on the clippy
+# command line (`scripts/ci/rust-lint.sh` runs `cargo clippy … -- -D warnings`),
+# but that flag only fires under that one invocation; defining the policy here
+# means a plain `cargo build` or `cargo clippy` enforces it locally too — no flag
+# required — and keeps the rule in one place instead of scattered across scripts.
+[workspace.lints.rust]
+warnings = "deny"
+
+# Clippy lints live in their own `clippy::` namespace, so denying rustc's
+# `warnings` group above does not reach them. Deny the default `all` group here
+# to mirror what `-D warnings` already does under the clippy driver in CI.
+[workspace.lints.clippy]
+all = "deny"
+
 # `foray-core` is a `cdylib` (it compiles to `wasm32-unknown-unknown` for the
 # browser playback ABI — see `crates/foray-core/Cargo.toml`). On the NATIVE host
 # the same `cdylib` is still emitted as an (otherwise unused) `.so`, and rustc's

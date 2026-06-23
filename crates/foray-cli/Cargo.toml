@@ -21,3 +21,6 @@ foray-host = { path = "../foray-host" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

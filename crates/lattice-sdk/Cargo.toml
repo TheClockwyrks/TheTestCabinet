@@ -27,3 +27,6 @@ crate-type = ["rlib"]
 # emits snapshots; it does not emit JSON Schemas.
 lattice-core = { path = "../lattice-core", default-features = false }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

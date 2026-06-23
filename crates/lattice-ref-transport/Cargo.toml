@@ -42,3 +42,6 @@ lattice-sdk = { path = "../lattice-sdk" }
 # The native cross-check test compares the transport engine's snapshots to the
 # oracle's on a spread of scenarios; it needs the oracle and the contract types.
 lattice-core = { path = "../lattice-core" }
+
+[lints]
+workspace = true

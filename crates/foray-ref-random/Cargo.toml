@@ -18,3 +18,6 @@ crate-type = ["cdylib"]
 [dependencies]
 foray-core = { path = "../foray-core", default-features = false }
 foray-controller-sdk = { path = "../foray-controller-sdk" }
+
+[lints]
+workspace = true

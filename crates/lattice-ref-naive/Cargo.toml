@@ -33,3 +33,6 @@ lattice-core = { path = "../lattice-core", default-features = false }
 # The guest-side ABI glue: the `alloc`/`simulate` exports and the re-exported
 # `Scenario`/`Snapshot` contract types.
 lattice-sdk = { path = "../lattice-sdk" }
+
+[lints]
+workspace = true

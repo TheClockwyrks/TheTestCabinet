@@ -75,3 +75,6 @@ tokio = { workspace = true, features = ["test-util"] }
 # it. The oracle (`lattice-core::Engine`) computes the expected answer the correct
 # module echoes back, so the test stays self-contained and deterministic.
 wat = "1"
+
+[lints]
+workspace = true

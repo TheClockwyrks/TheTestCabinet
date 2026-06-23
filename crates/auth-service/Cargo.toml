@@ -55,3 +55,6 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # in tests without binding a socket.
 tower = { workspace = true, features = ["util"] }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

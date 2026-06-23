@@ -24,3 +24,6 @@ crate-type = ["rlib"]
 # or parse maps).
 foray-core = { path = "../foray-core", default-features = false }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true
