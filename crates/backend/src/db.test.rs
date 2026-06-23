@@ -466,3 +466,23 @@ async fn active_jobs_excludes_terminal_jobs_oldest_first() {
     let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
     assert_eq!(ids, vec!["a", "c"], "terminal jobs are excluded, oldest first");
 }
+
+#[tokio::test]
+async fn publish_refuses_a_non_completed_run_even_with_a_review() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A retained-but-unevaluable run: stored and reviewable, but not yet
+    // publishable (the interim "completed only" guard).
+    let mut rec = record("u1");
+    rec.status.state = RunState::Unevaluable;
+    db.push(&rec, &RunLinks::default(), None).await.unwrap();
+    db.add_review("u1", &review()).await.unwrap();
+
+    let err = db
+        .publish("u1", "2026-06-23T00:00:00Z")
+        .await
+        .expect_err("an unevaluable run must not be publishable");
+    assert!(
+        matches!(err, crate::error::BackendError::Unprocessable(_)),
+        "got {err:?}"
+    );
+}

@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
+use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
@@ -221,10 +221,18 @@ pub async fn ingest_preview(
 /// by the per-job token.
 ///
 /// `running` records that execution began. `succeeded` carries the produced
-/// [`RunRecord`]: a completed run is persisted to the `run` store (reviewable,
-/// like any pushed run), using the events relayed so far as its recorded stream;
-/// the job then carries the record's id. `failed` records the terminal reason. A
-/// terminal update closes the live stream and fires a completion notification.
+/// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
+/// (completed, unevaluable, or a model failure that produced a record), using the
+/// events the relay accumulated as its recorded stream, so nothing the ephemeral
+/// driver produced is lost. `failed` records a terminal infrastructure/setup
+/// failure with a specific diagnostic reason; the failure record it produced (if
+/// any) is retained too. A terminal update closes the live stream and fires a
+/// completion notification.
+///
+/// Whether a retained non-completed record is *publishable* is deliberately not
+/// decided here — the publish path enforces the interim "completed only" guard,
+/// and turning failures into first-class publishable results is a separate design
+/// pass (see the project notes).
 #[tracing::instrument(name = "jobs.status", skip(state, headers, update), fields(job.id = %id), err(Debug))]
 pub async fn update_status(
     State(state): State<AppState>,
@@ -242,69 +250,85 @@ pub async fn update_status(
                 .set_job_state(&id, "running", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
-            return Ok(StatusCode::NO_CONTENT);
+            Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Failed => {
+            // An infrastructure/setup failure needs a *specific* reason a "run
+            // failed" placeholder would hide — "couldn't pull container image",
+            // "harness unavailable", etc. The driver supplies it; retain whatever
+            // record it managed to produce so the timeline is inspectable.
             let detail = update.detail.as_deref().unwrap_or("run failed");
+            let record_id = persist_produced(&state, &id, update.record.as_ref()).await?;
             state
                 .db
-                .set_job_state(&id, "failed", &now, Some(detail), None)
+                .set_job_state(&id, "failed", &now, Some(detail), record_id.as_deref())
                 .await
                 .map_err(ApiError::from)?;
-            finish_and_notify(&state, Notification::failed(&id, job_summary(&job), detail));
-            return Ok(StatusCode::NO_CONTENT);
+            finish_and_notify(
+                &state,
+                Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
+            );
+            Ok(StatusCode::NO_CONTENT)
         }
-        DriverState::Succeeded => {}
+        DriverState::Succeeded => {
+            // The driver must hand back the record it produced. It is retained
+            // whatever its outcome (completed/unevaluable/failed) — the publish
+            // gate, not storage, decides what is publishable.
+            let record = update.record.as_ref().ok_or_else(|| {
+                ApiError::unprocessable("a succeeded status must carry the run record")
+            })?;
+            let record_id = persist_record(&state, &id, record).await?;
+            state
+                .db
+                .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
+                .await
+                .map_err(ApiError::from)?;
+            finish_and_notify(
+                &state,
+                Notification::completed(&id, job_summary(&job), &record_id),
+            );
+            Ok(StatusCode::NO_CONTENT)
+        }
     }
+}
 
-    // Succeeded: the driver must hand back the record it produced.
-    let record = update
-        .record
-        .ok_or_else(|| ApiError::unprocessable("a succeeded status must carry the run record"))?;
-    let record_id = record.id.clone();
-
-    // A completed run is persisted to the reviewable store using the events the
-    // relay accumulated as its recorded stream (the same backlog viewers saw, so
-    // the driver need not re-send them). A produced-but-unevaluable run is marked
-    // succeeded but, like a locally-driven non-completed run, is not pushed.
-    if record.status.state == RunState::Completed {
-        let events = state.relay.live(&id).events_snapshot();
-        let events_json = if events.is_empty() {
-            None
-        } else {
-            Some(
-                serde_json::to_string(&events)
-                    .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
-            )
-        };
-        let links = record.links.clone();
-        state
-            .db
-            .push(&record, &links, events_json.as_deref())
-            .await
-            .map_err(ApiError::from)?;
-        state
-            .db
-            .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
-            .await
-            .map_err(ApiError::from)?;
-        finish_and_notify(
-            &state,
-            Notification::completed(&id, job_summary(&job), &record_id),
-        );
+/// Persist a produced run record to the `run` store, using the events the relay
+/// accumulated as its recorded stream (so the driver never re-sends them).
+/// Returns the record's id. Retains the record regardless of its outcome.
+async fn persist_record(
+    state: &AppState,
+    job_id: &str,
+    record: &RunRecord,
+) -> Result<String, ApiError> {
+    let events = state.relay.live(job_id).events_snapshot();
+    let events_json = if events.is_empty() {
+        None
     } else {
-        state
-            .db
-            .set_job_state(&id, "succeeded", &now, None, None)
-            .await
-            .map_err(ApiError::from)?;
-        finish_and_notify(
-            &state,
-            Notification::completed(&id, job_summary(&job), &record_id),
-        );
-    }
+        Some(
+            serde_json::to_string(&events)
+                .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
+        )
+    };
+    let links = record.links.clone();
+    state
+        .db
+        .push(record, &links, events_json.as_deref())
+        .await
+        .map_err(ApiError::from)?;
+    Ok(record.id.clone())
+}
 
-    Ok(StatusCode::NO_CONTENT)
+/// Persist the record the driver produced if it managed to produce one, returning
+/// its id (`None` when an infrastructure failure produced no record at all).
+async fn persist_produced(
+    state: &AppState,
+    job_id: &str,
+    record: Option<&RunRecord>,
+) -> Result<Option<String>, ApiError> {
+    match record {
+        Some(record) => Ok(Some(persist_record(state, job_id, record).await?)),
+        None => Ok(None),
+    }
 }
 
 /// `GET /notifications` — stream worker-wide run-completion notifications as SSE.

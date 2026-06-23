@@ -367,6 +367,18 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
+        // Interim guard: only a completed run is publishable. Unevaluable and
+        // failed runs are retained (and reviewable) but not yet publishable —
+        // turning model failures into first-class publishable results is a
+        // separate design pass (see the project notes); infra failures must never
+        // be publishable at all.
+        if run.run_state != "completed" {
+            return Err(crate::error::BackendError::Unprocessable(format!(
+                "run `{run_id}` is `{}`, not completed — only completed runs can currently be published",
+                run.run_state
+            )));
+        }
+
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
             .count(&txn)

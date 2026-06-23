@@ -291,14 +291,22 @@ impl Notification {
         }
     }
 
-    /// A run that failed before producing a result, with the reason.
-    pub fn failed(job_id: &str, summary: JobSummary, message: &str) -> Self {
+    /// A run that failed, with the reason. `record_id` is the produced failure
+    /// record to open when the driver built one (a model failure with a timeline),
+    /// or `None` for an infrastructure failure that produced no record (the alert
+    /// then just surfaces the message).
+    pub fn failed(
+        job_id: &str,
+        summary: JobSummary,
+        message: &str,
+        record_id: Option<&str>,
+    ) -> Self {
         Self {
             kind: NotificationKind::RunCompleted,
             job_id: job_id.to_string(),
             summary,
             outcome: NotificationOutcome::Failed,
-            record_id: Some(job_id.to_string()),
+            record_id: record_id.map(str::to_string),
             message: Some(message.to_string()),
         }
     }
