@@ -289,11 +289,11 @@ three things are non-negotiable and follow directly from that:
 3. **An image with a browser.** The stock binary has no Chromium. The published
    `tcab-backend` image
    ([`deployments/images/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/backend.Dockerfile))
-   layers the `tcab-backend` binary over a headless Chromium and the fonts it
-   needs, and points `TCAB_REFERENCE_BROWSER` at it; the auth, dispatcher,
-   driver, and artifact images stay slim and ship no browser. Set
-   `TCAB_REFERENCE_BROWSER` yourself only if you build a backend image where the
-   browser is not auto-detected.
+   layers the `tcab-backend` binary over Node, the bundled Playwright driver, and a
+   Playwright-managed Chromium (plus the fonts it needs), and points the render path
+   at them; the auth, dispatcher, driver, and artifact images stay slim and ship no
+   browser. Set `TCAB_REFERENCE_BROWSER` yourself only to override that baked
+   Chromium with an explicit binary (the backend forwards it to the driver).
 
 The backend also carries two values that wire it into the new run path:
 

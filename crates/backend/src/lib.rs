@@ -55,17 +55,20 @@ pub struct Backend {
 /// Assemble a backend from a configuration: open the definition store, connect
 /// the database and migrate its schema, build the publisher (with R2 when
 /// configured), spawn the coalescing refresher, and construct the router. The
-/// `TCAB_REFERENCE_BROWSER` override is exported into the environment the bundled
-/// driver reads, so ingest renders with it.
+/// `TCAB_REFERENCE_BROWSER` override, when set, is forwarded to the bundled driver
+/// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
+/// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 
     if let Some(browser) = &config.reference_browser {
-        // The bundled driver honors this when launching Chromium for the ingest
-        // reference render (the render that moved off the runner).
+        // Forward the operator's explicit Chromium to the bundled driver under the
+        // name the driver actually reads (`TCAB_CHROMIUM_EXECUTABLE`); it launches
+        // that binary via Playwright's `executablePath`. Without this override the
+        // driver falls back to the Playwright-managed Chromium baked into the image.
         // SAFETY: set once at startup, before any threads render references.
         unsafe {
-            std::env::set_var("TCAB_REFERENCE_BROWSER", browser);
+            std::env::set_var("TCAB_CHROMIUM_EXECUTABLE", browser);
         }
     }
 

@@ -77,7 +77,9 @@ pub struct Config {
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
     /// Optional override for the headless browser used to render references at
-    /// ingest (`TCAB_REFERENCE_BROWSER`). Consumed by the bundled driver.
+    /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
+    /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
+    /// the backend image.
     pub reference_browser: Option<String>,
     /// The public base URL of the **artifact service** (`TCAB_ARTIFACTS_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can resolve a pre-publish
