@@ -22,6 +22,7 @@ members = [
 	"crates/desktop",
 	"crates/backend",
 	"crates/driver",
+	"crates/dispatcher",
 	"crates/worker",
 	"crates/auth-service",
 	"crates/telemetry",

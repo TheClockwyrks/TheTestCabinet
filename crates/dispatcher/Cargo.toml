@@ -1,0 +1,53 @@
+[package]
+name = "test-cabinet-dispatcher"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab-dispatcher"
+path = "src/main.rs"
+
+[lib]
+name = "test_cabinet_dispatcher"
+path = "src/lib.rs"
+
+[dependencies]
+test-cabinet-core = { path = "../core" }
+# The dispatcher is a binary: it owns telemetry init, so it pulls the heavy `otlp`
+# feature (the propagation-only default is for libraries like `core`), exactly as
+# the driver's and worker's mains do.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+tracing = { workspace = true }
+# The HTTP client the dispatcher claims jobs from, and reports driver-pod deaths
+# back to, the backend with. rustls (no system OpenSSL), `json` for the bodies —
+# the same stack as `crates/core` and the driver.
+reqwest = { workspace = true }
+
+# Kubernetes client (`src/kubernetes.rs`): the dispatcher is the only component
+# that creates Kubernetes `Job`s, one per claimed run. The feature set mirrors the
+# driver's k8s deps minus the `ws` pod-`exec`/attach websocket the dispatcher never
+# needs (it creates and watches Jobs; it never execs into a pod). `rustls-tls`
+# keeps it on the workspace's no-system-OpenSSL stack, and `k8s-openapi`'s `latest`
+# selects the newest API types (only the long-stable core `Pod`/batch `Job` objects
+# are used).
+kube = { version = "4", default-features = false, features = [
+	"client",
+	"rustls-tls",
+] }
+k8s-openapi = { version = "0.28", features = ["latest"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

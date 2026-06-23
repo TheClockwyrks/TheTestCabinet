@@ -5663,6 +5663,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-dispatcher"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "k8s-openapi",
+ "kube",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "test-cabinet-core",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "test-cabinet-draw"
 version = "0.0.0"
 dependencies = [
