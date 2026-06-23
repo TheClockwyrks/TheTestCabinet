@@ -319,7 +319,12 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
     if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
         command.env("TRACEPARENT", traceparent);
     }
-    let output = command.output().map_err(seed_err)?;
+    // Name the command so a missing `git` binary reads as
+    // "running `git init …`: No such file or directory" rather than a bare
+    // "No such file or directory (os error 2)" with no hint at the cause.
+    let output = command
+        .output()
+        .map_err(|err| seed_ctx(format!("running `git {}`", args.join(" ")), err))?;
     if !output.status.success() {
         return Err(Error::Seeding(format!(
             "git {} failed: {}",
@@ -342,9 +347,17 @@ fn is_handlebars(source: &Path) -> bool {
 /// Copy a single file, creating parent directories as needed.
 fn copy_file(from: &Path, to: &Path) -> Result<()> {
     if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent).map_err(seed_err)?;
+        fs::create_dir_all(parent)
+            .map_err(|err| seed_ctx(format!("creating `{}`", parent.display()), err))?;
     }
-    fs::copy(from, to).map_err(seed_err)?;
+    // Name both paths: an `os error 2` here means the materialized source is
+    // missing, and a bare "No such file or directory" hides which file.
+    fs::copy(from, to).map_err(|err| {
+        seed_ctx(
+            format!("copying `{}` to `{}`", from.display(), to.display()),
+            err,
+        )
+    })?;
     Ok(())
 }
 
@@ -352,18 +365,23 @@ fn copy_file(from: &Path, to: &Path) -> Result<()> {
 /// land a rendered `.hbs` spec at its destination.
 fn write_file(to: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent).map_err(seed_err)?;
+        fs::create_dir_all(parent)
+            .map_err(|err| seed_ctx(format!("creating `{}`", parent.display()), err))?;
     }
-    fs::write(to, contents).map_err(seed_err)?;
+    fs::write(to, contents).map_err(|err| seed_ctx(format!("writing `{}`", to.display()), err))?;
     Ok(())
 }
 
 /// Copy a file or directory (recursively) to `to`.
 fn copy_into(from: &Path, to: &Path) -> Result<()> {
     if from.is_dir() {
-        fs::create_dir_all(to).map_err(seed_err)?;
-        for entry in fs::read_dir(from).map_err(seed_err)? {
-            let entry = entry.map_err(seed_err)?;
+        fs::create_dir_all(to)
+            .map_err(|err| seed_ctx(format!("creating `{}`", to.display()), err))?;
+        for entry in fs::read_dir(from)
+            .map_err(|err| seed_ctx(format!("reading `{}`", from.display()), err))?
+        {
+            let entry =
+                entry.map_err(|err| seed_ctx(format!("reading `{}`", from.display()), err))?;
             copy_into(&entry.path(), &to.join(entry.file_name()))?;
         }
         Ok(())
@@ -416,6 +434,17 @@ fn run_timestamp() -> String {
 /// Wrap an I/O error as a seeding error.
 fn seed_err(err: std::io::Error) -> Error {
     Error::Seeding(err.to_string())
+}
+
+/// Wrap an I/O error as a seeding error, prefixed with the operation that failed.
+///
+/// The bare OS message for the common failures here — a missing materialized file
+/// or a missing `git` binary — is just "No such file or directory (os error 2)",
+/// which names neither the file nor the operation. Carrying the context turns it
+/// into "copying `…` to `…`: No such file…" or "running `git init`: No such file…",
+/// so a failed seed says what it was doing rather than leaving it to be guessed.
+fn seed_ctx(context: String, err: std::io::Error) -> Error {
+    Error::Seeding(format!("{context}: {err}"))
 }
 
 #[cfg(test)]

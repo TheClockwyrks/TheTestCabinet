@@ -291,9 +291,12 @@ three things are non-negotiable and follow directly from that:
    ([`deployments/images/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/backend.Dockerfile))
    layers the `tcab-backend` binary over Node, the bundled Playwright driver, and a
    Playwright-managed Chromium (plus the fonts it needs), and points the render path
-   at them; the auth, dispatcher, driver, and artifact images stay slim and ship no
-   browser. Set `TCAB_REFERENCE_BROWSER` yourself only to override that baked
-   Chromium with an explicit binary (the backend forwards it to the driver).
+   at them. The **`tcab-driver`** image carries the same Node/Playwright toolchain
+   (plus `git`), because the driver seeds, builds, and load-checks each run's
+   implementation in-process; only the auth, dispatcher, and artifact images stay
+   slim and ship no browser. Set `TCAB_REFERENCE_BROWSER` yourself only to override
+   that baked Chromium with an explicit binary (the backend forwards it to the
+   driver).
 
 The backend also carries two values that wire it into the new run path:
 

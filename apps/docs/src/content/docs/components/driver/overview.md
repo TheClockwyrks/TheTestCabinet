@@ -85,6 +85,11 @@ There is no app-level auth on the driver itself — it is a client, not a server
 streaming calls authenticate to the backend with the per-job token the dispatcher
 passed in. Its configuration is entirely environment variables, documented on its
 [`config.rs`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/crates/driver/src/config.rs).
-The driver image ships no publish CLIs (git/gh/wrangler) — publishing is a separate,
+The driver image ships no publish CLIs (gh/wrangler) — publishing is a separate,
 explicit [backend operation](/components/core/results/#lifecycle), not something a
-driver does.
+driver does. It does carry the tooling a run needs end to end in-process, though:
+`git` (to seed each run's fresh repository), a Node runtime and the bundled
+Playwright browser (to run an end-to-end case's `npm` build steps and load-check
+the build with a headless screenshot — the same browser toolchain the
+[backend](/components/backend/overview/) bakes to render references), so the image
+layers the driver binary on the Node/browser base rather than a bare one.
