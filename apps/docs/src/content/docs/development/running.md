@@ -60,6 +60,34 @@ only optionally containerize the backend. The
 template brings the backend up in a container with a local volume for its state;
 the worker stays a host process throughout.
 
+## The whole stack on k3d (deployment parity)
+
+The numbered steps below run each service as a bare host process — the quickest
+way to iterate on a single service. To instead run the services **the way a
+[deployment](/deployment/kubernetes/) runs them** — in a real (local) Kubernetes
+cluster, from the same manifests — use the k3d stack. It needs only `docker`,
+[`k3d`](https://k3d.io), and `kubectl` on the host:
+
+```sh
+make -C deployments/local local-up        # create cluster, build+load images, apply, ingest
+make -C deployments/local local-forward   # hold backend→:8787 and auth→:8789 open on localhost
+# … develop …
+make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
+make -C deployments/local local-down      # delete the cluster and everything in it
+```
+
+`local-up` creates a throwaway k3d cluster (k3s-in-Docker), builds the backend
+and auth images from `deployments/images/`, loads them with `k3d image import`
+(no registry needed), applies the `deployments/k8s/overlays/local` kustomize
+overlay, and force-ingests the catalog from a read-only mount of this repository.
+After editing a test case, re-ingest with `make -C deployments/local local-ingest`.
+
+Today the k3d stack brings up the **backend and auth service** only; run
+execution still uses the host `cli` worker (step 4 below) pointed at the
+forwarded backend on `127.0.0.1:8787`. Once the run **dispatcher** lands, runs
+schedule as Jobs inside this same cluster — exactly as a cloud deployment runs
+them — and the host worker goes away.
+
 ## 1. Configure the services
 
 Copy the repo-root example env files and fill them in. These remain the

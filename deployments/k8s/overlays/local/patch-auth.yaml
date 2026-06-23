@@ -1,0 +1,15 @@
+# Local auth-service override: tag the environment. Everything else (its own
+# `state` PVC, bind address, SQLite accounts DB) carries over from the base
+# manifest unchanged.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-auth
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth
+          env:
+            - name: TCAB_ENV
+              value: "local"

@@ -1,0 +1,9 @@
+# The local k3d namespace. Mirrors deployments/k8s/namespace.yaml but named for
+# the local environment so it never collides with a real staging/prod context.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tcab-local
+  labels:
+    app.kubernetes.io/part-of: test-cabinet
+    tcab.dev/env: local

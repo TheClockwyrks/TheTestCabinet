@@ -1,0 +1,48 @@
+# Local k3d overlay — the development mirror of a Kubernetes deployment.
+#
+# It deploys the two STATEFUL services (backend + auth) that persist across the
+# per-run-Job refactor, reusing the same manifests staging/prod use
+# (../../backend.yaml, ../../auth.yaml) and overriding only what differs locally:
+# the namespace, locally-built images, the TCAB_ENV tag, an empty backend secret,
+# and a read-only mount of the repository checkout the backend ingests from.
+#
+# Run EXECUTION is intentionally not here yet: until the dispatcher + per-run
+# driver land (the worker-pool → Job refactor), exercise runs with the host `cli`
+# worker pointed at this backend (see development/running.md). Once they land, the
+# dispatcher joins this overlay and runs schedule as Jobs in-cluster.
+#
+# Brought up/down with one command via ../../../local/Makefile (`make local-up`).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-local
+
+resources:
+  - namespace.yaml
+  - ../../backend.yaml
+  - ../../auth.yaml
+
+# Use the images the Makefile builds and `k3d image import`s into the cluster.
+# A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
+# uses the imported image instead of trying to pull from a registry.
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: tcab-backend
+    newTag: local
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: tcab-auth-service
+    newTag: local
+
+# The backend StatefulSet pulls env from a `tcab-backend-secrets` Secret
+# (R2 credentials + deploy hook). Locally there are none — the backend skips the
+# snapshot upload when they are unset — but the `envFrom` reference must still
+# resolve, so generate an empty Secret of that exact name. disableNameSuffixHash
+# keeps the name stable so the reference matches.
+secretGenerator:
+  - name: tcab-backend-secrets
+    options:
+      disableNameSuffixHash: true
+
+patches:
+  - path: patch-backend.yaml
+  - path: patch-auth.yaml

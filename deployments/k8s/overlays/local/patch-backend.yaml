@@ -1,0 +1,29 @@
+# Local backend overrides: tag the environment, and ingest the catalog straight
+# from a read-only mount of the repository (the cluster's ingest CronJob is not
+# part of the local overlay). The Makefile maps the repo to `/repo` on the k3d
+# node via `k3d cluster create --volume`; this mounts that into the pod at
+# `/checkout`. The SQLite DB + definition store still live on the `state` PVC the
+# base manifest declares.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ENV
+              value: "local"
+            - name: TCAB_BACKEND_CHECKOUT
+              value: "/checkout"
+          volumeMounts:
+            - name: checkout
+              mountPath: /checkout
+              readOnly: true
+      volumes:
+        - name: checkout
+          hostPath:
+            path: /repo
+            type: Directory

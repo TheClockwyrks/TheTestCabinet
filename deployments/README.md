@@ -26,7 +26,8 @@ lives on the docs site and this README is just a map.
 ```
 deployments/
 ├── local/
-│   └── compose.yml            # backend + auth service in containers; worker runs on the host
+│   ├── compose.yml            # backend + auth service in containers; worker runs on the host
+│   └── Makefile               # the same services on a local k3d cluster (`make local-up`)
 ├── images/                    # service images, published to GHCR by CI (see below)
 │   ├── backend.Dockerfile     # tcab-backend + headless Chromium
 │   ├── auth.Dockerfile        # tcab-auth-service, slimmer runtime (no Chromium/fonts)
@@ -40,6 +41,8 @@ deployments/
 │   ├── worker.yaml            # worker StatefulSet + headless Service
 │   ├── ingest-cronjob.yaml    # periodic POST /ingest to refresh the catalog
 │   ├── networkpolicy.yaml     # optional default-deny-ingress + allows
+│   ├── overlays/
+│   │   └── local/             # kustomize overlay: backend + auth on local k3d (driven by ../local/Makefile)
 │   └── README.md              # apply order + per-environment notes
 ├── backups/
 │   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
