@@ -31,9 +31,9 @@ right before anything else:
   the floor as it swings, but you show that the way the assembler shows its height:
   with **shading on the arm** (highlight/shadow tones) and a small **contact
   shadow on the floor** beneath the hand that tracks along under it — not by
-  drawing the arm climbing toward the top of the frame. A short vertical lift of a
-  pixel or two between the hand and its shadow is enough to read as "held above the
-  belt."
+  drawing the arm climbing toward the top of the frame. A short vertical lift
+  of a pixel or two between the hand and its shadow is enough to read as
+  "held above the belt."
 - **Consistent with the assembler.** Same overhead light, same grey-blue body
   family with bevel/shadow, same chunky industrial read. A viewer should not be
   able to tell the inserter and the assembler were drawn from different cameras.
@@ -73,14 +73,15 @@ The held-item presence is the single most important readable difference between
 the two halves.
 
 Make the motion a **smooth arc across the floor**, seen from above: the hand is
-over the left tile at the start, **bows outward through the far (top) edge** of the
-centre tile at mid-swing, and reaches the right tile at the end — a curve traced
+over the left tile at the start, **bows outward through the far (top) edge** of
+the centre tile at mid-swing, and reaches the right tile at the end — a curve
+traced
 over the ground, **not** a straight horizontal slide and **not** a vertical
 pendulum lift toward the top of the frame. The mid-swing "raised" read comes from
 the arm's shading and the contact shadow tracking beneath the hand, not from the
 hand climbing in screen space. Advance the arm by roughly the **same angular step
-each frame** so the playback is even and the loop from frame 11 back to frame 0 is
-seamless, with no jump or backward slip.
+each frame** so the playback is even and the loop from frame 11 back to frame 0
+is seamless, with no jump or backward slip.
 
 ## The form
 
@@ -89,8 +90,8 @@ The inserter reads, at a glance, as a **swing-arm machine** with four parts:
 - **Base / mount:** a small, **fixed** grey-blue pivot block sitting on the floor
   at the **centre of the frame** (around `x = 24–40`, `y = 24–40`). Give it a touch
   of height the way the assembler does — a lighter top, slightly darker beveled
-  sides, a dark outline, and a small contact shadow on the floor — so it reads as a
-  squat mount, not a flat dot. It is the pivot the arm rotates from and is
+  sides, a dark outline, and a small contact shadow on the floor — so it reads
+  as a squat mount, not a flat dot. It is the pivot the arm rotates from and is
   **identical in every frame**; it never moves, only the arm does.
 - **Arm:** a slender **amber** arm reaching from the centre pivot out to the claw.
   It is the part that swings — draw it at the angle for each frame so its tip (the

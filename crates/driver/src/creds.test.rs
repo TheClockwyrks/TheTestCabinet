@@ -24,11 +24,15 @@ fn with_isolated_home(body: impl FnOnce()) {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let prev: Vec<(&str, Option<std::ffi::OsString>)> =
-        ["HOME", "CODEX_HOME", "TCAB_AUTH_MODE", "TCAB_AUTH_MODE_CLAUDE"]
-            .iter()
-            .map(|&k| (k, std::env::var_os(k)))
-            .collect();
+    let prev: Vec<(&str, Option<std::ffi::OsString>)> = [
+        "HOME",
+        "CODEX_HOME",
+        "TCAB_AUTH_MODE",
+        "TCAB_AUTH_MODE_CLAUDE",
+    ]
+    .iter()
+    .map(|&k| (k, std::env::var_os(k)))
+    .collect();
     let nowhere = "/nonexistent/tcab-driver-creds-test";
     unsafe {
         std::env::set_var("HOME", nowhere);
@@ -46,10 +50,7 @@ fn with_isolated_home(body: impl FnOnce()) {
 }
 
 /// Resolve a harness's plan from a mounted-creds directory for `slug`.
-fn plan_from_mount(
-    dir: &Path,
-    slug: HarnessSlug,
-) -> Result<AuthPlan, test_cabinet_core::Error> {
+fn plan_from_mount(dir: &Path, slug: HarnessSlug) -> Result<AuthPlan, test_cabinet_core::Error> {
     let creds = mounted_creds(dir, slug);
     let registry = DefaultHarnessRegistry::new();
     let harness = registry.get(slug).unwrap();

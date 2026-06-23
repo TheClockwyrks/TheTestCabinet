@@ -59,36 +59,44 @@ async fn spawn_stub_backend() -> String {
     let app = Router::new()
         .route(
             "/test-cases/{slug}/versions/{version}",
-            get(
-                |Path((slug, version)): Path<(String, String)>| async move {
-                    Json(version_json(&slug, &version))
-                },
-            ),
+            get(|Path((slug, version)): Path<(String, String)>| async move {
+                Json(version_json(&slug, &version))
+            }),
         )
         .route(
             // A baseline's wasm, addressed as references/{id}.wasm. Invalid bytes:
             // the match forfeits cleanly rather than needing a real module.
             "/test-cases/{slug}/versions/{version}/artifacts/{*key}",
-            get(|Path((_slug, _version, _key)): Path<(String, String, String)>| async move {
-                ([(axum::http::header::CONTENT_TYPE, "application/wasm")], b"\0not-wasm".to_vec())
-            }),
+            get(
+                |Path((_slug, _version, _key)): Path<(String, String, String)>| async move {
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "application/wasm")],
+                        b"\0not-wasm".to_vec(),
+                    )
+                },
+            ),
         )
         .route(
             "/runs/{id}/controller.wasm",
             get(|Path(_id): Path<String>| async move {
-                ([(axum::http::header::CONTENT_TYPE, "application/wasm")], b"\0not-wasm".to_vec())
+                (
+                    [(axum::http::header::CONTENT_TYPE, "application/wasm")],
+                    b"\0not-wasm".to_vec(),
+                )
             }),
         )
         .route(
             "/adversarial/controllers",
-            get(|Query(params): Query<std::collections::HashMap<String, String>>| async move {
-                let _ = params;
-                Json(serde_json::json!({
-                    "controllers": [
-                        { "id": "run-xyz", "kind": "pushed", "label": "claude" }
-                    ]
-                }))
-            }),
+            get(
+                |Query(params): Query<std::collections::HashMap<String, String>>| async move {
+                    let _ = params;
+                    Json(serde_json::json!({
+                        "controllers": [
+                            { "id": "run-xyz", "kind": "pushed", "label": "claude" }
+                        ]
+                    }))
+                },
+            ),
         );
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
@@ -138,8 +146,14 @@ async fn run_match_between_baselines_returns_a_summary() {
     // The summary is always present; with invalid wasm the replay is null (a
     // clean forfeit), which is exactly the shape the console reads.
     assert!(parsed.get("summary").is_some(), "got: {parsed}");
-    assert!(parsed.get("replay").is_some(), "replay key present: {parsed}");
-    assert!(parsed["replay"].is_null(), "invalid wasm forfeits: {parsed}");
+    assert!(
+        parsed.get("replay").is_some(),
+        "replay key present: {parsed}"
+    );
+    assert!(
+        parsed["replay"].is_null(),
+        "invalid wasm forfeits: {parsed}"
+    );
 }
 
 #[tokio::test]

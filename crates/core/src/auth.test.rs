@@ -166,10 +166,7 @@ fn subscription_absent_without_any_required_file() {
 
 #[test]
 fn subscription_present_only_when_every_required_file_is_supplied() {
-    let spec = spec(vec![
-        cred("/home/node/a", true),
-        cred("/home/node/b", true),
-    ]);
+    let spec = spec(vec![cred("/home/node/a", true), cred("/home/node/b", true)]);
     assert!(subscription_present(
         &spec,
         &map_creds(&[("/home/node/a", b"x"), ("/home/node/b", b"y")]),
@@ -238,7 +235,10 @@ fn subscription_plan_errors_when_a_required_file_is_missing() {
     let creds = map_creds(&[]);
     let err = subscription_plan(HarnessSlug::Codex, spec, &creds).unwrap_err();
     // The error names the credential that could not be read.
-    assert!(err.to_string().contains("/home/node/required"), "got: {err}");
+    assert!(
+        err.to_string().contains("/home/node/required"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -333,7 +333,10 @@ fn resolve_auth_with_unavailable_when_map_empty_and_no_api_key() {
     let registry = DefaultHarnessRegistry::new();
     let harness = registry.get(HarnessSlug::Antigravity).unwrap();
     let err = resolve_auth_with(harness, &MapCreds::default()).unwrap_err();
-    assert!(matches!(err, Error::HarnessUnavailable { .. }), "got: {err}");
+    assert!(
+        matches!(err, Error::HarnessUnavailable { .. }),
+        "got: {err}"
+    );
 }
 
 #[test]

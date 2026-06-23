@@ -61,8 +61,7 @@ impl FromRequestParts<AppState> for ServiceAuth {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let token =
-            bearer(parts).ok_or_else(|| ApiError::unauthorized("missing service token"))?;
+        let token = bearer(parts).ok_or_else(|| ApiError::unauthorized("missing service token"))?;
         let expected = state.config.service_token.as_deref().ok_or_else(|| {
             ApiError::unauthorized("the dispatcher service token is not configured on this backend")
         })?;

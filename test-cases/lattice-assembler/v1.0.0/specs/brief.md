@@ -22,7 +22,8 @@ belongs to the **same world**. Draw it the way Factorio draws a machine:
 - **Lit from above.** Treat the light as coming from straight overhead: the **top
   face is the lightest** (chassis light tone), the **beveled sides are darker**
   (chassis mid → dark as they fall away), and a **contact shadow** (the dark
-  outline/shadow tone) hugs the base where the block meets the floor, grounding it.
+  outline/shadow tone) hugs the base where the block meets the floor,
+  grounding it.
 - **Still non-directional.** Even with height, keep it a **square machine with no
   front or back** — bevel all four sides the same so it has no facing and reads
   correctly however the factory is oriented (see *The form*). The height comes from
@@ -70,19 +71,21 @@ crafting machine** standing on a 3×3 footprint:
 
 - **Chassis (a raised block):** a solid, near-square block of grey-blue plated
   metal that **fills the footprint and rises off the floor**. Draw a slightly
-  **inset, lighter top face** with the chassis sides **beveled down** around it to
-  the footprint edge — top face in the chassis light tone, the falling sides in the
-  mid and dark tones — and a **contact shadow** in the dark outline/shadow tone
-  along the base, so the machine reads as a tall block with volume, not a flat
-  plate. Give it a heavy dark **outline**, and on the **top face** the read of
-  thick **bolted plating** — panel seams and a few **bolt studs** near the corners.
+  **inset, lighter top face** with the chassis sides **beveled down** around it
+  to the footprint edge — top face in the chassis light tone, the falling sides
+  in the mid and dark tones — and a **contact shadow** in the dark
+  outline/shadow tone along the base, so the machine reads as a tall block with
+  volume, not a flat plate. Give it a heavy dark **outline**, and on the **top
+  face** the read of thick **bolted plating** — panel seams and a few **bolt
+  studs** near the corners.
 - **Non-directional:** this is a square machine with **no front or back** — it
   must read correctly at any rotation. Bevel and shade **all four sides the same**
-  (the light is straight overhead), and do **not** give it a facing, a nose, or any
-  one-sided feature. Keep the chassis symmetric so it has no facing.
+  (the light is straight overhead), and do **not** give it a facing, a nose, or
+  any one-sided feature. Keep the chassis symmetric so it has no facing.
 - **Central working window/core:** set into the middle of the **raised top face**,
-  a round (or rounded-square) **recessed well** showing the craft in progress — a
-  dark opening holding the rotating gear/assembly element and the teal active glow.
+  a round (or rounded-square) **recessed well** showing the craft in progress —
+  a dark opening holding the rotating gear/assembly element and the teal active
+  glow.
   This core is where all the animation happens.
 - **Hazard accents:** **yellow-and-black hazard stripes** at the corners or along
   the base of the chassis (amber stripes paired with the dark outline), marking
@@ -114,8 +117,9 @@ outline, then the beveled sides and the lighter inset top face, then the top-fac
 plating shading, bolts, and hazard stripes, and finally the central core with its
 gear and glow. The raised chassis is identical across all eight frames, so a good
 order is to draw the **static raised block once and the same way in every frame**,
-then vary only the core's gear angle and glow brightness per frame. Draw into the frame you select with `--frame <index>`,
-using plain in-frame coordinates (0–95). Run `draw-sheet --help` for the
+then vary only the core's gear angle and glow brightness per frame. Draw into
+the frame you select with `--frame <index>`, using plain in-frame coordinates
+(0–95). Run `draw-sheet --help` for the
 available operations (filling and stroking circles and rectangles, lines, single
 pixels, flood fill, and a horizontal mirror) and `draw-sheet <operation> --help`
 for each one's exact flags. Call `draw-sheet` once per operation and read

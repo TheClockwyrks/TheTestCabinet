@@ -94,7 +94,10 @@ fn decided(winner: Option<Team>, by: DecidedBy) -> Decided {
 fn outcome_from_reads_each_side_of_a_decided_match() {
     let red_swept = decided(Some(Team::Red), DecidedBy::Sweep);
     assert_eq!(outcome_from(red_swept, Team::Red), AdversarialOutcome::Win);
-    assert_eq!(outcome_from(red_swept, Team::Blue), AdversarialOutcome::Loss);
+    assert_eq!(
+        outcome_from(red_swept, Team::Blue),
+        AdversarialOutcome::Loss
+    );
 
     // A level-score match broken by the efficiency tie-break is a plain win/loss —
     // the leaner side wins, the other loses, neither draws.

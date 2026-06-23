@@ -103,7 +103,11 @@ fn build_tarball() -> Vec<u8> {
     header.set_mode(0o644);
     header.set_cksum();
     builder
-        .append_data(&mut header, "implementation/dist/index.html", Cursor::new(html))
+        .append_data(
+            &mut header,
+            "implementation/dist/index.html",
+            Cursor::new(html),
+        )
         .unwrap();
     builder.into_inner().unwrap()
 }

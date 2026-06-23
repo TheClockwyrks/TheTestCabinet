@@ -1,12 +1,12 @@
 # Lattice Transport Belt — drawing brief
 
-You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice, a
-Factorio-style factory simulation rendered in a high-angle, pseudo-3D style. The
-belt is the **flat, ground-level** layer of that world — the animated surface the
-renderer draws for every straight belt tile: a dark two-lane metal conveyor with
-side rails and amber movers that scroll along the belt. It sits in the ground plane
-(the machines above it carry the visible height), so you draw it essentially from
-straight above. Everything below describes that belt tile.
+You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice,
+a Factorio-style factory simulation rendered in a high-angle, pseudo-3D style.
+The belt is the **flat, ground-level** layer of that world — the animated
+surface the renderer draws for every straight belt tile: a dark two-lane metal
+conveyor with side rails and amber movers that scroll along the belt. It sits in
+the ground plane (the machines above it carry the visible height), so you draw
+it essentially from straight above. Everything below describes that belt tile.
 
 ## Orientation — draw East only
 
@@ -119,5 +119,5 @@ one's exact flags. Call `draw-sheet` once per operation and read
 `frames/<index>.png` between calls to judge that frame against this brief. A good
 order is to finish the belt body and rails once, then place each frame's chevrons
 shifted one-eighth of a pitch further right than the last (e.g. 2 px per frame for
-a 16 px pitch), checking that all eight frames sit at distinct offsets and that the
-step after frame 7 lands one full pitch on, back at frame 0.
+a 16 px pitch), checking that all eight frames sit at distinct offsets and that
+the step after frame 7 lands one full pitch on, back at frame 0.

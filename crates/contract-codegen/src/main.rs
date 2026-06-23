@@ -20,11 +20,11 @@ use anyhow::{Context, Result};
 
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
+use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
     test_case as tc, validation as val,
 };
-use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
 macro_rules! ts_decls {
@@ -80,7 +80,12 @@ const RUN_RECORD_DEFS: &[&str] = &[
 /// The tournament schema's `$defs`. `AdversarialOutcome` is *not* listed: it is
 /// owned by the run-record schema, so a reference to it is rewritten to a
 /// cross-document `$ref` at that schema's URL.
-const TOURNAMENT_DEFS: &[&str] = &["MatchSummary", "Standing", "ControllerRef", "ControllerKind"];
+const TOURNAMENT_DEFS: &[&str] = &[
+    "MatchSummary",
+    "Standing",
+    "ControllerRef",
+    "ControllerKind",
+];
 
 /// The review schema's `$defs`: the canonical home of the review value types, so
 /// the backend and snapshot documents (and the console that submits reviews) all
@@ -197,14 +202,38 @@ fn main() -> Result<()> {
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to
         // a single document (its own ack/summary) stays inline.
-        anon("jobs-api/launch-run-request.schema.json", root_schema::<bapi::LaunchBody>()),
-        anon("jobs-api/launch-run-ack.schema.json", root_schema::<bapi::LaunchAck>()),
-        anon("jobs-api/claimed-job.schema.json", root_schema::<bapi::ClaimedJob>()),
-        anon("jobs-api/status-update.schema.json", root_schema::<bapi::StatusUpdate>()),
-        anon("jobs-api/active-jobs.schema.json", root_schema::<Vec<bapi::ActiveJobOut>>()),
-        anon("jobs-api/job-status.schema.json", root_schema::<bapi::JobStatusOut>()),
-        anon("jobs-api/notification.schema.json", root_schema::<relay::Notification>()),
-        anon("jobs-api/client-config.schema.json", root_schema::<bapi::ClientConfig>()),
+        anon(
+            "jobs-api/launch-run-request.schema.json",
+            root_schema::<bapi::LaunchBody>(),
+        ),
+        anon(
+            "jobs-api/launch-run-ack.schema.json",
+            root_schema::<bapi::LaunchAck>(),
+        ),
+        anon(
+            "jobs-api/claimed-job.schema.json",
+            root_schema::<bapi::ClaimedJob>(),
+        ),
+        anon(
+            "jobs-api/status-update.schema.json",
+            root_schema::<bapi::StatusUpdate>(),
+        ),
+        anon(
+            "jobs-api/active-jobs.schema.json",
+            root_schema::<Vec<bapi::ActiveJobOut>>(),
+        ),
+        anon(
+            "jobs-api/job-status.schema.json",
+            root_schema::<bapi::JobStatusOut>(),
+        ),
+        anon(
+            "jobs-api/notification.schema.json",
+            root_schema::<relay::Notification>(),
+        ),
+        anon(
+            "jobs-api/client-config.schema.json",
+            root_schema::<bapi::ClientConfig>(),
+        ),
         // Backend API: the auth surface (the token response is the canonical home
         // of Account) and the canonical review document (the home of the review
         // value types the backend + snapshot reference).
@@ -214,21 +243,42 @@ fn main() -> Result<()> {
             owns: &["Account"],
             schema: root_schema::<acct::AuthnResponse>(),
         },
-        anon("backend-api/auth-register-request.schema.json", root_schema::<acct::RegisterRequest>()),
-        anon("backend-api/auth-login-request.schema.json", root_schema::<acct::LoginRequest>()),
-        anon("backend-api/error.schema.json", root_schema::<berr::ErrorEnvelope>()),
-        anon("backend-api/test-case-catalog.schema.json", root_schema::<bapi::CatalogResponse>()),
-        anon("backend-api/test-case-versions.schema.json", root_schema::<bapi::VersionsResponse>()),
+        anon(
+            "backend-api/auth-register-request.schema.json",
+            root_schema::<acct::RegisterRequest>(),
+        ),
+        anon(
+            "backend-api/auth-login-request.schema.json",
+            root_schema::<acct::LoginRequest>(),
+        ),
+        anon(
+            "backend-api/error.schema.json",
+            root_schema::<berr::ErrorEnvelope>(),
+        ),
+        anon(
+            "backend-api/test-case-catalog.schema.json",
+            root_schema::<bapi::CatalogResponse>(),
+        ),
+        anon(
+            "backend-api/test-case-versions.schema.json",
+            root_schema::<bapi::VersionsResponse>(),
+        ),
         // The fully-resolved definition of one test-case version (`GET
         // /test-cases/{slug}/{version}`). Self-contained except for the core
         // run-record types it shares (`TestType`, `MediaKind`, `AssetSheet`),
         // which are rewritten to cross-document `$ref`s at the run-record URL.
-        anon("backend-api/resolved-test-case-version.schema.json", root_schema::<bapi::VersionResponse>()),
+        anon(
+            "backend-api/resolved-test-case-version.schema.json",
+            root_schema::<bapi::VersionResponse>(),
+        ),
         // The backend's push request (`POST /runs`): the run record, its links,
         // and the recorded event stream. References the core run-record document
         // by URL; its `LinksIn` and the `HarnessEvent`/`EventKind` tree stay
         // inline as this is their only referencer.
-        anon("backend-api/publish-run-request.schema.json", root_schema::<bapi::PushRequest>()),
+        anon(
+            "backend-api/publish-run-request.schema.json",
+            root_schema::<bapi::PushRequest>(),
+        ),
         SchemaDoc {
             rel_path: "backend-api/review.schema.json",
             root: Some("Review"),
@@ -238,10 +288,19 @@ fn main() -> Result<()> {
         // Snapshot documents (the static gallery's published data). Each references
         // the core run-record and review documents by URL; its own summary/envelope
         // subtypes stay inline.
-        anon("snapshot/index.schema.json", root_schema::<snap::SnapshotIndex>()),
-        anon("snapshot/runs.schema.json", root_schema::<snap::RunsIndex>()),
+        anon(
+            "snapshot/index.schema.json",
+            root_schema::<snap::SnapshotIndex>(),
+        ),
+        anon(
+            "snapshot/runs.schema.json",
+            root_schema::<snap::RunsIndex>(),
+        ),
         anon("snapshot/run.schema.json", root_schema::<snap::PerRun>()),
-        anon("snapshot/case.schema.json", root_schema::<snap::CaseMetadata>()),
+        anon(
+            "snapshot/case.schema.json",
+            root_schema::<snap::CaseMetadata>(),
+        ),
     ])?;
     for (rel_path, value) in schemas {
         write_schema(&root, rel_path, &value)?;

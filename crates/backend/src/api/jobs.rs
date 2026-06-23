@@ -182,7 +182,12 @@ pub async fn claim(
     _service: ServiceAuth,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    let Some(job) = state.db.claim_next_job(&now).await.map_err(ApiError::from)? else {
+    let Some(job) = state
+        .db
+        .claim_next_job(&now)
+        .await
+        .map_err(ApiError::from)?
+    else {
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     let request: LaunchBody = serde_json::from_str(&job.request_json)
@@ -605,4 +610,3 @@ pub struct JobStatusOut {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
 }
-

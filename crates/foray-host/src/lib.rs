@@ -278,7 +278,12 @@ mod decided_tests {
 
     /// A [`MatchSummary`] carrying just enough to exercise [`MatchSummary::decided`]:
     /// the committed result and the per-controller fuel totals.
-    fn summary(winner: Option<Team>, ended: Ended, red_total: u64, blue_total: u64) -> MatchSummary {
+    fn summary(
+        winner: Option<Team>,
+        ended: Ended,
+        red_total: u64,
+        blue_total: u64,
+    ) -> MatchSummary {
         let result = ReplayResult {
             winner,
             score: Score { red: 4, blue: 4 },

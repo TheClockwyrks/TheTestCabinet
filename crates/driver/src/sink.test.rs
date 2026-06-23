@@ -143,9 +143,16 @@ async fn relay_batches_events_into_one_post() {
     relay_task(client, rx).await;
 
     let calls = received.lock().expect("lock").clone();
-    assert_eq!(calls.len(), 1, "five queued events should post once: {calls:?}");
+    assert_eq!(
+        calls.len(),
+        1,
+        "five queued events should post once: {calls:?}"
+    );
     assert_eq!(calls[0].kind, "events");
-    assert_eq!(calls[0].item_count, 5, "the batch should carry all five events");
+    assert_eq!(
+        calls[0].item_count, 5,
+        "the batch should carry all five events"
+    );
 }
 
 #[tokio::test]

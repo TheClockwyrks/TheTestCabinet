@@ -405,7 +405,11 @@ async fn claim_takes_the_oldest_queued_job_first() {
         .unwrap();
 
     let first = db.claim_next_job("2026-06-23T01:00:00Z").await.unwrap();
-    assert_eq!(first.unwrap().id, "older", "oldest enqueued is claimed first");
+    assert_eq!(
+        first.unwrap().id,
+        "older",
+        "oldest enqueued is claimed first"
+    );
     let second = db.claim_next_job("2026-06-23T01:00:01Z").await.unwrap();
     assert_eq!(second.unwrap().id, "newer");
 }
@@ -464,7 +468,11 @@ async fn active_jobs_excludes_terminal_jobs_oldest_first() {
 
     let active = db.active_jobs().await.unwrap();
     let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
-    assert_eq!(ids, vec!["a", "c"], "terminal jobs are excluded, oldest first");
+    assert_eq!(
+        ids,
+        vec!["a", "c"],
+        "terminal jobs are excluded, oldest first"
+    );
 }
 
 #[tokio::test]
@@ -501,7 +509,10 @@ async fn publish_allows_a_failure_tier_without_any_review() {
         db.push(&rec, &RunLinks::default(), None).await.unwrap();
 
         let outcome = db.publish(id, "2026-06-23T00:00:00Z").await.unwrap();
-        assert!(outcome.newly_published, "{id} should publish with no review");
+        assert!(
+            outcome.newly_published,
+            "{id} should publish with no review"
+        );
         assert!(db.get_run(id).await.unwrap().unwrap().published);
     }
 }
@@ -522,7 +533,11 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
 
     let (review, _) = db.list_for_review(50, None).await.unwrap();
     let review_ids: Vec<&str> = review.iter().map(|r| r.record.id.as_str()).collect();
-    assert_eq!(review_ids, vec!["done"], "only completed runs are reviewable");
+    assert_eq!(
+        review_ids,
+        vec!["done"],
+        "only completed runs are reviewable"
+    );
 
     let (failures, _) = db.list_publishable_failures(50, None).await.unwrap();
     let mut failure_ids: Vec<&str> = failures.iter().map(|r| r.record.id.as_str()).collect();

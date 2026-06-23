@@ -144,8 +144,8 @@ Two agents may **share** a tile, so moving onto another agent is legal. The one
 move that is **cancelled** is the swap that would dodge a tag: a **soldier and an
 enemy raider** trying to exchange tiles in the same tick (each stepping onto where
 the other just was) both **hold** instead. You can therefore never slip a raider
-*through* a defending soldier by trading places; to get past a defender you must go
-around it.
+*through* a defending soldier by trading places; to get past a defender you must
+go around it.
 
 Any *other* head-on swap **resolves** — the two agents pass through each other.
 Two **soldiers** meeting at the central seam (each crossing into the other's half),

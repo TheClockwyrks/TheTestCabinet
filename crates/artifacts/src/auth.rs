@@ -41,8 +41,8 @@ impl FromRequestParts<AppState> for ReadAuth {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let token = bearer(&parts.headers)
-            .ok_or_else(|| ApiError::unauthorized("missing bearer token"))?;
+        let token =
+            bearer(&parts.headers).ok_or_else(|| ApiError::unauthorized("missing bearer token"))?;
         // A reachable-but-rejecting auth service answers `Ok(None)` (the token is
         // bad → `401`); a network/server fault is `Err` (→ `502`), a different
         // failure mode the caller should retry rather than re-auth — mirroring the

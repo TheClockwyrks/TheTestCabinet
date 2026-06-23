@@ -118,8 +118,8 @@ async fn upload(
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Response, ApiError> {
-    let token = crate::auth::bearer(&headers)
-        .ok_or_else(|| ApiError::unauthorized("missing job token"))?;
+    let token =
+        crate::auth::bearer(&headers).ok_or_else(|| ApiError::unauthorized("missing job token"))?;
     verify_job_token(&state.http, &state.backend_url, &id, &token).await?;
 
     // The store I/O is blocking (tar unpack writes many small files); run it off

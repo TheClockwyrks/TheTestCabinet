@@ -16,19 +16,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use test_cabinet_core::{
-    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime, CredBytesSource,
-    DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient, NoopPublisher,
-    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
-    RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog, TestCaseVersion,
-    materialize_version,
+    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
+    NoopPublisher, OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer,
+    RenderedReference, RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog,
+    TestCaseVersion, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::config::{Config, DriverRuntime};
 use crate::creds::mounted_creds;
-use crate::kubernetes::{
-    KubernetesArtifactCollector, KubernetesContainerRuntime,
-};
+use crate::kubernetes::{KubernetesArtifactCollector, KubernetesContainerRuntime};
 use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
 
 /// Why a run failed, with the resolved version when the failure happened after the

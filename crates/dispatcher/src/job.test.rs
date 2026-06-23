@@ -194,8 +194,14 @@ fn no_subscription_secret_omits_the_volume_and_env() {
     let job = build_driver_job(&claim(), &config()).unwrap();
     let pod = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
     assert!(pod.volumes.is_none(), "expected no volumes");
-    assert!(container(&job).volume_mounts.is_none(), "expected no mounts");
-    assert!(!env_map(container(&job).env.as_ref().unwrap()).contains_key("TCAB_DRIVER_SUBSCRIPTION_DIR"));
+    assert!(
+        container(&job).volume_mounts.is_none(),
+        "expected no mounts"
+    );
+    assert!(
+        !env_map(container(&job).env.as_ref().unwrap())
+            .contains_key("TCAB_DRIVER_SUBSCRIPTION_DIR")
+    );
 }
 
 #[test]
@@ -208,14 +214,23 @@ fn subscription_secret_mounts_a_readonly_volume_with_default_mode_0600() {
     let pod = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
     let volume = &pod.volumes.as_ref().expect("expected a volume")[0];
     assert_eq!(volume.name, "subscription-creds");
-    let secret = volume.secret.as_ref().expect("expected a secret volume source");
-    assert_eq!(secret.secret_name.as_deref(), Some("tcab-driver-subscription"));
+    let secret = volume
+        .secret
+        .as_ref()
+        .expect("expected a secret volume source");
+    assert_eq!(
+        secret.secret_name.as_deref(),
+        Some("tcab-driver-subscription")
+    );
     // Owner-only credential files, and optional so a missing Secret never wedges
     // the pod.
     assert_eq!(secret.default_mode, Some(0o600));
     assert_eq!(secret.optional, Some(true));
 
-    let mount = &container(&job).volume_mounts.as_ref().expect("expected a mount")[0];
+    let mount = &container(&job)
+        .volume_mounts
+        .as_ref()
+        .expect("expected a mount")[0];
     assert_eq!(mount.name, "subscription-creds");
     assert_eq!(mount.mount_path, "/var/run/tcab/subscription");
     assert_eq!(mount.read_only, Some(true));

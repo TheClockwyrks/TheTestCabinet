@@ -228,10 +228,13 @@ fn replay_entry_maps_a_red_sweep_to_a_submission_win() {
         ended: Ended::Swept,
         ticks: 9123,
     };
-    let summary = entry(result, Decided {
-        winner: Some(Team::Red),
-        by: DecidedBy::Sweep,
-    });
+    let summary = entry(
+        result,
+        Decided {
+            winner: Some(Team::Red),
+            by: DecidedBy::Sweep,
+        },
+    );
     assert_eq!(summary.outcome, AdversarialOutcome::Win);
     assert_eq!(summary.winner, Some(AdversarialTeam::Red));
     assert_eq!((summary.red_score, summary.blue_score), (41, 39));
@@ -251,10 +254,13 @@ fn replay_entry_maps_a_level_score_efficiency_win_to_a_submission_win() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    let summary = entry(result, Decided {
-        winner: Some(Team::Red),
-        by: DecidedBy::Efficiency,
-    });
+    let summary = entry(
+        result,
+        Decided {
+            winner: Some(Team::Red),
+            by: DecidedBy::Efficiency,
+        },
+    );
     assert_eq!(summary.outcome, AdversarialOutcome::Win);
     assert_eq!(summary.winner, Some(AdversarialTeam::Red));
     assert_eq!(summary.ended, "efficiency");
@@ -328,10 +334,13 @@ fn summarize_maps_a_blue_win_to_a_submission_loss() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    let summary = entry(result, Decided {
-        winner: Some(Team::Blue),
-        by: DecidedBy::Score,
-    });
+    let summary = entry(
+        result,
+        Decided {
+            winner: Some(Team::Blue),
+            by: DecidedBy::Score,
+        },
+    );
     assert_eq!(summary.outcome, AdversarialOutcome::Loss);
     // The recorded `ended` is the *same* snake_case spelling the published
     // `replay.json` carries (serde's `rename_all = "snake_case"` on `Ended`), so
@@ -350,10 +359,13 @@ fn summarize_maps_a_genuine_draw() {
         ended: Ended::TimeLimit,
         ticks: 37_500,
     };
-    let summary = entry(result, Decided {
-        winner: None,
-        by: DecidedBy::Score,
-    });
+    let summary = entry(
+        result,
+        Decided {
+            winner: None,
+            by: DecidedBy::Score,
+        },
+    );
     assert_eq!(summary.outcome, AdversarialOutcome::Draw);
     assert_eq!(summary.winner, None);
 }
@@ -368,10 +380,13 @@ fn summarize_maps_a_red_forfeit_to_a_submission_forfeit() {
         ended: Ended::Forfeit,
         ticks: 400,
     };
-    let summary = entry(result, Decided {
-        winner: Some(Team::Blue),
-        by: DecidedBy::Forfeit,
-    });
+    let summary = entry(
+        result,
+        Decided {
+            winner: Some(Team::Blue),
+            by: DecidedBy::Forfeit,
+        },
+    );
     assert_eq!(summary.outcome, AdversarialOutcome::Forfeit);
     assert_eq!(summary.winner, Some(AdversarialTeam::Blue));
 }

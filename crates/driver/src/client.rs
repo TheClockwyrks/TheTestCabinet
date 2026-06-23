@@ -162,7 +162,11 @@ impl JobClient {
     }
 
     /// Send a status update and verify the backend accepted it.
-    async fn post_status(&self, what: &'static str, update: &StatusUpdate) -> Result<(), ClientError> {
+    async fn post_status(
+        &self,
+        what: &'static str,
+        update: &StatusUpdate,
+    ) -> Result<(), ClientError> {
         let response = self
             .http
             .post(self.url("status"))

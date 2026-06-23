@@ -136,11 +136,11 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
-        let artifacts_url = nonempty("TCAB_ARTIFACTS_PUBLIC_URL")
-            .map(|url| url.trim_end_matches('/').to_string());
+        let artifacts_url =
+            nonempty("TCAB_ARTIFACTS_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
-        let arena_url = nonempty("TCAB_ARENA_PUBLIC_URL")
-            .map(|url| url.trim_end_matches('/').to_string());
+        let arena_url =
+            nonempty("TCAB_ARENA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
         Ok(Self {
             bind,

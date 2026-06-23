@@ -114,5 +114,7 @@ fn tar_run_dir(run_dir: &Path) -> Result<Vec<u8>, std::io::Error> {
 /// produced no static build (it has nothing to play).
 pub fn playable_build_link(out_dir: &Path, run_id: &str) -> Option<String> {
     let impl_dir = out_dir.join(run_id).join("implementation");
-    find_build_output(&impl_dir).is_some().then(|| format!("/runs/{run_id}/build/"))
+    find_build_output(&impl_dir)
+        .is_some()
+        .then(|| format!("/runs/{run_id}/build/"))
 }

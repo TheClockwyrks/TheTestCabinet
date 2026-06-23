@@ -286,7 +286,10 @@ pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
 // The per-account credential vault (the deferred multi-tenant follow-up) would
 // slot in here as another `CredBytesSource` — one keyed to the enqueuing account
 // rather than a single operator Secret — with no change to the selection policy.
-pub fn resolve_auth_with(harness: &dyn AgentHarness, creds: &dyn CredBytesSource) -> Result<AuthPlan> {
+pub fn resolve_auth_with(
+    harness: &dyn AgentHarness,
+    creds: &dyn CredBytesSource,
+) -> Result<AuthPlan> {
     let slug = harness.slug();
     let mode = requested_mode(slug);
     let api_key = api_key_value(harness);
@@ -297,7 +300,9 @@ pub fn resolve_auth_with(harness: &dyn AgentHarness, creds: &dyn CredBytesSource
     match select(mode, api_key.is_some(), subscription_available) {
         Selection::Subscription => subscription_plan(
             slug,
-            harness.subscription_spec().unwrap_or(SubscriptionSpec { files: &[] }),
+            harness
+                .subscription_spec()
+                .unwrap_or(SubscriptionSpec { files: &[] }),
             creds,
         ),
         Selection::ApiKey => {

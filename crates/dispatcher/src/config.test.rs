@@ -127,7 +127,10 @@ fn driver_secrets_are_split_on_commas() {
         );
         let config = Config::from_env().expect("config should resolve");
         // Trimmed, blanks dropped.
-        assert_eq!(config.driver_secrets, vec!["tcab-driver-secrets", "tcab-extra"]);
+        assert_eq!(
+            config.driver_secrets,
+            vec!["tcab-driver-secrets", "tcab-extra"]
+        );
     });
 }
 

@@ -380,8 +380,7 @@ impl Db {
                 "run `{run_id}` is an infrastructure failure and can never be published"
             )));
         }
-        let is_publishable_failure =
-            matches!(run.run_state.as_str(), "catastrophic" | "timed_out");
+        let is_publishable_failure = matches!(run.run_state.as_str(), "catastrophic" | "timed_out");
         if !is_publishable_failure {
             let review_count = review::Entity::find()
                 .filter(review::Column::RunId.eq(run_id))
@@ -494,8 +493,8 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find()
-            .filter(run::Column::RunState.is_in(states.iter().copied()));
+        let mut query =
+            run::Entity::find().filter(run::Column::RunState.is_in(states.iter().copied()));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
