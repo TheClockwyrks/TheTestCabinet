@@ -29,6 +29,14 @@
 !/orchestrators
 !/harnesses
 
+# The backend service image (deployments/images/backend.Dockerfile) bakes the
+# Playwright browser-driver into its runtime to render references at ingest, so the
+# driver script and its manifest must survive the allowlist too. (These are the one
+# non-cargo exception above; editing either does bust the backend image's COPY
+# cache, but they change very rarely.)
+!/packages/browser-driver/package.json
+!/packages/browser-driver/driver.mjs
+
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
 # the context or churns the layer cache. These come last so they win.
