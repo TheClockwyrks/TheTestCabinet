@@ -16,14 +16,14 @@
 #   docker push <registry>/tcab-artifacts:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the artifact-service crate in release mode.
 RUN cargo build --release -p test-cabinet-artifacts
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # ca-certificates for the artifact service's outbound HTTPS (backend + auth token
 # verification, telemetry export). No Chromium, no fonts — it renders nothing.

@@ -14,14 +14,14 @@
 #   docker push <registry>/tcab-dispatcher:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the dispatcher crate in release mode.
 RUN cargo build --release -p test-cabinet-dispatcher
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # ca-certificates for outbound HTTPS (the Kubernetes API, the backend over TLS,
 # telemetry export). The dispatcher does no rendering and shells out to nothing.

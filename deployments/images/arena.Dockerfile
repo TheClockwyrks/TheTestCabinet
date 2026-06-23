@@ -16,14 +16,14 @@
 #   docker push <registry>/tcab-arena:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the arena-service crate in release mode.
 RUN cargo build --release -p test-cabinet-arena
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # ca-certificates for the arena service's outbound HTTPS (backend HTTP calls,
 # telemetry export). No Chromium, no fonts — it renders nothing. No volume — it is

@@ -12,14 +12,14 @@
 #   docker push <registry>/tcab-auth-service:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the auth-service crate in release mode.
 RUN cargo build --release -p test-cabinet-auth-service
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # ca-certificates is needed for the auth service's outbound HTTPS (telemetry
 # export). No Chromium and no fonts — the auth service does no rendering.

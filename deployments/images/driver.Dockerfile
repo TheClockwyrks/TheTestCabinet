@@ -19,14 +19,14 @@
 #   docker push <registry>/tcab-driver:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the driver crate in release mode.
 RUN cargo build --release -p test-cabinet-driver
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # ca-certificates for outbound HTTPS: the Kubernetes API, the backend/auth and
 # artifact service over TLS, and telemetry export. Nothing else — the driver

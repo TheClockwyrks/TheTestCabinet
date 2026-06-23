@@ -13,14 +13,14 @@
 #   docker push <registry>/tcab-backend:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS build
+FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # Build just the backend crate in release mode.
 RUN cargo build --release -p test-cabinet-backend
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # Chromium for reference rendering, plus the font set test cases require (the
 # slim base ships none — see containers/README.md). ca-certificates is needed for
