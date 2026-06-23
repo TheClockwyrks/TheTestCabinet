@@ -58,6 +58,11 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
+        // The console's client configuration: today just the data-plane artifact
+        // service base URL, so the console can resolve a pre-publish run's build
+        // and media links against it (the control-plane backend never serves the
+        // bytes). A single read, no auth.
+        .route("/config", get(client_config))
         .route("/ingest", post(ingest_api::ingest))
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
@@ -138,6 +143,11 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/{id}/events", post(jobs::ingest_events))
         .route("/jobs/{id}/preview", post(jobs::ingest_preview))
         .route("/jobs/{id}/status", post(jobs::update_status))
+        // The artifact service's internal job-token verify call: it forwards the
+        // driver's per-job token here (the backend is the token authority) before
+        // accepting an upload. The presented token is the secret, so this needs no
+        // other auth.
+        .route("/jobs/{id}/verify-token", post(jobs::verify_token))
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))
@@ -187,4 +197,33 @@ async fn health() -> axum::Json<serde_json::Value> {
         "version": CONTRACT_VERSION,
         "store": "ready",
     }))
+}
+
+/// `GET /config` — the console's client configuration.
+///
+/// The console talks to one backend URL, but a *pre-publish* run's playable build
+/// and proof/asset media live behind the separate **artifact service** (the data
+/// plane — see `crates/artifacts`). Its base URL is reported here so the console
+/// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
+/// paths) a driver sets. `artifactsUrl` is `null` when no artifact service is
+/// configured (`TCAB_ARTIFACTS_PUBLIC_URL` unset) — e.g. a single-box dev setup —
+/// in which case the console leaves those links unresolved.
+async fn client_config(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<ClientConfig> {
+    axum::Json(ClientConfig {
+        artifacts_url: state.config.artifacts_url.clone(),
+    })
+}
+
+/// The body of `GET /config`: the console's client-side configuration.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ClientConfig {
+    /// The artifact service's public base URL, or `null` when artifacts are not
+    /// served separately. The console resolves a pre-publish run's build and media
+    /// links against it.
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub artifacts_url: Option<String>,
 }

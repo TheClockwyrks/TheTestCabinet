@@ -1,0 +1,58 @@
+[package]
+name = "test-cabinet-artifacts"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab-artifacts"
+path = "src/main.rs"
+
+[lib]
+name = "test_cabinet_artifacts"
+path = "src/lib.rs"
+
+[dependencies]
+# The shared playable/proof/asset resolvers (`find_build_output`,
+# `serve_build_file`, `serve_proof_file`, `serve_asset_file`) plus `AccountsClient`
+# for read auth all live in core, so serving logic is reused, not reinvented.
+test-cabinet-core = { path = "../core" }
+# A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
+# propagation-only default is for libraries like `core`), exactly as the other
+# services' mains do.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+dotenvy = { workspace = true }
+
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+opentelemetry = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+# The HTTP client the service verifies a driver's per-job token with against the
+# backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
+# body — see `crates/core`.
+reqwest = { workspace = true }
+# `tar` (pure Rust, no system deps) unpacks the run-artifact tree the driver
+# streams up as a tarball — the same crate the worker/driver already depend on to
+# frame trees over the pod `exec` channel.
+tar = "0.4"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+# `util` brings `ServiceExt::oneshot` so the router can be exercised end-to-end in
+# tests without binding a socket, exactly as the auth service's tests do.
+tower = { workspace = true, features = ["util"] }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

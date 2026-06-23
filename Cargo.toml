@@ -24,6 +24,7 @@ members = [
 	"crates/driver",
 	"crates/dispatcher",
 	"crates/worker",
+	"crates/artifacts",
 	"crates/auth-service",
 	"crates/telemetry",
 	"crates/entities",

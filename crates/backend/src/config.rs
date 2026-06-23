@@ -79,6 +79,14 @@ pub struct Config {
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Consumed by the bundled driver.
     pub reference_browser: Option<String>,
+    /// The public base URL of the **artifact service** (`TCAB_ARTIFACTS_PUBLIC_URL`),
+    /// reported to the console via `GET /config` so it can resolve a pre-publish
+    /// run's `links.playable_build` (and its proof/asset media) against the data
+    /// plane. `None` when artifacts are not served separately (e.g. a single-box
+    /// dev setup with no artifact service) — the console then leaves those links
+    /// unresolved. This is the one data-plane URL the control plane exposes; the
+    /// artifact bytes themselves never transit the backend.
+    pub artifacts_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -120,6 +128,9 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
+        let artifacts_url = nonempty("TCAB_ARTIFACTS_PUBLIC_URL")
+            .map(|url| url.trim_end_matches('/').to_string());
+
         Ok(Self {
             bind,
             database_url,
@@ -131,6 +142,7 @@ impl Config {
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
             reference_browser,
+            artifacts_url,
         })
     }
 }

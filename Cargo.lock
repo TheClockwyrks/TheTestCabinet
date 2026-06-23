@@ -5533,6 +5533,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-artifacts"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "dotenvy",
+ "http",
+ "opentelemetry",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "test-cabinet-core",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "test-cabinet-auth-service"
 version = "0.0.0"
 dependencies = [

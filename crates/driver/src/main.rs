@@ -87,7 +87,12 @@ async fn main() -> ExitCode {
     }
 
     match outcome {
-        Ok(record) => {
+        Ok(mut record) => {
+            // Upload the produced tree to the artifact service (when configured) and
+            // stamp the playable-build link on the record, *before* reporting the
+            // terminal status — so by the time the console sees the run finish, its
+            // build and media are already servable.
+            finalize_artifacts(&config, &mut record).await;
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
             if let Err(err) = client.post_status_succeeded(record).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
@@ -96,6 +101,44 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(failure) => report_failure(&client, &config, &request, started_at, failure).await,
+    }
+}
+
+/// Upload the produced run tree to the artifact service and stamp the run's
+/// playable-build link onto `record`, when an artifact service is configured
+/// (`TCAB_ARTIFACTS_URL`).
+///
+/// The link is set root-relative (`/runs/{id}/build/`) — the console prefixes the
+/// artifact base URL it learned from the backend's `/config` — and only when the
+/// run produced a static build to serve, mirroring what the worker set at list
+/// time. An upload failure is logged but never fatal: the record itself still
+/// reaches the backend (only its servable artifacts are missing), and the run
+/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (the local
+/// CLI/desktop path) this is a no-op and the record carries no playable link.
+async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::RunRecord) {
+    let Some(artifacts_url) = config.artifacts_url.as_deref() else {
+        return;
+    };
+    let out_dir = config.work_dir.join("out");
+
+    if let Some(link) = test_cabinet_driver::artifacts::playable_build_link(&out_dir, &record.id) {
+        record.links.playable_build = Some(link);
+    }
+
+    if let Err(err) = test_cabinet_driver::artifacts::upload_run_tree(
+        artifacts_url,
+        &record.id,
+        &out_dir,
+        &config.job_token,
+    )
+    .await
+    {
+        // A missing upload leaves the run inspectable (its record is still posted),
+        // it just cannot be played from the reviewer UI — worth a warning, not a
+        // failed run.
+        tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
+    } else {
+        tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
     }
 }
 
@@ -128,7 +171,14 @@ async fn report_failure(
         &failure.detail,
         &[],
     ) {
-        Ok(record) => Some(record),
+        Ok(mut record) => {
+            // A failed run rarely produced a static build, but it may have collected
+            // partial artifacts (proof media, an asset frame) worth retaining for
+            // inspection — upload them and stamp any build link, the same as a
+            // succeeded run, before the terminal status is posted.
+            finalize_artifacts(config, &mut record).await;
+            Some(record)
+        }
         Err(err) => {
             // The record is a courtesy for inspection; if it cannot even be built,
             // still report the failure with its reason so the console is not left

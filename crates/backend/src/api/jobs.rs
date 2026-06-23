@@ -336,6 +336,35 @@ async fn persist_produced(
     }
 }
 
+/// `POST /jobs/{id}/verify-token` — confirm a presented per-job token matches the
+/// one minted for job `{id}`. The internal call the **artifact service** makes to
+/// authenticate an upload: the driver presents its job token to the artifact
+/// service, which forwards it here (the backend is the token authority) before
+/// accepting the run's artifact tree.
+///
+/// No other auth gates this endpoint — the presented token *is* the secret (job
+/// tokens are random UUIDs minted at enqueue), so a caller that does not already
+/// hold it learns nothing. `200 No Content` when it matches, `401` when it does
+/// not (or the token field is absent), `404` for an unknown job. Constant-time
+/// comparison via [`token_matches`] keeps the check from leaking the token through
+/// timing, exactly as the driver-streaming endpoints' [`authorize_job`] does.
+pub async fn verify_token(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<VerifyTokenBody>,
+) -> Result<StatusCode, ApiError> {
+    let job = state
+        .db
+        .get_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    if body.token.is_empty() || !token_matches(&body.token, &job.job_token) {
+        return Err(ApiError::unauthorized("invalid job token"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `GET /notifications` — stream worker-wide run-completion notifications as SSE.
 /// Each event's `data` is one [`Notification`] as JSON. Live-only (no backlog); a
 /// keep-alive holds idle connections open between runs.
@@ -476,6 +505,18 @@ fn encode_preview_line(preview: &AssetPreview) -> Bytes {
 }
 
 // --- Wire shapes ------------------------------------------------------------
+
+/// The body of `POST /jobs/{id}/verify-token`: the per-job token to check against
+/// the one minted for the job. Sent by the artifact service to authenticate an
+/// upload. Deserialize-only — no client in this workspace constructs it for the
+/// wire (the artifact service builds the equivalent JSON itself), so it is not a
+/// codegen contract type.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyTokenBody {
+    /// The per-job bearer token the driver presented to the artifact service.
+    pub token: String,
+}
 
 /// The response to a successful `POST /jobs`: the enqueued job's id and where to
 /// observe it.

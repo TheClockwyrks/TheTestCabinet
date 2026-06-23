@@ -13,6 +13,7 @@
 //! | `TCAB_RUN_REQUEST` | yes | The [`LaunchBody`](test_cabinet_core::LaunchBody) JSON the dispatcher claimed and passed in. | — |
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
+//! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. the local CLI/desktop path) skips the upload entirely. | — |
 //!
 //! When `TCAB_DRIVER_RUNTIME=kubernetes`, the sandbox-pod settings (`TCAB_K8S_*`,
 //! documented on [`KubernetesConfig`](crate::kubernetes::KubernetesConfig)) are
@@ -75,6 +76,11 @@ pub struct Config {
     /// Ephemeral scratch directory for the run's mountable inputs and produced
     /// tree (`TCAB_WORK_DIR`). The pod is disposable, so this is lost on exit.
     pub work_dir: PathBuf,
+    /// The artifact service base URL the driver uploads the produced run tree to
+    /// (`TCAB_ARTIFACTS_URL`), without a trailing slash. `None` (the local
+    /// CLI/desktop path, where nothing serves the artifacts off the worker disk
+    /// any more) skips the upload entirely, leaving behavior unchanged.
+    pub artifacts_url: Option<String>,
     /// Sandbox-pod settings used when [`runtime`](Self::runtime) is
     /// [`DriverRuntime::Kubernetes`]; left at defaults (and unused) otherwise.
     pub kubernetes: KubernetesConfig,
@@ -116,6 +122,8 @@ impl Config {
         let work_dir = non_empty("TCAB_WORK_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(".tcab-driver"));
+        let artifacts_url =
+            non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
         let kubernetes = kubernetes_from_env()?;
         Ok(Self {
             backend_url,
@@ -124,6 +132,7 @@ impl Config {
             launch,
             runtime,
             work_dir,
+            artifacts_url,
             kubernetes,
         })
     }

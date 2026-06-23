@@ -19,6 +19,7 @@
 //! Its streaming calls authenticate to the backend with the per-job token the
 //! dispatcher passed in (see [`client`]).
 
+pub mod artifacts;
 pub mod client;
 pub mod config;
 pub mod kubernetes;
