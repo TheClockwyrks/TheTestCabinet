@@ -74,20 +74,18 @@ async function fetchPublishedRuns(
 async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
   const acc = emptyRuns();
   try {
+    // `listRuns` is the worker's full produced worklist: every pushed-but-
+    // unpublished run, whatever its terminal state — completed (awaiting review),
+    // a publishable failure (awaiting publish), and an infrastructure failure
+    // (retained for inspection, in no other worklist). All are flagged local so
+    // they read as unpublished and stay visible — in the run list and the detail
+    // page — until published. The separate publishable-failures worklist
+    // (`listFailures`) is read by the Publish-failures page directly, so it is not
+    // merged here (it would duplicate the unpublished failures and pull in the
+    // published ones).
     for (const run of await worker.listRuns()) ingest(run, acc, true);
   } catch (e) {
     // A worker that can't enumerate produced runs simply contributes none.
-    if (!(e instanceof NotSupportedError)) throw e;
-  }
-  // The review worklist `listRuns` returns is completed-only now, so a produced
-  // catastrophic/timed-out run reaches the console only through the separate
-  // publishable-failures worklist. Merge those in as local runs too, so they
-  // stay visible (in the run list, the detail page, and the Publish-failures
-  // affordance) until they are published. A transport with no failures worklist
-  // simply contributes none.
-  try {
-    for (const run of await worker.listFailures()) ingest(run, acc, true);
-  } catch (e) {
     if (!(e instanceof NotSupportedError)) throw e;
   }
   return acc;

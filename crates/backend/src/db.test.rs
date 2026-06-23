@@ -547,4 +547,28 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
         vec!["cat", "slow"],
         "publishable failures exclude infrastructure failures"
     );
+
+    // The console's produced worklist carries every unpublished run whatever its
+    // tier — including the infrastructure failure that appears in neither worklist
+    // above — so an infrastructure failure stays inspectable rather than vanishing.
+    let (unpublished, _) = db.list_unpublished(50, None).await.unwrap();
+    let mut unpublished_ids: Vec<&str> = unpublished.iter().map(|r| r.record.id.as_str()).collect();
+    unpublished_ids.sort_unstable();
+    assert_eq!(
+        unpublished_ids,
+        vec!["cat", "done", "infra", "slow"],
+        "every unpublished run, all tiers, is in the produced worklist"
+    );
+
+    // Publishing one drops it from the produced worklist (it is now the public
+    // read side), leaving the worklist disjoint from the published listing.
+    db.publish("cat", "2026-06-23T00:00:00Z").await.unwrap();
+    let (after, _) = db.list_unpublished(50, None).await.unwrap();
+    let mut after_ids: Vec<&str> = after.iter().map(|r| r.record.id.as_str()).collect();
+    after_ids.sort_unstable();
+    assert_eq!(
+        after_ids,
+        vec!["done", "infra", "slow"],
+        "a published run leaves the unpublished worklist"
+    );
 }

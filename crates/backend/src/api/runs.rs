@@ -214,6 +214,10 @@ pub async fn publish(
 /// and published — ordered by finish time, for the reviewer worklist.
 /// `state=failures` returns the **publishable failure** runs (catastrophic and
 /// timed-out, pending and published) for the publish-failures affordance.
+/// `state=unpublished` returns **every** pushed-but-unpublished run whatever its
+/// state (completed, every failure tier, including the never-publishable
+/// infrastructure failures), ordered by finish time — the console's "produced"
+/// worklist, disjoint from the default published listing.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
@@ -228,6 +232,11 @@ pub async fn list(
         Some("failures") => state
             .db
             .list_publishable_failures(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
+        Some("unpublished") => state
+            .db
+            .list_unpublished(limit, params.before.as_deref())
             .await
             .map_err(ApiError::from)?,
         _ => state

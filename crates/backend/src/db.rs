@@ -483,6 +483,43 @@ impl Db {
             .await
     }
 
+    /// List every **unpublished** run — pushed but not yet published, *whatever* its
+    /// terminal state (completed, the publishable failure tiers, and the
+    /// never-publishable infrastructure failures alike) — newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. This is the console's
+    /// "produced" worklist: every run that exists in the store but is not yet public,
+    /// so a console lists all of them (for review, for publishing a failure, or just
+    /// to inspect an infrastructure failure that appears in no other worklist).
+    /// Published runs are excluded — those are the public read side
+    /// ([`list_published`](Self::list_published)). Disjoint from `list_published` by
+    /// the `published` flag, so a console can merge the two without overlap.
+    pub async fn list_unpublished(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        let fetch = limit.saturating_add(1);
+        let mut query = run::Entity::find().filter(run::Column::Published.eq(false));
+        if let Some(before) = before {
+            query = query.filter(run::Column::FinishedAt.lt(before));
+        }
+        let rows = query
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .limit(fetch as u64)
+            .all(&self.conn)
+            .await?;
+
+        let mut runs = self.assemble(rows).await?;
+        let next_before = if runs.len() > limit {
+            runs.truncate(limit);
+            runs.last().map(|run| run.record.finished_at.clone())
+        } else {
+            None
+        };
+        Ok((runs, next_before))
+    }
+
     /// Shared worklist query: runs whose `run_state` is one of `states` (pending
     /// and published), newest-first by `finished_at`, paginated by a `finished_at`
     /// cursor.

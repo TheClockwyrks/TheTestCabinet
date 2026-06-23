@@ -295,10 +295,21 @@ coalesced into a pending one. Requires a bearer token.
 List stored runs, newest first, paginated by a `before` cursor and a `limit`. A
 `state` query parameter selects which runs:
 
-- `state=published` (the **default**) — published runs only, for reporters and
-  the public-facing views.
-- `state=review` — the **reviewer worklist**: pushed runs awaiting review,
-  including those not yet published, so a reviewer can find runs to assess.
+- `state=published` (the **default**) — published runs only, ordered by publish
+  time, for reporters and the public-facing views.
+- `state=review` — the **reviewer worklist**: **completed** runs (pushed but not
+  yet published, plus published ones), ordered by finish time, so a reviewer can
+  find runs to assess. The failure tiers are excluded — they carry no review
+  checklist.
+- `state=failures` — the **publishable-failure worklist**: catastrophic and
+  timed-out runs (pending and published), for the publish-failures affordance.
+  Infrastructure failures are excluded (never publishable).
+- `state=unpublished` — **every** pushed-but-unpublished run whatever its terminal
+  state (completed, every failure tier, including the never-publishable
+  infrastructure failures), ordered by finish time. This is the console's
+  "produced" worklist — every run that exists but is not yet public, so an
+  infrastructure failure stays inspectable rather than appearing in no list.
+  Disjoint from the default published listing.
 
 The response carries the runs and the cursor for the next page (`null` when there
 are no more).
