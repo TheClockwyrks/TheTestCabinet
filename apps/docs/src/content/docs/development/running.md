@@ -163,7 +163,16 @@ Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
 After you **edit a test case**, re-ingest so the backend serves the change.
 A plain scan skips any version it already holds (the store is immutable per
 `(slug, version)`), so force the overwrite — optionally scoping it to the case
-you touched:
+you touched. The `scripts/reingest.sh` helper forces the scan and streams its
+per-case progress (a full re-render takes a minute or more):
+
+```sh
+scripts/reingest.sh             # force re-ingest every case
+scripts/reingest.sh pong        # scope to the case you touched
+```
+
+It is a thin wrapper over the endpoint's streamed (`Accept: application/x-ndjson`)
+progress feed; the raw call is:
 
 ```sh
 curl -X POST http://127.0.0.1:8787/ingest \

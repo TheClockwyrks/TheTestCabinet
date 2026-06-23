@@ -58,10 +58,11 @@ whether its store is ready.
 Trigger a scan of the repository checkout the backend ingests from. New or
 changed [test case versions](/testing/end-to-end/overview/) are copied into the
 backend's store, with each reference mockup rendered to a screenshot during
-ingest (see [Reference Rendering](#reference-rendering)). The scan is
-synchronous and reports what changed; an already-ingested, unchanged version is
-a no-op unless re-ingestion is forced. The request may restrict the scan to
-specific case slugs.
+ingest (see [Reference Rendering](#reference-rendering)). The scan reports what
+changed; an already-ingested, unchanged version is a no-op unless re-ingestion
+is forced. The request may restrict the scan to specific case slugs. The scan
+runs to completion before the default response returns; a client can instead
+stream per-version progress (see below).
 
 The request body is optional JSON:
 
@@ -77,6 +78,28 @@ exists for **development** iteration on a version no run has been published
 against; a version that published runs reference is immutable and must be
 revised by adding a new version, not re-ingested (see
 [Test Cases](/testing/end-to-end/overview/)).
+
+A full re-render can take a minute or more, so the response shape is content
+negotiated. By default the call answers once with the full JSON report above. A
+client that sends `Accept: application/x-ndjson` instead receives a **streamed
+progress feed** — one [NDJSON](https://github.com/ndjson/ndjson-spec) object per
+line, flushed as each version finishes, so a long scan reports progress instead
+of looking like a hang. The streaming and default paths run the identical scan;
+only the framing differs. The lines are discriminated by an `event` tag:
+
+```jsonc
+{ "event": "start", "total": 31 }                  // once, before the first version
+{ "event": "version", "index": 1, "total": 31,     // one per completed version
+  "slug": "pong", "version": "v1.0.0",
+  "ingested": true, "renderedReferences": 3 }
+{ "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary on success
+{ "event": "error", "message": "…" }               // closing line if the scan aborts
+```
+
+Because the stream has already sent a `200` by the time it knows the outcome, a
+late failure arrives as a closing `error` line rather than an HTTP error status.
+[`scripts/reingest.sh`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/reingest.sh)
+consumes this feed (it is also what `make local-ingest` runs).
 
 Container images are **not** part of this API at all — they are distributed
 through a container registry and resolved by each runner directly from its own

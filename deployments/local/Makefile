@@ -176,15 +176,15 @@ apply: secrets
 	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
-# Uses an ephemeral port-forward that is torn down when the recipe exits.
+# Uses an ephemeral port-forward that is torn down when the recipe exits, then
+# defers to `scripts/reingest.sh`, which streams the backend's NDJSON progress
+# feed and prints a line per case — so a minute-plus scan reports progress instead
+# of looking like a hang.
 local-ingest:
-	@echo "Ingesting the test-case catalog…"
 	@kubectl -n '$(NS)' port-forward svc/tcab-backend 8787:8787 >/dev/null 2>&1 & \
 	  pf=$$!; trap 'kill $$pf 2>/dev/null' EXIT; \
 	  for i in $$(seq 1 30); do curl -fsS http://127.0.0.1:8787/healthz >/dev/null 2>&1 && break; sleep 1; done; \
-	  curl -fsS -X POST http://127.0.0.1:8787/ingest \
-	    -H 'content-type: application/json' -d '{"force": true}' \
-	  && echo " catalog ingested."
+	  BACKEND_URL=http://127.0.0.1:8787 '$(REPO)/scripts/reingest.sh'
 
 # Hold the services open on localhost until interrupted (Ctrl-C).
 local-forward:

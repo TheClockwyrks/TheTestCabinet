@@ -46,6 +46,29 @@ fn scan_with_empty_test_case_restriction_is_a_no_op() {
 }
 
 #[test]
+fn scan_with_progress_emits_a_start_event_with_the_target_count() {
+    // The streamed progress feed leans on `Start` always firing before the loop,
+    // carrying the total to be scanned. An empty test-cases tree exercises that
+    // wiring without the browser a real render would need: exactly one `Start`
+    // (total 0) and no `Version` events.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    let mut events = Vec::new();
+    let report = Ingestor::new(dir.path(), &store)
+        .scan_with_progress(&IngestRequest::default(), |event| match event {
+            IngestEvent::Start { total } => events.push(total),
+            IngestEvent::Version { .. } => panic!("no versions to ingest"),
+        })
+        .unwrap();
+
+    assert_eq!(events, vec![0]);
+    assert!(report.test_case_versions.is_empty());
+}
+
+#[test]
 fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
     // Hidden entries are dropped so the checkout's dotfiles and the store's
     // `.tcab` sidecar never enter a copied definition — except the allowlist a

@@ -56,6 +56,27 @@ pub struct IngestReport {
     pub test_case_versions: Vec<IngestedVersion>,
 }
 
+/// A progress event emitted as a [`Ingestor::scan_with_progress`] scan advances, so
+/// a caller can stream per-version progress rather than wait for the whole report.
+/// Events are advisory; the returned [`IngestReport`] is the authoritative outcome.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IngestEvent<'a> {
+    /// Emitted once before the first version, carrying the count to be scanned.
+    Start {
+        /// Total test-case versions this scan will touch.
+        total: usize,
+    },
+    /// Emitted after each version is ingested (or skipped as unchanged).
+    Version {
+        /// 1-based position of this version within the scan.
+        index: usize,
+        /// Total versions in the scan (the same value as [`IngestEvent::Start`]).
+        total: usize,
+        /// The just-finished version's outcome.
+        version: &'a IngestedVersion,
+    },
+}
+
 /// Ingests definitions from a checkout into a definition store.
 pub struct Ingestor<'a> {
     checkout: &'a Path,
@@ -70,12 +91,32 @@ impl<'a> Ingestor<'a> {
 
     /// Run a scan, honoring the request's restrictions and `force` flag.
     pub fn scan(&self, request: &IngestRequest) -> Result<IngestReport> {
-        let mut report = IngestReport::default();
+        self.scan_with_progress(request, |_| {})
+    }
 
-        for (slug, version) in self.version_targets(request)? {
-            report
-                .test_case_versions
-                .push(self.ingest_version(&slug, &version, request.force)?);
+    /// Like [`scan`](Self::scan), but invoke `on_event` as each version completes so
+    /// the caller can stream progress. A whole-catalog scan renders every case's
+    /// references and otherwise answers only once the last one is done; emitting a
+    /// [`IngestEvent`] per version lets the trigger report progress instead of
+    /// stalling silently for the minute-plus a full re-render takes.
+    pub fn scan_with_progress(
+        &self,
+        request: &IngestRequest,
+        mut on_event: impl FnMut(IngestEvent),
+    ) -> Result<IngestReport> {
+        let targets = self.version_targets(request)?;
+        let total = targets.len();
+        on_event(IngestEvent::Start { total });
+
+        let mut report = IngestReport::default();
+        for (index, (slug, version)) in targets.into_iter().enumerate() {
+            let ingested = self.ingest_version(&slug, &version, request.force)?;
+            on_event(IngestEvent::Version {
+                index: index + 1,
+                total,
+                version: &ingested,
+            });
+            report.test_case_versions.push(ingested);
         }
 
         Ok(report)
