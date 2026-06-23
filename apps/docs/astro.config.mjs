@@ -269,7 +269,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "deployment/overview",
-            "deployment/azure",
+            "deployment/kubernetes",
             "deployment/backups",
             "deployment/telemetry",
           ],

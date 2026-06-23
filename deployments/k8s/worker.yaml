@@ -1,0 +1,111 @@
+# Worker: a StatefulSet behind a HEADLESS Service.
+#
+# Worker jobs are per-instance — a run submitted to one pod must be polled on that
+# same pod — so the Service is headless (clusterIP: None) to give each pod a stable
+# DNS name (tcab-worker-0.tcab-worker.<ns>.svc, -1, …). Register each name in the
+# web console individually. Do NOT front workers with a load-balancing Service.
+#
+# The worker needs no container engine: under TCAB_WORKER_RUNTIME=kubernetes it
+# creates a run pod per run through the Kubernetes API, using the tcab-worker
+# ServiceAccount's RBAC (deployments/k8s/rbac.yaml). Scratch is an emptyDir; the
+# worker keeps no persistent state.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-worker
+  namespace: tcab-prod
+spec:
+  clusterIP: None # headless: stable per-pod DNS, no load balancing
+  selector:
+    app.kubernetes.io/name: tcab-worker
+  ports:
+    - name: http
+      port: 8788
+      targetPort: 8788
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-worker
+  namespace: tcab-prod
+spec:
+  serviceName: tcab-worker
+  replicas: 1 # raise to grow the pool; address each pod individually
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-worker
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      serviceAccountName: tcab-worker # RBAC to manage run pods
+      containers:
+        - name: worker
+          image: REPLACE_REGISTRY/tcab-worker:latest
+          ports:
+            - containerPort: 8788
+          env:
+            - name: TCAB_WORKER_BIND
+              value: "0.0.0.0:8788"
+            # Spawn each run as a pod via the Kubernetes API.
+            - name: TCAB_WORKER_RUNTIME
+              value: "kubernetes"
+            - name: TCAB_BACKEND_URL
+              value: "http://tcab-backend:8787"
+            - name: TCAB_AUTH_URL
+              value: "http://tcab-auth:8789"
+            - name: TCAB_ENV
+              value: "prod"
+            # Scratch on the emptyDir below (the worker keeps no persistent state).
+            - name: TCAB_WORKER_OUT_DIR
+              value: "/scratch/runs"
+            - name: TCAB_WORK_DIR
+              value: "/scratch/work"
+            # Namespace run pods are created in. Defaults to the worker's own
+            # namespace when unset; set it explicitly to run them elsewhere.
+            - name: TCAB_K8S_NAMESPACE
+              value: "tcab-prod"
+            # Pull secret(s) for the run-container images, if the registry is
+            # private. Comma-separated names of dockerconfigjson Secrets.
+            # - name: TCAB_K8S_IMAGE_PULL_SECRETS
+            #   value: "tcab-registry"
+            # Resource requests/limits applied to each run pod.
+            - name: TCAB_K8S_RUN_CPU_REQUEST
+              value: "500m"
+            - name: TCAB_K8S_RUN_CPU_LIMIT
+              value: "2"
+            - name: TCAB_K8S_RUN_MEMORY_REQUEST
+              value: "1Gi"
+            - name: TCAB_K8S_RUN_MEMORY_LIMIT
+              value: "4Gi"
+            # Where the run-container images are pulled from (the worker passes the
+            # resolved image to the pod spec; the cluster pulls it). Defaults to
+            # ghcr.io/theclockwyrks if unset.
+            # - name: TCAB_CONTAINER_REGISTRY
+            #   value: "REPLACE_REGISTRY"
+            # - name: TCAB_CONTAINER_TAG
+            #   value: "latest"
+            # The worker's own pod IP, so a watched asset-generation run pod can
+            # stream live preview frames back to it (best-effort; optional).
+            - name: TCAB_K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          envFrom:
+            - secretRef:
+                name: tcab-worker-secrets # harness API key(s) + publish creds
+          volumeMounts:
+            - name: scratch
+              mountPath: /scratch
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8788
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        # Per-run seeds, artifacts, and materialized definitions — all scratch.
+        - name: scratch
+          emptyDir: {}

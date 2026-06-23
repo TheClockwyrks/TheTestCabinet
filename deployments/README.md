@@ -2,14 +2,15 @@
 
 Copy-pasteable templates for deploying The Test Cabinet's three long-running
 services — the **backend** (`tcab-backend`), the **worker** (`tcab-worker`), and
-the **auth service** (`tcab-auth-service`).
+the **auth service** (`tcab-auth-service`) — to **Kubernetes**, where the worker
+spawns each run as a separate pod via the Kubernetes API.
 
 This folder holds the *assets*; the authoritative, narrative documentation is the
 **Deployment** section of the docs site, which explains what these files are for
 and how they fit together:
 
 - Overview — `apps/docs/src/content/docs/deployment/overview.md`
-- Azure (staging & prod) — `apps/docs/src/content/docs/deployment/azure.md`
+- Kubernetes (staging & prod) — `apps/docs/src/content/docs/deployment/kubernetes.md`
 
 Running the same services locally on one machine (the `local/` template below) is
 documented in the Development section, not here:
@@ -26,20 +27,24 @@ lives on the docs site and this README is just a map.
 deployments/
 ├── local/
 │   └── compose.yml            # backend + auth service in containers; worker runs on the host
-├── azure/
-│   ├── backend.Dockerfile     # tcab-backend + headless Chromium, for Azure Container Apps
+├── images/
+│   ├── backend.Dockerfile     # tcab-backend + headless Chromium
 │   ├── auth.Dockerfile        # tcab-auth-service, slimmer runtime (no Chromium/fonts)
-│   ├── containerapp.yaml      # example Container Apps: 1 replica, state volume, env refs (backend + auth)
-│   ├── worker-cloud-init.yaml # VM/VMSS first-boot: Docker + run-container base image + worker unit + Tailscale
-│   └── az-provision.sh        # annotated `az` CLI walkthrough for one environment
-├── systemd/
-│   ├── tcab-backend.service   # for the VM fallback (backend on a VM instead of Container Apps)
-│   ├── tcab-auth-service.service # auth service on a VM
-│   └── tcab-worker.service    # worker on a VM
+│   └── worker.Dockerfile      # tcab-worker + publish CLIs (git/gh/wrangler); no container engine
+├── k8s/
+│   ├── namespace.yaml         # per-environment namespace
+│   ├── rbac.yaml              # tcab-worker ServiceAccount + Role to manage run pods
+│   ├── secrets.example.yaml   # Secret templates (placeholders only)
+│   ├── backend.yaml           # backend StatefulSet (1 replica) + PVC + Service
+│   ├── auth.yaml              # auth StatefulSet (1 replica) + PVC + Service
+│   ├── worker.yaml            # worker StatefulSet + headless Service
+│   ├── ingest-cronjob.yaml    # periodic POST /ingest to refresh the catalog
+│   ├── networkpolicy.yaml     # optional default-deny-ingress + allows
+│   └── README.md              # apply order + per-environment notes
 ├── backups/
 │   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
 ├── telemetry/
-│   └── otel-collector.yaml    # example OTel Collector config for the Azure Monitor path
+│   └── otel-collector.yaml    # example OTel Collector config
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example
@@ -49,9 +54,11 @@ deployments/
     └── worker.prod.env.example
 ```
 
-See the docs' [Backups](apps/docs/src/content/docs/deployment/backups.md) and
-[Telemetry](apps/docs/src/content/docs/deployment/telemetry.md) pages for what
-`backups/` and `telemetry/` are for.
+See the docs' [Backups](../apps/docs/src/content/docs/deployment/backups.md) and
+[Telemetry](../apps/docs/src/content/docs/deployment/telemetry.md) pages for what
+`backups/` and `telemetry/` are for. The `env/` files mirror the values the
+`k8s/` manifests set as container env vars; they are a convenient single-file view
+of each service's configuration.
 
 ## Secrets
 
@@ -60,6 +67,6 @@ real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
 [`.env.auth.example`](../.env.auth.example), and
 [`.env.worker.example`](../.env.worker.example) remain the authoritative
-reference for every variable each service reads. Supply real values through your
-platform's secret store (Container Apps secrets, a VM's `/etc/test-cabinet/*.env`
-populated from a secret manager, etc.).
+reference for every variable each service reads. Supply real values through
+Kubernetes `Secret`s populated from your secret manager (External Secrets, Sealed
+Secrets, `kubectl create secret`, …).

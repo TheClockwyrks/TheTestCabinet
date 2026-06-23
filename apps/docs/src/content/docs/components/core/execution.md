@@ -13,20 +13,26 @@ Runs must occur in a container so that a model cannot access the host system.
 Without this, a model could discover other runs' outputs or damage the host, for
 example by deleting files.
 
-- The testing harness must support Docker and compatible container runtimes such
-  as Podman through a runtime abstraction, rather than hard coding a single
-  runtime.
+- The testing harness must drive the run container through a **runtime
+  abstraction** rather than hard-coding a single runtime. Two runtimes implement
+  it: the default CLI runtime shells out to Docker or a compatible engine such as
+  Podman (used for local runs and the desktop app), and the
+  [Kubernetes runtime](/deployment/kubernetes/) creates a pod per run through the
+  Kubernetes API (used by a worker in a cluster deployment). The behavior below is
+  identical across both — only the mechanism that starts the container, copies the
+  working tree in and out, and runs commands in it differs.
 - A container must not have access to the host filesystem beyond the seeded
   repository and the inputs the run explicitly provides.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
 - When an asset-generation run is being watched (a worker or the Tauri app
-  supplies a preview sink), the container is additionally started with
-  `--add-host host.docker.internal:host-gateway` so the in-container drawing
-  binary can stream its [live preview](/testing/asset-generation/binaries/#live-preview)
-  back to a listener on the run host. No host mapping is added for an unwatched
-  run.
+  supplies a preview sink), the container is additionally given a route back to
+  the run host as `host.docker.internal` — `--add-host …:host-gateway` under the
+  CLI runtime, a pod `hostAlias` to the worker's own IP under the Kubernetes
+  runtime — so the in-container drawing binary can stream its
+  [live preview](/testing/asset-generation/binaries/#live-preview) back to a
+  listener on the run host. No host mapping is added for an unwatched run.
 - A run executes in one of **three run-container images**, selected by the test
   case's [test type](/testing/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an

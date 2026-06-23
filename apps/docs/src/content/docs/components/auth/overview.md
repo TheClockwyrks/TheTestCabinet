@@ -88,8 +88,9 @@ SQLite store of accounts, Argon2id password hashing, and opaque bearer tokens. I
 is configured entirely through environment variables:
 
 - `TCAB_AUTH_BIND` — its bind address (default `127.0.0.1:8789`). The backend binds
-  to `8787` and the worker to `8788`, so the three share a host or a tailnet without
-  colliding.
+  to `8787` and the worker to `8788`, so the three coexist on one host (local dev)
+  or as distinct `Service`s in a namespace (a [cluster deployment](/deployment/kubernetes/))
+  without colliding.
 - `TCAB_AUTH_DATABASE_URL` — its **own** accounts database, separate from the
   backend's database (SQLite by default, or an external database).
 

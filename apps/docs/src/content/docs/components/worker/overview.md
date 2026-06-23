@@ -10,9 +10,13 @@ instance — with a web API in front of it instead of a command line: the same
 than from a shell.
 
 Its purpose is to let test cases be invoked on a **remote** machine. A run needs
-a container runtime and meaningful compute; the worker lets that machine be
+somewhere to start containers and meaningful compute; the worker lets that be
 separate from wherever a person is driving things, so runs can be launched on a
-dedicated host (or several) instead of on a laptop.
+dedicated host (or several) instead of on a laptop. How it starts each run's
+container is selected by `TCAB_WORKER_RUNTIME`: `cli` (the default) shells out to
+a host Docker/Podman, the shape used for local development; `kubernetes` creates a
+**run pod per run via the Kubernetes API**, the shape used in a
+[cluster deployment](/deployment/kubernetes/).
 
 ## Relationship to the Core
 
@@ -31,8 +35,9 @@ translates HTTP requests into core calls and streams the results back:
   on the same terms.
 
 Because it is a [runner](/components/architecture/#runners-and-reporters), the
-worker's host needs a supported container runtime, and it resolves test case
-definitions from, and publishes results to, the
+worker needs somewhere to start run containers — a host container runtime
+(`cli`), or RBAC to manage pods in a namespace (`kubernetes`) — and it resolves
+test case definitions from, and publishes results to, the
 [backend](/components/backend/overview/). Like the backend, it is intended to
 live on the private network rather than be exposed publicly.
 
@@ -153,7 +158,9 @@ the backend (`TCAB_BACKEND_URL`); it has no local checkout. It proxies account
 register/login to, and forwards bearer tokens against, the
 [auth service](/components/auth/overview/) (`TCAB_AUTH_URL`). Configuration is by
 environment variable (`TCAB_WORKER_BIND` — `8788` by default,`TCAB_BACKEND_URL`,
-`TCAB_AUTH_URL`, `TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`). Like the backend, the
+`TCAB_AUTH_URL`, `TCAB_WORKER_OUT_DIR`, `TCAB_WORK_DIR`, and — when
+`TCAB_WORKER_RUNTIME=kubernetes` — the `TCAB_K8S_*` run-pod settings documented in
+[Kubernetes: staging & prod](/deployment/kubernetes/#worker)). Like the backend, the
 worker has no accounts of its own and stays on the private network; the bearer
 tokens it forwards are an identity layer carried *through* it to the backend, not
 a login the worker itself performs. Bind it to a private-network interface and let

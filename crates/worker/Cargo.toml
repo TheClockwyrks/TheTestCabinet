@@ -49,6 +49,25 @@ bytes = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 
+# Kubernetes runtime (`src/kubernetes.rs`): under TCAB_WORKER_RUNTIME=kubernetes the
+# worker creates one run pod per run via the API instead of shelling out to a host
+# Docker/Podman. `ws` enables the pod `exec`/attach websocket the runtime streams
+# the session and `tar` copy in/out over; `rustls-tls` keeps the worker on the same
+# no-system-OpenSSL stack as the rest of the workspace (no `default-features`, which
+# would pull native-tls + openssl). `k8s-openapi`'s `latest` feature selects the
+# newest Kubernetes API types; the runtime only uses the long-stable core `Pod`
+# objects, so any supported cluster version works. `tar` (pure Rust, no system deps)
+# frames the working tree streamed in and out of the pod over `exec`, the same
+# mechanism `kubectl cp` uses. These are the worker's alone — the leaner crates and
+# the CLI/desktop (which use the host-runtime path) never compile them.
+kube = { version = "4", default-features = false, features = [
+	"client",
+	"ws",
+	"rustls-tls",
+] }
+k8s-openapi = { version = "0.28", features = ["latest"] }
+tar = "0.4"
+
 [features]
 # Derive `ts_rs::TS` + `schemars::JsonSchema` on the worker API request/response
 # types for the `contract-codegen` generator. Never enabled by a normal build.

@@ -1,0 +1,83 @@
+# Backend: a single-replica StatefulSet with a PersistentVolumeClaim for state,
+# plus a ClusterIP Service. SQLite is single-writer, so replicas stays 1; point
+# TCAB_BACKEND_DATABASE_URL at a postgres:// instance to drop that pin and the
+# volume (see deployment/backups.md). The image must include a headless Chromium
+# (deployments/images/backend.Dockerfile).
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-backend
+  ports:
+    - name: http
+      port: 8787
+      targetPort: 8787
+  # ClusterIP only — never expose the backend with a public Ingress/LoadBalancer.
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  serviceName: tcab-backend
+  replicas: 1 # SQLite is single-writer; do not scale out.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-backend
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      containers:
+        - name: backend
+          image: REPLACE_REGISTRY/tcab-backend:latest
+          ports:
+            - containerPort: 8787
+          env:
+            - name: TCAB_BACKEND_BIND
+              value: "0.0.0.0:8787"
+            - name: TCAB_BACKEND_DATABASE_URL
+              value: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
+            - name: TCAB_BACKEND_STORE
+              value: "/state/tcab-store"
+            - name: TCAB_BACKEND_CHECKOUT
+              value: "/state/checkout"
+            # The auth service this backend verifies tokens against.
+            - name: TCAB_BACKEND_AUTH_URL
+              value: "http://tcab-auth:8789"
+            - name: TCAB_ENV
+              value: "prod"
+          envFrom:
+            - secretRef:
+                name: tcab-backend-secrets
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8787
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8787
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+        # storageClassName: <your-block-storage-class>   # avoid NFS/SMB for SQLite

@@ -1,0 +1,60 @@
+# Auth service: the same single-replica StatefulSet + PersistentVolumeClaim shape
+# as the backend (its own SQLite accounts database is single-writer), plus a
+# ClusterIP Service. Point TCAB_AUTH_DATABASE_URL at a postgres:// instance to run
+# it as a plain stateless Deployment instead. It renders nothing, so its image
+# (deployments/images/auth.Dockerfile) ships no browser.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-auth
+  ports:
+    - name: http
+      port: 8789
+      targetPort: 8789
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+spec:
+  serviceName: tcab-auth
+  replicas: 1 # single-writer SQLite accounts store
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-auth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-auth
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      containers:
+        - name: auth
+          image: REPLACE_REGISTRY/tcab-auth-service:latest
+          ports:
+            - containerPort: 8789
+          env:
+            - name: TCAB_AUTH_BIND
+              value: "0.0.0.0:8789"
+            - name: TCAB_AUTH_DATABASE_URL
+              value: "sqlite:///state/tcab-auth.sqlite?mode=rwc"
+            - name: TCAB_ENV
+              value: "prod"
+          volumeMounts:
+            - name: state
+              mountPath: /state
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+        # storageClassName: <your-block-storage-class>

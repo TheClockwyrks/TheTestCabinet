@@ -22,10 +22,9 @@ carry the right `deployment.environment.name` and can be filtered apart, as
 The two services read their endpoint from the same place they read everything
 else:
 
-- **Backend** — an environment variable on the Container App (the endpoint
-  non-secret, the auth header a Container Apps **secret**), or in
-  `/etc/test-cabinet/backend.env` on a VM.
-- **Workers** — `/etc/test-cabinet/worker.env` on each VM (see the
+- **Backend** — environment variables on the backend pod: the endpoint from its
+  `ConfigMap`, the auth header from a Kubernetes **`Secret`**.
+- **Workers** — environment variables on the worker pod, the same way (see the
   [worker env overlays](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/env)).
 
 The [web console](/components/web/overview/) is a browser app that exports
@@ -56,24 +55,25 @@ Treat the header as a secret — inject it from your secret store, never commit 
 ### Self-hosted Grafana LGTM
 
 Run the [`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm)
-all-in-one image on a small VM — the **same image the devcontainer runs**, so
-staging/prod observability mirrors local exactly. Cheapest in dollars, but you
-operate, secure, and (if you care about retention) back up the telemetry box
-yourself. Point each service at that VM's `:4318` on the private network:
+all-in-one image as its own `Deployment` + `Service` in the cluster — the **same
+image the devcontainer runs**, so staging/prod observability mirrors local
+exactly. Cheapest in dollars, but you operate, secure, and (if you care about
+retention) back up the telemetry workload yourself. Point each service at its
+in-cluster `Service` on `:4318`:
 
 ```sh
-OTEL_EXPORTER_OTLP_ENDPOINT=http://<lgtm-host-private-address>:4318
+OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm.<namespace>.svc:4318
 ```
 
-### Azure Monitor
+### A managed observability backend
 
-To keep everything in Azure, run an
+To send to a managed backend (a cloud provider's monitor, or any OTLP-compatible
+vendor), run an
 [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) that receives
-OTLP from the services and exports to Azure Monitor / Application Insights — the
-services still speak plain OTLP, the collector does the translation. An example
-collector configuration is in
+OTLP from the services and exports onward — the services still speak plain OTLP,
+the collector does the translation. An example collector configuration is in
 [`deployments/telemetry/otel-collector.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/telemetry/otel-collector.yaml).
-This is the most setup (a collector to run, as a sidecar or its own small host)
+This is the most setup (a collector to run, as a sidecar or its own `Deployment`)
 but adds no third-party dependency.
 
 ## Authentication and volume

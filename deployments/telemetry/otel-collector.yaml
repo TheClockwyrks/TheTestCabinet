@@ -1,10 +1,10 @@
-# Example OpenTelemetry Collector config for the Azure Monitor telemetry path.
+# Example OpenTelemetry Collector config for forwarding to a managed observability
+# backend (this example targets Azure Monitor; swap the exporter for your vendor).
 # See apps/docs/src/content/docs/deployment/telemetry.md.
 #
 # The services export plain OTLP to this collector; the collector translates and
-# forwards to Azure Monitor / Application Insights. Run it as a sidecar or on its
-# own small host on the private network, and point each service's
-# OTEL_EXPORTER_OTLP_ENDPOINT at this collector's :4318.
+# forwards onward. Run it as a sidecar or its own Deployment + Service in the
+# cluster, and point each service's OTEL_EXPORTER_OTLP_ENDPOINT at it on :4318.
 #
 # The connection string is a secret — inject it from your secret store as
 # APPLICATIONINSIGHTS_CONNECTION_STRING, do not commit it.

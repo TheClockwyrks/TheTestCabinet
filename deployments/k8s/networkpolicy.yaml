@@ -1,0 +1,55 @@
+# Optional NetworkPolicy. With no public Ingress, reachability is already limited
+# to the cluster network; this tightens it. Your cluster needs a NetworkPolicy-
+# enforcing CNI (Calico, Cilium, etc.) for these to take effect.
+#
+# Run pods carry app.kubernetes.io/managed-by: tcab-worker (set by the worker), so
+# a policy can select them. They need NO inbound access except the worker's
+# exec/preview connections — exec rides the API server, preview is the worker pod
+# reaching the run pod — and only the egress their harness needs.
+
+# Default-deny ingress for the namespace; allow egress (DNS, model APIs, registries).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-default-deny-ingress
+  namespace: tcab-prod
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  # No ingress rules => deny all inbound by default; add explicit allows below.
+---
+# Let the workers reach the backend and auth service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-services-from-workers
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: ["tcab-backend", "tcab-auth"]
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-worker
+---
+# Let the worker reach its run pods (the live asset-preview stream).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-runpods-from-worker
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: tcab-worker
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-worker

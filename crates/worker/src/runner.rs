@@ -14,16 +14,21 @@
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
-    CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry, DispatchValidator,
-    FsRepoSeeder, HttpBackendClient, NoopPublisher, OpenRouterPrices, OrchestratorCatalog,
-    PrerenderedReferenceRenderer, RunEngine, RunRecord, RunRequest, TestCaseCatalog,
-    TestCaseVersion, materialize_version, write_failed_record,
+    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient, NoopPublisher,
+    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
+    RunEngine, RunRecord, RunRequest, TestCaseCatalog, TestCaseVersion, materialize_version,
+    write_failed_record,
 };
 use time::OffsetDateTime;
 
 use std::sync::Arc;
 
+use crate::config::WorkerRuntime;
 use crate::jobs::{Job, JobEventSink, JobPreviewSink};
+use crate::kubernetes::{
+    KubernetesArtifactCollector, KubernetesConfig, KubernetesContainerRuntime,
+};
 use crate::notify::{WorkerNotification, WorkerNotifier};
 
 /// Everything the worker needs to drive a run, derived once from the config and
@@ -36,6 +41,11 @@ pub struct RunContext {
     pub out_dir: PathBuf,
     /// Staging directory for a run's mountable inputs.
     pub work_dir: PathBuf,
+    /// How each run's container is started (CLI runtime or Kubernetes run pods).
+    pub runtime: WorkerRuntime,
+    /// Run-pod settings used when [`runtime`](Self::runtime) is
+    /// [`WorkerRuntime::Kubernetes`].
+    pub kubernetes: KubernetesConfig,
 }
 
 /// Drive a single run to completion, recording its outcome on `job`.
@@ -90,8 +100,8 @@ pub async fn drive_run(ctx: RunContext, request: RunRequest, job: Job, notifier:
 /// Why a run failed, with the resolved version when the failure happened after the
 /// definition was materialized. The version lets the persisted failure record
 /// carry the run's real test type and version; a failure before resolution (the
-/// container runtime is missing, or the backend will not serve the definition)
-/// has none and falls back to what the request carried.
+/// scratch directories cannot be created, or the backend will not serve the
+/// definition) has none and falls back to what the request carried.
 struct RunFailure {
     detail: String,
     test_case: Option<TestCaseVersion>,
@@ -131,9 +141,6 @@ async fn run_inner(
             .map_err(|err| RunFailure::setup(format!("creating {}: {err}", dir.display())))?;
     }
 
-    let runtime = CliContainerRuntime::detect()
-        .map_err(|err| RunFailure::setup(format!("locating a container runtime: {err}")))?;
-
     // The worker is always backend-driven: resolve the served definition, write
     // it to the per-job store, and reuse the backend's pre-rendered references as
     // the seeded visual targets and validation baselines.
@@ -155,16 +162,89 @@ async fn run_inner(
         ))
     })?;
 
+    // From here the version is resolved, so any failure — including building the
+    // container runtime — carries it through for the persisted failure record's
+    // subject (its real test type and version). Select the runtime: a host
+    // Docker/Podman for local/single-box use, or run pods via the Kubernetes API
+    // for a cluster deployment. Only the runtime and its artifact collector differ;
+    // everything else the engine wires is identical, so each arm hands its pair to
+    // the same generic `drive_engine`.
+    let with_test_case = |detail: String| RunFailure {
+        detail,
+        test_case: Some(test_case.clone()),
+    };
+    match ctx.runtime {
+        WorkerRuntime::Cli => {
+            let runtime = CliContainerRuntime::detect()
+                .map_err(|err| with_test_case(format!("locating a container runtime: {err}")))?;
+            let collector = CliArtifactCollector::new(runtime.clone(), artifact_dir);
+            drive_engine(
+                ctx,
+                request,
+                &test_case,
+                references,
+                seed_dir,
+                screenshot_dir,
+                runtime,
+                collector,
+                job,
+            )
+            .await
+        }
+        WorkerRuntime::Kubernetes => {
+            let runtime = KubernetesContainerRuntime::connect(ctx.kubernetes.clone())
+                .await
+                .map_err(|err| {
+                    with_test_case(format!("connecting to the Kubernetes API: {err}"))
+                })?;
+            let collector = KubernetesArtifactCollector::new(runtime.clone(), artifact_dir);
+            drive_engine(
+                ctx,
+                request,
+                &test_case,
+                references,
+                seed_dir,
+                screenshot_dir,
+                runtime,
+                collector,
+                job,
+            )
+            .await
+        }
+    }
+    .map_err(|err| with_test_case(format!("run failed: {err}")))
+}
+
+/// Assemble the [`RunEngine`] around the selected container `runtime` and
+/// `collector` and drive the resolved run to completion, relaying live events and
+/// preview frames onto `job`. Everything except the runtime/collector pair is the
+/// same regardless of where containers run, so both runtime arms share this.
+#[allow(clippy::too_many_arguments)]
+async fn drive_engine<R, C>(
+    ctx: &RunContext,
+    request: &RunRequest,
+    test_case: &TestCaseVersion,
+    references: Vec<RenderedReference>,
+    seed_dir: PathBuf,
+    screenshot_dir: PathBuf,
+    runtime: R,
+    collector: C,
+    job: &Job,
+) -> Result<RunRecord, test_cabinet_core::Error>
+where
+    R: ContainerRuntime,
+    C: ArtifactCollector,
+{
     // The base image resolves from the environment inside the orchestrator (a
     // registry reference, no backend involved); the request carries no explicit
     // per-run override.
     let orchestrator = RunEngine {
-        // `run_resolved` does not consult the catalog (the version is resolved
-        // above), but the struct still carries one; a worker has no checkout, so
-        // point it at a placeholder that is never read.
+        // `run_resolved` does not consult the catalog (the version is resolved by
+        // the caller), but the struct still carries one; a worker has no checkout,
+        // so point it at a placeholder that is never read.
         catalog: TestCaseCatalog::new(catalog_placeholder()),
         seeder: FsRepoSeeder::new(seed_dir),
-        collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
+        collector,
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
@@ -182,15 +262,9 @@ async fn run_inner(
     // the console's run monitor can watch the sprite take shape; other run types
     // produce none and the listener simply never fires.
     let preview = Arc::new(JobPreviewSink::new(job.clone()));
-    // From here the version is resolved, so a failure carries it through for the
-    // persisted failure record's subject (its real test type and version).
     orchestrator
-        .run_resolved(request, &test_case, &mut events, Some(preview))
+        .run_resolved(request, test_case, &mut events, Some(preview))
         .await
-        .map_err(|err| RunFailure {
-            detail: format!("run failed: {err}"),
-            test_case: Some(test_case),
-        })
 }
 
 /// A non-existent catalog root for the orchestrator's unused `catalog` field. A

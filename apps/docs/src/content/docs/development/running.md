@@ -203,7 +203,9 @@ unset keeps both on plain stdout logging.
 
 ## Next
 
-When this works end to end, the same service binaries deploy unchanged to
-[staging and prod on Azure](/deployment/azure/) — what changes is where they bind
-and how they are supervised, not how they are configured. See
-[Deployment](/deployment/overview/) for the remote build.
+When this works end to end, the same service images deploy unchanged to
+[staging and prod on Kubernetes](/deployment/kubernetes/) — what changes is the
+namespace they live in and that the worker switches to spawning a run pod per run
+(`TCAB_WORKER_RUNTIME=kubernetes`) instead of using the host's container runtime,
+not how the rest is configured. See [Deployment](/deployment/overview/) for the
+remote build.

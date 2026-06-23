@@ -128,6 +128,8 @@ pub async fn submit(
         backend_url: state.config.backend_url.clone(),
         out_dir: state.config.out_dir.clone(),
         work_dir: state.config.work_dir.clone(),
+        runtime: state.config.runtime,
+        kubernetes: state.config.kubernetes.clone(),
     };
 
     state.metrics.record_run_submitted();

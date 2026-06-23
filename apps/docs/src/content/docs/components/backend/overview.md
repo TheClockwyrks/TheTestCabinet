@@ -57,9 +57,9 @@ credentials) — no configuration file is required.
 ## Authentication
 
 The backend has no public write surface, and it stays on a **private network** —
-using something like [Tailscale](https://tailscale.com/) or a comparable
-mesh/VPN — so that reachability is the first line of access control and the
-service is never exposed to the public internet. On top of that network boundary,
+in a [cluster deployment](/deployment/kubernetes/), a `ClusterIP` service with no
+public `Ingress` — so that reachability is the first line of access control and
+the service is never exposed to the public internet. On top of that network boundary,
 a second, application-level layer **identifies who is acting**: real user
 [accounts](#accounts), so that every [review](/components/core/results/#reviews) a
 run carries is attributed to a person rather than being anonymous. The network

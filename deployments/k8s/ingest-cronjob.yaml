@@ -1,0 +1,46 @@
+# Periodic catalog refresh: pull the test-cases repository onto the backend's
+# volume and call POST /ingest. Because the backend's volume is persistent, this
+# is a refresh, not a per-restart step. Schedule to taste.
+#
+# This example clones into an emptyDir and posts to the backend over the cluster
+# network. If your backend serves its checkout from the PVC, mount that PVC here
+# (ReadWriteOnce means the backend pod and this job must land on the same node, or
+# use a ReadWriteMany class) instead of the emptyDir.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tcab-ingest
+  namespace: tcab-prod
+spec:
+  schedule: "*/30 * * * *" # every 30 minutes
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: ingest
+              image: REPLACE_REGISTRY/tcab-worker:latest # any image with git + curl
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
+                  rm -rf /work/repo
+                  git clone --depth 1 "$REPO" /work/repo
+                  # Tell the backend to re-ingest. force:true is required after a
+                  # test-case edit (the def store is immutable per version).
+                  curl -fsS -X POST "$TCAB_BACKEND_URL/ingest" \
+                    -H 'content-type: application/json' \
+                    -d '{"force": true}'
+              env:
+                - name: TCAB_BACKEND_URL
+                  value: "http://tcab-backend:8787"
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+          volumes:
+            - name: work
+              emptyDir: {}

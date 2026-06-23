@@ -48,12 +48,12 @@ defense in depth, not your backup.
 
 How you back the database up depends on which store you run, and that pairs
 naturally with the two backend-hosting shapes from
-[Azure: staging & prod](/deployment/azure/):
+[Kubernetes: staging & prod](/deployment/kubernetes/):
 
 | Store | Backend host | Backup strategy |
 | ----- | ------------ | --------------- |
-| **SQLite** (the default) | A VM with local disk | [Litestream](#sqlite-litestream) streaming to object storage, or [scheduled dumps](#sqlite-scheduled-dumps) |
-| **Managed PostgreSQL** | Stateless on Container Apps | [Provider-managed backups + PITR](#managed-postgresql) — nothing to operate |
+| **SQLite** (the default) | A single-replica `StatefulSet` with a `PersistentVolumeClaim` | [Litestream](#sqlite-litestream) sidecar streaming to object storage, or [scheduled dumps](#sqlite-scheduled-dumps) |
+| **Managed PostgreSQL** | A stateless `Deployment` | [Provider-managed backups + PITR](#managed-postgresql) — nothing to operate |
 
 The backend defaults to a single embedded SQLite file (see the
 [backend overview](/components/backend/overview/)), so the SQLite paths below
@@ -69,14 +69,15 @@ is single-writer and low-volume (a publish at a time, coalesced), and it already
 runs in [WAL mode](/components/backend/overview/), which Litestream requires.
 
 - It replicates to any S3-compatible bucket — including the **Cloudflare R2** you
-  already use for snapshots — or to Azure Blob Storage. Reuse the same bucket
+  already use for snapshots — or to any other object store. Reuse the same bucket
   provider to keep credentials and familiarity in one place.
-- Litestream wants the database on **local disk**, not a network share, which is
-  why this path pairs with running the backend on a **VM** (the simpler
-  backend-hosting option) rather than on Container Apps over Azure Files.
-- Run `litestream replicate` alongside the backend (a systemd service next to
-  `tcab-backend`, pointed at the SQLite file in `TCAB_BACKEND_DATABASE_URL`). An
-  example configuration is in
+- Litestream wants the database on **local disk**, not a network share. A
+  `ReadWriteOnce` `PersistentVolumeClaim` backed by a block volume mounts as a
+  real device in the pod and satisfies this; avoid an NFS/SMB-backed claim for the
+  SQLite file.
+- Run `litestream replicate` as a **sidecar container** in the backend pod,
+  sharing the database `PersistentVolumeClaim` and pointed at the SQLite file in
+  `TCAB_BACKEND_DATABASE_URL`. An example configuration is in
   [`deployments/backups/litestream.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/backups/litestream.yml).
 - **Restore** with `litestream restore -o <db-path> <replica-url>` before
   starting the backend. Practice this — see [Test your restore](#test-your-restore).
@@ -90,25 +91,24 @@ periodic clean copy pushed to object storage:
 # DB = the SQLite file path from TCAB_BACKEND_DATABASE_URL (sqlite://<path>?…).
 # A consistent copy while the backend is running, then upload it.
 sqlite3 "$DB" "VACUUM INTO '/tmp/tcab-$(date +%F-%H%M).sqlite'"
-# ...then `az storage blob upload` or `aws s3 cp` (R2) the file, with a
+# ...then `aws s3 cp` (R2) or your provider's CLI uploads the file, with a
 # lifecycle/retention policy on the bucket to age old copies out.
 ```
 
 `VACUUM INTO` takes a safe, defragmented snapshot without stopping the service.
-Run it from a cron job or systemd timer. The trade versus Litestream is a coarser
-recovery point — you lose up to one interval rather than seconds — in exchange for
-not running a streaming daemon, and it works even when the database is on a
-network share. If the backend ever runs on Container Apps over Azure Files, this
-is the path to use.
+Run it from a Kubernetes `CronJob` that mounts the backend's database
+`PersistentVolumeClaim`. The trade versus Litestream is a coarser recovery point —
+you lose up to one interval rather than seconds — in exchange for not running a
+streaming sidecar, and it works even when the database is on a network share.
 
 ## Managed PostgreSQL
 
-If you point the backend's record store at managed PostgreSQL (for example
-**Azure Database for PostgreSQL Flexible Server**), backups stop being something
-you build: the provider takes automated daily backups with configurable retention
-and **point-in-time restore**, and restore is a portal/CLI operation. This also
-makes the backend stateless on Container Apps, removing the persistent-volume and
-single-replica caveats in [Azure: staging & prod](/deployment/azure/#backend-on-azure-container-apps).
+If you point the backend's record store at a managed PostgreSQL instance (any
+cloud provider's, or one you operate), backups stop being something you build: the
+provider takes automated daily backups with configurable retention and
+**point-in-time restore**, and restore is a portal/CLI operation. This also makes
+the backend stateless — a plain `Deployment` — removing the persistent-volume and
+single-replica caveats in [Kubernetes: staging & prod](/deployment/kubernetes/#backend).
 
 This is the natural choice when you want managed durability and a stateless
 backend, and it is a **configuration** change, not a code one: the backend talks

@@ -22,6 +22,7 @@ pub mod arena;
 pub mod config;
 pub mod error;
 pub mod jobs;
+pub mod kubernetes;
 pub mod metrics;
 pub mod notify;
 pub mod runner;

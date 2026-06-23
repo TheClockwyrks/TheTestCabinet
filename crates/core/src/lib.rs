@@ -70,8 +70,8 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest, SeededRepo,
-    WORKSPACE_DIR,
+    ContainerSpec, ExecOutput, OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest,
+    SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,

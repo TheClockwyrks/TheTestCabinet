@@ -15,11 +15,11 @@
 
 services:
   backend:
-    # Built from the same image used for Azure Container Apps, so the local
+    # Built from the same image used in the cluster, so the local
     # backend has the headless Chromium it needs to render references at ingest.
     build:
       context: ../..
-      dockerfile: deployments/azure/backend.Dockerfile
+      dockerfile: deployments/images/backend.Dockerfile
     # The backend loads .env.backend (copied from the repo-root example). The
     # in-container paths below override the file's host-oriented defaults.
     env_file:
@@ -45,7 +45,7 @@ services:
     # rendering, so it needs neither Chromium nor the font set.
     build:
       context: ../..
-      dockerfile: deployments/azure/auth.Dockerfile
+      dockerfile: deployments/images/auth.Dockerfile
     # The auth service loads .env.auth (copied from the repo-root example). The
     # in-container paths below override the file's host-oriented defaults.
     env_file:

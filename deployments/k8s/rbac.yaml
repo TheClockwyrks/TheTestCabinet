@@ -1,0 +1,48 @@
+# RBAC for the worker's run-pod lifecycle.
+#
+# Under TCAB_WORKER_RUNTIME=kubernetes the worker creates one pod per run, waits
+# for it to be Running, exec's the harness session into it, and deletes it. This
+# grants EXACTLY that and nothing more: a namespaced Role (not a ClusterRole),
+# scoped to the run namespace. The worker creates no Deployments, Services, or
+# RBAC objects and never touches anything outside this namespace.
+#
+# The worker StatefulSet runs under this ServiceAccount; in-cluster the Kubernetes
+# client picks up the mounted token automatically (no kubeconfig needed).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-worker
+  namespace: tcab-prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tcab-worker-run-pods
+  namespace: tcab-prod
+rules:
+  # Start a run pod, watch it reach Running, delete it when the run ends.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Seed the working tree and run the harness session in the pod.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  # Surface a failed pod's logs in the run's failure detail.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tcab-worker-run-pods
+  namespace: tcab-prod
+subjects:
+  - kind: ServiceAccount
+    name: tcab-worker
+    namespace: tcab-prod
+roleRef:
+  kind: Role
+  name: tcab-worker-run-pods
+  apiGroup: rbac.authorization.k8s.io
