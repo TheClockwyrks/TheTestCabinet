@@ -89,5 +89,11 @@ External Secrets, Sealed Secrets, …). The key ones:
   mounts it into each driver Job (via `TCAB_DISPATCHER_DRIVER_SECRETS`), and the run
   engine injects the key into the sandbox pod it creates.
 
+For the **local** (k3d) overlay you do not create these by hand: the
+[`../local/Makefile`](../local/Makefile) creates all three Secrets in-cluster from
+your **environment** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`
+for the driver, a dev `SERVICE_TOKEN` for the other two), so no key is written to a
+tracked file.
+
 The repo-root `.env.backend.example`, `.env.auth.example`, and `.env.dispatcher.example`
 remain the authoritative reference for every variable each service reads.

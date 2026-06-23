@@ -46,28 +46,18 @@ images:
     newName: tcab-artifacts
     newTag: local
 
-# Dev secrets. The backend + dispatcher share TCAB_BACKEND_SERVICE_TOKEN (a fixed
-# dev value, so the dispatcher can claim jobs); the backend's R2/deploy-hook keys
-# are absent (the backend skips the snapshot upload when unset). The driver secret
-# carries the harness API key — supply yours via the literal below or an env var.
-# disableNameSuffixHash keeps each name stable so the manifests' references match.
-secretGenerator:
-  - name: tcab-backend-secrets
-    literals:
-      - TCAB_BACKEND_SERVICE_TOKEN=local-dev-service-token
-    options:
-      disableNameSuffixHash: true
-  - name: tcab-dispatcher-secrets
-    literals:
-      - TCAB_BACKEND_SERVICE_TOKEN=local-dev-service-token
-    options:
-      disableNameSuffixHash: true
-  - name: tcab-driver-secrets
-    literals:
-      # Replace with your real key, or pass it in from the Makefile/env.
-      - ANTHROPIC_API_KEY=REPLACE_ME
-    options:
-      disableNameSuffixHash: true
+# Secrets are deliberately NOT generated here — a secretGenerator would bake the
+# values into this tracked file. The Makefile creates them in-cluster from the host
+# ENVIRONMENT instead (`make -C deployments/local secrets`, run automatically by
+# `local-up`), so no API key or token is ever written to disk:
+#   - tcab-backend-secrets / tcab-dispatcher-secrets — the shared
+#     TCAB_BACKEND_SERVICE_TOKEN (a fixed dev default, overridable via $SERVICE_TOKEN),
+#     so the dispatcher can claim jobs.
+#   - tcab-driver-secrets — the harness provider API key(s) read from
+#     $ANTHROPIC_API_KEY / $OPENAI_API_KEY / $OPENROUTER_API_KEY.
+# The manifests reference these by fixed name; the Makefile creates them with those
+# exact names (no hash suffix), so the references match. The backend's R2/deploy-hook
+# keys stay absent locally (the backend skips the snapshot upload when unset).
 
 patches:
   - path: patch-backend.yaml

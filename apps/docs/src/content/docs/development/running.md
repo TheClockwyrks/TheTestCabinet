@@ -58,22 +58,33 @@ cluster, from the same manifests. The
 drives the whole thing; it needs only `docker`, [`k3d`](https://k3d.io), and
 `kubectl` on the host:
 
+Before bringing the stack up, **export the harness provider API key** the run
+needs — the Makefile reads it from your environment and creates the cluster
+Secret from it, so no key is ever written to a tracked file:
+
 ```sh
-make -C deployments/local local-up        # create cluster, build+load images, apply, ingest
+export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
+                             # codex, OPENROUTER_API_KEY for cline/goose/kilo/…)
+```
+
+```sh
+make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
 make -C deployments/local local-forward   # hold backend→:8787 and auth→:8789 open on localhost
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
 make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
 make -C deployments/local local-ingest    # force re-ingest the catalog after editing a case
+make -C deployments/local secrets         # re-create the Secrets from the environment (after rotating a key)
 make -C deployments/local local-down      # delete the cluster and everything in it
 ```
 
 `local-up` creates a throwaway k3d cluster, builds the **backend**, **auth**,
 **dispatcher**, **driver**, and **artifact** images from
 [`deployments/images/`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images),
-loads them with `k3d image import` (no registry needed), applies the
-`deployments/k8s/overlays/local` kustomize overlay, and force-ingests the catalog
-from a read-only mount of this repository. The dispatcher and driver run
+loads them with `k3d image import` (no registry needed), creates the cluster
+Secrets from your environment (the harness key above plus a dev service token),
+applies the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests
+the catalog from a read-only mount of this repository. The dispatcher and driver run
 in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 **schedules as a Job in this same cluster** — exactly as a cloud deployment runs
 it. The host no longer runs any worker process.

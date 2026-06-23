@@ -9,12 +9,22 @@
 # artifact service, and one per-run driver Job per enqueued run. There is no
 # worker-on-host wiring; a run enqueued at the backend schedules as a Job here.
 #
+# Secrets come from the host ENVIRONMENT, never a tracked file. Before `local-up`,
+# export the harness provider API key the run needs — at least one of:
+#   export ANTHROPIC_API_KEY=…     # the `claude` harness
+#   export OPENAI_API_KEY=…        # codex
+#   export OPENROUTER_API_KEY=…    # cline, goose, kilo, opencode, pi
+# The shared dispatcher↔backend claim token defaults to a dev value; override it
+# with `SERVICE_TOKEN=… make local-up` if you want. The `secrets` target creates
+# the cluster Secrets from these; nothing sensitive is ever written to disk.
+#
 # Targets:
 #   local-up        create the cluster, build+import images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import images and restart the services (after a code change)
 #   local-forward   foreground-forward backend→:8787 and auth→:8789 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
+#   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
 
 # Resolve the repo root from this Makefile's location so the targets work no
@@ -32,7 +42,11 @@ DISPATCHER_IMG := tcab-dispatcher:local
 DRIVER_IMG     := tcab-driver:local
 ARTIFACTS_IMG  := tcab-artifacts:local
 
-.PHONY: local-up local-down local-rebuild local-forward local-ingest local-status cluster images apply
+# Shared dispatcher↔backend service token. A fixed dev default (no production value
+# lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
+SERVICE_TOKEN ?= local-dev-service-token
+
+.PHONY: local-up local-down local-rebuild local-forward local-ingest local-status secrets cluster images apply
 
 local-up: cluster images apply local-ingest
 	@echo ""
@@ -62,8 +76,41 @@ images:
 	docker build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
 	k3d image import '$(BACKEND_IMG)' '$(AUTH_IMG)' '$(DISPATCHER_IMG)' '$(DRIVER_IMG)' '$(ARTIFACTS_IMG)' -c '$(CLUSTER)'
 
-# Apply the local overlay and wait for every service to become ready.
-apply:
+# Create the cluster Secrets from the host ENVIRONMENT, so no API key or token is
+# ever written to a tracked file (the local overlay deliberately omits them). Runs
+# automatically as part of `apply`; run it on its own after rotating a key, then
+# enqueue a run (driver Jobs pick up tcab-driver-secrets fresh each run) or
+# `local-rebuild` to restart the long-lived services. Idempotent — re-running
+# updates each Secret in place.
+#
+# Requires at least one harness key in the environment (ANTHROPIC_API_KEY /
+# OPENAI_API_KEY / OPENROUTER_API_KEY); only the key(s) present are included.
+secrets:
+	@kubectl create namespace '$(NS)' --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@kubectl -n '$(NS)' create secret generic tcab-backend-secrets \
+	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
+	  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@kubectl -n '$(NS)' create secret generic tcab-dispatcher-secrets \
+	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
+	  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@set -e; \
+	  args=""; \
+	  if [ -n "$$ANTHROPIC_API_KEY" ];  then args="$$args --from-literal=ANTHROPIC_API_KEY=$$ANTHROPIC_API_KEY"; fi; \
+	  if [ -n "$$OPENAI_API_KEY" ];     then args="$$args --from-literal=OPENAI_API_KEY=$$OPENAI_API_KEY"; fi; \
+	  if [ -n "$$OPENROUTER_API_KEY" ]; then args="$$args --from-literal=OPENROUTER_API_KEY=$$OPENROUTER_API_KEY"; fi; \
+	  if [ -z "$$args" ]; then \
+	    echo "ERROR: no harness API key found in the environment."; \
+	    echo "       Export at least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY"; \
+	    echo "       before running this (it injects the key into each driver Job)."; \
+	    exit 1; \
+	  fi; \
+	  kubectl -n '$(NS)' create secret generic tcab-driver-secrets $$args \
+	    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@echo "Secrets applied to namespace '$(NS)' from the environment."
+
+# Apply the local overlay and wait for every service to become ready. Secrets are
+# created first (from the environment) so the pods find them on their first start.
+apply: secrets
 	kubectl apply -k '$(OVERLAY)'
 	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
