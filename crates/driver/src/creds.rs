@@ -65,10 +65,20 @@ pub fn mounted_creds(dir: &Path, harness_slug: HarnessSlug) -> MapCreds {
             // the Secret is absent entirely) is skipped; core decides whether a
             // required credential being missing fails the run.
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            // A present-but-unreadable file is also skipped here; if it was
-            // required, core surfaces the unavailability with the same error a
-            // host read would.
-            Err(_) => {}
+            // A present-but-unreadable file is also skipped here (core then reports
+            // the subscription as unavailable). This is an unexpected state — a
+            // mounted-but-unreadable credential usually means a permissions
+            // mismatch (e.g. a root-owned Secret volume the non-root driver cannot
+            // read without an fsGroup) — so log it rather than fail silently, which
+            // is otherwise indistinguishable from the file simply being absent.
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    path = %path.display(),
+                    container_path = file.container_path,
+                    "subscription credential is present but unreadable; treating it as absent",
+                );
+            }
         }
     }
     MapCreds::new(by_container_path)

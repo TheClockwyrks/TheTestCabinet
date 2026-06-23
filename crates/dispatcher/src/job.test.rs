@@ -198,6 +198,12 @@ fn no_subscription_secret_omits_the_volume_and_env() {
         container(&job).volume_mounts.is_none(),
         "expected no mounts"
     );
+    // No subscription mount means no fsGroup either — an API-key-only pod needs no
+    // pod-level security context.
+    assert!(
+        pod.security_context.is_none(),
+        "expected no security context"
+    );
     assert!(
         !env_map(container(&job).env.as_ref().unwrap())
             .contains_key("TCAB_DRIVER_SUBSCRIPTION_DIR")
@@ -205,7 +211,7 @@ fn no_subscription_secret_omits_the_volume_and_env() {
 }
 
 #[test]
-fn subscription_secret_mounts_a_readonly_volume_with_default_mode_0600() {
+fn subscription_secret_mounts_a_readonly_group_readable_volume() {
     let mut config = config();
     config.driver_subscription_secret = Some("tcab-driver-subscription".to_string());
     config.subscription_dir = "/var/run/tcab/subscription".to_string();
@@ -222,10 +228,21 @@ fn subscription_secret_mounts_a_readonly_volume_with_default_mode_0600() {
         secret.secret_name.as_deref(),
         Some("tcab-driver-subscription")
     );
-    // Owner-only credential files, and optional so a missing Secret never wedges
-    // the pod.
-    assert_eq!(secret.default_mode, Some(0o600));
+    // Group-readable (never world-readable), and optional so a missing Secret never
+    // wedges the pod. The group bit lets the non-root `node` user read the
+    // root-owned projected files via the pod's fsGroup (asserted below).
+    assert_eq!(secret.default_mode, Some(0o640));
     assert_eq!(secret.optional, Some(true));
+
+    // The pod carries an fsGroup so the driver's `node` user can read those
+    // root-owned credential files; without it the read fails with EACCES.
+    assert_eq!(
+        pod.security_context
+            .as_ref()
+            .expect("expected a pod security context")
+            .fs_group,
+        Some(1000)
+    );
 
     let mount = &container(&job)
         .volume_mounts
