@@ -18,7 +18,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "lint:md": "markdownlint-cli2",
     "lint:specs": "npm run lint:md && npm run spell",
-    "spell": "cspell lint --no-progress",
+    "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
