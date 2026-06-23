@@ -59,9 +59,40 @@ artifacts (blobs)   driver ──upload──> tcab-artifacts ◀──read─�
   driver token + `ServiceAuth` extractor for the dispatcher.
 - `4a80f99` — Retain every produced record regardless of outcome, with a specific
   diagnostic `detail` on failure; interim `completed`-only publish guard.
+- `51eab83` — Phase 3 (task-1): the per-run `tcab-driver` crate (`crates/driver`).
+  Moved `LaunchBody`/`ClaimedJob`/`StatusUpdate`/`DriverState` into
+  `core::job_api`; backend-streaming sinks (mpsc + batching relay task); ported
+  the kubernetes sandbox runtime.
+- `266f2f2` — Phase 4 (task-2): the `tcab-dispatcher` crate (`crates/dispatcher`).
+  Claims queued jobs and creates one driver Job each; bounds concurrency from the
+  live cluster; watches Jobs and reports k8s-derived infra-failure detail.
+- `099148b` — Phase 5 (task-5): the `tcab-artifacts` service (`crates/artifacts`)
+  + driver upload. `ArtifactStore`/`LocalFsStore`; per-job-token upload verified
+  via a new backend `POST /jobs/{id}/verify-token`; account-token reads reuse the
+  core serve resolvers; backend exposes the artifact base URL via `GET /config`.
+- `c60ca5b` — Phase 5 (task-3): console rewired to the backend (`/jobs` + relay +
+  `/config`); worker-connection concept removed; contract-codegen swapped from the
+  worker types to `jobs-api.ts` (worker dep dropped).
+- `3e7e86e` — Phase 6 (task-4): cutover. Kustomize base + overlays/{prod,staging,
+  local}; dispatcher/artifacts manifests + driver/dispatcher RBAC; driver/
+  dispatcher/artifacts Dockerfiles + GHCR matrix; **`crates/worker` deleted**;
+  docs rewritten (driver/dispatcher/artifacts pages replace the worker page).
 
-**Verified here:** `cargo build`/`clippy`/`test` for `backend`, `entities`,
-`migration` (46 backend tests green); YAML + Makefile self-checked.
+**All of tasks 1–5 are complete.** Task 6 stays deferred by decision (see below).
+
+**Verified here:** whole-workspace `cargo build`/`clippy -D warnings`/`test`
+green with the worker gone (52 test binaries); `npm run gen:contract` drift-clean;
+`npm run typecheck` + `vite build` for `apps/web` + `apps/desktop`; docs build
+(117 pages); all 21 `deployments/k8s/**` YAML files parse.
+
+**Needs the user (no k8s/docker tooling in this dev env):** `kustomize build` for
+each overlay; the GHCR image builds; and the k3d end-to-end (`make -C
+deployments/local local-up` → enqueue a run → a driver Job + sandbox pod → live
+events/preview → record pushed + reviewable). A couple of behavior changes to eye
+while testing: the console now reaches the auth service directly (`VITE_AUTH_URL`);
+the web adversarial-arena run actions point at backend `/matches`/`/tournaments`
+endpoints that don't exist yet (arena execution was worker-only and is out of this
+refactor's scope — reads still work).
 
 **Needs validation on a real machine (no docker/k3d/kubectl in the dev env):**
 `make -C deployments/local local-up` — especially the k3d `--volume` → pod
@@ -99,14 +130,17 @@ versions.
 
 ## Remaining work
 
-- `task-1.md` — Phase 3: the per-run **driver** crate.
-- `task-2.md` — Phase 4: the **dispatcher** crate.
+- `task-1.md` — Phase 3: the per-run **driver** crate. ✅ DONE (`51eab83`).
+- `task-2.md` — Phase 4: the **dispatcher** crate. ✅ DONE (`266f2f2`).
 - `task-3.md` — Phase 5: **console rewire** to the backend (+ contract codegen).
+  ✅ DONE (`c60ca5b`).
 - `task-4.md` — Phase 6: **cutover** (manifests, images, worker removal, docs).
+  ✅ DONE (`3e7e86e`).
 - `task-5.md` — the **`tcab-artifacts` service** (artifact retention off
-  ephemeral pods; local-disk backing first, R2 later).
+  ephemeral pods; local-disk backing first, R2 later). ✅ DONE (`099148b`).
 - `task-6.md` — **deferred**: publish & score failures as first-class results
-  (a separate design pass, not part of this refactor).
+  (a separate design pass, not part of this refactor). Still deferred by decision
+  — not started; the refactor retains all the data it will need.
 
 ## References (session-local, not in the repo)
 
