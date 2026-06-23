@@ -21,6 +21,7 @@ members = [
 	"crates/lattice-ref-transport",
 	"crates/desktop",
 	"crates/backend",
+	"crates/driver",
 	"crates/worker",
 	"crates/auth-service",
 	"crates/telemetry",

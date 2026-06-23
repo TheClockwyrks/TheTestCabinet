@@ -1,0 +1,57 @@
+[package]
+name = "test-cabinet-driver"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab-driver"
+path = "src/main.rs"
+
+[lib]
+name = "test_cabinet_driver"
+path = "src/lib.rs"
+
+[dependencies]
+test-cabinet-core = { path = "../core" }
+# The driver is a binary: it owns telemetry init, so it pulls the heavy `otlp`
+# feature (the propagation-only default is for libraries like `core`), exactly as
+# the worker's main does.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+tracing = { workspace = true }
+# The HTTP client the driver streams events/preview/status back to the backend
+# with. rustls (no system OpenSSL), `json` for the bodies — see `crates/core`.
+reqwest = { workspace = true }
+
+# Kubernetes runtime (`src/kubernetes.rs`): under TCAB_DRIVER_RUNTIME=kubernetes the
+# driver — itself the trusted pod — creates the untrusted sandbox pod per run via
+# the API instead of shelling out to a host Docker/Podman. The feature set mirrors
+# the worker's copy exactly (the driver duplicates that runtime until Phase 6's
+# clean cut): `ws` enables the pod `exec`/attach websocket, `rustls-tls` keeps the
+# driver on the workspace's no-system-OpenSSL stack, `k8s-openapi`'s `latest`
+# selects the newest API types (only the stable core `Pod` objects are used), and
+# `tar` (pure Rust) frames the working tree streamed in and out over `exec`.
+kube = { version = "4", default-features = false, features = [
+	"client",
+	"ws",
+	"rustls-tls",
+] }
+k8s-openapi = { version = "0.28", features = ["latest"] }
+tar = "0.4"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

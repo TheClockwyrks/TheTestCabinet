@@ -20,6 +20,7 @@ pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
+pub mod job_api;
 pub mod match_play;
 pub mod metrics;
 pub mod models;
@@ -78,6 +79,7 @@ pub use harness::{
     resolve_run_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
+pub use job_api::{ClaimedJob, DriverState, LaunchBody, StatusUpdate};
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
 pub use orchestrator::{

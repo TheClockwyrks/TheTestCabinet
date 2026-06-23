@@ -5674,6 +5674,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-driver"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "k8s-openapi",
+ "kube",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "test-cabinet-core",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "test-cabinet-entities"
 version = "0.0.0"
 dependencies = [

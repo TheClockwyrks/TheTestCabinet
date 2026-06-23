@@ -25,7 +25,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
@@ -33,7 +33,12 @@ use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
+use test_cabinet_core::run_record::RunRecord;
+// The job-API wire shapes shared with the dispatcher and driver live in `core`
+// (so neither must depend on this crate). Re-export them so this module — and
+// `api.rs`'s public re-export, which the `contract-codegen` generator names —
+// keep referring to them as `jobs::{LaunchBody, …}`.
+pub use test_cabinet_core::{ClaimedJob, DriverState, LaunchBody, StatusUpdate};
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
@@ -472,34 +477,6 @@ fn encode_preview_line(preview: &AssetPreview) -> Bytes {
 
 // --- Wire shapes ------------------------------------------------------------
 
-/// The body of `POST /jobs`: what to run, with what, against which model. The
-/// canonical launch shape — stored verbatim and handed to the driver when the job
-/// is claimed.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LaunchBody {
-    /// Test-case slug to run (e.g. `pong`).
-    pub test_case: String,
-    /// Exact, immutable test-case version (e.g. `v1.0.0`).
-    pub version: String,
-    /// Variant to run (e.g. `base`).
-    pub variant: String,
-    /// Agent harness to drive.
-    pub harness: HarnessSlug,
-    /// Opaque model id passed to the harness.
-    pub model: String,
-    /// Built-in orchestrator slug that conducts the harness sessions (e.g.
-    /// `one-shot` or `ralph`). Omit for the `one-shot` default.
-    #[serde(default)]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub orchestrator: Option<String>,
-    /// Optional override for the maximum harness runtime, in seconds.
-    #[serde(default)]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub max_runtime_seconds: Option<u64>,
-}
-
 /// The response to a successful `POST /jobs`: the enqueued job's id and where to
 /// observe it.
 #[derive(Debug, Serialize)]
@@ -588,48 +565,3 @@ pub struct JobStatusOut {
     pub detail: Option<String>,
 }
 
-/// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the
-/// per-job driver token, and the launch request to run.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ClaimedJob {
-    /// The claimed job's id.
-    pub job_id: String,
-    /// The per-job token the driver presents to stream this job's progress back.
-    pub job_token: String,
-    /// The launch request to run.
-    pub request: LaunchBody,
-}
-
-/// The state a driver reports for a job via `POST /jobs/{id}/status`.
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum DriverState {
-    /// Execution has begun.
-    Running,
-    /// The run produced a record (carried in the same update).
-    Succeeded,
-    /// The run could not be driven to a record (reason in `detail`).
-    Failed,
-}
-
-/// The body of `POST /jobs/{id}/status`: the new driver state, plus the produced
-/// record on success or the reason on failure.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StatusUpdate {
-    /// The state the driver is reporting.
-    pub state: DriverState,
-    /// The produced run record, required when `state` is `succeeded`. Its `links`
-    /// are authoritative and stored with it.
-    #[serde(default)]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub record: Option<RunRecord>,
-    /// A human-readable failure reason, used when `state` is `failed`.
-    #[serde(default)]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub detail: Option<String>,
-}
