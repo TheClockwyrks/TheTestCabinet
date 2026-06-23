@@ -36,25 +36,33 @@ else
   scope="$*"
 fi
 
-# Pull a JSON key's value out of one compact (non-nested) NDJSON line. Handles
-# both string (`"slug":"pong"`) and scalar (`"index":1`) values, and is order
-# independent. Returns empty when the key is absent; never fails under `set -e`.
+# Pull a JSON key's value out of one (non-nested) JSON line. Handles both string
+# (`"slug":"pong"`) and scalar (`"index":1`) values, is order independent, and
+# tolerates whitespace around the colon — so it reads both the compact NDJSON the
+# stream emits and a pretty-printed error body. Returns empty when the key is absent;
+# never fails under `set -e`.
 jval() { # jval <key> <line>
-  if [[ "$2" =~ \"$1\":\"?([^,\"}]*) ]]; then
+  if [[ "$2" =~ \"$1\"[[:space:]]*:[[:space:]]*\"?([^,\"}]*) ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
   fi
 }
 
 echo "Re-ingesting ${scope} via ${backend}/ingest (force)…"
 
-# A marker file carries an in-band `error` event out of the `while` subshell (the
-# right-hand side of a pipe runs in its own shell, so a plain variable would not
-# survive). It is also non-empty if no closing `done` arrived, so a truncated or
-# pre-streaming response is treated as a failure rather than a silent success.
+# A marker file carries an in-band `error` event (or a non-streamed error body) out
+# of the `while` subshell (the right-hand side of a pipe runs in its own shell, so a
+# plain variable would not survive). It is also non-empty if no closing `done`
+# arrived, so a truncated or pre-streaming response is treated as a failure rather
+# than a silent success.
 marker="$(mktemp)"
 trap 'rm -f "$marker"' EXIT
 printf 'incomplete' >"$marker"
 
+# `--fail-with-body` rather than `-f`: a render failure that the backend reports as a
+# plain HTTP error (e.g. a 500 from a backend that did not negotiate the NDJSON feed)
+# must still hand us its body, which carries the actual message ("could not render
+# reference `…`"). Plain `-f` discards that body and leaves only "curl: (22) … 500".
+#
 # A whole-catalog render legitimately takes minutes, so a hard `--max-time` is the
 # wrong guard — it would abort a healthy long ingest. Instead `--connect-timeout`
 # fails fast when the connection cannot be established, and `--speed-time` aborts
@@ -63,11 +71,11 @@ printf 'incomplete' >"$marker"
 # they bound a dead/squatted endpoint (e.g. an editor port-forward that accepts then
 # never answers) instead of hanging forever, while a progressing stream runs as long
 # as it needs.
-curl -fsS -N --connect-timeout 5 --speed-limit 1 --speed-time 120 -X POST "${backend}/ingest" \
+curl -sS -N --fail-with-body --connect-timeout 5 --speed-limit 1 --speed-time 120 -X POST "${backend}/ingest" \
   -H 'content-type: application/json' \
   -H 'accept: application/x-ndjson' \
   -d "${body}" \
-| while IFS= read -r line; do
+| while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       *'"event":"start"'*)
         printf '  scanning %s test cases…\n' "$(jval total "$line")"
@@ -91,12 +99,32 @@ curl -fsS -N --connect-timeout 5 --speed-limit 1 --speed-time 120 -X POST "${bac
         printf 'ingest failed: %s\n' "$(jval message "$line")" >&2
         printf 'error' >"$marker"
         ;;
+      *)
+        # Any non-empty line that is not a recognized progress event is unexpected —
+        # most often a non-streamed HTTP error body delivered by `--fail-with-body`
+        # (a backend that answered with a plain error rather than the NDJSON feed).
+        # Surface its `message` (falling back to the raw line) instead of letting it
+        # vanish, and mark the run failed.
+        if [[ -n "$line" ]]; then
+          msg="$(jval message "$line")"
+          printf 'ingest error: %s\n' "${msg:-$line}" >&2
+          printf 'error' >"$marker"
+        fi
+        ;;
     esac
-  done
+  done || true   # see the $marker check below: the pipeline's exit status is not the
+                 # signal, so `|| true` keeps `set -e`/`pipefail` from aborting here on
+                 # curl's non-zero exit (e.g. 22 from --fail-with-body on an HTTP error)
+                 # before we can inspect the outcome the loop recorded.
 
-# Fail the command (so callers like `make local-up` abort) when the transport
-# failed or no successful `done` was streamed.
-if [[ "${PIPESTATUS[0]}" -ne 0 || -s "$marker" ]]; then
+# Fail the command (so callers like `make local-up` abort) unless a successful `done`
+# was streamed. $marker is the single source of truth, written from inside the loop's
+# subshell: a clean run empties it on `done`, and every failure mode leaves it
+# non-empty — a streamed `error` event or non-streamed HTTP error body ("error"), and a
+# truncated stream, a transport failure that produced no body, or a stalled/timed-out
+# transfer (the initial "incomplete", never cleared). curl's own diagnostic for the
+# last group is already on stderr via -S.
+if [[ -s "$marker" ]]; then
   echo "re-ingest did not complete successfully." >&2
   exit 1
 fi
