@@ -128,8 +128,13 @@ export interface WorkerClient {
    */
   identity(): Promise<WorkerIdentity>;
 
-  /** Submit a run; resolves to the job id (`POST /runs`). */
-  launchRun(config: LaunchConfig): Promise<string>;
+  /**
+   * Submit a run; resolves to the job id (`POST /jobs`, Bearer). The backend
+   * attributes the enqueued run to the launching account, so a signed-in
+   * account's `token` is required on the service-driven path (the embedded
+   * in-process worker ignores it). A missing/invalid token is rejected `401`.
+   */
+  launchRun(config: LaunchConfig, token?: string | null): Promise<string>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;

@@ -503,9 +503,12 @@ export function createBackendExec(
       return { url: backendUrl, version: null, backendId: backendUrl };
     },
 
-    async launchRun(config: LaunchConfig): Promise<string> {
+    async launchRun(config: LaunchConfig, token?: string | null): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
-      // driver Job. The body is the backend's `LaunchBody` (camelCase).
+      // driver Job. The body is the backend's `LaunchBody` (camelCase). The
+      // backend gates `POST /jobs` on the launching account, so the signed-in
+      // account's token rides along as `Authorization: Bearer` — without it the
+      // enqueue is rejected `401`.
       const body = {
         testCase: config.testCase,
         version: config.version,
@@ -517,7 +520,12 @@ export function createBackendExec(
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),
       };
-      const ack = await postJson<LaunchAckResponse>(backendUrl, "/jobs", body);
+      const ack = await postJson<LaunchAckResponse>(
+        backendUrl,
+        "/jobs",
+        body,
+        token,
+      );
       return ack.jobId;
     },
 

@@ -155,10 +155,12 @@ console derives the auth URL from `VITE_AUTH_URL`, falling back to the backend U
 if it is unset. Either way the backend is the **one** URL the console talks to for
 runs — there is no worker to register.
 
-Open the console and **register an account**, so push, review, and publish are
-attributed to you (without the auth service, reads still work but mutations are
-rejected `401`). You can register in the UI, or with the CLI against the forwarded
-auth service:
+Open the console and **register an account**. Sign-in is required to **launch a
+run** as well as to push, review, and publish — the backend gates `POST /jobs`
+on the launching account and attributes the run to it, so every mutation
+(enqueue included) needs a token. Reads still work signed-out, but those
+mutations are rejected `401`. You can register in the UI, or with the CLI against
+the forwarded auth service:
 
 ```sh
 tcab register --username dev --display-name "Dev"
@@ -166,9 +168,10 @@ tcab register --username dev --display-name "Dev"
 
 ## 4. Enqueue a run and watch it execute
 
-From the console, start a run — pick a test case, a model, and the harness whose
-key you exported. The console posts it to the backend's queue and immediately
-begins streaming.
+From the console — **signed in** (see step 3; the launch button stays disabled
+with a sign-in prompt otherwise) — start a run: pick a test case, a model, and
+the harness whose key you exported. The console posts it to the backend's queue,
+authenticated as your account, and immediately begins streaming.
 
 Watch it schedule as a Job in the cluster:
 

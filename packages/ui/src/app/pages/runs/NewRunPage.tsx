@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
@@ -22,6 +23,7 @@ export function NewRunPage() {
   const navigate = useNavigate();
   const { client: backend } = useBackend();
   const { active: worker } = useWorkers();
+  const { token } = useAuth();
   const runtime = useRunsRuntime();
   // A test case's Run button links here with `?slug=…&version=…&variant=…` so the
   // form opens with that case pre-selected; absent the params the catalog leads
@@ -71,9 +73,16 @@ export function NewRunPage() {
     ? orchestrator
     : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
+  // A remote (service-driven) worker enqueues on the backend's `POST /jobs`,
+  // which is gated on the launching account — so a sign-in is required before a
+  // run can be submitted. The built-in local (Tauri) worker runs in-process and
+  // needs no token.
+  const needsAuth = Boolean(worker && !worker.local);
+  const signedOut = needsAuth && !token;
   const canLaunch = Boolean(
     worker &&
       !mismatched &&
+      !signedOut &&
       sel.slug &&
       sel.version &&
       sel.variant &&
@@ -87,15 +96,18 @@ export function NewRunPage() {
     setLaunchError(null);
     setLaunching(true);
     try {
-      const runId = await worker.client.launchRun({
-        testCase: sel.slug,
-        version: sel.version,
-        variant: sel.variant,
-        harness,
-        modelId,
-        orchestrator: submittedOrchestrator,
-        maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
-      });
+      const runId = await worker.client.launchRun(
+        {
+          testCase: sel.slug,
+          version: sel.version,
+          variant: sel.variant,
+          harness,
+          modelId,
+          orchestrator: submittedOrchestrator,
+          maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+        },
+        token,
+      );
       runtime.track({
         runId,
         testCaseSlug: sel.slug,
@@ -131,6 +143,13 @@ export function NewRunPage() {
       {sel.noBackend && (
         <p className={`${styles.notice} ${styles.warn}`}>
           No backend configured — the test-case catalog comes from the backend.
+        </p>
+      )}
+      {signedOut && (
+        <p className={`${styles.notice} ${styles.warn}`}>
+          Sign in to launch a run — the backend attributes each enqueued run to
+          your account. Use the account control in the top bar to register or log
+          in, then launch.
         </p>
       )}
 
