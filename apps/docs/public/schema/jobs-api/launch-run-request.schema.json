@@ -1,7 +1,7 @@
 {
-  "$id": "https://docs.testcabinet.ai/schema/worker-api/submit-run-request.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-run-request.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The body of `POST /runs`: what to run, with what, against which model.\n\nThis is the HTTP shape of [`RunRequest`]. `version` and `variant` are\nrequired (a worker resolves an exact, immutable version from the backend);\n`maxRuntimeSeconds` optionally overrides the case's default cap.",
+  "description": "The body of `POST /jobs`: what to run, with what, against which model. The\ncanonical launch shape — stored verbatim and handed to the driver when the job\nis claimed.",
   "properties": {
     "harness": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
@@ -20,7 +20,7 @@
     },
     "orchestrator": {
       "default": null,
-      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default. A worker resolves\nbuilt-in orchestrators only — it has no access to a submitter's local\ndirectory, so there is no external-directory equivalent here.",
+      "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default.",
       "type": ["string", "null"]
     },
     "testCase": {
@@ -37,6 +37,6 @@
     }
   },
   "required": ["testCase", "version", "variant", "harness", "model"],
-  "title": "SubmitBody",
+  "title": "LaunchBody",
   "type": "object"
 }

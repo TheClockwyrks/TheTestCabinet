@@ -2,9 +2,9 @@
 //!
 //! It emits **both** the TypeScript bindings (`packages/run-record/src/*.ts`, via
 //! [`ts_rs`]) and the JSON Schemas (`apps/docs/public/schema/**`, via [`schemars`])
-//! from one set of Rust types — the types in `crates/core`, `crates/worker`, and
-//! `crates/backend` that derive `TS` + `JsonSchema` behind their `contract`
-//! feature. Because both artifacts come from the same source in one pass, the TS
+//! from one set of Rust types — the types in `crates/core` and `crates/backend`
+//! that derive `TS` + `JsonSchema` behind their `contract` feature. Because both
+//! artifacts come from the same source in one pass, the TS
 //! bindings and the JSON Schemas can never drift from each other or from Rust.
 //!
 //! Run it with `cargo run -p contract-codegen` (or `npm run gen:contract`, which
@@ -24,8 +24,7 @@ use test_cabinet_core::{
     accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
     test_case as tc, validation as val,
 };
-use test_cabinet_backend::{api as bapi, error as berr, snapshot as snap};
-use test_cabinet_worker::{api as wapi, jobs as wjobs, notify as wnotify};
+use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
 macro_rules! ts_decls {
@@ -40,7 +39,7 @@ const TS_HEADER: &str = "\
 //
 // Regenerate with `npm run gen:contract` (which runs `cargo run -p
 // contract-codegen` and formats the output). The source of truth is the Rust
-// contract types in `crates/core` (and `crates/worker` / `crates/backend`), which
+// contract types in `crates/core` and `crates/backend`, which
 // derive `ts_rs::TS` + `schemars::JsonSchema` behind their `contract` feature. The
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.\n\n";
@@ -157,16 +156,20 @@ fn main() -> Result<()> {
                 bapi::VersionsResponse,
             ],
         },
-        // The worker HTTP API: job lifecycle, notifications, and the
-        // push/review/publish request/response envelopes.
+        // The backend's run-queue control plane (the `/jobs` namespace) — what
+        // replaced the worker's run API. The console enqueues a run, observes it
+        // via the live stream / status / active list, and is alerted on completion
+        // over the notification feed. The shared launch/claim/status shapes live in
+        // `core::job_api`; the server outputs and the relay's summary/notification
+        // shapes live in `backend`. `ClientConfig` is the console's `GET /config`
+        // body (today just the artifact-service base URL).
         TsModule {
-            file: "worker-api.ts",
+            file: "jobs-api.ts",
             decls: ts_decls![&cfg;
-                wjobs::JobState, wjobs::ActiveRunState, wjobs::RunSummary, wjobs::ActiveRun,
-                wjobs::JobStatus, wnotify::NotificationOutcome, wnotify::NotificationKind,
-                wnotify::WorkerNotification, wapi::SubmitBody, wapi::SubmitAck, wapi::ProducedRun,
-                wapi::PushBody, wapi::PushAck, wapi::ReviewBody, wapi::ReviewAck, wapi::PublishBody,
-                wapi::PublishAck, wapi::HealthStatus, wapi::WorkerRole, wapi::HealthResponse,
+                bapi::DriverState, bapi::LaunchBody, bapi::ClaimedJob, bapi::StatusUpdate,
+                bapi::JobState, relay::JobSummary, bapi::ActiveJobOut, bapi::JobStatusOut,
+                bapi::LaunchAck, relay::NotificationOutcome, relay::NotificationKind,
+                relay::Notification, bapi::ClientConfig,
             ],
         },
     ];
@@ -190,21 +193,18 @@ fn main() -> Result<()> {
             owns: TOURNAMENT_DEFS,
             schema: root_schema::<mp::TournamentRecord>(),
         },
-        // Worker HTTP API. These reference the core run-record document by URL; any
-        // type local to a single document (its own envelope/summary) stays inline.
-        anon("worker-api/submit-run-request.schema.json", root_schema::<wapi::SubmitBody>()),
-        anon("worker-api/submit-run-ack.schema.json", root_schema::<wapi::SubmitAck>()),
-        anon("worker-api/active-runs.schema.json", root_schema::<Vec<wjobs::ActiveRun>>()),
-        anon("worker-api/job-status.schema.json", root_schema::<wjobs::JobStatus>()),
-        anon("worker-api/notification.schema.json", root_schema::<wnotify::WorkerNotification>()),
-        anon("worker-api/produced-runs.schema.json", root_schema::<Vec<wapi::ProducedRun>>()),
-        anon("worker-api/health.schema.json", root_schema::<wapi::HealthResponse>()),
-        anon("worker-api/push-run-request.schema.json", root_schema::<wapi::PushBody>()),
-        anon("worker-api/push-run-ack.schema.json", root_schema::<wapi::PushAck>()),
-        anon("worker-api/review-run-request.schema.json", root_schema::<wapi::ReviewBody>()),
-        anon("worker-api/review-run-ack.schema.json", root_schema::<wapi::ReviewAck>()),
-        anon("worker-api/publish-run-request.schema.json", root_schema::<wapi::PublishBody>()),
-        anon("worker-api/publish-run-ack.schema.json", root_schema::<wapi::PublishAck>()),
+        // The backend's run-queue (`/jobs`) control plane. These reference the core
+        // run-record document by URL (the launch request, the claimed job, and the
+        // driver's status update all carry or echo a `RunRecord`); any type local to
+        // a single document (its own ack/summary) stays inline.
+        anon("jobs-api/launch-run-request.schema.json", root_schema::<bapi::LaunchBody>()),
+        anon("jobs-api/launch-run-ack.schema.json", root_schema::<bapi::LaunchAck>()),
+        anon("jobs-api/claimed-job.schema.json", root_schema::<bapi::ClaimedJob>()),
+        anon("jobs-api/status-update.schema.json", root_schema::<bapi::StatusUpdate>()),
+        anon("jobs-api/active-jobs.schema.json", root_schema::<Vec<bapi::ActiveJobOut>>()),
+        anon("jobs-api/job-status.schema.json", root_schema::<bapi::JobStatusOut>()),
+        anon("jobs-api/notification.schema.json", root_schema::<relay::Notification>()),
+        anon("jobs-api/client-config.schema.json", root_schema::<bapi::ClientConfig>()),
         // Backend API: the auth surface (the token response is the canonical home
         // of Account) and the canonical review document (the home of the review
         // value types the worker + snapshot reference).

@@ -1,27 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
-  AddWorkerInput,
   BackendClient,
   BackendContextValue,
   BackendIdentity,
   BackendStatus,
-  BackendMatch,
-  WorkerClient,
   WorkerHandle,
-  WorkerIdentity,
   WorkersContextValue,
 } from "@test-cabinet/ui/client";
-import { createHttpBackend } from "../transport/httpBackend";
-import { createHttpWorker } from "../transport/httpWorker";
+import {
+  createBackendExec,
+  createHttpBackend,
+  fetchArtifactsUrl,
+} from "../transport/httpBackend";
 
 const BACKEND_KEY = "tcab.web.backendUrl";
-const WORKERS_KEY = "tcab.web.workers";
-
-interface StoredWorker {
-  id: string;
-  label: string;
-  url: string;
-}
 
 function readStored<T>(key: string, fallback: T): T {
   try {
@@ -32,12 +24,16 @@ function readStored<T>(key: string, fallback: T): T {
   }
 }
 
-// The active backend: a single instance the console resolves the catalog and
-// published data from, switchable for staging vs prod. Probes `/healthz` to
-// confirm reachability and learn the backend's identity.
+// The active backend: the single URL the console talks to. It is the source of
+// truth for the catalog and published data (the `BackendClient`), and — since the
+// per-run-Job refactor — the control plane for executing runs too (see
+// {@link useExecConnection}). Probes `/healthz` to confirm reachability and learn
+// the backend's identity. Switchable for staging vs prod.
 export function useBackendConnection(): BackendContextValue {
   const [url, setUrlState] = useState<string | null>(
-    () => readStored<string>(BACKEND_KEY, import.meta.env.VITE_BACKEND_URL ?? "") || null,
+    () =>
+      readStored<string>(BACKEND_KEY, import.meta.env.VITE_BACKEND_URL ?? "") ||
+      null,
   );
   const [identity, setIdentity] = useState<BackendIdentity | null>(null);
   const [status, setStatus] = useState<BackendStatus>("unconfigured");
@@ -85,111 +81,70 @@ export function useBackendConnection(): BackendContextValue {
   return { client, identity, status, error, url, setUrl };
 }
 
-// The set of workers (execution). Starts empty in the web app; the user adds
-// worker servers by URL. Each worker is probed for its bound backend and checked
-// against the active backend so the console never asks a worker for a test case
-// it can't resolve.
-export function useWorkerConnections(
-  backendIdentity: BackendIdentity | null,
+// The run-execution connection. There is no longer a separate worker the console
+// registers or talks to — a run is enqueued on the backend's `/jobs` queue, a
+// driver pod runs it, and progress streams back through the backend. So this
+// resolves to a *single* execution handle bound to the active backend, presented
+// through the shared `WorkersContextValue` the gallery already reads (one
+// non-removable entry, no list, no per-pod registration, no `tcab.web.workers`
+// storage). Add/remove are absent — there is nothing to add.
+//
+// A pre-publish run's build and media live behind the separate artifact service,
+// whose base URL the backend reports at `GET /config`. We fetch it once per
+// backend so the execution client can resolve those root-relative links; it is
+// `null` (links left unresolved) until the fetch resolves or when no artifact
+// service is configured.
+export function useExecConnection(
+  backendUrl: string | null,
 ): WorkersContextValue {
-  const [stored, setStored] = useState<StoredWorker[]>(() =>
-    readStored<StoredWorker[]>(WORKERS_KEY, []),
-  );
-  const [activeId, setActiveId] = useState<string | null>(
-    () => readStored<StoredWorker[]>(WORKERS_KEY, [])[0]?.id ?? null,
-  );
-  const [identities, setIdentities] = useState<
-    Record<string, WorkerIdentity | null>
-  >({});
+  const authUrl = backendUrl
+    ? (import.meta.env.VITE_AUTH_URL ?? backendUrl)
+    : null;
+  const [artifactsUrl, setArtifactsUrl] = useState<string | null>(null);
 
-  // Cache one client per worker id so handles and subscriptions stay stable.
-  const clients = useRef(new Map<string, WorkerClient>());
-
-  // Persist the stored list whenever it changes.
+  // Resolve the artifact service's base URL from the backend's `/config` whenever
+  // the backend changes. Best-effort — an unreachable backend leaves it null, so
+  // pre-publish links stay unresolved (today's behavior).
   useEffect(() => {
-    localStorage.setItem(WORKERS_KEY, JSON.stringify(stored));
-  }, [stored]);
-
-  // (Re)build clients and probe each worker's identity when the list changes.
-  useEffect(() => {
-    const ids = new Set(stored.map((w) => w.id));
-    for (const id of clients.current.keys()) {
-      if (!ids.has(id)) clients.current.delete(id);
-    }
+    setArtifactsUrl(null);
+    if (!backendUrl) return;
     let active = true;
-    for (const w of stored) {
-      if (!clients.current.has(w.id)) {
-        clients.current.set(w.id, createHttpWorker(w.url));
-      }
-      if (!(w.id in identities)) {
-        clients.current
-          .get(w.id)!
-          .identity()
-          .then((id) => active && setIdentities((m) => ({ ...m, [w.id]: id })))
-          .catch(() => active && setIdentities((m) => ({ ...m, [w.id]: null })));
-      }
-    }
+    fetchArtifactsUrl(backendUrl)
+      .then((u) => active && setArtifactsUrl(u))
+      .catch(() => {});
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stored]);
+  }, [backendUrl]);
 
-  const matchFor = useCallback(
-    (id: WorkerIdentity | null): BackendMatch => {
-      if (!id || id.backendId == null) return "unverified";
-      if (!backendIdentity) return "unverified";
-      return id.backendId === backendIdentity.id ? "match" : "mismatch";
-    },
-    [backendIdentity],
-  );
+  const worker = useMemo<WorkerHandle | null>(() => {
+    if (!backendUrl || !authUrl) return null;
+    return {
+      id: "backend",
+      label: "Backend",
+      url: backendUrl,
+      // Not the desktop's in-process local core — this drives runs over HTTP — so
+      // the editor offers the split push/review/publish web flow (push is a no-op
+      // here; the driver already pushed the record).
+      local: false,
+      client: createBackendExec(backendUrl, authUrl, artifactsUrl),
+      identity: { url: backendUrl, version: null, backendId: backendUrl },
+      // The execution path *is* the backend, so it trivially matches it.
+      backendMatch: "match",
+    };
+    // Rebuild when the backend, auth URL, or resolved artifacts URL changes.
+  }, [backendUrl, authUrl, artifactsUrl]);
 
-  const workers = useMemo<WorkerHandle[]>(
-    () =>
-      stored.map((w) => {
-        const identity = identities[w.id] ?? null;
-        return {
-          id: w.id,
-          label: w.label || w.url,
-          url: w.url,
-          local: false,
-          client: clients.current.get(w.id) ?? createHttpWorker(w.url),
-          identity,
-          backendMatch: matchFor(identity),
-        };
-      }),
-    [stored, identities, matchFor],
-  );
-
-  const active = workers.find((w) => w.id === activeId) ?? workers[0] ?? null;
-
-  const addWorker = useCallback((input: AddWorkerInput) => {
-    const id = crypto.randomUUID();
-    setStored((prev) => [
-      ...prev,
-      { id, label: input.label ?? "", url: input.url },
-    ]);
-    setActiveId((prev) => prev ?? id);
-  }, []);
-
-  const removeWorker = useCallback((id: string) => {
-    setStored((prev) => prev.filter((w) => w.id !== id));
-    setIdentities((m) => {
-      const next = { ...m };
-      delete next[id];
-      return next;
-    });
-    setActiveId((prev) => (prev === id ? null : prev));
-  }, []);
-
-  const setActive = useCallback((id: string) => setActiveId(id), []);
+  const workers = useMemo(() => (worker ? [worker] : []), [worker]);
 
   return {
     workers,
-    activeId: active?.id ?? null,
-    active,
-    setActive,
-    addWorker,
-    removeWorker,
+    activeId: worker?.id ?? null,
+    active: worker,
+    // There is a single, fixed execution target now; switching/adding/removing a
+    // worker no longer exists, so these are no-ops.
+    setActive: () => {},
+    addWorker: () => {},
+    removeWorker: () => {},
   };
 }

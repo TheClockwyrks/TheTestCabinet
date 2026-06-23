@@ -9,12 +9,14 @@ publish.workspace = true
 name = "contract-codegen"
 path = "src/main.rs"
 
-# The generator drives the `contract` feature of the three contract crates, so the
+# The generator drives the `contract` feature of the two contract crates, so the
 # `ts_rs::TS` / `schemars::JsonSchema` derives on their data-contract types are
-# available to emit TypeScript bindings and JSON Schemas from a single source.
+# available to emit TypeScript bindings and JSON Schemas from a single source. The
+# job-API control plane that replaced the worker lives in `core` (the shared wire
+# types) and `backend` (the server outputs + relay), so the generator no longer
+# references the (soon-removed) worker crate.
 [dependencies]
 test-cabinet-core = { path = "../core", features = ["contract"] }
-test-cabinet-worker = { path = "../worker", features = ["contract"] }
 test-cabinet-backend = { path = "../backend", features = ["contract"] }
 ts-rs = { workspace = true }
 schemars = { workspace = true }

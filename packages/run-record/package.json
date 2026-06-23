@@ -23,9 +23,9 @@
       "types": "./dist/account.d.ts",
       "default": "./dist/account.js"
     },
-    "./worker-api": {
-      "types": "./dist/worker-api.d.ts",
-      "default": "./dist/worker-api.js"
+    "./jobs-api": {
+      "types": "./dist/jobs-api.d.ts",
+      "default": "./dist/jobs-api.js"
     },
     "./backend-api": {
       "types": "./dist/backend-api.d.ts",

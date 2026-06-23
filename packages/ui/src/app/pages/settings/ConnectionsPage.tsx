@@ -1,27 +1,18 @@
 import { useState } from "react";
 import { Panel } from "@test-cabinet/ui";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
-import { useBackend, useWorkers } from "../../../client/context";
-import type { BackendMatch } from "../../../client/types";
+import { useBackend } from "../../../client/context";
 import styles from "../runs/RunExec.module.scss";
 
-const MATCH_LABEL: Record<BackendMatch, string> = {
-  match: "backend ✓",
-  mismatch: "backend ✗",
-  unverified: "unverified",
-};
-
-// The Connections tab (`/settings/connections`, web/desktop only). Manages the
-// single active backend (catalog + published data) and the set of workers
-// (execution). Each worker is checked against the active backend so the UI never
-// asks a worker for a test case it can't resolve. Ported from the old topbar
-// Connections drawer.
+// The Connections tab (`/settings/connections`, web/desktop only). The console
+// now talks to a single backend URL — the source of truth for test cases,
+// definitions, and published results, and the control plane for executing runs
+// (the backend's `/jobs` queue). There is no separate worker to register: the old
+// worker list and per-worker backend-match check are gone. This page just manages
+// that one backend connection.
 export function ConnectionsPage() {
   const backend = useBackend();
-  const workers = useWorkers();
   const [backendUrl, setBackendUrl] = useState(backend.url ?? "");
-  const [workerUrl, setWorkerUrl] = useState("");
-  const [workerLabel, setWorkerLabel] = useState("");
 
   return (
     <SettingsLayout tab="connections">
@@ -29,7 +20,8 @@ export function ConnectionsPage() {
         <p className={styles.sectionLabel}>Backend</p>
         <p className={styles.muted}>
           The backend is the source of truth for test cases, definitions, and
-          published results. Every connected worker must be bound to it.
+          published results, and the control plane that runs are executed
+          through.
         </p>
         <form
           className={styles.addForm}
@@ -52,86 +44,6 @@ export function ConnectionsPage() {
           </button>
         </form>
         <BackendStatusLine />
-
-        <p className={styles.sectionLabel}>Workers</p>
-        <p className={styles.muted}>
-          Workers execute runs. The active worker is the one a launched run is
-          submitted to.
-        </p>
-        <ul className={styles.connList}>
-          {workers.workers.length === 0 && (
-            <li className={styles.muted}>
-              No workers connected. Add one below to launch runs.
-            </li>
-          )}
-          {workers.workers.map((w) => (
-            <li
-              key={w.id}
-              className={`${styles.connItem} ${w.id === workers.activeId ? styles.connItemActive : ""}`}
-              onClick={() => workers.setActive(w.id)}
-            >
-              <div className={styles.connMain}>
-                <div className={styles.connLabel}>
-                  {w.label}
-                  {w.local ? " (local)" : ""}
-                </div>
-                <div className={styles.connUrl}>
-                  {w.url ?? "built-in local core"}
-                </div>
-              </div>
-              <span className={styles.matchBadge} data-match={w.backendMatch}>
-                {MATCH_LABEL[w.backendMatch]}
-              </span>
-              {!w.local && (
-                <button
-                  className={styles.secondary}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    workers.removeWorker(w.id);
-                  }}
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        <form
-          className={styles.addForm}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!workerUrl.trim()) return;
-            workers.addWorker({
-              url: workerUrl.trim(),
-              label: workerLabel.trim() || undefined,
-            });
-            setWorkerUrl("");
-            setWorkerLabel("");
-          }}
-        >
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Worker URL</span>
-            <input
-              className={styles.input}
-              value={workerUrl}
-              onChange={(e) => setWorkerUrl(e.target.value)}
-              placeholder="http://worker.internal:8080"
-            />
-          </label>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Label (optional)</span>
-            <input
-              className={styles.input}
-              value={workerLabel}
-              onChange={(e) => setWorkerLabel(e.target.value)}
-              placeholder="e.g. gpu-box"
-            />
-          </label>
-          <button className={styles.secondary} type="submit">
-            Add worker
-          </button>
-        </form>
       </Panel>
     </SettingsLayout>
   );

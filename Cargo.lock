@@ -642,7 +642,6 @@ dependencies = [
  "serde_json",
  "test-cabinet-backend",
  "test-cabinet-core",
- "test-cabinet-worker",
  "ts-rs",
 ]
 

@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "JobState": {
+      "description": "A job's lifecycle state on the wire.",
+      "oneOf": [
+        {
+          "const": "queued",
+          "description": "Enqueued, awaiting a dispatcher to claim it.",
+          "type": "string"
+        },
+        {
+          "const": "dispatched",
+          "description": "Claimed by the dispatcher; the driver Job is being created.",
+          "type": "string"
+        },
+        {
+          "const": "running",
+          "description": "The driver is executing the run.",
+          "type": "string"
+        },
+        {
+          "const": "succeeded",
+          "description": "The run produced a record.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The run could not be driven to a record.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "The job was canceled before completing.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/job-status.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A job's status, as `GET /jobs/{id}` reports it.",
+  "properties": {
+    "detail": {
+      "description": "A human-readable failure reason, present when `state` is `failed`.",
+      "type": ["string", "null"]
+    },
+    "id": {
+      "description": "The job id.",
+      "type": "string"
+    },
+    "recordId": {
+      "description": "The produced run record's id, present once `state` is `succeeded` and the\nrun was completed (the row the console navigates to).",
+      "type": ["string", "null"]
+    },
+    "state": {
+      "$ref": "#/$defs/JobState",
+      "description": "Where the job is in its lifecycle."
+    }
+  },
+  "required": ["id", "state"],
+  "title": "JobStatusOut",
+  "type": "object"
+}

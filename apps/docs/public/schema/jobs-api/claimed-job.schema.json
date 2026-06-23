@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "LaunchBody": {
+      "description": "The body of `POST /jobs`: what to run, with what, against which model. The\ncanonical launch shape — stored verbatim and handed to the driver when the job\nis claimed.",
+      "properties": {
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "Agent harness to drive."
+        },
+        "maxRuntimeSeconds": {
+          "default": null,
+          "description": "Optional override for the maximum harness runtime, in seconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "model": {
+          "description": "Opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "orchestrator": {
+          "default": null,
+          "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default.",
+          "type": ["string", "null"]
+        },
+        "testCase": {
+          "description": "Test-case slug to run (e.g. `pong`).",
+          "type": "string"
+        },
+        "variant": {
+          "description": "Variant to run (e.g. `base`).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Exact, immutable test-case version (e.g. `v1.0.0`).",
+          "type": "string"
+        }
+      },
+      "required": ["testCase", "version", "variant", "harness", "model"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/claimed-job.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The claimed job the dispatcher receives from `POST /jobs/next`: the id, the\nper-job driver token, and the launch request to run.",
+  "properties": {
+    "jobId": {
+      "description": "The claimed job's id.",
+      "type": "string"
+    },
+    "jobToken": {
+      "description": "The per-job token the driver presents to stream this job's progress back.",
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/$defs/LaunchBody",
+      "description": "The launch request to run."
+    }
+  },
+  "required": ["jobId", "jobToken", "request"],
+  "title": "ClaimedJob",
+  "type": "object"
+}

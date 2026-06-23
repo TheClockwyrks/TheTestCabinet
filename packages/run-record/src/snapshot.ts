@@ -2,7 +2,7 @@
 //
 // Regenerate with `npm run gen:contract` (which runs `cargo run -p
 // contract-codegen` and formats the output). The source of truth is the Rust
-// contract types in `crates/core` (and `crates/worker` / `crates/backend`), which
+// contract types in `crates/core` and `crates/backend`, which
 // derive `ts_rs::TS` + `schemars::JsonSchema` behind their `contract` feature. The
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.

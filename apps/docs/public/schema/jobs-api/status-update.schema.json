@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "DriverState": {
+      "description": "The state a driver reports for a job via `POST /jobs/{id}/status`.",
+      "oneOf": [
+        {
+          "const": "running",
+          "description": "Execution has begun.",
+          "type": "string"
+        },
+        {
+          "const": "succeeded",
+          "description": "The run produced a record (carried in the same update).",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The run could not be driven to a record (reason in `detail`).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/status-update.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /jobs/{id}/status`: the new driver state, plus the produced\nrecord on success or the reason on failure.",
+  "properties": {
+    "detail": {
+      "default": null,
+      "description": "A human-readable failure reason, used when `state` is `failed`.",
+      "type": ["string", "null"]
+    },
+    "record": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The produced run record, required when `state` is `succeeded`. Its `links`\nare authoritative and stored with it."
+    },
+    "state": {
+      "$ref": "#/$defs/DriverState",
+      "description": "The state the driver is reporting."
+    }
+  },
+  "required": ["state"],
+  "title": "StatusUpdate",
+  "type": "object"
+}

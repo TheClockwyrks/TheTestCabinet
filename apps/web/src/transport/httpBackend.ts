@@ -1,21 +1,35 @@
-// The BackendClient over HTTP, against the backend's REST API
-// (components/backend/api.md). The backend is the source of truth for the
-// catalog, definitions, and published results — never a worker.
-//
-// The backend is not implemented yet (its overview marks it as the next
-// milestone), so these calls are coded against the documented contract and fail
-// gracefully (the console surfaces the error) until a backend is reachable.
+// The HTTP transport for the web console, against the backend's REST API
+// (components/backend/api.md). The backend is the single URL the console talks
+// to: it serves the catalog, definitions, and published results (the
+// `BackendClient` below), and — since the per-run-Job refactor — it is also the
+// control plane for *executing* runs (the `WorkerClient` built by
+// `createBackendExec`). A console enqueues a run on the backend's `/jobs` queue;
+// a dispatcher claims it and a per-run driver pod streams the run's progress and
+// pushes the produced record back through the backend. There is no separate
+// worker the console registers or talks to anymore.
 import type {
   BackendClient,
+  WorkerClient,
+  RunSubscription,
+  NotificationSubscription,
 } from "@test-cabinet/ui/client";
 import type {
+  AssetPreview,
+  AuthResult,
   BackendIdentity,
   Domain,
   HarnessEvent,
+  InProgressRun,
+  LaunchConfig,
   Model,
   ProgressCallback,
+  PublishResult,
+  PushResult,
+  ReviewDocumentInput,
   ReviewItem,
   RunEventStreams,
+  RunJob,
+  RunNotification,
   RunPage,
   Specification,
   SpecDocument,
@@ -24,9 +38,10 @@ import type {
   TestCase,
   TestType,
   VersionInfo,
+  WorkerIdentity,
 } from "@test-cabinet/ui/client";
 import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
-import { getJson, getJsonStreamed, getText, joinUrl } from "./http";
+import { getJson, getJsonStreamed, getText, joinUrl, postJson } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -324,4 +339,377 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+// --- Run execution (the backend's `/jobs` control plane) --------------------
+
+// The backend's `GET /config` body (mirrors `ClientConfig`). `artifactsUrl` is
+// the artifact service's public base URL — non-null when a pre-publish run's
+// build and media are served separately from the control-plane backend — or null
+// when artifacts are not served separately (a single-box dev setup).
+interface ClientConfigResponse {
+  artifactsUrl?: string | null;
+}
+
+// The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
+// to observe it. Only the id is needed here; the status/live URLs are
+// reconstructed from it.
+interface LaunchAckResponse {
+  jobId: string;
+  statusUrl?: string;
+  liveUrl?: string;
+}
+
+// The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
+// state, the produced run record's id once it succeeded, and the reason on
+// failure. Unlike the old worker status, this carries the record *id* (the
+// record itself is read back from `GET /runs/{id}`), since the driver pushes the
+// record to the backend's run store directly.
+interface JobStatusResponse {
+  state: string;
+  recordId?: string | null;
+  detail?: string | null;
+}
+
+// The auth service's register/login result (`AuthnResponse`). The console reaches
+// the standalone auth service directly now — the worker that used to proxy it is
+// gone.
+interface AuthResultResponse {
+  token: string;
+  account: AuthResult["account"];
+}
+
+// Map a backend job state (`JobStatusOut.state`) to the console's coarse run
+// outcome. A `succeeded` job produced a record (its own `status.state` may still
+// be a failure); anything terminal-but-not-succeeded is a failure for the
+// console's purposes.
+function mapJobState(state: string): RunJob["state"] {
+  if (state === "succeeded") return "completed";
+  if (state === "failed" || state === "canceled") return "failed";
+  return "running";
+}
+
+// Resolve the artifact service's base URL from the backend's `GET /config`, or
+// null when artifacts are not served separately. Best-effort: a backend that
+// can't be reached resolves null, so pre-publish build/media links are simply
+// left unresolved (the same behavior as before the artifact service existed).
+export async function fetchArtifactsUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.artifactsUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The web console's run-execution client: the `WorkerClient` interface the shared
+// UI drives, implemented against the backend's `/jobs` control plane (launch /
+// live stream / active list / completion feed), the backend's run-lifecycle
+// endpoints (review, publish), and the standalone auth service (register/login).
+//
+// `backendUrl` is the single backend the console talks to; `authUrl` is the auth
+// service it registers/logs in against; `artifactsUrl` is the artifact service's
+// base URL (or null) used to resolve a pre-publish run's build and media links.
+// The driver pushes a finished run's record to the backend itself, so there is no
+// `POST /push` here — `push` is a no-op that echoes the run's already-resolved
+// links.
+export function createBackendExec(
+  backendUrl: string,
+  authUrl: string,
+  artifactsUrl: string | null,
+): WorkerClient {
+  const backend = createHttpBackend(backendUrl);
+
+  // Prefix the artifact service's base URL to a root-relative media path. When no
+  // artifact service is configured the path is left unresolved (null), matching
+  // the unpublished-run behavior before artifacts were served separately.
+  const mediaUrl = (
+    runId: string,
+    kind: string,
+    file: string,
+  ): string | null => {
+    if (!artifactsUrl) return null;
+    const path = `/runs/${encodeURIComponent(runId)}/${kind}/${encodeURIComponent(file)}`;
+    return joinUrl(artifactsUrl, path);
+  };
+
+  // Resolve a run's root-relative playable-build link (`/runs/{id}/build/`)
+  // against the artifact service, which serves a pre-publish run's build (the
+  // control-plane backend is not in the artifact path). A link that is already
+  // absolute (a published run whose build the snapshot pipeline placed) is left
+  // as-is; with no artifact service configured a root-relative link is left
+  // unresolved, exactly as today's unpublished-run behavior.
+  const resolveBuild = (run: StoredRun): StoredRun => {
+    const link = run.record.links.playableBuild;
+    if (!artifactsUrl || !link || !link.startsWith("/")) return run;
+    return {
+      ...run,
+      record: {
+        ...run.record,
+        links: {
+          ...run.record.links,
+          playableBuild: joinUrl(artifactsUrl, link),
+        },
+      },
+    };
+  };
+
+  return {
+    async identity(): Promise<WorkerIdentity> {
+      // There is no separate worker to identify; the console talks to one backend
+      // URL. Report it as the execution identity, with the backend it is itself
+      // pointed at (always a match — they are the same service).
+      return { url: backendUrl, version: null, backendId: backendUrl };
+    },
+
+    async launchRun(config: LaunchConfig): Promise<string> {
+      // Enqueue a run on the backend's job queue; the dispatcher creates the
+      // driver Job. The body is the backend's `LaunchBody` (camelCase).
+      const body = {
+        testCase: config.testCase,
+        version: config.version,
+        variant: config.variant,
+        harness: config.harness,
+        model: config.modelId,
+        orchestrator: config.orchestrator,
+        ...(config.maxRuntimeOverride != null
+          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+          : {}),
+      };
+      const ack = await postJson<LaunchAckResponse>(backendUrl, "/jobs", body);
+      return ack.jobId;
+    },
+
+    async getRun(runId: string): Promise<RunJob> {
+      // The job status carries the record *id*, not the record; read the record
+      // back from the run store when the job succeeded so the caller still gets a
+      // populated `RunJob`.
+      const status = await getJson<JobStatusResponse>(
+        backendUrl,
+        `/jobs/${encodeURIComponent(runId)}`,
+      );
+      const state = mapJobState(status.state);
+      let record: RunRecord | null = null;
+      if (state === "completed" && status.recordId) {
+        record = resolveBuild(await backend.readRun(status.recordId)).record;
+      }
+      return {
+        runId,
+        state,
+        record,
+        message: status.detail ?? null,
+      };
+    },
+
+    subscribeToRun(runId: string, handlers: RunSubscription): () => void {
+      const controller = new AbortController();
+      void streamLive(backendUrl, resolveBuild, runId, handlers, controller);
+      return () => controller.abort();
+    },
+
+    async listActiveRuns(): Promise<InProgressRun[]> {
+      // The backend reports its in-flight jobs (queued/dispatched/running) by
+      // launch identity; the row shape (`ActiveJobOut`) is the console's
+      // in-progress run verbatim. A run still queued or dispatched reads as
+      // "running" to the console, which only distinguishes running from failed.
+      const jobs = await getJson<InProgressRun[]>(backendUrl, "/jobs/active");
+      return jobs.map((job) => ({ ...job, state: "running" }));
+    },
+
+    subscribeToNotifications(handlers: NotificationSubscription): () => void {
+      // An EventSource holds one long-lived SSE connection and reconnects on its
+      // own if it drops — exactly what an always-on notifications channel wants.
+      const source = new EventSource(joinUrl(backendUrl, "/notifications"));
+      source.onmessage = (event) => {
+        try {
+          handlers.onNotification(JSON.parse(event.data) as RunNotification);
+        } catch {
+          // A malformed payload shouldn't tear down the channel; drop it.
+        }
+      };
+      source.onerror = (event) => handlers.onError?.(event);
+      return () => source.close();
+    },
+
+    async listRuns(): Promise<StoredRun[]> {
+      // Every run (pushed-but-unpublished and published) lives in the backend's
+      // run store now — the driver pushes each on completion. Resolve each run's
+      // pre-publish build link against the artifact service for inline playback.
+      const page = await backend.listRuns({});
+      return page.runs.map(resolveBuild);
+    },
+
+    async readRun(id: string): Promise<StoredRun> {
+      return resolveBuild(await backend.readRun(id));
+    },
+
+    readRunEvents(
+      id: string,
+      onProgress?: ProgressCallback,
+    ): Promise<RunEventStreams> {
+      // A produced run's recorded events are served by the backend's run store
+      // (TTC events only; raw harness output is never retained off the ephemeral
+      // driver), the same read a published run uses.
+      return backend.readRunEvents(id, onProgress);
+    },
+
+    // --- Accounts (the standalone auth service, reached directly) ---
+
+    async register(
+      username: string,
+      password: string,
+      displayName: string,
+    ): Promise<AuthResult> {
+      return postJson<AuthResultResponse>(authUrl, "/auth/register", {
+        username,
+        password,
+        displayName,
+      });
+    },
+
+    async login(username: string, password: string): Promise<AuthResult> {
+      return postJson<AuthResultResponse>(authUrl, "/auth/login", {
+        username,
+        password,
+      });
+    },
+
+    // --- Run lifecycle: review -> publish ---
+
+    async push(_id: string, _token: string): Promise<PushResult> {
+      // The driver pushes a finished run's record to the backend itself, so by the
+      // time the console sees a produced run it is already stored. There is no
+      // console-driven push; report it as already pushed with no freshly-released
+      // links (the record's own links resolve the build/media).
+      return { sourceRepo: null, playableBuild: null, newlyPushed: false };
+    },
+
+    async submitReview(
+      id: string,
+      review: ReviewDocumentInput,
+      token: string,
+    ): Promise<void> {
+      // `POST /runs/{id}/reviews` attributes the review to the token's account; a
+      // run can carry one review per account.
+      await postJson<{ id: string; published: boolean }>(
+        backendUrl,
+        `/runs/${encodeURIComponent(id)}/reviews`,
+        {
+          ratings: review.ratings,
+          writeup: review.writeup,
+          checklist: review.checklist,
+        },
+        token,
+      );
+    },
+
+    async publish(id: string, token: string): Promise<PublishResult> {
+      // `POST /runs/{id}/publish` is the gate — the backend refuses a run with
+      // zero reviews.
+      const ack = await postJson<{ id: string; newlyPublished: boolean }>(
+        backendUrl,
+        `/runs/${encodeURIComponent(id)}/publish`,
+        {},
+        token,
+      );
+      return { newlyPublished: ack.newlyPublished };
+    },
+
+    // A pre-publish run's proof / asset media is served by the artifact service
+    // (the data plane), so resolve those root-relative paths against its base URL
+    // rather than the control-plane backend. Null when no artifact service is
+    // configured, in which case the UI shows presence without media.
+    proofMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "proof", file);
+    },
+    assetMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "asset", file);
+    },
+  };
+}
+
+// Read the backend's live NDJSON stream for a job (`GET /jobs/{id}/live`),
+// forwarding one normalized event (or asset-preview frame) per line, then
+// resolving the run's outcome from its final job status. The same line-framing
+// the old worker `/runs/{id}/events` consumer used. `resolveBuild` applies the
+// artifact-service prefix to the completed run's build link.
+async function streamLive(
+  backendUrl: string,
+  resolveBuild: (run: StoredRun) => StoredRun,
+  runId: string,
+  handlers: RunSubscription,
+  controller: AbortController,
+): Promise<void> {
+  const backend = createHttpBackend(backendUrl);
+  try {
+    const res = await fetch(
+      joinUrl(backendUrl, `/jobs/${encodeURIComponent(runId)}/live`),
+      {
+        headers: { accept: "application/x-ndjson" },
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok || !res.body) {
+      throw new Error(`live stream failed: ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) emitLine(line, handlers);
+      }
+    }
+    const tail = buffer.trim();
+    if (tail) emitLine(tail, handlers);
+
+    // The stream closes when the run reaches a terminal state; read the job back
+    // to learn how it ended and (on success) the produced record to open.
+    const status = await getJson<JobStatusResponse>(
+      backendUrl,
+      `/jobs/${encodeURIComponent(runId)}`,
+    );
+    if (mapJobState(status.state) === "completed" && status.recordId) {
+      const record = resolveBuild(
+        await backend.readRun(status.recordId),
+      ).record;
+      handlers.onDone({ kind: "completed", record });
+    } else {
+      handlers.onDone({
+        kind: "failed",
+        message: status.detail ?? "Run did not complete.",
+      });
+    }
+  } catch (e) {
+    if (controller.signal.aborted) return;
+    handlers.onError?.(e);
+  }
+}
+
+// Forward one NDJSON line from the live stream: an `asset_preview`-tagged line is
+// a live drawing frame; every other line is a normalized harness event (whose
+// `type` is one of the closed set of event kinds, never `asset_preview`).
+function emitLine(line: string, handlers: RunSubscription): void {
+  let parsed: { type?: string };
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    // A malformed line shouldn't tear down the stream; surface it as an
+    // unclassified event carrying the raw text (the contract's `unknown` kind).
+    handlers.onEvent({ timestamp: "", type: "unknown", raw: line });
+    return;
+  }
+  if (parsed.type === "asset_preview") {
+    handlers.onPreview?.(parsed as unknown as AssetPreview);
+    return;
+  }
+  handlers.onEvent(parsed as HarnessEvent);
 }

@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "ActiveJobOut": {
+      "description": "One in-flight job, as `GET /jobs/active` reports it: the live/job id, the\nrun's display identity (flattened), and its current state.",
+      "properties": {
+        "harnessSlug": {
+          "description": "The harness driving the run, as its slug string.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "runId": {
+          "description": "The job/stream id (`POST /jobs` returns this).",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/JobState",
+          "description": "The job's current lifecycle state."
+        },
+        "testCaseSlug": {
+          "description": "The test-case slug being run (e.g. `pong`).",
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant being run (e.g. `base`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "testCaseSlug",
+        "variant",
+        "harnessSlug",
+        "modelId",
+        "state"
+      ],
+      "type": "object"
+    },
+    "JobState": {
+      "description": "A job's lifecycle state on the wire.",
+      "oneOf": [
+        {
+          "const": "queued",
+          "description": "Enqueued, awaiting a dispatcher to claim it.",
+          "type": "string"
+        },
+        {
+          "const": "dispatched",
+          "description": "Claimed by the dispatcher; the driver Job is being created.",
+          "type": "string"
+        },
+        {
+          "const": "running",
+          "description": "The driver is executing the run.",
+          "type": "string"
+        },
+        {
+          "const": "succeeded",
+          "description": "The run produced a record.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The run could not be driven to a record.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "The job was canceled before completing.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/active-jobs.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/ActiveJobOut"
+  },
+  "title": "Array_of_ActiveJobOut",
+  "type": "array"
+}

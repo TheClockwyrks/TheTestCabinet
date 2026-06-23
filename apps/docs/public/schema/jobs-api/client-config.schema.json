@@ -1,0 +1,13 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/client-config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `GET /config`: the console's client-side configuration.",
+  "properties": {
+    "artifactsUrl": {
+      "description": "The artifact service's public base URL, or `null` when artifacts are not\nserved separately. The console resolves a pre-publish run's build and media\nlinks against it.",
+      "type": ["string", "null"]
+    }
+  },
+  "title": "ClientConfig",
+  "type": "object"
+}

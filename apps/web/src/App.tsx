@@ -5,7 +5,6 @@ import {
   BackendProvider,
   WorkersProvider,
   useBackend,
-  useWorkers,
 } from "@test-cabinet/ui/client";
 import {
   GalleryApp,
@@ -16,25 +15,27 @@ import {
 import { createHttpArena } from "./transport/httpArena";
 import {
   useBackendConnection,
-  useWorkerConnections,
+  useExecConnection,
 } from "./state/useConnections";
 
 // The web console: the full shared gallery app (from @test-cabinet/ui) rendered
-// against live data. It points at a backend for the catalog and published runs,
-// and at worker servers (added in the connections drawer) for execution; that
-// run-execution capability is the only difference from the static site. The
-// Tauri app mounts the same app with its own transport and a built-in local
-// worker pre-added.
+// against live data. It talks to a single backend URL — for the catalog and
+// published runs, and (since the per-run-Job refactor) for executing runs via the
+// backend's `/jobs` queue. That run-execution capability is the only difference
+// from the static site. The Tauri app mounts the same app with its own transport
+// and a built-in local worker.
 export function App() {
   const backend = useBackendConnection();
-  const workers = useWorkerConnections(backend.identity);
+  // The execution target is the same backend; presented through the shared
+  // workers context as a single, fixed handle (no worker list to manage).
+  const workers = useExecConnection(backend.url);
 
   return (
     <BackendProvider value={backend}>
       <WorkersProvider value={workers}>
         {/* Auth lives below the workers provider — register/login go through the
-            active worker transport — and above the gallery so the review UI can
-            read the signed-in account. */}
+            execution transport (now the backend + auth service) — and above the
+            gallery so the review UI can read the signed-in account. */}
         <AuthProvider>
           {/* Above the data source so a launched run's refresh signal reaches it. */}
           <RunsRuntimeProvider>
@@ -47,30 +48,14 @@ export function App() {
 }
 
 function WebGallery() {
-  // The arena runs matches on a chosen worker (the active one by default) and reads
-  // persisted tournaments from the backend; it is offered only when a worker is
-  // connected (the gallery additionally gates the run UI on `canExecute`). Rebuilt
-  // when the worker set or backend changes so it always targets the current
-  // connections.
+  // The arena runs matches and reads persisted tournaments against the single
+  // backend URL; it is offered only when a backend is configured (the gallery
+  // additionally gates the run UI on `canExecute`). Rebuilt when the backend
+  // changes so it always targets the current connection.
   const { url: backendUrl } = useBackend();
-  const { workers, activeId } = useWorkers();
-  // The arena needs every worker's id/label/url so its dropdown can switch which
-  // worker contributes its local runs; the key folds the set so the memo rebuilds
-  // when a worker is added/removed or its URL changes.
-  const arenaWorkers = useMemo(
-    () => workers.map((w) => ({ id: w.id, label: w.label, url: w.url })),
-    [workers],
-  );
-  const workersKey = arenaWorkers
-    .map((w) => `${w.id}:${w.url ?? ""}`)
-    .join("|");
   const arena = useMemo(
-    () =>
-      arenaWorkers.length > 0
-        ? createHttpArena(arenaWorkers, activeId, backendUrl)
-        : undefined,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workersKey, activeId, backendUrl],
+    () => (backendUrl ? createHttpArena(backendUrl) : undefined),
+    [backendUrl],
   );
   const data = useLiveGallery(arena);
   return (

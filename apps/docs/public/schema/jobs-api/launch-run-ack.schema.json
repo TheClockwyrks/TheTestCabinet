@@ -1,0 +1,22 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-run-ack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to a successful `POST /jobs`: the enqueued job's id and where to\nobserve it.",
+  "properties": {
+    "jobId": {
+      "description": "The id of the enqueued job.",
+      "type": "string"
+    },
+    "liveUrl": {
+      "description": "Where to stream the job's live progress (NDJSON).",
+      "type": "string"
+    },
+    "statusUrl": {
+      "description": "Where to poll the job's status.",
+      "type": "string"
+    }
+  },
+  "required": ["jobId", "statusUrl", "liveUrl"],
+  "title": "LaunchAck",
+  "type": "object"
+}
