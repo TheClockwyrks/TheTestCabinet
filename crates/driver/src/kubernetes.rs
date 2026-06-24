@@ -247,16 +247,25 @@ impl KubernetesContainerRuntime {
         let mut stderr = Vec::new();
         // Write stdin (when given) concurrently with draining both output streams,
         // so a large archive on stdin cannot deadlock against an unread stdout.
+        //
+        // Crucially, we do NOT close (shutdown/drop) stdin here. Closing stdin is
+        // the kube-rs client's signal for stdin-EOF, and on the **v4** exec
+        // WebSocket subprotocol (`v4.channel.k8s.io` — no per-stream CLOSE frame)
+        // the only way it can send that signal is to close the *entire* WebSocket,
+        // which races — and beats — the terminating `Status` frame coming back, so
+        // the exit code is lost as `-1`. Instead the only stdin consumer
+        // (`extract_tar`) bounds its own read with `head -c`, so the remote process
+        // exits on its own and the server delivers `Status` without us ever needing
+        // to signal stdin-EOF. We therefore hold the writer open until the command
+        // has finished (status received), then drop it at end of scope — by which
+        // point the message loop has already broken on `Status`, so the close is a
+        // harmless no-op on both v4 and v5. (Every stdin command must self-terminate
+        // without relying on stdin-EOF; a command that reads to EOF would hang.)
         let write = async {
             if let (Some(data), Some(writer)) = (stdin, writer.as_mut()) {
                 writer.write_all(data).await.map_err(|err| {
                     Error::ContainerRuntime(format!("writing stdin to run pod `{pod}`: {err}"))
                 })?;
-                // Best-effort close: a remote that bounds its own read (see
-                // `extract_tar`) can exit and let the server tear the connection
-                // down before this `shutdown` lands. All bytes are already written,
-                // so a close error here is benign — don't fail the exec over it.
-                let _ = writer.shutdown().await;
             }
             Ok::<(), Error>(())
         };
@@ -274,9 +283,13 @@ impl KubernetesContainerRuntime {
         };
         let (write, _, _) = tokio::join!(write, read_out, read_err);
         write?;
+        let exit_code = exit_code_from_status(status.await);
+
+        // Stdin stays open through the await above; only now is it safe to close.
+        drop(writer);
 
         Ok((
-            exit_code_from_status(status.await),
+            exit_code,
             stdout,
             String::from_utf8_lossy(&stderr).into_owned(),
         ))
