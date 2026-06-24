@@ -23,6 +23,7 @@
 #   local-up        create the cluster, build+import images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
+#   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, arena→:8791 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
@@ -62,7 +63,7 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
 
-.PHONY: local-up local-down local-rebuild local-forward local-ingest local-status secrets cluster images apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-ingest local-status secrets cluster images apply
 
 local-up: cluster images apply local-ingest
 	@echo ""
@@ -235,6 +236,17 @@ local-rebuild: images apply
 	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
+
+# Re-apply the overlay ONLY, with no image rebuild or service restart — the fast
+# path after a manifest-only change (RBAC, env, volumes). `kubectl apply -k` is
+# idempotent, so this is a no-op when nothing changed. Use local-rebuild instead
+# when code changed (it rebuilds images and restarts the pods so they pick the new
+# bytes up). Object-level changes that need a pod restart to take effect (e.g. an
+# env edit) still want a `kubectl -n $(NS) rollout restart …` or local-rebuild
+# after this; a Role change like the driver's pods/exec RBAC takes effect for the
+# next driver Job with no restart.
+local-reapply:
+	kubectl apply -k '$(OVERLAY)'
 
 local-status:
 	kubectl -n '$(NS)' get pods,svc,pvc

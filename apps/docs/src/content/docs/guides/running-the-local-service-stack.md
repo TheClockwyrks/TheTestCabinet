@@ -196,6 +196,7 @@ is built for.
 
 ```sh
 make -C deployments/local local-rebuild     # after a code or manifest change: rebuild images, re-apply the overlay, restart services
+make -C deployments/local local-reapply     # after a manifest-only change (RBAC, env, volumes): re-apply the overlay, no image rebuild
 make -C deployments/local local-ingest      # after editing a test case: force re-ingest the catalog
 make -C deployments/local secrets           # after rotating a key: re-create the Secrets from the environment
 make -C deployments/local local-down        # delete the cluster and everything in it
