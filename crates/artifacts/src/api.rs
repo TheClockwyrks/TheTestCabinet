@@ -1,7 +1,7 @@
 //! The artifact service's HTTP surface: upload a run's tree, serve its build and
 //! media.
 //!
-//! Two callers, two auth authorities (see [`crate::auth`]):
+//! Two callers (see [`crate::auth`]):
 //!
 //! - The **driver** uploads a finished run's collected tree —
 //!   `POST /runs/{id}/artifacts` with a `tar` body — authed by its **per-job
@@ -9,7 +9,10 @@
 //! - A **reviewer** (through the console) reads the run's playable build and
 //!   proof/asset media — `GET /runs/{id}/build`, `/runs/{id}/build/{*path}`,
 //!   `/runs/{id}/proof/{file}`, `/runs/{id}/asset/{file}`, and the recorded
-//!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs — authed by an **account token**.
+//!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs. These are **not** token-gated: the
+//!   console loads them as `<img src>`/`<iframe>`/relative build sub-resources,
+//!   which carry no `Authorization` header, so read protection is the
+//!   private-network boundary, exactly as for the backend's run reads.
 //!
 //! The serve handlers **reuse the core resolvers**
 //! ([`find_build_output`](test_cabinet_core::find_build_output),
@@ -32,11 +35,9 @@ use axum::{Json, Router};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use test_cabinet_core::{
-    AccountsClient, find_build_output, serve_asset_file, serve_build_file, serve_proof_file,
-};
+use test_cabinet_core::{find_build_output, serve_asset_file, serve_build_file, serve_proof_file};
 
-use crate::auth::{ReadAuth, verify_job_token};
+use crate::auth::verify_job_token;
 use crate::error::ApiError;
 use crate::store::{ArtifactStore, impl_dir};
 
@@ -47,15 +48,13 @@ use crate::store::{ArtifactStore, impl_dir};
 /// heavier test cases the benchmark is moving toward.
 const MAX_UPLOAD_BYTES: usize = 2 * 1024 * 1024 * 1024;
 
-/// The shared handler state: the backing store, the auth client for read auth, the
-/// backend URL for upload auth, and the HTTP client the upload-auth call uses.
+/// The shared handler state: the backing store, the backend URL for upload auth,
+/// and the HTTP client the upload-auth call uses.
 #[derive(Clone)]
 pub struct AppState {
     /// The artifact backing store (local-fs today). Boxed behind the trait so an
     /// R2 impl can replace it without touching the handlers.
     pub store: Arc<dyn ArtifactStore>,
-    /// Verifies a reviewer's account token against the auth service for read auth.
-    pub auth: Arc<AccountsClient>,
     /// The backend base URL (no trailing slash) an upload's per-job token is
     /// verified against.
     pub backend_url: Arc<String>,
@@ -75,9 +74,9 @@ pub fn router(state: AppState) -> Router {
             "/runs/{id}/artifacts",
             post(upload).layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES)),
         )
-        // Serve the run's playable build and media (reviewer → service, account
-        // token). These mirror the worker's handlers exactly, reading from the
-        // store's per-run root.
+        // Serve the run's playable build and media (reviewer → service, ungated:
+        // browser-loaded media carries no Authorization header). These mirror the
+        // worker's handlers exactly, reading from the store's per-run root.
         .route("/runs/{id}/build", get(build_root))
         .route("/runs/{id}/build/{*path}", get(build_path))
         .route("/runs/{id}/proof/{file}", get(proof_file))
@@ -139,20 +138,18 @@ async fn upload(
 }
 
 /// `GET /runs/{id}/build` — serve a produced run's playable build at its root (the
-/// build's `index.html`). Account-token gated.
+/// build's `index.html`). Ungated (browser-loaded).
 async fn build_root(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     serve_build(&state, &id, "")
 }
 
 /// `GET /runs/{id}/build/{*path}` — serve a file within a produced run's playable
-/// build (an asset the `index.html` references). Account-token gated.
+/// build (an asset the `index.html` references). Ungated (browser-loaded).
 async fn build_path(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path((id, path)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
     serve_build(&state, &id, &path)
@@ -177,10 +174,10 @@ fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, A
 /// `GET /runs/{id}/proof/{file}` — a produced run's proof-of-implementation media
 /// (`{file}` is `<proof-id>.<ext>`), resolved from the run record's
 /// `validation.proofs` via [`serve_proof_file`], the same resolver the worker
-/// used. Account-token gated. `404` when the run, the proof, or the file is absent.
+/// used. Ungated (browser-loaded). `404` when the run, the proof, or the file is
+/// absent.
 async fn proof_file(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
     let run_dir = state.store.run_dir(&id);
@@ -192,10 +189,9 @@ async fn proof_file(
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
 /// final preview, or action log (or an adversarial replay), resolved from the run
 /// record's `validation` frame via [`serve_asset_file`], the same resolver the
-/// worker used. Account-token gated.
+/// worker used. Ungated (browser-loaded as `<img src>`/animation frames).
 async fn asset_file(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
     let run_dir = state.store.run_dir(&id);
@@ -206,21 +202,19 @@ async fn asset_file(
 
 /// `GET /runs/{id}/events.jsonl` — a finished run's recorded, normalized event
 /// stream, served verbatim as NDJSON when it was uploaded alongside the run.
-/// Account-token gated. `404` when the run or its event log is absent.
+/// Ungated (browser-loaded). `404` when the run or its event log is absent.
 async fn events_file(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     serve_run_stream(&state, &id, "events.jsonl")
 }
 
 /// `GET /runs/{id}/raw.jsonl` — a finished run's recorded raw harness output,
-/// served verbatim as NDJSON when it was uploaded. Account-token gated. `404` when
-/// the run or its raw log is absent.
+/// served verbatim as NDJSON when it was uploaded. Ungated (browser-loaded). `404`
+/// when the run or its raw log is absent.
 async fn raw_file(
     State(state): State<AppState>,
-    _auth: ReadAuth,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     serve_run_stream(&state, &id, "raw.jsonl")

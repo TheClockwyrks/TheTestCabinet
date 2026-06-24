@@ -34,16 +34,23 @@ Splitting it from the backend keeps two concerns apart:
 
 ## Auth
 
-The artifact service has **no** Kubernetes API access — it only talks HTTP. It
-gates access by delegating to the services that own identity:
+The artifact service has **no** Kubernetes API access — it only talks HTTP.
 
 - **Uploads** (from a driver) — it forwards the driver's per-job token to the
-  backend, the token authority, to authenticate the upload.
-- **Reads** (from a reviewer, before a run is published) — it verifies the
-  reviewer's account token against the [auth service](/components/auth/overview/).
+  backend, the token authority, to authenticate the upload. Only the driver holding
+  a job's token can upload for it.
+- **Reads** (from a reviewer, before a run is published) — **ungated**. The console
+  loads a run's build and proof/asset media as ordinary browser requests
+  (`<img src>`, an `<iframe>` build, and the build's own relative sub-resources),
+  none of which can carry an `Authorization` header, and the service's CORS is
+  permissive (no credentials), so there is no cookie path either. Reads therefore
+  rely on the **private-network boundary plus unguessable run ids** — the same read
+  posture as the backend, which already serves a run's record and its *published*
+  media to a signed-out reader. (Restoring a real read gate would mean cookie-based
+  session auth; a bearer token here only made the media unloadable in a browser.)
 
-Published runs' media are public; the gating matters for the pre-publish window
-when a run is private but playable for review.
+Published runs' media are public anyway; the pre-publish window is private by the
+network boundary rather than a per-read token.
 
 ## Status
 

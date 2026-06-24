@@ -15,8 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 # The shared playable/proof/asset resolvers (`find_build_output`,
-# `serve_build_file`, `serve_proof_file`, `serve_asset_file`) plus `AccountsClient`
-# for read auth all live in core, so serving logic is reused, not reinvented.
+# `serve_build_file`, `serve_proof_file`, `serve_asset_file`) live in core, so
+# serving logic is reused, not reinvented.
 test-cabinet-core = { path = "../core" }
 # A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
 # propagation-only default is for libraries like `core`), exactly as the other

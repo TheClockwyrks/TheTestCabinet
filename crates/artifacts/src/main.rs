@@ -3,9 +3,10 @@
 //! Resolves configuration from the environment, builds the service, and serves
 //! the Axum router until terminated. Like the backend and auth service there is no
 //! app-level auth guarding the *process* — bind to a private-network interface via
-//! `TCAB_ARTIFACTS_BIND` in production. The token checks on its endpoints
-//! (account-token reads, per-job-token uploads) gate the private pre-publish
-//! artifacts on top of that boundary.
+//! `TCAB_ARTIFACTS_BIND` in production. Uploads add a per-job-token check on top of
+//! that boundary; reads are ungated (the console loads build/media as browser
+//! requests that carry no token), so the boundary is what keeps pre-publish
+//! artifacts private.
 
 use std::process::ExitCode;
 
@@ -35,7 +36,6 @@ async fn main() -> ExitCode {
     tracing::info!(
         root = %config.root.display(),
         backend = %config.backend_url,
-        auth = %config.auth_url,
         "artifact service configuration resolved"
     );
 

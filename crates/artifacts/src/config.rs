@@ -7,7 +7,10 @@
 //! | `TCAB_ARTIFACTS_BIND` | no | Address the Axum server binds. | `0.0.0.0:8790` |
 //! | `TCAB_ARTIFACTS_ROOT` | no | The [`LocalFsStore`](crate::store::LocalFsStore) root dir (a PVC in a deployment). | `./tcab-artifacts` |
 //! | `TCAB_BACKEND_URL` | no | The backend the service forwards a driver's per-job token to for upload auth (the backend is the token authority). | `http://127.0.0.1:8787` |
-//! | `TCAB_AUTH_URL` | no | The auth service the service verifies a reviewer's account token against for read auth. | `http://127.0.0.1:8789` |
+//!
+//! Reads (a reviewer's build/media pulls) are ungated — the console loads them as
+//! browser media that cannot carry a token — so the service needs no auth-service
+//! URL.
 //!
 //! A bind on `0.0.0.0` is deliberate: unlike the backend/auth service (which
 //! default to loopback for a single-box dev run), the artifact service is a
@@ -26,9 +29,6 @@ const DEFAULT_ROOT: &str = "./tcab-artifacts";
 /// loopback default, so local dev works with both services up and no extra
 /// configuration.
 const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:8787";
-/// The default auth service URL when `TCAB_AUTH_URL` is unset: the auth service's
-/// own loopback default, matching the same local-dev convenience.
-const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
 
 /// The fully resolved artifact-service configuration.
 #[derive(Debug, Clone)]
@@ -44,10 +44,6 @@ pub struct Config {
     /// (`POST /jobs/{id}/verify-token`) to authenticate an upload; the backend is
     /// the token authority.
     pub backend_url: String,
-    /// The auth service base URL (`TCAB_AUTH_URL`), without a trailing slash. The
-    /// service verifies a reviewer's account token against it to gate reads of a
-    /// pre-publish run's private artifacts.
-    pub auth_url: String,
 }
 
 impl Config {
@@ -58,9 +54,6 @@ impl Config {
             bind: env_or("TCAB_ARTIFACTS_BIND", DEFAULT_BIND),
             root: std::path::PathBuf::from(env_or("TCAB_ARTIFACTS_ROOT", DEFAULT_ROOT)),
             backend_url: env_or("TCAB_BACKEND_URL", DEFAULT_BACKEND_URL)
-                .trim_end_matches('/')
-                .to_string(),
-            auth_url: env_or("TCAB_AUTH_URL", DEFAULT_AUTH_URL)
                 .trim_end_matches('/')
                 .to_string(),
         }

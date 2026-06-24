@@ -17,15 +17,16 @@
 //!   [`LocalFsStore`](store::LocalFsStore) impl (a directory on a PVC), keyed per
 //!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token) and the
-//!   reviewer's build/media reads (account-token), the reads built on the **shared
-//!   core resolvers** so serving logic is reused, not reinvented.
-//! - [`auth`] — read auth (account token via `AccountsClient`) and upload auth
-//!   (per-job token forwarded to the backend's verify endpoint).
+//!   reviewer's ungated build/media reads, the reads built on the **shared core
+//!   resolvers** so serving logic is reused, not reinvented.
+//! - [`auth`] — upload auth (per-job token forwarded to the backend's verify
+//!   endpoint); reads are ungated because the console loads them as browser media.
 //! - [`config`] — the environment-sourced configuration.
 //!
-//! Like the backend and auth service it sits behind a private-network boundary;
-//! the token checks are a layer on top of that, gating private pre-publish
-//! artifacts to the reviewer who is allowed to see them.
+//! Like the backend and auth service it sits behind a private-network boundary.
+//! The upload's per-job token is a layer on top of that; reads rely on the boundary
+//! alone (plus unguessable run ids), matching the backend's signed-out run reads —
+//! browser-loaded media (`<img>`/`<iframe>`) cannot present a token.
 
 pub mod api;
 pub mod auth;
@@ -49,16 +50,14 @@ pub struct ArtifactService {
 }
 
 /// Assemble the artifact service from a configuration: open the local-fs store
-/// (creating its root if missing), build the auth client and the verify HTTP
-/// client, and construct the router. Fails only if the store root cannot be
-/// created (an unwritable PVC) — the service refuses to start rather than fail
-/// every upload later.
+/// (creating its root if missing), build the verify HTTP client, and construct the
+/// router. Fails only if the store root cannot be created (an unwritable PVC) — the
+/// service refuses to start rather than fail every upload later.
 pub fn build(config: Config) -> Result<ArtifactService, store::StoreError> {
     let store = LocalFsStore::new(&config.root)?;
     let bind = config.bind.clone();
     let state = AppState {
         store: Arc::new(store),
-        auth: Arc::new(test_cabinet_core::AccountsClient::new(config.auth_url)),
         backend_url: Arc::new(config.backend_url),
         http: reqwest::Client::new(),
     };

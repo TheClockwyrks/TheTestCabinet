@@ -66,11 +66,10 @@ spec:
             - name: TCAB_ARTIFACTS_ROOT
               value: "/artifacts"
             # The backend it forwards a driver's per-job token to for upload auth.
+            # (Reads are ungated — browser-loaded media carries no token — so the
+            # service needs no auth-service URL.)
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
-            # The auth service it verifies a reviewer's account token against for reads.
-            - name: TCAB_AUTH_URL
-              value: "http://tcab-auth:8789"
             - name: TCAB_ENV
               value: "prod"
           volumeMounts:

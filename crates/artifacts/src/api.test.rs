@@ -4,15 +4,15 @@
 //! - the upload → serve round-trip (store a fake build, fetch `/runs/{id}/build`
 //!   and assert the content plus the per-run base-href rewrite `serve_build_file`
 //!   applies);
-//! - read auth (a build request without a valid account token is rejected);
+//! - ungated reads (a build request with no token still succeeds — browser media
+//!   cannot carry one);
 //! - upload auth (an upload without a valid job token is rejected).
 //!
-//! Both auth checks talk to upstreams (the auth service for reads, the backend for
-//! uploads), so a single tiny **stub** server stands in for both: it accepts a
-//! fixed "good" account token at `/auth/verify` and a fixed "good" job token at
-//! `/jobs/{id}/verify-token`, rejecting everything else with `401`. The artifact
-//! service is pointed at it, exercising the real verify code paths without the real
-//! services.
+//! Only the upload check talks to an upstream (the backend, the per-job-token
+//! authority), so a tiny **stub** server stands in for it: it accepts a fixed
+//! "good" job token at `/jobs/{id}/verify-token`, rejecting everything else with
+//! `401`. The artifact service is pointed at it, exercising the real verify code
+//! path without the real backend.
 
 use std::io::Cursor;
 use std::net::SocketAddr;
@@ -20,53 +20,32 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::*;
-use crate::auth::bearer;
 use crate::store::LocalFsStore;
 
-/// The account token the stub accepts at `/auth/verify`.
-const GOOD_ACCOUNT_TOKEN: &str = "good-account-token";
 /// The per-job token the stub accepts at `/jobs/{id}/verify-token`.
 const GOOD_JOB_TOKEN: &str = "good-job-token";
 
-/// Spawn the stub auth+backend server on an ephemeral port and return its base URL.
-/// It answers `/auth/verify` (account token → `Account` or `401`) and
-/// `/jobs/{id}/verify-token` (job token → `204` or `401`).
+/// Spawn the stub backend server on an ephemeral port and return its base URL. It
+/// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) — the only
+/// upstream the artifact service calls now that reads are ungated.
 async fn spawn_stub() -> String {
-    let app = Router::new()
-        .route(
-            "/auth/verify",
-            post(|headers: axum::http::HeaderMap| async move {
-                let ok = bearer(&headers).as_deref() == Some(GOOD_ACCOUNT_TOKEN);
-                if ok {
-                    Json(serde_json::json!({
-                        "id": "acct-1",
-                        "username": "reviewer",
-                        "displayName": "Reviewer"
-                    }))
-                    .into_response()
-                } else {
-                    StatusCode::UNAUTHORIZED.into_response()
-                }
-            }),
-        )
-        .route(
-            "/jobs/{id}/verify-token",
-            post(|body: Json<serde_json::Value>| async move {
-                let presented = body.0.get("token").and_then(|t| t.as_str());
-                if presented == Some(GOOD_JOB_TOKEN) {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::UNAUTHORIZED
-                }
-            }),
-        );
+    let app = Router::new().route(
+        "/jobs/{id}/verify-token",
+        post(|body: Json<serde_json::Value>| async move {
+            let presented = body.0.get("token").and_then(|t| t.as_str());
+            if presented == Some(GOOD_JOB_TOKEN) {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::UNAUTHORIZED
+            }
+        }),
+    );
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
@@ -86,7 +65,6 @@ async fn app(stub_url: &str) -> (Router, LocalFsStore, TempDir) {
     let store = LocalFsStore::new(dir.path()).unwrap();
     let state = AppState {
         store: Arc::new(store.clone()),
-        auth: Arc::new(test_cabinet_core::AccountsClient::new(stub_url.to_string())),
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
     };
@@ -127,11 +105,10 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
     let response = app.clone().oneshot(upload).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    // Serve the build root with the good account token.
+    // Serve the build root with no token — reads are ungated.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-1/build")
-        .header("authorization", format!("Bearer {GOOD_ACCOUNT_TOKEN}"))
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(get).await.unwrap();
@@ -153,11 +130,11 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
 }
 
 #[tokio::test]
-async fn serving_a_build_without_an_account_token_is_rejected() {
+async fn serving_a_build_without_a_token_succeeds() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
-    // Upload first so the build exists; the read must still be gated.
+    // Upload first so the build exists.
     let upload = Request::builder()
         .method("POST")
         .uri("/runs/run-2/artifacts")
@@ -169,7 +146,9 @@ async fn serving_a_build_without_an_account_token_is_rejected() {
         StatusCode::CREATED
     );
 
-    // No token → 401.
+    // No token → still served: the console loads build/media as browser requests
+    // (`<img>`/`<iframe>`/relative sub-resources) that carry no Authorization
+    // header, so reads are ungated and rely on the private-network boundary.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-2/build")
@@ -177,19 +156,7 @@ async fn serving_a_build_without_an_account_token_is_rejected() {
         .unwrap();
     assert_eq!(
         app.clone().oneshot(get).await.unwrap().status(),
-        StatusCode::UNAUTHORIZED
-    );
-
-    // A wrong token → 401.
-    let get = Request::builder()
-        .method("GET")
-        .uri("/runs/run-2/build")
-        .header("authorization", "Bearer not-the-token")
-        .body(Body::empty())
-        .unwrap();
-    assert_eq!(
-        app.clone().oneshot(get).await.unwrap().status(),
-        StatusCode::UNAUTHORIZED
+        StatusCode::OK
     );
 }
 

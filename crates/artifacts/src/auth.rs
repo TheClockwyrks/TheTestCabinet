@@ -1,61 +1,27 @@
-//! Authentication for the artifact service's two callers.
+//! Authentication for the artifact service's one *gated* caller, the uploading
+//! driver.
 //!
-//! The service holds artifacts that are **private until publish** — a run's build
-//! and media are only the reviewer's to see before it goes public — so both
-//! directions are gated, but against two different authorities:
+//! **Uploads** (a driver POSTing a finished run's tree) present the **per-job
+//! token**, which the *backend* minted and is the authority for. The service
+//! forwards it to the backend's internal `POST /jobs/{id}/verify-token` endpoint
+//! ([`verify_job_token`]); a `2xx` means the token is the one minted for that job.
+//! There is no extractor for it because the job id comes from the request path and
+//! the check is per-upload (see [`crate::api`]).
 //!
-//! - **Reads** (a reviewer pulling a build/proof/asset) require an **account
-//!   token**, verified against the auth service via
-//!   [`AccountsClient`](test_cabinet_core::AccountsClient) — exactly the pattern
-//!   the backend's `AuthUser` uses. [`ReadAuth`] is the Axum extractor for it.
-//! - **Uploads** (a driver POSTing a finished run's tree) present the **per-job
-//!   token**, which the *backend* minted and is the authority for. The service
-//!   forwards it to the backend's internal `POST /jobs/{id}/verify-token` endpoint
-//!   ([`verify_job_token`]); a `2xx` means the token is the one minted for that
-//!   job. There is no extractor for it because the job id comes from the request
-//!   path and the check is per-upload (see [`crate::api`]).
-//!
-//! Like the rest of the system this is a layer on top of the private-network
-//! boundary, not a replacement for it.
+//! **Reads** (a reviewer pulling a build/proof/asset through the console) are
+//! **not** token-gated. They cannot be: the console loads this media as
+//! `<img src>`, an `<iframe>` build, and the build's own relative sub-resource
+//! requests, none of which can carry an `Authorization` header, and the service's
+//! CORS is permissive (no credentials), so there is no cookie path either. This
+//! matches the backend, which already serves a run's record and its *published*
+//! media to a signed-out reader — the read posture across the system is the
+//! private-network boundary plus unguessable run ids, not a per-read token. (A
+//! future cookie-based session would be the way to restore a real read gate; until
+//! then a token here only made the media unloadable.)
 
-use axum::extract::FromRequestParts;
 use axum::http::HeaderMap;
-use axum::http::request::Parts;
 
-use test_cabinet_core::Account;
-
-use crate::api::AppState;
 use crate::error::ApiError;
-
-/// The authenticated account behind a *read* request, produced by the
-/// [`FromRequestParts`] extractor below. A serve handler that takes `ReadAuth` is
-/// reachable only with a valid account bearer token, so a pre-publish run's
-/// private artifacts are never served to an anonymous caller.
-#[derive(Debug, Clone)]
-pub struct ReadAuth(#[allow(dead_code)] pub Account);
-
-impl FromRequestParts<AppState> for ReadAuth {
-    type Rejection = ApiError;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        let token =
-            bearer(&parts.headers).ok_or_else(|| ApiError::unauthorized("missing bearer token"))?;
-        // A reachable-but-rejecting auth service answers `Ok(None)` (the token is
-        // bad → `401`); a network/server fault is `Err` (→ `502`), a different
-        // failure mode the caller should retry rather than re-auth — mirroring the
-        // backend's `AuthUser`.
-        let account = state
-            .auth
-            .verify(&token)
-            .await
-            .map_err(|err| ApiError::auth_unavailable(err.to_string()))?
-            .ok_or_else(|| ApiError::unauthorized("invalid or expired token"))?;
-        Ok(ReadAuth(account))
-    }
-}
 
 /// Verify an upload's per-job token against the backend (the token authority) by
 /// forwarding it to `POST {backend_url}/jobs/{id}/verify-token`. The backend
