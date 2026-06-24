@@ -24,7 +24,7 @@ cycle.
 | --- | --- |
 | `kustomization.yaml` | The base: lists every resource below for the overlays to reference. |
 | `namespace.yaml` | The per-environment namespace (`tcab-staging` / `tcab-prod`). |
-| `rbac.yaml` | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
+| `rbac.yaml` | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
 | `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource. |
 | `backend.yaml` | Backend StatefulSet (1 replica) + PVC + ClusterIP Service. |
 | `auth.yaml` | Auth-service StatefulSet (1 replica) + PVC + ClusterIP Service. |

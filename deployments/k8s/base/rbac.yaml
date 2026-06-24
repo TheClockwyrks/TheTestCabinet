@@ -31,9 +31,16 @@ rules:
     resources: ["pods"]
     verbs: ["create", "get", "list", "delete"]
   # Seed the working tree and run the harness session in the sandbox pod.
+  # Both `get` and `create` are required: the driver's Kubernetes client (kube-rs
+  # with the `ws` feature) execs over a WebSocket, which is a GET request to the
+  # `pods/exec` subresource, so the API server authorizes it under the `get` verb
+  # — NOT `create`. (`create` is the verb for the legacy SPDY/POST exec path;
+  # kubectl masks the difference by falling back from WebSocket to SPDY, but
+  # kube-rs has no SPDY fallback, so a `create`-only Role fails the WebSocket
+  # protocol switch with 403 Forbidden.) Keep both so either exec transport works.
   - apiGroups: [""]
     resources: ["pods/exec"]
-    verbs: ["create"]
+    verbs: ["get", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
