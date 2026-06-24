@@ -37,6 +37,21 @@
 !/packages/browser-driver/package.json
 !/packages/browser-driver/driver.mjs
 
+# The adversarial and performance run-container images assemble a source-only
+# "buildkit" — the verbatim engine crates plus a de-workspaced root Cargo.toml that
+# re-supplies their `workspace = true` inheritance — which they `cp` from the build
+# context and smoke-build standalone (see containers/{adversarial,performance}/Dockerfile).
+# The crates ride in under !/crates, but these de-workspaced root manifests live
+# outside it, so re-include them explicitly or the COPY/cp stages can't see them.
+!/containers/adversarial/buildkit/Cargo.toml
+!/containers/performance/buildkit/Cargo.toml
+
+# The performance image bakes the committed training scenarios from the
+# performance-factorio case's version folder (see containers/performance/Dockerfile's
+# `COPY test-cases/.../references/training`). It is the one test-case tree a build
+# embeds, so it must survive the allowlist; the path tracks the Dockerfile's COPY.
+!/test-cases/performance-factorio/v1.0.0/references/training
+
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
 # the context or churns the layer cache. These come last so they win.
