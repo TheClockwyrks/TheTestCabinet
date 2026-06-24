@@ -22,7 +22,7 @@
 # Targets:
 #   local-up        create the cluster, build+import images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
-#   local-rebuild   rebuild+import images and restart the services (after a code change)
+#   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, arena→:8791 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
@@ -219,10 +219,16 @@ local-forward:
 	  kubectl -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
 	  wait
 
-# Rebuild after a code change: new images, re-import, rolling restart. (Driver pods
-# are per-run Jobs the dispatcher creates fresh each run, so they pick up the new
-# tcab-driver:local image on the next run with no restart here.)
-local-rebuild: images
+# Rebuild after a code change: new images, re-import, re-apply the overlay, rolling
+# restart. (Driver pods are per-run Jobs the dispatcher creates fresh each run, so
+# they pick up the new tcab-driver:local image on the next run with no restart
+# here.) The `apply` dependency is what makes a rebuild also pick up MANIFEST
+# changes — RBAC, env, volumes — not just new image bytes; without it a Role or env
+# edit silently never reaches the cluster on a rebuild (it only does on local-up).
+# `kubectl apply -k` is idempotent (a no-op when nothing changed), and the rollout
+# restart below still forces the pods to pick up rebuilt images even when their spec
+# is byte-identical (same :local tag), which apply alone would not trigger.
+local-rebuild: images apply
 	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
 	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
