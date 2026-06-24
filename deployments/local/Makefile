@@ -24,7 +24,7 @@
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward backend→:8787, auth→:8789, arena→:8791 to localhost
+#   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
@@ -69,8 +69,8 @@ local-up: cluster images apply local-ingest
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)'."
 	@echo "Reach it with:  make -C deployments/local local-forward"
-	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   arena → http://127.0.0.1:8791"
-	@echo "  (the backend reports the arena URL at GET /config; the console fetches it for matches/tournaments)"
+	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791"
+	@echo "  (the backend reports the artifacts + arena URLs at GET /config; the console fetches build/media and matches/tournaments from them)"
 
 # Create the k3d cluster if it does not already exist, mapping the repository to
 # /repo on the server node so the backend can ingest from a read-only mount of it
@@ -212,11 +212,17 @@ local-ingest:
 	  if [ -z "$$ready" ]; then echo "ERROR: backend not reachable on 127.0.0.1:$$port after 30s." >&2; cat "$$pflog" >&2; exit 1; fi; \
 	  BACKEND_URL=http://127.0.0.1:$$port '$(REPO)/scripts/reingest.sh'
 
-# Hold the services open on localhost until interrupted (Ctrl-C).
+# Hold the services open on localhost until interrupted (Ctrl-C). The artifact
+# service is forwarded too: the console loads a pre-publish run's build and its
+# proof/asset media directly from it (as browser `<img>`/`<iframe>` requests), so
+# it must be reachable on localhost — the in-cluster `tcab-artifacts:8790` the
+# backend advertises by default is not resolvable from the host browser. The local
+# backend patch points `TCAB_ARTIFACTS_PUBLIC_URL` at this forwarded address.
 local-forward:
-	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
+	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
 	@kubectl -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  kubectl -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
+	  kubectl -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  kubectl -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
 	  wait
 

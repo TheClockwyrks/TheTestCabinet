@@ -1,9 +1,18 @@
-# Local backend overrides: tag the environment, and ingest the catalog straight
-# from a read-only mount of the repository (the cluster's ingest CronJob is not
-# part of the local overlay). The Makefile maps the repo to `/repo` on the k3d
-# node via `k3d cluster create --volume`; this mounts that into the pod at
-# `/checkout`. The SQLite DB + definition store still live on the `state` PVC the
-# base manifest declares.
+# Local backend overrides: tag the environment, ingest the catalog straight from a
+# read-only mount of the repository (the cluster's ingest CronJob is not part of the
+# local overlay), and re-point the data-plane public URLs at the host. The Makefile
+# maps the repo to `/repo` on the k3d node via `k3d cluster create --volume`; this
+# mounts that into the pod at `/checkout`. The SQLite DB + definition store still
+# live on the `state` PVC the base manifest declares.
+#
+# The artifact and arena `*_PUBLIC_URL`s are what the backend hands the console via
+# `GET /config`. The base values are in-cluster Service DNS (`tcab-artifacts:8790`,
+# `tcab-arena:8791`) — correct for staging/prod where the console reaches the data
+# plane over the cluster network, but unreachable from a host browser in local dev.
+# Here they must be the addresses `make local-forward` exposes on localhost, or the
+# console's `<img>`/`<iframe>` build, asset/proof media, and match/tournament POSTs
+# all target a name the browser cannot resolve. (The auth URL the console uses comes
+# from the dev server's `VITE_AUTH_URL`, so it needs no override here.)
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -20,6 +29,10 @@ spec:
               value: "local"
             - name: TCAB_BACKEND_CHECKOUT
               value: "/checkout"
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://127.0.0.1:8790"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "http://127.0.0.1:8791"
           volumeMounts:
             - name: checkout
               mountPath: /checkout

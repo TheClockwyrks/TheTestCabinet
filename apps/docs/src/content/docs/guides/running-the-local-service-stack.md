@@ -133,11 +133,16 @@ The console needs the backend and the auth service reachable on localhost. Hold
 them open in their own terminal:
 
 ```sh
-make -C deployments/local local-forward     # backend → 127.0.0.1:8787, auth → 127.0.0.1:8789, arena → 127.0.0.1:8791
+make -C deployments/local local-forward     # backend → 127.0.0.1:8787, auth → 127.0.0.1:8789, artifacts → 127.0.0.1:8790, arena → 127.0.0.1:8791
 ```
 
-Leave this running (Ctrl-C stops it). Everything else the console needs — the live
-stream, the artifact URLs — it learns from the backend.
+Leave this running (Ctrl-C stops it). The console reads the live stream from the
+backend and pulls each run's playable build and proof/asset media **directly from
+the artifact service** — as ordinary browser `<img>`/`<iframe>` requests — so that
+service has to be reachable on localhost too. The local overlay points the
+artifact URL the backend advertises (`GET /config`) at this forwarded
+`127.0.0.1:8790`; in a real deployment it is the data-plane host the console
+reaches over the network instead.
 
 ## 3. Start the web console
 
