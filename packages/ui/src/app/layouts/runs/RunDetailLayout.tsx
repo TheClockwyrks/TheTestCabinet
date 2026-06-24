@@ -108,11 +108,11 @@ export function RunDetailLayout({
     : null;
 
   // Neither an asset-generation run (a static asset) nor an adversarial run (a
-  // match replay) produces a hostable playable build, so neither has a Play tab;
-  // each shows its result on the Verdict tab instead (the asset, or the embedded
-  // replay player). A failed run (catastrophic, timed-out, or infrastructure)
-  // never produced a build to host either, so it has no Play tab regardless of
-  // type.
+  // match replay) produces a hostable playable build, so neither has a Play tab:
+  // an asset run shows its result on the Verdict tab, an adversarial run shows its
+  // proof matches (the replays) on the Proof tab. A failed run (catastrophic,
+  // timed-out, or infrastructure) never produced a build to host either, so it has
+  // no Play tab regardless of type.
   const hasPlayableBuild =
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&

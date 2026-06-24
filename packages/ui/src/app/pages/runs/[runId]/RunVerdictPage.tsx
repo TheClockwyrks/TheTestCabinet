@@ -13,7 +13,6 @@ import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
 import { AssetResultSection } from "./AssetResultSection";
-import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import styles from "./RunDetailPages.module.scss";
 
 // Map a verdict status to the row class that tints its marker.
@@ -45,55 +44,54 @@ export function RunVerdictPage() {
       {({ run, review }) => {
         const presentation = describeRunState(run.status.state);
         return (
-        <div className={styles.tabStack}>
-          {/* For an asset-generation run, the generated asset and its
+          <div className={styles.tabStack}>
+            {/* For an asset-generation run, the generated asset and its
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
-          <AssetResultSection run={run} />
-          {/* For an adversarial run, the canonical match's replay player and its
-              record lead the verdict (it likewise has no Play tab). Renders
-              nothing for other run types. */}
-          <AdversarialReplaySection run={run} />
-          {
-            // A failed run produced no reviewable result: there is no checklist to
-            // complete, so the review editor never applies. Catastrophic and
-            // timed-out runs are still publishable model signal, but from the
-            // dedicated Publish failures list rather than here; infrastructure
-            // failures are kept for inspection only. The failure reason is in the
-            // banner above; the Events tab carries whatever timeline was recorded.
-            presentation.isFailure ? (
-              <Panel>
-                <p className={styles.empty}>
-                  {presentation.isPublishableFailure
-                    ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-                    : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
-                </p>
-              </Panel>
-            ) : // A produced, not-yet-published run the active worker owns is
-            // reviewed and published here; published runs show their review
-            // read-only.
-            canExecute && localIds.has(run.id) ? (
-              <RunReviewEditor
-                runId={run.id}
-                subject={run.subject}
-                onChanged={() => runtime.requestRefresh()}
-              />
-            ) : (
-              <Panel>
-                {review ? (
-                  <PublishedVerdict
-                    review={review}
-                    model={gallery.reviewModelFor(run.subject)}
-                  />
-                ) : (
+            <AssetResultSection run={run} />
+            {/* An adversarial run's proof matches (its replays) live on the Proof
+              tab, not here — they are the run's evidence of play, the adversarial
+              analogue of proof-of-implementation media. */}
+            {
+              // A failed run produced no reviewable result: there is no checklist to
+              // complete, so the review editor never applies. Catastrophic and
+              // timed-out runs are still publishable model signal, but from the
+              // dedicated Publish failures list rather than here; infrastructure
+              // failures are kept for inspection only. The failure reason is in the
+              // banner above; the Events tab carries whatever timeline was recorded.
+              presentation.isFailure ? (
+                <Panel>
                   <p className={styles.empty}>
-                    No manual review has been written for this run yet.
+                    {presentation.isPublishableFailure
+                      ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
+                      : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
                   </p>
-                )}
-              </Panel>
-            )
-          }
-        </div>
+                </Panel>
+              ) : // A produced, not-yet-published run the active worker owns is
+              // reviewed and published here; published runs show their review
+              // read-only.
+              canExecute && localIds.has(run.id) ? (
+                <RunReviewEditor
+                  runId={run.id}
+                  subject={run.subject}
+                  onChanged={() => runtime.requestRefresh()}
+                />
+              ) : (
+                <Panel>
+                  {review ? (
+                    <PublishedVerdict
+                      review={review}
+                      model={gallery.reviewModelFor(run.subject)}
+                    />
+                  ) : (
+                    <p className={styles.empty}>
+                      No manual review has been written for this run yet.
+                    </p>
+                  )}
+                </Panel>
+              )
+            }
+          </div>
         );
       }}
     </RunDetailLayout>

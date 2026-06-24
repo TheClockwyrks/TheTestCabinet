@@ -14,7 +14,6 @@ import {
   type Palette,
   type Snapshot,
 } from "../foray/renderer";
-import detailStyles from "./RunDetailPages.module.scss";
 import styles from "./AdversarialReplaySection.module.scss";
 
 // The replay engine (foray-core) and its sprite sheet ship with the bundle as
@@ -35,14 +34,14 @@ const BASE_TICKS_PER_SECOND = 8;
 const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
 /**
- * The adversarial result, shown at the top of the Verdict tab for an adversarial
- * run: the run's **proof matches** — one per reference opponent the submission was
- * auto-replayed against (the three baselines plus the hidden `fuel-probe`) — each
- * with its record (outcome, winner, scores, how/when it ended) and a gated,
- * embeddable replay player that reconstructs the match in-browser with the same
- * foray-core wasm engine the CLI scored it with. A reviewer picks the opponent to
- * watch from a selector; these replays are what a reviewer judges play on (they
- * replace proof-of-implementation for adversarial cases).
+ * The adversarial result, shown on the Proof tab for an adversarial run: the run's
+ * **proof matches** — one per reference opponent the submission was auto-replayed
+ * against (the three baselines plus the hidden `fuel-probe`). Every match is listed
+ * with its record (outcome, winner, scores, how/when it ended) and its own Launch
+ * control that opens an embeddable replay player reconstructing that match
+ * in-browser with the same foray-core wasm engine the CLI scored it with. These
+ * replays are the run's evidence of play — they replace proof-of-implementation for
+ * adversarial cases.
  *
  * Renders nothing for a non-adversarial run (its `validation.adversarial` is
  * absent), so it is safe to mount unconditionally.
@@ -62,75 +61,61 @@ function ReplaySection({
   replay: ReplayResultView;
 }) {
   const matches = replay.replays;
-  const [selected, setSelected] = useState(0);
-  const [launched, setLaunched] = useState(false);
-  const match = matches[Math.min(selected, matches.length - 1)] ?? matches[0]!;
+  // The opponent of the match currently being watched, or null when none is. Only
+  // one player is open at a time (it covers the viewport), but every match has its
+  // own Launch control, so the section lists them all rather than gating behind a
+  // selector.
+  const [launched, setLaunched] = useState<string | null>(null);
+  const active = matches.find((m) => m.opponent === launched) ?? null;
 
   return (
     <Panel>
-      <h2 className={detailStyles.section}>Proof matches</h2>
+      <h2 className={styles.heading}>Proof matches</h2>
 
       <p className={styles.notice}>
-        The submission was auto-replayed against each reference opponent. Pick an
-        opponent to watch the match the model&rsquo;s controller actually played.
+        The submission was auto-replayed against each reference opponent. Launch
+        any match below to watch the model&rsquo;s controller actually play it.
       </p>
 
-      {matches.length > 1 ? (
-        <label className={styles.opponentPicker}>
-          <span className={styles.recordTerm}>Opponent</span>
-          <select
-            className={styles.opponentSelect}
-            value={selected}
-            onChange={(e) => {
-              setSelected(Number(e.target.value));
-              // A new opponent means a new replay; collapse the player back to its
-              // gate so the next launch loads the chosen match.
-              setLaunched(false);
-            }}
-          >
-            {matches.map((m, i) => (
-              <option key={m.opponent} value={i}>
-                {m.opponent}
-                {m.scored ? "" : " (exhibition)"} — {m.outcome}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
+      <ul className={styles.matchList}>
+        {matches.map((match) => (
+          <li key={match.opponent} className={styles.matchItem}>
+            <MatchRecord match={match} />
 
-      <MatchRecord match={match} />
+            {match.detail ? (
+              <p className={styles.detail}>{match.detail}</p>
+            ) : null}
 
-      {match.detail ? (
-        <p className={styles.detail}>{match.detail}</p>
-      ) : null}
+            {match.replayUrl === null ? (
+              <p className={styles.detail}>
+                The replay for this match is not available to play here.
+              </p>
+            ) : (
+              // The replay reconstructs the model's controller exactly as it
+              // played; the engine is only loaded on click so the wasm never
+              // downloads for a visitor who doesn't watch.
+              <button
+                type="button"
+                className={styles.launch}
+                onClick={() => setLaunched(match.opponent)}
+              >
+                Launch replay vs {match.opponent}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
 
-      {match.replayUrl === null ? (
-        <p className={styles.detail}>
-          The replay for this match is not available to play here.
-        </p>
-      ) : !launched ? (
-        // Gate the launch behind a short caveat. The replay reconstructs the
-        // model's controller exactly as it played; the engine is only loaded on
-        // click so the wasm never downloads for a visitor who doesn't watch.
-        <div className={styles.gate}>
-          <button
-            type="button"
-            className={styles.launch}
-            onClick={() => setLaunched(true)}
-          >
-            Launch replay vs {match.opponent}
-          </button>
-        </div>
-      ) : (
+      {active && active.replayUrl !== null ? (
         <ReplayOverlay
-          // Key on the opponent so switching mid-watch tears down and rebuilds the
-          // player for the newly selected replay.
-          key={match.opponent}
-          label={`Match replay for ${run.id} vs ${match.opponent}`}
-          replayUrl={match.replayUrl}
-          onExit={() => setLaunched(false)}
+          // Key on the opponent so launching a different match tears down and
+          // rebuilds the player for the newly chosen replay.
+          key={active.opponent}
+          label={`Match replay for ${run.id} vs ${active.opponent}`}
+          replayUrl={active.replayUrl}
+          onExit={() => setLaunched(null)}
         />
-      )}
+      ) : null}
     </Panel>
   );
 }
@@ -253,10 +238,21 @@ export function ReplayOverlay({
     (async () => {
       try {
         // The replay is either fetched from its URL or supplied inline; the wasm
-        // engine and sprite sheet always come from the bundle.
+        // engine and sprite sheet always come from the bundle. A failed replay
+        // fetch is reported as such: without the status check a 404's JSON error
+        // body parses cleanly and is then handed to the engine, which rejects it —
+        // surfacing the misleading "foray-core rejected the replay" for what is
+        // really a missing/unservable replay.
         const [replay, wasm, sheetBlob] = await Promise.all([
           replayUrl !== undefined
-            ? fetch(replayUrl).then((r) => r.json())
+            ? fetch(replayUrl).then((r) => {
+                if (!r.ok) {
+                  throw new Error(
+                    `could not fetch the replay (HTTP ${r.status})`,
+                  );
+                }
+                return r.json();
+              })
             : Promise.resolve(replayData),
           fetch(forayCoreWasmUrl).then((r) => r.arrayBuffer()),
           fetch(sheetPngUrl).then((r) => r.blob()),
@@ -267,7 +263,11 @@ export function ReplayOverlay({
           throw new Error("foray-core rejected the replay");
         }
         const board = engine.board();
-        const sheet = await loadSheet(sheetBlob, atlas as Atlas, palette as Palette);
+        const sheet = await loadSheet(
+          sheetBlob,
+          atlas as Atlas,
+          palette as Palette,
+        );
 
         const frames: Snapshot[] = [];
         let snap: Snapshot | null;
@@ -401,7 +401,11 @@ export function ReplayOverlay({
               </span>
             </div>
 
-            <canvas ref={canvasRef} className={styles.canvas} aria-label={label} />
+            <canvas
+              ref={canvasRef}
+              className={styles.canvas}
+              aria-label={label}
+            />
 
             <div className={styles.controls}>
               <button

@@ -1,35 +1,42 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 
+// The section heading ("Proof matches"). A tight margin keeps the heading close to
+// the matches it introduces rather than floating in whitespace above them.
+.heading {
+  margin: 0 0 t.$space-sm;
+}
+
+// The list of proof matches, one item per reference opponent. Plain list reset —
+// each item carries its own record and Launch control.
+.matchList {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// One proof match: its record, optional detail, and Launch control, separated from
+// the next by the list gap (no border — the matches read as a plain list).
+.matchItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 // The match-record summary shown alongside the player: outcome, winner, scores,
 // how/when the match ended.
 .record {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: t.$space-xs t.$space-lg;
-  margin: t.$space-md 0 0;
+  margin: 0;
 }
 
 .recordTerm {
   color: t.$color-text-muted;
-}
-
-// The opponent selector above the proof-match record: pick which reference
-// opponent's replay to inspect.
-.opponentPicker {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  margin-top: t.$space-md;
-}
-
-.opponentSelect {
-  padding: t.$space-xs t.$space-sm;
-  font: inherit;
-  color: t.$color-text;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
 }
 
 // Outcome tint: a win for the submission reads green, a loss/forfeit red, a
@@ -49,16 +56,6 @@
 .detail {
   margin-top: t.$space-md;
   color: t.$color-text-muted;
-}
-
-// The pre-launch gate: a short caveat plus the explicit Launch control. The
-// replay engine (the foray-core wasm) never loads until the visitor clicks.
-.gate {
-  margin-top: t.$space-md;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  padding: t.$space-lg;
 }
 
 .notice {
