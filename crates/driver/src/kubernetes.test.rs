@@ -300,6 +300,21 @@ fn tar_dir_contents_packs_relative_entries() {
     assert!(names.iter().any(|n| n == "sub/file.txt"), "{names:?}");
 }
 
+#[test]
+fn extract_tar_command_bounds_the_read_by_byte_count() {
+    // `head -c {len}` is what lets the remote pipeline terminate without relying
+    // on stdin-EOF, so the exit Status survives on a v4 exec WebSocket.
+    let cmd = extract_tar_command("/work", 4096, false);
+    assert_eq!(cmd[..2], ["sh".to_string(), "-c".to_string()]);
+    assert_eq!(cmd[2], "head -c 4096 | tar -x -f - -C '/work'");
+}
+
+#[test]
+fn extract_tar_command_preserves_modes_for_credential_files() {
+    let cmd = extract_tar_command("/", 128, true);
+    assert_eq!(cmd[2], "head -c 128 | tar -x -p -f - -C '/'");
+}
+
 // ── pod_waiting_reason / resolved_image_digest ───────────────────────────────
 
 fn pod_with_container_status(status: ContainerStatus) -> Pod {

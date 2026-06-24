@@ -252,9 +252,11 @@ impl KubernetesContainerRuntime {
                 writer.write_all(data).await.map_err(|err| {
                     Error::ContainerRuntime(format!("writing stdin to run pod `{pod}`: {err}"))
                 })?;
-                writer.shutdown().await.map_err(|err| {
-                    Error::ContainerRuntime(format!("closing stdin to run pod `{pod}`: {err}"))
-                })?;
+                // Best-effort close: a remote that bounds its own read (see
+                // `extract_tar`) can exit and let the server tear the connection
+                // down before this `shutdown` lands. All bytes are already written,
+                // so a close error here is benign — don't fail the exec over it.
+                let _ = writer.shutdown().await;
             }
             Ok::<(), Error>(())
         };
@@ -340,6 +342,19 @@ impl KubernetesContainerRuntime {
     /// user. `preserve_modes` passes `-p` so credential file modes survive exactly;
     /// the seeded tree does not need it. A non-zero `tar` exit is an error carrying
     /// its stderr.
+    ///
+    /// The remote reads exactly `archive.len()` bytes through `head -c` rather than
+    /// reading `tar`'s stdin to EOF. This is load-bearing, not an optimization: the
+    /// only way the kube-rs exec client can signal stdin-EOF over the **v4**
+    /// WebSocket subprotocol (a `v4.channel.k8s.io` cluster — older k3s, no
+    /// `CLOSE`-signal support) is to close the *entire* WebSocket, which tears the
+    /// connection down before the terminating `Status` frame is read — so the exit
+    /// code comes back as `-1` and every seed looks like a failure even though the
+    /// extract succeeded. Bounding the read by byte count lets the pipeline exit on
+    /// its own (`head` closes the pipe, `tar` sees EOF, the process terminates and
+    /// the server delivers `Status`), so the real exit code is recovered on both v4
+    /// and v5 clusters. The pipeline's exit status is `tar`'s (POSIX: the last
+    /// command), so a corrupt or truncated stream still surfaces as a non-zero exit.
     async fn extract_tar(
         &self,
         pod: &str,
@@ -347,16 +362,7 @@ impl KubernetesContainerRuntime {
         archive: &[u8],
         preserve_modes: bool,
     ) -> Result<()> {
-        let mut command = vec!["tar".to_string(), "-x".to_string()];
-        if preserve_modes {
-            command.push("-p".to_string());
-        }
-        command.extend([
-            "-f".to_string(),
-            "-".to_string(),
-            "-C".to_string(),
-            dest.to_string(),
-        ]);
+        let command = extract_tar_command(dest, archive.len(), preserve_modes);
         let (exit_code, _stdout, stderr) = self.exec_raw(pod, &command, Some(archive)).await?;
         if exit_code != 0 {
             return Err(Error::ContainerRuntime(format!(
@@ -751,6 +757,21 @@ fn workdir_command(command: &[String]) -> Vec<String> {
 /// Single-quote an argument for safe inclusion in the `sh -c` wrapper.
 fn shell_quote(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', r"'\''"))
+}
+
+/// The `sh -c` command that extracts a `len`-byte `tar` stream from stdin into
+/// `dest`. The `head -c {len}` prefix bounds the read so the remote pipeline
+/// terminates on its own instead of relying on stdin-EOF — see [`KubernetesContainerRuntime::extract_tar`]
+/// for why that distinction is load-bearing on a v4 exec WebSocket. The pipeline
+/// exit status is `tar`'s (the last command), so a short or corrupt stream still
+/// fails non-zero.
+fn extract_tar_command(dest: &str, len: usize, preserve_modes: bool) -> Vec<String> {
+    let preserve = if preserve_modes { "-p " } else { "" };
+    let pipeline = format!(
+        "head -c {len} | tar -x {preserve}-f - -C {dest}",
+        dest = shell_quote(dest),
+    );
+    vec!["sh".to_string(), "-c".to_string(), pipeline]
 }
 
 /// The exit code carried by a remote-exec terminating [`Status`]: `0` on success,
