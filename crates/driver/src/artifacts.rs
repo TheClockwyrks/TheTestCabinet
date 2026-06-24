@@ -20,7 +20,7 @@
 
 use std::path::Path;
 
-use test_cabinet_core::find_build_output;
+use test_cabinet_core::{BackendClient, HttpBackendClient, RunRecord, find_build_output};
 
 /// A failure tarring or uploading the produced run tree.
 #[derive(Debug, thiserror::Error)]
@@ -104,6 +104,60 @@ pub async fn upload_run_tree(
     Err(UploadError::Status { status, body })
 }
 
+/// Upload an adversarial run's controller wasm and proof replays to the **backend
+/// store**, keyed by run id — the backend-driven mirror of the CLI/desktop push
+/// (`BackendPublisher::upload_adversarial`).
+///
+/// The backend store is a different place from the artifact service. The arena
+/// lists a run's controller as pittable only when the backend holds its
+/// `runs/{id}/controller.wasm` (`GET /adversarial/controllers`), and the console
+/// fetches a run's proof replays from the backend's `/runs/{id}/asset/{file}`
+/// whenever that run was not produced in the *open* console session (the artifact
+/// service only serves session-local runs). The CLI uploads both at push from its
+/// local `repo_path`; a backend-driven run has no console-side repo to push from, so
+/// without this its controller never appears in the arena (Quick Match /
+/// tournaments) and its replays 404 on playback (surfacing as "foray-core rejected
+/// the replay" once the 404 body is parsed). The files are read from the produced
+/// tree the driver still holds at `{out_dir}/{id}/implementation/`.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a
+/// non-adversarial run, and for a forfeit-before-load that emitted no controller and
+/// no replays. The backend upload routes are ungated on the private network, so the
+/// client carries no token. An individual missing file is skipped (the run is still
+/// inspectable); a rejected upload is surfaced so the caller can log it.
+pub async fn upload_adversarial_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let Some(adversarial) = record.validation.adversarial.as_ref() else {
+        return Ok(());
+    };
+    let impl_dir = out_dir.join(&record.id).join("implementation");
+    let client = HttpBackendClient::new(backend_url);
+
+    // Each opponent's replay is stored under its own run-root-relative filename
+    // (`replay.json`, `replay-1.json`, …), matching the CLI push and the
+    // `playable::serve_asset_file` the backend serves them back through.
+    for replay in &adversarial.replays {
+        let Ok(bytes) = std::fs::read(impl_dir.join(&replay.replay_json)) else {
+            continue;
+        };
+        client
+            .publish_run_asset(&record.id, &replay.replay_json, bytes)
+            .await?;
+    }
+
+    // The controller wasm, when the build produced one (a forfeit-before-load run
+    // records an empty module path and has nothing to upload).
+    if !adversarial.controller_module.is_empty()
+        && let Ok(bytes) = std::fs::read(impl_dir.join(&adversarial.controller_module))
+    {
+        client.publish_run_controller(&record.id, bytes).await?;
+    }
+    Ok(())
+}
+
 /// Tar `run_dir` into an in-memory archive, with every entry path relative to
 /// `run_dir` itself (so the archive root *is* the run directory's contents). The
 /// whole tree is walked: `run-record.json`, the `implementation/` build/media, and
@@ -128,3 +182,7 @@ pub fn playable_build_link(out_dir: &Path, run_id: &str) -> Option<String> {
         .is_some()
         .then(|| format!("/runs/{run_id}/build/"))
 }
+
+#[cfg(test)]
+#[path = "artifacts.test.rs"]
+mod tests;

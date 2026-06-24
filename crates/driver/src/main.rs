@@ -93,6 +93,11 @@ async fn main() -> ExitCode {
             // terminal status — so by the time the console sees the run finish, its
             // build and media are already servable.
             finalize_artifacts(&config, &mut record).await;
+            // For an adversarial run, also mirror the controller wasm + proof
+            // replays into the *backend* store (the CLI does this at push). Without
+            // it a backend-driven run is invisible to the arena and its replays
+            // 404 — a no-op for any other run type.
+            finalize_adversarial_backend_upload(&config, &record).await;
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
             if let Err(err) = client.post_status_succeeded(record).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
@@ -140,6 +145,32 @@ async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::Run
         tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
     } else {
         tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
+    }
+}
+
+/// Mirror an adversarial run's controller wasm + proof replays into the **backend
+/// store**, so a backend-driven run is pittable in the arena and its replays play
+/// back — the backend-driven counterpart to the CLI's push-time upload. A no-op for
+/// any non-adversarial run (and a forfeit that produced no controller). Reads the
+/// files from the produced tree the driver still holds on disk; an upload failure is
+/// logged but never fatal, exactly like the artifact-service upload.
+async fn finalize_adversarial_backend_upload(
+    config: &Config,
+    record: &test_cabinet_core::RunRecord,
+) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_adversarial_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload adversarial controller/replays to the backend store",
+        );
     }
 }
 
