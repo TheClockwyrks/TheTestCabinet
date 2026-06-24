@@ -7,9 +7,12 @@
 //! driver tars `{out_dir}/{id}/` and uploads it to
 //! `POST {artifacts_url}/runs/{id}/artifacts`, authed by the **same per-job token**
 //! it streams status to the backend with — the artifact service forwards that token
-//! to the backend to verify. The upload happens *before* the terminal status is
-//! posted, so by the time the console sees the run finish its artifacts are already
-//! servable.
+//! to the backend to verify. Because that token was minted for the **job id** (a
+//! different UUID from the run/record id in the upload path, which is the store
+//! key), the driver sends its job id in the `x-tcab-job-id` header so the service
+//! verifies against the right job. The upload happens *before* the terminal status
+//! is posted, so by the time the console sees the run finish its artifacts are
+//! already servable.
 //!
 //! When `TCAB_ARTIFACTS_URL` is unset (the local CLI/desktop path), nothing here
 //! runs and behavior is unchanged — there is no separate artifact service in that
@@ -58,6 +61,11 @@ fn body_suffix(body: &str) -> String {
 /// to the run directory (so the service unpacks them under its own
 /// `<store-root>/{run_id}/`), matching the layout the core resolvers read.
 ///
+/// `run_id` is the **run/record id** — the store key the upload URL carries and the
+/// console later addresses media by. `job_id` is the **job id** the per-job token
+/// was minted for; the service verifies the token against it (a different UUID from
+/// the run id), so it is sent in the `x-tcab-job-id` header rather than the path.
+///
 /// Returns once the service has acknowledged the upload (`2xx`). Any failure is
 /// surfaced to the caller, which logs it but does not abort the run — the record
 /// the run produced is still reported to the backend either way; only its servable
@@ -65,6 +73,7 @@ fn body_suffix(body: &str) -> String {
 pub async fn upload_run_tree(
     artifacts_url: &str,
     run_id: &str,
+    job_id: &str,
     out_dir: &Path,
     job_token: &str,
 ) -> Result<(), UploadError> {
@@ -81,6 +90,7 @@ pub async fn upload_run_tree(
     let response = reqwest::Client::new()
         .post(&url)
         .bearer_auth(job_token)
+        .header("x-tcab-job-id", job_id)
         .header(reqwest::header::CONTENT_TYPE, "application/x-tar")
         .body(tarball)
         .send()

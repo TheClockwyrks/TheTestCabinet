@@ -30,21 +30,31 @@ use crate::store::LocalFsStore;
 
 /// The per-job token the stub accepts at `/jobs/{id}/verify-token`.
 const GOOD_JOB_TOKEN: &str = "good-job-token";
+/// The **job id** the stub accepts the token for. Deliberately not equal to any
+/// run id an upload uses as its path/store key, so a test that succeeds proves the
+/// service verified against the job id from the `x-tcab-job-id` header, not the run
+/// id in the path.
+const GOOD_JOB_ID: &str = "job-1";
 
 /// Spawn the stub backend server on an ephemeral port and return its base URL. It
 /// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) — the only
-/// upstream the artifact service calls now that reads are ungated.
+/// upstream the artifact service calls now that reads are ungated. It accepts the
+/// good token only for [`GOOD_JOB_ID`], so it also asserts the service forwards the
+/// header's job id rather than the upload path's run id.
 async fn spawn_stub() -> String {
     let app = Router::new().route(
         "/jobs/{id}/verify-token",
-        post(|body: Json<serde_json::Value>| async move {
-            let presented = body.0.get("token").and_then(|t| t.as_str());
-            if presented == Some(GOOD_JOB_TOKEN) {
-                StatusCode::NO_CONTENT
-            } else {
-                StatusCode::UNAUTHORIZED
-            }
-        }),
+        post(
+            |axum::extract::Path(id): axum::extract::Path<String>,
+             body: Json<serde_json::Value>| async move {
+                let presented = body.0.get("token").and_then(|t| t.as_str());
+                if id == GOOD_JOB_ID && presented == Some(GOOD_JOB_TOKEN) {
+                    StatusCode::NO_CONTENT
+                } else {
+                    StatusCode::UNAUTHORIZED
+                }
+            },
+        ),
     );
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
@@ -95,11 +105,13 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
-    // Upload with the good job token.
+    // Upload with the good job token. The path id (`run-1`, the store key) differs
+    // from the job id (`job-1`, in the header) the token is verified against.
     let upload = Request::builder()
         .method("POST")
         .uri("/runs/run-1/artifacts")
         .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
         .body(Body::from(build_tarball()))
         .unwrap();
     let response = app.clone().oneshot(upload).await.unwrap();
@@ -139,6 +151,7 @@ async fn serving_a_build_without_a_token_succeeds() {
         .method("POST")
         .uri("/runs/run-2/artifacts")
         .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
         .body(Body::from(build_tarball()))
         .unwrap();
     assert_eq!(
@@ -176,11 +189,13 @@ async fn uploading_without_a_job_token_is_rejected() {
         StatusCode::UNAUTHORIZED
     );
 
-    // A wrong token → 401 (the backend stub rejects it).
+    // A wrong token → 401 (the backend stub rejects it). Carries the job-id header
+    // so the request reaches the token verify rather than failing the header check.
     let upload = Request::builder()
         .method("POST")
         .uri("/runs/run-3/artifacts")
         .header("authorization", "Bearer not-the-token")
+        .header("x-tcab-job-id", GOOD_JOB_ID)
         .body(Body::from(build_tarball()))
         .unwrap();
     assert_eq!(
@@ -190,6 +205,47 @@ async fn uploading_without_a_job_token_is_rejected() {
 
     assert!(
         !store.run_dir("run-3").exists(),
+        "a rejected upload stored nothing"
+    );
+}
+
+#[tokio::test]
+async fn uploading_without_the_job_id_header_is_rejected() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+
+    // A good token but no `x-tcab-job-id` header → 401: the service cannot verify
+    // the token without the job id (the run id in the path is a different value the
+    // backend has no job for). This is the regression that left every produced
+    // run's artifacts unstored — the driver uploaded under the run id and the
+    // verify hit `/jobs/{run-id}/verify-token`, which never matched.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-4/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .body(Body::from(build_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // And a job-id header that is not the run id but also not a real job → 401: the
+    // header value, not the path, is what is verified.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-4/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", "not-a-job")
+        .body(Body::from(build_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    assert!(
+        !store.run_dir("run-4").exists(),
         "a rejected upload stored nothing"
     );
 }

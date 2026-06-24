@@ -128,6 +128,7 @@ async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::Run
     if let Err(err) = test_cabinet_driver::artifacts::upload_run_tree(
         artifacts_url,
         &record.id,
+        &config.job_id,
         &out_dir,
         &config.job_token,
     )

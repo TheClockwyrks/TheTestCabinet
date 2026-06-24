@@ -101,15 +101,27 @@ async fn healthz() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+/// The header a driver sets to its **job id** on an upload, so the service can
+/// verify the per-job token against the right job. The path id is the **run/record
+/// id** (the artifact store key the console addresses media by), which is a
+/// different UUID from the job id — the token authority (the backend) only knows
+/// the job, so the verify must use the job id, not the store key.
+const JOB_ID_HEADER: &str = "x-tcab-job-id";
+
 /// `POST /runs/{id}/artifacts` — store a finished run's collected artifact tree.
 ///
-/// The body is a `tar` archive of the driver's `{out_dir}/{id}/` directory
-/// (`run-record.json`, `implementation/`, and optionally the `events.jsonl`/
-/// `raw.jsonl` logs). The per-job bearer token authenticates the driver and is
-/// verified against the backend (the token authority) before the tree is written —
-/// so only the driver that holds the job's token may upload for it. A path that
-/// escapes the run directory is rejected as a `400`. Replaces any prior tree for
-/// the same id (an idempotent re-upload). `201 Created` on success.
+/// `{id}` is the **run/record id**: the store key, and how the console later
+/// addresses this run's build and media. The body is a `tar` archive of the
+/// driver's `{out_dir}/{id}/` directory (`run-record.json`, `implementation/`, and
+/// optionally the `events.jsonl`/`raw.jsonl` logs).
+///
+/// The per-job bearer token authenticates the driver and is verified against the
+/// backend (the token authority) before the tree is written — so only the driver
+/// that holds the job's token may upload for it. The token was minted for the
+/// **job id**, which differs from the run id in the path, so the driver sends its
+/// job id in the [`JOB_ID_HEADER`] and the verify uses that. A path that escapes
+/// the run directory is rejected as a `400`. Replaces any prior tree for the same
+/// id (an idempotent re-upload). `201 Created` on success.
 #[tracing::instrument(name = "artifacts.upload", skip(state, body), fields(run.id = %id, bytes = body.len()), err(Debug))]
 async fn upload(
     State(state): State<AppState>,
@@ -119,10 +131,21 @@ async fn upload(
 ) -> Result<Response, ApiError> {
     let token =
         crate::auth::bearer(&headers).ok_or_else(|| ApiError::unauthorized("missing job token"))?;
-    verify_job_token(&state.http, &state.backend_url, &id, &token).await?;
+    // Verify the token against the job it was minted for — the job id the driver
+    // sends, not the run id in the path (the store key). They are distinct UUIDs;
+    // verifying against the run id always fails, since the backend has no job by
+    // that id.
+    let job_id = headers
+        .get(JOB_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::unauthorized(format!("missing `{JOB_ID_HEADER}` header")))?;
+    verify_job_token(&state.http, &state.backend_url, job_id, &token).await?;
 
     // The store I/O is blocking (tar unpack writes many small files); run it off
-    // the async runtime so a large upload does not stall other connections.
+    // the async runtime so a large upload does not stall other connections. Keyed by
+    // the run id from the path, not the job id the token was verified against.
     let store = state.store.clone();
     let id_for_task = id.clone();
     tokio::task::spawn_blocking(move || {
