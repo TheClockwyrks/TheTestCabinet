@@ -22,7 +22,9 @@ use tracing::instrument;
 
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
+use crate::job_api::{ActiveJobOut, JobStatusOut, LaunchAck, LaunchBody, Notification};
 use crate::match_play::{ARENA_OPPONENT_IDS, ControllerRef, TournamentRecord};
+use crate::preview::AssetPreview;
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -127,6 +129,18 @@ pub struct RunPage {
     /// The `before` cursor to pass for the following page, or `None` when this is
     /// the last page.
     pub next_before: Option<String>,
+}
+
+/// One item from a job's live stream (`GET /jobs/{id}/live`, NDJSON): a
+/// normalized harness event, or a live asset-generation preview frame. The
+/// backend tags a preview line `type: "asset_preview"` so the two are told apart
+/// (a [`HarnessEvent`]'s `type` is always one of the closed set of event kinds).
+#[derive(Debug, Clone, PartialEq)]
+pub enum LiveItem {
+    /// A normalized harness event.
+    Event(HarnessEvent),
+    /// A live asset-generation preview frame (never persisted).
+    Preview(AssetPreview),
 }
 
 /// What runners use to resolve definitions from, and publish runs to, the
@@ -281,6 +295,85 @@ pub trait BackendClient: Send + Sync {
 
     /// Read one published run by id. (`GET /runs/{id}`)
     async fn read_run(&self, id: &str) -> Result<PublishedRun>;
+
+    /// Enqueue a run on the backend's job queue. (`POST /jobs`, bearer auth)
+    ///
+    /// `body` is the canonical [`LaunchBody`] (serialized camelCase to match the
+    /// backend); `token` is the launching account's bearer token, which the
+    /// backend gates the enqueue on (a missing/invalid token is rejected `401`).
+    /// Returns the enqueued job's id — the handle the watch/status methods take.
+    ///
+    /// Defaults to an error so a backend without queue support (or a test stub) is
+    /// explicit about not enqueuing; the HTTP client overrides it.
+    async fn launch_run(&self, _body: &LaunchBody, _token: &str) -> Result<String> {
+        Err(Error::Publish(
+            "this backend client cannot enqueue runs".to_string(),
+        ))
+    }
+
+    /// One job's current status. (`GET /jobs/{id}`) Carries the lifecycle state
+    /// and, once it succeeded, the produced run record's id (read the record back
+    /// via [`Self::read_run`]); else the terminal failure reason.
+    ///
+    /// Defaults to an error so a backend without queue support (or a test stub) is
+    /// explicit about not serving job status; the HTTP client overrides it.
+    async fn job_status(&self, job_id: &str) -> Result<JobStatusOut> {
+        Err(Error::Publish(format!(
+            "this backend client cannot report the status of job `{job_id}`"
+        )))
+    }
+
+    /// The runs still in flight (queued, dispatched, or running), each described
+    /// by the identity captured at enqueue. (`GET /jobs/active`)
+    ///
+    /// Defaults to an empty list so a backend without queue support (or a test
+    /// stub) stays valid; the HTTP client overrides it.
+    async fn list_active_jobs(&self) -> Result<Vec<ActiveJobOut>> {
+        Ok(Vec::new())
+    }
+
+    /// Watch a job's live progress. (`GET /jobs/{id}/live`, NDJSON) Each line is
+    /// one [`LiveItem`] — a harness event or an asset-preview frame — passed to
+    /// `on_item` as it arrives. Returns once the stream closes, which the backend
+    /// does when the run reaches a terminal state; read the terminal outcome (and
+    /// on success the produced record's id) back via [`Self::job_status`]. A
+    /// connection to an already-finished job returns after the replayed backlog.
+    ///
+    /// `on_item` is a `&mut dyn FnMut` (not an `impl Stream`) so the trait stays
+    /// object-safe — it is consumed through `dyn BackendClient`. The CLI prints
+    /// each item; a malformed line is surfaced as an `unknown` event rather than
+    /// tearing down the watch (mirroring the web console's transport).
+    ///
+    /// Defaults to an error so a backend without queue support (or a test stub) is
+    /// explicit about not streaming; the HTTP client overrides it.
+    async fn watch_job(
+        &self,
+        job_id: &str,
+        _on_item: &mut (dyn FnMut(LiveItem) + Send),
+    ) -> Result<()> {
+        Err(Error::Publish(format!(
+            "this backend client cannot stream the live progress of job `{job_id}`"
+        )))
+    }
+
+    /// Subscribe to the worker-wide run-completion feed. (`GET /notifications`,
+    /// SSE) Each event's `data:` payload is one [`Notification`], passed to
+    /// `on_notification` as it arrives. Live-only (no backlog); returns when the
+    /// connection ends. A malformed payload is dropped rather than ending the
+    /// subscription (mirroring the web console's transport).
+    ///
+    /// `on_notification` is a `&mut dyn FnMut` so the trait stays object-safe.
+    ///
+    /// Defaults to an error so a backend without queue support (or a test stub) is
+    /// explicit about not serving notifications; the HTTP client overrides it.
+    async fn subscribe_notifications(
+        &self,
+        _on_notification: &mut (dyn FnMut(Notification) + Send),
+    ) -> Result<()> {
+        Err(Error::Publish(
+            "this backend client cannot serve notifications".to_string(),
+        ))
+    }
 }
 
 /// Materialize a backend-resolved version onto disk so the existing seeder,
@@ -920,6 +1013,203 @@ impl BackendClient for HttpBackendClient {
     async fn read_run(&self, id: &str) -> Result<PublishedRun> {
         let body: StoredRunBody = self.get_json(&format!("/runs/{}", encode(id))).await?;
         Ok(stored_run_from(body))
+    }
+
+    #[instrument(
+        skip(self, body, token),
+        fields(
+            otel.kind = "client",
+            http.request.method = "POST",
+            url.path = "/jobs",
+            case.slug = %body.test_case,
+            case.version = %body.version,
+            variant = %body.variant,
+        ),
+        err,
+    )]
+    async fn launch_run(&self, body: &LaunchBody, token: &str) -> Result<String> {
+        let url = self.url("/jobs");
+        // The enqueue is gated on the launching account, so the account's token
+        // rides along as `Authorization: Bearer` regardless of the client's own
+        // configured token (a watch-only client carries none).
+        let mut headers = self.headers();
+        if let Ok(value) = http::HeaderValue::from_str(&format!("Bearer {token}")) {
+            headers.insert(http::header::AUTHORIZATION, value);
+        }
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .json(body)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        let response = error_for_status(&url, response).await?;
+        let ack: LaunchAck = response
+            .json()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        Ok(ack.job_id)
+    }
+
+    async fn job_status(&self, job_id: &str) -> Result<JobStatusOut> {
+        self.get_json(&format!("/jobs/{}", encode(job_id))).await
+    }
+
+    async fn list_active_jobs(&self) -> Result<Vec<ActiveJobOut>> {
+        self.get_json("/jobs/active").await
+    }
+
+    #[instrument(
+        skip(self, on_item),
+        fields(otel.kind = "client", http.request.method = "GET", job.id = %job_id),
+        err,
+    )]
+    async fn watch_job(
+        &self,
+        job_id: &str,
+        on_item: &mut (dyn FnMut(LiveItem) + Send),
+    ) -> Result<()> {
+        let url = self.url(&format!("/jobs/{}/live", encode(job_id)));
+        let response = self
+            .http
+            .get(&url)
+            .headers(self.headers())
+            .header(http::header::ACCEPT, "application/x-ndjson")
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        let mut response = error_for_status(&url, response).await?;
+        // NDJSON: accumulate bytes and emit one item per `\n`-terminated line. The
+        // `stream` feature isn't enabled workspace-wide, so pull chunks directly
+        // (`Response::chunk`) rather than a `bytes_stream`.
+        let mut buffer = String::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| backend_err(&url, err))?
+        {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(newline) = buffer.find('\n') {
+                let line: String = buffer.drain(..=newline).collect();
+                emit_live_line(line.trim(), on_item);
+            }
+        }
+        // A final line the stream closed without a trailing newline on.
+        emit_live_line(buffer.trim(), on_item);
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, on_notification),
+        fields(otel.kind = "client", http.request.method = "GET", url.path = "/notifications"),
+        err,
+    )]
+    async fn subscribe_notifications(
+        &self,
+        on_notification: &mut (dyn FnMut(Notification) + Send),
+    ) -> Result<()> {
+        let url = self.url("/notifications");
+        let response = self
+            .http
+            .get(&url)
+            .headers(self.headers())
+            .header(http::header::ACCEPT, "text/event-stream")
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        let mut response = error_for_status(&url, response).await?;
+        // SSE: events are separated by a blank line; each carries one or more
+        // `data:` lines whose concatenation is the JSON payload. Accumulate bytes,
+        // split complete events on the blank-line boundary, and decode each one.
+        // Normalize CRLF so the boundary search and field parsing are line-ending
+        // agnostic.
+        let mut buffer = String::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| backend_err(&url, err))?
+        {
+            buffer.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
+            while let Some(boundary) = buffer.find("\n\n") {
+                let event: String = buffer.drain(..boundary + 2).collect();
+                if let Some(notification) = parse_sse_notification(&event) {
+                    on_notification(notification);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Emit one NDJSON live line as a [`LiveItem`]: a line tagged
+/// `type: "asset_preview"` is a live drawing frame; every other non-empty line is
+/// a normalized harness event. A malformed line is surfaced as an `unknown` event
+/// carrying the raw text rather than aborting the watch (the contract's `unknown`
+/// kind), mirroring the web console's transport. An empty line is skipped.
+fn emit_live_line(line: &str, on_item: &mut (dyn FnMut(LiveItem) + Send)) {
+    if line.is_empty() {
+        return;
+    }
+    // Peek the `type` tag to route the line: a preview frame is tagged
+    // `asset_preview`; a harness event's `type` is one of the closed set of event
+    // kinds (never `asset_preview`).
+    let is_preview = serde_json::from_str::<TaggedLine>(line)
+        .ok()
+        .and_then(|tagged| tagged.r#type)
+        .as_deref()
+        == Some("asset_preview");
+    if is_preview {
+        if let Ok(preview) = serde_json::from_str::<AssetPreview>(line) {
+            on_item(LiveItem::Preview(preview));
+            return;
+        }
+    } else if let Ok(event) = serde_json::from_str::<HarnessEvent>(line) {
+        on_item(LiveItem::Event(event));
+        return;
+    }
+    on_item(LiveItem::Event(unknown_event(line)));
+}
+
+/// Decode one SSE event block into a [`Notification`]: concatenate its `data:`
+/// field values (SSE allows an event to carry several) and parse the result as
+/// JSON. Returns `None` for a comment/keep-alive block or a malformed payload,
+/// which the subscription drops rather than tearing down.
+fn parse_sse_notification(event: &str) -> Option<Notification> {
+    let mut data = String::new();
+    for line in event.lines() {
+        if let Some(value) = line.strip_prefix("data:") {
+            if !data.is_empty() {
+                data.push('\n');
+            }
+            data.push_str(value.strip_prefix(' ').unwrap_or(value));
+        }
+    }
+    if data.is_empty() {
+        return None;
+    }
+    serde_json::from_str(&data).ok()
+}
+
+/// The `type` tag of a live NDJSON line, peeked to route it (a preview frame is
+/// tagged `asset_preview`; a harness event's `type` is one of the event kinds).
+#[derive(Deserialize)]
+struct TaggedLine {
+    #[serde(default)]
+    r#type: Option<String>,
+}
+
+/// A harness event standing in for an unparseable live line: the contract's
+/// [`Unknown`](crate::event::EventKind::Unknown) kind, carrying the raw text so
+/// nothing is silently dropped. The timestamp is left empty (the line carried no
+/// usable one), matching the web console's `unknown`-line fallback.
+fn unknown_event(raw: &str) -> HarnessEvent {
+    HarnessEvent {
+        timestamp: String::new(),
+        session_id: None,
+        kind: crate::event::EventKind::Unknown {
+            raw: serde_json::Value::String(raw.to_string()),
+        },
     }
 }
 

@@ -20,7 +20,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
 use test_cabinet_core::{AssetPreview, HarnessEvent};
 use tokio::sync::broadcast;
 
@@ -34,23 +33,6 @@ const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// subscriber before it is lagged. Notifications are small and infrequent (one
 /// per run completion), so a modest buffer is ample.
 const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
-
-/// A run's display identity, lifted from its launch request so the active-run
-/// list and completion notifications can describe a job without its (not-yet-
-/// produced) record. Flattened in JSON to the console's `InProgressRun` shape.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct JobSummary {
-    /// The test-case slug being run (e.g. `pong`).
-    pub test_case_slug: String,
-    /// The variant being run (e.g. `base`).
-    pub variant: String,
-    /// The harness driving the run, as its slug string.
-    pub harness_slug: String,
-    /// The opaque model id passed to the harness.
-    pub model_id: String,
-}
 
 /// An item delivered to a live stream: a harness event, an asset-preview frame,
 /// or the terminal marker that lets a streaming client close cleanly.
@@ -228,89 +210,12 @@ impl Default for Relay {
 
 // --- Completion notifications ----------------------------------------------
 
-/// Whether a finished run produced a record. `completed` carries a record id to
-/// open; `failed` carries a reason.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "lowercase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum NotificationOutcome {
-    /// The run produced a record (its own `status.state` may still be a failure).
-    Completed,
-    /// The run could not be driven to a record at all.
-    Failed,
-}
-
-/// The kind of a [`Notification`]. Only [`Self::RunCompleted`] exists today;
-/// modeled as an enum so it is part of the generated contract and the console can
-/// switch on it as more are added.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum NotificationKind {
-    /// A run reached a terminal state (produced a record, or failed before one).
-    RunCompleted,
-}
-
-/// A worker-wide notification that a run reached a terminal state. Carries the
-/// run's display identity (flattened to the console's notification shape) plus
-/// how it ended.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct Notification {
-    /// The notification kind. Only `run-completed` exists today.
-    pub kind: NotificationKind,
-    /// The job id the run was observed under.
-    pub job_id: String,
-    /// The run's display identity (test case, variant, harness, model).
-    #[serde(flatten)]
-    pub summary: JobSummary,
-    /// How the run ended.
-    pub outcome: NotificationOutcome,
-    /// The persisted run record's id the console links the alert to: the produced
-    /// record's id for a `completed` run, the job id for a `failed` one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub record_id: Option<String>,
-    /// A human-readable failure reason, present when `outcome` is `failed`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub message: Option<String>,
-}
-
-impl Notification {
-    /// A run that produced the record `record_id`.
-    pub fn completed(job_id: &str, summary: JobSummary, record_id: &str) -> Self {
-        Self {
-            kind: NotificationKind::RunCompleted,
-            job_id: job_id.to_string(),
-            summary,
-            outcome: NotificationOutcome::Completed,
-            record_id: Some(record_id.to_string()),
-            message: None,
-        }
-    }
-
-    /// A run that failed, with the reason. `record_id` is the produced failure
-    /// record to open when the driver built one (a model failure with a timeline),
-    /// or `None` for an infrastructure failure that produced no record (the alert
-    /// then just surfaces the message).
-    pub fn failed(
-        job_id: &str,
-        summary: JobSummary,
-        message: &str,
-        record_id: Option<&str>,
-    ) -> Self {
-        Self {
-            kind: NotificationKind::RunCompleted,
-            job_id: job_id.to_string(),
-            summary,
-            outcome: NotificationOutcome::Failed,
-            record_id: record_id.map(str::to_string),
-            message: Some(message.to_string()),
-        }
-    }
-}
+// The notification wire shapes (`Notification`, `NotificationKind`,
+// `NotificationOutcome`) and the run's display identity (`JobSummary`) are shared
+// with the queue's Rust clients, so they live in `core::job_api`; re-export them
+// here so this module — and the `contract-codegen` generator that names them as
+// `relay::…` — keep referring to them unchanged.
+pub use test_cabinet_core::{JobSummary, Notification, NotificationKind, NotificationOutcome};
 
 /// The worker-wide notification fan-out. Live-only (no backlog): a completion
 /// while no client is connected is simply not delivered — the run still surfaces

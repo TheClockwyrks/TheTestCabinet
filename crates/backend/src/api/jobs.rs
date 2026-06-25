@@ -25,7 +25,6 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream::{self, Stream, StreamExt};
-use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
@@ -34,11 +33,16 @@ use uuid::Uuid;
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::RunRecord;
-// The job-API wire shapes shared with the dispatcher and driver live in `core`
-// (so neither must depend on this crate). Re-export them so this module — and
-// `api.rs`'s public re-export, which the `contract-codegen` generator names —
-// keep referring to them as `jobs::{LaunchBody, …}`.
-pub use test_cabinet_core::{ClaimedJob, DriverState, LaunchBody, StatusUpdate};
+// The job-API wire shapes shared with the dispatcher, driver, and the queue's
+// Rust clients live in `core` (so neither must depend on this crate) — both the
+// request shapes the driver/dispatcher speak and the server **output** shapes a
+// client deserializes. Re-export them so this module — and `api.rs`'s public
+// re-export, which the `contract-codegen` generator names — keep referring to
+// them as `jobs::{LaunchBody, …}`.
+pub use test_cabinet_core::{
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
+    StatusUpdate,
+};
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
@@ -523,90 +527,6 @@ pub struct VerifyTokenBody {
     pub token: String,
 }
 
-/// The response to a successful `POST /jobs`: the enqueued job's id and where to
-/// observe it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LaunchAck {
-    /// The id of the enqueued job.
-    pub job_id: String,
-    /// Where to poll the job's status.
-    pub status_url: String,
-    /// Where to stream the job's live progress (NDJSON).
-    pub live_url: String,
-}
-
-/// A job's lifecycle state on the wire.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum JobState {
-    /// Enqueued, awaiting a dispatcher to claim it.
-    Queued,
-    /// Claimed by the dispatcher; the driver Job is being created.
-    Dispatched,
-    /// The driver is executing the run.
-    Running,
-    /// The run produced a record.
-    Succeeded,
-    /// The run could not be driven to a record.
-    Failed,
-    /// The job was canceled before completing.
-    Canceled,
-}
-
-impl JobState {
-    /// Map the stored state string to the wire enum. An unrecognized value (which
-    /// the backend never writes) is treated as `queued`.
-    fn from_db(state: &str) -> Self {
-        match state {
-            "dispatched" => Self::Dispatched,
-            "running" => Self::Running,
-            "succeeded" => Self::Succeeded,
-            "failed" => Self::Failed,
-            "canceled" => Self::Canceled,
-            _ => Self::Queued,
-        }
-    }
-
-    /// Whether this is a terminal state (the run is over).
-    fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed | Self::Canceled)
-    }
-}
-
-/// One in-flight job, as `GET /jobs/active` reports it: the live/job id, the
-/// run's display identity (flattened), and its current state.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ActiveJobOut {
-    /// The job/stream id (`POST /jobs` returns this).
-    pub run_id: String,
-    /// The run's display identity.
-    #[serde(flatten)]
-    pub summary: JobSummary,
-    /// The job's current lifecycle state.
-    pub state: JobState,
-}
-
-/// A job's status, as `GET /jobs/{id}` reports it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct JobStatusOut {
-    /// The job id.
-    pub id: String,
-    /// Where the job is in its lifecycle.
-    pub state: JobState,
-    /// The produced run record's id, present once `state` is `succeeded` and the
-    /// run was completed (the row the console navigates to).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub record_id: Option<String>,
-    /// A human-readable failure reason, present when `state` is `failed`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub detail: Option<String>,
-}
+// The server output shapes `LaunchAck`, `JobState`, `ActiveJobOut`, and
+// `JobStatusOut` are shared with the queue's Rust clients, so they live in
+// `core::job_api` and are re-exported at the top of this module.

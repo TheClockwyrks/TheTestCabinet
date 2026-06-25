@@ -79,7 +79,10 @@ pub use harness::{
     resolve_run_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
-pub use job_api::{ClaimedJob, DriverState, LaunchBody, StatusUpdate};
+pub use job_api::{
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, JobSummary, LaunchAck,
+    LaunchBody, Notification, NotificationKind, NotificationOutcome, StatusUpdate,
+};
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use models::{Model, ModelCatalog};
 pub use orchestrator::{
