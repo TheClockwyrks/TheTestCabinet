@@ -7,7 +7,8 @@
 //!   `POST /runs/{id}/artifacts` with a `tar` body — authed by its **per-job
 //!   token**, which the service forwards to the backend to verify.
 //! - A **reviewer** (through the console) reads the run's playable build and
-//!   proof/asset media — `GET /runs/{id}/build`, `/runs/{id}/build/{*path}`,
+//!   proof/asset media — `GET /runs/{id}/build` (and the trailing-slash
+//!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
 //!   `/runs/{id}/proof/{file}`, `/runs/{id}/asset/{file}`, and the recorded
 //!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs. These are **not** token-gated: the
 //!   console loads them as `<img src>`/`<iframe>`/relative build sub-resources,
@@ -77,7 +78,14 @@ pub fn router(state: AppState) -> Router {
         // Serve the run's playable build and media (reviewer → service, ungated:
         // browser-loaded media carries no Authorization header). These mirror the
         // worker's handlers exactly, reading from the store's per-run root.
+        //
+        // Both the bare and trailing-slash roots serve the build's `index.html`:
+        // the build link the driver emits — and the console loads into its iframe —
+        // is `/runs/{id}/build/` *with* a trailing slash (it doubles as the build's
+        // `<base href>`), and axum's `{*path}` capture does not match an empty path,
+        // so without the explicit trailing-slash route that link would 404.
         .route("/runs/{id}/build", get(build_root))
+        .route("/runs/{id}/build/", get(build_root))
         .route("/runs/{id}/build/{*path}", get(build_path))
         .route("/runs/{id}/proof/{file}", get(proof_file))
         .route("/runs/{id}/asset/{file}", get(asset_file))

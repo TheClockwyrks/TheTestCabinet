@@ -142,6 +142,45 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
 }
 
 #[tokio::test]
+async fn serving_the_trailing_slash_build_root_succeeds() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    // Upload first so the build exists.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-slash/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(build_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    // The build link the driver emits — and the console loads into its iframe — is
+    // `/runs/{id}/build/` *with* a trailing slash (it doubles as the build's
+    // `<base href>`). It must serve the `index.html`, not 404: the bare-root and
+    // `{*path}` routes alone leave this exact link unmatched.
+    let get = Request::builder()
+        .method("GET")
+        .uri("/runs/run-slash/build/")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(get).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(
+        html.contains("<base href=\"/runs/run-slash/build/\">"),
+        "trailing-slash build root serves the rewritten index.html; got: {html}"
+    );
+}
+
+#[tokio::test]
 async fn serving_a_build_without_a_token_succeeds() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
