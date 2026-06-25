@@ -156,11 +156,13 @@ token/cost data.
 
 ## Runners
 
-The term "runner" is used to refer to any The Test Cabinet component that is
-capable of running test cases — the [CLI](/components/cli/overview/), the desktop
-app's built-in local runner, the per-run [driver](#driver) a
-[dispatcher](#dispatcher) creates for a server-side run, and the
-[core](/components/core/overview/) they all build on.
+The term "runner" refers to the component that actually executes a test case.
+There is exactly one: the per-run [driver](#driver) a
+[dispatcher](#dispatcher) creates for each run, built on the
+[core](/components/core/overview/). The [CLI](/components/cli/overview/), the
+[desktop app](/components/tauri/overview/), and the
+[web console](#web-console) do not run test cases themselves — they **enqueue** a
+run at the [backend](#backend) and watch it.
 
 ## Score
 
@@ -210,8 +212,8 @@ of a test case.
 
 The [web console](/components/web/overview/) is The Test Cabinet's
 runner/reporter GUI running in a plain browser. It is the same console as the
-[Tauri desktop app](/components/tauri/overview/), sharing its entire UI, but is
-delivered as a static web app and **enqueues** runs at the [backend](#backend) —
-which a [dispatcher](#dispatcher) drains into per-run [driver](#driver) `Job`s —
-rather than driving a built-in local runner. It is an operator tool, served on the
-private network, not a public site.
+[Tauri desktop app](/components/tauri/overview/), sharing its entire UI, but
+delivered as a static web app. Like the desktop app, it **enqueues** runs at the
+[backend](#backend) — which a [dispatcher](#dispatcher) drains into per-run
+[driver](#driver) `Job`s — rather than running them itself. It is an operator
+tool, served on the private network, not a public site.

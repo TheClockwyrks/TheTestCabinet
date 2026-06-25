@@ -2,33 +2,30 @@
 title: Run a Test Case
 ---
 
-Drive a single test case through an agent harness and write a run record. This
-quickstart uses the [CLI](/components/cli/overview/), the most direct path for
-scripting and batch sweeps. You can also launch and watch runs interactively in
-the [Tauri desktop app](/components/tauri/overview/) (its built-in local worker)
-or the [web console](/components/web/overview/) (a server-side, per-run
-[driver](/components/driver/overview/) `Job`). For the full walkthrough, prerequisites,
-and platform notes see [First Time Setup](/guides/first-time-setup/).
+Launch a single test case through an agent harness and watch it to completion.
+This quickstart uses the [CLI](/components/cli/overview/), the most direct path
+for scripting and batch sweeps. You can also launch and watch runs interactively
+in the [Tauri desktop app](/components/tauri/overview/) or the
+[web console](/components/web/overview/). All three **enqueue** the run at the
+backend, which executes it server-side as a per-run
+[driver](/components/driver/overview/) `Job`. For the full walkthrough,
+prerequisites, and platform notes see [First Time Setup](/guides/first-time-setup/).
 
 ## Prerequisites
 
-A working setup: a container runtime on `PATH` (Podman or Docker), the harness
-image built, the Chromium browser installed for the
-[browser driver](/components/core/validation/), and the harness authenticated
-with an API key or subscription (see
-[Set Up Authentication](/quickstarts/set-up-authentication/)). See
+A working setup: a **reachable backend** (`TCAB_BACKEND_URL`) whose run queue an
+in-cluster [dispatcher](/components/dispatcher/overview/) is draining — for local
+development, the [k3d service stack](/development/running/) brought up and
+forwarded — plus a logged-in account (`tcab login`). `tcab` needs **no** container
+runtime of its own; the cluster supplies the harness credentials to the run. See
 [First Time Setup](/guides/first-time-setup/) if any of those are missing.
 
 ## Run it
 
-From the repository root (so the `test-cases/` catalog and browser driver
-resolve):
-
 ```sh
 tcab run \
   --test-case pong --version v1.0.0 --variant base \
-  --harness claude --model claude-opus-4-8 \
-  --out-dir runs
+  --harness claude --model claude-opus-4-8
 ```
 
 From a source checkout, substitute `cargo run -p test-cabinet-cli -- run …` for
@@ -39,11 +36,14 @@ From a source checkout, substitute `cargo run -p test-cabinet-cli -- run …` fo
 - `--model` is passed to the harness unchanged; it is opaque to The Test Cabinet.
 - `--max-runtime <seconds>` overrides the case's `max_runtime_seconds` for this
   invocation only.
+- `--out-dir runs` is optional: it writes the fetched run record JSON locally
+  (otherwise nothing is written — the backend holds the artifacts).
 
-The run renders the references, seeds a fresh repository, drives the harness in a
-container while printing the live [event stream](/components/core/events/), then
-[validates](/components/core/validation/) and writes
-`runs/<id>/run-record.json` alongside a copy of the implementation.
+`tcab run` enqueues the run on the backend's queue, prints the queued job id,
+streams the live [event stream](/components/core/events/) as the driver executes
+it (seeding a fresh repository, driving the harness in a sandbox pod, then
+[validating](/components/core/validation/)), and reads the produced
+[run record](/components/core/run-records/) back to print its summary.
 
 ## Inspect inputs without a run
 

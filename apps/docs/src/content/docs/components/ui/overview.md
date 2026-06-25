@@ -39,23 +39,24 @@ interfaces. A host imports only what it needs.
   `GalleryData` it carries. Each host builds this from its own source: the static
   [site](/components/site/overview/) from the build-time public snapshot, and the
   [web](/components/web/overview/) and [Tauri](/components/tauri/overview/)
-  consoles live from a backend and a worker (via the shared `useLiveGallery`
+  consoles live from a backend (via the shared `useLiveGallery`
   assembly). A `canExecute` flag on this value is what gates the run-execution
   surface — the new-run button, the live monitor, the editable review, the
   account and sign-in/registration pages with their topbar account control, the
   Connections settings, and the notification layer — so the static site renders
   the same component with those parts off. The value also resolves each run's
   submitted [proof-of-implementation](/components/core/validation/#proofs) media to
-  loadable URLs (a published run from the backend, a produced run from its
-  worker — the HTTP worker's proof endpoint, or the Tauri worker's
-  `tcab-proof://` scheme; the site from snapshot assets), which the reworked
-  review flow and the run **Proof** tab display beside the expected references.
-  It resolves an [asset-generation](/testing/asset-generation/overview/) run's
-  media — the regenerated, target, and preview images plus the action log — the
-  same way (a published run from the backend's `/runs/{id}/asset/{file}`
-  endpoint, a produced run from the HTTP worker's matching endpoint or the Tauri
-  worker's `tcab-asset://` scheme, the site from snapshot assets), which the
-  **Verdict** tab's result view shows side by side.
+  loadable URLs (a published run from the backend; a produced run over HTTP from
+  the [artifact service](/components/artifacts/overview/)'s proof endpoint; the
+  site from snapshot assets), which the reworked review flow and the run **Proof**
+  tab display beside the expected references. It resolves an
+  [asset-generation](/testing/asset-generation/overview/) run's media — the
+  regenerated, target, and preview images plus the action log — the same way (a
+  published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
+  run from the artifact service's matching endpoint; the site from snapshot
+  assets), which the **Verdict** tab's result view shows side by side. (Both
+  consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
+  desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks
   every GUI uses: the Markdown renderer, the rating badge, panels, the metric
   tile, the spec/reference accordion, pagination, and the chart wrapper.

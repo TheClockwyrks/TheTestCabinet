@@ -3,29 +3,34 @@ title: Running
 ---
 
 This page covers running The Test Cabinet **locally** — on your own machine, for
-development or to exercise the whole flow end to end. Two shapes of "running" are
-worth separating, because they need very different amounts of setup:
+development or to exercise the whole flow end to end. Execution is now a single,
+unified path: **every** launcher — the [CLI](/components/cli/overview/) (`tcab`),
+the [Tauri desktop app](/components/tauri/overview/), and the
+[web console](/components/web/overview/) — **enqueues** a run at the backend and
+watches it; none of them runs a test case on its own machine. So launching a run
+locally means standing up the **service-driven stack**:
 
-- **A single run**, driven by the [CLI](/components/cli/overview/) (`tcab`) or the
-  [Tauri desktop app](/components/tauri/overview/). Both embed the
-  [core](/components/core/overview/) runner directly, so they need **no backend or
-  cluster** — just a container runtime and a harness API key. This is the fastest
-  way to launch one run; the [quickstarts](/quickstarts/overview/) walk through it
-  and [Building](/development/building/) covers producing the binaries.
 - **The full service-driven flow** — the [backend](/components/backend/overview/)
-  (which now owns the **run queue**), the [auth service](/components/auth/overview/),
+  (which owns the **run queue**), the [auth service](/components/auth/overview/),
   the [dispatcher](/components/dispatcher/overview/), the
+  [driver](/components/driver/overview/), the
   [artifact service](/components/artifacts/overview/), the
   [arena service](/components/arena/overview/) (adversarial matches/tournaments),
   and the [web console](/components/web/overview/), running exactly as a deployed
-  environment runs them. A console no longer talks to a worker: it **enqueues** a
-  run at the backend, and an in-cluster dispatcher claims it and creates a per-run
-  Kubernetes **Job** running the [driver](/components/driver/overview/), which
-  executes that one run. Because execution is now a cluster concern, the local
-  service-driven story runs on a **k3d** cluster (k3s-in-Docker) from the same
-  manifests a deployment uses. (The auth service is what lets you register, log
-  in, and push/review/publish; without it the read-only flow still works, but
-  mutations are rejected `401`.)
+  environment runs them. A launcher **enqueues** a run at the backend; an
+  in-cluster dispatcher claims it and creates a per-run Kubernetes **Job** running
+  the [driver](/components/driver/overview/), which executes that one run. Because
+  execution is a cluster concern, the local service-driven story runs on a **k3d**
+  cluster (k3s-in-Docker) from the same manifests a deployment uses. (The auth
+  service is what lets you register, log in, and launch / push / review / publish;
+  without it the read-only flow still works, but mutations are rejected `401`.)
+- **A single run from the CLI or desktop** still targets that **same** stack.
+  `tcab run` and the desktop app are thin enqueue + watch clients, so they need a
+  reachable backend (`TCAB_BACKEND_URL`) and an account — **not** a host container
+  runtime. The fastest local path is to bring the k3d stack up (below) and point
+  `tcab` (or the desktop app) at the forwarded backend; the
+  [quickstarts](/quickstarts/overview/) walk through it and
+  [Building](/development/building/) covers producing the binaries.
 
 Running the services on one machine is the local mirror of a real
 [deployment](/deployment/overview/): the same images and the same configuration,
@@ -34,9 +39,10 @@ staging and prod — see [Deployment](/deployment/overview/).
 
 ## Prerequisites
 
-- A **container runtime** (Docker) on the host. k3d runs the cluster as
-  containers, and a single CLI/desktop run needs a runtime to execute the run
-  container. See [Execution](/components/core/execution/) and
+- A **container runtime** (Docker) on the host — needed by **k3d**, which runs the
+  cluster as containers. The CLI and desktop app no longer need a host runtime of
+  their own (the in-cluster driver creates the run's sandbox via the Kubernetes
+  API). See [Execution](/components/core/execution/) and
   [first-time setup](/guides/first-time-setup/).
 - [`k3d`](https://k3d.io) and `kubectl` on the host, for the service-driven flow.
 - The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
@@ -97,11 +103,14 @@ in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 it. The host no longer runs any worker process.
 
 `make local-forward` holds the backend open on `127.0.0.1:8787`, the auth service
-on `127.0.0.1:8789`, and the arena service on `127.0.0.1:8791`, which is all the web
-console needs: it enqueues runs against the one backend URL (the in-cluster
-dispatcher and driver execute them), and runs adversarial matches/tournaments against
-the arena (the backend reports its URL at `GET /config`). After editing a test case,
-re-ingest with
+on `127.0.0.1:8789`, and the arena service on `127.0.0.1:8791`, which is all any
+launcher needs: the web console, **and equally `tcab run` or the desktop app**,
+enqueue runs against the one backend URL (the in-cluster dispatcher and driver
+execute them), and the web console runs adversarial matches/tournaments against
+the arena (the backend reports its URL at `GET /config`). Point `tcab` at the
+forwarded backend with `TCAB_BACKEND_URL=http://127.0.0.1:8787` (and `tcab login`
+first); the desktop app uses the same backend URL in its Connections settings.
+After editing a test case, re-ingest with
 `make -C deployments/local local-ingest`.
 
 ## Iterating on the backend and auth services as bare processes

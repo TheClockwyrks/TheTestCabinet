@@ -15,21 +15,24 @@ example by deleting files.
 
 - The testing harness must drive the run container through a **runtime
   abstraction** rather than hard-coding a single runtime. Two runtimes implement
-  it: the default CLI runtime shells out to Docker or a compatible engine such as
-  Podman (used for local runs and the desktop app), and the
-  [Kubernetes runtime](/deployment/kubernetes/) creates a pod per run through the
-  Kubernetes API (used by a worker in a cluster deployment). The behavior below is
-  identical across both — only the mechanism that starts the container, copies the
-  working tree in and out, and runs commands in it differs.
+  it: a Docker/Podman runtime that shells out to a host container engine, and the
+  [Kubernetes runtime](/deployment/kubernetes/) that creates a pod per run through
+  the Kubernetes API. Every test-case run is now driven by the
+  [driver](/components/driver/overview/) under the **Kubernetes runtime** — the
+  CLI and desktop app enqueue runs at the backend rather than executing them on
+  the host (see [Server-side Run Topology](/components/architecture/#server-side-run-topology)),
+  so the host Docker/Podman path is no longer how a test case runs. The behavior
+  below is identical across both runtimes — only the mechanism that starts the
+  container, copies the working tree in and out, and runs commands in it differs.
 - A container must not have access to the host filesystem beyond the seeded
   repository and the inputs the run explicitly provides.
 - A container does require outbound network access so the agent harness can
   reach model APIs and install packages. Isolation is about protecting the host
   filesystem and other runs' outputs, not about disabling the network.
-- When an asset-generation run is being watched (a worker or the Tauri app
-  supplies a preview sink), the container is additionally given a route back to
-  the run host as `host.docker.internal` — `--add-host …:host-gateway` under the
-  CLI runtime, a pod `hostAlias` to the worker's own IP under the Kubernetes
+- When an asset-generation run is being watched (the driver supplies a preview
+  sink), the container is additionally given a route back to the run host as
+  `host.docker.internal` — `--add-host …:host-gateway` under the Docker/Podman
+  runtime, a pod `hostAlias` to the driver pod's own IP under the Kubernetes
   runtime — so the in-container drawing binary can stream its
   [live preview](/testing/asset-generation/binaries/#live-preview) back to a
   listener on the run host. No host mapping is added for an unwatched run.

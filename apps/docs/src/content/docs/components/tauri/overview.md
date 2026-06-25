@@ -3,25 +3,33 @@ title: Overview
 ---
 
 The Test Cabinet's Tauri app is the desktop GUI, and is expected to be the
-primary way The Test Cabinet is used when running test cases interactively (the
-other being scripting through the [CLI](/components/cli/overview/)). It is built
-on the [core](/components/core/overview/) like every other component, exposing
-the same run functionality through an interactive window rather than a command
-line or an HTTP API.
+primary way The Test Cabinet is used when launching test cases interactively (the
+other being scripting through the [CLI](/components/cli/overview/)). It is an
+**enqueue + watch** client of the [backend](/components/backend/overview/) and a
+reporter, exposing the run lifecycle through an interactive window rather than a
+command line or an HTTP API.
 
-It is both a
-[runner and a reporter](/components/architecture/#runners-and-reporters), which
-is what makes it the natural hub: a person can sign in, launch a run, watch it,
-judge it, and push or publish it without leaving the app.
+A person can sign in, launch a run, watch it, judge it, and push or publish it
+without leaving the app — which is what makes it the natural hub. It does not run
+a test case itself: like the [web console](/components/web/overview/), it
+enqueues the run at the backend, a [dispatcher](/components/dispatcher/overview/)
+claims it, and a per-run [driver](/components/driver/overview/) `Job` executes it
+(see [Server-side Run Topology](/components/architecture/#server-side-run-topology)).
+The one thing it still runs **locally, in-process** is the
+[adversarial](/testing/adversarial/overview/) arena — quick matches and
+tournaments are CPU-bound wasm the desktop plays itself (see
+[Arena](/components/arena/overview/)).
 
 Its console UI is shared with the [web console](/components/web/overview/)
-through the [UI library](/components/ui/overview/): the two are the same console,
-and the only substantive difference is what they connect to. The Tauri app ships
-with a **built-in local worker** — its host's embedded core — pre-added, so it
-can run a test case out of the box; the web console starts with no workers. Both
-resolve the catalog from a [backend](/components/backend/overview/), which can
-also run a test case server-side via a per-run
-[driver](/components/driver/overview/) `Job`.
+through the [UI library](/components/ui/overview/): the two are the same console
+over the **same HTTP transport** (promoted into
+[`@test-cabinet/ui/transport`](/components/ui/overview/)), and differ only in
+delivery — a desktop binary vs. a browser bundle — and in a few host details. Both
+resolve the catalog from, and enqueue runs at, a
+[backend](/components/backend/overview/), which drives each run server-side via a
+per-run [driver](/components/driver/overview/) `Job`. The desktop therefore needs
+a **reachable backend** (and, for local development, the
+[k3d service stack](/development/running/)) to launch anything.
 
 ## What it does
 
@@ -34,8 +42,7 @@ also run a test case server-side via a per-run
   notification — a toast, with a bell and a slide-out list of unread alerts —
   when a run completes, even while working elsewhere in the console. The alert
   links to the finished run, and opening it dismisses the alert. Notifications
-  are pushed from the runner (no polling): a remote worker streams them over SSE,
-  the built-in local worker over a Tauri event.
+  are pushed from the backend (no polling), streamed over SSE.
 - **Read the specs.** Browse the [specification](/testing/end-to-end/overview/) a
   run was built from, so the produced implementation can be judged against what
   was actually asked for.
@@ -54,9 +61,11 @@ also run a test case server-side via a per-run
   to flip it public. The solo path (push + self-review + publish in one action) is
   available too, for when the same person does all three.
 
-As a runner the app needs a supported container runtime on the machine it runs
-on, and it resolves definitions from and pushes/reviews/publishes to the
-[backend](/components/backend/overview/).
+The app needs **no** container runtime of its own — it enqueues runs at the
+[backend](/components/backend/overview/) (which drives them server-side), resolves
+definitions from it, and pushes/reviews/publishes to it. It requires a reachable
+backend and, in local development, the [k3d service stack](/development/running/).
+The only work the app performs on its own machine is the local adversarial arena.
 
 ## Status
 
@@ -69,20 +78,21 @@ pages plus the run-execution screens (new run, live monitor, review, the account
 and sign-in/registration pages, the Connections settings) — is the web console's
 UI, not a separate, plainer one.
 
-The desktop's only departures from the web console are its host wiring: it
-provides the [UI library](/components/ui/overview/)'s `BackendClient` and
-`WorkerClient` over Tauri commands instead of HTTP, resolving the catalog from
-the embedded [core](/components/core/overview/) over IPC and pre-adding a single
-**built-in local worker** (also the embedded core). Those commands cover the
-whole flow end to end — signing in to the auth service, resolving the catalog,
-configuring and launching a run with a live event stream, reading the seeded
-specs, pushing a finished run, writing a review (writeup + rating), and publishing
-a pushed, reviewed run. A run's loadable media — a produced run's
-proof artifacts and an [asset-generation](/testing/asset-generation/overview/)
-run's regenerated/target/preview images and action log — is served not over a
-command but over custom URI schemes (`tcab-proof://` and `tcab-asset://`), since
-the UI needs a real URL it can point an `<img>`/`<video>` at, where the HTTP
-worker would expose `/runs/{id}/proof/{file}` and `/runs/{id}/asset/{file}`.
+The desktop's departures from the web console are now small. It uses the **same
+HTTP transport** the web console does — the shared
+[`@test-cabinet/ui/transport`](/components/ui/overview/) `BackendClient` — to
+resolve the catalog, enqueue and watch runs, sign in to the auth service, read
+the seeded specs, push a finished run, write a review, and publish. A run's
+loadable media — a produced run's proof artifacts and an
+[asset-generation](/testing/asset-generation/overview/) run's
+regenerated/target/preview images and action log — is loaded over **HTTP from the
+[artifact service](/components/artifacts/overview/)** at `/runs/{id}/proof/{file}`
+and `/runs/{id}/asset/{file}` (the backend reports its public URL via `GET
+/config`), exactly as in the browser; the old desktop-only `tcab-proof://` and
+`tcab-asset://` URI schemes were removed. What remains Tauri-specific is the
+**local adversarial arena**: the desktop runs matches and tournaments in-process
+and serves a tournament's replay media over the `tcab-tournament://` scheme, since
+that media is produced on the host rather than fetched from the artifact service.
 
 Because the UI is shared, the desktop build is expected to be feature-complete
 against that shared app by construction rather than re-implemented; the desktop

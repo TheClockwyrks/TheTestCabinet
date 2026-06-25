@@ -8,8 +8,9 @@ sign in, configure and launch runs, watch their live
 [event](/components/core/events/) stream, return to any run still in progress and
 be notified when one completes, read [specs](/testing/end-to-end/overview/),
 [push](/components/core/results/#push) finished runs, review them, and publish —
-but delivered as a static web app instead of a desktop binary, and backed by
-**remote workers** rather than a built-in local one.
+but delivered as a static web app instead of a desktop binary. Both consoles
+enqueue runs at the [backend](/components/backend/overview/)'s run queue and watch
+them; neither runs a test case itself.
 
 It shares its entire UI with the Tauri app through the
 [UI library](/components/ui/overview/): both mount the same `GalleryApp` and
@@ -36,11 +37,11 @@ The console talks to two distinct services, mirroring
   bearer token to the backend when the console pushes, reviews, or publishes, so
   the console authenticates through the same worker it runs on.
 
-The web console **starts with no workers**: a person adds worker servers by URL
-in the Connections settings (under the Settings gear), then picks which one a run
-is submitted to. This is the one substantive difference from the Tauri app, which
-pre-adds its host's [built-in local worker](/components/tauri/overview/); the
-desktop's connections are otherwise fixed (nothing to add or remove).
+The web console and the [Tauri app](/components/tauri/overview/) are now wired the
+same way: both enqueue runs at a single backend over the **same HTTP transport**
+(`@test-cabinet/ui/transport`) and watch them. The desktop app additionally runs
+the [adversarial](/testing/adversarial/overview/) arena locally, in-process; that
+is the only execution either console performs on its own machine.
 
 ## One backend, consistent workers
 
