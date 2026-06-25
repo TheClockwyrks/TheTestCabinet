@@ -252,10 +252,10 @@ spec and prompt, that the build:
   other manual step;
 - emits that site into one of **`dist/`, `build/`, or `out/`** at the project
   root, with an **`index.html`** at the root of that directory as the entry point;
-- runs correctly when that directory is served as-is at the **root** of any static
-  file server (it is deployed to static hosting exactly that way, at a domain
-  root, so root-relative and relative asset paths both work — no base-path
-  handling is needed).
+- runs correctly when that directory is served as-is from a static file server —
+  and, because a finished run is also played back from a **per-run sub-path**, not
+  only a host root, keeps working **at any base path** (see the base-path note
+  below).
 
 The validator runs the install and build commands from the manifest's required
 `[build]` table; both commands must be stated explicitly (there are no defaults).
@@ -265,6 +265,22 @@ matching commands in the spec and prompt. Only those commands and
 where the output lands are fixed; the language, framework, bundler, and rendering
 approach behind the interface stay free. Carom's and Coil's `overview`,
 `prompt.hbs`, and `[build]` table are the model wording.
+
+**Base path: a build is not always served from a root.** The load check and the
+per-run publish deploy serve a build from a host root, but when a finished run is
+played back in the console its build is served from a **per-run sub-path**
+(`/runs/<id>/build/`). The host papers over the easy case — it injects a `<base>`
+tag and de-absolutizes root-relative `src`/`href` in the **served HTML** — so a
+build whose only base-path dependence is in its markup keeps working under the
+sub-path. But that rewrite **cannot** reach a URL the build constructs at runtime
+in JS, and a `<base>` tag does not affect a root-absolute (`/…`) URL at all. So a
+case whose build **loads files at runtime by URL** — fetched data, or seeded
+assets it requests rather than inlines — must require, in its spec and prompt, that
+those URLs resolve relative to the page and never begin with a leading `/` (for a
+bundler, a relative base such as Vite's `base: './'`). A case that draws
+everything in code and bundles all of its code has nothing extra to do here.
+Fathom (`test-cases/pacman/`), which loads a folder of seeded PNG sprites, is the
+worked example — its `specs/assets.md` states the rule in full.
 
 ### Use precise, testable numbers
 

@@ -68,10 +68,15 @@ demo.
   static site, with no further manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory
   as the entry point. That output directory must run correctly when served as-is
-  at the root of any static file server, since it is deployed to static hosting
-  exactly that way. You choose the language, framework, bundler, and rendering
-  approach behind this interface; only the `npm ci` and `npm run build` commands
-  and where the build output lands are fixed.
+  from a static file server **at any base path, not only the server root** — when
+  it is played back it is mounted under a per-run sub-path (a path like
+  `/runs/<id>/build/`), so every URL the build requests must resolve relative to
+  the page rather than the origin root. `specs/assets.md` states the loading rule
+  in full (no root-absolute `/…` URLs; a relative bundler base such as Vite's
+  `base: './'`); it governs the art assets and the bundled JS/CSS alike. You
+  choose the language, framework, bundler, and rendering approach behind this
+  interface; only the `npm ci` and `npm run build` commands and where the build
+  output lands are fixed.
 - **Documentation.** Include a `README.md` in the produced repository explaining
   what the game is, how to install dependencies, how to run it in development,
   how to produce the static production build, and the controls.

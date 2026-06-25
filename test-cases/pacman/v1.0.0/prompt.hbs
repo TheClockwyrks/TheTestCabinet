@@ -45,7 +45,11 @@ is judged is your *game*, not your art. `specs/assets.md` is the contract: each
 asset's folder, frame layout, and how to composite and animate it, plus the short
 list of things that genuinely have no asset and you do draw in code (plankton, the
 bonus drifter, ink, the forager's glow, and the HUD/text). Wire the assets in so
-`npm ci && npm run build` bundles them and they load in the static build.
+`npm ci && npm run build` bundles them and they load in the static build —
+**referencing them relative to the page, never by a root-absolute `/assets/…`
+URL**, because the build is served from a sub-path, not the domain root.
+`specs/assets.md` has the loading rule in full; getting it wrong is the most
+common reason a build's art fails to load.
 
 ## Build requirements
 
@@ -63,8 +67,11 @@ Deliver a complete, polished, playable game, not a tech demo. It must:
   `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
   static site, with no other manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory.
-  Serving that directory as-is at the root of any static file server must run the
-  game; it is deployed to static hosting exactly that way.
+  Serving that directory as-is from a static file server must run the game **at
+  any base path, not only the server root** — it is mounted under a per-run
+  sub-path (a path like `/runs/<id>/build/`) when played back, so every URL the
+  build requests must resolve relative to the page, not the origin root (see
+  `specs/assets.md`).
 - Include a `README.md` at `{{workspace}}` explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
   production build, and the controls.
@@ -85,7 +92,10 @@ assume it works. Before you consider the task complete:
 
 - Produce the **static production build** and serve it locally, then open it in
   Chromium with Playwright and confirm it **loads with no console errors** and no
-  uncaught exceptions.
+  uncaught exceptions. Serve it from a **non-root sub-path** (for example
+  `http://localhost:8080/sub/path/`, not just the server root) and confirm the
+  game still loads with **no 404s** — that is how it is served when played back,
+  and it catches root-absolute asset URLs (see `specs/assets.md`).
 - **Drive the game** — press the keys, dive, ping with sonar, drop ink, get caught
   to reach game-over — and **screenshot** the title, gameplay, and game-over
   screens. Compare each against the matching image in `reference/` and against the

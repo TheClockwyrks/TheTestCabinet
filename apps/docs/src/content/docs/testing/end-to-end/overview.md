@@ -349,7 +349,14 @@ Every end-to-end test case must satisfy the following:
   anything else as failing to load (see
   [Evaluation](/testing/end-to-end/evaluation/#load-check)); the language,
   framework, bundler, and rendering approach behind the interface remain the
-  model's choice.
+  model's choice. The load check and the publish deploy serve at a root, but a
+  finished run is **played back in the console from a per-run sub-path**
+  (`/runs/<id>/build/`), not a root — and the host's `<base>`-tag rewrite
+  reaches only the served HTML, never a URL the build constructs at runtime or
+  a root-absolute (`/…`) one. So a case whose build loads files at runtime by
+  URL (fetched data, or seeded assets it requests rather than inlines) must
+  require page-relative asset URLs (no leading `/`; for a bundler, a relative
+  base such as Vite's `base: './'`), so it runs under any base path, not a root.
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
   visuals.

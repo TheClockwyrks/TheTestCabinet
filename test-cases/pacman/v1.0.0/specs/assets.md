@@ -13,6 +13,46 @@ for these; do not restyle or recolor them. Elements that have **no** asset
 this file is consistent with the palette, grid, and behavior defined across the
 other specs — when this file gives a measurement, it matches them.
 
+## Loading the assets — they must work under any base path
+
+The built site is **not guaranteed to be served from the root of its origin.**
+When the finished build is played back it is mounted under a **per-run sub-path**
+(a path like `/runs/<id>/build/`), not at the domain root. Your build must
+therefore run **unchanged at any base path** — every URL it requests has to
+resolve relative to the page, not to the origin root. This is the single most
+common way this build breaks, so get it right:
+
+- **Never reference an asset by a root-absolute URL** — anything with a leading
+  `/`, such as `/assets/glimmerfin/0.png`. A root-absolute URL ignores the
+  page's location and resolves against the origin root, so under a sub-path it
+  points outside the build and 404s. A sprite loader that sets an image source to
+  a string like `/assets/<name>/<i>.png` works when served from a root and fails
+  the instant it is served from a sub-path.
+- **Reference assets relative to the document or module instead**, so each URL
+  resolves against wherever the page actually lives. Prefer letting your bundler
+  resolve them: import each PNG, or use a bundler directory glob (for example
+  Vite's `import.meta.glob('../assets/**/*.png', { eager: true, query: '?url' })`)
+  and use the URLs it returns. A runtime `new URL('./assets/…', import.meta.url)`
+  also works, but only if your bundler can statically resolve it — verify it emits
+  **every** frame of every sheet (a path with more than one dynamic segment often
+  bundles only a subset), or prefer the glob, which always does.
+- **Configure your bundler's base path to be relative.** If it has a
+  base/public-path setting, set it so the emitted JS, CSS, and asset URLs are all
+  page-relative (for Vite, `base: './'`). The default of an absolute `/` base
+  produces exactly the root-absolute references that break under a sub-path — for
+  the entry script and stylesheet as well as the art.
+- **Nothing fixes a bad URL for you at serve time.** When the build is served
+  under a sub-path the host injects a `<base>` tag and rewrites root-absolute
+  references in the **static HTML** — but that reaches only the markup it serves.
+  It **cannot** touch a URL your JavaScript builds at runtime, and a `<base>` tag
+  does not affect a root-absolute (`/…`) URL at all. Any path your code constructs
+  is your responsibility.
+
+This applies to **every** runtime request — the bundled JS and CSS and these art
+assets alike — not just the art. The quickest self-check: serve your `dist/` from
+a non-root sub-path (e.g. `http://localhost:8080/sub/path/`) and confirm the game
+still loads with no 404s, not only from the server root.
+
 ## How the assets are organized
 
 Every asset is a **sprite sheet**: a folder under `assets/` holding one

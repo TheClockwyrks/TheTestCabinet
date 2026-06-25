@@ -17,8 +17,25 @@ A conforming maze must satisfy all of the following:
   (below) is the only exception.
 - **Mirror symmetry.** The layout is symmetric left-to-right about the vertical
   centerline (between columns 17 and 18), so neither side is favored.
-- **Fully connected.** Every open tile is reachable from every other open tile.
-  There are no sealed-off pockets.
+- **Fully connected — nothing sealed off.** The open tiles form **one single
+  connected region**: every open tile is reachable from every other open tile,
+  with no sealed-off pockets. In particular the forager's start tile, the den
+  interior (reached through its gate), both mouths of every wrap tunnel, and
+  **every** plankton tile must all lie in that one region and be mutually
+  reachable. No tile the game depends on — the forager's spawn, a predator's path
+  out of the den, or any plankton — may be walled into a pocket. A maze that
+  strands the player, a predator, or any plankton is invalid.
+- **No dead ends — corridors loop.** Like a classic maze-chase board, the
+  corridors form a richly looped network, not a branching tree of stubs. **Every
+  open corridor tile connects onward to at least two other open tiles** (counting
+  the far mouth of a wrap tunnel as one such connection), so the forager can
+  always pass through a tile and come back around another way and is never forced
+  into a one-exit pocket it must reverse out of. Equivalently: the maze has **no
+  dead-end tiles** (an open tile with only one open orthogonal neighbor). Favor
+  plenty of junctions and alternate routes — match the loop density of
+  `reference/gameplay.png` — so chases stay tense and the player is never cornered
+  in a stub. (The den chamber is exempt: it is the one open area wider than a
+  corridor, entered only through its gate.)
 - **A solid border**, except where the wrap tunnels pierce the left and right
   edges (below).
 - **Dense enough to matter:** a substantial maze of corridors filling most of the
