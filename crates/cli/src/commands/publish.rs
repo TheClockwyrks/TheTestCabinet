@@ -1,102 +1,77 @@
-//! `tcab push` / `tcab review` / `tcab publish` — the run release lifecycle.
+//! `tcab push` / `tcab review` / `tcab publish` — the run release lifecycle,
+//! against the backend.
 //!
-//! - **push** releases a finished run's source to its own public GitHub repo,
-//!   deploys its playable build to Cloudflare Pages, and stores the record on the
-//!   backend — **without** a review. The run is private (not in the public
-//!   gallery) but playable, so anyone can review it.
-//! - **review** submits a review (from the `writeup.md` beside the record) for an
-//!   already-pushed run, attributed to the logged-in account. A run may carry
-//!   many reviews.
-//! - **publish** is the solo convenience: push + self-review + publish gate in
-//!   one step, for an operator reviewing their own run. A run cannot be published
-//!   without at least one review.
+//! Runs no longer execute locally: a `tcab run` enqueues a run on the backend and
+//! a per-run driver pod executes it, pushing the produced record (and its
+//! artifacts) to the backend's run store during the run. So this lifecycle
+//! operates by **backend run id**, not by a local run directory:
+//!
+//! - **push** is a thin confirmation. The driver already pushed the run's record
+//!   and artifacts to the backend, so by the time an operator sees a produced run
+//!   it is already stored — `push` reads the run back and reports its state and
+//!   resolved links (mirroring the web console, whose `push` is a near no-op).
+//! - **review** submits a review (from a locally authored `writeup.md`) for an
+//!   already-stored run, attributed to the logged-in account. A run may carry many
+//!   reviews, one per account.
+//! - **publish** is the solo convenience: self-review + publish gate in one step,
+//!   for an operator reviewing their own run. A run cannot be published without at
+//!   least one review.
 //!
 //! All three require a logged-in account (`tcab login`) and `TCAB_BACKEND_URL`.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::{
-    ArtifactCollection, BackendClient, BackendPublisher, HarnessEvent, HttpBackendClient,
-    PublishConfig, Publisher, PushRequest, RunRecord, SystemCommandRunner, Writeup,
-    implementation_dir, parse_writeup, read_event_log,
-};
+use test_cabinet_core::{BackendClient, HttpBackendClient, PublishedRun, Writeup, parse_writeup};
 
 use crate::cli::{PublishArgs, PushArgs, ReviewArgs};
 use crate::config;
 
-/// Candidate static build output directories a run's implementation may produce.
-const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
-
-/// A loaded run: its record, the collected implementation, any deployable build
-/// output, and the recorded event log.
-struct LoadedRun {
-    record: RunRecord,
-    artifacts: ArtifactCollection,
-    build_dir: Option<PathBuf>,
-    events: Vec<HarnessEvent>,
-}
-
-/// `tcab push` — release each run's source + build and store the record on the
-/// backend, without a review.
+/// `tcab push` — confirm each run is stored on the backend and report its links.
+///
+/// The driver pushes a finished run's record and artifacts to the backend during
+/// the run, so there is no operator-driven release here; `push` reads each run back
+/// and reports whether the backend holds it and where its source/build resolve.
 pub async fn push(args: PushArgs) -> Result<()> {
-    let runs = load_runs(&args.run_records)?;
-    let publisher = publisher()?;
+    let client = backend_client()?;
 
-    println!("tcab push: {} run(s) -> backend", runs.len());
-    for run in &runs {
-        let request = PushRequest {
-            record: &run.record,
-            artifacts: &run.artifacts,
-            build_dir: run.build_dir.as_deref(),
-            events: &run.events,
-        };
-        let outcome = publisher
-            .push(&request)
+    println!("tcab push: {} run(s) <- backend", args.run_ids.len());
+    for run_id in &args.run_ids {
+        let run = client
+            .read_run(run_id)
             .await
-            .with_context(|| format!("pushing run {}", run.record.id))?;
-        let state = if outcome.newly_pushed {
-            "pushed"
+            .with_context(|| format!("reading run {run_id} from the backend"))?;
+        let state = if run.published {
+            "stored (published)"
         } else {
-            "already stored"
+            "stored (private)"
         };
         println!("  {} — {state}", run.record.id);
-        match &outcome.source_repo {
-            Some(url) => println!("    source: {url}"),
-            None => println!("    source: (no source repo — asset generation)"),
-        }
-        match &outcome.playable_build {
-            Some(url) => println!("    build:  {url}"),
-            None => println!("    build:  (no static build deployed)"),
-        }
+        print_links(&run);
     }
-    println!("\nReview a pushed run with `tcab review`, then `tcab publish` to make it public.");
+    println!("\nReview a stored run with `tcab review`, then `tcab publish` to make it public.");
     Ok(())
 }
 
-/// `tcab review` — submit a review (from the run's `writeup.md`) for a pushed
-/// run, attributed to the logged-in account.
+/// `tcab review` — submit a review (from a locally authored `writeup.md`) for a
+/// stored run, attributed to the logged-in account.
 pub async fn review(args: ReviewArgs) -> Result<()> {
-    let record = load_record(&args.run_record)
-        .with_context(|| format!("loading run record {}", args.run_record.display()))?;
-    let writeup_path = args.writeup.clone().unwrap_or_else(|| {
-        args.run_record
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join("writeup.md")
-    });
+    let writeup_path = args
+        .writeup
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("writeup.md"));
     let writeup = load_writeup_at(&writeup_path)
         .map_err(|reason| anyhow::anyhow!("{reason}"))
         .context("a review requires a writeup")?;
 
     let client = backend_client()?;
     client
-        .submit_review(&record.id, &writeup)
+        .submit_review(&args.run_id, &writeup)
         .await
-        .with_context(|| format!("submitting review for run {}", record.id))?;
+        .with_context(|| format!("submitting review for run {}", args.run_id))?;
     println!(
         "Submitted review for {} ({}).",
-        record.id,
+        args.run_id,
         writeup
             .overall_rating()
             .map(|r| r.as_str())
@@ -105,20 +80,19 @@ pub async fn review(args: ReviewArgs) -> Result<()> {
     Ok(())
 }
 
-/// `tcab publish` — the solo path: push + self-review + publish each run. The
-/// whole batch's reviews are gated up front so a sweep is never left
-/// half-published when a missing writeup is discovered.
+/// `tcab publish` — the solo path: self-review + publish each run. The whole
+/// batch's reviews are gated up front so a sweep is never left half-published when
+/// a missing writeup is discovered.
 pub async fn publish(args: PublishArgs) -> Result<()> {
-    let runs = load_runs(&args.run_records)?;
-
-    // Gate every run's review before releasing anything.
-    let mut writeups = Vec::with_capacity(runs.len());
+    // Gate every run's writeup before submitting anything. The operator authors a
+    // writeup per run locally as `<run-id>.md` in the working directory.
+    let mut writeups = Vec::with_capacity(args.run_ids.len());
     let mut missing = Vec::new();
-    for run in &runs {
-        let path = writeup_path_for(&run.record_path_hint());
+    for run_id in &args.run_ids {
+        let path = writeup_path_for(run_id);
         match load_writeup_at(&path) {
             Ok(writeup) => writeups.push(writeup),
-            Err(reason) => missing.push((run.record.id.clone(), reason)),
+            Err(reason) => missing.push((run_id.clone(), reason)),
         }
     }
     if !missing.is_empty() {
@@ -130,105 +104,59 @@ pub async fn publish(args: PublishArgs) -> Result<()> {
             eprintln!("  {id} — {reason}");
         }
         bail!(
-            "every run must have a `writeup.md` with a rating beside its record; \
+            "every run must have a `<run-id>.md` writeup with a rating in the working directory; \
              author the missing reviews and retry"
         );
     }
 
     if args.dry_run {
-        let config = PublishConfig::from_env();
-        println!("tcab publish --dry-run: {} run(s)", runs.len());
-        for (run, writeup) in runs.iter().zip(&writeups) {
-            print_plan(&config, &run.record, writeup, run.build_dir.as_deref());
+        println!("tcab publish --dry-run: {} run(s)", args.run_ids.len());
+        for (run_id, writeup) in args.run_ids.iter().zip(&writeups) {
+            print_plan(run_id, writeup);
         }
-        println!("\nNothing was created, pushed, deployed, reviewed, or published.");
+        println!("\nNothing was reviewed or published.");
         return Ok(());
     }
 
-    let publisher = publisher()?;
-    println!("tcab publish: {} run(s) -> backend", runs.len());
-    for (run, writeup) in runs.iter().zip(&writeups) {
-        let request = PushRequest {
-            record: &run.record,
-            artifacts: &run.artifacts,
-            build_dir: run.build_dir.as_deref(),
-            events: &run.events,
-        };
-        // push (release + store), then self-review, then publish gate.
-        let outcome = publisher
-            .push(&request)
+    let client = backend_client()?;
+    println!("tcab publish: {} run(s) -> backend", args.run_ids.len());
+    for (run_id, writeup) in args.run_ids.iter().zip(&writeups) {
+        // self-review, then the publish gate (the backend refuses a run with zero
+        // reviews). The record and its artifacts were pushed by the driver.
+        client
+            .submit_review(run_id, writeup)
             .await
-            .with_context(|| format!("pushing run {}", run.record.id))?;
-        publisher
-            .backend()
-            .submit_review(&run.record.id, writeup)
+            .with_context(|| format!("reviewing run {run_id}"))?;
+        let ack = client
+            .publish_run(run_id)
             .await
-            .with_context(|| format!("reviewing run {}", run.record.id))?;
-        let ack = publisher
-            .backend()
-            .publish_run(&run.record.id)
-            .await
-            .with_context(|| format!("publishing run {}", run.record.id))?;
+            .with_context(|| format!("publishing run {run_id}"))?;
 
         let state = if ack.newly_published {
             "published"
         } else {
             "already published"
         };
-        println!("  {} — {state}", run.record.id);
-        match &outcome.source_repo {
-            Some(url) => println!("    source: {url}"),
-            None => println!("    source: (no source repo — asset generation)"),
-        }
-        match &outcome.playable_build {
-            Some(url) => println!("    build:  {url}"),
-            None => println!("    build:  (no static build deployed)"),
+        println!("  {run_id} — {state}");
+        // Read the published run back to report where its source/build resolve.
+        match client.read_run(run_id).await {
+            Ok(run) => print_links(&run),
+            Err(err) => eprintln!("    (could not read links back: {err})"),
         }
     }
     Ok(())
 }
 
-impl LoadedRun {
-    /// The directory the run's record (and its `writeup.md`) live in.
-    fn record_path_hint(&self) -> PathBuf {
-        self.artifacts
-            .repo_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .to_path_buf()
+/// Print a stored run's resolved source-repo and playable-build links.
+fn print_links(run: &PublishedRun) {
+    match &run.links.source_repo {
+        Some(url) => println!("    source: {url}"),
+        None => println!("    source: (no source repo — asset generation)"),
     }
-}
-
-/// Load every run record, its implementation, build output, and event log.
-fn load_runs(paths: &[PathBuf]) -> Result<Vec<LoadedRun>> {
-    let mut runs = Vec::with_capacity(paths.len());
-    for path in paths {
-        let record =
-            load_record(path).with_context(|| format!("loading run record {}", path.display()))?;
-        let impl_dir = implementation_dir(path);
-        let build_dir = find_build_output(&impl_dir);
-        let run_dir = path.parent().unwrap_or_else(|| Path::new("."));
-        let events = read_event_log(run_dir);
-        runs.push(LoadedRun {
-            record,
-            artifacts: ArtifactCollection {
-                repo_path: impl_dir,
-            },
-            build_dir,
-            events,
-        });
+    match &run.links.playable_build {
+        Some(url) => println!("    build:  {url}"),
+        None => println!("    build:  (no static build deployed)"),
     }
-    Ok(runs)
-}
-
-/// Build a [`BackendPublisher`] (operator release + backend client) authenticated
-/// with the stored login token.
-fn publisher() -> Result<BackendPublisher<SystemCommandRunner, HttpBackendClient>> {
-    Ok(BackendPublisher::new(
-        PublishConfig::from_env(),
-        SystemCommandRunner,
-        backend_client()?,
-    ))
 }
 
 /// Build an [`HttpBackendClient`] for the configured backend, carrying the stored
@@ -242,23 +170,9 @@ fn backend_client() -> Result<HttpBackendClient> {
     Ok(HttpBackendClient::new(backend).with_token(Some(token)))
 }
 
-fn load_record(path: &Path) -> Result<RunRecord> {
-    let text = std::fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&text)?)
-}
-
-/// Find a deployable static build output beside a run's implementation, if one
-/// was already produced (the validator builds into `dist`/`build`/`out`).
-fn find_build_output(impl_dir: &Path) -> Option<PathBuf> {
-    BUILD_OUTPUTS
-        .iter()
-        .map(|name| impl_dir.join(name))
-        .find(|candidate| candidate.is_dir())
-}
-
-/// The `writeup.md` path beside a record directory.
-fn writeup_path_for(record_dir: &Path) -> PathBuf {
-    record_dir.join("writeup.md")
+/// The `<run-id>.md` writeup path in the working directory for a publish.
+fn writeup_path_for(run_id: &str) -> PathBuf {
+    PathBuf::from(format!("{run_id}.md"))
 }
 
 /// Load and validate a review from a `writeup.md` path, returning a short
@@ -267,20 +181,16 @@ fn load_writeup_at(path: &Path) -> Result<Writeup, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Err(format!("no writeup.md ({})", path.display()));
+            return Err(format!("no writeup ({})", path.display()));
         }
         Err(err) => return Err(format!("could not read {}: {err}", path.display())),
     };
     parse_writeup(&text).map_err(|err| err.to_string())
 }
 
-fn print_plan(
-    config: &PublishConfig,
-    record: &RunRecord,
-    writeup: &Writeup,
-    build_dir: Option<&Path>,
-) {
-    println!("  {}", record.id);
+/// Print the planned review + publish for one run (the `--dry-run` line).
+fn print_plan(run_id: &str, writeup: &Writeup) {
+    println!("  {run_id}");
     let overall = writeup
         .overall_rating()
         .map(|rating| rating.as_str())
@@ -292,16 +202,5 @@ fn print_plan(
         .collect::<Vec<_>>()
         .join(", ");
     println!("    rating: {overall} (worst of {per_domain})");
-    println!("    repo:   {}", config.repo_url(record));
-    match build_dir {
-        Some(dir) => println!(
-            "    build:  deploy {} to Cloudflare Pages project `{}` (branch {})",
-            dir.display(),
-            config.pages_project,
-            record.id
-        ),
-        None => {
-            println!("    build:  (no static build output found; will publish without a build)")
-        }
-    }
+    println!("    action: submit self-review, then publish");
 }

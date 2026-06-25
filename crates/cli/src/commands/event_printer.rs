@@ -1,11 +1,12 @@
-//! A live [`EventSink`] that prints normalized events to the terminal as they
+//! A live event printer that renders normalized events to the terminal as they
 //! arrive.
 //!
 //! This is what turns a run from a silent wait into a visible stream: each piece
-//! of activity — the orchestrator's own setup and teardown stages as well as the
+//! of activity — the driver's own setup and teardown stages as well as the
 //! harness's work — is rendered on its own line as it happens, and a harness's
 //! own diagnostics and errors surface immediately rather than only as a single
-//! line once the run fails.
+//! line once the run fails. `tcab run` drives [`render_event`] from the backend's
+//! live job feed, one event per NDJSON line.
 //!
 //! Each event type's label is colored so the stream is easy to scan. The colors
 //! are emitted unconditionally; the [`anstream`] macros used to write the lines
@@ -13,7 +14,7 @@
 //! `NO_COLOR` and `CLICOLOR`), so color appears only when attached to a TTY.
 
 use anstyle::{AnsiColor, Color, Style};
-use test_cabinet_core::{EventKind, EventSink, HarnessEvent, OrchestrationAction};
+use test_cabinet_core::{EventKind, HarnessEvent, OrchestrationAction};
 
 /// Maximum width of a rendered message before it is truncated.
 const MAX_WIDTH: usize = 200;
@@ -42,25 +43,20 @@ const UNKNOWN: Style = fg(AnsiColor::BrightBlack);
 const WARNING: Style = fg(AnsiColor::Yellow).bold();
 const ERROR: Style = fg(AnsiColor::Red).bold();
 
-/// An [`EventSink`] that writes a one-line summary of every event to the
-/// terminal. Activity goes to standard output; harness warnings and errors go to
-/// standard error.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PrintingEventSink;
-
-impl EventSink for PrintingEventSink {
-    fn emit(&mut self, event: &HarnessEvent) {
-        let line = render(event);
-        // Harness diagnostics belong on standard error; all other activity goes
-        // to standard output. The `anstream` macros decide per stream whether to
-        // keep or strip the color escapes, so a redirected stream stays plain
-        // even when the other is a terminal.
-        match event.kind {
-            EventKind::Warning { .. } | EventKind::Error { .. } => {
-                anstream::eprintln!("  {line}");
-            }
-            _ => anstream::println!("  {line}"),
+/// Print one normalized event as a single colored, labeled line.
+///
+/// Activity goes to standard output; harness warnings and errors go to standard
+/// error. The `anstream` macros decide per stream whether to keep or strip the
+/// color escapes, so a redirected stream stays plain even when the other is a
+/// terminal. This is the shared formatter the live `tcab run` watch and the
+/// [`PrintingEventSink`] both render through.
+pub fn render_event(event: &HarnessEvent) {
+    let line = render(event);
+    match event.kind {
+        EventKind::Warning { .. } | EventKind::Error { .. } => {
+            anstream::eprintln!("  {line}");
         }
+        _ => anstream::println!("  {line}"),
     }
 }
 

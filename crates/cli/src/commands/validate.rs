@@ -46,7 +46,10 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     let artifacts = ArtifactCollection {
         repo_path: args.implementation,
     };
-    let validator = DispatchValidator::new(crate::work_dir::staging_dir(None).join("screenshots"));
+    // Validation runs entirely on the host against an existing implementation
+    // directory (nothing is bind-mounted into a runtime VM), so the screenshot
+    // scratch can live in the system temp directory.
+    let validator = DispatchValidator::new(std::env::temp_dir().join("tcab").join("screenshots"));
     let summary = validator
         .validate(&test_case, &artifacts, &references, &proofs)
         .context("validation failed")?;

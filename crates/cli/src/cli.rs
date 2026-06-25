@@ -145,30 +145,25 @@ pub struct RunArgs {
     pub max_runtime: Option<u64>,
 
     /// Built-in orchestrator that conducts the harness sessions (for example
-    /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Ignored
-    /// when `--orchestrator-dir` is given. Selection is limited to end-to-end test
-    /// cases; other test types always run `one-shot`. See `tcab orchestrators`.
+    /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Selection
+    /// is limited to end-to-end test cases; other test types always run `one-shot`.
+    /// See `tcab orchestrators`.
     #[arg(long, value_name = "SLUG", default_value = "one-shot")]
     pub orchestrator: String,
 
-    /// Directory of an external orchestrator to use instead of a built-in: an
-    /// `orchestrator.toml` plus the runner it names. When set, the directory's own
-    /// manifest slug is authoritative and `--orchestrator` is ignored. This is the
-    /// supported way to run an orchestration strategy not shipped in the repo.
-    #[arg(long, value_name = "DIR")]
-    pub orchestrator_dir: Option<std::path::PathBuf>,
+    /// Harness authentication mode for this run: `auto`, `subscription`, or
+    /// `api-key`. Omit to keep the default (API-key, preferring a subscription only
+    /// when its credentials are available). Forwarded to the backend, which the
+    /// driver applies — the only way to run a subscription-only harness on the
+    /// cluster path.
+    #[arg(long, value_name = "MODE")]
+    pub auth_mode: Option<String>,
 
-    /// Directory to write the run record and collected artifacts into.
+    /// Directory to also write the produced run record's JSON into. The backend
+    /// holds the run's artifacts, so this only mirrors the record locally; omit it
+    /// to write nothing to disk.
     #[arg(long, value_name = "DIR")]
     pub out_dir: Option<std::path::PathBuf>,
-
-    /// Directory to stage a run's mountable inputs under (the seeded repository,
-    /// collected artifacts, and capture scratch). The seeded repository is
-    /// bind-mounted into the container, so on macOS and Windows this must be a
-    /// location the container runtime's VM shares with the host. Defaults to
-    /// `TCAB_WORK_DIR` if set, otherwise `~/.tcab`.
-    #[arg(long, value_name = "DIR")]
-    pub work_dir: Option<std::path::PathBuf>,
 }
 
 /// Arguments for `tcab validate`.
@@ -229,21 +224,22 @@ pub struct LoginArgs {
 /// Arguments for `tcab push`.
 #[derive(Debug, Args)]
 pub struct PushArgs {
-    /// One or more run record files to push. Multiple values push a sweep's runs
-    /// in a single invocation.
-    #[arg(value_name = "RUN_RECORD", required = true, num_args = 1..)]
-    pub run_records: Vec<std::path::PathBuf>,
+    /// One or more backend run ids to confirm are pushed. A backend-driven run's
+    /// record and artifacts are pushed by the driver during the run, so this only
+    /// reports each run's stored state.
+    #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
+    pub run_ids: Vec<String>,
 }
 
 /// Arguments for `tcab review`.
 #[derive(Debug, Args)]
 pub struct ReviewArgs {
-    /// The run record file of the (already-pushed) run to review.
-    #[arg(value_name = "RUN_RECORD")]
-    pub run_record: std::path::PathBuf,
+    /// The backend run id of the (already-stored) run to review.
+    #[arg(value_name = "RUN_ID")]
+    pub run_id: String,
 
-    /// Path to the review's `writeup.md`. Defaults to the `writeup.md` beside the
-    /// run record.
+    /// Path to the review's `writeup.md` the reviewer authored locally. Defaults to
+    /// `writeup.md` in the working directory.
     #[arg(long, value_name = "FILE")]
     pub writeup: Option<std::path::PathBuf>,
 }
@@ -251,14 +247,13 @@ pub struct ReviewArgs {
 /// Arguments for `tcab publish`.
 #[derive(Debug, Args)]
 pub struct PublishArgs {
-    /// One or more run record files to publish. Multiple values enable batch
+    /// One or more backend run ids to publish. Multiple values enable batch
     /// publishing of a sweep's runs in a single invocation.
-    #[arg(value_name = "RUN_RECORD", required = true, num_args = 1..)]
-    pub run_records: Vec<std::path::PathBuf>,
+    #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
+    pub run_ids: Vec<String>,
 
-    /// Print what would be pushed, reviewed, and published — repository names and
-    /// build subdomains — without creating, pushing, deploying, or submitting
-    /// anything.
+    /// Print what would be reviewed and published — without submitting any review
+    /// or flipping any run public.
     #[arg(long)]
     pub dry_run: bool,
 }

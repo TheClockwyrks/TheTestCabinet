@@ -14,7 +14,6 @@
 mod cli;
 mod commands;
 mod config;
-mod work_dir;
 
 use clap::Parser;
 use tracing::Instrument;

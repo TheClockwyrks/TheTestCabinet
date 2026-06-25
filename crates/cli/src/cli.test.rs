@@ -60,16 +60,17 @@ fn run_parses_required_arguments() {
             // the test case's own default cap.
             assert!(args.max_runtime.is_none());
             // Omitting --orchestrator defaults to the single-session one-shot
-            // orchestrator, with no external directory.
+            // orchestrator.
             assert_eq!(args.orchestrator, "one-shot");
-            assert!(args.orchestrator_dir.is_none());
+            // Omitting --auth-mode keeps the backend's default auth behavior.
+            assert!(args.auth_mode.is_none());
         }
         other => panic!("expected a run command, got {other:?}"),
     }
 }
 
 #[test]
-fn run_accepts_an_orchestrator_selection() {
+fn run_accepts_an_orchestrator_and_auth_mode_selection() {
     let cli = Cli::try_parse_from([
         "tcab",
         "run",
@@ -85,18 +86,15 @@ fn run_accepts_an_orchestrator_selection() {
         "some-model-id",
         "--orchestrator",
         "ralph",
-        "--orchestrator-dir",
-        "/tmp/my-orchestrator",
+        "--auth-mode",
+        "subscription",
     ])
-    .expect("a run invocation with orchestrator selection should parse");
+    .expect("a run invocation with orchestrator and auth-mode selection should parse");
 
     match cli.command {
         Command::Run(args) => {
             assert_eq!(args.orchestrator, "ralph");
-            assert_eq!(
-                args.orchestrator_dir,
-                Some(std::path::PathBuf::from("/tmp/my-orchestrator"))
-            );
+            assert_eq!(args.auth_mode.as_deref(), Some("subscription"));
         }
         other => panic!("expected a run command, got {other:?}"),
     }
@@ -216,13 +214,13 @@ fn every_harness_slug_is_accepted() {
 }
 
 #[test]
-fn publish_accepts_a_batch_of_run_records() {
-    let cli = Cli::try_parse_from(["tcab", "publish", "a.json", "b.json", "c.json"])
-        .expect("multiple run records should parse for batch publishing");
+fn publish_accepts_a_batch_of_run_ids() {
+    let cli = Cli::try_parse_from(["tcab", "publish", "run-a", "run-b", "run-c"])
+        .expect("multiple run ids should parse for batch publishing");
 
     match cli.command {
         Command::Publish(args) => {
-            assert_eq!(args.run_records.len(), 3);
+            assert_eq!(args.run_ids.len(), 3);
             assert!(!args.dry_run);
         }
         other => panic!("expected a publish command, got {other:?}"),
@@ -231,17 +229,17 @@ fn publish_accepts_a_batch_of_run_records() {
 
 #[test]
 fn push_and_review_parse() {
-    let cli = Cli::try_parse_from(["tcab", "push", "a.json", "b.json"]).expect("push parses");
+    let cli = Cli::try_parse_from(["tcab", "push", "run-a", "run-b"]).expect("push parses");
     match cli.command {
-        Command::Push(args) => assert_eq!(args.run_records.len(), 2),
+        Command::Push(args) => assert_eq!(args.run_ids.len(), 2),
         other => panic!("expected a push command, got {other:?}"),
     }
 
-    let cli = Cli::try_parse_from(["tcab", "review", "a.json", "--writeup", "w.md"])
+    let cli = Cli::try_parse_from(["tcab", "review", "run-a", "--writeup", "w.md"])
         .expect("review parses");
     match cli.command {
         Command::Review(args) => {
-            assert_eq!(args.run_record, std::path::PathBuf::from("a.json"));
+            assert_eq!(args.run_id, "run-a");
             assert_eq!(args.writeup, Some(std::path::PathBuf::from("w.md")));
         }
         other => panic!("expected a review command, got {other:?}"),

@@ -1,158 +1,166 @@
-//! `tcab run` — launch a single benchmark run.
+//! `tcab run` — enqueue a run on the backend and watch it to completion.
+//!
+//! `tcab` is a thin backend client, exactly like the web console: it does not
+//! execute runs locally. A run is enqueued on the backend's `/jobs` queue (a
+//! dispatcher claims it and a per-run driver pod executes it), the CLI streams the
+//! job's live event feed, and once the stream closes it reads back the produced
+//! record to print the run's summary. Executing the run requires a reachable
+//! backend (`TCAB_BACKEND_URL`) and a logged-in account (the enqueue is gated on
+//! the launching account's bearer token).
 
 use std::path::PathBuf;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
+use test_cabinet_core::backend_client::LiveItem;
 use test_cabinet_core::{
-    BrowserRenderer, CliArtifactCollector, CliContainerRuntime, DefaultHarnessRegistry,
-    DispatchValidator, FsRepoSeeder, HarnessSlug, HttpBackendClient, NoopPublisher,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, PrerenderedReferenceRenderer,
-    ReferenceRenderer, RunEngine, RunRequest, TestCaseCatalog, materialize_version,
+    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody,
+    PublishedRun, RunRecord,
 };
 
 use crate::cli::RunArgs;
-use crate::commands::event_printer::PrintingEventSink;
+use crate::commands::event_printer::render_event;
+use crate::config;
 
-/// Launch a run for the selected test case version, harness, and model.
+/// Enqueue a run for the selected test case version, harness, and model on the
+/// backend, stream its live event feed, then report the produced record.
 ///
-/// The test-case version and its reference screenshots are resolved from the
-/// backend (`TCAB_BACKEND_URL`) when one is configured: the served definition is
-/// materialized to disk and the backend's rendered references are reused as the
-/// seeded visual targets and validation baselines. With no backend configured the
-/// command falls back to the local `test-cases/` checkout, preserving the
-/// offline development path. Either way it assembles the core [`RunEngine`]
-/// from concrete seams and drives the run to completion, then reports the record.
+/// Requires a backend URL (`TCAB_BACKEND_URL`) and a logged-in account: the CLI
+/// no longer runs containers itself, it drives the backend's run queue (the k3d
+/// stack) the same way the web console does.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
-    let request = RunRequest {
-        test_case_slug: args.test_case,
-        test_case_version: Some(args.version),
-        variant: args.variant,
+
+    let backend = config::backend_url().context(
+        "TCAB_BACKEND_URL is not set; `tcab run` now enqueues runs on the backend (the k3d \
+         stack) — set it to the backend's address (for example http://127.0.0.1:8787)",
+    )?;
+    // The enqueue is gated on the launching account, so a launch requires a stored
+    // login token even though plain reads do not.
+    let token = config::require_token().context("launching a run requires a logged-in account")?;
+
+    // An external `--orchestrator-dir` is a local-execution affordance that no
+    // longer applies to a backend-driven run; the orchestrator is selected by its
+    // built-in slug. `one-shot` is the default the backend also assumes when the
+    // field is omitted.
+    let orchestrator = (args.orchestrator != "one-shot").then(|| args.orchestrator.clone());
+    let body = LaunchBody {
+        test_case: args.test_case.clone(),
+        version: args.version.clone(),
+        variant: args.variant.clone(),
         harness,
-        model_id: args.model,
-        // An external `--orchestrator-dir` takes precedence over the built-in
-        // `--orchestrator` slug (its own manifest slug is authoritative); with no
-        // directory, the named built-in (defaulting to `one-shot`) is resolved.
-        orchestrator: OrchestratorSelection {
-            slug: args.orchestrator,
-            dir: args.orchestrator_dir,
-        },
-        max_runtime_override: args.max_runtime,
-        // No explicit per-run image override: the orchestrator resolves the
-        // shared base image from the environment (a registry reference).
-        container_image: None,
+        model: args.model.clone(),
+        orchestrator,
+        max_runtime_seconds: args.max_runtime,
+        auth_mode: args.auth_mode.clone(),
     };
 
-    let output_dir = args.out_dir.unwrap_or_else(|| PathBuf::from("runs"));
-    // Stage mountable inputs where the container runtime can reach them; on macOS
-    // and Windows the OS temp directory is not shared with the runtime's VM. See
-    // `crate::work_dir`.
-    let work_dir = crate::work_dir::staging_dir(args.work_dir);
-    let seed_dir = work_dir.join("seeds");
-    let artifact_dir = work_dir.join("artifacts");
-    let screenshot_dir = work_dir.join("screenshots");
-    let store_dir = work_dir.join("definitions");
-    for dir in [&output_dir, &seed_dir, &artifact_dir, &screenshot_dir] {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("creating directory {}", dir.display()))?;
-    }
-
-    let runtime = CliContainerRuntime::detect().context("locating a container runtime")?;
     println!(
         "tcab run: {}@{} [{}] via {} (model {})",
-        request.test_case_slug,
-        request.test_case_version.as_deref().unwrap_or("latest"),
-        request.variant,
-        request.harness.as_str(),
-        request.model_id,
+        body.test_case,
+        body.version,
+        body.variant,
+        body.harness.as_str(),
+        body.model,
     );
-    println!("  runtime: {}", runtime.binary());
-    match request.max_runtime_override {
+    println!("  backend: {backend}");
+    match body.max_runtime_seconds {
         Some(seconds) => println!("  cap:     {seconds}s max runtime (override)"),
         None => println!("  cap:     test case default max runtime"),
     }
-    match &request.orchestrator.dir {
-        Some(dir) => println!("  orch:    external dir {}", dir.display()),
-        None => println!("  orch:    {}", request.orchestrator.slug),
+    match &body.orchestrator {
+        Some(slug) => println!("  orch:    {slug}"),
+        None => println!("  orch:    one-shot"),
     }
-    println!("  output:  {}", output_dir.display());
-    println!("  staging: {}", work_dir.display());
+    if let Some(mode) = &body.auth_mode {
+        println!("  auth:    {mode}");
+    }
 
-    // Resolve the version and the renderer either from the backend (preferred)
-    // or the local checkout. The renderer differs: a backend-resolved run reuses
-    // the backend's pre-rendered references; a local run renders the mockups with
-    // the bundled browser.
-    let version_str = request.test_case_version.clone().unwrap_or_default();
-    let (test_case, renderer): (_, Box<dyn ReferenceRenderer>) = match backend_url() {
-        Some(url) => {
-            println!("  source:  backend {url}");
-            let client = HttpBackendClient::new(url);
-            let store = store_dir.join(&request.test_case_slug).join(&version_str);
-            let (version, references) = materialize_version(
-                &client,
-                &request.test_case_slug,
-                &version_str,
-                &request.variant,
-                &store,
-            )
-            .await
-            .with_context(|| {
-                format!(
-                    "resolving {}@{} [{}] from the backend",
-                    request.test_case_slug, version_str, request.variant
-                )
-            })?;
-            // The base image resolves from the environment in the orchestrator
-            // (a registry reference, no backend involved); `container_image` stays
-            // `None` unless a caller sets an explicit per-run override.
-            (
-                version,
-                Box::new(PrerenderedReferenceRenderer::new(references)),
-            )
-        }
-        None => {
-            let catalog_root = catalog_root();
-            println!("  source:  local {}", catalog_root.display());
-            let catalog = TestCaseCatalog::new(&catalog_root);
-            let version = catalog
-                .resolve(&request.test_case_slug, &version_str)
-                .with_context(|| format!("resolving {}@{}", request.test_case_slug, version_str))?;
-            (version, Box::new(BrowserRenderer::new()))
-        }
-    };
+    // The watch is read-only (the launch carries the account token itself), so the
+    // client need not hold the token for the stream/status/read calls.
+    let client = HttpBackendClient::new(backend);
 
-    let orchestrator = RunEngine {
-        // The catalog is unused by `run_resolved` (the version is resolved above)
-        // but the struct still carries one; point it at the local checkout.
-        catalog: TestCaseCatalog::new(catalog_root()),
-        seeder: FsRepoSeeder::new(seed_dir),
-        collector: CliArtifactCollector::new(runtime.clone(), artifact_dir),
-        runtime,
-        harnesses: Box::new(DefaultHarnessRegistry::new()),
-        orchestrators: OrchestratorCatalog::new(),
-        renderer,
-        validator: DispatchValidator::new(screenshot_dir),
-        publisher: NoopPublisher,
-        prices: OpenRouterPrices::new(),
-        output_dir,
-        // The in-process CLI path reads any subscription credentials from the host
-        // filesystem; only the driver injects an explicit credential source.
-        creds: None,
-    };
-
-    // Print the run's activity live as it proceeds, rather than waiting in
-    // silence for the run to finish. The feed covers both the orchestrator's own
-    // setup/teardown stages and the harness's activity, so it is the "event
-    // feed" rather than only harness activity.
-    println!("\nevent feed:");
-    let mut events = PrintingEventSink;
-    // The CLI prints to a terminal and cannot render the live drawing frames an
-    // asset-generation run can stream, so no preview sink is supplied.
-    let record = orchestrator
-        .run_resolved(&request, &test_case, &mut events, None)
+    let job_id = client
+        .launch_run(&body, &token)
         .await
-        .context("run failed")?;
+        .context("enqueuing the run on the backend")?;
+    println!("\nqueued job {job_id}");
 
+    // Print the run's activity live as it proceeds, rather than waiting in silence.
+    // The feed covers both the driver's setup/teardown stages and the harness's
+    // activity. Preview frames (asset-generation drawing) are noted minimally since
+    // the CLI is text-only and cannot render an image.
+    println!("\nevent feed:");
+    let mut on_item = |item: LiveItem| match item {
+        LiveItem::Event(event) => render_event(&event),
+        LiveItem::Preview(preview) => {
+            println!(
+                "  preview frame {} ({} ops)",
+                preview.frame, preview.operation_count
+            );
+        }
+    };
+    client
+        .watch_job(&job_id, &mut on_item)
+        .await
+        .with_context(|| format!("watching job {job_id}"))?;
+
+    // The stream closes when the run reaches a terminal state; read the job back to
+    // learn how it ended and (on success) the produced record's id to open.
+    let status = client
+        .job_status(&job_id)
+        .await
+        .with_context(|| format!("reading the status of job {job_id}"))?;
+    finish(&client, &args, &job_id, status).await
+}
+
+/// Resolve a finished job's terminal status into the run summary (on success) or a
+/// non-zero exit with the failure detail. On success the produced record is read
+/// back from the backend so the same summary the local runner printed is shown.
+async fn finish(
+    client: &HttpBackendClient,
+    args: &RunArgs,
+    job_id: &str,
+    status: JobStatusOut,
+) -> anyhow::Result<()> {
+    match status.state {
+        JobState::Succeeded => {
+            let record_id = status.record_id.with_context(|| {
+                format!("job {job_id} succeeded but reported no produced record id")
+            })?;
+            let run = client
+                .read_run(&record_id)
+                .await
+                .with_context(|| format!("reading the produced run record {record_id}"))?;
+            print_summary(&run.record);
+            if let Some(dir) = &args.out_dir {
+                write_record(dir, &run)?;
+            }
+            Ok(())
+        }
+        // A `failed`/`canceled` job either produced a failure record (a model
+        // failure with a timeline) or none (an infrastructure failure). Surface the
+        // detail and exit non-zero either way.
+        JobState::Failed | JobState::Canceled => {
+            let detail = status
+                .detail
+                .as_deref()
+                .unwrap_or("the run did not complete");
+            bail!("run {job_id} {}: {detail}", state_label(status.state));
+        }
+        // The stream only closes on a terminal state, so a non-terminal status here
+        // means the watch ended early (a dropped connection); treat it as a failure
+        // to observe the run rather than a silent success.
+        other => bail!(
+            "watch for job {job_id} ended while the run was still {} — re-run to observe it to \
+             completion",
+            state_label(other)
+        ),
+    }
+}
+
+/// Print the produced run's summary: id, terminal state, token/cost/time metrics,
+/// and the validation outcome, mirroring what the in-process runner printed.
+fn print_summary(record: &RunRecord) {
     println!(
         "\nrun {} complete ({})",
         record.id,
@@ -181,7 +189,18 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     print_step("install", record.validation.install.as_ref());
     print_step("build", record.validation.build.as_ref());
     print_checks(&record.validation);
+}
 
+/// Write the fetched run record's JSON to `dir/<record-id>.json` when `--out-dir`
+/// was given (the backend holds the artifacts; the CLI only mirrors the record).
+fn write_record(dir: &PathBuf, run: &PublishedRun) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dir)
+        .with_context(|| format!("creating output directory {}", dir.display()))?;
+    let path = dir.join(format!("{}.json", run.record.id));
+    let json =
+        serde_json::to_string_pretty(&run.record).context("serializing the fetched run record")?;
+    std::fs::write(&path, json).with_context(|| format!("writing {}", path.display()))?;
+    println!("  record:  {}", path.display());
     Ok(())
 }
 
@@ -223,21 +242,14 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
     }
 }
 
-/// The backend base URL the runner resolves definitions from, from
-/// `TCAB_BACKEND_URL`. `None` (or blank) selects the local `test-cases/` checkout.
-fn backend_url() -> Option<String> {
-    std::env::var("TCAB_BACKEND_URL")
-        .ok()
-        .map(|url| url.trim().to_string())
-        .filter(|url| !url.is_empty())
-}
-
-/// Locate the test case catalog root.
-///
-/// Honors `TCAB_TEST_CASES_DIR`, otherwise defaults to `test-cases` relative to
-/// the current working directory.
-fn catalog_root() -> PathBuf {
-    std::env::var_os("TCAB_TEST_CASES_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("test-cases"))
+/// A short label for a job's lifecycle state.
+fn state_label(state: JobState) -> &'static str {
+    match state {
+        JobState::Queued => "queued",
+        JobState::Dispatched => "dispatched",
+        JobState::Running => "running",
+        JobState::Succeeded => "succeeded",
+        JobState::Failed => "failed",
+        JobState::Canceled => "canceled",
+    }
 }
