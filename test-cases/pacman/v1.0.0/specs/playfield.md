@@ -25,6 +25,13 @@ A conforming maze must satisfy all of the following:
   grid, comparable in density to the example in `reference/gameplay.png` — not a
   sparse few paths.
 
+Draw the maze from the provided **trench tileset** (`assets/trench-walls/`, see
+`specs/assets.md`): the corridor **floor** under every open tile, and the **wall
+autotile** for every wall tile, picking each wall's frame from its wall-neighbors
+(the N/E/S/W connection bitmask in `specs/assets.md`) so corridors get rounded
+rock faces and walls merge seamlessly. Unrevealed tiles use the **fog** tile (see
+`specs/sensing.md`).
+
 The forager starts each life at a fixed open tile you choose in the lower half of
 the maze, on the centerline (so it is symmetric). The predators start in the den.
 
@@ -32,9 +39,10 @@ the maze, on the centerline (so it is symmetric). The predators start in the den
 
 A central **den** holds the predators between releases. It is a small open
 chamber around the grid center (around columns 15-20, rows 7-9) enclosed by wall
-except for a single **gate** tile on its top edge through which predators exit and
-re-enter. The gate is passable only by predators leaving or returning to the den;
-the forager cannot enter the den. No plankton sit inside the den. The den's
+except for a single **gate** tile on its top edge (drawn from the **den-gate**
+tile, `specs/assets.md`) through which predators exit and re-enter. The gate is
+passable only by predators leaving or returning to the den; the forager cannot
+enter the den. No plankton sit inside the den. The den's
 release schedule and the predators' use of it are defined in `specs/predators.md`.
 
 ## Wrap tunnels

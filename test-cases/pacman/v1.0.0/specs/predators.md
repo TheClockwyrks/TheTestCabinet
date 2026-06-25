@@ -29,6 +29,13 @@ Predators move through wrap tunnels like the forager. **Contact** — a predator
 body overlapping the forager — costs a life (see `specs/flow.md`). Predators get
 faster in deeper trenches (see Depth in `specs/flow.md`).
 
+**Render each from its provided sprite** (`specs/assets.md`), facing its direction
+of travel with its swim cycle: the Lure from `assets/lanternjaw/`, the Listener
+from `assets/gloamfin/`, the Flarefish from `assets/flarefish/`. Their two
+signature effects — the sonar pulse and the flare bloom — are separate provided
+effect sheets, called out where each appears below. Do not draw substitute
+creatures or effects.
+
 ## The den and release
 
 All three predators begin each trench (and respawn after you lose a life) inside
@@ -52,10 +59,12 @@ finds you.
   `specs/sensing.md`): `R = 128 + 192 * G` — about **4 tiles** when you are dim,
   up to about **10 tiles** when you are fully lit from eating. While it senses
   you, its fix is your current tile; **linger** after losing you is **`2 s`**.
-- **Tell (anti-blindside).** The Lure carries a small dangling **lure-light**. Its
-  glow is faintly visible to you as a dim point at up to about **3 tiles**, in
-  line of sight, even in otherwise unlit water — so you can sometimes spot the
-  Lure before it closes, especially in the dark when you are dim.
+- **Tell (anti-blindside).** The Lure carries a small dangling **lure-light** (it
+  is on the Lure's sprite; its **lure-bob** frames are the beckoning animation —
+  see `assets/lanternjaw/` in `specs/assets.md`). Its glow is faintly visible to
+  you as a dim point at up to about **3 tiles**, in line of sight, even in
+  otherwise unlit water — so you can sometimes spot the Lure before it closes,
+  especially in the dark when you are dim.
 - **Counter.** Go **dim** — stop eating and let `G` decay — to shrink its range
   and slip out of its sight, or drop **ink** (it hunts by sight, so ink blinds it;
   see `specs/movement.md`). Eating a streak of plankton near the Lure lights you
@@ -76,8 +85,10 @@ waiting for.
   it.**
 - **Tell (anti-blindside).** The Listener emits **its own sonar pulses** about
   every **`3 s`** — the **same large expanding sonar-ring effect** the forager's
-  pulse uses (`specs/sensing.md`), spreading well beyond the Listener's own
-  sprite: you see the ring and it briefly lights a small area around the
+  pulse uses (the provided `assets/sonar-pulse/` sheet, here tinted to the
+  Listener's violet rather than the forager's cyan — see `specs/sensing.md` and
+  `specs/assets.md`), spreading well beyond the Listener's own sprite: you see the
+  ring and it briefly lights a small area around the
   Listener for you too — so its hunting reveals its own position, and ironically
   helps you see.
 - **Counter — the juke.** The Listener is **faster than you at top speed but slow
@@ -101,9 +112,11 @@ flare catches you. Its flare is a gift and a threat at once.
 - **Flare.** About every **`7 s`** the Flarefish emits a **flare**: a bright bloom
   lighting a radius of about **`192 px`** (6 tiles) around itself for **`1 s`**,
   preceded by a roughly **`0.5 s`** charge-up glow that telegraphs it. The bloom
-  is a **large radial light effect** — charge-up, bloom, then fade — drawn as its
-  own overlay centered on the Flarefish and far larger than the creature's own
-  sprite, not part of it. The flare **reveals that area to you** — its geometry
+  is a **large radial light effect** — charge-up, bloom, then fade — rendered from
+  the provided **flare-bloom** effect sheet (`assets/flare-bloom/`, see
+  `specs/assets.md`): play its charge/bloom/fade frames as its own overlay
+  centered on the Flarefish and scaled far larger than the creature's own sprite,
+  not part of it. The flare **reveals that area to you** — its geometry
   is revealed and remembered, and any predator or the drifter inside it is shown
   live during the bloom — so a Flarefish flaring nearby is free reconnaissance.
 - **Sense.** If the **forager is within the flare's lit radius at the bloom**, the

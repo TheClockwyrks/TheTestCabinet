@@ -21,6 +21,13 @@ any moment, and it is drawn differently in each (colors from
 3. **Lit** — revealed *right now* by your light, a live sonar mark, or a flare.
    Drawn at full brightness, with glows.
 
+Draw the maze itself from the provided **trench tiles** (`assets/trench-walls/`,
+see `specs/assets.md`): the wall autotile, floor, fog, and den-gate tiles. The
+three visibility states are **runtime shading on those tiles**, not separate
+art — lit is the tile at full brightness, remembered is the same tile drawn dim,
+and
+unrevealed is the fog tile.
+
 **Fixed things are remembered for the whole trench; moving things are not.**
 
 - **Walls and plankton:** once a tile is revealed by any source, it stays
@@ -86,11 +93,14 @@ finds predators, at the cost of being heard. (The control is in
   Listener** and alerts nearby predators (see `specs/predators.md`). A pulse is
   never free — ping when you need to know, not constantly.
 - **Presentation.** Render an expanding ring from the forager to suggest the
-  wavefront; the actual reveal is the flooded tile set, not a drawn circle. The
-  ring is a **large area effect** — it spreads across many tiles, well beyond a
-  single tile or the forager's own sprite — drawn as its own overlay (tinted to
-  the sonar-ring color), not as part of any character. The Listener emits the
-  **same** sonar-pulse effect as its tell (see `specs/predators.md`).
+  wavefront; the actual reveal is the flooded tile set, not a drawn circle. Use
+  the provided **sonar-pulse** effect sheet (`assets/sonar-pulse/`, see
+  `specs/assets.md`): it is drawn grayscale, so **tint it to the sonar-ring color**
+  (`#5ef2ff`) and play its frames as the ring expands. The ring is a **large area
+  effect** — it spreads across many tiles, well beyond a single tile or the
+  forager's own sprite — drawn as its own overlay, not as part of any character.
+  The Listener emits the **same** sonar-pulse effect as its tell, tinted to its
+  own color (see `specs/predators.md`).
 
 ## The two rules, together
 

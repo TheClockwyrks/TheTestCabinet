@@ -36,6 +36,9 @@ start; they cross-reference each other by name and form one specification.
   each one senses and hunts you.
 - `specs/flow.md` — scoring, lives, descending to deeper trenches, the game
   states, the HUD, audio, and what is out of scope.
+- `specs/assets.md` — the **provided art assets** (seeded under `assets/`) you
+  must render the game with: the forager, predators, sonar pulse, flare bloom,
+  and trench tiles, their frame layouts, and what is left to draw in code.
 - the mode specs under `specs/modes/` — the playable mode(s) and the main-menu
   entry for each. Read every mode spec present and implement the modes they
   define. The main menu lists those modes, then `HOW TO PLAY`.
@@ -128,12 +131,21 @@ near-black trench. The canonical palette and type are below; match them.
 | Primary text | `#e6edf3` |
 | Secondary text | `#8a94a6` |
 
+- **The art is provided — use it.** The forager, the three predators, the sonar
+  pulse, the flare bloom, and the trench tiles (walls, floor, fog, den gate) are
+  delivered as seeded sprite-sheet assets under `assets/`, already drawn in this
+  palette. Render the game with them rather than drawing your own; their frame
+  layouts and compositing are defined in `specs/assets.md`. The palette below
+  still governs everything you *do* draw in code (plankton, the bonus drifter,
+  ink, the forager's glow, the HUD, and all text).
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do
   not depend on a web font that must be downloaded; a system monospace stack is
   required so the game renders identically offline.
-- The forager, plankton, the predators, the sonar ring, and the flare bloom all
-  have a soft neon glow against the dark water. Walls read as solid dark rock with
-  a faint rim light along their edges.
+- Against the dark water, plankton, the forager's light, and the predators' tells
+  read as soft neon glows; the provided creature sprites carry the art, while the
+  forager's brightness glow and lit pocket are runtime light you draw around the
+  sprite (see `specs/sensing.md` and `specs/assets.md`). Walls read as solid dark
+  rock with a faint rim light along their edges — drawn from the trench tileset.
 - **The trench is dark (required, and central to the game).** Tiles that have
   never been touched by your light, a sonar pulse, or a flare are drawn as
   unrevealed fog (`#03060c`) — indistinguishable black, hiding whether they are
@@ -154,6 +166,9 @@ The `reference/` folder holds screenshots showing how key screens should look:
 - `reference/gameplay.png` — a representative in-match frame, mid-dark.
 - `reference/game-over.png` — the game-over screen.
 
-Treat them as visual targets: match their layout, palette, and type. They are
-images only — and the maze they show is just **one example layout**. Build the
-screens from this specification, and design your own conforming maze.
+Treat them as visual targets: match their layout, palette, and type. They show
+the **provided assets** (`specs/assets.md`) in place — the forager, predators,
+effects, and trench tiles you build with — so use them to gauge how those assets
+sit in the scene. They are images only, and the maze they show is just **one
+example layout**: build the screens from this specification, and design your own
+conforming maze.

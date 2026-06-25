@@ -28,10 +28,24 @@ grid, and palette. Then read `sensing` carefully — the fog of war, the
 line-of-sight passive light, the corridor-flooding sonar, and the brightness dial
 are the heart of this game. Then `playfield` (maze, den, tunnels, plankton, HUD),
 `movement` (tile movement, controls, ink), `predators` (the three hunters), and
-`flow` (scoring, lives, depth, states). Finally read the mode spec(s) under
-`modes/` for the playable modes. The specs cross-reference each other by name —
-treat them as one specification. **You design the maze layout** within the
-constraints in `playfield`; there is no fixed maze to copy.
+`flow` (scoring, lives, depth, states). Read `assets` for the **provided art**
+you must build with. Finally read the mode spec(s) under `modes/` for the playable
+modes. The specs cross-reference each other by name — treat them as one
+specification. **You design the maze layout** within the constraints in
+`playfield`; there is no fixed maze to copy.
+
+## Provided art assets
+
+This build does **not** draw its own creatures, tiles, or effects from scratch:
+the forager, the three predators, the sonar pulse, the flare bloom, and the trench
+tiles (walls, floor, fog, den gate) are **already drawn for you** and seeded under
+`{{workspace}}/assets/` as sprite-sheet folders of per-frame PNGs. You **must**
+render the game using these assets — they are identical for every build, so what
+is judged is your *game*, not your art. `specs/assets.md` is the contract: each
+asset's folder, frame layout, and how to composite and animate it, plus the short
+list of things that genuinely have no asset and you do draw in code (plankton, the
+bonus drifter, ink, the forager's glow, and the HUD/text). Wire the assets in so
+`npm ci && npm run build` bundles them and they load in the static build.
 
 ## Build requirements
 

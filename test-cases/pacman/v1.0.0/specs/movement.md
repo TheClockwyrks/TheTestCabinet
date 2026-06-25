@@ -24,6 +24,10 @@ the render frame rate.
 - The forager moves continuously through a **wrap tunnel** (see
   `specs/playfield.md`), exiting one edge and entering the other without stopping.
 - The forager can never enter a wall tile or the **den** (`specs/playfield.md`).
+- **Render it from the provided forager sprite** (`assets/glimmerfin/`, see
+  `specs/assets.md`): draw the frame pair for its current facing and alternate the
+  two while moving so it reads as chomping along the corridor. Do not draw a
+  substitute forager.
 
 The predators move on the same grid and at their own speeds; their movement and
 turning rules are in `specs/predators.md`.

@@ -66,5 +66,15 @@ reference/screenshots/beam/title.png        # from menu-beam.html
 Whichever variant a run selects, its `title.png` is seeded into the run as
 `reference/title.png`, so the model always sees a single stable path.
 
-Because the files are plain static HTML with no scripts or network access, they
-can be opened directly (`file://`) or served as static files for rendering.
+The mockups **embed the real seeded assets** from [`../assets/`](../assets/) (see
+[`../specs/assets.md`](../specs/assets.md)) via relative `../assets/<sheet>/<frame>.png`
+paths, so each rendered screenshot shows the actual art the build uses: the trench
+tileset draws the maze (floor + wall autotile), and the forager, predators, sonar
+pulse, and flare bloom are their sprite/effect sheets. The grayscale sonar-pulse
+asset is tinted with a CSS hue filter (not a `mask`) so it recolors correctly when
+the page is loaded over `file://`, where a cross-origin `mask`/`background` image
+fetch is blocked.
+
+Because the files are still plain static HTML with no scripts or network
+access — only local image assets — they can be opened directly (`file://`) or
+served as static files for rendering.

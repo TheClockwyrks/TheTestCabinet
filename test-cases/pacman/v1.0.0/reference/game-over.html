@@ -2,7 +2,10 @@
 <!--
   Fathom — game-over reference mockup.
   Canonical view slug: game-over
-  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Game over).
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Game over)
+  and ../specs/assets.md (the provided art). The dim trench slice behind the
+  panel embeds the real seeded assets (../assets/): trench tiles, the Flarefish
+  (flarefish), and its flare bloom (flare-bloom) going off.
 -->
 <html lang="en">
   <head>
@@ -12,18 +15,28 @@
   </head>
   <body>
     <div class="stage">
-      <!-- A dim slice of dark trench behind the panel. -->
+      <!-- A dim slice of dark trench behind the panel, lit by a flaring Flarefish. -->
       <div class="maze">
-        <div class="light dim" style="left: 420px; top: 180px; width: 360px; height: 360px"></div>
-        <div class="cell dim" style="left: 544px; top: 320px"></div>
-        <div class="cell dim" style="left: 576px; top: 320px"></div>
-        <div class="cell dim" style="left: 608px; top: 320px"></div>
-        <div class="cell dim" style="left: 576px; top: 288px"></div>
-        <div class="cell dim" style="left: 576px; top: 352px"></div>
-        <div class="predator flarefish dim" style="left: 576px; top: 320px"></div>
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 512px; top: 512px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/9.png" style="left: 512px; top: 480px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 512px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/12.png" style="left: 512px; top: 544px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/13.png" style="left: 480px; top: 512px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 480px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 576px; top: 512px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 544px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/3.png" style="left: 576px; top: 480px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 608px; top: 512px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/6.png" style="left: 576px; top: 544px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/11.png" style="left: 544px; top: 448px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/14.png" style="left: 544px; top: 576px" alt="" />
+        <!-- The Flarefish's flare bloom going off (../assets/flare-bloom/, additive). -->
+        <img class="bloom" src="../assets/flare-bloom/5.png" style="left: 352px; top: 320px; width: 416px; height: 416px" alt="" />
+        <!-- The Flarefish (../assets/flarefish/) at the heart of its flare. -->
+        <img class="sprite flarefish" src="../assets/flarefish/0.png" style="left: 544px; top: 512px" alt="" />
       </div>
 
-      <div class="overlay"></div>
+      <div class="overlay" style="background: rgba(2, 4, 8, 0.64)"></div>
 
       <div class="panel">
         <p class="panel-eyebrow">LOST IN THE DARK</p>

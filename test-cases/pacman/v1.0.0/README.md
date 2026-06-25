@@ -30,6 +30,7 @@ front-end task that should separate stronger builds from weaker ones.
 | Path                   | Seeded to run? | Purpose                                            |
 | ---------------------- | -------------- | -------------------------------------------------- |
 | `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
+| `assets/`              | **Yes**        | The provided art (sprite sheets); build with these.|
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
@@ -37,17 +38,26 @@ front-end task that should separate stronger builds from weaker ones.
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
-`playfield.md`, `sensing.md`, `movement.md`, `predators.md`, `flow.md`, and the
-mode specs under `specs/modes/`. The common specs (everything except the
-variant-only mode specs) are seeded for every variant; each variant adds at most
-one extra mode spec. The case offers four variants — `base` (Trench only), `murk`
+`playfield.md`, `sensing.md`, `movement.md`, `predators.md`, `flow.md`,
+`assets.md` (the provided-art contract), and the mode specs under
+`specs/modes/`. The common specs (everything except the variant-only mode
+specs) are seeded for every variant; each variant adds at most one extra mode
+spec. The case offers four variants — `base` (Trench only), `murk`
 (adds Murk, where passive light bends around corners like sonar), `reserve` (adds
 Reserve, where ink is limited charges refilled by ink-glands), and `beam` (adds
 Beam, a second tighter directional sonar pulse).
 
-This version has **no assets**: Fathom draws everything in code and the model
-designs its own conforming maze, guided by the palette and measurements in the
-specs and by the seeded reference screenshots.
+This version ships a **fixed set of art assets** under `assets/`, seeded into
+every run: the player forager (`glimmerfin`), the three predators (`lanternjaw`,
+`gloamfin`, `flarefish`), the sonar-pulse and flare-bloom effects, and the trench
+tileset (`trench-walls`) — each a sprite-sheet folder of per-frame PNGs, drawn by
+The Test Cabinet's own asset-generation cases of the same slugs. The build is
+**required to render the game with these assets** (the contract is `specs/assets.md`),
+so the art is identical across every run and only the implementation varies. The
+model still designs its own conforming maze from the tiles, guided by the palette
+and measurements in the specs and by the seeded reference screenshots. Things with
+no asset — plankton, the bonus drifter, ink, the forager's glow, and the HUD — are
+drawn in code.
 
 The seeded specs and the rendered reference screenshots are copied into a run's
 repository. The reference *source* mockups are not seeded, so a model builds the
