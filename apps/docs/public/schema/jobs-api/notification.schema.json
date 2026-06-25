@@ -28,7 +28,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/jobs-api/notification.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A worker-wide notification that a run reached a terminal state. Carries the\nrun's display identity (flattened to the console's notification shape) plus\nhow it ended.",
+  "description": "A worker-wide notification that a run reached a terminal state. Carries the\nrun's display identity (flattened to the console's notification shape) plus\nhow it ended. Delivered over `GET /notifications` (SSE).",
   "properties": {
     "harnessSlug": {
       "description": "The harness driving the run, as its slug string.",

@@ -1,7 +1,7 @@
 {
   "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-run-ack.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The response to a successful `POST /jobs`: the enqueued job's id and where to\nobserve it.",
+  "description": "The response to a successful `POST /jobs`: the enqueued job's id and where to\nobserve it. The backend constructs it; a queue client reads `job_id` to begin\nwatching the run (and may reconstruct the status/live URLs from it).",
   "properties": {
     "jobId": {
       "description": "The id of the enqueued job.",

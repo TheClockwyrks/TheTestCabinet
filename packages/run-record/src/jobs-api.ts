@@ -190,7 +190,8 @@ export type JobStatusOut = {
 
 /**
  * The response to a successful `POST /jobs`: the enqueued job's id and where to
- * observe it.
+ * observe it. The backend constructs it; a queue client reads `job_id` to begin
+ * watching the run (and may reconstruct the status/live URLs from it).
  */
 export type LaunchAck = {
   /**
@@ -223,7 +224,7 @@ export type NotificationKind = "run-completed";
 /**
  * A worker-wide notification that a run reached a terminal state. Carries the
  * run's display identity (flattened to the console's notification shape) plus
- * how it ended.
+ * how it ended. Delivered over `GET /notifications` (SSE).
  */
 export type Notification = {
   /**
