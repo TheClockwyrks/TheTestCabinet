@@ -58,6 +58,40 @@ async fn stub_backend() -> (String, Arc<Mutex<Vec<Upload>>>) {
     (format!("http://{addr}"), received)
 }
 
+/// A stub backend that rejects every asset POST (the run-replay path) with `413`
+/// but accepts the controller upload with `204` — modelling a backend whose body
+/// limit is too small for an oversized replay. Records each request it sees (the
+/// rejected ones included) and returns its base URL and that log.
+async fn stub_backend_rejecting_assets() -> (String, Arc<Mutex<Vec<Upload>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let sink = received.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let sink = sink.clone();
+            tokio::spawn(async move {
+                while let Some(upload) = read_request(&mut socket).await {
+                    let response: &[u8] = if upload.path.contains("/asset/") {
+                        b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\n\r\n"
+                    } else {
+                        b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n"
+                    };
+                    sink.lock().expect("lock").push(upload);
+                    if socket.write_all(response).await.is_err() {
+                        return;
+                    }
+                    let _ = socket.flush().await;
+                }
+            });
+        }
+    });
+    (format!("http://{addr}"), received)
+}
+
 /// Read one HTTP request from `socket`, returning its path and body length, or
 /// `None` at end of stream. Drains the full `Content-Length` body so the next
 /// keep-alive request on the same socket starts at a request boundary.
@@ -230,6 +264,55 @@ async fn uploads_controller_and_every_replay_to_their_backend_paths() {
         .find(|u| u.path == "/runs/run-1/controller.wasm")
         .unwrap();
     assert_eq!(controller.body_len, b"\0asm-bytes".len());
+}
+
+#[tokio::test]
+async fn controller_uploads_before_replays_so_a_rejected_replay_cannot_drop_it() {
+    // The arena gates a run's pushed-controller listing on the controller wasm being
+    // in the backend store, so it must land even when a replay upload is rejected
+    // (an oversized replay hitting the backend body limit was the original cause of
+    // completed runs never appearing in Quick Match / tournaments). The controller is
+    // uploaded ahead of the replays for exactly this reason.
+    let (backend_url, received) = stub_backend_rejecting_assets().await;
+    let out = TempDir::new().unwrap();
+
+    write_impl_file(out.path(), "replay.json", b"{\"v\":1}");
+    write_impl_file(out.path(), "build/controller.wasm", b"\0asm-bytes");
+
+    let rec = record(Some(AdversarialResult {
+        replay_json: "replay.json".into(),
+        opponent: "border-soldier".into(),
+        submission_team: AdversarialTeam::Red,
+        winner: Some(AdversarialTeam::Red),
+        red_score: 20,
+        blue_score: 0,
+        ended: "swept".into(),
+        ticks: 100,
+        outcome: AdversarialOutcome::Win,
+        detail: None,
+        controller_module: "build/controller.wasm".into(),
+        replays: vec![replay_entry("border-soldier", "replay.json")],
+    }));
+
+    // The rejected replay surfaces as an error (the driver logs it), but the
+    // controller was already uploaded before the replay was attempted.
+    let result = upload_adversarial_to_backend(&backend_url, &rec, out.path()).await;
+    assert!(result.is_err(), "the rejected replay surfaces as an error");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert!(
+        paths.contains(&"/runs/run-1/controller.wasm".to_string()),
+        "the controller landed despite the replay rejection; got {paths:?}",
+    );
+    assert!(
+        paths.first().map(String::as_str) == Some("/runs/run-1/controller.wasm"),
+        "the controller is uploaded first, before any replay; got {paths:?}",
+    );
 }
 
 #[tokio::test]

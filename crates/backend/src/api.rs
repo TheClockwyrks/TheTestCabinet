@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::Request;
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::routing::{get, post};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -54,6 +54,21 @@ pub struct AppState {
     pub config: Arc<Config>,
 }
 
+/// The maximum body size, in bytes, accepted on the run-media and tournament-replay
+/// upload routes (proof media, asset media, the controller wasm, a tournament match
+/// replay).
+///
+/// Axum's default request-body limit is 2 MiB, which is far too small for these:
+/// an adversarial run's proof replay serializes to tens of MiB (a full-length
+/// time-limit Pac-Man match is ~20 MiB), and a proof video clip is comparable.
+/// Without this raised ceiling those POSTs are rejected with `413` — and because
+/// the adversarial upload sequences the controller wasm *after* the replays, a
+/// rejected canonical replay silently aborted the whole upload before the
+/// controller landed, leaving a completed run's controller out of the backend store
+/// and so invisible in the arena (Quick Match / tournaments). The artifact service
+/// raises its own (whole-tarball) limit for the same reason.
+const MAX_RUN_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
+
 /// Build the Axum router with every contract endpoint mounted.
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -96,21 +111,27 @@ pub fn router(state: AppState) -> Router {
         // submitted-evidence panes (GET).
         .route(
             "/runs/{id}/proof/{file}",
-            get(test_cases::run_proof).post(test_cases::put_run_proof),
+            get(test_cases::run_proof)
+                .post(test_cases::put_run_proof)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // A published asset-generation run's media (regenerated image, final
         // preview, target, action log): uploaded by the publisher (POST) and
         // served for the gallery's result view (GET).
         .route(
             "/runs/{id}/asset/{file}",
-            get(test_cases::run_asset).post(test_cases::put_run_asset),
+            get(test_cases::run_asset)
+                .post(test_cases::put_run_asset)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at
         // push (POST) and served so the arena can pit a pushed implementation from
         // any host (GET).
         .route(
             "/runs/{id}/controller.wasm",
-            get(test_cases::run_controller).post(test_cases::put_run_controller),
+            get(test_cases::run_controller)
+                .post(test_cases::put_run_controller)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab
@@ -126,7 +147,9 @@ pub fn router(state: AppState) -> Router {
         .route("/tournaments/{id}", get(tournaments::get))
         .route(
             "/tournaments/{id}/matches/{matchId}/replay.json",
-            get(tournaments::match_replay).post(tournaments::put_match_replay),
+            get(tournaments::match_replay)
+                .post(tournaments::put_match_replay)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // The run queue. A console enqueues a run (`POST /jobs`, auth-gated); the
         // dispatcher claims the oldest (`POST /jobs/next`, service-token); a

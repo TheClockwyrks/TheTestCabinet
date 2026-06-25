@@ -592,7 +592,20 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         let Some(adversarial) = &record.validation.adversarial else {
             return Ok(());
         };
-        // Each opponent's replay is served back by its own filename
+        // The controller wasm first. It is the artifact the arena gates a run's
+        // pushed-controller listing on, so it must land even if a later — and much
+        // larger — replay upload fails; uploading it ahead of the replays keeps a
+        // pushed run pittable regardless. A forfeit-before-load run records an empty
+        // path and has nothing to upload.
+        if !adversarial.controller_module.is_empty() {
+            let path = artifacts.repo_path.join(&adversarial.controller_module);
+            if let Ok(bytes) = std::fs::read(&path) {
+                self.backend
+                    .publish_run_controller(&record.id, bytes)
+                    .await?;
+            }
+        }
+        // Then each opponent's replay, served back by its own filename
         // (`replay.json`, `replay-1.json`, …), matching `playable::serve_asset_file`.
         for replay in &adversarial.replays {
             let path = artifacts.repo_path.join(&replay.replay_json);
@@ -602,16 +615,6 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             self.backend
                 .publish_run_asset(&record.id, &replay.replay_json, bytes)
                 .await?;
-        }
-        // The controller wasm, when the build produced one (a forfeit-before-load
-        // run records an empty path and has nothing to upload).
-        if !adversarial.controller_module.is_empty() {
-            let path = artifacts.repo_path.join(&adversarial.controller_module);
-            if let Ok(bytes) = std::fs::read(&path) {
-                self.backend
-                    .publish_run_controller(&record.id, bytes)
-                    .await?;
-            }
         }
         Ok(())
     }

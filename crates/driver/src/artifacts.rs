@@ -136,7 +136,19 @@ pub async fn upload_adversarial_to_backend(
     let impl_dir = out_dir.join(&record.id).join("implementation");
     let client = HttpBackendClient::new(backend_url);
 
-    // Each opponent's replay is stored under its own run-root-relative filename
+    // The controller wasm first. It is the artifact the arena gates a run's
+    // pushed-controller listing on (`has_run_controller`), so it must land even if a
+    // later — and much larger — replay upload fails; uploading it ahead of the
+    // replays keeps a completed run visible in Quick Match / tournaments regardless.
+    // A forfeit-before-load run records an empty module path and has nothing to
+    // upload.
+    if !adversarial.controller_module.is_empty()
+        && let Ok(bytes) = std::fs::read(impl_dir.join(&adversarial.controller_module))
+    {
+        client.publish_run_controller(&record.id, bytes).await?;
+    }
+
+    // Then each opponent's replay, stored under its own run-root-relative filename
     // (`replay.json`, `replay-1.json`, …), matching the CLI push and the
     // `playable::serve_asset_file` the backend serves them back through.
     for replay in &adversarial.replays {
@@ -146,14 +158,6 @@ pub async fn upload_adversarial_to_backend(
         client
             .publish_run_asset(&record.id, &replay.replay_json, bytes)
             .await?;
-    }
-
-    // The controller wasm, when the build produced one (a forfeit-before-load run
-    // records an empty module path and has nothing to upload).
-    if !adversarial.controller_module.is_empty()
-        && let Ok(bytes) = std::fs::read(impl_dir.join(&adversarial.controller_module))
-    {
-        client.publish_run_controller(&record.id, bytes).await?;
     }
     Ok(())
 }
