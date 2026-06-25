@@ -1,65 +1,82 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
+@use "../../styles/breakpoints" as bp;
 @use "../../styles/halo" as h;
 
 .section {
   font-family: var(--ttc-font);
 }
 
-// Responsive grid of model cards that reflows from one wide column on phones to
-// a multi-column wall on desktop.
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: t.$space-md;
-}
-
 // Translucent neon-outlined panel so the grid + scanlines read through behind
-// each card.
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  padding: t.$space-md;
+// the table, matching the home gallery's run log.
+.table {
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
-  box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);
+  overflow-x: auto;
+}
+
+// Each line is a fixed column grid so values stay aligned like printed output:
+// caret · model · provider · input · output · context.
+.row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1.2rem 1.6fr 8rem 7rem 7rem 6rem;
+  gap: t.$space-md;
+  min-width: 42rem;
+  padding: t.$space-sm t.$space-md;
   color: t.$color-text;
+  white-space: nowrap;
+}
+
+a.row {
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
 
   &:hover {
     text-decoration: none;
-    // Layer the accent tint over the panel fill (rather than replacing it) so the
-    // card keeps its opaque backing on hover, matching the run-log rows. The tint
-    // alone is mostly transparent, so without the panel underneath the grid +
-    // scanlines bleed through and readability tanks over noisier backgrounds.
-    background:
-      linear-gradient(
-        color-mix(in srgb, t.$color-accent 16%, transparent),
-        color-mix(in srgb, t.$color-accent 16%, transparent)
-      ),
-      s.$panel-bg;
-    box-shadow:
-      0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
-      inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+    box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
   }
 }
 
-// Provider mark + model name on one row, the mark hugging the left edge.
+.head {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  color: t.$color-text-muted;
+}
+
+.rowCaret {
+  color: t.$color-accent;
+  opacity: 0;
+
+  a.row:hover & {
+    opacity: 1;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
+// Provider mark + model name on one row, the mark hugging the left edge. Lets the
+// cell shrink within its grid track so a long name truncates instead of widening
+// the column and breaking alignment with the other rows.
 .identity {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
+  min-width: 0;
 }
 
-// The provider's brand mark, masked so it renders in the accent color with a
-// neon glow, matching the OpenRouter glyph on the detail page. The mask image
-// itself is set inline per provider; size/position/repeat live here.
+// The provider's brand mark, masked so it renders in the accent color with a neon
+// glow, matching the OpenRouter glyph on the detail page. The mask image itself is
+// set inline per provider; size/position/repeat live here.
 .logo {
   display: block;
   flex: none;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
   background-color: t.$color-accent;
   mask: center / contain no-repeat;
   -webkit-mask: center / contain no-repeat;
@@ -68,27 +85,104 @@
   );
 }
 
-.card:hover .logo {
+a.row:hover .logo {
   filter:
     drop-shadow(0 0 0.5rem t.$color-accent)
     drop-shadow(0 0 1.2rem color-mix(in srgb, t.$color-accent 60%, transparent));
 }
 
 .name {
-  font-size: t.$font-lg;
+  overflow: hidden;
   font-weight: 700;
   color: t.$color-accent;
+  text-overflow: ellipsis;
   text-shadow: var(--ttc-glow);
 }
 
 .provider {
-  font-size: t.$font-sm;
+  overflow: hidden;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-overflow: ellipsis;
   color: t.$color-text-muted;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  opacity: 0.6;
 }
 
 .empty {
   color: t.$color-text-muted;
   @include h.halo;
+}
+
+// --- Mobile: stack each row into a card ------------------------------------
+//
+// Below the small breakpoint the fixed column template can't fit a phone without
+// forcing horizontal scroll and cramped rows. Instead each row reflows into a
+// self-contained card: the model name reads as the title and the remaining cells
+// become labelled value lines via their `data-label`. The header row is hidden
+// since its labels now live in the cards. Desktop is untouched.
+@include bp.below(t.$bp-sm) {
+  .table {
+    // Cards never overflow, so the scroll affordance is no longer needed.
+    overflow-x: visible;
+  }
+
+  // The column header is redundant once each cell carries its own label.
+  .head {
+    display: none;
+  }
+
+  // Drop the grid for a vertical stack, neutralizing the fixed template and
+  // min-width so nothing forces an overflow.
+  .row {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    gap: t.$space-xs;
+    min-width: 0;
+    padding: t.$space-md;
+    white-space: normal;
+  }
+
+  // The caret gutter collapses (no hover affordance on touch).
+  .rowCaret {
+    display: none;
+  }
+
+  // The model name anchors the card and keeps its accent treatment.
+  .name {
+    font-size: t.$font-md;
+  }
+
+  // Labelled value lines: render the column name inline ahead of the value so
+  // each figure stays identifiable without the header row.
+  [data-label] {
+    display: flex;
+    align-items: baseline;
+    gap: t.$space-sm;
+
+    &::before {
+      content: attr(data-label);
+      flex: 0 0 7rem;
+      font-size: t.$font-sm;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: t.$color-text-muted;
+    }
+  }
+
+  // The numeric cells are right-aligned in the dense desktop grid; in a card the
+  // value should sit beside its label instead.
+  .num {
+    justify-content: flex-start;
+    text-align: left;
+  }
 }
