@@ -51,7 +51,11 @@ export default function SynthwaveScene() {
       <GridFloor near={palette.gridNear} far={palette.gridFar} />
       <WireframeTerrain color={palette.terrain} />
       {sunEnabled && (
-        <BandedSun top={palette.sunTop} bottom={palette.sunBottom} />
+        <BandedSun
+          top={palette.sunTop}
+          bottom={palette.sunBottom}
+          scanlineAlpha={palette.scanlineAlpha}
+        />
       )}
     </Canvas>
   );

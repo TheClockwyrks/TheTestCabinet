@@ -2,8 +2,9 @@ import { Color } from "three";
 
 // The synthwave scene's colors are derived from the site theme's `--ttc-*`
 // custom properties (declared in `styles/theme.scss`), keeping the theme the
-// single source of color truth. Only the solid hex tokens are read here;
-// `--ttc-grid`/`--ttc-scanline` are rgba and stay in the CSS layers.
+// single source of color truth. The solid hex tokens are read as colors;
+// `--ttc-grid` is rgba and stays in the CSS layers, while `--ttc-scanline`'s
+// alpha is read here to drive the CRT lines now baked into the sun shader.
 export interface ScenePalette {
   // Neon grid lines closest to the camera.
   gridNear: Color;
@@ -23,6 +24,10 @@ export interface ScenePalette {
   bgTop: Color;
   bgMid: Color;
   bgBottom: Color;
+  // Strength of the CRT scanlines drawn over the sun (0–1), from the alpha of
+  // the `--ttc-scanline` token. The scanlines live in the sun shader so they
+  // never touch the grid or terrain.
+  scanlineAlpha: number;
 }
 
 function cssColor(name: string, fallback: string): Color {
@@ -35,6 +40,21 @@ function cssColor(name: string, fallback: string): Color {
   } catch {
     return new Color(fallback);
   }
+}
+
+// Reads the alpha component of an `rgb()/rgba()` custom property (the only
+// channel the sun's scanlines need). `getComputedStyle` resolves the token to a
+// concrete `rgba(r, g, b, a)` string; a missing alpha means fully opaque.
+function cssAlpha(name: string, fallback: number): number {
+  const root = document.documentElement;
+  const raw = getComputedStyle(root).getPropertyValue(name).trim();
+  const inner = raw.match(/rgba?\(([^)]+)\)/i)?.[1];
+  if (!inner) {
+    return fallback;
+  }
+  const parts = inner.split(",").map((part) => Number.parseFloat(part));
+  const alpha = parts.length >= 4 ? parts[3] : 1;
+  return alpha !== undefined && Number.isFinite(alpha) ? alpha : fallback;
 }
 
 // Reads the live theme palette. Call once on the client (after mount) — it
@@ -53,5 +73,6 @@ export function readScenePalette(): ScenePalette {
     bgTop: cssColor("--ttc-bg", "#050108"),
     bgMid: cssColor("--ttc-bg-2", "#0a0414"),
     bgBottom: new Color("#14061f"),
+    scanlineAlpha: cssAlpha("--ttc-scanline", 0.4),
   };
 }

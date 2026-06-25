@@ -18,8 +18,8 @@ import styles from "./CssBackdrop.module.scss";
 //
 // Used both as the instant Suspense fallback while the WebGL scene's chunk loads
 // and as the permanent fallback when WebGL is unavailable or the user prefers
-// reduced motion. Purely decorative; the CRT scanlines are applied over it by
-// `Backdrop`.
+// reduced motion. Purely decorative; the sun's CRT scanlines come baked into the
+// `backdropStill` capture, so the fallback matches the live scene.
 export function CssBackdrop() {
   const sunEnabled = useAppSettings((s) => s.sunEnabled);
   const still = sunEnabled ? backdropStill : backdropStillNoSun;

@@ -12,10 +12,11 @@ import { createServer } from "vite";
 // scene — just frozen — instead of only the approximate CSS grid.
 //
 // It renders the real `SynthwaveScene` on a minimal, chrome-free page (see
-// scripts/capture/), so the captured pixels are the pure scene with no topbar
-// and no scanlines (those are re-applied over the still at runtime). Chromium is
-// launched with software-rendering flags so it produces real WebGL output
-// headlessly, mirroring scripts/screenshot.mjs.
+// scripts/capture/), so the captured pixels are the pure scene with no topbar.
+// The CRT scanlines now live in the sun shader (`BandedSun`), so they're part of
+// the captured frame — only the sun carries them, the grid and terrain stay
+// clean. Chromium is launched with software-rendering flags so it produces real
+// WebGL output headlessly, mirroring scripts/screenshot.mjs.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE_ROOT = path.join(HERE, "capture");

@@ -2,7 +2,8 @@
 
 // Sits behind the app shell (which is positioned at a higher stacking level).
 // Fixed and non-interactive. Deep void with a sunset gradient; the grid/terrain
-// (CSS fallback or WebGL scene) and scanlines are layered on top.
+// (CSS fallback or WebGL scene) is layered on top. The CRT scanlines are baked
+// into the sun itself (see `backdrop/BandedSun`), not overlaid here.
 .backdrop {
   position: fixed;
   inset: 0;
@@ -15,18 +16,4 @@
     #0a0414 55%,
     #14061f 100%
   );
-}
-
-// Faint CRT scanlines layered over everything else in the backdrop.
-.scanlines {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 2px,
-    var(--ttc-scanline) 2px,
-    var(--ttc-scanline) 3px
-  );
-  mix-blend-mode: multiply;
 }
