@@ -12,7 +12,10 @@ import type {
   MatchSummary,
   TournamentRecord,
 } from "@test-cabinet/run-record";
-import type { ArenaApi, ArenaWorkerOption } from "@test-cabinet/ui/app";
+import type {
+  ArenaApi,
+  ArenaWorkerOption,
+} from "../app/data/galleryContext";
 import { getJson, joinUrl, postJson } from "./http";
 
 // The arena service's `POST /tournaments` ack: the id plus the URLs to observe it.

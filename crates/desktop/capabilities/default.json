@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core capabilities the desktop shell's webview needs: invoking the app's Tauri commands and listening to the live harness-event stream emitted during a run.",
+  "description": "Core capabilities the desktop shell's webview needs: invoking the app's Tauri commands (the shell's service URLs and the local arena) and listening to the local arena's live tournament-progress event channels.",
   "windows": ["main"],
   "permissions": ["core:default", "core:event:default"]
 }

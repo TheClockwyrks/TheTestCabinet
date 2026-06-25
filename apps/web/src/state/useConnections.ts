@@ -11,7 +11,7 @@ import {
   createBackendExec,
   createHttpBackend,
   fetchArtifactsUrl,
-} from "../transport/httpBackend";
+} from "@test-cabinet/ui/transport";
 
 const BACKEND_KEY = "tcab.web.backendUrl";
 

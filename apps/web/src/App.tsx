@@ -12,8 +12,7 @@ import {
   RunsRuntimeProvider,
   useLiveGallery,
 } from "@test-cabinet/ui/app";
-import { createHttpArena } from "./transport/httpArena";
-import { fetchArenaUrl } from "./transport/httpBackend";
+import { createHttpArena, fetchArenaUrl } from "@test-cabinet/ui/transport";
 import {
   useBackendConnection,
   useExecConnection,

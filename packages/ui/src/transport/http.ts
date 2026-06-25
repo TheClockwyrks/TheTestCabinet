@@ -1,6 +1,6 @@
 // Small fetch helpers shared by the backend and worker HTTP transports.
-import { readTextWithProgress } from "@test-cabinet/ui/client";
-import type { ProgressCallback } from "@test-cabinet/ui/client";
+import { readTextWithProgress } from "../client";
+import type { ProgressCallback } from "../client";
 
 export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;

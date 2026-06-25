@@ -1,19 +1,20 @@
-// Typed wrappers over the Tauri commands the desktop shell's core exposes.
+// Typed wrappers over the Tauri commands the desktop shell exposes.
 //
-// Each function mirrors a `#[tauri::command]` in `crates/desktop`. The shapes
-// here match the serde DTOs those commands return (camelCase). Tauri's `invoke`
-// is imported lazily so the bundle still loads in a plain browser (where the
-// commands are absent) for development; `isTauri` gates the calls.
+// Since the desktop became a thin backend client (it enqueues and watches runs
+// over the same HTTP API the web console uses — see `state/useConnections.ts`),
+// IPC is reserved for the two things that are genuinely host concerns: the
+// shell's resolved service URLs (so the webview can build its HTTP transports
+// against the backend the shell is configured for) and the **local arena**, whose
+// adversarial matches and tournaments run in the embedded core in-process.
+//
+// Tauri's `invoke`/`listen` are imported lazily so the bundle still loads in a
+// plain browser (where the commands are absent) for development; `isTauri` gates
+// the calls.
 import type {
-  AssetSheet,
   ControllerRef,
   MatchSummary,
-  RunRecord,
-  TestType,
   TournamentRecord,
 } from "@test-cabinet/run-record";
-import type { HarnessEvent } from "@test-cabinet/run-record/event";
-import type { InProgressRun, RunNotification } from "@test-cabinet/ui/client";
 
 export function isTauri(): boolean {
   return (
@@ -35,280 +36,19 @@ export async function listen<T>(
   return listen<T>(event, (e) => handler(e.payload));
 }
 
-export interface Model {
-  slug: string;
-  name: string;
-  provider: string;
-  openrouterSlug: string | null;
-  descriptionPath: string | null;
-  modelIds: string[];
-}
+// --- Shell configuration ----------------------------------------------------
 
-export interface TestCase {
-  slug: string;
-  versions: string[];
-}
-
-// A rendered reference screenshot for a variant, resolved to a URL the webview
-// can load (the backend's reference endpoint).
-export interface ReferenceShot {
-  view: string;
-  kind: "image" | "video";
-  url: string;
-}
-
-export interface VariantInfo {
-  slug: string;
-  name: string;
-  description: string | null;
-  // The variant's prompt, rendered as a real run receives it.
-  prompt: string;
-  // Rendered reference screenshots (common first, then the variant's own), or
-  // empty for a locally-resolved checkout with no backend to serve baselines.
-  references: ReferenceShot[];
-  // The reviewer checklist items for this variant (common first, then the
-  // variant's own), carrying their point weights.
-  reviewItems: ReviewItem[];
-}
-
-export interface VersionInfo {
-  slug: string;
-  version: string;
-  name: string;
-  difficulty: string;
-  tags: string[];
-  summary: string | null;
-  // The case's test type. Drives type-specific UI affordances — notably the
-  // run-launch orchestrator selector, offered only for "end-to-end".
-  testType: TestType;
-  variants: VariantInfo[];
-  // The case's scoring domains (case-level).
-  domains: Domain[];
-  // The sprite-sheet frame grid and named sequences, present only for a
-  // sprite-sheet case; null otherwise. Lets the live monitor show one stable
-  // slot per declared frame.
-  sheet?: AssetSheet | null;
-  maxRuntimeSeconds: number;
-}
-
-export interface SpecDocument {
-  dest: string;
-  body: string;
-}
-
-export interface Specification {
-  slug: string;
-  version: string;
-  variant: string;
-  description: string | null;
-  specs: SpecDocument[];
-}
-
-export type Rating = "flawless" | "great" | "scuffed" | "broken";
-
-export type VerdictStatus = "pass" | "fail";
-
-// A reviewer's rating for one of the case's scoring domains.
-export interface DomainRating {
-  domain: string;
-  rating: Rating;
-}
-
-// A scoring domain a case declares; rated independently, the run's overall rating
-// is the worst across them.
-export interface Domain {
-  id: string;
-  name: string;
-  description: string;
-}
-
-// A reviewer checklist item a test case declares (its stable id, a short title,
-// the prose a reviewer reads, and the points it is worth). Surfaced so the
-// reviewer works through every major item. The UI prefixes a synthesized number
-// to the title at display time.
-export interface ReviewItem {
-  id: string;
-  title: string;
-  text: string;
-  reference?: string | null;
-  proof?: string | null;
-  weight: number;
-  domain?: string | null;
-}
-
-// A reviewer's verdict on one declared checklist item. `note` is omitted when
-// the reviewer left none.
-export interface ReviewVerdict {
-  id: string;
-  status: VerdictStatus;
-  note?: string;
-}
-
-export interface ReviewDocument {
-  ratings: DomainRating[];
-  writeup: string;
-  checklist: ReviewVerdict[];
-}
-
-// One submitted review on a stored run, attributed to the account that wrote it.
-export interface StoredReview extends ReviewDocument {
-  reviewerId: string;
-  reviewer: string;
-  username?: string | null;
-  reviewedAt?: string | null;
-}
-
-export interface StoredRun {
-  id: string;
-  record: RunRecord;
-  reviews: StoredReview[];
-  published: boolean;
-}
-
-// A user account, as the auth service returns it (the core proxies the call).
-export interface Account {
-  id: string;
-  username: string;
-  displayName: string;
-}
-
-// The auth `register`/`login` result: a bearer token plus its account.
-export interface AuthResult {
-  token: string;
-  account: Account;
-}
-
-export interface LaunchConfig {
-  testCase: string;
-  version: string;
-  variant: string;
-  harness: string;
-  modelId: string;
-  // The built-in orchestrator slug that conducts the harness sessions. Defaults
-  // to "one-shot"; a non-default orchestrator is accepted only for end-to-end.
-  orchestrator: string;
-  maxRuntimeOverride: number | null;
-}
-
-// The standalone push result: source + build released and the record stored
-// privately (no review). Mirrors `commands::PushResult`.
-export interface PushResult {
-  // `null` for an asset-generation run, which releases no code.
-  sourceRepo: string | null;
-  playableBuild: string | null;
-  newlyPushed: boolean;
-}
-
-export interface PublishResult {
-  // `null` for an asset-generation run, which releases no code.
-  sourceRepo: string | null;
-  playableBuild: string | null;
-  newlyPublished: boolean;
-}
-
-// The normalized harness event shape, generated from the Rust `HarnessEvent`
-// contract (crates/core/src/event.rs) and re-exported so the live feed and the
-// recorded streams below share the same source of truth as the UI.
-export type { HarnessEvent };
-
-export interface LiveEvent {
-  runId: string;
-  event: HarnessEvent;
-}
-
-// One line of recorded raw harness output (the `read_run_events` command's
-// `raw` entries), matching the core `RawOutputLine` serde shape.
-export interface RawOutputLine {
-  stream: "stdout" | "stderr";
-  line: string;
-}
-
-// A finished run's recorded event streams, returned by `read_run_events`.
-export interface RunEventStreams {
-  events: HarnessEvent[];
-  raw: RawOutputLine[];
-}
-
-export type RunOutcome =
-  | { kind: "completed"; record: RunRecord }
-  | { kind: "failed"; message: string };
-
-// --- Commands ---
-
+// The desktop shell's resolved service URLs, read from its environment
+// (`TCAB_BACKEND_URL` / `TCAB_AUTH_URL`). The webview builds its HTTP transports
+// against these — the same `createHttpBackend`/`createBackendExec` the web console
+// uses — so the desktop talks to the backend directly rather than through IPC.
 export const appVersion = () => invoke<string>("app_version");
-export const backendConfigured = () => invoke<boolean>("backend_configured");
-export const listModels = () => invoke<Model[]>("list_models");
-export const listTestCases = () => invoke<TestCase[]>("list_test_cases");
-export const listVersions = (slug: string) =>
-  invoke<string[]>("list_versions", { slug });
-export const resolveVersion = (slug: string, version: string) =>
-  invoke<VersionInfo>("resolve_version", { slug, version });
-export const readSpecs = (slug: string, version: string, variant: string) =>
-  invoke<Specification>("read_specs", { slug, version, variant });
-export const launchRun = (config: LaunchConfig) =>
-  invoke<string>("launch_run", { config });
-// The runs the shell is currently executing, by launch identity — the desktop
-// equivalent of the worker's `GET /runs/active`. The DTO matches `InProgressRun`.
-export const listActiveRuns = () =>
-  invoke<InProgressRun[]>("list_active_runs");
-export const listRuns = () => invoke<StoredRun[]>("list_runs");
-export const readRun = (id: string) => invoke<StoredRun>("read_run", { id });
-export const readRunEvents = (id: string) =>
-  invoke<RunEventStreams>("read_run_events", { id });
-
-// One page of published runs served by the backend (the read side), as the
-// `BackendClient` consumes it.
-export interface RunPage {
-  runs: StoredRun[];
-  nextCursor: string | null;
-}
-
-export const listPublishedRuns = (opts?: { before?: string; limit?: number }) =>
-  invoke<RunPage>("list_published_runs", {
-    before: opts?.before ?? null,
-    limit: opts?.limit ?? null,
-  });
-export const readPublishedRun = (id: string) =>
-  invoke<StoredRun>("read_published_run", { id });
-export const readReviewItems = (slug: string, version: string, variant: string) =>
-  invoke<ReviewItem[]>("read_review_items", { slug, version, variant });
-export const saveReview = (
-  id: string,
-  ratings: DomainRating[],
-  writeup: string,
-  checklist: ReviewVerdict[],
-) => invoke<void>("save_review", { id, ratings, writeup, checklist });
-// Push a finished run without a review: release its source + build and store the
-// record privately, authorized by the signed-in account's bearer token. The run
-// stays private until it is published; a review is not required to push.
-export const pushRun = (id: string, token: string) =>
-  invoke<PushResult>("push_run", { id, token });
-// The desktop's solo publish: push + the locally-saved review + publish in one
-// step, authorized by the signed-in account's bearer token.
-export const publishRun = (id: string, token: string) =>
-  invoke<PublishResult>("publish_run", { id, token });
-
-// Account auth: the local core proxies the standalone auth service. Both resolve
-// a bearer token plus the account.
-export const register = (
-  username: string,
-  password: string,
-  displayName: string,
-) => invoke<AuthResult>("register", { username, password, displayName });
-export const login = (username: string, password: string) =>
-  invoke<AuthResult>("login", { username, password });
-
-export const eventChannel = (runId: string) => `run://${runId}/event`;
-export const doneChannel = (runId: string) => `run://${runId}/done`;
-// One live asset-generation preview frame for a run — mirrors `crates/desktop`'s
-// `preview_channel`. The payload is a bare `AssetPreview`.
-export const previewChannel = (runId: string) => `run://${runId}/preview`;
-
-// The worker-wide run-completion channel (a single global event, not per-run) the
-// shell emits on each run finishing — mirrors `crates/desktop`'s `NOTIFY_CHANNEL`.
-export const notifyChannel = "notifications://run";
-// Re-exported so the worker transport can type the listener payload.
-export type { RunNotification };
+// The backend the shell is configured for, or `null` when unset; the webview is
+// "unconfigured" until one is present.
+export const backendUrl = () => invoke<string | null>("backend_url");
+// The auth service the shell registers/logs in against (always resolves, falling
+// back to the loopback default for local dev).
+export const authUrl = () => invoke<string>("auth_url");
 
 // --- Adversarial arena ------------------------------------------------------
 

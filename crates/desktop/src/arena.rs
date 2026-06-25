@@ -21,11 +21,12 @@ use test_cabinet_core::match_play::{
     ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, MatchSummary, ResolvedController,
     TournamentRecord, resolve_baseline, run_quick_match, run_tournament,
 };
-use test_cabinet_core::{BackendClient, HttpBackendClient, TestCaseVersion};
+use test_cabinet_core::{
+    BackendClient, HttpBackendClient, TestCaseCatalog, TestCaseVersion, materialize_version,
+};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::commands::resolve_version_inner;
 use crate::config;
 
 /// A command result whose error is a plain string the webview renders.
@@ -33,6 +34,45 @@ type CmdResult<T> = Result<T, String>;
 
 fn cmd_err<E: std::fmt::Display>(context: &str, e: E) -> String {
     format!("{context}: {e}")
+}
+
+/// Resolve an exact test-case version to drive a match or tournament.
+///
+/// The arena runs in-process, so it resolves the case's definition itself: from
+/// the backend when one is configured (materializing the served definition to the
+/// per-run staging store so the case's `build`/references are readable), otherwise
+/// from the local `test-cases/` checkout for offline development. This is the only
+/// place the desktop shell still resolves a definition — every other read goes
+/// over HTTP from the webview.
+async fn resolve_version_inner(slug: &str, version: &str) -> CmdResult<TestCaseVersion> {
+    match config::backend_url() {
+        Some(url) => {
+            let client = HttpBackendClient::new(url);
+            let store = config::staging_dir()
+                .join("definitions")
+                .join(slug)
+                .join(version);
+            // Materialize against the first variant; the case-level `build`/module
+            // and the references are written regardless of the variant argument,
+            // which only selects which references are fetched.
+            let first_variant = client
+                .resolve_version(slug, version)
+                .await
+                .map_err(|e| cmd_err("resolving version from the backend", e))?
+                .variants
+                .first()
+                .map(|v| v.slug.clone())
+                .unwrap_or_else(|| "base".to_string());
+            let (resolved, _refs) =
+                materialize_version(&client, slug, version, &first_variant, &store)
+                    .await
+                    .map_err(|e| cmd_err("materializing version from the backend", e))?;
+            Ok(resolved)
+        }
+        None => TestCaseCatalog::new(config::catalog_root())
+            .resolve(slug, version)
+            .map_err(|e| cmd_err("resolving version from the local checkout", e)),
+    }
 }
 
 /// Reject an id unsafe to use as a path segment (a run id names a directory).

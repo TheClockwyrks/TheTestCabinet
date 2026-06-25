@@ -1,24 +1,24 @@
 //! The Test Cabinet desktop shell.
 //!
 //! This crate is the graphical shell over [`test_cabinet_core`]. It is kept
-//! deliberately thin: it owns no orchestration logic of its own. Instead it
-//! exposes a set of `#[tauri::command]`s (in [`commands`]) that delegate to the
-//! core — resolving the test-case catalog, launching a run and streaming its live
-//! [event](test_cabinet_core::HarnessEvent) feed to the webview, reading the
-//! seeded specification, recording a review, and publishing a reviewed run — and
-//! surfaces the results to the React UI loaded from `apps/desktop`.
+//! deliberately thin: it owns no orchestration logic of its own.
+//!
+//! Runs are no longer executed in-process here. Like the web console, the desktop
+//! webview talks to the backend directly over HTTP — it enqueues a run on the
+//! backend's `/jobs` queue, watches the live stream, and reads/reviews/publishes
+//! produced runs — so this shell exposes only the handful of commands that are
+//! genuinely host concerns: its resolved service URLs ([`backend_url`] /
+//! [`auth_url`], which the webview builds its HTTP transports against) and the
+//! **local arena** (in [`arena`]), whose adversarial matches and tournaments run
+//! in the embedded core in-process. A locally-run tournament's per-match replays
+//! are served to the webview over the [`tournament`] URI scheme.
 //!
 //! Following Tauri v2 conventions, the real entrypoint is [`run`], which is
 //! invoked both by the binary (`src/main.rs`) and, on mobile targets, by the
 //! generated platform entry point.
 
 mod arena;
-mod asset;
-mod commands;
 mod config;
-mod events;
-mod playable;
-mod proof;
 mod tournament;
 
 /// The desktop application's version string (the crate version).
@@ -28,12 +28,24 @@ fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// Whether a backend is configured (`TCAB_BACKEND_URL`), which the UI uses to
-/// gate the publish action and to label where definitions resolve from.
+/// The backend base URL the shell is configured for (`TCAB_BACKEND_URL`), or
+/// `None` when unset. The webview builds its HTTP transports against this — the
+/// same `createHttpBackend`/`createBackendExec` the web console uses — so a
+/// missing backend leaves the console unconfigured (an empty catalog/gallery)
+/// rather than erroring.
 #[tauri::command]
 #[tracing::instrument]
-fn backend_configured() -> bool {
-    config::backend_url().is_some()
+fn backend_url() -> Option<String> {
+    config::backend_url()
+}
+
+/// The auth service base URL the shell registers/logs in against (`TCAB_AUTH_URL`,
+/// falling back to the loopback default). The webview's execution transport posts
+/// register/login here directly.
+#[tauri::command]
+#[tracing::instrument]
+fn auth_url() -> String {
+    config::auth_url()
 }
 
 /// Builds and runs the Tauri application.
@@ -74,53 +86,18 @@ pub fn run() {
     .expect("initialize telemetry");
 
     tauri::Builder::default()
-        // The shell's registry of in-flight runs, so `list_active_runs` can rebuild
-        // the console's in-progress list after a reload (the embedded core has no
-        // job registry of its own — see `commands::ActiveRuns`).
-        .manage(commands::ActiveRuns::default())
-        // Serve produced runs' playable builds to the webview so a reviewer can
-        // play an unpublished run (see `playable`). The build's HTML and assets
-        // are read from disk per request and relocated under the run's base URL.
-        .register_uri_scheme_protocol(playable::SCHEME, |_app, request| {
-            playable::handle_request(&request)
-        })
-        // Serve produced runs' proof-of-implementation media to the webview so a
-        // reviewer sees the submitted screenshots and clips for an unpublished run
-        // (see `proof`). Each file is read from the run's collected tree per request.
-        .register_uri_scheme_protocol(proof::SCHEME, |_app, request| {
-            proof::handle_request(&request)
-        })
-        // Serve asset-generation runs' media (regenerated image, target, final
-        // preview, action log) to the webview for an unpublished run (see `asset`).
-        .register_uri_scheme_protocol(asset::SCHEME, |_app, request| {
-            asset::handle_request(&request)
-        })
         // Serve a locally-run tournament's per-match replays to the webview so the
-        // arena can play back an individual match (see `tournament`).
+        // arena can play back an individual match (see `tournament`). This is the
+        // only host-served media scheme left: produced runs' builds, proofs, and
+        // asset media are served by the artifact service over HTTP now (the webview
+        // resolves those URLs the same way the web console does).
         .register_uri_scheme_protocol(tournament::SCHEME, |_app, request| {
             tournament::handle_request(&request)
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
-            backend_configured,
-            commands::list_models,
-            commands::list_test_cases,
-            commands::list_versions,
-            commands::resolve_version,
-            commands::read_specs,
-            commands::launch_run,
-            commands::list_active_runs,
-            commands::list_runs,
-            commands::read_run,
-            commands::read_run_events,
-            commands::list_published_runs,
-            commands::read_published_run,
-            commands::read_review_items,
-            commands::save_review,
-            commands::push_run,
-            commands::publish_run,
-            commands::register,
-            commands::login,
+            backend_url,
+            auth_url,
             arena::run_adversarial_match,
             arena::list_adversarial_controllers,
             arena::run_tournament_match,

@@ -1,11 +1,14 @@
 //! Host configuration the desktop shell resolves from the environment.
 //!
-//! The shell is a runner + reporter over [`test_cabinet_core`], so it needs the
-//! same handful of locations the CLI does: where to resolve definitions from
-//! (the backend, or a local `test-cases/` checkout for offline development),
-//! where to write run records, where to stage a run's mountable inputs, and where
-//! the model catalog lives. All of it comes from the environment so the shell
-//! stays configuration-light, matching the CLI's resolution exactly.
+//! Runs no longer execute in this shell (the webview enqueues and watches them on
+//! the backend over HTTP, like the web console), so most of these locations exist
+//! only for the **local arena**: where to resolve a match/tournament's definition
+//! from (the backend, or a local `test-cases/` checkout for offline development),
+//! where to write and read its records and replays, and where to stage a
+//! backend-materialized definition. The `backend_url`/`auth_url` pair is the one
+//! piece the webview consumes directly, to build its HTTP transports. All of it
+//! comes from the environment so the shell stays configuration-light, matching the
+//! CLI's resolution exactly.
 
 use std::path::PathBuf;
 
@@ -39,31 +42,22 @@ pub fn catalog_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("test-cases"))
 }
 
-/// Locate the model catalog root.
-///
-/// Honors `TCAB_MODELS_DIR`, otherwise defaults to `models` relative to the
-/// current working directory.
-pub fn models_root() -> PathBuf {
-    std::env::var_os("TCAB_MODELS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("models"))
-}
-
-/// The directory run records (and their collected implementations) are written
-/// to and read back from, from `TCAB_OUT_DIR`, defaulting to `runs`.
+/// The directory the local arena writes its records and replays to and reads
+/// them back from, from `TCAB_OUT_DIR`, defaulting to `runs`. Also where a
+/// previously-produced run's adversarial controller module is read from when the
+/// arena pits it.
 pub fn output_dir() -> PathBuf {
     std::env::var_os("TCAB_OUT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("runs"))
 }
 
-/// Resolve the directory a run stages its mountable inputs (seeded repositories,
-/// collected artifacts, capture scratch, materialized definitions) under.
+/// Resolve the directory the local arena materializes a backend-served
+/// definition under (so a match/tournament can read the case's `build`/module and
+/// reference modules from disk).
 ///
-/// Mirrors the CLI's `work_dir`: a run bind-mounts a seeded repository into the
-/// container, so it must live somewhere the runtime can mount. `TCAB_WORK_DIR`
-/// overrides; otherwise `~/.tcab`, falling back to a temp directory only when no
-/// home is resolvable.
+/// Mirrors the CLI's `work_dir`. `TCAB_WORK_DIR` overrides; otherwise `~/.tcab`,
+/// falling back to a temp directory only when no home is resolvable.
 pub fn staging_dir() -> PathBuf {
     const WORK_DIR_ENV: &str = "TCAB_WORK_DIR";
     const DEFAULT_DIR_NAME: &str = ".tcab";

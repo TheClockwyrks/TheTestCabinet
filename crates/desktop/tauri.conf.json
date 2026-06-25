@@ -22,7 +22,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: http: https: tcab-tournament:",
+        "media-src": "'self' data: blob: http: https: tcab-tournament:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost http: https: ws: wss:",
+        "frame-src": "'self' http: https:"
+      }
     }
   },
   "bundle": {

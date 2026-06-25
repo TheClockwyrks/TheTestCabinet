@@ -12,7 +12,7 @@ import type {
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
-} from "@test-cabinet/ui/client";
+} from "../client";
 import type {
   AssetPreview,
   AuthResult,
@@ -39,7 +39,7 @@ import type {
   TestType,
   VersionInfo,
   WorkerIdentity,
-} from "@test-cabinet/ui/client";
+} from "../client";
 import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
 import { getJson, getJsonStreamed, getText, joinUrl, postJson } from "./http";
 

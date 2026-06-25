@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/styles/tokens.css",
     "./client": "./src/client/index.ts",
-    "./app": "./src/app/index.ts"
+    "./app": "./src/app/index.ts",
+    "./transport": "./src/transport/index.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

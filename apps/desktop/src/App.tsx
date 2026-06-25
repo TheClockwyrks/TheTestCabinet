@@ -12,21 +12,23 @@ import {
   useLiveGallery,
 } from "@test-cabinet/ui/app";
 import { createTauriArena } from "./transport/tauriArena";
-import { useTauriBackend, useTauriWorkers } from "./state/useConnections";
+import { useDesktopConnections } from "./state/useConnections";
 
-// The desktop app: the same shared gallery app the web console renders, but with
-// Tauri-backed transports — the catalog over IPC and a built-in local worker
-// (the embedded core) pre-added. That single difference (a local worker, and no
-// URLs to configure) is the whole difference from the web app.
+// The desktop app: the same shared gallery app the web console renders, talking
+// to the same backend over the same HTTP API. The only differences from the web
+// host are that the shell resolves the backend/auth URLs from its environment
+// (rather than a stored URL) and that the adversarial arena runs in-process in the
+// embedded core (the web console drives a remote arena service over HTTP). So runs
+// enqueue + stream over HTTP exactly like the web console, while matches and
+// tournaments stay local via Tauri IPC.
 export function App() {
-  const backend = useTauriBackend();
-  const workers = useTauriWorkers();
+  const { backend, workers } = useDesktopConnections();
 
   return (
     <BackendProvider value={backend}>
       <WorkersProvider value={workers}>
-        {/* Auth lives below the workers provider — register/login invoke the
-            local core's commands through the active worker transport — and above
+        {/* Auth lives below the workers provider — register/login go through the
+            execution transport (the backend + auth service over HTTP) — and above
             the gallery so the review UI can read the signed-in account. */}
         <AuthProvider>
           {/* Above the data source so a launched run's refresh signal reaches it. */}
@@ -40,8 +42,8 @@ export function App() {
 }
 
 function DesktopGallery() {
-  // The local core always exposes the arena over IPC (matches/tournaments run in
-  // process); it is a constant capability, so build it once.
+  // The embedded local core always exposes the arena over IPC (matches and
+  // tournaments run in process); it is a constant capability, so build it once.
   const arena = useMemo(() => createTauriArena(), []);
   const data = useLiveGallery(arena);
   return (

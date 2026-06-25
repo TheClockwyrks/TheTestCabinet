@@ -4,9 +4,10 @@
 //! `<output_dir>/tournaments/<tid>/matches/<mid>/replay.json`. A *published*
 //! tournament's replays are served by the backend; a locally-run one has no HTTP
 //! origin, so the desktop shell serves them to the webview over a custom URI
-//! scheme, `tcab-tournament://localhost/{tid}/{mid}/replay.json`, mirroring
-//! [`asset`](crate::asset). The path shape differs from `tcab-asset`'s
-//! `{id}/{file}` (a tournament has two ids), so it is its own scheme.
+//! scheme, `tcab-tournament://localhost/{tid}/{mid}/replay.json`. This is the only
+//! host-served media scheme the shell still registers — produced runs' builds,
+//! proofs, and asset media are served by the artifact service over HTTP now (the
+//! webview resolves those URLs the same way the web console does).
 
 use tauri::http::{Request, Response, StatusCode, header};
 
@@ -14,7 +15,7 @@ use crate::config;
 
 /// The custom URI scheme a tournament match's replay is served under. The webview
 /// loads `tcab-tournament://localhost/{tid}/{mid}/replay.json` (the URL the desktop
-/// transport builds — see `tauriWorker.ts`).
+/// arena transport builds — see `tauriArena.ts`).
 pub const SCHEME: &str = "tcab-tournament";
 
 /// Reject a path segment that is empty or could escape the store.
