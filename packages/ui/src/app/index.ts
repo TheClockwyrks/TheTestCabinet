@@ -18,7 +18,11 @@ export {
   type ArenaWorkerOption,
   type GalleryData,
   type GalleryDataInput,
+  type HarnessAuth,
+  type HarnessAuthApi,
+  type HarnessAuthMode,
   type InProgressRun,
+  type SubscriptionFile,
 } from "./data/galleryContext";
 
 // Run-execution runtime (session-scoped in-progress runs + refresh signal) and

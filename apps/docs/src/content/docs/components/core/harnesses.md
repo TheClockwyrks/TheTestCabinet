@@ -95,7 +95,12 @@ The Test Cabinet authenticates a harness in one of two modes:
   user exports is the conventional provider one, but the variable a harness's CLI
   actually reads can differ — `codex exec` reads `CODEX_API_KEY`, not
   `OPENAI_API_KEY` — and the harness layer absorbs this, reading the key from the
-  host variable and injecting it under whatever variable the harness requires.
+  host variable and injecting it under whatever variable the harness requires. A
+  **per-harness override** `TCAB_API_KEY_<SLUG>` (for example `TCAB_API_KEY_KILO`)
+  takes precedence over the shared provider variable, so harnesses that share a
+  provider key — the OpenRouter harnesses all read `OPENROUTER_API_KEY` — can be
+  given independent keys. The override is read in both the host (CLI/desktop) and
+  the driver-pod paths.
 - **Subscription.** The credential files a harness's CLI writes when the user
   signs in (for example `~/.codex/auth.json`) are copied into the run container at
   the paths the CLI reads under the run user's home, so the harness authenticates
@@ -156,7 +161,11 @@ read from* differs by run path, behind a single seam (`CredBytesSource`):
   too, not just locally. The Secret holds the same files `CredFile` names, keyed by
   basename; one shared subscription per deployment. See
   [Set Up Authentication → the service flow](/quickstarts/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)
-  and the [dispatcher](/components/dispatcher/overview/) config.
+  and the [dispatcher](/components/dispatcher/overview/) config. The
+  [desktop app](/components/tauri/overview/) is one such cluster deployment: it
+  builds this Secret itself from the host's signed-in credential files, driven by
+  its **Authentication** settings, so the desktop user manages keys, methods, and
+  subscriptions through the UI rather than environment variables.
 
 A **per-account credential vault** (each user supplying their own subscription,
 keyed to their account) is a deferred follow-up — it would slot in as another

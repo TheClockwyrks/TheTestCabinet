@@ -57,7 +57,8 @@ pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, Registe
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,
-    SubscriptionSpec, auth_readiness, resolve_auth, resolve_auth_with,
+    SubscriptionFileStatus, SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth,
+    resolve_auth_with, select_mode, subscription_files,
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,

@@ -20,6 +20,7 @@
 mod arena;
 mod cluster;
 mod config;
+mod harness_auth;
 mod tournament;
 
 use tauri::State;
@@ -126,6 +127,10 @@ pub fn run() {
             arena::run_tournament_match,
             arena::list_tournaments,
             arena::read_tournament,
+            harness_auth::list_harness_auth,
+            harness_auth::set_harness_auth_mode,
+            harness_auth::set_harness_api_key,
+            harness_auth::refresh_subscription,
         ])
         .build(tauri::generate_context!())
         .expect("error while building The Test Cabinet desktop application");

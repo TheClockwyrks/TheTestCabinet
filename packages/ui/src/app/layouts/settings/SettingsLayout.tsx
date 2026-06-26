@@ -9,7 +9,7 @@ import styles from "./SettingsLayout.module.scss";
 // The Settings section's tabs. Each is its own route, so which tab reads as
 // active is driven by the page that rendered the layout. Console-only
 // (web/desktop); the static site never mounts these routes.
-export type SettingsTab = "appearance" | "connections";
+export type SettingsTab = "appearance" | "connections" | "authentication";
 
 interface SettingsLayoutProps {
   /** Which tab the rendering page represents. */
@@ -25,7 +25,7 @@ interface SettingsLayoutProps {
 // host can execute runs; the static site has Appearance alone, so no tab bar
 // would be redundant there — but the layout still renders consistently.
 export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
-  const { canExecute } = useGalleryData();
+  const { canExecute, harnessAuth } = useGalleryData();
   const tabs: { key: SettingsTab; label: string; to: string }[] = [
     { key: "appearance", label: "Appearance", to: routes.settingsAppearance() },
     ...(canExecute
@@ -34,6 +34,15 @@ export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
             key: "connections" as const,
             label: "Connections",
             to: routes.settingsConnections(),
+          },
+        ]
+      : []),
+    ...(harnessAuth
+      ? [
+          {
+            key: "authentication" as const,
+            label: "Authentication",
+            to: routes.settingsAuth(),
           },
         ]
       : []),

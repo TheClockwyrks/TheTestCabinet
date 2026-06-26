@@ -15,6 +15,7 @@ import type {
   MatchSummary,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import type { HarnessAuth, HarnessAuthMode } from "@test-cabinet/ui/app";
 
 export function isTauri(): boolean {
   return (
@@ -139,3 +140,18 @@ export const readTournament = (id: string) =>
 export const tournamentProgressChannel = (id: string) =>
   `tournament://${id}/progress`;
 export const tournamentDoneChannel = (id: string) => `tournament://${id}/done`;
+
+// --- Harness authentication -------------------------------------------------
+
+// The per-harness authentication settings for the self-contained cluster — the
+// auth method, API key, and subscription files each run's harness authenticates
+// with. Each mutating call returns the refreshed list, so the UI updates in one
+// round-trip. Mirrors `crates/desktop/src/harness_auth.rs`.
+export const listHarnessAuth = () =>
+  invoke<HarnessAuth[]>("list_harness_auth");
+export const setHarnessAuthMode = (slug: string, mode: HarnessAuthMode) =>
+  invoke<HarnessAuth[]>("set_harness_auth_mode", { slug, mode });
+export const setHarnessApiKey = (slug: string, key: string | null) =>
+  invoke<HarnessAuth[]>("set_harness_api_key", { slug, key });
+export const refreshSubscription = (slug: string) =>
+  invoke<HarnessAuth[]>("refresh_subscription", { slug });

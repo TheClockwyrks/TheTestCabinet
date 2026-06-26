@@ -105,6 +105,35 @@ the other path:** set `TCAB_BACKEND_URL` to a
 entirely, behaving as a thin client — so a definition change can be re-ingested
 without cutting a new app release.
 
+## Harness authentication
+
+Because the desktop app *is* the cluster operator, it also owns the harness
+credentials its driver `Job`s authenticate with — the
+[two auth modes](/components/core/harnesses/#authentication) every deployment
+uses. **Settings → Authentication** (a section present only under the desktop app,
+gated on a `harnessAuth` capability the web console and static site omit) is the
+control surface, and it actually configures the cluster — these are not display-only
+toggles. Per harness it lets the user:
+
+- **Select the authentication method** — `auto` (the default), `subscription`,
+  or `api-key` — written into the driver Secret as `TCAB_AUTH_MODE_<SLUG>`, which
+  core honors per harness.
+- **Set an API key** — stored per harness and written as `TCAB_API_KEY_<SLUG>`,
+  the [per-harness override](/components/core/harnesses/#authentication) core
+  reads before the shared provider variable, so harnesses that share a provider
+  key (the OpenRouter harnesses) get independent keys.
+- **Refresh a subscription's auth files** — rebuild the
+  `tcab-driver-subscription` Secret (the one the dispatcher mounts into each
+  driver pod) from the host's currently signed-in CLI credential files, so a
+  fresh sign-in on the host reaches the cluster.
+
+Settings persist to `harness-auth.json` in the app-data directory and are layered
+over the host environment (a key exported in the shell or a `.env.runner` file is
+the discovered default; a saved override wins). They are applied to the running
+cluster on every change and re-applied on each launch's bootstrap. Keys are stored
+in plaintext, matching the app's posture of lifting plaintext keys into the
+loopback-only cluster — appropriate for the single-user local machine it targets.
+
 ## Status
 
 The desktop app is **built around the full shared console**, not a stripped-down

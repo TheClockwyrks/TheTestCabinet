@@ -260,6 +260,25 @@ fn select(mode: RequestedAuthMode, api_available: bool, subscription_available: 
     }
 }
 
+/// The mode a harness would authenticate with given the requested mode and which
+/// credentials are available, or `None` when none of the requested mode's
+/// credentials are present. This exposes the selection policy of [`select`] for a
+/// host that already knows availability out of band — the desktop authentication
+/// settings layer persisted overrides over the environment, so they cannot use the
+/// environment-reading [`auth_readiness`] but still want the verdict the run path
+/// would reach.
+pub fn select_mode(
+    mode: RequestedAuthMode,
+    api_available: bool,
+    subscription_available: bool,
+) -> Option<AuthMode> {
+    match select(mode, api_available, subscription_available) {
+        Selection::ApiKey => Some(AuthMode::ApiKey),
+        Selection::Subscription => Some(AuthMode::Subscription),
+        Selection::None => None,
+    }
+}
+
 /// Resolve the authentication plan for a harness from the host environment.
 ///
 /// Honors the requested mode (`TCAB_AUTH_MODE[_<SLUG>]`); in `auto` it prefers a
@@ -339,14 +358,79 @@ pub fn auth_readiness(harness: &dyn AgentHarness) -> Availability {
 }
 
 /// The API key value and the container variable it is injected as, when the
-/// harness supports API-key auth and its host key variable is set and non-empty.
+/// harness supports API-key auth and a key is available. A per-harness override
+/// (`TCAB_API_KEY_<SLUG>`) wins over the shared provider variable
+/// ([`api_key_env`](AgentHarness::api_key_env)) so harnesses that share a
+/// provider key — the OpenRouter harnesses all read `OPENROUTER_API_KEY` — can
+/// still be given independent keys.
 fn api_key_value(harness: &dyn AgentHarness) -> Option<(String, String)> {
     let host_env = harness.api_key_env()?;
-    let key = std::env::var(host_env)
-        .ok()
-        .filter(|v| !v.trim().is_empty())?;
+    let key =
+        nonempty_env(&api_key_override_var(harness.slug())).or_else(|| nonempty_env(host_env))?;
     let container_env = harness.container_key_env().unwrap_or(host_env).to_string();
     Some((container_env, key))
+}
+
+/// The value of an environment variable when it is set and not blank.
+fn nonempty_env(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|v| !v.trim().is_empty())
+}
+
+/// The per-harness API-key override variable, `TCAB_API_KEY_<SLUG>` (for example
+/// `TCAB_API_KEY_KILO`). When set, it supplies that one harness's key, taking
+/// precedence over the shared provider variable
+/// ([`api_key_env`](AgentHarness::api_key_env)) so harnesses that share a provider
+/// can be given independent keys. This is the single source of truth for the name:
+/// the desktop app builds the driver Secret with it, and the run engine reads it
+/// here in both the host (CLI/desktop) and driver-pod paths.
+pub fn api_key_override_var(slug: HarnessSlug) -> String {
+    format!("TCAB_API_KEY_{}", slug.as_str().to_ascii_uppercase())
+}
+
+/// The host-side status of one of a harness's subscription credential files, for
+/// a UI that inspects which files a user is signed in with. See
+/// [`subscription_files`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubscriptionFileStatus {
+    /// The path the file is expected at on the host, resolved from the current
+    /// environment (honoring relocators like `CODEX_HOME`).
+    pub host_path: String,
+    /// The data key this file occupies in the cluster subscription Secret: the
+    /// basename of its [`container_path`](CredFile::container_path) (for example
+    /// `auth.json`). A host that builds that Secret keys this file by this value,
+    /// which the driver maps back to the full container path (see the driver's
+    /// `mounted_creds`).
+    pub secret_key: String,
+    /// Whether the file exists on the host right now.
+    pub present: bool,
+    /// Whether the subscription requires this file (versus an optional one).
+    pub required: bool,
+}
+
+/// The host status of each subscription credential file a harness declares, or an
+/// empty vec for a harness with no subscription mode. Resolves each file's host
+/// path from the current environment and checks its presence with [`HostCreds`]'s
+/// cost-free existence check (never reading contents). For inspecting what a user
+/// is signed in to — the desktop authentication settings — leaving the run path on
+/// [`resolve_auth`].
+pub fn subscription_files(harness: &dyn AgentHarness) -> Vec<SubscriptionFileStatus> {
+    let Some(spec) = harness.subscription_spec() else {
+        return Vec::new();
+    };
+    spec.files
+        .iter()
+        .map(|file| SubscriptionFileStatus {
+            host_path: file.source.host_path().display().to_string(),
+            secret_key: file
+                .container_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(file.container_path)
+                .to_string(),
+            present: HostCreds.present(file),
+            required: file.required,
+        })
+        .collect()
 }
 
 /// Whether a subscription is present: there is at least one required file and the

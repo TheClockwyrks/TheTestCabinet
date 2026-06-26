@@ -12,6 +12,7 @@ import {
   useLiveGallery,
 } from "@test-cabinet/ui/app";
 import { createTauriArena } from "./transport/tauriArena";
+import { createTauriHarnessAuth } from "./transport/tauriHarnessAuth";
 import { useDesktopConnections } from "./state/useConnections";
 import { BootGate } from "./BootGate";
 
@@ -59,7 +60,10 @@ function DesktopGallery() {
   // The embedded local core always exposes the arena over IPC (matches and
   // tournaments run in process); it is a constant capability, so build it once.
   const arena = useMemo(() => createTauriArena(), []);
-  const data = useLiveGallery(arena);
+  // The desktop shell also manages the local cluster's harness credentials over
+  // IPC — a constant capability too, gating the Tauri-only Authentication settings.
+  const harnessAuth = useMemo(() => createTauriHarnessAuth(), []);
+  const data = useLiveGallery(arena, harnessAuth);
   return (
     <GalleryDataProvider value={data}>
       <BrowserRouter>

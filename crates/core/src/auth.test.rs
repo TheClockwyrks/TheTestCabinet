@@ -364,3 +364,81 @@ fn auth_plan_records_its_mode() {
     let sub = AuthPlan::Subscription { files: Vec::new() };
     assert_eq!(sub.mode(), AuthMode::Subscription);
 }
+
+// --- Per-harness API-key override --------------------------------------------
+
+#[test]
+fn api_key_override_var_names_the_per_harness_variable() {
+    assert_eq!(api_key_override_var(HarnessSlug::Kilo), "TCAB_API_KEY_KILO");
+    assert_eq!(
+        api_key_override_var(HarnessSlug::Claude),
+        "TCAB_API_KEY_CLAUDE"
+    );
+}
+
+#[test]
+fn per_harness_key_override_wins_and_is_isolated_per_harness() {
+    // Kilo and Goose share OPENROUTER_API_KEY; an override on one must not leak to
+    // the other, proving keys are strictly per-harness even on a shared provider.
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let vars = [
+        "OPENROUTER_API_KEY",
+        "TCAB_API_KEY_KILO",
+        "TCAB_API_KEY_GOOSE",
+    ];
+    for var in vars {
+        unsafe { std::env::remove_var(var) };
+    }
+    unsafe {
+        std::env::set_var("OPENROUTER_API_KEY", "shared");
+        std::env::set_var("TCAB_API_KEY_KILO", "kilo-key");
+    }
+    let registry = DefaultHarnessRegistry::new();
+    let kilo = api_key_value(registry.get(HarnessSlug::Kilo).unwrap());
+    let goose = api_key_value(registry.get(HarnessSlug::Goose).unwrap());
+    for var in vars {
+        unsafe { std::env::remove_var(var) };
+    }
+    assert_eq!(
+        kilo,
+        Some(("OPENROUTER_API_KEY".to_string(), "kilo-key".to_string()))
+    );
+    assert_eq!(
+        goose,
+        Some(("OPENROUTER_API_KEY".to_string(), "shared".to_string()))
+    );
+}
+
+#[test]
+fn api_key_falls_back_to_the_provider_variable_without_an_override() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for var in ["OPENROUTER_API_KEY", "TCAB_API_KEY_KILO"] {
+        unsafe { std::env::remove_var(var) };
+    }
+    unsafe { std::env::set_var("OPENROUTER_API_KEY", "shared") };
+    let registry = DefaultHarnessRegistry::new();
+    let kilo = api_key_value(registry.get(HarnessSlug::Kilo).unwrap());
+    for var in ["OPENROUTER_API_KEY", "TCAB_API_KEY_KILO"] {
+        unsafe { std::env::remove_var(var) };
+    }
+    assert_eq!(
+        kilo,
+        Some(("OPENROUTER_API_KEY".to_string(), "shared".to_string()))
+    );
+}
+
+#[test]
+fn subscription_files_lists_declared_files_only_for_subscription_harnesses() {
+    let registry = DefaultHarnessRegistry::new();
+    // Antigravity is subscription-only with a single required credential.
+    let files = subscription_files(registry.get(HarnessSlug::Antigravity).unwrap());
+    assert_eq!(files.len(), 1);
+    assert!(files[0].required);
+    assert!(files[0].host_path.ends_with("antigravity-oauth-token"));
+    // An API-key-only harness (OpenRouter) declares none.
+    assert!(subscription_files(registry.get(HarnessSlug::Kilo).unwrap()).is_empty());
+}

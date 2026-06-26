@@ -33,7 +33,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// Makefile's `tcab`/`tcab-local` so a TTC developer's `make local-up` cluster and
 /// the app's cluster never collide on one machine.
 const CLUSTER_NAME: &str = "tcab-desktop";
-const NAMESPACE: &str = "tcab-desktop";
+pub(crate) const NAMESPACE: &str = "tcab-desktop";
 
 /// The GHCR namespace the published service images live under (see
 /// `.github/workflows/build-service-images.yml`). Substituted into the bundled
@@ -43,10 +43,6 @@ const GHCR_OWNER: &str = "theclockwyrks";
 /// The shared dispatcher↔backend claim token. A fixed local value: it never leaves
 /// this machine (the cluster is loopback-only), so there is nothing to protect.
 const SERVICE_TOKEN: &str = "tcab-desktop-service-token";
-
-/// Harness provider keys lifted from the environment into `tcab-driver-secrets`
-/// when present. The catalog comes up without any; only *launching* a run needs one.
-const HARNESS_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
 
 /// The event the webview's boot gate listens on for live bootstrap progress.
 const PROGRESS_EVENT: &str = "cluster://progress";
@@ -227,7 +223,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
 
     publish(app, phase::SERVICES, "Configuring services…", false, false);
     ensure_namespace(&kubeconfig)?;
-    apply_secrets(&kubeconfig)?;
+    apply_secrets(app, &kubeconfig)?;
 
     publish(
         app,
@@ -368,9 +364,11 @@ fn ensure_namespace(kubeconfig: &Path) -> Result<(), String> {
 }
 
 /// Create the cluster Secrets the manifests reference, by fixed name, from local
-/// values: the shared service token (backend + dispatcher) and — only when a key is
-/// present in the environment — the harness provider keys for driver Jobs.
-fn apply_secrets(kubeconfig: &Path) -> Result<(), String> {
+/// values: the shared service token (backend + dispatcher) and the per-harness
+/// authentication Secrets (driver API keys / auth modes and subscription
+/// credential files), built by [`crate::harness_auth`] from the persisted
+/// authentication settings layered over the host environment.
+fn apply_secrets(app: &AppHandle, kubeconfig: &Path) -> Result<(), String> {
     apply_secret(
         kubeconfig,
         "tcab-backend-secrets",
@@ -381,21 +379,50 @@ fn apply_secrets(kubeconfig: &Path) -> Result<(), String> {
         "tcab-dispatcher-secrets",
         &[("TCAB_BACKEND_SERVICE_TOKEN", SERVICE_TOKEN)],
     )?;
-    let harness = harness_literals();
-    if !harness.is_empty() {
-        let literals: Vec<(&str, &str)> = harness
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        apply_secret(kubeconfig, "tcab-driver-secrets", &literals)?;
-    }
+    crate::harness_auth::apply_harness_secrets(app, kubeconfig)?;
     Ok(())
 }
 
 /// Render one Secret with `--dry-run=client` and `kubectl apply -f -` it, so the
 /// call is idempotent (created or updated in place) and no value is ever written to
 /// disk.
-fn apply_secret(kubeconfig: &Path, name: &str, literals: &[(&str, &str)]) -> Result<(), String> {
+pub(crate) fn apply_secret(
+    kubeconfig: &Path,
+    name: &str,
+    literals: &[(&str, &str)],
+) -> Result<(), String> {
+    apply_secret_with(kubeconfig, name, |render| {
+        for (key, value) in literals {
+            render.arg(format!("--from-literal={key}={value}"));
+        }
+    })
+}
+
+/// Like [`apply_secret`], but each entry's value is read by `kubectl` directly from
+/// a file on the host (`--from-file=<key>=<path>`), keyed by `key`. Used for the
+/// subscription Secret, whose values are the host's signed-in credential files:
+/// reading them through `kubectl` keeps arbitrary (possibly binary) bytes intact
+/// and keeps the contents off the rendered manifest and out of process arguments.
+pub(crate) fn apply_secret_from_files(
+    kubeconfig: &Path,
+    name: &str,
+    files: &[(&str, &Path)],
+) -> Result<(), String> {
+    apply_secret_with(kubeconfig, name, |render| {
+        for (key, path) in files {
+            render.arg(format!("--from-file={key}={}", path.display()));
+        }
+    })
+}
+
+/// Shared body for the secret appliers: render `name` to YAML with the
+/// caller-supplied `--from-*` flags under `--dry-run=client`, then pipe it to
+/// `kubectl apply -f -` (idempotent create-or-update, nothing written to disk).
+fn apply_secret_with(
+    kubeconfig: &Path,
+    name: &str,
+    add_sources: impl FnOnce(&mut Command),
+) -> Result<(), String> {
     let mut render = kubectl(kubeconfig);
     render.args([
         "create",
@@ -408,9 +435,7 @@ fn apply_secret(kubeconfig: &Path, name: &str, literals: &[(&str, &str)]) -> Res
         "-o",
         "yaml",
     ]);
-    for (key, value) in literals {
-        render.arg(format!("--from-literal={key}={value}"));
-    }
+    add_sources(&mut render);
     let manifest = run(&mut render).map_err(|e| format!("rendering secret {name}: {e}"))?;
 
     let mut apply = kubectl(kubeconfig);
@@ -549,22 +574,24 @@ pub fn cluster_retry(app: AppHandle) {
 
 // --- Helpers ----------------------------------------------------------------
 
-/// The harness provider keys present in the environment, as owned pairs.
-fn harness_literals() -> Vec<(String, String)> {
-    HARNESS_KEYS
-        .iter()
-        .filter_map(|key| {
-            std::env::var(key)
-                .ok()
-                .filter(|value| !value.is_empty())
-                .map(|value| (key.to_string(), value))
-        })
-        .collect()
+/// The path to the dedicated kubeconfig the shell writes for the desktop cluster,
+/// under the app-data dir. Used by the bootstrap and by [`crate::harness_auth`] to
+/// re-apply Secrets to the running cluster after a settings change.
+pub(crate) fn kubeconfig_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data(app)?.join("kubeconfig"))
+}
+
+/// Whether the desktop cluster exists right now. [`crate::harness_auth`] uses this
+/// to decide whether a settings change can be applied live (persisting always, and
+/// applying only when there is a cluster — there is none on the external-backend
+/// developer path).
+pub(crate) fn cluster_present() -> bool {
+    cluster_exists().unwrap_or(false)
 }
 
 /// The app-data dir (created if missing), where the staged checkout, manifests, and
 /// kubeconfig live.
-fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()

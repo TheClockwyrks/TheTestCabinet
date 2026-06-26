@@ -18,6 +18,7 @@ import type {
   ArenaApi,
   CatalogStatus,
   GalleryDataInput,
+  HarnessAuthApi,
 } from "../data/galleryContext";
 import type { SeededInput, TestCaseSummary } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
@@ -194,8 +195,13 @@ async function fetchTestCases(
 
 // The host supplies its own arena capability (the consoles wire one when a worker
 // is connected; the static site never calls this hook). It is threaded through
-// unchanged so the arena UI resolves it off the shared gallery data.
-export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
+// unchanged so the arena UI resolves it off the shared gallery data. `harnessAuth`
+// is the same: only the desktop host (which manages the local cluster's harness
+// credentials) supplies it, so it gates the Tauri-only Authentication settings.
+export function useLiveGallery(
+  arena?: ArenaApi,
+  harnessAuth?: HarnessAuthApi,
+): GalleryDataInput {
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
@@ -368,6 +374,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
     proofMediaUrl,
     assetMediaUrl,
     arena,
+    harnessAuth,
   };
 }
 

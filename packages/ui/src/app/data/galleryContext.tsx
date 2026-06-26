@@ -139,6 +139,72 @@ export interface ArenaApi {
   tournamentReplayUrl(tournamentId: string, matchId: string): string | null;
 }
 
+/**
+ * The harness-authentication capability, supplied only by a host that manages
+ * harness credentials for the runs it launches — today the Tauri desktop app,
+ * which stands up a local cluster and must give each run's harness an API key or
+ * a subscription. The web console (which enqueues against a backend an operator
+ * has already credentialed) and the static site omit it, so the Authentication
+ * settings section is hidden there. The desktop host wires its implementation over
+ * Tauri IPC to the embedded core; see the shell's `harness_auth` commands.
+ */
+export type HarnessAuthMode = "auto" | "subscription" | "api-key";
+
+/** One subscription credential file's host status (whether the user is signed in
+ * with the harness CLI), for the authentication settings UI. */
+export interface SubscriptionFile {
+  /** Where the file is expected on the host (resolved from the environment). */
+  hostPath: string;
+  /** The data key this file occupies in the cluster subscription Secret. */
+  secretKey: string;
+  /** Whether the file exists on the host right now. */
+  present: boolean;
+  /** Whether the subscription requires this file (versus an optional one). */
+  required: boolean;
+}
+
+/** One harness's authentication state. Never carries the API key value itself —
+ * only whether one is set and where it came from. */
+export interface HarnessAuth {
+  /** The harness slug (for example `claude`). */
+  slug: string;
+  /** The human-readable harness name. */
+  name: string;
+  /** The host provider key variable (for example `ANTHROPIC_API_KEY`), or null for
+   * a subscription-only harness with no API-key mode. */
+  apiKeyEnv: string | null;
+  /** Whether the harness supports API-key authentication. */
+  supportsApiKey: boolean;
+  /** Whether the harness supports subscription authentication. */
+  supportsSubscription: boolean;
+  /** The selected authentication method. */
+  selectedMode: HarnessAuthMode;
+  /** Whether an API key is available (override or discovered from the host). */
+  apiKeySet: boolean;
+  /** Where the key comes from: `override`, `dotenv:<file>`, `env`, or `none`. */
+  apiKeySource: string;
+  /** The subscription credential files this harness reads, with host status. */
+  subscriptionFiles: SubscriptionFile[];
+  /** Whether every required subscription file is present on the host. */
+  subscriptionPresent: boolean;
+  /** Readiness for the selected mode: `ready`, `needs-key`, `needs-sign-in`,
+   * `needs-credentials`, or `unsupported`. */
+  readiness: string;
+}
+
+export interface HarnessAuthApi {
+  /** Every harness's current authentication state. */
+  list(): Promise<HarnessAuth[]>;
+  /** Lock (or reset to `auto`) a harness's method; resolves to the refreshed list. */
+  setAuthMode(slug: string, mode: HarnessAuthMode): Promise<HarnessAuth[]>;
+  /** Set (or clear, with `null`) a harness's API key; resolves to the refreshed
+   * list. The value is sent to the host and never held in the gallery state. */
+  setApiKey(slug: string, key: string | null): Promise<HarnessAuth[]>;
+  /** Re-read the host's signed-in subscription files into the cluster; resolves to
+   * the refreshed list. */
+  refreshSubscription(slug: string): Promise<HarnessAuth[]>;
+}
+
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
@@ -226,6 +292,13 @@ export interface GalleryDataInput {
    * site, which hides the arena UI entirely. See {@link ArenaApi}.
    */
   arena?: ArenaApi;
+  /**
+   * The harness-authentication capability, present only on a host that manages
+   * harness credentials for the runs it launches (the Tauri desktop app). Omitted
+   * by the web console and the static site, which hide the Authentication settings
+   * section. See {@link HarnessAuthApi}.
+   */
+  harnessAuth?: HarnessAuthApi;
 }
 
 /**

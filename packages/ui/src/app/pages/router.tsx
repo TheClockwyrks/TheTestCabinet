@@ -13,7 +13,7 @@ import { tournamentsRoutes } from "./tournaments/router";
 // own router.tsx; this just stitches them together under one <Routes>. The runs
 // section gains its run-execution routes only where the host can execute runs.
 export function AppRoutes() {
-  const { canExecute } = useGalleryData();
+  const { canExecute, harnessAuth } = useGalleryData();
   return (
     <Routes>
       {homeRoutes()}
@@ -22,7 +22,7 @@ export function AppRoutes() {
       {runsRoutes(canExecute)}
       {tournamentsRoutes(canExecute)}
       {aboutRoutes()}
-      {settingsRoutes(canExecute)}
+      {settingsRoutes(canExecute, harnessAuth != null)}
       {accountRoutes(canExecute)}
     </Routes>
   );
