@@ -313,6 +313,15 @@ itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance
 stateless: no volume for the database, no single-replica pin, and it can run as a
 plain `Deployment`. Constraint 3 (the browser image) and a volume for the
 definition store and checkout still apply, since those remain on local disk.
+A worked example of exactly this — backend and auth as stateless `Deployment`s
+with the connection strings supplied by Secret — ships as the reusable
+[`components/postgres`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/postgres)
+component, applied per environment by the
+[`overlays/azure-prod`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/overlays/azure-prod)
+and
+[`overlays/azure-staging`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/overlays/azure-staging)
+overlays (Azure Database for PostgreSQL — Flexible Server); apply one instead of
+`overlays/prod` / `overlays/staging`.
 
 The backend `Service` is `ClusterIP` with no `Ingress` — the dispatcher, the
 artifact service, and operators reach it in-cluster, and its outbound R2 and

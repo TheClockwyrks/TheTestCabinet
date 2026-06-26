@@ -1,0 +1,53 @@
+# Staging on managed PostgreSQL.
+#
+# overlays/staging with the components/postgres conversion layered on: identical to
+# overlays/azure-prod except the namespace is tcab-staging, TCAB_ENV is retagged to
+# `staging`, and the dispatcher's sandbox namespace is retargeted — so staging
+# rehearses prod on the SAME Postgres shape. Apply INSTEAD of overlays/staging.
+#
+# Kustomize applies `components` before this overlay's own `patches`, so patch-env
+# below (which targets backend/auth as `kind: Deployment`) reaches the Deployments
+# the component swapped in.
+#
+# Apply with:  kubectl apply -k deployments/k8s/overlays/azure-staging
+# (after creating the real Secrets in the tcab-staging namespace — see
+# components/postgres/secrets.postgres.example.yaml, against a SEPARATE database from
+# prod.)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-staging
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/postgres
+
+# Retag TCAB_ENV to staging (and the dispatcher's sandbox namespace) and point the
+# driver-image env at the staging tag — the same retargeting overlays/staging does,
+# but patch-env targets backend/auth as Deployment (the component's shape) rather
+# than StatefulSet.
+patches:
+  - path: patch-env.yaml
+  - path: patch-dispatcher-driver-image.yaml
+
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: ghcr.io/REPLACE_OWNER/tcab-backend
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: ghcr.io/REPLACE_OWNER/tcab-driver
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-arena
+    newName: ghcr.io/REPLACE_OWNER/tcab-arena
+    newTag: latest

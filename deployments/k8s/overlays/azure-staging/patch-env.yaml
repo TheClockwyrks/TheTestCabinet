@@ -1,0 +1,87 @@
+# Retag TCAB_ENV from the base's `prod` to `staging` on every workload (mirrors
+# overlays/staging/patch-env.yaml). Each doc is a strategic-merge patch keyed by the
+# workload name + container; kustomize merges the env list by `name`, so only the
+# named vars are touched.
+#
+# Difference from overlays/staging: backend and auth are `kind: Deployment` here,
+# because components/postgres replaced their StatefulSets — a patch's `kind` must
+# match its target.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://tcab-artifacts:8790"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "http://tcab-arena:8791"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: artifacts
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: arena
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_ENV
+              value: "staging"
+            # The base names sandbox pods in tcab-prod; retag to the staging namespace.
+            - name: TCAB_K8S_NAMESPACE
+              value: "tcab-staging"
+            - name: TCAB_DISPATCHER_NAMESPACE
+              value: "tcab-staging"

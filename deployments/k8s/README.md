@@ -40,7 +40,16 @@ Overlays:
 | --- | --- |
 | `overlays/prod` | Production: the base + the image registry pinned. |
 | `overlays/staging` | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`. |
+| `overlays/azure-prod` | Prod on **managed PostgreSQL**: `overlays/prod` + the `postgres` component. Apply instead of `overlays/prod`. |
+| `overlays/azure-staging` | Staging on **managed PostgreSQL**: `overlays/staging` + the `postgres` component. Apply instead of `overlays/staging`. |
 | `overlays/local` | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)). |
+
+The `azure-*` overlays share their database shape through a reusable kustomize
+**component**:
+
+| Component | Purpose |
+| --- | --- |
+| `components/postgres` | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays). |
 
 The service container images are built from [`../images/`](../images/)
 (`backend.Dockerfile`, `auth.Dockerfile`, `dispatcher.Dockerfile`,

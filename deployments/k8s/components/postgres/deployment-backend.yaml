@@ -1,0 +1,103 @@
+# Backend, managed-PostgreSQL shape: a stateless Deployment that replaces the
+# base's single-replica StatefulSet + PVC (deleted by this component's kustomization).
+# The base's `tcab-backend` ClusterIP Service is kept and still selects this pod by
+# its `app.kubernetes.io/name: tcab-backend` label. TCAB_ENV defaults to `prod` here
+# (matching the base); the azure-staging overlay patches it to `staging`.
+#
+# With the record store on managed PostgreSQL the database leaves local disk,
+# so the single-writer pin and the durable volume both go away. Two base constraints
+# still hold (see deployment/kubernetes.md#backend), and shape this manifest:
+#   - The image must still ship a headless Chromium for reference rendering — same
+#     `tcab-backend` image as the base (deployments/images/backend.Dockerfile).
+#   - The definition store and ingest checkout still live on local disk, so /state
+#     stays mounted — but as an emptyDir, since both are regenerable: the ingest
+#     CronJob (POST /ingest) repopulates them, so losing them on a reschedule costs
+#     a re-ingest, not data. They are NOT a backup target (see deployment/backups.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  # Postgres lifts the SQLite single-writer pin. Kept at 1 because this pod still
+  # coordinates publishes and owns the run queue, and POST /ingest targets one pod
+  # through the Service; revisit the ingest fan-out and any single-coordinator
+  # assumptions before scaling out.
+  replicas: 1
+  # Never run two backends at once (single active coordinator); Recreate tears the
+  # old pod down before the new one starts rather than overlapping on rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-backend
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      containers:
+        - name: backend
+          image: REPLACE_REGISTRY/tcab-backend:latest # CI publishes ghcr.io/<owner>/tcab-backend; pin a :<git-sha> tag
+          ports:
+            - containerPort: 8787
+          env:
+            - name: TCAB_BACKEND_BIND
+              value: "0.0.0.0:8787"
+            # The managed PostgreSQL connection string, from the Secret (NOT inline).
+            # See secrets.postgres.example.yaml.
+            - name: TCAB_BACKEND_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_DATABASE_URL
+            # Definition store + ingest checkout still live on local disk (the
+            # emptyDir mounted at /state below).
+            - name: TCAB_BACKEND_STORE
+              value: "/state/tcab-store"
+            - name: TCAB_BACKEND_CHECKOUT
+              value: "/state/checkout"
+            # The auth service this backend verifies tokens against.
+            - name: TCAB_BACKEND_AUTH_URL
+              value: "http://tcab-auth:8789"
+            # Console-facing data-plane base URLs the backend reports via GET /config
+            # (bytes never transit the backend — these are just the URLs the console
+            # fetches from). Same in-cluster Service DNS the base uses.
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://tcab-artifacts:8790"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "http://tcab-arena:8791"
+            # The shared service token the dispatcher claims queued jobs with; MUST
+            # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN or the queue never
+            # drains. From the backend secret below.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
+            - name: TCAB_ENV
+              value: "prod"
+          envFrom:
+            - secretRef:
+                name: tcab-backend-secrets
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8787
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8787
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      # Regenerable scratch for the definition store + checkout — no PVC, since the
+      # only durable data now lives in managed PostgreSQL.
+      volumes:
+        - name: state
+          emptyDir: {}

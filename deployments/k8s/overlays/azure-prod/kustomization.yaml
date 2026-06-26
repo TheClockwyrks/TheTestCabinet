@@ -1,0 +1,51 @@
+# Production on managed PostgreSQL.
+#
+# overlays/prod with the components/postgres conversion layered on: the backend and
+# auth service run as stateless Deployments backed by an Azure Database for
+# PostgreSQL — Flexible Server instance instead of embedded SQLite. Apply INSTEAD of
+# overlays/prod. The base and all SQLite overlays (staging, local, app) are untouched.
+#
+# Same namespace, TCAB_ENV (`prod`, from the base), and image registry as
+# overlays/prod; the only difference is the database shape the component supplies.
+#
+# Apply with:  kubectl apply -k deployments/k8s/overlays/azure-prod
+# (after creating the real Secrets — base/secrets.example.yaml for the backend's R2 /
+# token keys, and components/postgres/secrets.postgres.example.yaml for the two
+# Postgres connection strings, ideally synced from Azure Key Vault.)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-prod
+
+resources:
+  - ../../base
+
+components:
+  - ../../components/postgres
+
+# TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
+# transformer can't reach it — patch it to match the driver image.
+patches:
+  - path: patch-dispatcher-driver-image.yaml
+
+# Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
+# rather than :latest in a real deployment.
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: ghcr.io/REPLACE_OWNER/tcab-backend
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: ghcr.io/REPLACE_OWNER/tcab-driver
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
+    newTag: latest
+  - name: REPLACE_REGISTRY/tcab-arena
+    newName: ghcr.io/REPLACE_OWNER/tcab-arena
+    newTag: latest

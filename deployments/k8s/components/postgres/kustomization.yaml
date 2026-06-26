@@ -1,0 +1,48 @@
+# Managed-PostgreSQL component — the reusable, environment-agnostic conversion of
+# the backend + auth service from their default embedded-SQLite shape to a managed
+# database. Layered onto an environment overlay via its `components:` list; today
+# both overlays/azure-prod and overlays/azure-staging include it, so the staging↔prod
+# parity the base+overlay split buys is preserved (one definition of the Postgres
+# shape, applied to both). See deployment/kubernetes.md#backend and
+# deployment/backups.md#managed-postgresql for the why.
+#
+# A Component (not an overlay) so it carries no namespace/images/env of its own —
+# the including overlay supplies those. Kustomize applies a component AFTER the
+# overlay's `resources:` are accumulated but BEFORE the overlay's own transformers,
+# so the overlay's namespace directive and any TCAB_ENV patch still reach the
+# Deployments this component swaps in (staging retags TCAB_ENV by targeting
+# `kind: Deployment`).
+#
+# What it does:
+#   1. Deletes the base's `tcab-backend` and `tcab-auth` StatefulSets (a kind change
+#      can't be a patch). Their ClusterIP Services and everything else in the base
+#      are untouched; the replacement Deployments reuse the same selector labels, so
+#      the Services keep routing.
+#   2. Adds the stateless backend + auth Deployments (no PVC), with the connection
+#      strings wired from each environment's Secret. See secrets.postgres.example.yaml.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - deployment-backend.yaml
+  - deployment-auth.yaml
+
+patches:
+  - target:
+      kind: StatefulSet
+      name: tcab-backend
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: tcab-backend
+  - target:
+      kind: StatefulSet
+      name: tcab-auth
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: tcab-auth

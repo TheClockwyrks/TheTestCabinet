@@ -1,0 +1,43 @@
+# Auth service, managed-PostgreSQL shape: a stateless Deployment that replaces the
+# base's single-replica StatefulSet + PVC (deleted by this component's kustomization).
+# The base's `tcab-auth` ClusterIP Service is kept and still selects this pod by its
+# `app.kubernetes.io/name: tcab-auth` label. TCAB_ENV defaults to `prod` here
+# (matching the base); the azure-staging overlay patches it to `staging`.
+#
+# The accounts database is the auth service's only state, so on managed PostgreSQL
+# it becomes genuinely stateless: no volume at all, and it can scale. It renders
+# nothing (no browser) and holds no third-party secret — only Argon2id hashes, which
+# now live in Postgres.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+spec:
+  replicas: 1 # stateless on Postgres; safe to raise.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-auth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-auth
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      containers:
+        - name: auth
+          image: REPLACE_REGISTRY/tcab-auth-service:latest # CI publishes ghcr.io/<owner>/tcab-auth-service; pin a :<git-sha> tag
+          ports:
+            - containerPort: 8789
+          env:
+            - name: TCAB_AUTH_BIND
+              value: "0.0.0.0:8789"
+            # The managed PostgreSQL connection string, from the Secret (NOT inline).
+            # See secrets.postgres.example.yaml.
+            - name: TCAB_AUTH_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-auth-secrets
+                  key: TCAB_AUTH_DATABASE_URL
+            - name: TCAB_ENV
+              value: "prod"
