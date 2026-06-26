@@ -2,9 +2,8 @@ import modelsData from "./models.json";
 
 // The published model catalog dataset. `tcab catalog` regenerates `models.json`
 // from the models/ folder, resolving OpenRouter prices when a model declares an
-// openrouter slug. The site renders whatever is present; `useModels` falls back
-// to `sampleModels` when the dataset is empty so the UI has content before the
-// command has been run.
+// openrouter slug. Every host renders whatever is present; an unpopulated
+// dataset simply renders the empty state.
 
 /** Per-token USD prices resolved from OpenRouter, when available. */
 export interface ModelPrices {

@@ -12,7 +12,7 @@ import styles from "./TestCasesPage.module.scss";
 // search (title/tag) and difficulty/tag filters. Cards link to the per-slug
 // detail page. The catalog is not a leaderboard — cases are listed, never ranked.
 export function TestCasesPage() {
-  const { testCases } = useTestCases();
+  const { testCases, status } = useTestCases();
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
@@ -29,7 +29,8 @@ export function TestCasesPage() {
   );
 
   const shown = useMemo(
-    () => testCases.filter((testCase) => matches(testCase, query, difficulty, tag)),
+    () =>
+      testCases.filter((testCase) => matches(testCase, query, difficulty, tag)),
     [testCases, query, difficulty, tag],
   );
 
@@ -41,64 +42,91 @@ export function TestCasesPage() {
         comment={<>// the specs harnesses build against</>}
       />
 
-      <div className={styles.controls}>
-        <input
-          className={styles.search}
-          type="search"
-          placeholder="Search by title or tag…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search test cases"
-        />
-        <FilterRow label="Difficulty" active={difficulty} onClear={() => setDifficulty(null)}>
-          {difficulties.map((value) => (
-            <FilterChip
-              key={value}
-              label={value}
-              active={difficulty === value}
-              onClick={() => setDifficulty(difficulty === value ? null : value)}
-            />
-          ))}
-        </FilterRow>
-        <FilterRow label="Tags" active={tag} onClear={() => setTag(null)}>
-          {tags.map((value) => (
-            <FilterChip
-              key={value}
-              label={value}
-              active={tag === value}
-              onClick={() => setTag(tag === value ? null : value)}
-            />
-          ))}
-        </FilterRow>
-      </div>
+      {status === "loading" && <p className={styles.empty}>Loading catalog…</p>}
 
-      {shown.length === 0 ? (
-        <p className={styles.empty}>No test cases match those filters.</p>
-      ) : (
-        <ul className={styles.grid}>
-          {shown.map((testCase) => (
-            <li key={testCase.slug}>
-              <Link to={routes.testCaseDetail(testCase.slug)} className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h2 className={styles.cardTitle}>{testCase.name}</h2>
-                  <span className={styles.difficulty} data-level={testCase.difficulty}>
-                    {testCase.difficulty}
-                  </span>
-                </div>
-                {testCase.summary && <p className={styles.summary}>{testCase.summary}</p>}
-                {testCase.tags.length > 0 && (
-                  <ul className={styles.tags}>
-                    {testCase.tags.map((value) => (
-                      <li key={value} className={styles.tag}>
-                        {value}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {status === "error" && (
+        <p className={styles.error}>
+          Couldn&apos;t reach the backend — the test-case catalog is
+          unavailable.
+        </p>
+      )}
+
+      {status === "ready" && (
+        <>
+          <div className={styles.controls}>
+            <input
+              className={styles.search}
+              type="search"
+              placeholder="Search by title or tag…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search test cases"
+            />
+            <FilterRow
+              label="Difficulty"
+              active={difficulty}
+              onClear={() => setDifficulty(null)}
+            >
+              {difficulties.map((value) => (
+                <FilterChip
+                  key={value}
+                  label={value}
+                  active={difficulty === value}
+                  onClick={() =>
+                    setDifficulty(difficulty === value ? null : value)
+                  }
+                />
+              ))}
+            </FilterRow>
+            <FilterRow label="Tags" active={tag} onClear={() => setTag(null)}>
+              {tags.map((value) => (
+                <FilterChip
+                  key={value}
+                  label={value}
+                  active={tag === value}
+                  onClick={() => setTag(tag === value ? null : value)}
+                />
+              ))}
+            </FilterRow>
+          </div>
+
+          {shown.length === 0 ? (
+            <p className={styles.empty}>No test cases match those filters.</p>
+          ) : (
+            <ul className={styles.grid}>
+              {shown.map((testCase) => (
+                <li key={testCase.slug}>
+                  <Link
+                    to={routes.testCaseDetail(testCase.slug)}
+                    className={styles.card}
+                  >
+                    <div className={styles.cardHeader}>
+                      <h2 className={styles.cardTitle}>{testCase.name}</h2>
+                      <span
+                        className={styles.difficulty}
+                        data-level={testCase.difficulty}
+                      >
+                        {testCase.difficulty}
+                      </span>
+                    </div>
+                    {testCase.summary && (
+                      <p className={styles.summary}>{testCase.summary}</p>
+                    )}
+                    {testCase.tags.length > 0 && (
+                      <ul className={styles.tags}>
+                        {testCase.tags.map((value) => (
+                          <li key={value} className={styles.tag}>
+                            {value}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </PageLayout>
   );

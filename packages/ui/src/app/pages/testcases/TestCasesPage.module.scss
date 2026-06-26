@@ -197,3 +197,10 @@
   color: t.$color-text-muted;
   @include h.halo;
 }
+
+// An unreachable backend, distinct from an empty catalog: tinted with the
+// warning accent so it reads as a fault rather than just "nothing here yet".
+.error {
+  color: t.$color-accent-2;
+  text-shadow: var(--ttc-glow);
+}

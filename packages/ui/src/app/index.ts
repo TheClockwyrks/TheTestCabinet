@@ -56,11 +56,6 @@ export {
 } from "./data/testCases";
 export { type ParsedWriteup, parseWriteup } from "./data/ratings";
 
-// Design-preview fallbacks, used by a host when its data source is empty.
-export { sampleRuns } from "./data/sampleRuns";
-export { sampleTestCases } from "./data/sampleTestCases";
-export { sampleModels } from "./data/sampleModels";
-
 // Route builders/patterns, for hosts that link into the app (e.g. after a run
 // launches).
 export { routes, routePatterns } from "./routes";

@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
-import {
-  sampleRuns,
-  sampleTestCases,
-  type GalleryDataInput,
-} from "@test-cabinet/ui/app";
+import type { GalleryDataInput } from "@test-cabinet/ui/app";
 import {
   runs as publishedRuns,
   writeups as publishedWriteups,
@@ -19,10 +15,11 @@ import {
 // The static site's gallery data source. It is the build-time public R2 snapshot
 // (inlined by vite-plugin-snapshot) — fully static, never querying the backend
 // at runtime — merged in dev with produced-but-unpublished runs served from disk
-// by the localRuns plugin, and falling back to the design-preview samples when
-// nothing has been published yet. This is the old `useRuns`/`useTestCases`
-// assembly, now producing one `GalleryDataInput` the shared app consumes. The
-// site cannot run tests, so `canExecute` is false and `inProgress` is empty.
+// by the localRuns plugin. This is the old `useRuns`/`useTestCases` assembly, now
+// producing one `GalleryDataInput` the shared app consumes. Its data is static,
+// so the catalog is always resolved (`testCasesStatus: "ready"`); an empty
+// snapshot simply renders the empty states. The site cannot run tests, so
+// `canExecute` is false and `inProgress` is empty.
 
 const LOCAL_RUNS_URL = "/__local-runs__/index.json";
 
@@ -66,13 +63,12 @@ export function useStaticGallery(): GalleryDataInput {
   const local = localRuns ?? [];
   const localIds = new Set(local.map((run) => run.id));
 
-  // Samples are a fallback only — drop them the moment any real run exists.
-  const base =
-    publishedRuns.length > 0 || local.length > 0 ? publishedRuns : sampleRuns;
-  const runs = [...local, ...base.filter((run) => !localIds.has(run.id))];
+  const runs = [
+    ...local,
+    ...publishedRuns.filter((run) => !localIds.has(run.id)),
+  ];
 
-  const testCasesUsingSamples = catalogTestCases.length === 0;
-  const testCases = testCasesUsingSamples ? sampleTestCases : catalogTestCases;
+  const testCases = catalogTestCases;
 
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
@@ -134,7 +130,7 @@ export function useStaticGallery(): GalleryDataInput {
     reviews,
     runsLoading: loading,
     testCases,
-    testCasesUsingSamples,
+    testCasesStatus: "ready",
     canExecute: false,
     fetchRunEvents,
     proofMediaUrl,

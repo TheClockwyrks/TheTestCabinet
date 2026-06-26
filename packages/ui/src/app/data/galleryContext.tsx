@@ -22,6 +22,15 @@ import type {
   TestCaseSummary,
 } from "./testCases";
 
+/**
+ * The load state of the test-case catalog. `"loading"` while the host is still
+ * resolving it from its backend, `"ready"` once resolved (the catalog may still
+ * be empty), and `"error"` when the host could not reach its source at all — so a
+ * host with no reachable backend reads as an error rather than an empty catalog.
+ * Hosts whose catalog is static (the public site) are always `"ready"`.
+ */
+export type CatalogStatus = "loading" | "ready" | "error";
+
 /** The scoring model for a run: the variant's weighted checklist items and the
  * case's scoring domains, resolved from the catalog. Both empty when the case is
  * not in the catalog this host holds. */
@@ -158,8 +167,9 @@ export interface GalleryDataInput {
   runsLoading: boolean;
   /** The test-case catalog. */
   testCases: TestCaseSummary[];
-  /** True when the test cases shown are design-preview samples, not the catalog. */
-  testCasesUsingSamples: boolean;
+  /** The catalog's load state, so the UI can tell loading and an unreachable
+   * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
+  testCasesStatus: CatalogStatus;
   /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
    * static gallery site; true in the web and desktop consoles. Gates the
@@ -361,7 +371,8 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases } = value;
+    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases } =
+      value;
     return {
       ...value,
       findReview(runId, override) {

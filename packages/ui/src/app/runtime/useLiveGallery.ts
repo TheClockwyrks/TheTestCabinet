@@ -14,8 +14,11 @@ import type {
   VersionInfo,
 } from "../../client/types";
 import { frameReviews } from "../data/frameReview";
-import { sampleTestCases } from "../data/sampleTestCases";
-import type { ArenaApi, GalleryDataInput } from "../data/galleryContext";
+import type {
+  ArenaApi,
+  CatalogStatus,
+  GalleryDataInput,
+} from "../data/galleryContext";
 import type { SeededInput, TestCaseSummary } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
 
@@ -203,6 +206,11 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const [reviews, setReviews] = useState<Record<string, StoredReview[]>>({});
   const [runsLoading, setRunsLoading] = useState(false);
   const [testCases, setTestCases] = useState<TestCaseSummary[]>([]);
+  // Starts "loading" so the catalog never momentarily reads as an empty "ready"
+  // before the first fetch resolves; flips to "error" when the backend can't be
+  // reached, distinct from a reachable-but-empty catalog.
+  const [testCasesStatus, setTestCasesStatus] =
+    useState<CatalogStatus>("loading");
 
   const workerClient = worker?.client ?? null;
   const workerUrl = worker?.url ?? null;
@@ -274,20 +282,30 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   }, [backend, workerClient, refreshToken]);
 
   useEffect(() => {
+    // No backend configured is the same broken state as an unreachable one: the
+    // catalog can't be resolved, so it reads as an error rather than empty.
     if (!backend) {
       setTestCases([]);
+      setTestCasesStatus("error");
       return;
     }
     let active = true;
+    setTestCasesStatus("loading");
     fetchTestCases(backend)
-      .then((cs) => active && setTestCases(cs))
-      .catch(() => active && setTestCases([]));
+      .then((cs) => {
+        if (!active) return;
+        setTestCases(cs);
+        setTestCasesStatus("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setTestCases([]);
+        setTestCasesStatus("error");
+      });
     return () => {
       active = false;
     };
   }, [backend]);
-
-  const testCasesUsingSamples = testCases.length === 0;
 
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
@@ -342,8 +360,8 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
     writeups,
     reviews,
     runsLoading,
-    testCases: testCasesUsingSamples ? sampleTestCases : testCases,
-    testCasesUsingSamples,
+    testCases,
+    testCasesStatus,
     canExecute: true,
     fetchRunEvents,
     readRun,
