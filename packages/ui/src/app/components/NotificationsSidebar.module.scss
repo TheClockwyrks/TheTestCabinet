@@ -40,11 +40,14 @@
   flex-direction: column;
   background: s.$panel-bg;
   border-left: t.$border-hairline solid t.$color-accent;
-  box-shadow: -0.5rem 0 2rem color-mix(in srgb, t.$color-accent 25%, transparent);
   transform: translateX(100%);
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
+  // The accent glow projects leftward (negative X offset), so it would bleed
+  // onto the viewport from the parked, off-screen panel. Only render it once the
+  // panel slides in.
   .root[data-open] & {
+    box-shadow: -0.5rem 0 2rem color-mix(in srgb, t.$color-accent 25%, transparent);
     transform: translateX(0);
     pointer-events: auto;
   }
