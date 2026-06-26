@@ -21,10 +21,19 @@ services:
     init: true
     environment:
       - TZ=${TZ:-UTC}
+      # Cargo's target dir lives on a native named volume (the `cargo-target`
+      # volume below), NOT under the host-mounted workspace. On a macOS host
+      # (e.g. OrbStack) the workspace is a virtiofs mount, and concurrent rustc
+      # jobs writing crate metadata there race on file visibility, causing
+      # intermittent "E0463: can't find crate" failures at high parallelism; a
+      # coherent filesystem eliminates the race so builds run at full -j.
+      - CARGO_TARGET_DIR=/cargo-target/the-test-cabinet
     stdin_open: true
     tty: true
     volumes:
       - ..:/workspaces/the-test-cabinet:rw
+      # Off-virtiofs cargo target dir (see CARGO_TARGET_DIR above).
+      - cargo-target:/cargo-target
 
   # ── Local observability (OPT-IN) ─────────────────────────────────────────────
   #
@@ -67,4 +76,7 @@ services:
       - lgtm-grafana:/data/grafana
 
 volumes:
+  # Cargo build artifacts, kept off the host-mounted workspace; survives
+  # container restarts and rebuilds.
+  cargo-target:
   lgtm-grafana:
