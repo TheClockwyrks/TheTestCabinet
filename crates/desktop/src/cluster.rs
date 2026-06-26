@@ -12,8 +12,9 @@
 //! [`ClusterStatus`] on the `cluster://progress` event after every step so the
 //! webview can hold a loading screen until the stack is [`ready`](Phase). The only
 //! host prerequisite is a running container runtime — Podman or Docker (preferring a
-//! running Podman, then a running Docker; see [`detect_runtime`]); `k3d` and
-//! `kubectl` ship with the app as sidecars (falling back to `PATH` in development).
+//! running Podman that can actually run k3s, else a running Docker; see
+//! [`detect_runtime`]); `k3d` and `kubectl` ship with the app as sidecars (falling
+//! back to `PATH` in development).
 //!
 //! Resolved service URLs (the forwarded `127.0.0.1` backend) and the live
 //! `kubectl port-forward` child processes are kept in the Tauri-managed
@@ -307,58 +308,86 @@ fn preflight() -> Result<Runtime, String> {
     Ok(runtime)
 }
 
-/// Resolve the container runtime by probing for a *running* one — `<binary> info`
-/// succeeding, not merely the binary being installed — so a host with Podman
-/// installed but its machine not started still falls through to a running Docker
-/// (e.g. OrbStack). Prefers Podman over Docker (matching `crates/core`'s
-/// [`CliContainerRuntime::detect`](test_cabinet_core::container::CliContainerRuntime)
-/// and the local Makefile), and honors `TCAB_CONTAINER_RUNTIME` as an explicit
-/// override.
+/// Resolve the container runtime k3d should use, probing for a *running* one
+/// (`<binary> info` succeeding, not merely the binary being installed) and honoring
+/// `TCAB_CONTAINER_RUNTIME` as an explicit override.
+///
+/// Prefers Podman over Docker (matching `crates/core`'s
+/// [`CliContainerRuntime::detect`](test_cabinet_core::container::CliContainerRuntime),
+/// the local Makefile, and the goal of going Podman-only) — with one exception: a
+/// **rootless Podman machine cannot run k3s**. Its server node dies with
+/// `failed to find cpuset cgroup (v2)` because rootless cgroup v2 delegation
+/// withholds the `cpuset` controller. So when the only running Podman is a rootless
+/// machine, a running Docker (e.g. OrbStack) is used instead — and if there is no
+/// Docker to fall back to, that's reported *immediately* with the rootful fix rather
+/// than left to hang until k3d's create timeout. (Native-Linux rootless Podman, which
+/// has no "machine" and can run k3s with proper delegation, is not second-guessed.)
 fn detect_runtime() -> Result<Runtime, String> {
     if let Ok(binary) = std::env::var("TCAB_CONTAINER_RUNTIME") {
         let binary = binary.trim().to_string();
         if !binary.is_empty() {
             // Trust the override even if `info` is momentarily unhappy — the user
             // named this runtime specifically.
-            let docker_host = (binary == "podman").then(podman_docker_host).flatten();
-            return Ok(Runtime {
-                binary,
-                docker_host,
-            });
+            return Ok(runtime_named(binary));
         }
     }
 
-    let mut installed_but_down: Option<(String, String)> = None;
-    for candidate in ["podman", "docker"] {
-        if find_on_path(candidate).is_none() {
-            continue;
+    let podman_up = find_on_path("podman").is_some() && runtime_running("podman");
+    let docker_up = find_on_path("docker").is_some() && runtime_running("docker");
+
+    if podman_up {
+        // `Some(false)` is a confirmed rootless *machine* (macOS/Windows); `Some(true)`
+        // rootful; `None` no machine at all (native Linux) — only the confirmed
+        // rootless case is the k3s-incompatible one to route around.
+        if podman_is_rootful() != Some(false) {
+            return Ok(runtime_named("podman".to_string()));
         }
-        match run_quiet(tool(candidate).arg("info")) {
-            Ok(()) => {
-                let docker_host = (candidate == "podman").then(podman_docker_host).flatten();
-                return Ok(Runtime {
-                    binary: candidate.to_string(),
-                    docker_host,
-                });
-            }
-            Err(detail) => {
-                installed_but_down.get_or_insert((candidate.to_string(), detail));
-            }
+        if docker_up {
+            return Ok(runtime_named("docker".to_string()));
         }
+        return Err(ROOTLESS_PODMAN_MESSAGE.to_string());
+    }
+    if docker_up {
+        return Ok(runtime_named("docker".to_string()));
     }
 
-    Err(match installed_but_down {
-        Some((name, detail)) => format!(
-            "Found {name}, but its container runtime isn't running ({detail}). The Test \
-             Cabinet stands its services up on a local cluster, which needs a running \
-             Docker- or Podman-compatible runtime. Start it and try again."
-        ),
-        None => "No container runtime found. The Test Cabinet stands its services up on a \
-             local cluster, which needs Docker or Podman installed and running. Install \
-             one, start it, and try again."
-            .to_string(),
-    })
+    Err(
+        if find_on_path("podman").is_some() || find_on_path("docker").is_some() {
+            "A container runtime is installed but not running. The Test Cabinet stands its \
+         services up on a local cluster, which needs a running Docker- or \
+         Podman-compatible runtime. Start it and try again."
+                .to_string()
+        } else {
+            "No container runtime found. The Test Cabinet stands its services up on a local \
+         cluster, which needs Docker or Podman installed and running. Install one, start \
+         it, and try again."
+                .to_string()
+        },
+    )
 }
+
+/// Build a [`Runtime`] for a named binary, resolving Podman's `DOCKER_HOST` socket.
+fn runtime_named(binary: String) -> Runtime {
+    let docker_host = (binary == "podman").then(podman_docker_host).flatten();
+    Runtime {
+        binary,
+        docker_host,
+    }
+}
+
+/// Whether `<binary> info` succeeds — i.e. the runtime's daemon is actually up.
+fn runtime_running(binary: &str) -> bool {
+    run_quiet(tool(binary).arg("info")).is_ok()
+}
+
+/// The error shown when the only running runtime is a rootless Podman machine, which
+/// can't run k3s. Names the underlying cgroup failure so it's recognizable.
+const ROOTLESS_PODMAN_MESSAGE: &str = "Podman is running, but its machine is rootless — \
+    k3s can't start there (its server node fails with \"failed to find cpuset cgroup \
+    (v2)\", because rootless cgroup v2 delegation withholds the cpuset controller). Make \
+    the machine rootful: run `podman machine set --rootful`, then `podman machine stop && \
+    podman machine start`, and try again. (Or start a Docker-compatible runtime, or set \
+    TCAB_CONTAINER_RUNTIME to force a specific one.)";
 
 /// The `DOCKER_HOST` value that points k3d at Podman's API socket. Returns `None`
 /// when the environment already sets `DOCKER_HOST` (respect it) or no socket can be
@@ -486,7 +515,12 @@ fn create_cluster(app: &AppHandle, runtime: &Runtime, checkout: &Path) -> Result
             .arg(&volume)
             .args(["--wait", "--timeout", "300s"]),
     )
-    .map_err(|e| format!("creating the local cluster: {e}"))
+    .map_err(|e| {
+        format!(
+            "creating the local cluster: {e}{}",
+            podman_rootless_hint(runtime)
+        )
+    })
 }
 
 /// Start an existing (stopped) cluster, waiting until its node is ready. Succeeds
@@ -498,7 +532,44 @@ fn start_cluster(app: &AppHandle, runtime: &Runtime) -> Result<(), String> {
             .args(["cluster", "start", CLUSTER_NAME])
             .args(["--wait", "--timeout", "300s"]),
     )
-    .map_err(|e| format!("starting the local cluster: {e}"))
+    .map_err(|e| {
+        format!(
+            "starting the local cluster: {e}{}",
+            podman_rootless_hint(runtime)
+        )
+    })
+}
+
+/// A remediation hint to append to a k3d bring-up failure when the runtime is a
+/// *rootless* Podman machine. Normally [`detect_runtime`] routes around such a
+/// machine, so this only fires when the user forced it with `TCAB_CONTAINER_RUNTIME`
+/// — but then the failure (k3s's `failed to find cpuset cgroup (v2)`) is opaque
+/// without it. Empty for Docker, for a rootful machine, or when we can't tell (e.g.
+/// native Linux Podman, where there is no machine and this advice wouldn't apply).
+fn podman_rootless_hint(runtime: &Runtime) -> String {
+    if runtime.binary != "podman" || podman_is_rootful() != Some(false) {
+        return String::new();
+    }
+    " — the Podman machine is rootless, which can't run k3s (its server fails with \
+     \"failed to find cpuset cgroup (v2)\"). Make it rootful: `podman machine set \
+     --rootful`, then `podman machine stop && podman machine start`, then try again."
+        .to_string()
+}
+
+/// Whether the Podman machine backing the runtime is rootful. `None` when it can't be
+/// determined — there is no machine (native Linux) or the query failed — so callers
+/// stay silent rather than guess.
+fn podman_is_rootful() -> Option<bool> {
+    let out = run(tool("podman").args(["machine", "inspect", "--format", "{{.Rootful}}"])).ok()?;
+    match String::from_utf8_lossy(&out)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?
+    {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
 }
 
 /// Delete the cluster and everything in it. Used to clear a leftover that can't be
