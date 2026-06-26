@@ -271,7 +271,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    ingest(BACKEND_URL)?;
+    ingest(app, BACKEND_URL)?;
 
     // The backend is reachable and ingested: publish its URL so `backend_url`
     // reports it, then signal the boot gate to reveal the console.
@@ -809,20 +809,78 @@ fn wait_healthz(base: &str) -> Result<(), String> {
 }
 
 /// Force-ingest the catalog from the mounted checkout (the backend does not ingest
-/// on boot). The default JSON response blocks until the scan completes, so a
-/// generous timeout covers a first full render of the reference mockups.
-fn ingest(base: &str) -> Result<(), String> {
+/// on boot). Asks for the backend's NDJSON progress feed (`Accept:
+/// application/x-ndjson`) and drains it line by line, mirroring each completed
+/// version into the boot gate's live tail — so the long render shows the same kind
+/// of progress as the k3d/kubectl steps instead of an opaque pause. A generous
+/// timeout still bounds a first full render of the reference mockups.
+fn ingest(app: &AppHandle, base: &str) -> Result<(), String> {
+    use std::io::BufRead;
+
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(600))
         .build()
         .map_err(|e| format!("building the HTTP client: {e}"))?;
     let resp = client
         .post(format!("{base}/ingest"))
+        .header(reqwest::header::ACCEPT, "application/x-ndjson")
         .json(&serde_json::json!({ "force": true }))
         .send()
         .map_err(|e| format!("triggering catalog ingest: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("catalog ingest failed: HTTP {}", resp.status()));
+    }
+
+    // The feed is one JSON object per line: a `start` with the version count, a
+    // `version` as each is ingested, then a single closing `done` (or `error`). The
+    // stream's 200 is sent before the scan runs, so a late failure arrives in-band as
+    // an `error` line rather than an HTTP status — hence we also require a `done`.
+    let mut completed = false;
+    for line in std::io::BufReader::new(resp).lines().map_while(Result::ok) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        match event.get("event").and_then(|v| v.as_str()) {
+            Some("version") => {
+                let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
+                let total = event.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
+                let slug = event.get("slug").and_then(|v| v.as_str()).unwrap_or("?");
+                let version = event.get("version").and_then(|v| v.as_str()).unwrap_or("?");
+                publish_log(app, &format!("{slug} {version} ({index}/{total})"));
+                publish(
+                    app,
+                    phase::INGEST,
+                    format!("Loading the test-case catalog… ({index}/{total})"),
+                    false,
+                    false,
+                );
+            }
+            Some("done") => {
+                let ingested = event.get("ingested").and_then(|v| v.as_u64()).unwrap_or(0);
+                let skipped = event.get("skipped").and_then(|v| v.as_u64()).unwrap_or(0);
+                publish_log(
+                    app,
+                    &format!("Catalog ready: {ingested} ingested, {skipped} skipped"),
+                );
+                completed = true;
+            }
+            Some("error") => {
+                let message = event
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown error");
+                return Err(format!("catalog ingest failed: {message}"));
+            }
+            // `start` carries only the total, already implied by the per-version lines.
+            _ => {}
+        }
+    }
+    if !completed {
+        return Err("catalog ingest stream ended before completing".to_string());
     }
     Ok(())
 }
