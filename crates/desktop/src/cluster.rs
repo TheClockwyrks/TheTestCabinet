@@ -11,9 +11,9 @@
 //! The bootstrap runs as one straight-line routine on its own OS thread, emitting a
 //! [`ClusterStatus`] on the `cluster://progress` event after every step so the
 //! webview can hold a loading screen until the stack is [`ready`](Phase). The only
-//! host prerequisite is a running container runtime (Docker, or a Docker-compatible
-//! one); `k3d` and `kubectl` ship with the app as sidecars (falling back to `PATH`
-//! in development).
+//! host prerequisite is a running container runtime — Podman or Docker (preferring a
+//! running Podman, then a running Docker; see [`detect_runtime`]); `k3d` and
+//! `kubectl` ship with the app as sidecars (falling back to `PATH` in development).
 //!
 //! Resolved service URLs (the forwarded `127.0.0.1` backend) and the live
 //! `kubectl port-forward` child processes are kept in the Tauri-managed
@@ -199,7 +199,12 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    preflight()?;
+    let runtime = preflight()?;
+    tracing::info!(
+        runtime = %runtime.binary,
+        docker_host = runtime.docker_host.as_deref().unwrap_or("(default)"),
+        "resolved the container runtime for the local cluster"
+    );
 
     publish(
         app,
@@ -219,7 +224,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    ensure_cluster(&checkout, &kubeconfig)?;
+    ensure_cluster(&runtime, &checkout, &kubeconfig)?;
 
     publish(app, phase::SERVICES, "Configuring services…", false, false);
     ensure_namespace(&kubeconfig)?;
@@ -267,20 +272,127 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
 
 // --- Steps ------------------------------------------------------------------
 
+/// The container runtime k3d runs the cluster on, resolved once at preflight and
+/// threaded through every k3d invocation.
+struct Runtime {
+    /// The runtime binary name, for messages (`podman` or `docker`).
+    binary: String,
+    /// The value to export as `DOCKER_HOST` so k3d talks to this runtime's API
+    /// socket. `None` leaves the inherited environment / default Docker socket in
+    /// place (the right thing for Docker, and for a Podman host that already exports
+    /// `DOCKER_HOST` itself).
+    docker_host: Option<String>,
+}
+
 /// Confirm the host prerequisites: a reachable container runtime (k3d's backing
-/// daemon) and the k3d/kubectl tools. Each failure carries actionable remediation —
-/// it is the most common reason the app can't start.
-fn preflight() -> Result<(), String> {
-    run_quiet(tool("docker").arg("info")).map_err(|_| {
-        "No running container runtime found. The Test Cabinet runs its services on a \
-         local cluster, which needs Docker (or a Docker-compatible runtime) running. \
-         Start Docker and reopen the app."
-            .to_string()
-    })?;
+/// daemon) and the k3d/kubectl tools. Returns the resolved [`Runtime`] so the rest
+/// of the bootstrap points k3d at the same daemon. Each failure carries actionable
+/// remediation — it is the most common reason the app can't start.
+fn preflight() -> Result<Runtime, String> {
+    let runtime = detect_runtime()?;
     run_quiet(tool("k3d").arg("version")).map_err(|e| format!("k3d is unavailable: {e}"))?;
     run_quiet(tool("kubectl").arg("version").arg("--client"))
         .map_err(|e| format!("kubectl is unavailable: {e}"))?;
-    Ok(())
+    Ok(runtime)
+}
+
+/// Resolve the container runtime by probing for a *running* one — `<binary> info`
+/// succeeding, not merely the binary being installed — so a host with Podman
+/// installed but its machine not started still falls through to a running Docker
+/// (e.g. OrbStack). Prefers Podman over Docker (matching `crates/core`'s
+/// [`CliContainerRuntime::detect`](test_cabinet_core::container::CliContainerRuntime)
+/// and the local Makefile), and honors `TCAB_CONTAINER_RUNTIME` as an explicit
+/// override.
+fn detect_runtime() -> Result<Runtime, String> {
+    if let Ok(binary) = std::env::var("TCAB_CONTAINER_RUNTIME") {
+        let binary = binary.trim().to_string();
+        if !binary.is_empty() {
+            // Trust the override even if `info` is momentarily unhappy — the user
+            // named this runtime specifically.
+            let docker_host = (binary == "podman").then(podman_docker_host).flatten();
+            return Ok(Runtime {
+                binary,
+                docker_host,
+            });
+        }
+    }
+
+    let mut installed_but_down: Option<(String, String)> = None;
+    for candidate in ["podman", "docker"] {
+        if find_on_path(candidate).is_none() {
+            continue;
+        }
+        match run_quiet(tool(candidate).arg("info")) {
+            Ok(()) => {
+                let docker_host = (candidate == "podman").then(podman_docker_host).flatten();
+                return Ok(Runtime {
+                    binary: candidate.to_string(),
+                    docker_host,
+                });
+            }
+            Err(detail) => {
+                installed_but_down.get_or_insert((candidate.to_string(), detail));
+            }
+        }
+    }
+
+    Err(match installed_but_down {
+        Some((name, detail)) => format!(
+            "Found {name}, but its container runtime isn't running ({detail}). The Test \
+             Cabinet stands its services up on a local cluster, which needs a running \
+             Docker- or Podman-compatible runtime. Start it and try again."
+        ),
+        None => "No container runtime found. The Test Cabinet stands its services up on a \
+             local cluster, which needs Docker or Podman installed and running. Install \
+             one, start it, and try again."
+            .to_string(),
+    })
+}
+
+/// The `DOCKER_HOST` value that points k3d at Podman's API socket. Returns `None`
+/// when the environment already sets `DOCKER_HOST` (respect it) or no socket can be
+/// resolved (let k3d fall back to its default).
+///
+/// On macOS/Windows Podman runs inside a VM, so the *host-reachable* socket is the
+/// forwarded one `podman machine inspect` reports — **not** the one `podman info`
+/// reports there, which is the path *inside* the VM (`/run/user/<uid>/podman/…`) and
+/// is unreachable from the host (k3d connecting to it fails with "Cannot connect to
+/// the Docker daemon"). So the machine socket is tried first; `podman info` is the
+/// fallback for native Linux, where there is no VM and that path is correct.
+fn podman_docker_host() -> Option<String> {
+    if std::env::var_os("DOCKER_HOST").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    podman_socket(&[
+        "machine",
+        "inspect",
+        "--format",
+        "{{.ConnectionInfo.PodmanSocket.Path}}",
+    ])
+    .or_else(|| podman_socket(&["info", "--format", "{{.Host.RemoteSocket.Path}}"]))
+}
+
+/// Run a `podman` query that prints a socket path and turn its output into a
+/// `DOCKER_HOST` value, or `None` if the command fails or reports nothing.
+fn podman_socket(args: &[&str]) -> Option<String> {
+    let out = run(tool("podman").args(args)).ok()?;
+    normalize_docker_host(&String::from_utf8_lossy(&out))
+}
+
+/// Turn a socket path reported by Podman into a `DOCKER_HOST` value: take the first
+/// non-empty line (a multi-machine `podman machine inspect` prints one per machine),
+/// and prefix a bare filesystem path with `unix://` (a value that already carries a
+/// scheme is passed through untouched). `None` when nothing usable was reported.
+fn normalize_docker_host(reported: &str) -> Option<String> {
+    let path = reported
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    Some(if path.contains("://") {
+        path.to_string()
+    } else {
+        format!("unix://{path}")
+    })
 }
 
 /// Stage the bundled `test-cases/` under `<app-data>/checkout/test-cases` and return
@@ -314,18 +426,18 @@ fn stage_overlay(app: &AppHandle) -> Result<PathBuf, String> {
 /// Create the k3d cluster if it does not already exist (idempotent across launches),
 /// mapping the staged checkout to `/checkout` on the node, then write a dedicated
 /// kubeconfig the shell uses for every `kubectl` call (never touching the user's).
-fn ensure_cluster(checkout: &Path, kubeconfig: &Path) -> Result<(), String> {
-    if !cluster_exists()? {
+fn ensure_cluster(runtime: &Runtime, checkout: &Path, kubeconfig: &Path) -> Result<(), String> {
+    if !cluster_exists(runtime)? {
         let volume = format!("{}:/checkout@server:0", checkout.display());
         run_quiet(
-            tool("k3d")
+            k3d(runtime)
                 .args(["cluster", "create", CLUSTER_NAME, "--volume"])
                 .arg(&volume)
                 .arg("--wait"),
         )
         .map_err(|e| format!("creating the local cluster: {e}"))?;
     }
-    let out = run(tool("k3d").args(["kubeconfig", "get", CLUSTER_NAME]))
+    let out = run(k3d(runtime).args(["kubeconfig", "get", CLUSTER_NAME]))
         .map_err(|e| format!("reading the cluster kubeconfig: {e}"))?;
     std::fs::write(kubeconfig, &out)
         .map_err(|e| format!("writing the kubeconfig to {}: {e}", kubeconfig.display()))?;
@@ -333,8 +445,8 @@ fn ensure_cluster(checkout: &Path, kubeconfig: &Path) -> Result<(), String> {
 }
 
 /// Whether the app's k3d cluster already exists (parsed from `k3d cluster list`).
-fn cluster_exists() -> Result<bool, String> {
-    let out = run(tool("k3d").args(["cluster", "list", "-o", "json"]))
+fn cluster_exists(runtime: &Runtime) -> Result<bool, String> {
+    let out = run(k3d(runtime).args(["cluster", "list", "-o", "json"]))
         .map_err(|e| format!("listing k3d clusters: {e}"))?;
     let parsed: serde_json::Value =
         serde_json::from_slice(&out).map_err(|e| format!("parsing the k3d cluster list: {e}"))?;
@@ -586,7 +698,10 @@ pub(crate) fn kubeconfig_path(app: &AppHandle) -> Result<PathBuf, String> {
 /// applying only when there is a cluster — there is none on the external-backend
 /// developer path).
 pub(crate) fn cluster_present() -> bool {
-    cluster_exists().unwrap_or(false)
+    match detect_runtime() {
+        Ok(runtime) => cluster_exists(&runtime).unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 /// The app-data dir (created if missing), where the staged checkout, manifests, and
@@ -689,22 +804,32 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolve a bundled tool (`k3d`/`kubectl`/`docker`) to a `Command`: a sidecar
-/// beside the executable when packaged, else the name on `PATH` (development, where
-/// these are installed). `docker` is never bundled — it is the host prerequisite.
+/// Resolve a tool (`k3d`/`kubectl`/`podman`/`docker`) to a `Command`, preferring a
+/// sidecar bundled beside the executable (packaged `k3d`/`kubectl`), then an
+/// absolute path found across the inherited and well-known PATH dirs. Whatever it
+/// resolves to, the child runs with an [augmented PATH](augmented_path) so a bundled
+/// `k3d` shelling out to the container runtime — and a `docker`/`podman` that lives
+/// only under Homebrew/OrbStack — is found even when the app was launched from the
+/// macOS Dock (which hands the process a truncated `PATH`). `podman`/`docker` are
+/// never bundled — the container runtime is the host prerequisite.
 fn tool(name: &str) -> Command {
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let mut candidate = dir.join(name);
-        if cfg!(windows) {
-            candidate.set_extension("exe");
-        }
-        if candidate.is_file() {
-            return Command::new(candidate);
-        }
+    let mut cmd = match sidecar(name).or_else(|| find_on_path(name)) {
+        Some(path) => Command::new(path),
+        None => Command::new(name),
+    };
+    cmd.env("PATH", augmented_path());
+    cmd
+}
+
+/// A `k3d` command pointed at the resolved [`Runtime`]: when that runtime is Podman
+/// with a resolvable socket, `DOCKER_HOST` is exported so k3d talks to Podman rather
+/// than hunting for a Docker daemon.
+fn k3d(runtime: &Runtime) -> Command {
+    let mut cmd = tool("k3d");
+    if let Some(host) = &runtime.docker_host {
+        cmd.env("DOCKER_HOST", host);
     }
-    Command::new(name)
+    cmd
 }
 
 /// A `kubectl` command pinned to the app's own kubeconfig, so it never reads or
@@ -715,8 +840,76 @@ fn kubectl(kubeconfig: &Path) -> Command {
     cmd
 }
 
+/// A bundled sidecar beside the executable (`<exe-dir>/<name>`), present only in a
+/// packaged app. `None` in development, where the tools come from `PATH`.
+fn sidecar(name: &str) -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let mut candidate = dir.join(name);
+    if cfg!(windows) {
+        candidate.set_extension("exe");
+    }
+    candidate.is_file().then_some(candidate)
+}
+
+/// Find an executable by name across the inherited `PATH` and the
+/// [extra dirs](extra_path_dirs) a Dock-launched macOS app's truncated `PATH`
+/// omits. Returns its absolute path, so resolution never depends on what the child
+/// process's own `PATH` lookup would find.
+fn find_on_path(name: &str) -> Option<PathBuf> {
+    let file_name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .chain(extra_path_dirs())
+        .map(|dir| dir.join(&file_name))
+        .find(|candidate| candidate.is_file())
+}
+
+/// The inherited `PATH` with the [well-known tool dirs](extra_path_dirs) appended,
+/// exported to every child so a bundled `k3d` (and the secret-render pipe to
+/// `kubectl`) can find the container runtime even under the truncated `PATH` a
+/// GUI-launched macOS app inherits.
+fn augmented_path() -> std::ffi::OsString {
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let dirs = std::env::split_paths(&inherited).chain(extra_path_dirs());
+    std::env::join_paths(dirs).unwrap_or(inherited)
+}
+
+/// Directories that commonly hold `docker`/`podman`/`k3d`/`kubectl` but are absent
+/// from the `/usr/bin:/bin:/usr/sbin:/sbin` `PATH` a macOS app inherits when
+/// launched from Finder/Dock (never the shell's login `PATH`). Only existing
+/// directories are returned, to keep the exported `PATH` tidy.
+fn extra_path_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = [
+        "/opt/homebrew/bin", // Homebrew (Apple Silicon)
+        "/opt/homebrew/sbin",
+        "/usr/local/bin", // Homebrew (Intel), Docker Desktop, OrbStack
+        "/usr/local/sbin",
+        "/opt/podman/bin",            // Podman's macOS installer
+        "/run/current-system/sw/bin", // Nix
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+    if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".orbstack/bin")); // OrbStack's docker/podman shims
+        dirs.push(home.join(".docker/bin")); // Docker Desktop CLI plugins
+        dirs.push(home.join(".rd/bin")); // Rancher Desktop
+    }
+    dirs.retain(|dir| dir.is_dir());
+    dirs
+}
+
 /// Run a command, returning its captured stdout on success or a message built from
-/// its stderr/stdout on failure.
+/// its stderr/stdout on failure. The failure message is stripped of ANSI escape
+/// codes: tools like k3d (logrus) colorize their output, and those raw escapes would
+/// otherwise reach the webview's plain-text error line as mojibake.
 fn run(cmd: &mut Command) -> Result<Vec<u8>, String> {
     let out = cmd.output().map_err(|e| format!("failed to launch: {e}"))?;
     if !out.status.success() {
@@ -727,9 +920,34 @@ fn run(cmd: &mut Command) -> Result<Vec<u8>, String> {
         } else {
             stderr.trim()
         };
-        return Err(detail.to_string());
+        return Err(strip_ansi(detail));
     }
     Ok(out.stdout)
+}
+
+/// Drop ANSI escape sequences (CSI color/SGR codes and the like) from `input` so a
+/// captured tool message renders as plain text. A CSI sequence is `ESC [` followed
+/// by parameter/intermediate bytes and a final byte in `0x40..=0x7E`; any other
+/// escape just has its lone `ESC` dropped.
+fn strip_ansi(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        if chars.peek() == Some(&'[') {
+            chars.next(); // consume '['
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                if ('@'..='~').contains(&next) {
+                    break; // the final byte ends the sequence
+                }
+            }
+        }
+    }
+    out
 }
 
 /// As [`run`], discarding the captured output.

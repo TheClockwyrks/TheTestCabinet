@@ -129,12 +129,12 @@ function Progress({ status }: { status: ClusterStatus | null }) {
 
 function Failure({ detail, onRetry }: { detail: string; onRetry: () => void }) {
   return (
-    <>
+    <div className={styles.errorCard}>
       <p className={styles.errorTitle}>Couldn&apos;t start the local cluster</p>
       <p className={styles.errorDetail}>{detail}</p>
       <button type="button" className={styles.retry} onClick={onRetry}>
         Try again
       </button>
-    </>
+    </div>
   );
 }

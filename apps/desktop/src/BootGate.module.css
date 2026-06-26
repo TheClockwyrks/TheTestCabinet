@@ -122,29 +122,47 @@
   color: rgba(231, 217, 255, 0.65);
 }
 
+/* The failure state reads as a console surface panel — the same dark surface,
+   purple border, and orange accent the shared UI library renders with (its
+   `--tcab-*` defaults: surface #120a1c, border #6a3aa0, accent #ff9d2f, negative
+   #f87171) — so an error looks like part of the app rather than a raw boot fault.
+   The values are inlined because the boot screen renders before the shared theme. */
+.errorCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.75rem 2rem;
+  background: #120a1c;
+  border: 1px solid #6a3aa0;
+  border-radius: 1rem;
+  box-shadow: 0 0 1.5rem rgba(106, 58, 160, 0.25);
+}
+
 .errorTitle {
   margin: 0;
   font-size: 1.25rem;
-  color: #ff7a7a;
-  text-shadow: 0 0 0.85rem rgba(255, 122, 122, 0.5);
+  color: #f87171;
+  text-shadow: 0 0 0.85rem rgba(248, 113, 113, 0.45);
 }
 
 .errorDetail {
   margin: 0;
   font-size: 0.92rem;
   line-height: 1.5;
-  color: rgba(231, 217, 255, 0.8);
+  color: #b69ad0;
 }
 
 .retry {
   margin-top: 0.5rem;
-  padding: 0.55rem 1.5rem;
+  padding: 0.55rem 1.6rem;
   font: inherit;
   font-size: 0.9rem;
   letter-spacing: 0.06em;
-  color: #46f5ff;
+  color: #ff9d2f;
   background: transparent;
-  border: 1px solid #46f5ff;
+  border: 1px solid #ff9d2f;
   border-radius: 999px;
   cursor: pointer;
   transition:
@@ -153,8 +171,8 @@
 }
 
 .retry:hover {
-  background: rgba(70, 245, 255, 0.12);
-  box-shadow: 0 0 0.75rem rgba(70, 245, 255, 0.45);
+  background: rgba(255, 157, 47, 0.12);
+  box-shadow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
 }
 
 @keyframes slide {
