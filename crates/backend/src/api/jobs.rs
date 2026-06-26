@@ -443,6 +443,12 @@ fn now_rfc3339() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
 }
 
+/// How often the live NDJSON stream emits a heartbeat newline while idle, so a
+/// client whose streaming `fetch()` aborts on idle reads keeps the connection
+/// alive through event-free gaps. Matches axum's default SSE keep-alive period
+/// and stays well under WKWebView/NSURLSession's ~60s request idle timeout.
+const LIVE_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Build the NDJSON byte stream for a job: the replayed backlog and latest
 /// previews, then the live tail, each item one `\n`-terminated JSON line, ending
 /// when the run does. `force_terminated` closes the stream after the backlog when
@@ -459,23 +465,43 @@ fn event_stream(
             .into_iter()
             .map(|preview| Ok(encode_preview_line(&preview))),
     );
+    // A periodic newline heartbeat keeps bytes flowing while the run is idle
+    // between events — most notably the long gap after "Preparing the test case
+    // workspace" while the driver clones the case and pulls the run-container
+    // image. A streaming `fetch()` reader that aborts on idle reads (WKWebView /
+    // NSURLSession, which backs the Tauri desktop app, times an idle request out
+    // after ~60s and surfaces it as `TypeError: Load failed`) would otherwise
+    // tear the live monitor down mid-run; Chromium has no such idle timeout,
+    // which is why the web console never saw it. A bare `\n` is a no-op to the
+    // NDJSON client, which skips empty lines. Mirrors the keep-alive the
+    // `/notifications` SSE stream already applies. `interval_at` starts one period
+    // out so a freshly subscribed client isn't sent a redundant immediate tick.
+    let heartbeat = tokio::time::interval_at(
+        tokio::time::Instant::now() + LIVE_HEARTBEAT,
+        LIVE_HEARTBEAT,
+    );
     let live_tail = stream::unfold(
-        (terminated, sub.receiver),
-        |(done, mut receiver)| async move {
+        (terminated, sub.receiver, heartbeat),
+        |(done, mut receiver, mut heartbeat)| async move {
             if done {
                 return None;
             }
             loop {
-                match receiver.recv().await {
-                    Ok(StreamItem::Event(event)) => {
-                        return Some((Ok(encode_line(&event)), (false, receiver)));
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        return Some((Ok(Bytes::from_static(b"\n")), (false, receiver, heartbeat)));
                     }
-                    Ok(StreamItem::Preview(preview)) => {
-                        return Some((Ok(encode_preview_line(&preview)), (false, receiver)));
-                    }
-                    Ok(StreamItem::Done) => return None,
-                    Err(RecvError::Closed) => return None,
-                    Err(RecvError::Lagged(_)) => continue,
+                    received = receiver.recv() => match received {
+                        Ok(StreamItem::Event(event)) => {
+                            return Some((Ok(encode_line(&event)), (false, receiver, heartbeat)));
+                        }
+                        Ok(StreamItem::Preview(preview)) => {
+                            return Some((Ok(encode_preview_line(&preview)), (false, receiver, heartbeat)));
+                        }
+                        Ok(StreamItem::Done) => return None,
+                        Err(RecvError::Closed) => return None,
+                        Err(RecvError::Lagged(_)) => continue,
+                    },
                 }
             }
         },
