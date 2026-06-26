@@ -3,6 +3,7 @@ import {
   clusterRetry,
   clusterStatus,
   isTauri,
+  listenClusterLog,
   listenClusterProgress,
   type ClusterStatus,
 } from "./api";
@@ -35,20 +36,32 @@ const SKIPPED: ClusterStatus = {
   error: false,
 };
 
+// How many trailing lines of subprocess output the live tail keeps, and the
+// opacity of each by distance from the newest (bottom) line — the newest three are
+// full strength, the two above them fade out, so the tail reads top-to-bottom like
+// a terminal while drawing the eye to the latest activity.
+const TAIL = 5;
+const TAIL_OPACITY = [1, 1, 1, 0.55, 0.28];
+
 export function BootGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ClusterStatus | null>(() =>
     isTauri() ? null : SKIPPED,
   );
+  const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isTauri()) return;
     let active = true;
     let unlisten: (() => void) | undefined;
+    let unlistenLog: (() => void) | undefined;
     (async () => {
       // Subscribe before seeding so a status the shell set before this mount
       // (the bootstrap starts in the shell's setup hook) is never missed.
       unlisten = await listenClusterProgress((next) => {
         if (active) setStatus(next);
+      });
+      unlistenLog = await listenClusterLog((line) => {
+        if (active) setLog((prev) => [...prev, line].slice(-TAIL));
       });
       try {
         const initial = await clusterStatus();
@@ -61,6 +74,7 @@ export function BootGate({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       unlisten?.();
+      unlistenLog?.();
     };
   }, []);
 
@@ -76,6 +90,7 @@ export function BootGate({ children }: { children: ReactNode }) {
       done: false,
       error: false,
     });
+    setLog([]);
     try {
       await clusterRetry();
     } catch {
@@ -91,14 +106,20 @@ export function BootGate({ children }: { children: ReactNode }) {
         {status?.error ? (
           <Failure detail={status.detail} onRetry={onRetry} />
         ) : (
-          <Progress status={status} />
+          <Progress status={status} log={log} />
         )}
       </div>
     </div>
   );
 }
 
-function Progress({ status }: { status: ClusterStatus | null }) {
+function Progress({
+  status,
+  log,
+}: {
+  status: ClusterStatus | null;
+  log: string[];
+}) {
   const phase = status?.phase ?? "preflight";
   const activeIndex = STEPS.findIndex((step) => step.id === phase);
   // `ready`/`skipped` aren't in STEPS — treat them as "all complete".
@@ -123,7 +144,34 @@ function Progress({ status }: { status: ClusterStatus | null }) {
         <span className={styles.barFill} />
       </div>
       <p className={styles.detail}>{status?.detail ?? "Starting…"}</p>
+      <Console log={log} />
     </>
+  );
+}
+
+// A live tail of the most recent subprocess output lines (k3d/kubectl), so the
+// long cluster-create and rollout waits aren't an opaque progress bar. Each line
+// is a positional slot keyed by index — as new lines stream in the buffer shifts
+// and the slot's opacity (oldest faintest) stays fixed, so it reads like a
+// terminal scrolling upward.
+function Console({ log }: { log: string[] }) {
+  if (log.length === 0) return null;
+  return (
+    <div className={styles.console} aria-hidden>
+      {log.map((line, index) => {
+        const fromBottom = log.length - 1 - index;
+        return (
+          <span
+            // eslint-disable-next-line react/no-array-index-key -- positional slot
+            key={index}
+            className={styles.logLine}
+            style={{ opacity: TAIL_OPACITY[fromBottom] ?? 0.28 }}
+          >
+            {line}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

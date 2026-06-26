@@ -122,6 +122,35 @@
   color: rgba(231, 217, 255, 0.65);
 }
 
+/* A live tail of subprocess output. A fixed height (TAIL lines worth) keeps the
+   panel from jumping as lines stream in, and each line clips to one row so a long
+   k3d/kubectl line never wraps and reflows the layout. */
+.console {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  width: 100%;
+  height: calc(5 * 1.35em);
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(10, 1, 24, 0.45);
+  border: 1px solid rgba(70, 245, 255, 0.12);
+  text-align: left;
+}
+
+.logLine {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #9fe9ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.4s ease;
+}
+
 /* The failure state reads as a console surface panel — the same dark surface,
    purple border, and orange accent the shared UI library renders with (its
    `--tcab-*` defaults: surface #120a1c, border #6a3aa0, accent #ff9d2f, negative

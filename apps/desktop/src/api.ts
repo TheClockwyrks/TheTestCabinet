@@ -86,6 +86,14 @@ export const listenClusterProgress = (
   handler: (status: ClusterStatus) => void,
 ) => listen<ClusterStatus>("cluster://progress", handler);
 
+// Subscribe to the live tail of subprocess output (one ANSI-stripped line per
+// event) the shell streams while the long-running bootstrap steps run — k3d
+// creating the cluster, kubectl applying the overlay and waiting on rollouts. The
+// boot gate renders the most recent few lines so the wait isn't opaque. Returns an
+// unlisten function.
+export const listenClusterLog = (handler: (line: string) => void) =>
+  listen<string>("cluster://log", handler);
+
 // --- Adversarial arena ------------------------------------------------------
 
 // A quick (transient) head-to-head match configuration. The command arg is keyed

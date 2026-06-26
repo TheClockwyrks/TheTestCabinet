@@ -47,6 +47,11 @@ const SERVICE_TOKEN: &str = "tcab-desktop-service-token";
 /// The event the webview's boot gate listens on for live bootstrap progress.
 const PROGRESS_EVENT: &str = "cluster://progress";
 
+/// The event each captured line of subprocess output (k3d/kubectl) is emitted on,
+/// so the boot gate can show a live tail of what the long-running steps are doing
+/// instead of an opaque progress bar.
+const LOG_EVENT: &str = "cluster://log";
+
 /// The forwarded backend URL the webview talks to once the stack is up. Matches the
 /// Makefile's `local-forward` backend port; the auth service's forwarded port
 /// (8789) is already the shell's [`crate::config::auth_url`] default, so that needs
@@ -155,6 +160,12 @@ fn publish(app: &AppHandle, phase: &str, detail: impl Into<String>, done: bool, 
     let _ = app.emit(PROGRESS_EVENT, status);
 }
 
+/// Emit one line of subprocess output to the boot gate's live tail. Trimmed and
+/// ANSI-stripped by the caller; blank lines are dropped before this is reached.
+fn publish_log(app: &AppHandle, line: &str) {
+    let _ = app.emit(LOG_EVENT, line);
+}
+
 /// Mark the dev path: an external backend is configured, so the app does not stand
 /// up its own cluster. The boot gate treats this terminal-non-error state as "go".
 pub fn mark_skipped(app: &AppHandle) {
@@ -224,7 +235,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    ensure_cluster(&runtime, &checkout, &kubeconfig)?;
+    ensure_cluster(app, &runtime, &checkout, &kubeconfig)?;
 
     publish(app, phase::SERVICES, "Configuring services…", false, false);
     ensure_namespace(&kubeconfig)?;
@@ -237,7 +248,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    apply_overlay(&kubeconfig, &overlay)?;
+    apply_overlay(app, &kubeconfig, &overlay)?;
 
     publish(
         app,
@@ -246,7 +257,7 @@ fn bootstrap(app: &AppHandle) -> Result<(), String> {
         false,
         false,
     );
-    wait_for_services(&kubeconfig)?;
+    wait_for_services(app, &kubeconfig)?;
 
     publish(app, phase::INGEST, "Connecting…", false, false);
     start_forwards(app, &kubeconfig)?;
@@ -426,10 +437,16 @@ fn stage_overlay(app: &AppHandle) -> Result<PathBuf, String> {
 /// Create the k3d cluster if it does not already exist (idempotent across launches),
 /// mapping the staged checkout to `/checkout` on the node, then write a dedicated
 /// kubeconfig the shell uses for every `kubectl` call (never touching the user's).
-fn ensure_cluster(runtime: &Runtime, checkout: &Path, kubeconfig: &Path) -> Result<(), String> {
+fn ensure_cluster(
+    app: &AppHandle,
+    runtime: &Runtime,
+    checkout: &Path,
+    kubeconfig: &Path,
+) -> Result<(), String> {
     if !cluster_exists(runtime)? {
         let volume = format!("{}:/checkout@server:0", checkout.display());
-        run_quiet(
+        run_streaming(
+            app,
             k3d(runtime)
                 .args(["cluster", "create", CLUSTER_NAME, "--volume"])
                 .arg(&volume)
@@ -578,35 +595,38 @@ fn apply_secret_with(
 }
 
 /// Apply the staged, substituted desktop overlay.
-fn apply_overlay(kubeconfig: &Path, overlay: &Path) -> Result<(), String> {
-    run_quiet(kubectl(kubeconfig).arg("apply").arg("-k").arg(overlay))
+fn apply_overlay(app: &AppHandle, kubeconfig: &Path, overlay: &Path) -> Result<(), String> {
+    run_streaming(app, kubectl(kubeconfig).arg("apply").arg("-k").arg(overlay))
         .map_err(|e| format!("deploying the services: {e}"))?;
     Ok(())
 }
 
 /// Block until every always-on workload reports ready (driver Jobs are per-run, so
 /// they are not awaited here). Mirrors the Makefile's `apply` rollout waits.
-fn wait_for_services(kubeconfig: &Path) -> Result<(), String> {
+fn wait_for_services(app: &AppHandle, kubeconfig: &Path) -> Result<(), String> {
     const STATEFULSETS: &[&str] = &["tcab-backend", "tcab-auth", "tcab-artifacts"];
     const DEPLOYMENTS: &[&str] = &["tcab-arena", "tcab-dispatcher"];
     for name in STATEFULSETS {
-        rollout(kubeconfig, "statefulset", name)?;
+        rollout(app, kubeconfig, "statefulset", name)?;
     }
     for name in DEPLOYMENTS {
-        rollout(kubeconfig, "deployment", name)?;
+        rollout(app, kubeconfig, "deployment", name)?;
     }
     Ok(())
 }
 
-fn rollout(kubeconfig: &Path, kind: &str, name: &str) -> Result<(), String> {
-    run_quiet(kubectl(kubeconfig).args([
-        "-n",
-        NAMESPACE,
-        "rollout",
-        "status",
-        &format!("{kind}/{name}"),
-        "--timeout=300s",
-    ]))
+fn rollout(app: &AppHandle, kubeconfig: &Path, kind: &str, name: &str) -> Result<(), String> {
+    run_streaming(
+        app,
+        kubectl(kubeconfig).args([
+            "-n",
+            NAMESPACE,
+            "rollout",
+            "status",
+            &format!("{kind}/{name}"),
+            "--timeout=300s",
+        ]),
+    )
     .map_err(|e| format!("waiting for {name}: {e}"))
 }
 
@@ -953,6 +973,63 @@ fn strip_ansi(input: &str) -> String {
 /// As [`run`], discarding the captured output.
 fn run_quiet(cmd: &mut Command) -> Result<(), String> {
     run(cmd).map(|_| ())
+}
+
+/// Run a long-running command (k3d/kubectl), forwarding each line of its output to
+/// the boot gate's live tail as it arrives, instead of blocking silently until it
+/// exits. On failure the captured tail (stderr preferred) becomes the error message.
+///
+/// stdout and stderr are drained concurrently — stderr on a side thread, stdout on
+/// this one — so a full pipe can never deadlock the child. The bootstrap already
+/// runs on its own OS thread, so the blocking reads here are fine.
+fn run_streaming(app: &AppHandle, cmd: &mut Command) -> Result<(), String> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| format!("failed to launch: {e}"))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let app_for_stderr = app.clone();
+    let stderr_drain = std::thread::spawn(move || drain(&app_for_stderr, stderr));
+    let stdout_lines = drain(app, stdout);
+    let stderr_lines = stderr_drain.join().unwrap_or_default();
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("waiting for the process: {e}"))?;
+    if status.success() {
+        return Ok(());
+    }
+    // The last captured line is the most useful summary of what went wrong; prefer
+    // stderr (where k3d/kubectl report failures), falling back to stdout.
+    let tail = stderr_lines.last().or_else(|| stdout_lines.last());
+    Err(match tail {
+        Some(line) => line.clone(),
+        None => format!("exited with status {status}"),
+    })
+}
+
+/// Read a child pipe line by line, forwarding each non-empty, ANSI-stripped line to
+/// the boot gate's tail and collecting them for the failure message. `None` (a pipe
+/// that wasn't captured) drains to nothing.
+fn drain<R: std::io::Read>(app: &AppHandle, reader: Option<R>) -> Vec<String> {
+    use std::io::BufRead;
+    let Some(reader) = reader else {
+        return Vec::new();
+    };
+    let mut lines = Vec::new();
+    for line in std::io::BufReader::new(reader)
+        .lines()
+        .map_while(Result::ok)
+    {
+        let clean = strip_ansi(&line);
+        let trimmed = clean.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        publish_log(app, trimmed);
+        lines.push(trimmed.to_string());
+    }
+    lines
 }
 
 #[cfg(test)]
