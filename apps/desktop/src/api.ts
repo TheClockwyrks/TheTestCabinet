@@ -23,7 +23,10 @@ export function isTauri(): boolean {
   );
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function invoke<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(cmd, args);
 }
@@ -49,6 +52,38 @@ export const backendUrl = () => invoke<string | null>("backend_url");
 // The auth service the shell registers/logs in against (always resolves, falling
 // back to the loopback default for local dev).
 export const authUrl = () => invoke<string>("auth_url");
+
+// --- Self-contained cluster bootstrap ---------------------------------------
+
+// A snapshot of the shell's cluster bootstrap (mirrors crates/desktop/src/cluster.rs
+// `ClusterStatus`). `phase` is a coarse stage id; `done` marks a terminal state
+// (ready, skipped, or error); `error` distinguishes a failure. The boot gate holds
+// the console hidden until `done` is reached without `error`.
+export interface ClusterStatus {
+  phase:
+    | "preflight"
+    | "cluster"
+    | "services"
+    | "ingest"
+    | "ready"
+    | "error"
+    | "skipped";
+  detail: string;
+  done: boolean;
+  error: boolean;
+}
+
+// The current bootstrap status — the boot gate's initial read before its live
+// `cluster://progress` subscription takes over.
+export const clusterStatus = () => invoke<ClusterStatus>("cluster_status");
+
+// Re-run the bootstrap after a failure (the loading screen's "Try again").
+export const clusterRetry = () => invoke<void>("cluster_retry");
+
+// Subscribe to live bootstrap progress. Returns an unlisten function.
+export const listenClusterProgress = (
+  handler: (status: ClusterStatus) => void,
+) => listen<ClusterStatus>("cluster://progress", handler);
 
 // --- Adversarial arena ------------------------------------------------------
 

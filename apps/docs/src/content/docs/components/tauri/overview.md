@@ -28,8 +28,12 @@ delivery — a desktop binary vs. a browser bundle — and in a few host details
 resolve the catalog from, and enqueue runs at, a
 [backend](/components/backend/overview/), which drives each run server-side via a
 per-run [driver](/components/driver/overview/) `Job`. The desktop therefore needs
-a **reachable backend** (and, for local development, the
-[k3d service stack](/development/running/)) to launch anything.
+a **reachable backend** to do anything — but, unlike the web console, the
+shipped app can **stand one up itself**: on launch it brings up a local
+[k3d](https://k3d.io) cluster from the published service images and ingests the
+test cases it bundles, so a person who is not a TTC developer needs no checkout,
+no `make`, and no manually-run services — only a container runtime (see
+[Self-contained cluster](#self-contained-cluster) below).
 
 ## What it does
 
@@ -61,11 +65,45 @@ a **reachable backend** (and, for local development, the
   to flip it public. The solo path (push + self-review + publish in one action) is
   available too, for when the same person does all three.
 
-The app needs **no** container runtime of its own — it enqueues runs at the
+The app does not execute runs in-process — it enqueues them at the
 [backend](/components/backend/overview/) (which drives them server-side), resolves
 definitions from it, and pushes/reviews/publishes to it. It requires a reachable
-backend and, in local development, the [k3d service stack](/development/running/).
-The only work the app performs on its own machine is the local adversarial arena.
+backend, which it either **stands up itself** (the self-contained cluster below,
+the default for a shipped app) or is **pointed at** (`TCAB_BACKEND_URL`, the
+developer path). The only work the app performs in-process is the local
+adversarial arena.
+
+## Self-contained cluster
+
+The shipped desktop app is meant to be the lowest-friction way to use The Test
+Cabinet, so it does not assume a checkout, a container image build, or a
+manually-run backend. Instead, **when no external backend is configured**
+(`TCAB_BACKEND_URL` unset), the shell stands up the whole run topology itself on
+a local [k3d](https://k3d.io) cluster — the same manifests a
+[deployment](/deployment/kubernetes/) uses — and then talks to it exactly as the
+web console talks to a remote backend:
+
+- It pulls the **published service images** from GHCR (it never builds images),
+  so no source tree is needed. The installer pins the image tag to the set built
+  for its own release commit.
+- It ingests the **test-case catalog it bundles** (the `test-cases/` tree ships
+  inside the app), staged onto the cluster node and ingested by the backend.
+- It bundles **k3d** and **kubectl** as sidecars; the one host prerequisite is a
+  running container runtime (Docker, or a Docker-compatible one) — k3d hosts the
+  cluster in containers.
+- Standing the cluster up (pulling images, rolling out services, ingesting the
+  catalog) takes a while, so the window shows a **loading screen** narrating each
+  step until the stack is ready; on a failure (no container runtime, say) it
+  shows the cause and a retry. The console is only revealed once the cluster is
+  up, so it never flashes an empty catalog mid-bootstrap.
+
+The cluster persists between launches (it is created once and reconciled on each
+start) and its `kubectl port-forward`s are torn down on exit. **TTC developers take
+the other path:** set `TCAB_BACKEND_URL` to a
+[manually-run backend](/development/running/#iterating-on-the-backend-and-auth-services-as-bare-processes)
+(or the [k3d service stack](/development/running/)) and the app skips the bootstrap
+entirely, behaving as a thin client — so a definition change can be re-ingested
+without cutting a new app release.
 
 ## Status
 

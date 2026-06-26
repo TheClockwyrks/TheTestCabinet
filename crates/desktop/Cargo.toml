@@ -42,6 +42,11 @@ time = { workspace = true }
 # `.env` beside the project, matching the CLI, so the shell can be driven without
 # exporting every variable into the launching shell.
 dotenvy = { workspace = true }
+# The self-contained k3d bootstrap (`cluster`) polls the backend's `/healthz` and
+# triggers `POST /ingest` over HTTP. The blocking client keeps the bootstrap a
+# single straight-line routine on its own OS thread (no async coloring), away from
+# the long-running rollout waits.
+reqwest = { workspace = true, features = ["blocking"] }
 # Spans around each invoked IPC command so a desktop action that calls into core
 # produces a trace; core supplies the deeper spans beneath these.
 tracing = { workspace = true }

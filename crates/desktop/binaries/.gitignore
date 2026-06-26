@@ -1,0 +1,6 @@
+# The k3d/kubectl sidecar binaries the desktop app bundles are fetched at build
+# time by `scripts/fetch-desktop-sidecars.mjs` (run by the release workflow), never
+# committed — they are large, platform-specific, and versioned independently.
+# Keep this directory in the tree (so the path exists) but ignore its contents.
+*
+!.gitignore

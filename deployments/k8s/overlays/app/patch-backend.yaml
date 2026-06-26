@@ -1,0 +1,38 @@
+# Desktop-app backend overrides: tag the environment, ingest the catalog from a
+# read-only mount of the test-cases the app BUNDLED, and re-point the data-plane
+# public URLs at the host (the shell port-forwards artifacts→:8790, arena→:8791).
+#
+# The desktop shell stages the bundled `test-cases/` under `<checkout>/test-cases`
+# in its app-data dir and maps that `<checkout>` dir to `/checkout` on the k3d node
+# via `k3d cluster create --volume`; this mounts that node path into the pod at
+# `/checkout`, where the backend's ingest (TCAB_BACKEND_CHECKOUT) reads it. The
+# SQLite DB + definition store still live on the `state` PVC the base declares.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-backend
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ENV
+              value: "desktop"
+            - name: TCAB_BACKEND_CHECKOUT
+              value: "/checkout"
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://127.0.0.1:8790"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "http://127.0.0.1:8791"
+          volumeMounts:
+            - name: checkout
+              mountPath: /checkout
+              readOnly: true
+      volumes:
+        - name: checkout
+          hostPath:
+            path: /checkout
+            type: Directory

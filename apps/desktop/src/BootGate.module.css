@@ -1,0 +1,184 @@
+/* Self-contained styling for the desktop boot screen. It renders BEFORE the shared
+   console (and its theme variables) is mounted, so it cannot rely on the UI
+   library's tokens — the synthwave palette is inlined here to match the app's look
+   while the cluster comes up. */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: radial-gradient(
+    120% 80% at 50% 0%,
+    #2a0b46 0%,
+    #160826 45%,
+    #0a0118 100%
+  );
+  color: #e7d9ff;
+  font-family:
+    ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: min(34rem, 100%);
+  text-align: center;
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.5em;
+  /* the letter-spacing pads the right edge; nudge it back to optical center */
+  text-indent: 0.5em;
+  color: #46f5ff;
+  text-shadow: 0 0 0.75rem rgba(70, 245, 255, 0.7);
+}
+
+.caption {
+  margin: 0;
+  font-size: 1.4rem;
+  color: #ff5cc8;
+  text-shadow: 0 0 0.85rem rgba(255, 92, 200, 0.55);
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: rgba(231, 217, 255, 0.4);
+  transition: color 0.3s ease;
+}
+
+.dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+.step[data-state="done"] {
+  color: #46f5ff;
+}
+
+.step[data-state="done"] .dot {
+  background: #46f5ff;
+  box-shadow: 0 0 0.5rem rgba(70, 245, 255, 0.7);
+}
+
+.step[data-state="active"] {
+  color: #ff5cc8;
+}
+
+.step[data-state="active"] .dot {
+  background: #ff5cc8;
+  box-shadow: 0 0 0.5rem rgba(255, 92, 200, 0.7);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.bar {
+  position: relative;
+  width: 100%;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(70, 245, 255, 0.12);
+  overflow: hidden;
+}
+
+.barFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #46f5ff, #ff5cc8);
+  box-shadow: 0 0 0.75rem rgba(255, 92, 200, 0.6);
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+.detail {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 0.9rem;
+  color: rgba(231, 217, 255, 0.65);
+}
+
+.errorTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #ff7a7a;
+  text-shadow: 0 0 0.85rem rgba(255, 122, 122, 0.5);
+}
+
+.errorDetail {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: rgba(231, 217, 255, 0.8);
+}
+
+.retry {
+  margin-top: 0.5rem;
+  padding: 0.55rem 1.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  color: #46f5ff;
+  background: transparent;
+  border: 1px solid #46f5ff;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.retry:hover {
+  background: rgba(70, 245, 255, 0.12);
+  box-shadow: 0 0 0.75rem rgba(70, 245, 255, 0.45);
+}
+
+@keyframes slide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barFill,
+  .step[data-state="active"] .dot {
+    animation: none;
+  }
+}

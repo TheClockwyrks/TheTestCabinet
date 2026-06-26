@@ -18,8 +18,11 @@
 //! generated platform entry point.
 
 mod arena;
+mod cluster;
 mod config;
 mod tournament;
+
+use tauri::State;
 
 /// The desktop application's version string (the crate version).
 #[tauri::command]
@@ -28,15 +31,18 @@ fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// The backend base URL the shell is configured for (`TCAB_BACKEND_URL`), or
-/// `None` when unset. The webview builds its HTTP transports against this — the
-/// same `createHttpBackend`/`createBackendExec` the web console uses — so a
-/// missing backend leaves the console unconfigured (an empty catalog/gallery)
-/// rather than erroring.
+/// The backend base URL the webview builds its HTTP transports against — the same
+/// `createHttpBackend`/`createBackendExec` the web console uses.
+///
+/// A configured external backend (`TCAB_BACKEND_URL`, the developer path) wins;
+/// otherwise it is the loopback URL of the **self-contained cluster** the shell
+/// stands up (see [`cluster`]), reported only once that cluster is up (the webview's
+/// boot gate holds the console hidden until then, so it never reads as unconfigured
+/// mid-bootstrap).
 #[tauri::command]
-#[tracing::instrument]
-fn backend_url() -> Option<String> {
-    config::backend_url()
+#[tracing::instrument(skip_all)]
+fn backend_url(state: State<cluster::ClusterState>) -> Option<String> {
+    config::backend_url().or_else(|| state.backend_url())
 }
 
 /// The auth service base URL the shell registers/logs in against (`TCAB_AUTH_URL`,
@@ -85,7 +91,10 @@ pub fn run() {
     ))
     .expect("initialize telemetry");
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // The cluster lifecycle state: the live bootstrap status, the resolved
+        // backend URL, and the port-forward children to reap on exit.
+        .manage(cluster::ClusterState::default())
         // Serve a locally-run tournament's per-match replays to the webview so the
         // arena can play back an individual match (see `tournament`). This is the
         // only host-served media scheme left: produced runs' builds, proofs, and
@@ -94,16 +103,38 @@ pub fn run() {
         .register_uri_scheme_protocol(tournament::SCHEME, |_app, request| {
             tournament::handle_request(&request)
         })
+        // Stand up the self-contained cluster on launch — unless an external backend
+        // is configured (`TCAB_BACKEND_URL`), the developer path, where the app is a
+        // thin client of a manually-run backend and stands nothing up of its own.
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if config::backend_url().is_some() {
+                cluster::mark_skipped(&handle);
+            } else {
+                cluster::spawn_bootstrap(handle);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             app_version,
             backend_url,
             auth_url,
+            cluster::cluster_status,
+            cluster::cluster_retry,
             arena::run_adversarial_match,
             arena::list_adversarial_controllers,
             arena::run_tournament_match,
             arena::list_tournaments,
             arena::read_tournament,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running The Test Cabinet desktop application");
+        .build(tauri::generate_context!())
+        .expect("error while building The Test Cabinet desktop application");
+
+    // Reap the cluster's port-forward children when the app exits, so no `kubectl`
+    // processes leak. (The cluster itself is left running for a fast next launch.)
+    app.run(|handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            cluster::shutdown(handle);
+        }
+    });
 }

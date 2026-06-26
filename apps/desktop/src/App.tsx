@@ -13,6 +13,7 @@ import {
 } from "@test-cabinet/ui/app";
 import { createTauriArena } from "./transport/tauriArena";
 import { useDesktopConnections } from "./state/useConnections";
+import { BootGate } from "./BootGate";
 
 // The desktop app: the same shared gallery app the web console renders, talking
 // to the same backend over the same HTTP API. The only differences from the web
@@ -22,6 +23,19 @@ import { useDesktopConnections } from "./state/useConnections";
 // enqueue + stream over HTTP exactly like the web console, while matches and
 // tournaments stay local via Tauri IPC.
 export function App() {
+  // Hold a loading screen until the shell's self-contained cluster is up, THEN
+  // mount the console. The gate sits above the connection hooks on purpose: the
+  // shell only learns its backend URL once the cluster is forwarded, and
+  // `useShellUrls` reads it once on mount — so the connected app must not mount
+  // until that URL is resolvable.
+  return (
+    <BootGate>
+      <ConnectedApp />
+    </BootGate>
+  );
+}
+
+function ConnectedApp() {
   const { backend, workers } = useDesktopConnections();
 
   return (

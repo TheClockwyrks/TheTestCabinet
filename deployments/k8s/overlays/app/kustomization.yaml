@@ -1,0 +1,124 @@
+# Desktop-app overlay — the self-contained k3d stack the Tauri app stands up.
+#
+# Unlike the `local` overlay (which builds images from the repo and ingests from a
+# mounted git checkout), the shipped desktop app has NEITHER the repo NOR a way to
+# build images. So this overlay:
+#   - pulls the PUBLISHED service images from GHCR (the same images
+#     build-service-images.yml publishes), and
+#   - ingests the catalog from a mount of the test-cases the app BUNDLES (the app
+#     stages them on the k3d node at /checkout; see crates/desktop/src/cluster.rs).
+#
+# It is otherwise the `local` overlay: the whole run topology (backend + auth,
+# dispatcher, artifacts, arena, driver/dispatcher RBAC), the CronJob/NetworkPolicy
+# deletes, and the host-facing public URLs.
+#
+# `REPLACE_OWNER` (the GHCR namespace) and `REPLACE_TAG` (the image tag the app was
+# built against) are substituted by the desktop shell when it stages this overlay
+# into its app-data dir before `kubectl apply -k`. `REPLACE_REGISTRY/...` image
+# NAMES are left as-is: they are the match keys the base manifests use, rewritten
+# by the images block below — not values to fill in.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tcab-desktop
+
+resources:
+  - ../../base
+
+# Point every service at its published GHCR image. The shell substitutes
+# REPLACE_OWNER/REPLACE_TAG at stage time so the app pulls a known-good image set.
+images:
+  - name: REPLACE_REGISTRY/tcab-backend
+    newName: ghcr.io/REPLACE_OWNER/tcab-backend
+    newTag: REPLACE_TAG
+  - name: REPLACE_REGISTRY/tcab-auth-service
+    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
+    newTag: REPLACE_TAG
+  - name: REPLACE_REGISTRY/tcab-dispatcher
+    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
+    newTag: REPLACE_TAG
+  - name: REPLACE_REGISTRY/tcab-driver
+    newName: ghcr.io/REPLACE_OWNER/tcab-driver
+    newTag: REPLACE_TAG
+  - name: REPLACE_REGISTRY/tcab-artifacts
+    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
+    newTag: REPLACE_TAG
+  - name: REPLACE_REGISTRY/tcab-arena
+    newName: ghcr.io/REPLACE_OWNER/tcab-arena
+    newTag: REPLACE_TAG
+
+# Secrets are NOT generated here (that would bake values into a tracked file). The
+# desktop shell creates them in-cluster from the host environment / its settings,
+# with the same fixed names the base manifests reference:
+#   - tcab-backend-secrets / tcab-dispatcher-secrets — the shared
+#     TCAB_BACKEND_SERVICE_TOKEN so the dispatcher can claim jobs.
+#   - tcab-driver-secrets — the harness provider API key(s), when present (the
+#     catalog comes up without one; only launching a run needs it).
+# The backend's R2/deploy-hook keys stay absent (it skips the snapshot upload).
+
+patches:
+  # Per-environment overrides (TCAB_ENV, the bundled-checkout mount, the desktop
+  # namespace + GHCR driver image, host-facing public URLs).
+  - path: patch-backend.yaml
+  - path: patch-auth.yaml
+  - path: patch-dispatcher.yaml
+  - path: patch-artifacts.yaml
+  - path: patch-arena.yaml
+
+  # Drop the resources the self-contained stack does without, exactly as the local
+  # overlay does: the shell force-ingests from the mounted checkout (so the ingest
+  # CronJob is redundant), and a single-node k3d CNI does not enforce NetworkPolicy.
+  - target:
+      kind: CronJob
+      name: tcab-ingest
+    patch: |-
+      $patch: delete
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: tcab-ingest
+  - target:
+      kind: NetworkPolicy
+      name: tcab-default-deny-ingress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-default-deny-ingress
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-services-from-runners
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-services-from-runners
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-arena-from-console
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-arena-from-console
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-artifacts-from-drivers
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-artifacts-from-drivers
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-driver-from-sandbox
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-driver-from-sandbox

@@ -118,14 +118,20 @@ jobs:
           # host's native toolchain (no musl) and ships the platform's installer:
           # a .deb on Linux, a .dmg on macOS, and both an .msi and an NSIS .exe on
           # Windows.
+          # `target` is the host Rust triple — used to name the k3d/kubectl sidecar
+          # binaries Tauri's externalBin expects (`<name>-<triple>`); it matches the
+          # triple Tauri resolves for the host, so the bundled sidecar is found.
           - name: linux-x86_64
             os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
             bundles: deb
           - name: windows-x86_64
             os: windows-2022
+            target: x86_64-pc-windows-msvc
             bundles: msi,nsis
           - name: macos-aarch64
             os: macos-14
+            target: aarch64-apple-darwin
             bundles: dmg
     steps:
       - uses: actions/checkout@v6
@@ -151,13 +157,32 @@ jobs:
       # beforeBuildCommand).
       - name: Build run-record package
         run: npm run build -w @test-cabinet/run-record
+      # The shipped app stands up its own k3d cluster, so it bundles the k3d and
+      # kubectl CLIs as externalBin sidecars. Fetch the host-triple build of each
+      # into crates/desktop/binaries/ before the bundle runs (the committed config
+      # omits externalBin so a plain `cargo tauri build`/`dev` needs no binaries —
+      # they are added via --config below).
+      - name: Fetch cluster sidecars (k3d, kubectl)
+        run: node scripts/fetch-desktop-sidecars.mjs ${{ matrix.target }}
       # Run from the crate that holds tauri.conf.json so the CLI resolves it.
       # `--bundles` narrows the config's "all" targets to this platform's chosen
       # installer(s) — notably skipping Linux AppImage, whose builder reaches out
-      # to the network and is the flaky one in CI.
+      # to the network and is the flaky one in CI. `--config` (bash on every
+      # platform, for consistent quoting) stamps the release version, adds the
+      # sidecar externalBin entries, and — via TCAB_DESKTOP_IMAGE_TAG, baked into
+      # the binary at compile time — pins the GHCR service images the app pulls to
+      # the set published for THIS commit (an immutable `:<git-sha>` tag), so an
+      # installer is coupled to a known-good image set rather than a moving `latest`.
       - name: Build desktop app
         working-directory: crates/desktop
-        run: cargo tauri build --bundles ${{ matrix.bundles }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          TCAB_DESKTOP_IMAGE_TAG: ${{ github.sha }}
+        run: |
+          version_number="${VERSION#v}"
+          cargo tauri build --bundles ${{ matrix.bundles }} \
+            --config "{\"version\":\"${version_number}\",\"bundle\":{\"externalBin\":[\"binaries/k3d\",\"binaries/kubectl\"]}}"
       # Tauri writes installers under target/release/bundle/<type>/ with a
       # product-named, spaced filename; rename each to the same scheme as the
       # binary archives so the release assets are uniform and shell-safe.

@@ -31,6 +31,12 @@ locally means standing up the **service-driven stack**:
   `tcab` (or the desktop app) at the forwarded backend; the
   [quickstarts](/quickstarts/overview/) walk through it and
   [Building](/development/building/) covers producing the binaries.
+  - **Developing on the desktop app?** Set `TCAB_BACKEND_URL` and it behaves as
+    the thin client described here. Left **unset**, the shipped app instead
+    stands up its *own* bundled k3d cluster from the published images (see
+    [Self-contained cluster](/components/tauri/overview/#self-contained-cluster)):
+    great for end users, but it ingests the *bundled* catalog, so during
+    development point it at a manually-run backend you can re-ingest at will.
 
 Running the services on one machine is the local mirror of a real
 [deployment](/deployment/overview/): the same images and the same configuration,

@@ -1,0 +1,21 @@
+# Desktop-app arena-service override: tag the environment. Everything else (its
+# bind address, backend URL, concurrency cap, CPU resources) carries over from the
+# base manifest unchanged.
+#
+# Note: the desktop app ALSO runs a quick adversarial arena in-process (Tauri IPC);
+# this in-cluster arena service is what the shared console's arena UI talks to over
+# HTTP, kept for parity with the web console.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-arena
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: arena
+          env:
+            - name: TCAB_ENV
+              value: "desktop"

@@ -1,0 +1,36 @@
+# Desktop-app dispatcher overrides: tag the environment, point the namespaces at the
+# desktop namespace, and set TCAB_DRIVER_IMAGE to the PUBLISHED GHCR driver image
+# (an env value, so the kustomize images transformer cannot reach it — the shell
+# substitutes REPLACE_OWNER/REPLACE_TAG here too). Everything else (the service
+# token from the secret, the resource passthroughs) carries over from the base.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_ENV
+              value: "desktop"
+            - name: TCAB_DISPATCHER_NAMESPACE
+              value: "tcab-desktop"
+            - name: TCAB_K8S_NAMESPACE
+              value: "tcab-desktop"
+            # Keep the driver image in lockstep with the other service images: the
+            # same published GHCR image set the kustomization's images block pins.
+            - name: TCAB_DRIVER_IMAGE
+              value: "ghcr.io/REPLACE_OWNER/tcab-driver:REPLACE_TAG"
+            # Subscription auth: point the dispatcher at the OPTIONAL
+            # tcab-driver-subscription Secret the shell builds from the host's
+            # signed-in harness CLI credential files, when present. The Secret is
+            # mounted optional:true, so when it is absent driver pods run
+            # API-key-only. Auto mode prefers subscription when those creds exist.
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET
+              value: "tcab-driver-subscription"
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR
+              value: "/var/run/tcab/subscription"
