@@ -385,8 +385,8 @@ fn runtime_running(binary: &str) -> bool {
 const ROOTLESS_PODMAN_MESSAGE: &str = "Podman is running, but its machine is rootless — \
     k3s can't start there (its server node fails with \"failed to find cpuset cgroup \
     (v2)\", because rootless cgroup v2 delegation withholds the cpuset controller). Make \
-    the machine rootful: run `podman machine set --rootful`, then `podman machine stop && \
-    podman machine start`, and try again. (Or start a Docker-compatible runtime, or set \
+    the machine rootful: run `podman machine stop && podman machine set --rootful && \
+    podman machine start`, then try again. (Or start a Docker-compatible runtime, or set \
     TCAB_CONTAINER_RUNTIME to force a specific one.)";
 
 /// The `DOCKER_HOST` value that points k3d at Podman's API socket. Returns `None`
@@ -551,8 +551,8 @@ fn podman_rootless_hint(runtime: &Runtime) -> String {
         return String::new();
     }
     " — the Podman machine is rootless, which can't run k3s (its server fails with \
-     \"failed to find cpuset cgroup (v2)\"). Make it rootful: `podman machine set \
-     --rootful`, then `podman machine stop && podman machine start`, then try again."
+     \"failed to find cpuset cgroup (v2)\"). Make it rootful: `podman machine stop && \
+     podman machine set --rootful && podman machine start`, then try again."
         .to_string()
 }
 
