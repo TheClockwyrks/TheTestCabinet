@@ -45,6 +45,31 @@ so artifacts are tested before they reach users:
    prerelease into the latest full release. It does **not** rebuild, so the exact
    artifacts you tested are the ones published.
 
+### macOS: the desktop app is unsigned
+
+The macOS `.dmg` is **not yet code-signed or notarized** — the Release workflow
+builds it with a bare `cargo tauri build` and there is no Apple Developer ID
+certificate or notarization step. Because of that, when a user downloads the app
+macOS marks it with the `com.apple.quarantine` attribute and Gatekeeper refuses
+to launch it, reporting *"“The Test Cabinet” is damaged and can't be opened. You
+should move it to the Trash."* This message is misleading: the app is not
+corrupt, it is simply unsigned, and the symptom is most pronounced on Apple
+Silicon (the `macos-aarch64` build).
+
+Until Developer ID signing + notarization is wired into the Release workflow, the
+download is opened by clearing the quarantine attribute once after installing —
+this is the workaround included in the prerelease notes:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/The Test Cabinet.app"
+```
+
+(`xattr` is more reliable than right-click → **Open**, which Gatekeeper does not
+offer for the "damaged" state on Apple Silicon.) The durable fix is to sign with
+a Developer ID Application certificate and notarize the `.dmg` in the workflow
+(Tauri reads `APPLE_CERTIFICATE`/`APPLE_SIGNING_IDENTITY` and the notarization
+credentials from the environment); that has not been set up yet.
+
 The per-platform `tcab` smoke check is the same `scripts/ci/smoke-binary.sh` the
 CI binary job runs, so the CLI is validated both continuously (Azure, on Linux
 and Windows) and again on the shipped artifact (the Release workflow, on every

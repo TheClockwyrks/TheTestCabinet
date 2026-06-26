@@ -208,7 +208,11 @@ jobs:
         # Idempotent: re-running for the same candidate refreshes its assets rather
         # than failing because the prerelease already exists.
         run: |
-          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build."
+          # The macOS .dmg is not yet code-signed or notarized, so Gatekeeper
+          # reports the freshly downloaded app as "damaged". Tell downloaders how
+          # to clear the quarantine attribute until signing is in place.
+          macos_note=$'\n\n### macOS: "“The Test Cabinet” is damaged and can’t be opened"\n\nThe macOS app is not yet signed or notarized, so after downloading it macOS quarantines it and shows this (misleading) message — the app is fine, just unsigned. After dragging it to Applications, clear the quarantine attribute once:\n\n```sh\nxattr -dr com.apple.quarantine \"/Applications/The Test Cabinet.app\"\n```\n\nThen open it normally.'
+          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build.${macos_note}"
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else
