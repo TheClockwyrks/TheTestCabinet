@@ -6,9 +6,13 @@
 #
 # Requirements on the host: docker (or a docker-compatible runtime), k3d, and
 # kubectl. Everything runs in the cluster — the backend + auth, the dispatcher, the
-# artifact service, the arena service, and one per-run driver Job per enqueued run.
-# There is no worker-on-host wiring; a run enqueued at the backend schedules as a Job
-# here, and an adversarial match/tournament runs on the arena service.
+# artifact service, the arena service, the in-cluster Grafana LGTM observability
+# stack, and one per-run driver Job per enqueued run. There is no worker-on-host
+# wiring; a run enqueued at the backend schedules as a Job here, and an adversarial
+# match/tournament runs on the arena service. The observability stack (the local
+# overlay's `components/observability`) replaces the LGTM the devcontainer used to
+# ship: every service exports OTLP to it in-cluster — reach Grafana with
+# `make local-grafana`.
 #
 # Secrets come from the host ENVIRONMENT, never a tracked file. Before `local-up`,
 # export the harness provider API key the run needs — at least one of:
@@ -25,6 +29,7 @@
 #   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost
+#   local-grafana   foreground-forward Grafana→:3000 and the OTLP collector→:4318/:4317 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
@@ -63,7 +68,7 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-ingest local-status secrets cluster images apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster images apply
 
 local-up: cluster images apply local-ingest
 	@echo ""
@@ -71,6 +76,7 @@ local-up: cluster images apply local-ingest
 	@echo "Reach it with:  make -C deployments/local local-forward"
 	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791"
 	@echo "  (the backend reports the artifacts + arena URLs at GET /config; the console fetches build/media and matches/tournaments from them)"
+	@echo "Observe it with:  make -C deployments/local local-grafana   →  Grafana at http://127.0.0.1:3000 (anonymous admin)"
 
 # Create the k3d cluster if it does not already exist, mapping the repository to
 # /repo on the server node so the backend can ingest from a read-only mount of it
@@ -173,6 +179,7 @@ apply: secrets
 	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
 	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	kubectl -n '$(NS)' rollout status statefulset/tcab-lgtm      --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
 
@@ -224,6 +231,21 @@ local-forward:
 	  kubectl -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
 	  kubectl -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  kubectl -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
+	  wait
+
+# Hold the in-cluster Grafana LGTM stack open on localhost until interrupted
+# (Ctrl-C). Grafana's UI lands on http://127.0.0.1:3000 (anonymous admin — no
+# login). The OTLP ports are forwarded too so a binary run OUTSIDE the cluster — a
+# `cargo run` in the devcontainer, a host-side `tcab` CLI or desktop app, or the
+# browser web console — can export to the same stack by pointing its
+# OTEL_EXPORTER_OTLP_ENDPOINT at http://localhost:4318 (HTTP/protobuf; the browser
+# must use this :4318 port). In-cluster services need none of this — they already
+# export to the `tcab-lgtm` Service directly.
+local-grafana:
+	@echo "Forwarding Grafana→http://127.0.0.1:3000, OTLP→127.0.0.1:4318 (HTTP) + :4317 (gRPC) (Ctrl-C to stop)…"
+	@kubectl -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \
+	  kubectl -n '$(NS)' port-forward svc/tcab-lgtm 4318:4318 & \
+	  kubectl -n '$(NS)' port-forward svc/tcab-lgtm 4317:4317 & \
 	  wait
 
 # Rebuild after a code change: new images, re-import, re-apply the overlay, rolling

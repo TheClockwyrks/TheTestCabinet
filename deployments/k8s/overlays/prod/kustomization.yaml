@@ -16,6 +16,11 @@ namespace: tcab-prod
 resources:
   - ../../base
 
+# Run the observability stack (Grafana LGTM) in-cluster; patch-otel.yaml below points
+# every workload's OTEL_EXPORTER_OTLP_ENDPOINT at the `tcab-lgtm` Service it adds.
+components:
+  - ../../components/observability
+
 # Rewrite the placeholder REPLACE_REGISTRY image names to the registry the cluster
 # pulls from. Pin an immutable digest/tag in production rather than `latest`.
 images:
@@ -42,3 +47,4 @@ images:
 # transformer above cannot reach it — patch it to match the driver image.
 patches:
   - path: patch-dispatcher-driver-image.yaml
+  - path: patch-otel.yaml

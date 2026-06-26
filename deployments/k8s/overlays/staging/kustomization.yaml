@@ -16,9 +16,15 @@ namespace: tcab-staging
 resources:
   - ../../base
 
+# Run the observability stack (Grafana LGTM) in-cluster. patch-env.yaml sets each
+# workload's OTEL_EXPORTER_OTLP_ENDPOINT to the `tcab-lgtm` Service this adds.
+components:
+  - ../../components/observability
+
 # Retag TCAB_ENV (which the base sets to `prod`) and the dispatcher's driver-image
-# env value to staging values. patch-env.yaml is a multi-doc strategic merge, one
-# doc per workload keyed by name, so kustomize merges only the named env vars.
+# env value to staging values, and point every workload at the in-cluster collector.
+# patch-env.yaml is a multi-doc strategic merge, one doc per workload keyed by name,
+# so kustomize merges only the named env vars.
 patches:
   - path: patch-env.yaml
   - path: patch-dispatcher-driver-image.yaml

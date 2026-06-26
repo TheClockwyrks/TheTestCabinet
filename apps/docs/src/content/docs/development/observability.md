@@ -118,50 +118,63 @@ see `apps/web/.env.example`. The browser exports traces only and can only use th
 HTTP `:4318` port. Its `service.version` is taken from the package version at
 build time, not from an environment variable.
 
-### Endpoint duality: host vs. container
+### Endpoint duality: in-cluster vs. out-of-cluster
 
-The right value for `OTEL_EXPORTER_OTLP_ENDPOINT` depends on **where the process
-runs**, because the local collector is reachable under two different names:
+The local Grafana LGTM stack runs **in the k3d cluster** (see below), so the
+right value for `OTEL_EXPORTER_OTLP_ENDPOINT` depends on **whether the process
+runs inside that cluster**:
 
 | Process | Runs | Local endpoint |
 | ------- | ---- | -------------- |
-| Backend, web console | inside the devcontainer | `http://lgtm:4318` (compose service DNS) |
-| Worker, `tcab` CLI, desktop app, browser | on the host | `http://localhost:4318` (published port) |
+| Backend, auth, dispatcher, driver, artifacts, arena | in the cluster | `http://tcab-lgtm:4318` (in-cluster Service DNS) — **set for you** by the [observability component](#local-stack-grafana-lgtm) |
+| `cargo run` binary in the devcontainer, host `tcab` CLI / desktop app, browser | outside the cluster | `http://localhost:4318` (via `make -C deployments/local local-grafana`) |
 
-Each per-process example env file at the repo root (`.env.backend.example`,
-`.env.worker.example`, `.env.runner.example` for the CLI and desktop, and
-`apps/web/.env.example`) ships the correct default for that process, commented
-out. Copy the relevant file to its real `.env.*` and uncomment the endpoint to
+The in-cluster services need no env-file change — the local overlay points each
+at `tcab-lgtm` automatically. For a binary you run **outside** the cluster, run
+`make -C deployments/local local-grafana` (which forwards the in-cluster
+collector to `localhost:4318`) and point the process there. Each per-process
+example env file at the repo root (`.env.backend.example`, `.env.auth.example`,
+`.env.dispatcher.example`, `.env.runner.example` for the CLI and desktop, and
+`apps/web/.env.example`) ships that `http://localhost:4318` default, commented
+out — copy the relevant file to its real `.env.*` and uncomment the endpoint to
 enable export.
 
 ## Local stack (Grafana LGTM)
 
-The devcontainer ships an opt-in `lgtm` service running the
+The local k3d cluster runs the
 [`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) all-in-one
 image — an OpenTelemetry collector plus Tempo (traces), Mimir (metrics), Loki
-(logs), and Grafana to view them. It is dormant until you enable it and points at
-nothing by default, so the workspace's behavior is unchanged for anyone who does
-not opt in.
+(logs), and Grafana to view them — **in the cluster** as the local overlay's
+[`components/observability`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/observability),
+the same component staging and prod use. (Earlier versions ran it as an opt-in
+service in the devcontainer's docker-compose; it moved into the cluster so local
+development and deployments observe telemetry through one identical stack.)
+Telemetry is still opt-in by service — the switch is each process's
+`OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 To bring it up and view telemetry:
 
-1. **Rebuild the devcontainer** — *Dev Containers: Rebuild Container* in VS Code.
-   This is what first starts the `lgtm` service; it is not running otherwise. See
-   [`.devcontainer/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.devcontainer/README.md)
-   for the container setup.
-2. **Enable export** on the processes you want to observe: copy the relevant
-   `.env.*.example` to its real `.env.*` (and `apps/web/.env.example` to
-   `apps/web/.env.local`), uncomment `OTEL_EXPORTER_OTLP_ENDPOINT`, choosing the
-   address by where the process runs (see the duality table above), and restart
-   the process so it re-reads its env file.
+1. **Start the cluster** — `make -C deployments/local local-up`. This stands up
+   the whole stack, including the `tcab-lgtm` workload, and the local overlay
+   already points every in-cluster service's `OTEL_EXPORTER_OTLP_ENDPOINT` at it,
+   so the services export from their first start. See
+   [Running](/development/running/) and the
+   [`deployments/local/Makefile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/Makefile).
+2. **Forward Grafana (and the collector)** — `make -C deployments/local local-grafana`.
+   This forwards Grafana to `localhost:3000` and the OTLP collector to
+   `localhost:4318`/`:4317`. To also observe a binary you run **outside** the
+   cluster, copy the relevant `.env.*.example` to its real `.env.*` (and
+   `apps/web/.env.example` to `apps/web/.env.local`), uncomment
+   `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, and restart the process.
 3. **Open Grafana at <http://localhost:3000>** (anonymous admin, no login). Use
    *Explore* with the Tempo data source to find traces (search by service name,
    e.g. `tcab-driver`, then open a trace to see the cross-service span tree),
    Mimir for the request metrics, and Loki for the exported logs.
 
-The image publishes both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports to the
-host; the binaries and browser use HTTP/protobuf. The Grafana state lives in a
-named volume so dashboards and saved queries survive a rebuild.
+The collector accepts both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports; the
+binaries and browser use HTTP/protobuf. Grafana's state lives on a
+`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart;
+the telemetry stores themselves are intentionally ephemeral.
 
 ## Production and staging
 

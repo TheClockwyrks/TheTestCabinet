@@ -15,3 +15,6 @@ spec:
           env:
             - name: TCAB_ENV
               value: "local"
+            # Export to the in-cluster Grafana LGTM stack (the observability component).
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"

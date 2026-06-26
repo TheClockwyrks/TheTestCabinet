@@ -249,13 +249,15 @@ worker to register.
 ## Telemetry (optional)
 
 To watch traces across `tcab-backend` → `tcab-dispatcher` → `tcab-driver`
-locally, enable the bundled Grafana LGTM stack and point each process at it. That
-is fully described under [Observability](/development/observability/) — in
-particular the
-[endpoint-duality rule](/development/observability/#endpoint-duality-host-vs-container):
-in-cluster pods use the collector's in-cluster endpoint, while a host process
-uses `http://localhost:4318`. Leaving `OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps
-everything on plain stdout logging.
+locally, the Grafana LGTM stack runs **in the cluster** (the local overlay's
+`components/observability`), so `make -C deployments/local local-up` already wires
+every in-cluster service to it — open Grafana with
+`make -C deployments/local local-grafana`. That is fully described under
+[Observability](/development/observability/) — in particular the
+[endpoint-duality rule](/development/observability/#endpoint-duality-in-cluster-vs-out-of-cluster):
+in-cluster pods use `http://tcab-lgtm:4318`, while a process run outside the
+cluster uses `http://localhost:4318` via that port-forward. Leaving
+`OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps everything on plain stdout logging.
 
 ## Next
 

@@ -44,11 +44,11 @@ Overlays:
 | `overlays/azure-staging` | Staging on **managed PostgreSQL**: `overlays/staging` + the `postgres` component. Apply instead of `overlays/staging`. |
 | `overlays/local` | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)). |
 
-The `azure-*` overlays share their database shape through a reusable kustomize
-**component**:
+Overlays compose in reusable kustomize **components**:
 
 | Component | Purpose |
 | --- | --- |
+| `components/observability` | Runs the Grafana LGTM stack (`grafana/otel-lgtm`: collector + Tempo/Mimir/Loki + Grafana) in-cluster as `tcab-lgtm` (StatefulSet + ClusterIP Service + PVC for Grafana state) plus a NetworkPolicy admitting the services' OTLP. Included by `overlays/{local,staging,prod,azure-staging,azure-prod}`; each overlay's env patch sets every workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318`. Drop it (and the endpoint) to send telemetry to Grafana Cloud / an external collector instead. |
 | `components/postgres` | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays). |
 
 The service container images are built from [`../images/`](../images/)

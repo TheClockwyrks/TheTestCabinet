@@ -1,16 +1,13 @@
-# Retag TCAB_ENV from the base's `prod` to `staging` on every workload (mirrors
-# overlays/staging/patch-env.yaml). Each doc is a strategic-merge patch keyed by the
-# workload name + container; kustomize merges the env list by `name`, so only the
-# named vars are touched.
-#
-# Difference from overlays/staging: backend and auth are `kind: Deployment` here,
-# because components/postgres replaced their StatefulSets — a patch's `kind` must
-# match its target.
+# Point every workload at the in-cluster Grafana LGTM collector (the observability
+# component) by setting OTEL_EXPORTER_OTLP_ENDPOINT. The base already tags TCAB_ENV
+# as `prod`, so this patch only adds the exporter endpoint (mirrors
+# overlays/prod/patch-otel.yaml). Difference from overlays/prod: backend and auth are
+# `kind: Deployment` here, because components/postgres replaced their StatefulSets —
+# a patch's `kind` must match its target.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-backend
-  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
   namespace: tcab-prod
 spec:
   template:
@@ -18,14 +15,8 @@ spec:
       containers:
         - name: backend
           env:
-            - name: TCAB_ENV
-              value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
-            - name: TCAB_ARTIFACTS_PUBLIC_URL
-              value: "http://tcab-artifacts:8790"
-            - name: TCAB_ARENA_PUBLIC_URL
-              value: "http://tcab-arena:8791"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -38,8 +29,6 @@ spec:
       containers:
         - name: auth
           env:
-            - name: TCAB_ENV
-              value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
 ---
@@ -54,8 +43,6 @@ spec:
       containers:
         - name: artifacts
           env:
-            - name: TCAB_ENV
-              value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
 ---
@@ -70,11 +57,11 @@ spec:
       containers:
         - name: arena
           env:
-            - name: TCAB_ENV
-              value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
 ---
+# The dispatcher forwards this endpoint (and TCAB_ENV) into every per-run driver
+# Job, so run/driver spans reach LGTM alongside the long-lived services.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,12 +73,5 @@ spec:
       containers:
         - name: dispatcher
           env:
-            - name: TCAB_ENV
-              value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
-            # The base names sandbox pods in tcab-prod; retag to the staging namespace.
-            - name: TCAB_K8S_NAMESPACE
-              value: "tcab-staging"
-            - name: TCAB_DISPATCHER_NAMESPACE
-              value: "tcab-staging"

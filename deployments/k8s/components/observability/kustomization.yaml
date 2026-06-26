@@ -1,0 +1,28 @@
+# In-cluster observability component — the Grafana LGTM stack as a reusable,
+# environment-agnostic mix-in, layered onto an environment overlay via its
+# `components:` list. It mirrors components/postgres: a Component (not an overlay)
+# so it carries no namespace/images/env of its own — the including overlay's
+# `namespace:` directive retargets the resources here to that environment's
+# namespace, exactly as it does the base.
+#
+# What it adds:
+#   1. lgtm.yaml             — the collector + Tempo/Mimir/Loki + Grafana (Service,
+#                              ServiceAccount, StatefulSet + PVC for Grafana state).
+#   2. networkpolicy-lgtm.yaml — admits OTLP from the services + driver Jobs through
+#                              the base's default-deny-ingress.
+#
+# What it deliberately does NOT do: set OTEL_EXPORTER_OTLP_ENDPOINT on the
+# workloads. That env is added by each overlay's own env patches (the same place it
+# retags TCAB_ENV), because backend + auth are a StatefulSet in the SQLite overlays
+# and a Deployment in the azure-* (managed-PostgreSQL) overlays — a kind difference a
+# single shared patch here cannot straddle. The endpoint value is always
+# `http://tcab-lgtm:4318` (in-namespace Service DNS, identical in every environment).
+#
+# Telemetry stays OPT-IN: including this component is the opt-in. An overlay that
+# omits it leaves every workload on stdout-only logging with no exporter.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - lgtm.yaml
+  - networkpolicy-lgtm.yaml

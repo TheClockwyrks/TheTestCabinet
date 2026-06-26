@@ -25,6 +25,13 @@ const ALL_VARS: &[&str] = &[
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
+    // Observability passthroughs — cleared so the ambient process env (which may set
+    // TCAB_ENV / OTEL_* on a developer or CI machine) cannot leak into the
+    // passthrough-collection assertions below.
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "TCAB_ENV",
 ];
 
 fn clear_all() {
@@ -206,6 +213,28 @@ fn artifacts_url_is_passed_through() {
             "TCAB_ARTIFACTS_URL".to_string(),
             "http://tcab-artifacts:8790".to_string()
         )));
+    });
+}
+
+#[test]
+fn observability_vars_are_passed_through() {
+    with_env(|| {
+        set_required();
+        set("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tcab-lgtm:4318");
+        set("TCAB_ENV", "prod");
+
+        let config = Config::from_env().expect("config should resolve");
+        // The OTLP endpoint and the environment tag are forwarded into each driver
+        // Job's env so run/driver spans export to the same collector as the services.
+        assert!(config.passthrough_k8s_env.contains(&(
+            "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
+            "http://tcab-lgtm:4318".to_string()
+        )));
+        assert!(
+            config
+                .passthrough_k8s_env
+                .contains(&("TCAB_ENV".to_string(), "prod".to_string()))
+        );
     });
 }
 

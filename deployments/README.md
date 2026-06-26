@@ -48,15 +48,20 @@ deployments/
 │   ├── artifacts.yaml         # artifact StatefulSet (1 replica) + PVC + Service + SA
 │   ├── ingest-cronjob.yaml    # periodic POST /ingest to refresh the catalog
 │   ├── networkpolicy.yaml     # optional default-deny-ingress + allows
+│   ├── components/
+│   │   ├── observability/    # in-cluster Grafana LGTM stack (tcab-lgtm) — the default OTLP collector
+│   │   └── postgres/         # managed-PostgreSQL conversion of backend + auth (azure-* overlays)
 │   ├── overlays/
 │   │   ├── prod/              # production overlay (registry pinned)
 │   │   ├── staging/           # staging overlay (tcab-staging, TCAB_ENV=staging)
+│   │   ├── azure-prod/        # prod on managed PostgreSQL (postgres + observability components)
+│   │   ├── azure-staging/     # staging on managed PostgreSQL
 │   │   └── local/             # k3d development mirror (driven by ../local/Makefile)
 │   └── README.md              # apply order + per-environment notes
 ├── backups/
 │   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
 ├── telemetry/
-│   └── otel-collector.yaml    # example OTel Collector config
+│   └── otel-collector.yaml    # example OTel Collector config (external-collector path; the default is in-cluster LGTM — see k8s/components/observability)
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example

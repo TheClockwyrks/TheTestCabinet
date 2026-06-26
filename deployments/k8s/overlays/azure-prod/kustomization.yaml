@@ -22,11 +22,16 @@ resources:
 
 components:
   - ../../components/postgres
+  # The in-cluster Grafana LGTM stack. Listed AFTER postgres so it layers onto the
+  # backend/auth Deployments postgres swaps in; patch-otel.yaml below sets each
+  # workload's OTEL_EXPORTER_OTLP_ENDPOINT to the `tcab-lgtm` Service it adds.
+  - ../../components/observability
 
 # TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
 # transformer can't reach it — patch it to match the driver image.
 patches:
   - path: patch-dispatcher-driver-image.yaml
+  - path: patch-otel.yaml
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.

@@ -1,6 +1,8 @@
-# Retag TCAB_ENV from the base's `prod` to `staging` on every workload. Each doc is
-# a strategic-merge patch keyed by the workload name + its container name; kustomize
-# merges the env list by the `name` field, so only TCAB_ENV is touched.
+# Retag TCAB_ENV from the base's `prod` to `staging` on every workload, and point
+# each at the in-cluster Grafana LGTM collector (the observability component) by
+# setting OTEL_EXPORTER_OTLP_ENDPOINT. Each doc is a strategic-merge patch keyed by
+# the workload name + its container name; kustomize merges the env list by the
+# `name` field, so only the named vars are touched.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -15,6 +17,8 @@ spec:
           env:
             - name: TCAB_ENV
               value: "staging"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
             - name: TCAB_ARTIFACTS_PUBLIC_URL
               value: "http://tcab-artifacts:8790"
             - name: TCAB_ARENA_PUBLIC_URL
@@ -34,6 +38,8 @@ spec:
           env:
             - name: TCAB_ENV
               value: "staging"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -49,6 +55,8 @@ spec:
           env:
             - name: TCAB_ENV
               value: "staging"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -64,6 +72,8 @@ spec:
           env:
             - name: TCAB_ENV
               value: "staging"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -79,6 +89,8 @@ spec:
           env:
             - name: TCAB_ENV
               value: "staging"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
             # The base names sandbox pods in tcab-prod; retag to the staging namespace.
             - name: TCAB_K8S_NAMESPACE
               value: "tcab-staging"

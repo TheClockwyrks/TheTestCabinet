@@ -36,6 +36,8 @@
 //! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits for a sandbox pod to reach `Running`. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
+//! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
+//! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
 //!
 //! `TCAB_K8S_POD_IP` is **not** taken from the environment here: the driver's own
 //! pod IP is set on the `Job` via the downward API (`fieldRef: status.podIP`), so
@@ -43,11 +45,11 @@
 
 use std::time::Duration;
 
-/// The set of sandbox-pod (`TCAB_K8S_RUN_*` and siblings) plus artifact-service
-/// (`TCAB_ARTIFACTS_URL`) variables the dispatcher passes through into each driver
-/// `Job`'s env verbatim. Listed once so the Job builder and the config doc stay in
-/// sync; the dispatcher never interprets their values, only forwards the ones that
-/// are set.
+/// The variables the dispatcher passes through into each driver `Job`'s env
+/// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the artifact
+/// service URL, and the observability vars. Listed once so the Job builder and the
+/// config doc stay in sync; the dispatcher never interprets their values, only
+/// forwards the ones that are set.
 pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_NAMESPACE",
     "TCAB_K8S_RUN_SERVICE_ACCOUNT",
@@ -62,6 +64,16 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // produced run tree to this artifact service before reporting terminal status.
     // Unset (a single-box dev cluster with no artifact service) skips the upload.
     "TCAB_ARTIFACTS_URL",
+    // Observability: forwarded so each per-run driver Job exports its run/driver
+    // spans (service name `tcab-driver`) to the same OTLP collector — the in-cluster
+    // Grafana LGTM stack — as the long-lived services, tagged with the same
+    // environment. `OTEL_SERVICE_NAME` is deliberately NOT forwarded: the driver
+    // must keep its own seeded service name, not inherit the dispatcher's. All are
+    // "forward only if set", so an export-disabled deployment forwards nothing.
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "TCAB_ENV",
 ];
 
 /// A dispatcher configuration error: a required variable is unset or unusable.

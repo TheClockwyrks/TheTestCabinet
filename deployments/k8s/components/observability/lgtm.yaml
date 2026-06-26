@@ -1,0 +1,108 @@
+# In-cluster observability stack — the Grafana LGTM all-in-one
+# (grafana/otel-lgtm: an OpenTelemetry collector + Tempo (traces), Mimir (metrics),
+# Loki (logs), and Grafana to view them). It runs INSIDE the cluster so the
+# observability plane is part of the deployment itself rather than the devcontainer
+# or a managed metrics backend: every service exports OTLP to the `tcab-lgtm`
+# Service, and operators read Grafana over a `kubectl port-forward`.
+#
+# This is the SAME image the devcontainer used to ship in its docker-compose, so
+# local (k3d), staging, and prod observe telemetry through one identical stack — the
+# only difference is the namespace it runs in.
+#
+# It is a DATA SINK, not a service of the run topology: it emits no telemetry of its
+# own and is deliberately NOT labelled `app.kubernetes.io/part-of: test-cabinet`, so
+# the overlays' OTEL-endpoint env patches (which set the exporter on the test-cabinet
+# workloads) never point the collector at itself. It needs NO Kubernetes API access —
+# it only receives OTLP and serves Grafana — so it runs under its own
+# zero-permission ServiceAccount.
+#
+# Telemetry is still OPT-IN: standing this stack up does nothing until a workload's
+# OTEL_EXPORTER_OTLP_ENDPOINT points at it, which the overlays do when they include
+# the observability component. See development/observability.md + deployment/telemetry.md.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-lgtm
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: grafana
+      port: 3000
+      targetPort: 3000
+  # ClusterIP only — the workloads export to it over the cluster network, and
+  # operators reach Grafana via `kubectl port-forward`; never a public Ingress.
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+spec:
+  serviceName: tcab-lgtm
+  # One replica: the all-in-one image is a single process with local stores, not a
+  # horizontally-scalable cluster. Scale the pod's resources, not the replica count.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-lgtm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-lgtm
+        # NOTE: intentionally NOT `app.kubernetes.io/part-of: test-cabinet` — see
+        # the header. The collector consumes telemetry; it must not be retargeted
+        # at itself by the OTEL-endpoint env patches.
+    spec:
+      serviceAccountName: tcab-lgtm # no API access — its own identity only
+      containers:
+        - name: lgtm
+          image: grafana/otel-lgtm:latest # pin a :<version> tag in a real deployment
+          ports:
+            - containerPort: 4317 # OTLP/gRPC
+            - containerPort: 4318 # OTLP/HTTP
+            - containerPort: 3000 # Grafana UI
+          volumeMounts:
+            # Persist Grafana's dashboards/state across restarts. The telemetry
+            # stores (Tempo/Mimir/Loki) are intentionally ephemeral — they live on
+            # the pod's own disk and are disposable (see deployment/backups.md).
+            - name: grafana
+              mountPath: /data/grafana
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            # The all-in-one stack bundles a collector + three TSDBs + Grafana, so
+            # give it real headroom; tune against your telemetry volume.
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: grafana
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+        # storageClassName: <your-block-storage-class>

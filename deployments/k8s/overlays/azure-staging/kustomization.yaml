@@ -23,6 +23,10 @@ resources:
 
 components:
   - ../../components/postgres
+  # The in-cluster Grafana LGTM stack. Listed AFTER postgres so it layers onto the
+  # backend/auth Deployments postgres swaps in; patch-env.yaml below sets each
+  # workload's OTEL_EXPORTER_OTLP_ENDPOINT to the `tcab-lgtm` Service it adds.
+  - ../../components/observability
 
 # Retag TCAB_ENV to staging (and the dispatcher's sandbox namespace) and point the
 # driver-image env at the staging tag — the same retargeting overlays/staging does,

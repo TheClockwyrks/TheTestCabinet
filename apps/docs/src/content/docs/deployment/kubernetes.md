@@ -370,6 +370,24 @@ except the driver's `exec`/preview connections, which Kubernetes routes over the
 API server and pod network respectively; their egress is the model APIs and
 package registries a run needs.
 
+## Observability (in-cluster Grafana LGTM)
+
+The default observability plane runs **in the cluster** rather than in a managed
+metrics backend: the
+[`components/observability`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/observability)
+kustomize component adds a `tcab-lgtm` `StatefulSet` + `ClusterIP` `Service` (the
+[`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) all-in-one
+collector + Tempo/Mimir/Loki + Grafana, with a `PersistentVolumeClaim` for
+Grafana's state) and a `NetworkPolicy` admitting the services' and driver Jobs'
+OTLP through the base default-deny. All four cloud overlays
+(`overlays/{staging,prod,azure-staging,azure-prod}`) include it and set every
+workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318` via their env
+patch — the same stack local development runs, so staging/prod observability
+mirrors local exactly. It carries no public Ingress; reach Grafana with
+`kubectl port-forward svc/tcab-lgtm 3000:3000`. To send telemetry to Grafana
+Cloud or an external collector instead, drop the component and set the endpoint to
+that collector — see [Telemetry](/deployment/telemetry/).
+
 ## Per-environment differences
 
 Staging and prod are the same base manifests; keep them that way so staging
@@ -395,4 +413,7 @@ Two cross-cutting concerns have their own pages:
   backend streams its volume to object storage with a Litestream sidecar, while
   managed PostgreSQL hands you provider-managed point-in-time restore.
 - **[Telemetry](/deployment/telemetry/)** — choosing and wiring an OTLP collector
-  for staging and prod, tagged by `TCAB_ENV`. Enable it in both environments.
+  for staging and prod, tagged by `TCAB_ENV`. Enable it in both environments. The
+  default is the in-cluster Grafana LGTM stack (the
+  [`components/observability`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/observability)
+  component), included by all four cloud overlays; see below.

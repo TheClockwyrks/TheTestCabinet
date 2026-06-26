@@ -26,6 +26,15 @@ namespace: tcab-local
 resources:
   - ../../base
 
+# Stand the in-cluster Grafana LGTM stack up alongside the run topology (it replaces
+# the LGTM the devcontainer's docker-compose used to ship). The patch-*.yaml files
+# below point every workload's OTEL_EXPORTER_OTLP_ENDPOINT at its `tcab-lgtm` Service,
+# so a `make local-up` cluster observes its own traces/metrics/logs. Reach Grafana
+# (and the OTLP port, for host/devcontainer processes) with
+# `make -C deployments/local local-grafana`.
+components:
+  - ../../components/observability
+
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
 # uses the imported image instead of trying to pull from a registry.
@@ -130,3 +139,15 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: tcab-allow-driver-from-sandbox
+  # The observability component's allow-lgtm policy is likewise inert on k3d's CNI;
+  # drop it too rather than ship a dead object (the LGTM Service is still reachable —
+  # nothing enforces the default-deny it would punch through).
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-lgtm-from-producers
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-lgtm-from-producers

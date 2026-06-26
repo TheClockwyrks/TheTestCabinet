@@ -56,27 +56,34 @@ default. Either:
   host's Podman/Docker socket) — the container user is already added to the
   `DOCKER_GID` group for this case.
 
-## Local observability (opt-in)
+## Local observability
 
-The compose file ships an opt-in `lgtm` service running the
-[`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) all-in-one
-stack (OpenTelemetry collector + Tempo/Mimir/Loki + Grafana). It lets you
-inspect the traces, metrics, and logs the workspace binaries emit during
-development. It does nothing until a process points
-`OTEL_EXPORTER_OTLP_ENDPOINT` at it, and it only starts the next time you
-**Dev Containers: Rebuild Container**.
+The Grafana LGTM stack
+([`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm): an
+OpenTelemetry collector + Tempo/Mimir/Loki + Grafana) **no longer runs in this
+devcontainer.** It now runs **in the cluster** as the local k3d overlay's
+`components/observability` — the same stack staging and prod use — so local
+development observes telemetry through exactly what a deployment runs. The
+services that run in the cluster export to it automatically; nothing in the
+devcontainer needs configuring.
 
-After a rebuild, open the **Grafana UI at <http://localhost:3000>** (anonymous
-admin — no login). To start exporting, uncomment `OTEL_EXPORTER_OTLP_ENDPOINT`
-in the relevant `.env.*` file, choosing the address by where the process runs:
+Bring the cluster up and observe it:
 
-- **Inside the container** (backend, web console): `http://lgtm:4318`.
-- **On the host** (`tcab` CLI, desktop app, browser): `http://localhost:4318`.
+```sh
+make -C deployments/local local-up        # stands up the stack (incl. LGTM) on k3d
+make -C deployments/local local-grafana   # forward Grafana + the OTLP collector to localhost
+```
 
-The Rust binaries and the browser export over OTLP **HTTP/protobuf** (`:4318`);
-the gRPC port (`:4317`) is published too if you wire up a gRPC exporter. See the
+`local-grafana` opens **Grafana at <http://localhost:3000>** (anonymous admin —
+no login) and forwards the OTLP collector to `localhost:4318` (HTTP/protobuf) and
+`:4317` (gRPC). A binary you run **outside** the cluster — a `cargo run` here in
+the devcontainer, a host-side `tcab` CLI or desktop app, or the browser web
+console — exports to the in-cluster stack by pointing its
+`OTEL_EXPORTER_OTLP_ENDPOINT` (`VITE_OTEL_EXPORTER_OTLP_ENDPOINT` for the
+browser) at `http://localhost:4318` while `local-grafana` is running. The Rust
+binaries and the browser export over OTLP **HTTP/protobuf** (`:4318`). See the
 per-process `.env.*.example` files at the repo root (and `apps/web/.env.example`
-for the web console) for the exact variables.
+for the web console), and [Observability](https://docs.testcabinet.ai/development/observability/).
 
 ## SSH agent forwarding
 
