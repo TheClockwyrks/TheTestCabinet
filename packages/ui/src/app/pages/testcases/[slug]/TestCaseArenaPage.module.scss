@@ -1,5 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
+@use "../../../styles/forms" as f;
 
 // The Arena tab: stacked quick-match and tournament panels, each modeled on the
 // new-run form's field/select/button layout.
@@ -45,9 +46,11 @@
   font-family: var(--ttc-font);
   font-size: t.$font-md;
   color: t.$color-text;
-  background: s.$panel-bg;
+  background-color: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
 
   &:focus {
     outline: none;

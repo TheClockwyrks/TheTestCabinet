@@ -1,5 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
+@use "../../../styles/forms" as f;
 
 // The section heading ("Proof matches"). A tight margin keeps the heading close to
 // the matches it introduces rather than floating in whitespace above them.
@@ -196,9 +197,11 @@
 .speed {
   padding: t.$space-xs t.$space-sm;
   color: t.$color-text;
-  background: t.$color-surface-2;
+  background-color: t.$color-surface-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
 }
 
 // The decided-result line beneath the canvas.

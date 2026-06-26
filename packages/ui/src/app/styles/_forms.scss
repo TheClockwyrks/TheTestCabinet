@@ -1,0 +1,35 @@
+@use "tokens" as t;
+
+// Single source of truth for the `<select>` dropdown appearance.
+//
+// A native `<select>` is one of the few controls a browser still draws with the
+// host platform's own chrome, and the result diverges hard across the engines we
+// ship in: macOS WebKit (the Tauri desktop shell) renders the rounded Aqua pill
+// with a system-blue chevron, while Chromium (the web console) renders a flat
+// box. Stripping the native appearance and drawing our own chevron is the only
+// way to make a dropdown read identically on the desktop app and the web —
+// otherwise the same screen looks like two different products.
+//
+// Apply this through the mixin so every dropdown stays in lockstep; pair it with
+// the surface/border/radius the field already sets (the mixin deliberately owns
+// only the appearance reset, the chevron, and the room the chevron needs).
+@mixin select-control {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  // Custom chevron, encoded inline so it ships in the CSS with no extra request.
+  // The stroke (`%23b69ad0`) mirrors `--ttc-muted`; keep the two in sync.
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23b69ad0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right t.$space-sm center;
+  background-size: 0.75rem;
+
+  // Reserve room for the chevron so a long option label never runs under it.
+  padding-right: calc(#{t.$space-sm} * 2 + 0.75rem);
+
+  // Legacy Edge/IE drew its own arrow on top of ours — suppress it.
+  &::-ms-expand {
+    display: none;
+  }
+}
