@@ -434,31 +434,100 @@ fn stage_overlay(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(overlay)
 }
 
-/// Create the k3d cluster if it does not already exist (idempotent across launches),
-/// mapping the staged checkout to `/checkout` on the node, then write a dedicated
-/// kubeconfig the shell uses for every `kubectl` call (never touching the user's).
+/// Bring the app's k3d cluster up and write the dedicated kubeconfig the shell uses
+/// for every `kubectl` call (never touching the user's).
+///
+/// Robust to a cluster left behind by a previous launch that was closed, crashed, or
+/// force-quit mid-bootstrap — the common case being a cluster still *registered* with
+/// k3d but whose server container is stopped, so `k3d kubeconfig get` succeeds while
+/// every actual API call is connection-refused. A leftover is **started** if it
+/// merely stopped, and **recreated** if it can't be brought up (a throwaway cluster
+/// is safe to delete). A final reachability probe catches a cluster that reports up
+/// but whose API never answers, recreating it once from scratch.
 fn ensure_cluster(
     app: &AppHandle,
     runtime: &Runtime,
     checkout: &Path,
     kubeconfig: &Path,
 ) -> Result<(), String> {
-    if !cluster_exists(runtime)? {
-        let volume = format!("{}:/checkout@server:0", checkout.display());
-        run_streaming(
-            app,
-            k3d(runtime)
-                .args(["cluster", "create", CLUSTER_NAME, "--volume"])
-                .arg(&volume)
-                .arg("--wait"),
-        )
-        .map_err(|e| format!("creating the local cluster: {e}"))?;
+    if cluster_exists(runtime)? {
+        // Stopped → start brings it back; broken → delete so the create below
+        // rebuilds it (start is a no-op for an already-running cluster).
+        if start_cluster(app, runtime).is_err() {
+            delete_cluster(runtime)?;
+        }
     }
+    if !cluster_exists(runtime)? {
+        create_cluster(app, runtime, checkout)?;
+    }
+    write_kubeconfig(runtime, kubeconfig)?;
+
+    // A started/created cluster can still refuse connections — briefly while the API
+    // server settles, or permanently if a prior create was interrupted partway. Wait
+    // it out; if it never answers, recreate once from scratch and wait again (and let
+    // that failure surface).
+    if wait_api_reachable(kubeconfig).is_err() {
+        delete_cluster(runtime)?;
+        create_cluster(app, runtime, checkout)?;
+        write_kubeconfig(runtime, kubeconfig)?;
+        wait_api_reachable(kubeconfig)?;
+    }
+    Ok(())
+}
+
+/// Create the cluster from scratch, mapping the staged checkout to `/checkout` on the
+/// server node. `--wait` (bounded) holds until the server node is ready.
+fn create_cluster(app: &AppHandle, runtime: &Runtime, checkout: &Path) -> Result<(), String> {
+    let volume = format!("{}:/checkout@server:0", checkout.display());
+    run_streaming(
+        app,
+        k3d(runtime)
+            .args(["cluster", "create", CLUSTER_NAME, "--volume"])
+            .arg(&volume)
+            .args(["--wait", "--timeout", "300s"]),
+    )
+    .map_err(|e| format!("creating the local cluster: {e}"))
+}
+
+/// Start an existing (stopped) cluster, waiting until its node is ready. Succeeds
+/// quickly when the cluster is already running.
+fn start_cluster(app: &AppHandle, runtime: &Runtime) -> Result<(), String> {
+    run_streaming(
+        app,
+        k3d(runtime)
+            .args(["cluster", "start", CLUSTER_NAME])
+            .args(["--wait", "--timeout", "300s"]),
+    )
+    .map_err(|e| format!("starting the local cluster: {e}"))
+}
+
+/// Delete the cluster and everything in it. Used to clear a leftover that can't be
+/// brought up before recreating it (the cluster is throwaway).
+fn delete_cluster(runtime: &Runtime) -> Result<(), String> {
+    run_quiet(k3d(runtime).args(["cluster", "delete", CLUSTER_NAME]))
+        .map_err(|e| format!("removing the unhealthy local cluster: {e}"))
+}
+
+/// Read the cluster's kubeconfig from k3d and write it to the shell's dedicated path.
+fn write_kubeconfig(runtime: &Runtime, kubeconfig: &Path) -> Result<(), String> {
     let out = run(k3d(runtime).args(["kubeconfig", "get", CLUSTER_NAME]))
         .map_err(|e| format!("reading the cluster kubeconfig: {e}"))?;
     std::fs::write(kubeconfig, &out)
-        .map_err(|e| format!("writing the kubeconfig to {}: {e}", kubeconfig.display()))?;
-    Ok(())
+        .map_err(|e| format!("writing the kubeconfig to {}: {e}", kubeconfig.display()))
+}
+
+/// Poll the cluster's API server until it answers or a bound elapses. `--wait` on
+/// create/start usually means this passes on the first probe; the loop covers the
+/// brief settle after a start and distinguishes a genuinely dead API (so the caller
+/// can recreate) from a slow one.
+fn wait_api_reachable(kubeconfig: &Path) -> Result<(), String> {
+    for _ in 0..30 {
+        if run_quiet(kubectl(kubeconfig).arg("get").arg("--raw=/healthz")).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    Err("the cluster's API server did not become reachable".to_string())
 }
 
 /// Whether the app's k3d cluster already exists (parsed from `k3d cluster list`).
