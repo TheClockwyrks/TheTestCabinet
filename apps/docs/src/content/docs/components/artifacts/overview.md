@@ -48,6 +48,14 @@ The artifact service has **no** Kubernetes API access — it only talks HTTP.
   posture as the backend, which already serves a run's record and its *published*
   media to a signed-out reader. (Restoring a real read gate would mean cookie-based
   session auth; a bearer token here only made the media unloadable in a browser.)
+- **Deletes** (from the backend, when a run is deleted) — `DELETE /runs/{id}/artifacts`,
+  gated by the **shared control-plane service token** (`TCAB_BACKEND_SERVICE_TOKEN`,
+  the same secret the backend and dispatcher share). Only a trusted control-plane
+  caller can prune a tree. When the token is unset the route is **disabled** (it
+  rejects every caller), which is the safe default for a dev or single-box setup
+  that never deletes through the data plane. The backend issues this best-effort
+  when a run is deleted (see the backend's
+  [`DELETE /runs/{id}`](/components/backend/api/)).
 
 Published runs' media are public anyway; the pre-publish window is private by the
 network boundary rather than a per-read token.

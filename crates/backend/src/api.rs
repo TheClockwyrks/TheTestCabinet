@@ -52,6 +52,10 @@ pub struct AppState {
     pub relay: Relay,
     /// The resolved configuration (checkout path for ingest, etc.).
     pub config: Arc<Config>,
+    /// The HTTP client for the backend's own outbound calls — today the best-effort
+    /// prune of a deleted run's tree in the artifact service (see
+    /// [`crate::artifacts`]).
+    pub http: reqwest::Client,
 }
 
 /// The maximum body size, in bytes, accepted on the run-media and tournament-replay

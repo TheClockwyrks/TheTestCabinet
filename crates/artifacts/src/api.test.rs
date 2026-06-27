@@ -67,16 +67,29 @@ async fn spawn_stub() -> String {
     format!("http://{addr}")
 }
 
+/// The shared control-plane service token the delete tests present.
+const SERVICE_TOKEN: &str = "service-secret";
+
 /// Build the artifact router over a fresh temp-dir store pointed at `stub_url` for
-/// both auth upstreams. Returns the router and the store (whose temp dir must
-/// outlive the test).
+/// upload auth, with **deletion disabled** (no service token). Returns the router
+/// and the store (whose temp dir must outlive the test).
 async fn app(stub_url: &str) -> (Router, LocalFsStore, TempDir) {
+    app_with_service_token(stub_url, None).await
+}
+
+/// As [`app`], but with the delete route gated on `service_token` — `Some` enables
+/// deletion for callers presenting that token, `None` disables it.
+async fn app_with_service_token(
+    stub_url: &str,
+    service_token: Option<&str>,
+) -> (Router, LocalFsStore, TempDir) {
     let dir = TempDir::new().unwrap();
     let store = LocalFsStore::new(dir.path()).unwrap();
     let state = AppState {
         store: Arc::new(store.clone()),
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
+        service_token: service_token.map(|t| Arc::new(t.to_string())),
     };
     (router(state), store, dir)
 }
@@ -287,4 +300,93 @@ async fn uploading_without_the_job_id_header_is_rejected() {
         !store.run_dir("run-4").exists(),
         "a rejected upload stored nothing"
     );
+}
+
+/// Upload a stored tree under `run_id` so a delete test has something to remove.
+async fn seed_upload(app: &Router, run_id: &str) {
+    let upload = Request::builder()
+        .method("POST")
+        .uri(format!("/runs/{run_id}/artifacts"))
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(build_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+}
+
+fn delete_request(run_id: &str, token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("DELETE")
+        .uri(format!("/runs/{run_id}/artifacts"));
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn deleting_with_the_service_token_removes_the_tree() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-del").await;
+    assert!(store.run_dir("run-del").exists());
+
+    let response = app
+        .clone()
+        .oneshot(delete_request("run-del", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert!(
+        !store.run_dir("run-del").exists(),
+        "the run's tree was removed"
+    );
+
+    // Idempotent: deleting again (no tree now) still succeeds.
+    let response = app
+        .clone()
+        .oneshot(delete_request("run-del", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn deleting_without_or_with_a_wrong_token_is_rejected_and_keeps_the_tree() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-keep").await;
+
+    // No token, then a wrong token → 401 both times, tree untouched.
+    for token in [None, Some("not-the-secret")] {
+        let response = app
+            .clone()
+            .oneshot(delete_request("run-keep", token))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    assert!(
+        store.run_dir("run-keep").exists(),
+        "a rejected delete left the tree in place"
+    );
+}
+
+#[tokio::test]
+async fn deleting_when_no_service_token_is_configured_is_disabled() {
+    let stub = spawn_stub().await;
+    // Deletion disabled (no service token): even a bearer token is rejected.
+    let (app, store, _dir) = app_with_service_token(&stub, None).await;
+    seed_upload(&app, "run-disabled").await;
+
+    let response = app
+        .clone()
+        .oneshot(delete_request("run-disabled", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(store.run_dir("run-disabled").exists());
 }

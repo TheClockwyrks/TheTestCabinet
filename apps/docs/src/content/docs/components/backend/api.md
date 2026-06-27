@@ -299,6 +299,14 @@ an unpublished run can be removed. Because the run was not public, no snapshot
 refresh is needed. `404` if unknown. Requires a bearer token. The response reports
 the run id and `deleted: true`.
 
+A run's playable build and recorded logs live in the separate
+[artifact service](/components/artifacts/overview/), which the backend asks to
+prune the run's tree too (`DELETE /runs/{id}/artifacts`, presenting the shared
+service token). That prune is **best-effort**: the record is already gone, so a
+failure is logged and the unreferenced tree is left for a later sweep — it never
+fails the delete. It runs only when the artifact service URL and the service token
+are both configured.
+
 The consoles (web and Tauri) expose this as a **Delete run** control on the run
 detail page, shown only for an unpublished run the active worker produced.
 

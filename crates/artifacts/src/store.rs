@@ -53,6 +53,12 @@ pub trait ArtifactStore: Send + Sync {
     /// Returns the path whether or not the run has been uploaded; the resolvers map
     /// a missing tree to a `404`.
     fn run_dir(&self, id: &str) -> PathBuf;
+
+    /// Remove run `id`'s entire artifact tree (`<root>/<id>/`). Idempotent: a run
+    /// that was never uploaded (no directory) is treated as already gone. Called
+    /// when the control plane deletes a run, so the data plane drops its build and
+    /// media too rather than leaving an orphaned tree behind.
+    fn delete_run(&self, id: &str) -> Result<(), StoreError>;
 }
 
 /// A [`LocalFsStore`] convenience: the implementation directory of a run
@@ -121,6 +127,29 @@ impl ArtifactStore for LocalFsStore {
     fn run_dir(&self, id: &str) -> PathBuf {
         self.root.join(id)
     }
+
+    fn delete_run(&self, id: &str) -> Result<(), StoreError> {
+        // `delete_run` removes a whole directory, so — unlike the read paths, which
+        // hand `run_dir` to the canonicalizing core resolvers — guard the id here:
+        // an id that is not a single safe path segment (`.`, `..`, or one carrying a
+        // separator) could escape the store root and delete an unrelated tree.
+        if !is_safe_id(id) {
+            return Err(StoreError::Traversal(id.to_string()));
+        }
+        match std::fs::remove_dir_all(self.run_dir(id)) {
+            Ok(()) => Ok(()),
+            // A run with no stored tree is already in the desired state.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err.into()),
+        }
+    }
+}
+
+/// Whether `id` is a single safe path segment usable as a store key: non-empty,
+/// neither `.` nor `..`, and free of any path separator or NUL. A run id is a
+/// UUID, so this only ever rejects a malformed or hostile path.
+fn is_safe_id(id: &str) -> bool {
+    !id.is_empty() && id != "." && id != ".." && !id.contains(['/', '\\', '\0'])
 }
 
 /// Join a tar entry's relative `path` onto `base`, refusing anything that would

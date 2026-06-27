@@ -72,6 +72,53 @@ fn store_run_replaces_a_prior_tree() {
 }
 
 #[test]
+fn delete_run_removes_the_tree_and_is_idempotent() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    store
+        .store_run(
+            "r1",
+            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+        )
+        .unwrap();
+    // A second run's tree must survive the delete of the first.
+    store
+        .store_run(
+            "r2",
+            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+        )
+        .unwrap();
+
+    store.delete_run("r1").unwrap();
+    assert!(!store.run_dir("r1").exists(), "the run's tree is gone");
+    // Deleting a run with no tree is a no-op, not an error.
+    store.delete_run("r1").unwrap();
+    assert!(
+        store.run_dir("r2").exists(),
+        "an unrelated run is untouched"
+    );
+}
+
+#[test]
+fn delete_run_refuses_an_unsafe_id() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    // A canary directory beside the store root must survive a traversal attempt.
+    let sibling = root.path().parent().unwrap().join("delete-run-canary");
+    std::fs::create_dir_all(&sibling).unwrap();
+
+    for bad in ["..", ".", "", "a/b", "../escape"] {
+        assert!(
+            matches!(store.delete_run(bad), Err(StoreError::Traversal(_))),
+            "id {bad:?} must be refused as traversal"
+        );
+    }
+    assert!(sibling.exists(), "no traversal escaped the store root");
+    std::fs::remove_dir_all(&sibling).ok();
+}
+
+#[test]
 fn safe_join_keeps_normal_entries_inside_the_base() {
     let base = Path::new("/store/run-1");
     assert_eq!(

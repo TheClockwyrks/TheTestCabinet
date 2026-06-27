@@ -19,6 +19,7 @@
 //! trusts every caller that can reach it.
 
 pub mod api;
+pub mod artifacts;
 pub mod auth;
 pub mod config;
 pub mod db;
@@ -131,6 +132,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         auth,
         relay: crate::relay::Relay::new(),
         config: Arc::new(config),
+        http: reqwest::Client::new(),
     };
     let router = api::router(state);
 

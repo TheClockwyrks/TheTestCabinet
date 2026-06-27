@@ -61,6 +61,10 @@ pub struct AppState {
     pub backend_url: Arc<String>,
     /// The HTTP client the upload-auth verify call uses.
     pub http: reqwest::Client,
+    /// The shared control-plane service token a run-tree delete must present, or
+    /// `None` when deletion is disabled (the delete route then rejects every
+    /// caller). See [`crate::auth::verify_service_token`].
+    pub service_token: Option<Arc<String>>,
 }
 
 /// Build the artifact service's Axum router. The upload route carries its own
@@ -70,10 +74,14 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
-        // Upload a finished run's collected tree (driver → service, per-job token).
+        // Upload a finished run's collected tree (driver → service, per-job token),
+        // or delete it (backend → service, shared control-plane service token) when
+        // the control plane deletes the run.
         .route(
             "/runs/{id}/artifacts",
-            post(upload).layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES)),
+            post(upload)
+                .delete(delete)
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES)),
         )
         // Serve the run's playable build and media (reviewer → service, ungated:
         // browser-loaded media carries no Authorization header). These mirror the
@@ -166,6 +174,38 @@ async fn upload(
 
     tracing::info!(run.id = %id, "stored run artifacts");
     Ok(StatusCode::CREATED.into_response())
+}
+
+/// `DELETE /runs/{id}/artifacts` — remove a run's stored tree (build + media).
+///
+/// `{id}` is the **run/record id** (the store key). Unlike the ungated reads, a
+/// delete is destructive, so it is gated by the shared control-plane service token
+/// (`TCAB_BACKEND_SERVICE_TOKEN`): only the backend, pruning a deleted run, may
+/// call it. With no token configured the service has deletion disabled and rejects
+/// every caller (`401`). Idempotent: deleting a run with no stored tree still
+/// succeeds. `204 No Content` on success; `400` for an unsafe id.
+#[tracing::instrument(name = "artifacts.delete", skip(state, headers), fields(run.id = %id), err(Debug))]
+async fn delete(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    crate::auth::verify_service_token(
+        &headers,
+        state.service_token.as_deref().map(String::as_str),
+    )?;
+
+    // `delete_run` is blocking (it removes a directory tree); run it off the async
+    // runtime so a large tree does not stall other connections.
+    let store = state.store.clone();
+    let id_for_task = id.clone();
+    tokio::task::spawn_blocking(move || store.delete_run(&id_for_task))
+        .await
+        .map_err(|err| ApiError::internal(format!("artifact delete task failed: {err}")))?
+        .map_err(map_store_error)?;
+
+    tracing::info!(run.id = %id, "deleted run artifacts");
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// `GET /runs/{id}/build` — serve a produced run's playable build at its root (the

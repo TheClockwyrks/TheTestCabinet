@@ -70,6 +70,18 @@ spec:
             # service needs no auth-service URL.)
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
+            # The shared control-plane service token a run-tree delete must present.
+            # The backend presents this when it prunes a deleted run's tree, so it
+            # must equal the backend's own TCAB_BACKEND_SERVICE_TOKEN — sourced from
+            # the same secret (the backend is the presenter). Optional: when the
+            # secret/key is absent the delete route is disabled (it rejects every
+            # caller) and uploads/reads are unaffected.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
+                  optional: true
             - name: TCAB_ENV
               value: "prod"
           volumeMounts:

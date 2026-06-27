@@ -7,6 +7,7 @@
 //! | `TCAB_ARTIFACTS_BIND` | no | Address the Axum server binds. | `0.0.0.0:8790` |
 //! | `TCAB_ARTIFACTS_ROOT` | no | The [`LocalFsStore`](crate::store::LocalFsStore) root dir (a PVC in a deployment). | `./tcab-artifacts` |
 //! | `TCAB_BACKEND_URL` | no | The backend the service forwards a driver's per-job token to for upload auth (the backend is the token authority). | `http://127.0.0.1:8787` |
+//! | `TCAB_BACKEND_SERVICE_TOKEN` | no | The shared control-plane service token a `DELETE /runs/{id}/artifacts` must present (the backend prunes a deleted run's tree). Unset ⇒ deletion is disabled (the route rejects every caller). | _none_ |
 //!
 //! Reads (a reviewer's build/media pulls) are ungated — the console loads them as
 //! browser media that cannot carry a token — so the service needs no auth-service
@@ -44,6 +45,13 @@ pub struct Config {
     /// (`POST /jobs/{id}/verify-token`) to authenticate an upload; the backend is
     /// the token authority.
     pub backend_url: String,
+    /// The shared control-plane service token (`TCAB_BACKEND_SERVICE_TOKEN`) a
+    /// run-tree delete must present. It is the same secret the backend and
+    /// dispatcher share, so only a trusted control-plane caller (the backend, when
+    /// a run is deleted) can prune a tree. `None` disables the delete route
+    /// entirely — it rejects every caller — which is the safe default for a dev or
+    /// single-box setup that never deletes through the data plane.
+    pub service_token: Option<String>,
 }
 
 impl Config {
@@ -56,6 +64,7 @@ impl Config {
             backend_url: env_or("TCAB_BACKEND_URL", DEFAULT_BACKEND_URL)
                 .trim_end_matches('/')
                 .to_string(),
+            service_token: nonempty("TCAB_BACKEND_SERVICE_TOKEN"),
         }
     }
 }
@@ -66,4 +75,9 @@ fn env_or(key: &str, default: &str) -> String {
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| default.to_string())
+}
+
+/// Read a non-empty environment variable, returning `None` when unset or empty.
+fn nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.is_empty())
 }

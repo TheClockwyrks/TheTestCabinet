@@ -235,6 +235,18 @@ pub async fn delete(
         tracing::warn!("deleted run {id} but failed to remove its media: {err}");
     }
 
+    // A run's playable build and recorded logs live in the separate artifact
+    // service; ask it to prune the tree too. Best-effort (see
+    // [`crate::artifacts`]): a failure is logged, never surfaced — the record is
+    // already gone, so the run has vanished from every listing regardless.
+    crate::artifacts::delete_run_tree(
+        &state.http,
+        state.config.artifacts_url.as_deref(),
+        state.config.service_token.as_deref(),
+        &id,
+    )
+    .await;
+
     // Only an unpublished run can be deleted, so the run was not in the public
     // snapshot — no refresh is queued.
     Ok((StatusCode::OK, Json(DeleteResponse { id, deleted: true })).into_response())

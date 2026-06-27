@@ -64,6 +64,40 @@ pub async fn verify_job_token(
     }
 }
 
+/// Authorize a control-plane **delete** of a run's tree: the caller must present
+/// the shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the backend holds.
+/// Unlike an upload (a per-job token verified against the backend), a delete is
+/// the backend acting on its own authority, so it is gated by the shared secret
+/// directly. `expected` is `None` when the service has no token configured, in
+/// which case deletion is disabled and every caller is rejected.
+pub fn verify_service_token(headers: &HeaderMap, expected: Option<&str>) -> Result<(), ApiError> {
+    let expected = expected.ok_or_else(|| {
+        ApiError::unauthorized("run-tree deletion is not enabled on this service")
+    })?;
+    let presented =
+        bearer(headers).ok_or_else(|| ApiError::unauthorized("missing service token"))?;
+    if token_matches(&presented, expected) {
+        Ok(())
+    } else {
+        Err(ApiError::unauthorized("invalid service token"))
+    }
+}
+
+/// Constant-time string equality, so comparing a presented token against the
+/// expected one leaks nothing about it through timing. A length mismatch is an
+/// immediate non-match.
+fn token_matches(presented: &str, expected: &str) -> bool {
+    let (presented, expected) = (presented.as_bytes(), expected.as_bytes());
+    if presented.len() != expected.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in presented.iter().zip(expected.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
 /// Extract the bearer token from an `Authorization: Bearer <token>` header,
 /// trimming surrounding whitespace. `None` when the header is absent or not a
 /// non-empty bearer credential.
