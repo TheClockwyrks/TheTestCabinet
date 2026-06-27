@@ -250,6 +250,42 @@ async fn all_published_returns_only_published_runs_newest_first() {
     assert_eq!(db.run_count().await.unwrap(), 2);
 }
 
+#[tokio::test]
+async fn delete_run_removes_an_unpublished_run_and_cascades_its_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.add_review("r1", &review()).await.unwrap();
+    // A second pending run is left untouched, to prove the delete is scoped.
+    db.push(&record("r2"), &links(), None).await.unwrap();
+
+    db.delete_run("r1").await.unwrap();
+
+    // The run is gone from every read path, and its review cascaded away with it.
+    assert!(db.get_run("r1").await.unwrap().is_none());
+    let worklist = db.list_for_review(50, None).await.unwrap().0;
+    assert_eq!(worklist.len(), 1);
+    assert_eq!(worklist[0].record.id, "r2");
+    assert!(db.get_run("r2").await.unwrap().unwrap().reviews.is_empty());
+}
+
+#[tokio::test]
+async fn delete_run_is_refused_for_a_published_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    push_review_publish(&db, "r1", "2026-06-17T10:00:00Z").await;
+
+    let err = db.delete_run("r1").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+    // The published run is untouched.
+    assert!(db.get_run("r1").await.unwrap().unwrap().published);
+}
+
+#[tokio::test]
+async fn delete_run_for_an_unknown_run_is_not_found() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let err = db.delete_run("nope").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::NotFound(_)));
+}
+
 fn tournament_record(id: &str) -> TournamentRecord {
     use test_cabinet_core::match_play::{ControllerKind, ControllerRef, MatchSummary, Standing};
     use test_cabinet_core::validation::AdversarialOutcome;

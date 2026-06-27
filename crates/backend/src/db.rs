@@ -411,6 +411,40 @@ impl Db {
         Ok(PublishRunOutcome { newly_published })
     }
 
+    /// Delete a stored run and its dependent rows (its reviews and links cascade
+    /// via their `ON DELETE CASCADE` foreign keys). Refused with
+    /// [`crate::error::BackendError::Unprocessable`] when the run is **published**:
+    /// a public run is in the snapshot and the gallery, so it can never be deleted
+    /// out from under them. [`crate::error::BackendError::NotFound`] when no run
+    /// with `run_id` is stored. Because only an unpublished run can be deleted, the
+    /// run is not in the public snapshot and no refresh is needed.
+    pub async fn delete_run(&self, run_id: &str) -> Result<()> {
+        let txn = self.conn.begin().await?;
+
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+
+        if run.published {
+            return Err(crate::error::BackendError::Unprocessable(format!(
+                "run `{run_id}` is published and cannot be deleted; only an unpublished run can be deleted"
+            )));
+        }
+
+        // Reviews and the run's links row carry `ON DELETE CASCADE`, so deleting
+        // the run removes them too. The job that produced the run is part of the
+        // queue's history (no foreign key back to the run) and is left intact.
+        run::Entity::delete_by_id(run_id.to_string())
+            .exec(&txn)
+            .await?;
+
+        txn.commit().await?;
+        Ok(())
+    }
+
     /// Fetch one stored run by id (published or pending).
     pub async fn get_run(&self, id: &str) -> Result<Option<StoredRun>> {
         let run = run::Entity::find_by_id(id.to_string())

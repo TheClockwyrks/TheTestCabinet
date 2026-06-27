@@ -4,6 +4,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
+import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData } from "../../data/galleryContext";
 import { type ParsedWriteup, worstRating } from "../../data/ratings";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
@@ -189,6 +190,10 @@ export function RunDetailLayout({
             </NavLink>
           ))}
         </nav>
+        {/* Deleting is offered only for an unpublished run the active worker
+            produced; the control renders nothing otherwise (a published run, the
+            public gallery). */}
+        <RunDeleteControl runId={run.id} />
       </div>
 
       {children({ run, review })}

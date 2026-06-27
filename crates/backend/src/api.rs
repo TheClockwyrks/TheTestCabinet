@@ -100,7 +100,8 @@ pub fn router(state: AppState) -> Router {
         // The pushed adversarial controllers for a case (id + model label), so the
         // arena can pit a pushed implementation from any host. A read.
         .route("/adversarial/controllers", get(runs::adversarial_controllers))
-        .route("/runs/{id}", get(runs::get))
+        // Read one run, or delete it (auth-gated; refused for a published run).
+        .route("/runs/{id}", get(runs::get).delete(runs::delete))
         // Submit a review for a run (requires auth; attributed to the token's
         // account). A run may carry many reviews, one per account.
         .route("/runs/{id}/reviews", post(runs::add_review))

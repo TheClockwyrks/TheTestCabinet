@@ -604,11 +604,32 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
     }
 
-    // --- Per-run proof media ------------------------------------------------
+    // --- Per-run media ------------------------------------------------------
+
+    /// The directory all of a run's stored media lives under
+    /// (`runs/<run_id>/`): its proof and asset media and its controller wasm.
+    pub fn run_dir(&self, run_id: &str) -> PathBuf {
+        self.root.join("runs").join(run_id)
+    }
+
+    /// Remove a run's entire stored-media tree (`runs/<run_id>/` — proof, asset,
+    /// and controller). Idempotent: a run that uploaded no media (so the directory
+    /// never existed) is treated as already gone. Called when a run is deleted so
+    /// no orphaned bytes are left behind.
+    pub fn delete_run_media(&self, run_id: &str) -> Result<()> {
+        if !is_safe_segment(run_id) {
+            return Err(BackendError::BadRequest("invalid run id".to_string()));
+        }
+        match std::fs::remove_dir_all(self.run_dir(run_id)) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err.into()),
+        }
+    }
 
     /// The directory a published run's proof media is stored under.
     pub fn run_proof_dir(&self, run_id: &str) -> PathBuf {
-        self.root.join("runs").join(run_id).join("proof")
+        self.run_dir(run_id).join("proof")
     }
 
     /// Persist one proof media file for a run under `runs/<run_id>/proof/<file>`
@@ -665,7 +686,7 @@ impl DefinitionStore {
 
     /// The directory a published asset-generation run's media is stored under.
     pub fn run_asset_dir(&self, run_id: &str) -> PathBuf {
-        self.root.join("runs").join(run_id).join("asset")
+        self.run_dir(run_id).join("asset")
     }
 
     /// Persist one asset media file for a run under `runs/<run_id>/asset/<file>`
@@ -700,7 +721,7 @@ impl DefinitionStore {
     /// Adversarial runs upload this at push so a pushed implementation can be
     /// resolved and pitted in the arena from any host.
     pub fn run_controller_path(&self, run_id: &str) -> PathBuf {
-        self.root.join("runs").join(run_id).join("controller.wasm")
+        self.run_dir(run_id).join("controller.wasm")
     }
 
     /// Persist a run's controller wasm module. Keyed by the run id a push carries,

@@ -242,6 +242,16 @@ export interface WorkerClient {
   publish(id: string, token: string): Promise<PublishResult>;
 
   /**
+   * Permanently delete a produced run (`DELETE /runs/{id}`, Bearer): remove its
+   * record, its reviews, and its stored media. The backend **refuses a published
+   * run** (`422`) — a public run is in the gallery and snapshot and cannot be
+   * deleted — so this only applies to a run that has not been published. Optional:
+   * a transport that cannot delete simply omits it, and the console hides the
+   * delete affordance where it is absent.
+   */
+  deleteRun?(id: string, token: string): Promise<void>;
+
+  /**
    * The URL to load one of a produced run's proof-of-implementation media files
    * (`<proof-id>.<ext>`) from, or null when this worker cannot serve it. Optional:
    * a worker reachable over HTTP needs no override — the gallery resolves the file

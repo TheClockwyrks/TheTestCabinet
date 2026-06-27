@@ -41,7 +41,14 @@ import type {
   WorkerIdentity,
 } from "../client";
 import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
-import { getJson, getJsonStreamed, getText, joinUrl, postJson } from "./http";
+import {
+  delJson,
+  getJson,
+  getJsonStreamed,
+  getText,
+  joinUrl,
+  postJson,
+} from "./http";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -691,6 +698,17 @@ export function createBackendExec(
         token,
       );
       return { newlyPublished: ack.newlyPublished };
+    },
+
+    async deleteRun(id: string, token: string): Promise<void> {
+      // `DELETE /runs/{id}` removes the run, its reviews, and its stored media.
+      // The backend refuses a published run (`422`), so this only ever applies to
+      // an unpublished produced run.
+      await delJson<{ id: string; deleted: boolean }>(
+        backendUrl,
+        `/runs/${encodeURIComponent(id)}`,
+        token,
+      );
     },
 
     // A pre-publish run's proof / asset media is served by the artifact service

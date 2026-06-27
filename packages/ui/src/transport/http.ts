@@ -43,6 +43,25 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
+// DELETE a resource. `token` is sent as `Authorization: Bearer <token>` — the
+// run-delete call (the only DELETE the console issues) is mutating and supplies
+// it. Parses and returns the JSON acknowledgement.
+export async function delJson<T>(
+  base: string,
+  path: string,
+  token?: string | null,
+): Promise<T> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "DELETE",
+    headers: {
+      accept: "application/json",
+      ...bearer(token),
+    },
+  });
+  if (!res.ok) throw await httpError(res);
+  return (await res.json()) as T;
+}
+
 export async function getText(base: string, path: string): Promise<string> {
   const res = await fetch(joinUrl(base, path));
   if (!res.ok) throw await httpError(res);

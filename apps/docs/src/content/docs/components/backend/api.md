@@ -290,6 +290,18 @@ an already-published run is a no-op success. The response reports the run id,
 whether it was newly published, and whether a snapshot refresh was queued or
 coalesced into a pending one. Requires a bearer token.
 
+### `DELETE /runs/{id}` — delete
+
+Permanently delete a run: its record, its reviews, its links, and its stored
+media (proof, asset, and controller bytes). **Refuses a published run** (`422`) —
+a public run is in the snapshot and the gallery, so it can never be deleted; only
+an unpublished run can be removed. Because the run was not public, no snapshot
+refresh is needed. `404` if unknown. Requires a bearer token. The response reports
+the run id and `deleted: true`.
+
+The consoles (web and Tauri) expose this as a **Delete run** control on the run
+detail page, shown only for an unpublished run the active worker produced.
+
 ### `GET /runs`
 
 List stored runs, newest first, paginated by a `before` cursor and a `limit`. A

@@ -207,6 +207,39 @@ pub async fn publish(
     Ok((status, Json(body)).into_response())
 }
 
+/// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
+/// run is **published** (a public run is in the snapshot and gallery and can
+/// never be deleted). Requires a bearer token. `404` for an unknown run. Removes
+/// the run record, its reviews, its links, and its stored media.
+#[tracing::instrument(
+    name = "runs.delete",
+    skip(state, _user),
+    fields(run.id = %id, reviewer = %_user.0.username),
+    err(Debug),
+)]
+pub async fn delete(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    _user: AuthUser,
+) -> Result<Response, ApiError> {
+    // The system of record is the run row: deleting it (and its cascaded reviews
+    // and links) makes the run vanish from every listing. This also enforces the
+    // published guard, so it runs first.
+    state.db.delete_run(&id).await.map_err(ApiError::from)?;
+
+    // Then clear the run's stored media tree so deletion leaves nothing behind.
+    // The authoritative record is already gone, so a media-cleanup fault must not
+    // fail the request — log it and leave the (now-unreferenced) bytes for a later
+    // sweep rather than resurrecting a half-deleted run.
+    if let Err(err) = state.store.delete_run_media(&id) {
+        tracing::warn!("deleted run {id} but failed to remove its media: {err}");
+    }
+
+    // Only an unpublished run can be deleted, so the run was not in the public
+    // snapshot — no refresh is queued.
+    Ok((StatusCode::OK, Json(DeleteResponse { id, deleted: true })).into_response())
+}
+
 /// `GET /runs?limit=&before=&state=` — list runs, newest first, paginated.
 ///
 /// `state` defaults to `published` (the public read side: only published runs,
@@ -432,6 +465,13 @@ struct PublishResponse {
     id: String,
     newly_published: bool,
     snapshot_refresh: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteResponse {
+    id: String,
+    deleted: bool,
 }
 
 #[derive(Deserialize)]

@@ -185,3 +185,32 @@ fn versions_are_listed_oldest_to_newest_by_mtime() {
     let versions = store.list_versions("snake").unwrap();
     assert_eq!(versions, vec!["v1.0.0".to_string(), "v1.1.0".to_string()]);
 }
+
+#[test]
+fn delete_run_media_removes_every_kind_and_is_idempotent() {
+    let (_dir, store) = temp_store();
+    // Seed all three media kinds for one run, plus media for a second run that
+    // must survive the delete.
+    store.write_run_proof("r1", "p.png", b"proof").unwrap();
+    store
+        .write_run_asset("r1", "regenerated.png", b"asset")
+        .unwrap();
+    store.write_run_controller("r1", b"\0wasm").unwrap();
+    store.write_run_proof("r2", "p.png", b"other").unwrap();
+
+    store.delete_run_media("r1").unwrap();
+
+    assert!(!store.run_dir("r1").exists());
+    assert!(store.read_run_proof("r1", "p.png").is_err());
+    // A second delete is a no-op, not an error.
+    store.delete_run_media("r1").unwrap();
+    // The other run's media is untouched.
+    assert_eq!(store.read_run_proof("r2", "p.png").unwrap(), b"other");
+}
+
+#[test]
+fn delete_run_media_rejects_an_unsafe_run_id() {
+    let (_dir, store) = temp_store();
+    let err = store.delete_run_media("../escape").unwrap_err();
+    assert!(matches!(err, BackendError::BadRequest(_)));
+}
