@@ -33,6 +33,46 @@ import palette from "../foray/assets/palette.json";
 const BASE_TICKS_PER_SECOND = 8;
 const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
+// Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and
+// inlined `data:` URLs. Vite inlines any asset under its `assetsInlineLimit`
+// (4 KB by default) as a base64 `data:` URL — the sprite sheet (~2 KB) is one,
+// while the larger wasm (~230 KB) is emitted as a file. WebKit's WKWebView (the
+// macOS Tauri webview) cannot `fetch()` a `data:` URL: it rejects with
+// `TypeError: Load failed`, which is what surfaces as "Could not play the replay:
+// Load failed" in the desktop app. Decoding data URLs ourselves keeps the
+// inlining (a win for the browser hosts) while letting the player work in the
+// desktop shell too.
+function decodeDataUrl(url: string): { mime: string; bytes: Uint8Array<ArrayBuffer> } {
+  const comma = url.indexOf(",");
+  const meta = url.slice("data:".length, comma);
+  const isBase64 = /;base64$/i.test(meta);
+  const mime = meta.replace(/;base64$/i, "") || "application/octet-stream";
+  const data = url.slice(comma + 1);
+  const source = isBase64
+    ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
+    : new TextEncoder().encode(decodeURIComponent(data));
+  // Copy into a fresh, plain-`ArrayBuffer`-backed view: `TextEncoder`/`atob`
+  // results are typed as `ArrayBufferLike`, but the wasm/Blob consumers want a
+  // concrete `ArrayBuffer`.
+  const bytes = new Uint8Array(source);
+  return { mime, bytes };
+}
+
+async function fetchAssetBytes(url: string): Promise<ArrayBuffer> {
+  if (url.startsWith("data:")) {
+    return decodeDataUrl(url).bytes.buffer;
+  }
+  return fetch(url).then((r) => r.arrayBuffer());
+}
+
+async function fetchAssetBlob(url: string): Promise<Blob> {
+  if (url.startsWith("data:")) {
+    const { mime, bytes } = decodeDataUrl(url);
+    return new Blob([bytes], { type: mime });
+  }
+  return fetch(url).then((r) => r.blob());
+}
+
 /**
  * The adversarial result, shown on the Proof tab for an adversarial run: the run's
  * **proof matches** — one per reference opponent the submission was auto-replayed
@@ -238,9 +278,10 @@ export function ReplayOverlay({
     (async () => {
       try {
         // The replay is either fetched from its URL or supplied inline; the wasm
-        // engine and sprite sheet always come from the bundle. A failed replay
-        // fetch is reported as such: without the status check a 404's JSON error
-        // body parses cleanly and is then handed to the engine, which rejects it —
+        // engine and sprite sheet always come from the bundle (via WKWebView-safe
+        // loaders — see `fetchAssetBytes`/`fetchAssetBlob`). A failed replay fetch
+        // is reported as such: without the status check a 404's JSON error body
+        // parses cleanly and is then handed to the engine, which rejects it —
         // surfacing the misleading "foray-core rejected the replay" for what is
         // really a missing/unservable replay.
         const [replay, wasm, sheetBlob] = await Promise.all([
@@ -254,8 +295,8 @@ export function ReplayOverlay({
                 return r.json();
               })
             : Promise.resolve(replayData),
-          fetch(forayCoreWasmUrl).then((r) => r.arrayBuffer()),
-          fetch(sheetPngUrl).then((r) => r.blob()),
+          fetchAssetBytes(forayCoreWasmUrl),
+          fetchAssetBlob(sheetPngUrl),
         ]);
 
         const engine = await Engine.instantiate(wasm);
