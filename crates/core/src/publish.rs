@@ -514,6 +514,11 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
+        // Redact any leaked API key from the built static output before it is
+        // deployed to the public Cloudflare Pages site, mirroring the GitHub
+        // seam: a key the model wrote into a source file can have been carried
+        // through the build into an emitted asset.
+        scrub_build_dir(build_dir)?;
         let dir = build_dir
             .to_str()
             .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
@@ -729,6 +734,70 @@ pub fn parse_wrangler_url(output: &str) -> Option<String> {
             None
         }
     })
+}
+
+/// Redact any leaked provider API key from every text file under an
+/// already-built static `build_dir` before it is deployed to the public
+/// Cloudflare Pages site.
+///
+/// This is the Cloudflare-egress half of the publish-time secret scrub, mirroring
+/// the GitHub seam ([`BackendPublisher::scrub_staged_secrets`]): it runs on the
+/// operator host, so the scrubber matches the exact key values from the
+/// environment as well as any `sk-…`-shaped token. A built tree has no
+/// `.gitignore` staging to lean on, so it is walked in full; binary, symlinked,
+/// and unreadable entries are skipped (a key is pasted as text). Rewritten files
+/// are logged.
+fn scrub_build_dir(build_dir: &Path) -> Result<()> {
+    let scrubber = SecretScrubber::from_host_env();
+    let mut redacted = Vec::new();
+    scrub_dir_recursive(build_dir, &scrubber, &mut redacted)?;
+    if !redacted.is_empty() {
+        tracing::warn!(
+            files = ?redacted,
+            "redacted leaked API key(s) from a run's playable build before deploying it publicly"
+        );
+    }
+    Ok(())
+}
+
+/// Recursively scrub every readable UTF-8 file under `dir` in place, appending
+/// the path of each file actually rewritten to `redacted`. Directories are
+/// descended; symlinks are not followed (so a link cannot redirect the walk out
+/// of the build tree), and non-UTF-8 or unreadable files are left untouched.
+fn scrub_dir_recursive(
+    dir: &Path,
+    scrubber: &SecretScrubber,
+    redacted: &mut Vec<String>,
+) -> Result<()> {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| Error::Publish(format!("reading build directory {}: {e}", dir.display())))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|e| Error::Publish(format!("reading a build directory entry: {e}")))?;
+        let path = entry.path();
+        // `file_type` does not follow symlinks, so a symlink is neither a file
+        // nor a directory here and falls through untouched.
+        let file_type = entry
+            .file_type()
+            .map_err(|e| Error::Publish(format!("inspecting {}: {e}", path.display())))?;
+        if file_type.is_dir() {
+            scrub_dir_recursive(&path, scrubber, redacted)?;
+        } else if file_type.is_file() {
+            let Ok(contents) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if let Cow::Owned(scrubbed) = scrubber.scrub(&contents) {
+                std::fs::write(&path, scrubbed).map_err(|e| {
+                    Error::Publish(format!(
+                        "rewriting {} to redact a secret: {e}",
+                        path.display()
+                    ))
+                })?;
+                redacted.push(path.display().to_string());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A run record lives at `<run>/run-record.json`; its implementation is the

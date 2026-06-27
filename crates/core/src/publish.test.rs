@@ -711,3 +711,33 @@ async fn push_without_a_build_dir_skips_the_deploy() {
     assert_eq!(pushed.len(), 1);
     assert!(pushed[0].1.playable_build.is_none());
 }
+
+#[test]
+fn scrub_build_dir_redacts_keys_in_nested_text_files_only() {
+    let key = "sk-ant-api03-AbCdEf0123456789AbCdEf0123456789AbCdEf01";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let nested = dir.path().join("assets");
+    std::fs::create_dir_all(&nested).expect("nested dir");
+
+    // A bundled JS chunk that captured the key, a clean HTML file, and a binary
+    // asset that merely contains the key bytes (and must be left untouched).
+    let leaky = nested.join("app.js");
+    std::fs::write(&leaky, format!("const K=\"{key}\";export default K;")).expect("js");
+    let clean = dir.path().join("index.html");
+    std::fs::write(&clean, "<!doctype html><title>play</title>").expect("html");
+    let binary = nested.join("logo.png");
+    let binary_bytes = [0x89, b'P', b'N', b'G', 0x00, 0xFF, 0xFE];
+    std::fs::write(&binary, binary_bytes).expect("png");
+
+    scrub_build_dir(dir.path()).expect("scrub");
+
+    let scrubbed = std::fs::read_to_string(&leaky).expect("read js");
+    assert!(!scrubbed.contains(key), "the key must be gone");
+    assert!(scrubbed.contains(crate::redact::PLACEHOLDER));
+    // Untouched files keep their exact bytes.
+    assert_eq!(
+        std::fs::read_to_string(&clean).expect("read html"),
+        "<!doctype html><title>play</title>"
+    );
+    assert_eq!(std::fs::read(&binary).expect("read png"), binary_bytes);
+}
