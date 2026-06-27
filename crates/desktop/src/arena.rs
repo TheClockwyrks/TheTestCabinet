@@ -415,7 +415,8 @@ pub async fn run_tournament_match(
             }
         };
 
-        if let Err(message) = persist_and_publish(backend.as_deref(), &tournament_id, &build).await {
+        if let Err(message) = persist_and_publish(backend.as_deref(), &tournament_id, &build).await
+        {
             let _ = app.emit(&done, TournamentOutcome::Failed { message });
             return;
         }

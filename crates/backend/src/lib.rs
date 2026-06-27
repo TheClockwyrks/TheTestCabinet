@@ -99,7 +99,10 @@ pub async fn build(config: Config) -> error::Result<Backend> {
             )
             .await?;
         if reaped > 0 {
-            tracing::info!(reaped, "reaped in-flight jobs orphaned by a backend restart");
+            tracing::info!(
+                reaped,
+                "reaped in-flight jobs orphaned by a backend restart"
+            );
         }
     }
 

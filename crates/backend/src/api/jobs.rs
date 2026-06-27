@@ -476,10 +476,8 @@ fn event_stream(
     // NDJSON client, which skips empty lines. Mirrors the keep-alive the
     // `/notifications` SSE stream already applies. `interval_at` starts one period
     // out so a freshly subscribed client isn't sent a redundant immediate tick.
-    let heartbeat = tokio::time::interval_at(
-        tokio::time::Instant::now() + LIVE_HEARTBEAT,
-        LIVE_HEARTBEAT,
-    );
+    let heartbeat =
+        tokio::time::interval_at(tokio::time::Instant::now() + LIVE_HEARTBEAT, LIVE_HEARTBEAT);
     let live_tail = stream::unfold(
         (terminated, sub.receiver, heartbeat),
         |(done, mut receiver, mut heartbeat)| async move {
