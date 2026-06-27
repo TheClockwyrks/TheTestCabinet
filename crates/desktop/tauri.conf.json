@@ -24,6 +24,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob: http: https: tcab-tournament:",
         "media-src": "'self' data: blob: http: https: tcab-tournament:",
