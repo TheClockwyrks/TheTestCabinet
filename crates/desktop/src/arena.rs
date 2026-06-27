@@ -15,7 +15,7 @@ use std::path::Path;
 use foray_core::replay::Replay;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 
 use test_cabinet_core::match_play::{
     ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, MatchSummary, ResolvedController,
@@ -27,13 +27,23 @@ use test_cabinet_core::{
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::config;
+use crate::{cluster, config};
 
 /// A command result whose error is a plain string the webview renders.
 type CmdResult<T> = Result<T, String>;
 
 fn cmd_err<E: std::fmt::Display>(context: &str, e: E) -> String {
     format!("{context}: {e}")
+}
+
+/// The effective backend URL for the arena, resolved exactly like the webview's
+/// [`backend_url`](crate::backend_url) command: a configured external backend
+/// (`TCAB_BACKEND_URL`) wins, otherwise the loopback URL of the self-contained
+/// cluster the shell stands up. Without this the arena would fall back to a local
+/// `test-cases/` checkout that the packaged app does not ship, while the webview's
+/// Test Cases tab — listing from the cluster backend — still shows the case.
+fn arena_backend_url(state: &cluster::ClusterState) -> Option<String> {
+    config::backend_url().or_else(|| state.backend_url())
 }
 
 /// Resolve an exact test-case version to drive a match or tournament.
@@ -44,8 +54,12 @@ fn cmd_err<E: std::fmt::Display>(context: &str, e: E) -> String {
 /// from the local `test-cases/` checkout for offline development. This is the only
 /// place the desktop shell still resolves a definition — every other read goes
 /// over HTTP from the webview.
-async fn resolve_version_inner(slug: &str, version: &str) -> CmdResult<TestCaseVersion> {
-    match config::backend_url() {
+async fn resolve_version_inner(
+    backend: Option<&str>,
+    slug: &str,
+    version: &str,
+) -> CmdResult<TestCaseVersion> {
+    match backend {
         Some(url) => {
             let client = HttpBackendClient::new(url);
             let store = config::staging_dir()
@@ -83,6 +97,7 @@ fn is_safe_id(id: &str) -> bool {
 /// Resolve one controller's wasm bytes for `test_case` (baseline from the case's
 /// `references/`, run from this host's output dir).
 async fn resolve_controller(
+    backend: Option<&str>,
     controller: &ControllerRef,
     test_case: &TestCaseVersion,
     slug: &str,
@@ -98,7 +113,7 @@ async fn resolve_controller(
             if !ARENA_OPPONENT_IDS.contains(&controller.id.as_str()) {
                 return Err(format!("unknown baseline `{}`", controller.id));
             }
-            match config::backend_url() {
+            match backend {
                 // A backend-resolved version's references are not materialized to
                 // disk, so fetch the baseline module from the backend.
                 Some(url) => {
@@ -134,7 +149,7 @@ async fn resolve_controller(
         ControllerKind::PushedRun => {
             // A pushed run's controller lives on the backend (uploaded at push), so
             // any host can resolve it even without having produced it locally.
-            let url = config::backend_url().ok_or_else(|| {
+            let url = backend.ok_or_else(|| {
                 "no backend configured to resolve a pushed controller".to_string()
             })?;
             HttpBackendClient::new(url)
@@ -172,12 +187,29 @@ pub struct MatchResultDto {
 /// replay + summary. Transient: nothing is persisted.
 #[tauri::command]
 #[tracing::instrument(skip_all, fields(test_case = %config.test_case, version = %config.version))]
-pub async fn run_adversarial_match(config: MatchConfig) -> CmdResult<MatchResultDto> {
-    let test_case = resolve_version_inner(&config.test_case, &config.version).await?;
-    let red =
-        resolve_controller(&config.red, &test_case, &config.test_case, &config.version).await?;
-    let blue =
-        resolve_controller(&config.blue, &test_case, &config.test_case, &config.version).await?;
+pub async fn run_adversarial_match(
+    state: State<'_, cluster::ClusterState>,
+    config: MatchConfig,
+) -> CmdResult<MatchResultDto> {
+    let backend = arena_backend_url(&state);
+    let backend = backend.as_deref();
+    let test_case = resolve_version_inner(backend, &config.test_case, &config.version).await?;
+    let red = resolve_controller(
+        backend,
+        &config.red,
+        &test_case,
+        &config.test_case,
+        &config.version,
+    )
+    .await?;
+    let blue = resolve_controller(
+        backend,
+        &config.blue,
+        &test_case,
+        &config.test_case,
+        &config.version,
+    )
+    .await?;
 
     // A match is CPU-bound wasm execution; run it off the async runtime.
     let outcome = tokio::task::spawn_blocking(move || run_quick_match(&test_case, &red, &blue))
@@ -196,8 +228,9 @@ pub async fn run_adversarial_match(config: MatchConfig) -> CmdResult<MatchResult
 /// controllers from the backend (so a pushed implementation is selectable even when
 /// this host did not produce it).
 #[tauri::command]
-#[tracing::instrument(fields(%slug))]
+#[tracing::instrument(skip(state), fields(%slug))]
 pub async fn list_adversarial_controllers(
+    state: State<'_, cluster::ClusterState>,
     slug: String,
     _version: String,
 ) -> CmdResult<Vec<ControllerRef>> {
@@ -235,7 +268,7 @@ pub async fn list_adversarial_controllers(
 
     // Merge the case's pushed controllers from the backend (when one is
     // configured), skipping any already present as a local run.
-    if let Some(url) = config::backend_url()
+    if let Some(url) = arena_backend_url(&state)
         && let Ok(pushed) = HttpBackendClient::new(url)
             .list_adversarial_controllers(&slug)
             .await
@@ -296,17 +329,30 @@ fn done_channel(id: &str) -> String {
 /// on `tournament://<id>/done`.
 #[tauri::command]
 #[tracing::instrument(skip_all, fields(test_case = %config.test_case, participants = config.participants.len()))]
-pub async fn run_tournament_match(app: AppHandle, config: TournamentConfig) -> CmdResult<String> {
+pub async fn run_tournament_match(
+    app: AppHandle,
+    state: State<'_, cluster::ClusterState>,
+    config: TournamentConfig,
+) -> CmdResult<String> {
     if config.participants.len() < 2 {
         return Err("a tournament needs at least two participants".to_string());
     }
-    let test_case = resolve_version_inner(&config.test_case, &config.version).await?;
+    let backend = arena_backend_url(&state);
+    let test_case =
+        resolve_version_inner(backend.as_deref(), &config.test_case, &config.version).await?;
 
     // Resolve every controller up front so a bad participant fails synchronously.
     let mut participants: Vec<ResolvedController> = Vec::with_capacity(config.participants.len());
     for controller in &config.participants {
         participants.push(
-            resolve_controller(controller, &test_case, &config.test_case, &config.version).await?,
+            resolve_controller(
+                backend.as_deref(),
+                controller,
+                &test_case,
+                &config.test_case,
+                &config.version,
+            )
+            .await?,
         );
     }
 
@@ -369,7 +415,7 @@ pub async fn run_tournament_match(app: AppHandle, config: TournamentConfig) -> C
             }
         };
 
-        if let Err(message) = persist_and_publish(&tournament_id, &build).await {
+        if let Err(message) = persist_and_publish(backend.as_deref(), &tournament_id, &build).await {
             let _ = app.emit(&done, TournamentOutcome::Failed { message });
             return;
         }
@@ -388,6 +434,7 @@ pub async fn run_tournament_match(app: AppHandle, config: TournamentConfig) -> C
 /// Write a finished tournament to the local store and, when a backend is
 /// configured, publish the record and each match's replay to it.
 async fn persist_and_publish(
+    backend: Option<&str>,
     tournament_id: &str,
     build: &test_cabinet_core::match_play::TournamentBuild,
 ) -> Result<(), String> {
@@ -404,7 +451,7 @@ async fn persist_and_publish(
             .map_err(|e| cmd_err("writing match replay", e))?;
     }
 
-    if let Some(url) = config::backend_url() {
+    if let Some(url) = backend {
         let client = HttpBackendClient::new(url);
         client
             .publish_tournament(&build.record)
