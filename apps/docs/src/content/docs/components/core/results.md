@@ -80,6 +80,28 @@ It then submits the run record and the resulting links to the backend.
 Pushing is idempotent and usable in batch, so a sweep producing many runs can be
 released without manual handling of each one.
 
+#### Secret redaction
+
+A run executes with a real provider API key in its container, so a model that
+dumps its environment can have written that key into a source file it produced.
+The backend that a run streams to is private and trusted and keeps the captured
+data as-is; the exposure is only where a run's data crosses into the open
+internet. Release therefore redacts secrets at each public-egress point, *as the
+operator releases the run*:
+
+- **The public source repository.** Before the generated code is committed and
+  pushed, every staged file is scanned and any leaked key is rewritten in place.
+- **The Cloudflare Pages build.** Before the static output is deployed, the built
+  tree is scanned the same way, in case a key was carried through the build into
+  an emitted asset.
+
+Because release runs on the operator's host, the scan matches the exact key
+values from the operator's environment (the keys a run here would have used) as
+well as any provider-shaped `sk-…` token, and replaces each with `[REDACTED]`.
+The third public surface — the run's record and event stream in the public
+snapshot — is scrubbed by the backend as it builds that snapshot; see
+[the snapshot's per-run record](/components/backend/snapshot/#runsrun-idjson--per-run-record).
+
 ### Review
 
 Reviewing a pushed run is the **assessment** step. Anyone with an

@@ -97,6 +97,16 @@ the run captured a normalized [event stream](/components/core/events/), it is
 included as `events` (omitted otherwise); the site emits it as a per-run static
 asset its Events tab fetches. Raw harness output is never published.
 
+Because this document is published to the open internet, it is **scrubbed of
+leaked secrets** as the snapshot is built: a model that dumped its environment can
+have printed the run's provider API key into an event or a failure detail, so any
+provider-shaped `sk-…` token anywhere in the record or events is replaced with
+`[REDACTED]` before upload. The backend never holds a key value, so it redacts by
+shape; the operator-side release scrubs the [source repository and playable
+build](/components/core/results/#secret-redaction) by exact value as well. The
+backend's own stored copy is left intact — it is private, and only this public
+export is rewritten.
+
 ```jsonc
 {
   "schemaVersion": 1,
