@@ -18,6 +18,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
+use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::db::StoredRun;
@@ -78,6 +79,14 @@ impl SnapshotBuilder {
 
         let mut objects = Vec::new();
 
+        // The backend's stored runs keep full fidelity for the private console,
+        // but this snapshot is published to R2 and served on the open internet.
+        // A model that dumped its environment can have printed the run's provider
+        // API key into the recorded events or a failure detail, so every per-run
+        // document is scrubbed before it is uploaded. The backend never holds a
+        // key value, so this redacts by `sk-…` shape (see [`SecretScrubber`]).
+        let scrubber = SecretScrubber::new();
+
         // runs.json — the flat index of summaries (newest first).
         let summaries: Vec<RunSummary> = self.runs.iter().map(|run| self.summary(run)).collect();
         objects.push(json_object(
@@ -109,17 +118,33 @@ impl SnapshotBuilder {
                 })?;
             let (proof_media, proof_objects) = self.run_proofs(&run.record.id, &prefix);
             let (asset_media, asset_objects) = self.run_assets(run, &prefix);
+            // Serialize the public document, then redact any leaked secret from
+            // it (across the record, its events, and any other captured text)
+            // before it becomes a snapshot object bound for R2.
+            let mut document = serde_json::to_value(PerRun {
+                schema_version: SCHEMA_VERSION,
+                record: run.record.clone(),
+                reviews: run.reviews.iter().map(review_out).collect(),
+                links: links_out(&run.links),
+                events,
+                proof_media,
+                asset_media,
+            })
+            .map_err(|e| {
+                BackendError::Snapshot(format!(
+                    "serializing published document for run {}: {e}",
+                    run.record.id
+                ))
+            })?;
+            if scrubber.scrub_json(&mut document) {
+                tracing::warn!(
+                    run = %run.record.id,
+                    "redacted leaked API key(s) from a published run document"
+                );
+            }
             objects.push(json_object(
                 format!("{prefix}/runs/{}.json", run.record.id),
-                &PerRun {
-                    schema_version: SCHEMA_VERSION,
-                    record: run.record.clone(),
-                    reviews: run.reviews.iter().map(review_out).collect(),
-                    links: links_out(&run.links),
-                    events,
-                    proof_media,
-                    asset_media,
-                },
+                &document,
             )?);
             objects.extend(proof_objects);
             objects.extend(asset_objects);

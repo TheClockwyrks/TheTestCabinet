@@ -468,6 +468,36 @@ fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
     HarnessSlug::ALL.into_iter().map(descriptor).collect()
 }
 
+/// Every API-key value currently set in the host environment, across all
+/// built-in harnesses — both the shared provider variables (`ANTHROPIC_API_KEY`,
+/// `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, …) and the per-harness
+/// `TCAB_API_KEY_<SLUG>` overrides ([`api_key_override_var`](crate::auth::api_key_override_var)).
+///
+/// These are the keys a run launched on this host would have authenticated with,
+/// so the publisher uses them as exact-match redaction literals when releasing a
+/// run's source to its public repository (see [`crate::redact::SecretScrubber::from_host_env`]).
+/// Returns values only — never variable names — and skips blank ones. Order is
+/// not meaningful; values are deduplicated.
+pub fn host_api_key_values() -> Vec<String> {
+    let mut values = Vec::new();
+    let mut push_env = |var: &str| {
+        if let Ok(value) = std::env::var(var) {
+            if !value.trim().is_empty() {
+                values.push(value);
+            }
+        }
+    };
+    for slug in HarnessSlug::ALL {
+        if let Some(env) = adapter_spec(slug).api_key_env {
+            push_env(env);
+        }
+        push_env(&crate::auth::api_key_override_var(slug));
+    }
+    values.sort();
+    values.dedup();
+    values
+}
+
 /// The embedded `harnesses/<slug>/harness.toml` source for a slug. Baked in at
 /// build time so the registry needs no filesystem access at run time and a
 /// backend-driven worker (which has no local checkout) resolves harnesses the

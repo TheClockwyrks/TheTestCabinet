@@ -31,6 +31,7 @@ pub mod preview;
 pub mod pricing;
 pub mod prompt;
 pub mod publish;
+pub mod redact;
 pub mod reference;
 pub mod review;
 pub mod run_record;

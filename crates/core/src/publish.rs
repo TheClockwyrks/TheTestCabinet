@@ -12,6 +12,7 @@
 //! the build deploys to Cloudflare Pages directly — capturing the URL `wrangler`
 //! reports rather than constructing one.
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ use crate::backend_client::BackendClient;
 use crate::error::{Error, Result};
 use crate::event::HarnessEvent;
 use crate::execution::ArtifactCollection;
+use crate::redact::SecretScrubber;
 use crate::run_record::{RunLinks, RunRecord};
 
 /// A request to push a single finished run: release its source + build and store
@@ -393,6 +395,10 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         )
         .await?;
         self.require("git", &["add", "--all"], Some(dir)).await?;
+        // Redact any leaked API key from the staged tree before it is committed
+        // and pushed to the run's public repository: a model that dumped its
+        // environment can have written its provider key into a source file.
+        self.scrub_staged_secrets(dir).await?;
         // Commit only when staging produced something, so a re-push is a clean
         // no-op instead of a `git commit` "nothing to commit" failure. Porcelain
         // status is empty exactly when the index matches HEAD.
@@ -406,6 +412,48 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
                 Some(dir),
             )
             .await?;
+        }
+        Ok(())
+    }
+
+    /// Rewrite every staged file under `dir` to redact any leaked provider API
+    /// key, re-staging the ones that changed so the commit carries the redacted
+    /// form. This is the GitHub-egress half of the publish-time secret scrub: it
+    /// runs on the operator host, so the scrubber can match the exact key values
+    /// from the environment as well as any `sk-…`-shaped token (see
+    /// [`SecretScrubber::from_host_env`]).
+    ///
+    /// Only the staged set is scanned — the model's changes against the seeded
+    /// commit, which is the only way a secret can have entered — and staging
+    /// already honors `.gitignore`, so build trees never reach here. Binary and
+    /// unreadable entries (including deletions) are skipped: a key is pasted as
+    /// text, and a non-UTF-8 file cannot carry one in a form worth rewriting.
+    async fn scrub_staged_secrets(&self, dir: &Path) -> Result<()> {
+        let staged = self
+            .require("git", &["diff", "--cached", "--name-only", "-z"], Some(dir))
+            .await?;
+        let scrubber = SecretScrubber::from_host_env();
+        let mut redacted: Vec<String> = Vec::new();
+        for rel in staged.stdout.split('\0').filter(|p| !p.is_empty()) {
+            let path = dir.join(rel);
+            let Ok(contents) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if let Cow::Owned(scrubbed) = scrubber.scrub(&contents) {
+                std::fs::write(&path, scrubbed).map_err(|e| {
+                    Error::Publish(format!("rewriting {rel} to redact a secret: {e}"))
+                })?;
+                redacted.push(rel.to_string());
+            }
+        }
+        if !redacted.is_empty() {
+            for rel in &redacted {
+                self.require("git", &["add", "--", rel], Some(dir)).await?;
+            }
+            tracing::warn!(
+                files = ?redacted,
+                "redacted leaked API key(s) from a run's implementation before releasing it publicly"
+            );
         }
         Ok(())
     }
