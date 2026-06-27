@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
     DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
@@ -956,6 +956,28 @@ impl Db {
         Ok(job::Entity::find_by_id(id.to_string())
             .one(&self.conn)
             .await?)
+    }
+
+    /// Fail every job mid-execution (`dispatched` or `running`) in one update,
+    /// stamping `updated_at` and the supplied terminal `detail`. Returns how many
+    /// were reaped.
+    ///
+    /// This is the single-box backend's startup reconciliation (see
+    /// [`crate::build`]): when the whole stack shares one machine, a backend
+    /// restart means every in-flight driver went down with it, so any job the
+    /// store still believes is executing is orphaned — it can never reach a
+    /// terminal state on its own and would otherwise show as forever "running".
+    /// `queued` jobs are deliberately left untouched: they have no driver yet, so
+    /// the dispatcher drains them normally once it reconnects.
+    pub async fn fail_in_flight_jobs(&self, now: &str, detail: &str) -> Result<u64> {
+        let result = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value("failed"))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(job::Column::Detail, Expr::value(detail))
+            .filter(job::Column::State.is_in(["dispatched", "running"]))
+            .exec(&self.conn)
+            .await?;
+        Ok(result.rows_affected)
     }
 
     /// Every job still in flight (`queued`, `dispatched`, or `running`),

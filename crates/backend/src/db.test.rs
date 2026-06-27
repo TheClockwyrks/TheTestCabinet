@@ -476,6 +476,73 @@ async fn active_jobs_excludes_terminal_jobs_oldest_first() {
 }
 
 #[tokio::test]
+async fn fail_in_flight_jobs_reaps_only_executing_jobs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // q stays queued (no driver yet); d is dispatched; r is running; s succeeded.
+    db.enqueue_job(new_job("q", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("d", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("d", "dispatched", "2026-06-23T00:01:30Z", None, None)
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("r", "2026-06-23T00:02:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("r", "running", "2026-06-23T00:02:30Z", None, None)
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("s", "2026-06-23T00:03:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("s", "succeeded", "2026-06-23T00:30:00Z", None, Some("r-s"))
+        .await
+        .unwrap();
+
+    let reaped = db
+        .fail_in_flight_jobs("2026-06-23T01:00:00Z", "interrupted")
+        .await
+        .unwrap();
+    assert_eq!(reaped, 2, "only the dispatched and running jobs are reaped");
+
+    // The two executing jobs are now terminal failures with the stamped detail.
+    for id in ["d", "r"] {
+        let job = db.get_job(id).await.unwrap().expect("the job exists");
+        assert_eq!(job.state, "failed");
+        assert_eq!(job.detail.as_deref(), Some("interrupted"));
+        assert_eq!(job.updated_at, "2026-06-23T01:00:00Z");
+    }
+    // The queued job is untouched, ready for the dispatcher to drain.
+    assert_eq!(db.get_job("q").await.unwrap().unwrap().state, "queued");
+    // The already-terminal succeeded job keeps its outcome.
+    let s = db.get_job("s").await.unwrap().unwrap();
+    assert_eq!(s.state, "succeeded");
+    assert_eq!(s.record_id.as_deref(), Some("r-s"));
+
+    // The active-run list is now just the still-queued job.
+    let active = db.active_jobs().await.unwrap();
+    let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
+    assert_eq!(ids, vec!["q"]);
+}
+
+#[tokio::test]
+async fn fail_in_flight_jobs_is_a_noop_with_nothing_executing() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("q", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let reaped = db
+        .fail_in_flight_jobs("2026-06-23T01:00:00Z", "interrupted")
+        .await
+        .unwrap();
+    assert_eq!(reaped, 0);
+    assert_eq!(db.get_job("q").await.unwrap().unwrap().state, "queued");
+}
+
+#[tokio::test]
 async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
     let db = Db::connect_in_memory().await.unwrap();
     // An infrastructure failure is the Test Cabinet's fault, never publishable —

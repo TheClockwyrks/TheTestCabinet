@@ -34,6 +34,9 @@ pub mod store;
 
 use std::sync::Arc;
 
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
 use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
@@ -79,6 +82,27 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // no-op beyond the version check.
     test_cabinet_migration::Migrator::up(db.connection(), None).await?;
     let db = Arc::new(db);
+
+    // Reconcile orphaned in-flight jobs before serving — but only single-box,
+    // where a backend restart means the whole stack (dispatcher + every driver)
+    // went down together, so any job the store still believes is `dispatched`/
+    // `running` is dead and can never reach a terminal state on its own. Running
+    // this before the router serves is race-free: no driver can be mid-report and
+    // the dispatcher cannot claim work until `/jobs/next` is up. A remote backend
+    // can restart while drivers keep running, so it must not reap (the gate).
+    if config.is_single_box() {
+        let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        let reaped = db
+            .fail_in_flight_jobs(
+                &now,
+                "interrupted: the backend restarted while this run was in flight",
+            )
+            .await?;
+        if reaped > 0 {
+            tracing::info!(reaped, "reaped in-flight jobs orphaned by a backend restart");
+        }
+    }
+
     let r2 = config.r2.clone().map(R2Client::new);
 
     let publisher = Publisher::new(

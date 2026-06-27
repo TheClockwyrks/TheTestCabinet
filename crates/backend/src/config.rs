@@ -159,6 +159,19 @@ impl Config {
             arena_url,
         })
     }
+
+    /// Whether this backend runs single-box: the control plane, the dispatcher,
+    /// and every driver share one machine's lifecycle. Inferred from a SQLite
+    /// database URL — the local/desktop deployment — as opposed to the
+    /// `postgres://` of a remote deployment whose backend can restart
+    /// independently while drivers keep running.
+    ///
+    /// Gates the startup reconciliation that fails orphaned in-flight jobs (see
+    /// [`crate::build`]): on a single box a backend restart means every driver
+    /// died with it, so reaping is correct; a remote backend must never do it.
+    pub fn is_single_box(&self) -> bool {
+        self.database_url.starts_with("sqlite:")
+    }
 }
 
 impl R2Config {

@@ -133,6 +133,12 @@ pub enum BackendError {
     /// A snapshot upload or deploy-hook fire failed.
     #[error("{0}")]
     Snapshot(String),
+
+    /// A timestamp could not be formatted to RFC 3339. Effectively unreachable —
+    /// formatting the current time does not fail in practice — but surfaced
+    /// rather than unwrapped so a startup path can `?`-propagate it.
+    #[error("formatting timestamp: {0}")]
+    Time(#[from] time::error::Format),
 }
 
 impl From<BackendError> for ApiError {
