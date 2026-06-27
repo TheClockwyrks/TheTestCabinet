@@ -770,18 +770,64 @@ fn rollout(app: &AppHandle, kubeconfig: &Path, kind: &str, name: &str) -> Result
     .map_err(|e| format!("waiting for {name}: {e}"))
 }
 
-/// Start (and record) the port-forwards. Recording each child as it spawns means a
+/// Start (and record) the port-forwards. Each local port is checked first: one already
+/// held by another process — an editor's automatic port-forwarding squatting on 8787 is
+/// the classic culprit — is reported with the offender, rather than left to misroute the
+/// backend probe and surface as an opaque [`wait_healthz`] timeout. Each `kubectl
+/// port-forward` is then pinned to `127.0.0.1` (the family [`BACKEND_URL`] and every
+/// forwarded-service URL use), so a conflict makes kubectl *exit* with its reason on
+/// stderr instead of silently half-binding only `[::1]` and limping; a forward that dies
+/// on spawn surfaces that reason here. Recording each child as it spawns means a
 /// later-step failure still leaves them reapable by [`shutdown`].
 fn start_forwards(app: &AppHandle, kubeconfig: &Path) -> Result<(), String> {
     for (service, port) in FORWARDS {
+        if port_in_use(*port) {
+            return Err(format!(
+                "local port {port} (the {service} forward) is already in use{}. Another \
+                 process holds it — an editor's automatic port-forwarding is a common \
+                 culprit — so free the port and try again.",
+                port_occupant_hint(*port),
+            ));
+        }
+
         let mut cmd = kubectl(kubeconfig);
-        cmd.args(["-n", NAMESPACE, "port-forward", &format!("svc/{service}")])
-            .arg(format!("{port}:{port}"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let child = cmd
+        cmd.args([
+            "-n",
+            NAMESPACE,
+            "port-forward",
+            &format!("svc/{service}"),
+            "--address",
+            "127.0.0.1",
+        ])
+        .arg(format!("{port}:{port}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("forwarding {service}: {e}"))?;
+
+        // A bind conflict (or any immediate failure) makes kubectl exit right away with
+        // its reason on stderr; a healthy forward stays up. Give it a beat, then catch the
+        // dead-on-arrival case so it surfaces here rather than as a healthz timeout.
+        std::thread::sleep(Duration::from_millis(500));
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("checking the {service} forward: {e}"))?
+        {
+            return Err(format!(
+                "forwarding {service} on port {port}: {}",
+                forward_exit_detail(&mut child, status),
+            ));
+        }
+
+        // Still running: drain its stderr on a side thread so the pipe can't fill and
+        // wedge the long-lived forward, then record the child for later teardown.
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let _ = std::io::BufReader::new(stderr).read_to_end(&mut Vec::new());
+            });
+        }
         if let Some(state) = app.try_state::<ClusterState>() {
             state.inner.lock().unwrap().forwards.push(child);
         }
@@ -789,8 +835,66 @@ fn start_forwards(app: &AppHandle, kubeconfig: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The reason a port-forward child that exited on spawn gave, for the error message:
+/// its (ANSI-stripped) stderr tail, falling back to the exit status when stderr was
+/// empty.
+fn forward_exit_detail(child: &mut Child, status: std::process::ExitStatus) -> String {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    if let Some(mut stderr) = child.stderr.take() {
+        let _ = stderr.read_to_end(&mut buf);
+    }
+    let detail = strip_ansi(String::from_utf8_lossy(&buf).trim());
+    if detail.is_empty() {
+        format!("kubectl exited with {status}")
+    } else {
+        detail
+    }
+}
+
+/// Whether another process already holds `127.0.0.1:port`. This is exactly the address
+/// the healthz client, [`BACKEND_URL`], and every forwarded-service URL use, so a bind
+/// conflict here is precisely one that would misroute those connections to the squatter.
+fn port_in_use(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
+}
+
+/// A best-effort " (held by <command>, pid <n>)" suffix naming the process listening on
+/// `port`, via `lsof`. Empty when `lsof` is unavailable or names nothing — the conflict
+/// is still reported, just without naming the culprit.
+fn port_occupant_hint(port: u16) -> String {
+    let Ok(out) = run(tool("lsof").args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])) else {
+        return String::new();
+    };
+    parse_lsof_occupant(&String::from_utf8_lossy(&out))
+}
+
+/// Parse `lsof -nP -iTCP:<port> -sTCP:LISTEN` output into a " (held by <command>, pid
+/// <n>)" suffix from the first listener row (COMMAND in column 0, PID in column 1).
+/// Empty when there is no data row. `lsof` escapes spaces in the command as `\x20`,
+/// which is unescaped here for readability (e.g. `Code\x20H` → `Code H`).
+fn parse_lsof_occupant(text: &str) -> String {
+    let Some(fields) = text
+        .lines()
+        .skip(1) // lsof's header row
+        .map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .find(|fields| fields.len() >= 2)
+    else {
+        return String::new();
+    };
+    format!(
+        " (held by {}, pid {})",
+        fields[0].replace("\\x20", " "),
+        fields[1]
+    )
+}
+
 /// Poll the backend's `/healthz` until it answers (the port-forward needs a moment),
-/// bounded so a stuck forward fails legibly instead of hanging the loading screen.
+/// bounded so a stuck forward fails legibly instead of hanging the loading screen. A
+/// success requires the backend's own readiness body (`{"status":"ok",…}`), not merely
+/// any 2xx — so a foreign listener that happened to win the port (and which
+/// [`start_forwards`] couldn't already rule out) is rejected rather than mistaken for
+/// the backend.
 fn wait_healthz(base: &str) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(4))
@@ -800,6 +904,8 @@ fn wait_healthz(base: &str) -> Result<(), String> {
     for _ in 0..45 {
         if let Ok(resp) = client.get(&url).send()
             && resp.status().is_success()
+            && let Ok(body) = resp.json::<serde_json::Value>()
+            && body.get("status").and_then(|status| status.as_str()) == Some("ok")
         {
             return Ok(());
         }

@@ -90,6 +90,22 @@ fn strip_ansi_leaves_plain_text_untouched() {
 }
 
 #[test]
+fn parse_lsof_occupant_names_the_first_listener() {
+    // The real shape that bit a port-8787 conflict: a VS Code helper holding the port.
+    // `lsof` escapes the space in `Code H` as `\x20`, which is unescaped for the message.
+    let out = "COMMAND   PID     USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME\n\
+               Code\\x20H 622 laniakea 34u  IPv4  0x9308      0t0  TCP 127.0.0.1:8787 (LISTEN)\n";
+    assert_eq!(parse_lsof_occupant(out), " (held by Code H, pid 622)");
+}
+
+#[test]
+fn parse_lsof_occupant_is_empty_without_a_data_row() {
+    // Header only (or no output at all) names nothing — the conflict is still reported.
+    assert_eq!(parse_lsof_occupant("COMMAND PID USER FD TYPE\n"), "");
+    assert_eq!(parse_lsof_occupant(""), "");
+}
+
+#[test]
 fn extra_path_dirs_only_returns_existing_directories() {
     // The list is filtered to real directories so the exported PATH stays tidy.
     for dir in extra_path_dirs() {
