@@ -914,14 +914,29 @@ fn wait_healthz(base: &str) -> Result<(), String> {
     Err("the backend did not become reachable in time".to_string())
 }
 
-/// Force-ingest the catalog from the mounted checkout (the backend does not ingest
-/// on boot). Asks for the backend's NDJSON progress feed (`Accept:
+/// Ingest the catalog from the mounted checkout (the backend does not ingest on
+/// boot). Asks for the backend's NDJSON progress feed (`Accept:
 /// application/x-ndjson`) and drains it line by line, mirroring each completed
 /// version into the boot gate's live tail — so the long render shows the same kind
 /// of progress as the k3d/kubectl steps instead of an opaque pause. A generous
 /// timeout still bounds a first full render of the reference mockups.
+///
+/// The bundled `test-cases/` are baked into this build, so the build's commit (see
+/// [`test_cabinet_core::COMMIT`]) identifies the catalog snapshot. Tagging the
+/// ingest with it lets the backend skip the whole re-render when the store already
+/// holds that exact catalog — the common case on every restart after the first.
+/// Only a *clean* commit is trusted as an identity: a `-dirty` build (or one with
+/// no resolvable commit) can change content under the same token, so it forces a
+/// full re-ingest instead.
 fn ingest(app: &AppHandle, base: &str) -> Result<(), String> {
     use std::io::BufRead;
+
+    let body = match test_cabinet_core::COMMIT {
+        Some(commit) if !commit.ends_with("-dirty") => {
+            serde_json::json!({ "catalogVersion": commit })
+        }
+        _ => serde_json::json!({ "force": true }),
+    };
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(600))
@@ -930,7 +945,7 @@ fn ingest(app: &AppHandle, base: &str) -> Result<(), String> {
     let resp = client
         .post(format!("{base}/ingest"))
         .header(reqwest::header::ACCEPT, "application/x-ndjson")
-        .json(&serde_json::json!({ "force": true }))
+        .json(&body)
         .send()
         .map_err(|e| format!("triggering catalog ingest: {e}"))?;
     if !resp.status().is_success() {

@@ -44,6 +44,17 @@ pub mod validator;
 #[path = "lib.test.rs"]
 mod tests;
 
+/// The Test Cabinet commit this build was produced from, stamped at compile time
+/// by `build.rs` into the `TEST_CABINET_COMMIT` environment variable and suffixed
+/// with `-dirty` when the working tree was modified. `None` when the build could
+/// not determine it (for example, a build with no git repository).
+///
+/// This is the single source of the build's provenance commit: the run record's
+/// tooling stamp reads it, and the desktop shell uses it to tag the catalog it
+/// ingests (the bundled `test-cases/` are baked at this same build, so this commit
+/// identifies that catalog snapshot).
+pub const COMMIT: Option<&str> = option_env!("TEST_CABINET_COMMIT");
+
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;

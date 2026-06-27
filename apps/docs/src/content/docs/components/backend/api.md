@@ -68,8 +68,9 @@ The request body is optional JSON:
 
 ```jsonc
 {
-  "testCases": ["pong"], // restrict the scan to these slugs (default: all)
-  "force": true          // re-ingest even versions already in the store
+  "testCases": ["pong"],     // restrict the scan to these slugs (default: all)
+  "force": true,             // re-ingest even versions already in the store
+  "catalogVersion": "a1b2c3" // tag a whole-catalog ingest with its content version
 }
 ```
 
@@ -78,6 +79,19 @@ exists for **development** iteration on a version no run has been published
 against; a version that published runs reference is immutable and must be
 revised by adding a new version, not re-ingested (see
 [Test Cases](/testing/end-to-end/overview/)).
+
+`catalogVersion` is an opaque token identifying the catalog content of a
+whole-catalog ingest (the calling build's commit). The backend records it in the
+store and, on the next ingest, **skips the re-render entirely when the token is
+unchanged** — the store already holds exactly that catalog. A changed or
+first-seen token forces a full re-ingest (content can change under unchanged
+version strings, e.g. an edited spec on the same `v1.0.0`) and advances the
+recorded marker. It is how the **desktop app** avoids re-ingesting its bundled
+catalog on every launch: the bundle is baked at build time, so its build commit
+identifies it, and a clean restart at the same build is a no-op. The marker lives
+in the store, so a fresh store re-ingests unconditionally. A partial scan
+(`testCases` set) ignores `catalogVersion` and leaves the marker untouched. A
+`-dirty` build does not send it (content is not pinned), forcing a re-ingest.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report above. A

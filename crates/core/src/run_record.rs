@@ -126,7 +126,7 @@ impl RunTooling {
     /// `build.rs` into the `TEST_CABINET_COMMIT` environment variable.
     pub fn current() -> Self {
         Self {
-            test_cabinet_commit: option_env!("TEST_CABINET_COMMIT").map(str::to_string),
+            test_cabinet_commit: crate::COMMIT.map(str::to_string),
         }
     }
 }

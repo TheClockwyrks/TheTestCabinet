@@ -40,9 +40,53 @@ fn scan_with_empty_test_case_restriction_is_a_no_op() {
         .scan(&IngestRequest {
             test_cases: Some(vec![]),
             force: false,
+            ..Default::default()
         })
         .unwrap();
     assert!(report.test_case_versions.is_empty());
+}
+
+#[test]
+fn catalog_version_skips_a_re_render_when_unchanged_and_forces_when_changed() {
+    // A whole-catalog ingest tagged with a version stamps a store marker; a later
+    // ingest at the same version reuses the ingested versions (no re-render), while a
+    // different version forces a full re-ingest. Exercised with an empty test-cases
+    // tree (no browser needed): the marker bookkeeping is independent of how many
+    // versions a scan touches.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    let ingestor = Ingestor::new(dir.path(), &store);
+
+    // First tagged scan records the marker.
+    assert!(store.catalog_version().is_none());
+    ingestor
+        .scan(&IngestRequest {
+            catalog_version: Some("commit-a".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.catalog_version().as_deref(), Some("commit-a"));
+
+    // A changed token advances the marker to the new version.
+    ingestor
+        .scan(&IngestRequest {
+            catalog_version: Some("commit-b".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.catalog_version().as_deref(), Some("commit-b"));
+
+    // A partial scan (test_cases set) leaves the whole-catalog marker untouched.
+    ingestor
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            catalog_version: Some("commit-c".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.catalog_version().as_deref(), Some("commit-b"));
 }
 
 #[test]

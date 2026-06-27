@@ -34,6 +34,13 @@ pub struct IngestRequest {
     pub test_cases: Option<Vec<String>>,
     /// Re-ingest and re-render even when unchanged.
     pub force: bool,
+    /// An opaque version token identifying the catalog content of a whole-catalog
+    /// ingest (the client's build commit). When supplied and unchanged from the
+    /// store's recorded marker, the scan reuses the already-ingested versions
+    /// instead of re-rendering them; when changed (or first-seen) it forces a full
+    /// re-ingest and records the new token. Ignored for a partial (`test_cases`)
+    /// scan, which neither consults nor moves the whole-catalog marker.
+    pub catalog_version: Option<String>,
 }
 
 /// The outcome of ingesting one test-case version.
@@ -104,19 +111,39 @@ impl<'a> Ingestor<'a> {
         request: &IngestRequest,
         mut on_event: impl FnMut(IngestEvent),
     ) -> Result<IngestReport> {
+        // A whole-catalog ingest can carry a version token (the client's build
+        // commit). When it matches what the store last ingested, the catalog is
+        // unchanged and the per-version skip path (below) does the cheap thing; when
+        // it differs or is first-seen, the content may have changed under unchanged
+        // version strings, so the whole catalog is force re-ingested. A partial scan
+        // (`test_cases` set) never participates — its marker would falsely claim the
+        // whole catalog.
+        let whole_catalog = request.test_cases.is_none();
+        let tagged = whole_catalog
+            .then_some(request.catalog_version.as_deref())
+            .flatten();
+        let unchanged = tagged.is_some() && self.store.catalog_version().as_deref() == tagged;
+        let force = request.force || (tagged.is_some() && !unchanged);
+
         let targets = self.version_targets(request)?;
         let total = targets.len();
         on_event(IngestEvent::Start { total });
 
         let mut report = IngestReport::default();
         for (index, (slug, version)) in targets.into_iter().enumerate() {
-            let ingested = self.ingest_version(&slug, &version, request.force)?;
+            let ingested = self.ingest_version(&slug, &version, force)?;
             on_event(IngestEvent::Version {
                 index: index + 1,
                 total,
                 version: &ingested,
             });
             report.test_case_versions.push(ingested);
+        }
+
+        // Stamp the marker only after a clean full scan, so a fresh store (no marker)
+        // and a changed catalog both end at the token they were just ingested to.
+        if let Some(version) = tagged {
+            self.store.set_catalog_version(version)?;
         }
 
         Ok(report)

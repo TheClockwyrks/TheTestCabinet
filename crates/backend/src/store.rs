@@ -496,6 +496,34 @@ impl DefinitionStore {
         self.manifest_path(slug, version).is_file()
     }
 
+    /// Path to the store-root marker recording the catalog version of the most
+    /// recent whole-catalog ingest. Lives in a root-level `.tcab/` sidecar (parallel
+    /// to the per-version sidecars) so it is wiped together with the store it
+    /// describes — a fresh store has no marker and re-ingests unconditionally.
+    fn catalog_version_path(&self) -> PathBuf {
+        self.root.join(SIDECAR).join("catalog-version")
+    }
+
+    /// The catalog version stamped by the last whole-catalog ingest that supplied
+    /// one, if any. Used to skip a redundant re-ingest+re-render when the catalog
+    /// content is unchanged from what the store already holds.
+    pub fn catalog_version(&self) -> Option<String> {
+        std::fs::read_to_string(self.catalog_version_path())
+            .ok()
+            .map(|version| version.trim().to_string())
+            .filter(|version| !version.is_empty())
+    }
+
+    /// Record the catalog version of a just-completed whole-catalog ingest.
+    pub fn set_catalog_version(&self, version: &str) -> Result<()> {
+        let path = self.catalog_version_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, version)?;
+        Ok(())
+    }
+
     /// List every ingested case slug and its versions, in insertion (mtime) order
     /// so the newest is listed last per the catalog contract.
     pub fn list_cases(&self) -> Result<Vec<(String, Vec<String>)>> {

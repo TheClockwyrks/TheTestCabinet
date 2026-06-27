@@ -42,6 +42,7 @@ pub async fn ingest(
     let request = IngestRequest {
         test_cases: body.test_cases,
         force: body.force,
+        catalog_version: body.catalog_version,
     };
 
     let checkout = state.config.checkout.clone();
@@ -131,6 +132,11 @@ pub struct IngestBody {
     test_cases: Option<Vec<String>>,
     #[serde(default)]
     force: bool,
+    /// A version token (the client's build commit) tagging a whole-catalog ingest,
+    /// letting the backend skip the re-render when the catalog is unchanged. See
+    /// [`IngestRequest::catalog_version`].
+    #[serde(default)]
+    catalog_version: Option<String>,
 }
 
 #[derive(Serialize)]
