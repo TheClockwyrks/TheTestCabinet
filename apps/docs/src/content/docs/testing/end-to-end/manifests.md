@@ -18,7 +18,7 @@ tags = ["arcade", "2d"]      # free-form classification tags (site-facing, requi
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
+max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
@@ -116,12 +116,14 @@ description = "Solo play against the AI opponent." # what the reviewer is rating
 - `prompt` is **required** and points at the Handlebars template that becomes
   the instruction handed to the harness. The template is **rendered, not
   seeded**; see [Prompt template](/testing/end-to-end/overview/#prompt-template).
-- `max_runtime_seconds` is the maximum wall-clock duration the harness session
-  is allowed before the run container is torn down and the run aborts. It exists
-  so a stuck or runaway session can never run unbounded. It defaults to `3600`
-  (one hour) when omitted and must be greater than zero. This is the per-case
-  default; a run can override it for a single invocation (for example
-  `tcab run --max-runtime <seconds>`).
+- `max_runtime_hours` is the maximum wall-clock duration the harness session is
+  allowed before the run container is torn down and the run aborts. It is
+  authored in hours and fractional values are allowed (for example `0.5` for
+  thirty minutes, `1.5` for ninety), because every cap is long enough that
+  seconds add no useful precision. It exists so a stuck or runaway session can
+  never run unbounded. It defaults to `1` (one hour) when omitted and must be a
+  positive number. This is the per-case default; a run can override it for a
+  single invocation (for example `tcab run --max-runtime <hours>`).
 - `workspace` is an optional path to a **starter directory** whose contents are
   seeded into the root of the run before the specs (see
   [Workspace](/testing/end-to-end/overview/#workspace)). A variant may override

@@ -6,7 +6,7 @@ Draw the Spectra resonator-fighter: the player's ship for a two-band formation \
 shooter, as a 64x64 sprite produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_hours = 0.75
 type = "asset-generation"
 
 # A 64x64 transparent canvas keeps every run comparable.

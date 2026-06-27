@@ -14,7 +14,7 @@ use anyhow::{Context, bail};
 use test_cabinet_core::backend_client::LiveItem;
 use test_cabinet_core::{
     BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody,
-    PublishedRun, RunRecord,
+    PublishedRun, RunRecord, runtime_hours_to_seconds,
 };
 
 use crate::cli::RunArgs;
@@ -50,7 +50,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         harness,
         model: args.model.clone(),
         orchestrator,
-        max_runtime_seconds: args.max_runtime,
+        max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
     };
 
@@ -63,8 +63,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         body.model,
     );
     println!("  backend: {backend}");
-    match body.max_runtime_seconds {
-        Some(seconds) => println!("  cap:     {seconds}s max runtime (override)"),
+    match args.max_runtime {
+        Some(hours) => println!("  cap:     {hours}h max runtime (override)"),
         None => println!("  cap:     test case default max runtime"),
     }
     match &body.orchestrator {

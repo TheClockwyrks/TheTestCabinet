@@ -32,12 +32,11 @@ description = "description.md"
 # build instruction. Injects absolute in-container paths via template variables.
 prompt = "prompt.hbs"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Fathom is a substantial build (fog of war, maze generation, three
-# AIs, multiple states), so it gets a full two hours — comfortably more than a
+# AIs, multiple states), so it gets a full three hours — comfortably more than a
 # healthy build needs while still bounding a runaway session.
-max_runtime_seconds = 7200
-
+max_runtime_hours = 3
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins
 # `playwright` as a dev dependency, so the in-container browser tooling is a

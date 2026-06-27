@@ -8,7 +8,7 @@ charge-up swelling into a white-cored bloom and fading back, produced one drawin
 operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_hours = 0.75
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

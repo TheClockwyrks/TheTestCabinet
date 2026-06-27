@@ -7,7 +7,7 @@ a deterministic factory simulation, as eight 32x32 frames whose amber chevrons \
 scroll East and loop seamlessly, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 3600
+max_runtime_hours = 1
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

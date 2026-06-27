@@ -8,7 +8,7 @@ sixteen 4-neighbor autotile pieces plus the territory-boundary seam and floor, \
 each a seamless edge-to-edge tile, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 5400
+max_runtime_hours = 1.5
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

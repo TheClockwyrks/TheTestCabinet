@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 /// specification and assets that are seeded, the reference views (rendered to
 /// screenshots and seeded as visual targets), and the opt-in validation checks.
 /// See `docs/testing/end-to-end/manifests.md`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct Manifest {
     /// Human-readable display name, surfaced on the site.
     name: String,
@@ -42,12 +42,15 @@ struct Manifest {
     /// Rendered through Handlebars with the run's workspace and seeded spec paths;
     /// see [`crate::prompt`].
     prompt: PathBuf,
-    /// The maximum wall-clock duration, in seconds, the harness session for this
-    /// case is allowed before it is stopped. Supplies the per-case default that a
+    /// The maximum wall-clock duration, in **hours**, the harness session for
+    /// this case is allowed before it is stopped. Authored in fractional hours
+    /// (for example `0.5`) because every cap is long enough that seconds add no
+    /// useful precision; it is normalized to whole seconds at resolution via
+    /// [`crate::runtime_hours_to_seconds`]. Supplies the per-case default that a
     /// run can override (for example `tcab run --max-runtime`). Defaults to
-    /// [`default_max_runtime_seconds`] when omitted so a run is never unbounded.
-    #[serde(default = "default_max_runtime_seconds")]
-    max_runtime_seconds: u64,
+    /// [`default_max_runtime_hours`] when omitted so a run is never unbounded.
+    #[serde(default = "default_max_runtime_hours")]
+    max_runtime_hours: f64,
     /// The test type this case belongs to. Defaults to
     /// [`TestType::EndToEnd`] so every existing manifest — none of which declares
     /// a `type` — keeps resolving unchanged. An asset-generation case declares
@@ -1232,9 +1235,11 @@ pub struct TestCaseVersion {
     /// Handlebars with the run's workspace and seeded spec paths.
     pub prompt_path: PathBuf,
     /// The maximum wall-clock duration, in seconds, the harness session is
-    /// allowed before it is stopped. This is the per-case default; a run may
-    /// override it (see [`crate::RunRequest::max_runtime_override`]). Always
-    /// positive, so a run is never unbounded.
+    /// allowed before it is stopped. Normalized from the manifest's
+    /// `max_runtime_hours` at resolution via [`crate::runtime_hours_to_seconds`].
+    /// This is the per-case default; a run may override it (see
+    /// [`crate::RunRequest::max_runtime_override`]). Always positive, so a run is
+    /// never unbounded.
     pub max_runtime_seconds: u64,
     /// The test type this case belongs to, the discriminator validation and the
     /// run record branch on.
@@ -1506,11 +1511,12 @@ impl TestCaseCatalog {
         }
 
         // The runtime cap bounds the harness session so a run can never continue
-        // unbounded. A zero cap would stop every run instantly, which is never
-        // intended, so it is rejected rather than silently accepted.
-        if manifest.max_runtime_seconds == 0 {
+        // unbounded. It is authored in hours; a non-positive or non-finite value
+        // (zero, negative, NaN, infinity) would not yield a usable bound, so it is
+        // rejected rather than silently accepted.
+        if !(manifest.max_runtime_hours.is_finite() && manifest.max_runtime_hours > 0.0) {
             return Err(invalid(
-                "max_runtime_seconds must be greater than zero".to_string(),
+                "max_runtime_hours must be a positive number".to_string(),
             ));
         }
 
@@ -2669,7 +2675,7 @@ impl TestCaseCatalog {
             description_path,
             root,
             prompt_path,
-            max_runtime_seconds: manifest.max_runtime_seconds,
+            max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),
             test_type,
             build,
             canvas,
@@ -2757,15 +2763,15 @@ fn version_key(version: &str) -> Vec<u64> {
         .collect()
 }
 
-/// The default maximum harness runtime, in seconds, applied when a manifest
-/// omits `max_runtime_seconds`.
+/// The default maximum harness runtime, in hours, applied when a manifest omits
+/// `max_runtime_hours`.
 ///
 /// One hour is a generous ceiling for even the hard cases: it exists to stop a
 /// stuck or runaway session from running forever, not to pace a healthy run. A
 /// case that needs a tighter or looser bound declares its own value, and any run
 /// can override it per invocation.
-fn default_max_runtime_seconds() -> u64 {
-    3600
+fn default_max_runtime_hours() -> f64 {
+    1.0
 }
 
 /// The default `[canvas] background` applied when an asset-generation manifest

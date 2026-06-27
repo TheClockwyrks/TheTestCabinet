@@ -41,11 +41,10 @@ prompt = "prompt.hbs"
 # forbidden ([canvas]/[tool]/[output], and [[check]]).
 type = "adversarial"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Writing, building, and iterating a classical-AI wasm controller
 # against the local CLI is a substantial session, so it gets a full two hours.
-max_runtime_seconds = 7200
-
+max_runtime_hours = 2
 # Starter workspace seeded into the root of every run before the specs. It is a
 # small Cargo project: just the controller skeleton the model fills in. Everything
 # it builds against and runs with — the engine + SDK (the controller "buildkit"),

@@ -34,13 +34,12 @@ description = "description.md"
 # variables rather than hardcoding them.
 prompt = "prompt.hbs"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. This is the per-case default; a run can override it (for example
 # `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
-# unbounded. Carom is an easy case, so 30 minutes is comfortably more than a
+# unbounded. Carom is an easy case, so 90 minutes is comfortably more than a
 # healthy build needs while still catching a session that never terminates.
-max_runtime_seconds = 1800
-
+max_runtime_hours = 1.5
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins
 # `playwright` as a dev dependency, so the in-container browser tooling is a

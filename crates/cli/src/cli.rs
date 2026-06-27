@@ -139,10 +139,11 @@ pub struct RunArgs {
     #[arg(long, value_name = "MODEL")]
     pub model: String,
 
-    /// Maximum harness runtime in seconds before the run is stopped. Overrides
-    /// the test case's `max_runtime_seconds` default; omit to use that default.
-    #[arg(long, value_name = "SECONDS")]
-    pub max_runtime: Option<u64>,
+    /// Maximum harness runtime in hours before the run is stopped. Overrides the
+    /// test case's `max_runtime_hours` default; omit to use that default.
+    /// Fractional hours are allowed (for example `0.5`).
+    #[arg(long, value_name = "HOURS")]
+    pub max_runtime: Option<f64>,
 
     /// Built-in orchestrator that conducts the harness sessions (for example
     /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Selection

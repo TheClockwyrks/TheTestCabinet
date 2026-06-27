@@ -34,8 +34,8 @@ From a source checkout, substitute `cargo run -p test-cabinet-cli -- run …` fo
 - `--variant` is **required**: a run targets exactly one
   [variant](/testing/end-to-end/overview/#variants).
 - `--model` is passed to the harness unchanged; it is opaque to The Test Cabinet.
-- `--max-runtime <seconds>` overrides the case's `max_runtime_seconds` for this
-  invocation only.
+- `--max-runtime <hours>` overrides the case's `max_runtime_hours` for this
+  invocation only (fractional hours allowed, for example `0.5`).
 - `--out-dir runs` is optional: it writes the fetched run record JSON locally
   (otherwise nothing is written — the backend holds the artifacts).
 

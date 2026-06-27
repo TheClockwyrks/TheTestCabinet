@@ -116,12 +116,12 @@ fn run_accepts_a_max_runtime_override() {
         "--model",
         "some-model-id",
         "--max-runtime",
-        "600",
+        "1.5",
     ])
     .expect("a run invocation with --max-runtime should parse");
 
     match cli.command {
-        Command::Run(args) => assert_eq!(args.max_runtime, Some(600)),
+        Command::Run(args) => assert_eq!(args.max_runtime, Some(1.5)),
         other => panic!("expected a run command, got {other:?}"),
     }
 }

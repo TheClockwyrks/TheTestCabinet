@@ -35,12 +35,11 @@ description = "description.md"
 # build instruction. Injects absolute in-container paths via template variables.
 prompt = "prompt.hbs"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Meltdown is a substantial build (grid maze and live pathing, eight
 # towers, the heat/redline model, economy and upgrades, a 20-wave progression,
-# multiple states), so it gets a full hour.
-max_runtime_seconds = 3600
-
+# multiple states), so as a hard case it gets a full five hours.
+max_runtime_hours = 5
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins
 # `playwright` as a dev dependency, so the in-container browser tooling is a

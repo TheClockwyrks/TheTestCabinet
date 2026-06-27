@@ -18,7 +18,7 @@ tags = ["performance", "algorithms"] # classification tags (site-facing, require
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
+max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 workspace = "workspaces/base" # starter project the model fills in (seeds the run root)
 init = "cargo fetch"         # optional command run in the container after seeding, before the harness
 
@@ -65,7 +65,7 @@ dest   = "specs/problem.md"
 ```
 
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
-  `description`), `prompt`, `max_runtime_seconds`, `workspace`, `init`, and the
+  `description`), `prompt`, `max_runtime_hours`, `workspace`, `init`, and the
   `[[spec]]` / `[[variant]]` seeding rules behave exactly as they do for an
   [end-to-end case](/testing/end-to-end/manifests/).
 - The `[build]` table is **required** and, as with an

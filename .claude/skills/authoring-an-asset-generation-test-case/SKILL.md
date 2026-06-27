@@ -121,7 +121,7 @@ Author `test-case.toml` per the
 [manifests schema](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
 - **Metadata** — `name`, `difficulty`, `tags` (site-facing), `summary`,
-  `description`, `prompt`, `max_runtime_seconds`.
+  `description`, `prompt`, `max_runtime_hours`.
 - **`type = "asset-generation"`** — required. Omitting it defaults to `end-to-end`,
   which then rejects the tables below.
 - **`asset_kind`** — `"sprite"` (the default; omit it) or `"sprite-sheet"`. For a

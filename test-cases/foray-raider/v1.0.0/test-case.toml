@@ -8,7 +8,7 @@ of four facings, empty and again laden with a gold seed (the carry-weight tell),
 drawn in a neutral recolorable ramp, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 5400
+max_runtime_hours = 1.5
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

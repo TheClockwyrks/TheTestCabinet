@@ -8,7 +8,7 @@ wavefront growing outward and fading, drawn in grayscale so the game tints it, \
 produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_hours = 0.75
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

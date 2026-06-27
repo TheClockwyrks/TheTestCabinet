@@ -8,7 +8,7 @@ eyeless violet silhouette, produced one drawing operation at a time. The sonar \
 pulse it emits is a separate effect case (Sonar Pulse)."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 3600
+max_runtime_hours = 1
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

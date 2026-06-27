@@ -47,12 +47,11 @@ prompt = "prompt.hbs"
 # and [[check]]).
 type = "performance"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Writing, building, and iterating a from-spec fixed-point engine
 # against the local CLI and training scenarios is a substantial session, so it
 # gets a full hour.
-max_runtime_seconds = 3600
-
+max_runtime_hours = 1
 # Starter workspace seeded into the root of every run before the specs. It is a
 # small Cargo project: just the engine skeleton the model fills in. Everything it
 # builds against and runs with — the engine SDK + contract types (the "buildkit"),

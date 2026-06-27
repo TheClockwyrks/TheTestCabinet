@@ -8,7 +8,7 @@ golden seeds with a bright glint, in a fixed shared gold palette, produced one \
 drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 1800
+max_runtime_hours = 0.5
 type = "asset-generation"
 
 # A 16x16 transparent canvas keeps every run comparable.

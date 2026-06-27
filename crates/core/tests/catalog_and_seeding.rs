@@ -50,8 +50,9 @@ fn resolves_pong_from_its_manifest() {
     assert_eq!(version.name, "Carom");
     assert_eq!(version.difficulty, "easy");
     assert_eq!(version.tags, ["arcade", "2d", "paddle", "physics"]);
-    // The case declares its own harness runtime cap, bounding a run by 30 minutes.
-    assert_eq!(version.max_runtime_seconds, 1800);
+    // The case declares its own harness runtime cap (1.5 hours), bounding a run by
+    // 90 minutes.
+    assert_eq!(version.max_runtime_seconds, 5400);
     assert!(
         version
             .description_path
@@ -284,7 +285,7 @@ reference = \"title\"
 
 #[test]
 fn defaults_the_runtime_cap_when_the_manifest_omits_it() {
-    // `DEMO_HEAD` declares no `max_runtime_seconds`, so resolution falls back to
+    // `DEMO_HEAD` declares no `max_runtime_hours`, so resolution falls back to
     // the one-hour default rather than leaving the run unbounded.
     let manifest = format!("{DEMO_HEAD}[[variant]]\nslug = \"base\"\n");
     let (_dir, catalog) = temp_catalog(&manifest);
@@ -298,13 +299,13 @@ fn rejects_a_zero_runtime_cap() {
     // silently accepted.
     // The cap key must precede `DEMO_HEAD`'s `[[spec]]` table so it parses as a
     // top-level field rather than an (ignored) key inside that table.
-    let manifest = format!("max_runtime_seconds = 0\n{DEMO_HEAD}[[variant]]\nslug = \"base\"\n");
+    let manifest = format!("max_runtime_hours = 0\n{DEMO_HEAD}[[variant]]\nslug = \"base\"\n");
     let (_dir, catalog) = temp_catalog(&manifest);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a zero runtime cap must be rejected");
     assert!(
-        err.to_string().contains("max_runtime_seconds"),
+        err.to_string().contains("max_runtime_hours"),
         "error should explain the invalid cap: {err}"
     );
 }

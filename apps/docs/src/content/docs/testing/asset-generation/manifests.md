@@ -20,7 +20,7 @@ tags = ["asset-generation", "2d", "sprite"] # classification tags (site-facing, 
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_seconds = 1800   # cap on the harness session before it's stopped (default 3600)
+max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (per-frame files)
 
@@ -112,7 +112,7 @@ dest   = "specs/brief.md"
   images (the sheet layout travels in the run record so the verdict page can
   animate from the run alone).
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
-  `description`), `prompt`, `max_runtime_seconds`, and the `[[spec]]` /
+  `description`), `prompt`, `max_runtime_hours`, and the `[[spec]]` /
   `[[variant]]` seeding rules behave as they do for an
   [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief,
   renders a prompt, and may offer variants. The difference is references: an

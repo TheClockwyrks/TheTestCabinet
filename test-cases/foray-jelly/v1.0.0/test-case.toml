@@ -8,7 +8,7 @@ green node and the dull spent husk it becomes once eaten, produced one drawing \
 operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 1800
+max_runtime_hours = 0.5
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 

@@ -167,7 +167,7 @@ builds and [load-checks](/components/core/validation/#load-check) the result and
 runs the declared checks — `tcab` streams the live
 [event stream](/components/core/events/) throughout and prints the produced
 [run record](/components/core/run-records/)'s summary when it finishes. `--variant`
-is required; `--max-runtime <seconds>` overrides the case's default cap for this
+is required; `--max-runtime <hours>` overrides the case's default cap for this
 invocation, and `--out-dir runs` (optional) also writes the fetched record JSON
 locally.
 

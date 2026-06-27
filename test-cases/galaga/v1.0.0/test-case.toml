@@ -34,13 +34,12 @@ description = "description.md"
 # build instruction. Injects absolute in-container paths via template variables.
 prompt = "prompt.hbs"
 
-# Maximum wall-clock runtime, in seconds, for the harness session before the run
+# Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Spectra is a substantial build (choreographed paths, a formation,
-# three drone AIs, two-band combat, multiple states), so it gets a full hour —
-# comfortably more than a healthy build needs while still bounding a runaway
-# session.
-max_runtime_seconds = 3600
-
+# three drone AIs, two-band combat, multiple states), so as a hard case it gets a
+# full five hours — comfortably more than a healthy build needs while still
+# bounding a runaway session.
+max_runtime_hours = 5
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins
 # `playwright` as a dev dependency, so the in-container browser tooling is a

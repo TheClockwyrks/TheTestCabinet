@@ -7,7 +7,7 @@ Draw the Spectra Prism: the two-band boss drone for a two-band formation shooter
 drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
-max_runtime_seconds = 2400
+max_runtime_hours = 0.75
 type = "asset-generation"
 
 [canvas]
