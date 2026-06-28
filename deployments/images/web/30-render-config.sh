@@ -13,7 +13,7 @@ set -eu
 : "${TCAB_WEB_AUTH_URL:=}"
 export TCAB_WEB_BACKEND_URL TCAB_WEB_AUTH_URL
 
-template=/etc/nginx/templates/config.js.template
+template=/etc/nginx/config.js.template
 output=/usr/share/nginx/html/config.js
 
 # Restrict substitution to our own variables so any other ${...} in the template

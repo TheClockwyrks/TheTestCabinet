@@ -60,8 +60,17 @@ COPY --from=build /src/apps/web/dist /usr/share/nginx/html
 USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends gettext-base \
-  && rm -rf /var/lib/apt/lists/*
-COPY deployments/images/web/config.js.template /etc/nginx/templates/config.js.template
+  && rm -rf /var/lib/apt/lists/* \
+  # The container runs as uid 101 (USER 101 below), and 30-render-config.sh writes
+  # the rendered config.js INTO the web root at start — but the COPYed dist is
+  # root-owned, so uid 101 cannot create the file there (it crash-loops with
+  # "Permission denied"). Hand the web root to the runtime user so the render lands.
+  && chown -R 101:0 /usr/share/nginx/html
+# Keep the template OUTSIDE /etc/nginx/templates/: the base image's stock
+# 20-envsubst-on-templates.sh auto-renders everything under that dir into
+# /etc/nginx/conf.d/, which would both misplace config.js (nginx serves the web root,
+# not conf.d) and double-process it. Our 30-render-config.sh is the single renderer.
+COPY deployments/images/web/config.js.template /etc/nginx/config.js.template
 COPY deployments/images/web/30-render-config.sh /docker-entrypoint.d/30-render-config.sh
 RUN chmod +x /docker-entrypoint.d/30-render-config.sh
 
