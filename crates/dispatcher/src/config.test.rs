@@ -22,6 +22,10 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET",
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR",
     "TCAB_DISPATCHER_DRIVER_AUTH_MODE",
+    "TCAB_PUBLISHER_IMAGE",
+    "TCAB_DISPATCHER_PUBLISHER_SECRETS",
+    "TCAB_GITHUB_ORG",
+    "TCAB_PAGES_PROJECT",
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
@@ -83,6 +87,79 @@ fn resolves_with_required_and_defaults() {
         assert_eq!(config.subscription_dir, "/var/run/tcab/subscription");
         assert!(config.driver_auth_mode.is_none());
         assert!(config.passthrough_k8s_env.is_empty());
+        // Publishing is off by default: no image means the publish path is disabled,
+        // no publisher secrets, and nothing forwarded into a publish Job.
+        assert!(config.publisher_image.is_none());
+        assert!(!config.publishing_enabled());
+        assert!(config.publisher_secrets.is_empty());
+        assert!(config.passthrough_publisher_env.is_empty());
+    });
+}
+
+#[test]
+fn publisher_config_parses_when_set() {
+    with_env(|| {
+        set_required();
+        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set(
+            "TCAB_DISPATCHER_PUBLISHER_SECRETS",
+            "tcab-publisher-secrets, tcab-cf ",
+        );
+        set("TCAB_GITHUB_ORG", "TheClockwyrks");
+        set("TCAB_PAGES_PROJECT", "tcab-runs");
+        let config = Config::from_env().expect("config should resolve");
+
+        assert_eq!(
+            config.publisher_image.as_deref(),
+            Some("ghcr.io/example/tcab-publisher:1.0")
+        );
+        // A configured image enables the publish path.
+        assert!(config.publishing_enabled());
+        // Comma-split, trimmed, blanks dropped — exactly like driver secrets.
+        assert_eq!(
+            config.publisher_secrets,
+            vec!["tcab-publisher-secrets", "tcab-cf"]
+        );
+        // The GitHub org and Pages project are forwarded into the publish Job for
+        // the publisher's `PublishConfig::from_env` to resolve.
+        assert!(config.passthrough_publisher_env.contains(&(
+            "TCAB_GITHUB_ORG".to_string(),
+            "TheClockwyrks".to_string()
+        )));
+        assert!(
+            config
+                .passthrough_publisher_env
+                .contains(&("TCAB_PAGES_PROJECT".to_string(), "tcab-runs".to_string()))
+        );
+    });
+}
+
+#[test]
+fn artifacts_url_is_forwarded_into_publish_jobs() {
+    with_env(|| {
+        set_required();
+        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set("TCAB_ARTIFACTS_URL", "http://tcab-artifacts:8790");
+        let config = Config::from_env().expect("config should resolve");
+        // The artifact-service URL is forwarded into both driver and publish Jobs:
+        // the publisher downloads the run's tree.tar from it.
+        assert!(config.passthrough_publisher_env.contains(&(
+            "TCAB_ARTIFACTS_URL".to_string(),
+            "http://tcab-artifacts:8790".to_string()
+        )));
+    });
+}
+
+#[test]
+fn blank_publisher_vars_are_treated_as_unset() {
+    with_env(|| {
+        set_required();
+        set("TCAB_PUBLISHER_IMAGE", "   ");
+        set("TCAB_DISPATCHER_PUBLISHER_SECRETS", "");
+        let config = Config::from_env().expect("config should resolve");
+        assert!(config.publisher_image.is_none());
+        assert!(!config.publishing_enabled());
+        assert!(config.publisher_secrets.is_empty());
     });
 }
 

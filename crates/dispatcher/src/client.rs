@@ -6,6 +6,9 @@
 //! - **Claim** — `POST /jobs/next`, authenticated with the shared **service
 //!   token** ([`ServiceAuth`](../../backend/src/auth.rs)). `200` hands back a
 //!   [`ClaimedJob`]; `204` means the queue is empty.
+//! - **Claim publish** — `POST /publish-jobs/next`, same service token, drains the
+//!   parallel **publish** queue. `200` hands back a [`PublishClaim`] the dispatcher
+//!   turns into one `tcab-publisher` Job; `204` means no publish work is queued.
 //! - **Status** — `GET /jobs/{id}` to read whether a job has already reached a
 //!   terminal state, and `POST /jobs/{id}/status` to report a driver-pod death the
 //!   driver itself could never report. The status POST uses the **per-job token**
@@ -18,7 +21,7 @@
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
-use test_cabinet_core::{ClaimedJob, DriverState, StatusUpdate};
+use test_cabinet_core::{ClaimedJob, DriverState, PublishClaim, StatusUpdate};
 
 /// A failure talking to the backend's job API.
 #[derive(Debug, thiserror::Error)]
@@ -154,6 +157,43 @@ impl BackendClient {
             .map(Some)
             .map_err(|source| ClientError::Decode {
                 what: "claim",
+                source,
+            })
+    }
+
+    /// Claim the oldest queued **publish** job (`POST /publish-jobs/next`, service
+    /// token). `Ok(Some)` is a claimed publish job, `Ok(None)` an empty publish
+    /// queue (`204`). Mirrors [`claim_next`](Self::claim_next) for the parallel
+    /// publish queue.
+    pub async fn claim_next_publish(&self) -> Result<Option<PublishClaim>, ClientError> {
+        let response = self
+            .http
+            .post(format!("{}/publish-jobs/next", self.base_url))
+            .bearer_auth(&self.service_token)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "publish claim",
+                source,
+            })?;
+        let status = response.status();
+        if status == StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::Status {
+                what: "publish claim",
+                status,
+                body,
+            });
+        }
+        response
+            .json::<PublishClaim>()
+            .await
+            .map(Some)
+            .map_err(|source| ClientError::Decode {
+                what: "publish claim",
                 source,
             })
     }

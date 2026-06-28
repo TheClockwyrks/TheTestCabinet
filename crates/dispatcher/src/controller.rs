@@ -8,9 +8,18 @@
 //!    job is still live — report a specific death reason. Listing the cluster (not
 //!    trusting an in-memory counter) is what makes a restart safe: the in-flight
 //!    count is recomputed from reality, never assumed zero.
-//! 2. **Admit**: while under the in-flight cap, claim the oldest queued job and
-//!    create one driver `Job` for it. An empty queue or a full cap backs off for
-//!    the poll interval.
+//! 2. **Admit**: while under the in-flight cap, claim the oldest queued run job and
+//!    create one driver `Job` for it, then — when publishing is enabled — also try
+//!    to claim the oldest queued **publish** job and create one `tcab-publisher`
+//!    `Job` for it. The publish queue is parallel and cheap (few, short Jobs), so it
+//!    shares the same in-flight cap accounting (both Job kinds carry the same
+//!    `managed-by` label, so the reconcile count covers both) and is simply tried
+//!    each tick. An empty queue or a full cap backs off for the poll interval.
+//!
+//! Publish `Job`s carry no bespoke death detection in this first cut: a publisher
+//! that dies before reporting either surfaces as a stuck `dispatched` publish job or
+//! is reaped by its TTL — the run-queue death-detection path (which needs the
+//! driver's per-job-token semantics) is not duplicated for the publish path.
 //!
 //! The only in-memory state is `{job_id → job_token}` for jobs this process
 //! dispatched, retained so it can present the per-job token when reporting a death.
@@ -22,11 +31,11 @@ use std::collections::HashMap;
 
 use tokio::time::sleep;
 
-use test_cabinet_core::ClaimedJob;
+use test_cabinet_core::{ClaimedJob, PublishClaim};
 
 use crate::client::BackendClient;
 use crate::config::Config;
-use crate::job::build_driver_job;
+use crate::job::{build_driver_job, build_publish_job};
 use crate::kubernetes::{JobPhase, Kube, ManagedJob};
 
 /// The running dispatcher: its config, the two clients, and the per-job tokens for
@@ -99,11 +108,25 @@ impl Dispatcher {
             return Ok(false);
         }
 
-        let Some(claim) = self.backend.claim_next().await? else {
-            return Ok(false);
-        };
-        self.dispatch(claim).await?;
-        Ok(true)
+        // Run queue first. If a run job is admitted, return straight away so the
+        // caller loops back to keep draining (without an idle backoff); the publish
+        // queue is tried on the next tick.
+        if let Some(claim) = self.backend.claim_next().await? {
+            self.dispatch(claim).await?;
+            return Ok(true);
+        }
+
+        // The run queue is empty; while still under the cap, try the parallel publish
+        // queue. Only when publishing is enabled (a publisher image is configured) —
+        // otherwise the dispatcher never touches the publish queue at all.
+        if self.config.publishing_enabled()
+            && let Some(claim) = self.backend.claim_next_publish().await?
+        {
+            self.dispatch_publish(claim).await?;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     /// Create one driver `Job` for a claimed run and retain its per-job token for
@@ -120,6 +143,21 @@ impl Dispatcher {
             "dispatched a driver Job",
         );
         self.tokens.insert(claim.job_id, claim.job_token);
+        Ok(())
+    }
+
+    /// Create one `tcab-publisher` `Job` for a claimed publish job. Unlike a driver
+    /// dispatch this retains no token: the publish path has no dispatcher-side death
+    /// detection (the publisher reports its own terminal result, and a publisher that
+    /// dies surfaces as a stuck `dispatched` publish job or is reaped by its TTL).
+    async fn dispatch_publish(&mut self, claim: PublishClaim) -> anyhow::Result<()> {
+        let job = build_publish_job(&claim, &self.config);
+        self.kube.create_job(&job).await?;
+        tracing::info!(
+            job_id = %claim.job_id,
+            run_id = %claim.run_id,
+            "dispatched a publisher Job",
+        );
         Ok(())
     }
 

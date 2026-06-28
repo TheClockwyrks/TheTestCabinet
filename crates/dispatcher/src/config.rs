@@ -20,6 +20,8 @@
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | The name of an operator-provided `Secret` holding the harness **subscription** credential files (keyed by credential basename). When set, the dispatcher mounts it as a read-only volume into each driver `Job` at `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` (with `optional: true`, so a missing Secret never wedges API-key-only driver pods) and forwards that dir to the driver. Unset leaves runs API-key-only — this is an additive parallel path to `TCAB_DISPATCHER_DRIVER_SECRETS`. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | The path the subscription Secret is mounted at inside each driver `Job`, forwarded to the driver as `TCAB_DRIVER_SUBSCRIPTION_DIR`. Only used when the subscription Secret is configured. | `/var/run/tcab/subscription` |
 //! | `TCAB_DISPATCHER_DRIVER_AUTH_MODE` | no | When set, forwarded into each driver `Job` as `TCAB_AUTH_MODE`, locking the harness auth mode (`auto`, `subscription`, `api-key`) for every run. Unset leaves the per-run/default selection unchanged. | — |
+//! | `TCAB_PUBLISHER_IMAGE` | no | The `tcab-publisher` container image each created publish `Job`'s pod runs. Unset disables the publish path entirely — the dispatcher claims no publish jobs and builds no publish `Job`s, so a deployment without a publisher image simply never publishes. | — |
+//! | `TCAB_DISPATCHER_PUBLISHER_SECRETS` | no | Comma-separated `Secret` names mounted into each publish `Job`'s env via `envFrom` (mirrors `TCAB_DISPATCHER_DRIVER_SECRETS`). This is how the publisher's `GH_TOKEN` (for `gh`) and `CLOUDFLARE_API_TOKEN` (for `wrangler`) reach it. Unset injects no secret env. | — |
 //!
 //! The `TCAB_K8S_RUN_*` set below is **passed through** into each driver `Job`'s
 //! env verbatim — the dispatcher does not consume it, the driver does (see the
@@ -70,6 +72,35 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // environment. `OTEL_SERVICE_NAME` is deliberately NOT forwarded: the driver
     // must keep its own seeded service name, not inherit the dispatcher's. All are
     // "forward only if set", so an export-disabled deployment forwards nothing.
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "TCAB_ENV",
+];
+
+/// The variables the dispatcher passes through into each **publish** `Job`'s env
+/// verbatim — the artifact-service URL (the publisher downloads the run's
+/// `tree.tar` from it), the GitHub org / Cloudflare Pages project the publisher's
+/// `PublishConfig::from_env` resolves, and the observability vars. The publisher
+/// never interprets the values the dispatcher reads here; it only forwards the ones
+/// that are set. The backend URL, job id, job token, and run id are *not* listed —
+/// those come from the claim and are set explicitly on every publish `Job`.
+pub const PUBLISHER_PASSTHROUGH_VARS: &[&str] = &[
+    // The publisher downloads the produced run tree (`GET /runs/{id}/tree.tar`) from
+    // this artifact service before running the gh/wrangler release. Unset (a
+    // single-box dev cluster with no artifact service) leaves the publisher with no
+    // tree to release — the publish path is only enabled in a full deployment.
+    "TCAB_ARTIFACTS_URL",
+    // The publisher's `core::publish::PublishConfig::from_env` reads these to choose
+    // the GitHub org the public per-run repo lands in and the Cloudflare Pages
+    // project the playable build deploys to. Forwarded only if set; `from_env`
+    // defaults the org when unset.
+    "TCAB_GITHUB_ORG",
+    "TCAB_PAGES_PROJECT",
+    // Observability: forwarded so each per-publish Job exports its spans to the same
+    // OTLP collector as the services, tagged with the same environment.
+    // `OTEL_SERVICE_NAME` is deliberately not forwarded (the publisher keeps its own
+    // seeded service name). All "forward only if set".
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_EXPORTER_OTLP_HEADERS",
     "OTEL_EXPORTER_OTLP_PROTOCOL",
@@ -147,9 +178,35 @@ pub struct Config {
     /// captured at startup to pass through into each driver `Job`'s env. The driver
     /// reads them; the dispatcher only forwards them.
     pub passthrough_k8s_env: Vec<(String, String)>,
+    /// The `tcab-publisher` container image each created publish `Job`'s pod runs
+    /// (`TCAB_PUBLISHER_IMAGE`). `None` disables the publish path: with no publisher
+    /// image the dispatcher claims no publish jobs and builds no publish `Job`s, so a
+    /// deployment that never publishes needs no image. See [`publishing_enabled`].
+    ///
+    /// [`publishing_enabled`]: Self::publishing_enabled
+    pub publisher_image: Option<String>,
+    /// `Secret` names mounted into each publish `Job`'s env via `envFrom`
+    /// (`TCAB_DISPATCHER_PUBLISHER_SECRETS`, comma-separated), mirroring
+    /// [`driver_secrets`](Self::driver_secrets). Carries the publisher's `GH_TOKEN`
+    /// (for `gh`) and `CLOUDFLARE_API_TOKEN` (for `wrangler`). Empty injects no
+    /// secret env.
+    pub publisher_secrets: Vec<String>,
+    /// The variables passed through into each publish `Job`'s env verbatim
+    /// (`TCAB_ARTIFACTS_URL`, `TCAB_GITHUB_ORG`, `TCAB_PAGES_PROJECT`, and the
+    /// observability vars that are set), collected once at startup. See
+    /// [`PUBLISHER_PASSTHROUGH_VARS`].
+    pub passthrough_publisher_env: Vec<(String, String)>,
 }
 
 impl Config {
+    /// Whether the publish path is enabled — i.e. a `tcab-publisher` image is
+    /// configured. When `false` the dispatcher never claims a publish job nor builds
+    /// a publish `Job`, so a deployment without a publisher image simply never
+    /// publishes (the run path is unaffected either way).
+    pub fn publishing_enabled(&self) -> bool {
+        self.publisher_image.is_some()
+    }
+
     /// Resolve the configuration from the process environment.
     ///
     /// `TCAB_BACKEND_URL`, `TCAB_BACKEND_SERVICE_TOKEN`, and `TCAB_DRIVER_IMAGE`
@@ -197,6 +254,22 @@ impl Config {
             .filter_map(|&key| non_empty(key).map(|value| (key.to_string(), value)))
             .collect();
 
+        let publisher_image = non_empty("TCAB_PUBLISHER_IMAGE");
+        let publisher_secrets = non_empty("TCAB_DISPATCHER_PUBLISHER_SECRETS")
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let passthrough_publisher_env = PUBLISHER_PASSTHROUGH_VARS
+            .iter()
+            .filter_map(|&key| non_empty(key).map(|value| (key.to_string(), value)))
+            .collect();
+
         Ok(Self {
             backend_url,
             service_token,
@@ -211,6 +284,9 @@ impl Config {
             subscription_dir,
             driver_auth_mode,
             passthrough_k8s_env,
+            publisher_image,
+            publisher_secrets,
+            passthrough_publisher_env,
         })
     }
 }

@@ -44,7 +44,7 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
-use test_cabinet_core::ClaimedJob;
+use test_cabinet_core::{ClaimedJob, PublishClaim};
 
 use crate::config::Config;
 
@@ -59,6 +59,9 @@ pub const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 
 /// The name of the single container in each driver `Job`'s pod.
 const DRIVER_CONTAINER: &str = "driver";
+
+/// The name of the single container in each publish `Job`'s pod.
+const PUBLISHER_CONTAINER: &str = "publisher";
 
 /// The volume name the subscription `Secret` is mounted under, when configured.
 const SUBSCRIPTION_VOLUME: &str = "subscription-creds";
@@ -86,6 +89,14 @@ pub fn managed_selector() -> String {
 /// prefix + the job id.
 pub fn job_name(job_id: &str) -> String {
     format!("tcab-driver-{job_id}")
+}
+
+/// The `Job` name for a claimed publish job. Like [`job_name`] but with the
+/// `tcab-publisher-` prefix, so a publish `Job` and a run `Job` for the same id
+/// (they share no id space, but defensively) never collide on a name. The publish
+/// job id is a lowercase UUID minted by the backend, already a valid DNS-1123 label.
+pub fn publish_job_name(job_id: &str) -> String {
+    format!("tcab-publisher-{job_id}")
 }
 
 /// Build the driver `Job` for a claimed run. Pure given the claim and config, so
@@ -204,6 +215,106 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         spec: Some(job_spec),
         status: None,
     })
+}
+
+/// Build the `tcab-publisher` `Job` for a claimed publish job. Pure given the
+/// claim and config, so the manifest is unit-tested without a cluster.
+///
+/// Unlike the driver `Job`, the publisher only ever talks **HTTP** — it downloads
+/// the run's `tree.tar` from the artifact service, runs the gh/wrangler release, and
+/// reports its result and progress to the backend over the publish-job token. So it
+/// deliberately carries **none** of the driver's k8s extras: no sandbox-pod
+/// passthroughs, no `TCAB_K8S_POD_IP` downward-API var, no subscription volume, and
+/// no special ServiceAccount with pod-create RBAC (it gets the namespace default,
+/// which can reach the API server for nothing it is allowed to mutate). It does
+/// share the run path's ownership/job-id labels, `backoffLimit: 0`, and
+/// `ttlSecondsAfterFinished`, so the dispatcher's reconcile/cleanup covers it too.
+pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
+    // The publisher image is only ever called here, and the controller never claims
+    // a publish job unless `publishing_enabled()` (i.e. an image is set), so this
+    // unwrap-via-`unwrap_or_default` is defensive: an unset image would yield an
+    // empty image string, which the apiserver rejects, rather than a panic.
+    let image = config.publisher_image.clone().unwrap_or_default();
+
+    let mut env = vec![
+        plain_env("TCAB_BACKEND_URL", &config.backend_url),
+        plain_env("TCAB_PUBLISH_JOB_ID", &claim.job_id),
+        plain_env("TCAB_PUBLISH_JOB_TOKEN", &claim.job_token),
+        plain_env("TCAB_PUBLISH_RUN_ID", &claim.run_id),
+    ];
+    // Forward the artifact-service URL (for the `tree.tar` download) and the
+    // GitHub-org / Pages-project the publisher's `PublishConfig::from_env` resolves,
+    // plus the observability vars — exactly the set captured at startup, and only
+    // the ones that were set.
+    for (key, value) in &config.passthrough_publisher_env {
+        env.push(plain_env(key, value));
+    }
+
+    // Mount the publisher Secret(s) into the pod's env: `GH_TOKEN` (for `gh`) and
+    // `CLOUDFLARE_API_TOKEN` (for `wrangler`). Omitted (`None`) when no publisher
+    // secrets are configured.
+    let env_from = (!config.publisher_secrets.is_empty()).then(|| {
+        config
+            .publisher_secrets
+            .iter()
+            .map(|name| EnvFromSource {
+                secret_ref: Some(SecretEnvSource {
+                    name: name.clone(),
+                    optional: None,
+                }),
+                ..Default::default()
+            })
+            .collect()
+    });
+
+    let container = Container {
+        name: PUBLISHER_CONTAINER.to_string(),
+        image: Some(image),
+        env: Some(env),
+        env_from,
+        // No volumes, no mounts: the publisher carries no subscription credentials.
+        resources: None::<ResourceRequirements>,
+        ..Default::default()
+    };
+
+    let pod_spec = PodSpec {
+        containers: vec![container],
+        // A publisher that fails reports its own failure (or surfaces as a stuck
+        // `dispatched` publish job); never restart it in place.
+        restart_policy: Some("Never".to_string()),
+        // No `service_account_name`: the publisher needs no Kubernetes API access, so
+        // it runs under the namespace default and must NOT get the driver's
+        // pod-create RBAC.
+        ..Default::default()
+    };
+
+    let labels = job_labels(&claim.job_id);
+
+    let job_spec = JobSpec {
+        // Do not retry a failed publish Job: the publisher owns reporting its own
+        // failure, and a retry could double-deploy.
+        backoff_limit: Some(0),
+        ttl_seconds_after_finished: Some(config.job_ttl_seconds),
+        template: PodTemplateSpec {
+            metadata: Some(ObjectMeta {
+                labels: Some(labels.clone()),
+                ..Default::default()
+            }),
+            spec: Some(pod_spec),
+        },
+        ..Default::default()
+    };
+
+    Job {
+        metadata: ObjectMeta {
+            name: Some(publish_job_name(&claim.job_id)),
+            namespace: Some(config.namespace.clone()),
+            labels: Some(labels),
+            ..Default::default()
+        },
+        spec: Some(job_spec),
+        status: None,
+    }
 }
 
 /// The labels every driver `Job` (and its pod template) carries: the ownership

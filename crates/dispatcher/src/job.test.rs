@@ -10,7 +10,7 @@ use std::time::Duration;
 use k8s_openapi::api::core::v1::EnvVar;
 
 use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{ClaimedJob, LaunchBody};
+use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
 
 /// A representative claimed job.
 fn claim() -> ClaimedJob {
@@ -55,6 +55,25 @@ fn config() -> Config {
                 "ghcr-pull".to_string(),
             ),
         ],
+        publisher_image: Some("ghcr.io/example/tcab-publisher:latest".to_string()),
+        publisher_secrets: vec!["tcab-publisher-secrets".to_string()],
+        passthrough_publisher_env: vec![
+            (
+                "TCAB_ARTIFACTS_URL".to_string(),
+                "http://tcab-artifacts:8790".to_string(),
+            ),
+            ("TCAB_GITHUB_ORG".to_string(), "TheClockwyrks".to_string()),
+            ("TCAB_PAGES_PROJECT".to_string(), "tcab-runs".to_string()),
+        ],
+    }
+}
+
+/// A representative claimed publish job.
+fn publish_claim() -> PublishClaim {
+    PublishClaim {
+        job_id: "pub-456".to_string(),
+        job_token: "pub-token-xyz".to_string(),
+        run_id: "run-789".to_string(),
     }
 }
 
@@ -355,4 +374,153 @@ fn managed_selector_matches_the_label() {
         managed_selector(),
         format!("app.kubernetes.io/managed-by={MANAGED_BY}"),
     );
+}
+
+// --- publish Job builder ---------------------------------------------------
+
+#[test]
+fn publish_job_sets_the_publisher_image_and_container_name() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let c = container(&job);
+    assert_eq!(c.name, "publisher");
+    assert_eq!(
+        c.image.as_deref(),
+        Some("ghcr.io/example/tcab-publisher:latest"),
+    );
+}
+
+#[test]
+fn publish_job_sets_the_claim_env() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let map = env_map(container(&job).env.as_ref().unwrap());
+
+    assert_eq!(
+        map["TCAB_BACKEND_URL"].value.as_deref(),
+        Some("http://backend:8787")
+    );
+    assert_eq!(map["TCAB_PUBLISH_JOB_ID"].value.as_deref(), Some("pub-456"));
+    assert_eq!(
+        map["TCAB_PUBLISH_JOB_TOKEN"].value.as_deref(),
+        Some("pub-token-xyz")
+    );
+    assert_eq!(
+        map["TCAB_PUBLISH_RUN_ID"].value.as_deref(),
+        Some("run-789")
+    );
+}
+
+#[test]
+fn publish_job_forwards_artifacts_org_and_pages_project() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let map = env_map(container(&job).env.as_ref().unwrap());
+
+    assert_eq!(
+        map["TCAB_ARTIFACTS_URL"].value.as_deref(),
+        Some("http://tcab-artifacts:8790")
+    );
+    assert_eq!(
+        map["TCAB_GITHUB_ORG"].value.as_deref(),
+        Some("TheClockwyrks")
+    );
+    assert_eq!(map["TCAB_PAGES_PROJECT"].value.as_deref(), Some("tcab-runs"));
+}
+
+#[test]
+fn publish_job_mounts_publisher_secrets_via_env_from() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let env_from = container(&job)
+        .env_from
+        .as_ref()
+        .expect("configured publisher secrets must produce an envFrom");
+    let names: Vec<&str> = env_from
+        .iter()
+        .filter_map(|src| src.secret_ref.as_ref())
+        .map(|secret| secret.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["tcab-publisher-secrets"]);
+}
+
+#[test]
+fn publish_job_with_no_secrets_omits_env_from() {
+    let mut config = config();
+    config.publisher_secrets.clear();
+    let job = build_publish_job(&publish_claim(), &config);
+    assert!(container(&job).env_from.is_none());
+}
+
+#[test]
+fn publish_job_has_no_driver_k8s_extras() {
+    // The inverse of the driver Job: the publisher only talks HTTP, so it carries
+    // none of the sandbox/pod-IP/subscription/driver-SA machinery.
+    let job = build_publish_job(&publish_claim(), &config());
+    let pod = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    let map = env_map(container(&job).env.as_ref().unwrap());
+
+    // No downward-API pod IP and no sandbox-pod passthroughs.
+    assert!(!map.contains_key("TCAB_K8S_POD_IP"));
+    assert!(!map.contains_key("TCAB_K8S_RUN_CPU_REQUEST"));
+    assert!(!map.contains_key("TCAB_K8S_IMAGE_PULL_SECRETS"));
+    // No driver-runtime selector or run-request — those are run-path only.
+    assert!(!map.contains_key("TCAB_DRIVER_RUNTIME"));
+    assert!(!map.contains_key("TCAB_RUN_REQUEST"));
+
+    // No subscription volume/mount/security-context, and no ServiceAccount: the
+    // publisher must NOT get the driver's pod-create RBAC — it runs as the namespace
+    // default.
+    assert!(pod.volumes.is_none(), "publisher needs no volumes");
+    assert!(
+        container(&job).volume_mounts.is_none(),
+        "publisher needs no mounts"
+    );
+    assert!(
+        pod.security_context.is_none(),
+        "publisher needs no fsGroup/security context"
+    );
+    assert!(
+        pod.service_account_name.is_none(),
+        "publisher must use the namespace default SA, not the driver SA"
+    );
+}
+
+#[test]
+fn publish_job_restart_policy_never_and_no_retries() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let job_spec = job.spec.as_ref().unwrap();
+    assert_eq!(job_spec.backoff_limit, Some(0));
+    let pod_spec = job_spec.template.spec.as_ref().unwrap();
+    assert_eq!(pod_spec.restart_policy.as_deref(), Some("Never"));
+}
+
+#[test]
+fn publish_job_sets_ttl_after_finished() {
+    let job = build_publish_job(&publish_claim(), &config());
+    assert_eq!(
+        job.spec.as_ref().unwrap().ttl_seconds_after_finished,
+        Some(300),
+    );
+}
+
+#[test]
+fn publish_job_carries_ownership_and_job_id_labels() {
+    let job = build_publish_job(&publish_claim(), &config());
+    // Same ownership label as driver Jobs so the dispatcher's reconcile/cleanup
+    // covers publish Jobs too, plus the job-id label.
+    let meta_labels = job.metadata.labels.as_ref().unwrap();
+    assert_eq!(
+        meta_labels
+            .get("app.kubernetes.io/managed-by")
+            .map(String::as_str),
+        Some(MANAGED_BY),
+    );
+    assert_eq!(
+        meta_labels.get(JOB_ID_LABEL).map(String::as_str),
+        Some("pub-456")
+    );
+}
+
+#[test]
+fn publish_job_is_named_and_namespaced() {
+    let job = build_publish_job(&publish_claim(), &config());
+    assert_eq!(job.metadata.name.as_deref(), Some("tcab-publisher-pub-456"));
+    assert_eq!(job.metadata.namespace.as_deref(), Some("tcab"));
 }
