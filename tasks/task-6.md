@@ -1,132 +1,80 @@
-# Task 6 — Publish & score failures as first-class results
+# Task 6 — Manifests + Key Vault wiring for the publisher
 
-**Status:** ✅ **DONE** (2026-06-23, uncommitted) on the **backend-driven path**.
-Reverses the "failed runs are never publishable" stance for two
-objectively-classified tiers. **Scope boundary:** the desktop in-process path is
-untouched — desktop-produced failure publishing waits on the desktop/k3d
-unification (`task-9.md`).
+**Status:** ⬜ Not started. Depends on task-2 (dispatcher config keys) and task-5
+(the published image). Read the `azure-prod-deployment` memory first.
 
-> **What landed:**
-> - **Contract** (`crates/core/src/run_record.rs`): `RunState` is now
->   `completed | catastrophic | timed_out | infrastructure` (was
->   `completed | failed | unevaluable`), with `is_publishable`,
->   `is_publishable_failure`, and `classify_failure(&Error)` helpers. Bindings +
->   JSON Schema regenerated (`npm run gen:contract`).
-> - **Classification** (objective, at run end): a clean harness exit splits
->   `completed` vs `catastrophic` via `completed_state()` (gated to the
->   human-reviewed types — end-to-end, asset-generation — using `validation.loaded`;
->   adversarial/performance keep their auto-scored result). A pre-impl failure
->   classifies via `RunState::classify_failure` (runtime-cap `RunTimedOut` →
->   `timed_out`, everything else → `infrastructure`); threaded through
->   `write_failed_record` and `RunFailure` (driver), and the desktop catch.
-> - **Backend** (`crates/backend`): publish gate now refuses `infrastructure`,
->   waives the ≥1-review requirement for `catastrophic`/`timed_out`, keeps it for
->   `completed`. Review worklist (`state=review`) is now completed-only; new
->   `state=failures` listing for publishable failures. Tests updated/added.
-> - **Gallery** (`packages/ui`, `apps/web`): shared `data/runState.ts`
->   presentation helper; Play tab hidden for non-playable outcomes; per-tier
->   failure banner + card chips; verdict copy; a new **Publish failures** page
->   (`/runs/failures`, console-only) listing `state=failures` with a one-click
->   publish (no review editor); leaderboard gains a per-model reliability section
->   (catastrophic/timeout counts, separate from the score). Docs updated
->   (`run-records.md` Status, `results.md` Publish).
-> - **Verified:** workspace `cargo build`/`clippy -D warnings`/`test` green;
->   `gen:contract` drift-clean; `npm run typecheck` + `vite build` for `apps/web`
->   and `apps/desktop`; `packages/ui` vitest green; docs build (120 pages).
->
-> The original design write-up is kept below as the record.
+## Goal
 
-## The idea
+Wire the publish path into the `azure-prod` deployment: the dispatcher knows the
+publisher image + its secrets, the publisher's GitHub/Cloudflare credentials flow
+from Key Vault via the CSI driver, and the publisher Job runs under a minimal
+ServiceAccount.
 
-As test cases grow, smaller models will legitimately produce unusable output, or
-loop without ever finishing. For a frontier benchmark those outcomes are *signal*,
-not noise — worth publishing (including the generated broken code) so people can
-see *how* the agent failed. Failures in two specific tiers become first-class,
-publishable results.
+## Key Vault
 
-## Outcome taxonomy (the load-bearing decision)
+Add two secrets (KV names use dashes — no underscores/dots):
 
-Classification is **objective and derivable at the point a run ends** — no
-model-vs-infra heuristic. The single axis is *how* the run terminated:
+- `github-pat` — value from the repo `.env` `GITHUB_PAT`. Upload with the firewall
+  pattern used elsewhere (temporarily allow the egress IP, set, remove) — see
+  `scripts/upload-subscription-creds.sh` for the exact idiom, or run from the VPN.
+- `cloudflare-pages-api-token` — **the operator must mint a real Cloudflare API
+  token with Pages: Edit** (the existing `CLOUDFLARE_API_TOKEN`/
+  `CLOUDFLARE_PAGES_API_KEY` are not usable — see context.md). Defer this secret
+  until that token exists; everything else can land first.
 
-| Outcome | Trigger (objective) | Publishable | Reviews | Scored | Model stats |
-| --- | --- | --- | --- | --- | --- |
-| **Completed** | harness exit 0 → validation playable | yes | ≥1 (unchanged) | checklist score | avg score |
-| **Catastrophic** | harness exit 0 → validation failed / unevaluable | yes — **manual publish, 0 reviews** | no | no | catastrophic rate |
-| **Timed out** | run hit the runtime cap (`core::Error::RunTimedOut`, `crates/core/src/error.rs:130`) | yes — **manual publish, 0 reviews** | no | no | timeout rate |
-| **Infra failure** | anything else: non-zero harness exit, harness unavailable/invocation/install failure, init/seeding failure, container-runtime error, image pull, OOM, pod death | **never** | — | no | excluded entirely |
+## SecretProviderClass (`deployments/k8s/components/keyvault-csi/secretproviderclass.yaml`)
 
-Rationale for the boundaries:
+Add a new materialized Secret `tcab-publisher-secrets` (a 6th `secretObjects`
+entry), and the two `objects` entries:
 
-- **Harness exit 0 = the model claims completion.** If validation then finds the
-  build broken/unevaluable, that's the model's failure → **catastrophic**,
-  publishable. A non-zero harness exit means the harness itself errored → infra.
-- **Timeout is a legitimate model finding** (a small model looping on a hard task
-  and never converging) — but it is *not* catastrophic, so it carries a **separate
-  "timed out" label** rather than being folded into the catastrophic tier.
-- **Infra failures are the Test Cabinet's fault** (our container/cluster/harness
-  plumbing). Retained with a diagnostic `detail` for inspection, **never**
-  publishable, and **excluded from every model statistic**.
+```
+objects:  github-pat, cloudflare-pages-api-token
+secretObjects:
+  - secretName: tcab-publisher-secrets
+    data:
+      - { objectName: github-pat,                 key: GH_TOKEN }
+      - { objectName: cloudflare-pages-api-token, key: CLOUDFLARE_API_TOKEN }
+```
 
-Catastrophic and timed-out runs are a **distinct tier outside the 0..total score
-scale** — they have no checklist review and no score. That keeps a model's average
-score meaningful (computed only over runs that were at least workable) while
-catastrophic-rate and timeout-rate are reported as separate stats alongside it.
+(`gh` reads `GH_TOKEN`; `wrangler` reads `CLOUDFLARE_API_TOKEN`.)
 
-## Authority & integrity
+**CSI gotcha:** the driver won't add keys to an *existing* synced Secret on
+remount, but `tcab-publisher-secrets` is new so it materializes fine. If you ever
+add keys to it later, `kubectl delete secret tcab-publisher-secrets` then restart
+`tcab-keyvault-sync`.
 
-The backend decides publishability from the run's **own recorded outcome**, never
-from a client-supplied label. On the backend-driven path this is sound: the driver
-(our trusted per-run pod) records the outcome it observed, and the dispatcher
-independently reports infra reasons when a driver pod dies before reporting
-(`crates/dispatcher/src/kubernetes.rs:113`). A partial/absent record is infra by
-construction → non-publishable.
+## Overlay (`deployments/k8s/overlays/azure-prod/`)
 
-## Implementation plan (backend-driven path)
+- Add a dispatcher patch (extend `patch-dispatcher-subscription.yaml` or a new
+  `patch-dispatcher-publisher.yaml`, then list it in `kustomization.yaml`'s
+  `patches`) setting:
+  - `TCAB_PUBLISHER_IMAGE=ghcr.io/theclockwyrks/tcab-publisher:latest` (pin a
+    `:<git-sha>` once built — the `images:` transformer doesn't reach an env value,
+    same reason `patch-dispatcher-driver-image.yaml` exists).
+  - `TCAB_DISPATCHER_PUBLISHER_SECRETS=tcab-publisher-secrets`.
+  - `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` if overriding the `PublishConfig`
+    defaults (`TheClockwyrks` / `test-cabinet-runs`) — confirm the real Pages
+    project name with the operator.
+- Add `ghcr.io/REPLACE_OWNER/tcab-publisher` → `ghcr.io/theclockwyrks/tcab-publisher`
+  to the `images:` block (so the dispatcher-created Job's image, if also set as a
+  container image anywhere, is rewritten; the env value is patched above
+  regardless).
 
-1. **Carry the outcome on the record.** Extend the run record / `RunStatus`
-   (`crates/core/src/run_record.rs:189`, TS mirror `packages/run-record`) with an
-   explicit outcome classification covering the four tiers above (rather than
-   overloading the existing `Completed`/`Failed`/`Unevaluable` `RunState` + free
-   text). The driver sets it from: harness exit code, the validation result, and
-   whether the failure was `Error::RunTimedOut`. Regenerate contract bindings
-   (`npm run gen:contract`) — see `schema-binding-autogen-goal`.
-2. **Relax the publish gate** (`crates/backend/src/db.rs:370`) to allow
-   **catastrophic** and **timed-out** outcomes (manual publish, **review-count
-   gate waived for these tiers**) while keeping the **≥1-review** requirement for
-   **completed** runs and **refusing infra** outcomes outright.
-3. **Leave the push guard as-is** (`crates/backend/src/api/runs.rs:57`,
-   `completed`-only). Failures reach the DB via the backend-driven `/jobs`
-   retain path (`persist_produced`), not via `POST /runs`. The desktop/CLI push
-   path stays completed-only until `task-9.md`.
-4. **Scoring / stats.** Keep the checklist score over completed runs unchanged.
-   Add catastrophic-rate and timeout-rate as separate per-model stats in the
-   snapshot (`crates/backend/src/snapshot.rs`) and surface them in the
-   gallery/leaderboard UI (`packages/ui` — `src/ratings.ts` + model-comparison
-   views) without polluting the average score.
-5. **Gallery rendering.** A published failure shows its `links.sourceRepo` (the
-   broken code) but has `links.playableBuild === null`. The UI already degrades
-   gracefully (`PlayableSection.tsx:58`, metadata "Not published"); the remaining
-   fix is the **Play tab gating** — `RunDetailLayout.tsx:79` gates on test *type*,
-   not outcome, so a failed run shows an empty Play tab. Hide Play for
-   non-playable outcomes, and badge cards/detail with the tier (catastrophic /
-   timed out).
-6. **Reviewer worklist filter + a separate "publish failures" affordance.** The
-   review worklist (`GET /runs?state=review`, `crates/backend/src/api/runs.rs:213`)
-   must **exclude every non-completed outcome** — infra failures (never
-   publishable) and catastrophic/timeout (publishable but with no review items to
-   complete). Catastrophic/timeout runs instead surface in their **own "publish
-   failures" affordance** that lists publishable failures and offers a single
-   publish button (no review editor). Decision locked 2026-06-23.
+## ServiceAccount + RBAC
 
-## Already handled (so this pass loses no data)
+The publisher Job needs **no** Kubernetes API access (it only talks HTTP to the
+backend + artifact service). Give it the namespace `default` SA or a dedicated
+`tcab-publisher` SA with no Role — explicitly **not** the `tcab-driver` SA (which
+can create/exec pods). The dispatcher already has the RBAC to *create* the Job
+(`deployments/k8s/base/rbac.yaml:59`); no new dispatcher RBAC is required.
 
-The backend retains **every** produced record regardless of outcome, with the
-event timeline and a specific failure `detail` (commit `4a80f99`). Artifact
-retention (`tcab-artifacts`, commit `099148b`) keeps the generated code. The data
-this pass needs is already there.
+## Apply + verify
 
-## Explicitly out of scope
+Apply via `az aks command invoke` (the cluster is private — see the memory). After
+the image is built + public and the secrets are in KV: trigger a publish and watch
+`GET /publish-jobs/{id}/live`; confirm a `tcab-publisher-*` Job runs, the repo +
+Pages deploy appear, and the run flips published with links.
 
-- Desktop/CLI failure publishing — waits on `task-9.md` (desktop/k3d unification).
-- Per-account credential vault (separate follow-up in `context.md`).
+## Out of scope
+
+The code (tasks 1–4) and the image build (task-5).

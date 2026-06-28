@@ -1,199 +1,208 @@
-# Per-run-Job refactor — working context
+# In-cluster publishing — working context
 
-A handoff document for the refactor of how runs execute. The refactor itself —
-replacing the long-lived worker pool with per-run Kubernetes Jobs — is **complete
-and committed** (see Status below). Self-contained so it survives a fresh session.
+A handoff document for closing the **in-cluster publishing gap**: making the
+per-run GitHub-repo + Cloudflare Pages release happen *through the cluster* instead
+of only when a human runs `tcab publish` on a host with `gh`/`wrangler`
+authenticated. Self-contained so it survives a fresh session.
 
-The completed phase files (task-1 … task-5) have been **removed**; the companion
-files that remain hold the **follow-up work** the refactor surfaced or deferred:
+This `tasks/` directory was reset for this work; the previous contents (the
+completed per-run-Job refactor) were deleted. The companion files
+`task-1.md … task-7.md` hold the remaining implementation, in dependency order.
 
-- `task-7.md` — **subscription harness auth** in the service flow. ✅ **DONE**
-  (2026-06-23, uncommitted): operator-provided subscription Secret → dispatcher
-  mounts it into each driver Job → driver builds `ContainerSpec.files` from the
-  mount with no host-fs read. Antigravity (subscription-only) is now console-runnable.
-  One **deferred follow-up remains**: the per-account credential vault (option 2 in
-  the file) — a real multi-tenant build, not started.
-- `task-8.md` — **adversarial arena execution** (quick matches + tournaments).
-  ✅ **DONE** (2026-06-23, uncommitted): restored as a **new standalone
-  `tcab-arena` service** (the `tcab-artifacts`-style split, *diverging* from the
-  file's in-backend recommendation — operator chose the isolated service). The
-  console reaches it via a `/config`-exposed URL; reads stay on the backend.
-- `task-6.md` — ✅ **DONE** (2026-06-23, uncommitted): publish & score failures as
-  first-class results, on the **backend-driven path**. Four-tier `RunState`
-  (`completed | catastrophic | timed_out | infrastructure`); catastrophic &
-  timed-out publish manually with no reviews, infra never publishable/excluded
-  from stats; `state=failures` listing + console "Publish failures" page +
-  leaderboard reliability stats. Desktop failure publishing split out to `task-9`.
-- `task-9.md` — **deferred** (new, 2026-06-23): unify desktop run execution onto
-  the k3d/backend path (one execution path instead of the desktop in-process
-  `RunEngine`). Surfaced by task-6; unblocks desktop-produced failure publishing.
+## The gap (why this work exists)
 
-## Objective
+Tracing the code (confirmed this session):
 
-Replace the long-lived **worker pool** with **per-run Kubernetes Jobs**, and make
-the **backend** the control plane for runs. A console enqueues a run; a thin
-**dispatcher** claims it and creates one **driver** Job; the driver executes the
-run (creating an untrusted sandbox pod), streams progress to the backend, and
-pushes the produced record. Local development runs the same manifests on **k3d**.
+- `BackendPublisher` (`crates/core/src/publish.rs:310`) is the **only** thing that
+  creates a per-run **public GitHub repo** (`gh`/`git`) and deploys the playable
+  build to **Cloudflare Pages** (`wrangler`). It is **never instantiated in
+  production** — only in tests.
+- The **driver** wires `NoopPublisher` (`crates/driver/src/run.rs:~246`,
+  "publishing is a separate, explicit backend operation").
+- The backend's `POST /runs/{id}/publish` (`crates/backend/src/api/runs.rs:171`)
+  only flips the DB `published` flag (`crates/backend/src/db.rs:361`) and queues a
+  snapshot refresh — **no `gh`/`wrangler`**.
+- The **CLI** `tcab publish` (`crates/cli/src/commands/publish.rs`) only calls that
+  HTTP endpoint; it does **not** drive `BackendPublisher` either.
 
-Why: operational tidiness (no per-pod registration, no hand-scaled worker pool),
-concurrency that scales with the cluster (the benchmark is moving toward bigger,
-heavier test cases), and local/deploy parity (one way runs are handled, not two).
+So today the GitHub/Pages release happens nowhere in the deployed system. With the
+k8s design the run's implementation lives in the cluster (uploaded to the artifact
+service), so publishing must be triggerable through the cluster.
 
-## Target architecture
+## Target architecture (decided)
+
+A **dedicated per-publish Kubernetes Job**, reusing the run path's
+queue→dispatcher→Job machinery via a **separate, parallel publish queue** (so the
+run path — `LaunchBody`/`ClaimedJob`/the driver — is completely untouched). The
+**dispatcher** owns all Job creation (it already has the k8s client + RBAC); the
+**backend** gains no k8s client.
 
 ```
-console ──HTTP──> backend (control plane)
-                    ├─ job queue (`job` table: queued→dispatched→running→terminal)
-                    ├─ live relay: ingests events/preview/status from drivers,
-                    │   fans out to the console (NDJSON live stream + SSE notifications)
-                    ├─ run records + reviews + definitions (existing SQLite + store)
-                    └─ auth (accounts) + per-job tokens + a dispatcher service token
-                         ▲ claims jobs / streams progress back
-                    dispatcher (thin) ──k8s API──> one Job per queued run
-                                                     │
-                                       DRIVER pod (trusted; SA can create pods)
-                                                     │ creates + execs into
-                                       SANDBOX pod (untrusted; no API token) ← unchanged trust model
-
-artifacts (blobs)   driver ──upload──> tcab-artifacts ◀──read── console
-                                         (own binary; control-plane backend
-                                          is NOT in the artifact path)
+console / CLI ──POST /runs/{id}/publish──> backend
+                                            │  gate-check (reviewed, not infra)
+                                            │  enqueue publish_job (queued)
+                                            ▼
+                               publish queue (publish_job table)
+                                            ▲ claim
+                        dispatcher ──POST /publish-jobs/next──┘
+                            │ build_publish_job  (k8s API)
+                            ▼
+                   tcab-publisher Job  (new image: node + git + gh + wrangler)
+                     │ 1. GET /runs/{id}/tree.tar  ← artifact service (download)
+                     │ 2. BackendPublisher.release_code   (gh/git → public repo)
+                     │ 3. BackendPublisher.release_playable_build (wrangler → Pages)
+                     │ 4. stream progress + terminal result ─┐
+                     ▼                                        │
+console / CLI ◀─ GET /publish-jobs/{id}/live (NDJSON) ◀── backend relay
+                                            │ on terminal success:
+                                            │  attach links (run_link + record blob),
+                                            │  flip published, queue snapshot refresh
 ```
 
-- No worker `StatefulSet`, no headless Service, no per-pod console registration.
-- The console talks to **one backend URL only**.
-- Asset preview is preserved: the in-container TCP `LivePreview` mechanism is
-  unchanged; the **driver** pod hosts the listener (sandbox connects to the
-  driver's pod IP), and the driver forwards frames to the backend, which relays.
-- The **CLI `ContainerRuntime` stays** — the Tauri desktop app drives runs
-  in-process with it. This refactor is only about the *server* topology;
-  `RunEngine` (in `crates/core`) stays shared by both.
+### Streaming, not polling (operator preference, 2026-06-27)
 
-## Status (branch `v0.3.x`)
+The console/CLI must observe a publish over a **live NDJSON stream**, mirroring the
+run path's live relay (`crates/backend/src/api/jobs.rs` `live`/`event_stream`,
+`crates/backend/src/relay.rs`) — **not** by polling a status endpoint. The
+publisher streams progress events to the backend, which fans them out to
+subscribers, ending with a terminal item carrying the outcome. This keeps the
+first cut simple *and* makes future per-step progress (creating repo → pushing →
+deploying) a non-breaking extension: add more event kinds, same stream.
 
-**Done + committed:**
-- `37670f4` — Phase 1: k3d local overlay (`deployments/k8s/overlays/local/`) +
-  `deployments/local/Makefile` (`local-up/down/rebuild/forward/ingest`) + docs.
-  Brings up backend + auth on a local k3d cluster from the same manifests.
-- `6094b9c` — Phase 2: backend run queue + live relay. `job` table + entity +
-  `Db` queue ops; `relay.rs` (event/preview broadcast fed by HTTP ingestion +
-  completion notifier); `/jobs` endpoints (enqueue, claim, events/preview/status
-  ingestion, NDJSON live stream, active list, SSE `/notifications`); per-job
-  driver token + `ServiceAuth` extractor for the dispatcher.
-- `4a80f99` — Retain every produced record regardless of outcome, with a specific
-  diagnostic `detail` on failure; interim `completed`-only publish guard.
-- `51eab83` — Phase 3 (task-1): the per-run `tcab-driver` crate (`crates/driver`).
-  Moved `LaunchBody`/`ClaimedJob`/`StatusUpdate`/`DriverState` into
-  `core::job_api`; backend-streaming sinks (mpsc + batching relay task); ported
-  the kubernetes sandbox runtime.
-- `266f2f2` — Phase 4 (task-2): the `tcab-dispatcher` crate (`crates/dispatcher`).
-  Claims queued jobs and creates one driver Job each; bounds concurrency from the
-  live cluster; watches Jobs and reports k8s-derived infra-failure detail.
-- `099148b` — Phase 5 (task-5): the `tcab-artifacts` service (`crates/artifacts`)
-  + driver upload. `ArtifactStore`/`LocalFsStore`; per-job-token upload verified
-  via a new backend `POST /jobs/{id}/verify-token`; account-token reads reuse the
-  core serve resolvers; backend exposes the artifact base URL via `GET /config`.
-- `c60ca5b` — Phase 5 (task-3): console rewired to the backend (`/jobs` + relay +
-  `/config`); worker-connection concept removed; contract-codegen swapped from the
-  worker types to `jobs-api.ts` (worker dep dropped).
-- `3e7e86e` — Phase 6 (task-4): cutover. Kustomize base + overlays/{prod,staging,
-  local}; dispatcher/artifacts manifests + driver/dispatcher RBAC; driver/
-  dispatcher/artifacts Dockerfiles + GHCR matrix; **`crates/worker` deleted**;
-  docs rewritten (driver/dispatcher/artifacts pages replace the worker page).
+## What's already done (this work)
 
-**All of tasks 1–5 are complete and committed.** Two follow-up commits landed on
-top of the refactor:
-- `9f6a104` — the local k3d stack now reads all Secrets (harness API key +
-  dispatcher service token) from the host **environment** instead of a tracked
-  overlay file (`deployments/local/Makefile` `secrets` target).
-- `c0cf565` — task-oriented docs for the service-driven flow: a
-  `Run the Local Service Stack` quickstart + a `Running the Local Service Stack`
-  guide (the docs were CLI-only before).
+**Committed** on branch `chore/azure-prod-keyvault-csi`:
 
-**task-7** (subscription auth) and **task-8** (arena execution) are now **done**
-(2026-06-23, uncommitted — see each file's status header). What remains: the
-still-**deferred task-6**, and the **per-account credential vault** carried over
-from task-7 (the multi-tenant successor to the operator-Secret v1).
+- `7cb94bb` — **publish-job scaffolding** (inert, compiles, no behavior change):
+  - `crates/core/src/publish_job_api.rs` — wire types `PublishClaim`,
+    `PublishResult`, `PublishState`, `PublishJobState` (no `contract` codegen
+    derives — these cross only backend↔dispatcher↔publisher, no console TS
+    binding). Re-exported from `crates/core/src/lib.rs`.
+  - `crates/entities/src/publish_job.rs` — the `publish_job` SeaORM entity
+    (`id, state, run_id, job_token, source_repo, playable_build, detail,
+    created_at, updated_at`). Registered in `crates/entities/src/lib.rs`.
+  - `crates/migration/src/m20260628_000004_create_publish_job.rs` — creates the
+    `publish_job` table + `idx_publish_job_state_created`. Registered in
+    `crates/migration/src/lib.rs`.
 
-**Verified here:** whole-workspace `cargo build`/`clippy -D warnings`/`test`
-green with the worker gone (52 test binaries); `npm run gen:contract` drift-clean;
-`npm run typecheck` + `vite build` for `apps/web` + `apps/desktop`; docs build
-(117 pages); all 21 `deployments/k8s/**` YAML files parse.
+Verified: `cargo check -p test-cabinet-core -p test-cabinet-entities -p
+test-cabinet-migration` is green.
 
-**Needs the user (no k8s/docker tooling in this dev env):** `kustomize build` for
-each overlay; the GHCR image builds; and the k3d end-to-end (`make -C
-deployments/local local-up` → enqueue a run → a driver Job + sandbox pod → live
-events/preview → record pushed + reviewable). A couple of behavior changes to eye
-while testing: the console now reaches the auth service directly (`VITE_AUTH_URL`);
-the web adversarial-arena run actions point at backend `/matches`/`/tournaments`
-endpoints that don't exist yet (now tracked as **task-8**); and backend-driven runs
-only support **API-key** auth, not subscription (now tracked as **task-7**).
+> NOTE: the streaming decision came *after* the scaffolding. The committed wire
+> types include a single `PublishResult` (terminal) and a `PublishJobState`
+> (lifecycle, for a status endpoint). Keep `PublishResult` as the **terminal**
+> stream item; treat `PublishJobState`/any status endpoint as optional/secondary —
+> the live stream is the primary observation path (see task-1).
 
-**Needs validation on a real machine (no docker/k3d/kubectl in the dev env):**
-`make -C deployments/local local-up` — especially the k3d `--volume` → pod
-`hostPath: /repo` ingest mount, the empty `secretGenerator`, and k3d/kustomize
-versions.
+## Building blocks to reuse (with file refs)
 
-## Key decisions (the load-bearing ones)
+- **`BackendPublisher`** (`crates/core/src/publish.rs:310`): `release_code`
+  (`:464`, secret-scrub → `git init/add/commit` → `gh repo view` (idempotent gate,
+  `:485`) → `gh repo create --public --source --push`), `release_playable_build`
+  (`:513`, scrub → `wrangler pages deploy <dir> --project-name <p> --branch=<run>`
+  → parse URL), `push`/`push_run` (these POST `/runs` with an **account** token —
+  the publisher must NOT use them; it reports via the publish-job token instead).
+  Trait: `Publisher` (`:88`). Inputs: `PushRequest` (`:31`) =
+  `{record, artifacts: &ArtifactCollection, build_dir: Option<&Path>, events}`.
+  `PublishConfig::from_env` (`:190`): `TCAB_GITHUB_ORG` (default `TheClockwyrks`),
+  `TCAB_PAGES_PROJECT`. Helpers: `read_event_log` (`:56`), `implementation_dir`,
+  `find_build_output` (`crates/core/src/playable.rs`), `run_slug`.
+- **Run queue patterns to mirror** (`crates/backend/src/api/jobs.rs`):
+  `launch`/`enqueue_job` (`:64`), `claim` (`:184`, `ServiceAuth`), `update_status`
+  (`:251`, per-job-token via `authorize_job` `:411`), `verify_token` (`:360`, what
+  the artifact service calls). Live relay: `live` (`:153`) + `event_stream`
+  (`:456`); `crates/backend/src/relay.rs`.
+- **DB patterns** (`crates/backend/src/db.rs`): `NewJob` (`:891`), `enqueue_job`
+  (`:915`), `claim_next_job` (`:939`, txn select-then-update), `set_job_state`
+  (`:962`), `get_job` (`:989`), `publish` (`:361`, the gate + flip),
+  `push`/`run_link` upsert (`:200`/`:262`). The `run` entity blob column is
+  `RecordJson`; `run_link` has `source_repo`/`playable_build`
+  (`crates/entities/src/run_link.rs`).
+- **Artifact service** (`crates/artifacts/src/api.rs`): upload `:127`, serves
+  `build`/proof/asset/events but **no source-tree download yet** (task-4 adds
+  `tree.tar`). Store layout: `{store-root}/{run_id}/` = `run-record.json` +
+  `implementation/` + `events.jsonl` + `raw.jsonl`. Driver upload client:
+  `crates/driver/src/artifacts.rs:73` (`upload_run_tree`, tar of the run dir).
+- **Dispatcher** (`crates/dispatcher`): `build_driver_job` (`src/job.rs:97`, pure,
+  unit-tested), control loop `claim_next`/`dispatch` (`src/controller.rs:~102`),
+  `Config` (`src/config.rs`). Existing RBAC already lets it create Jobs in-namespace
+  (`deployments/k8s/base/rbac.yaml:59`).
+- **Driver image** (`deployments/images/driver.Dockerfile`): `node:24-bookworm-slim`
+  + `git`; **no `gh`/`wrangler`** — the publisher image adds those (task-5).
 
-- **Per-run Job + thin dispatcher** (not a stateless worker pool). Scaling = queue
-  admission + cluster capacity; no KEDA needed.
-- **Backend owns the queue; the dispatcher owns all k8s Job creation.** Keeps the
-  backend portable (HTTP + SQLite) and isolates RBAC in the dispatcher.
-- **`/jobs` namespace for the queue; `POST /runs` push stays** for the
-  CLI/desktop local-run path (two writers of finished records, cleanly split).
-- **Live stream is NDJSON** (matches the existing console consumer); only
-  `/notifications` is SSE.
-- **Auth:** account token to enqueue; per-job token (DB-stored, minted at enqueue)
-  for the driver's streaming; shared service token for the dispatcher's claim.
-- **The driver reports terminal status *with* the record**; the backend persists
-  it using the events the relay already accumulated (driver never re-sends them).
-- **Retain everything:** every produced record is stored regardless of outcome
-  (ephemeral pods lose their disk). Failures carry a specific diagnostic reason.
-  An interim `completed`-only publish guard keeps non-completed runs inspectable
-  but not yet publishable.
-- **Failures-as-publishable-results is deferred** to its own design pass (see
-  `task-6.md`) — the refactor only retains the data.
-- **Contract TS/JSON bindings for the new job types are deferred** to the console
-  rewire (Phase 5), done in one pass when the worker types they replace are
-  removed. Drift CI stays green meanwhile (the generator is unchanged).
-- **Artifacts live behind their own service** (`tcab-artifacts`), not the backend,
-  so artifact bytes never transit the control plane and serving scales
-  independently. Its backing store is local disk first, R2 deferrable as an
-  internal detail. (Resolved 2026-06-23 — this is why the PVC-vs-R2 question is no
-  longer open: it became an internal detail of that binary.) Shipped in `099148b`.
+## Key decisions (load-bearing)
 
-## Remaining work
+- **Separate publish queue** (`publish_job` table + `/publish-jobs/*` endpoints),
+  not a `job_kind` discriminator on the run `job` table — keeps `LaunchBody`/
+  `ClaimedJob`/the driver untouched. (Refines the originally-approved "reuse the
+  queue→dispatcher→Job machinery" — the *machinery* reused is the dispatcher's
+  Job creation + control loop + RBAC, via a parallel small queue.)
+- **Dispatcher creates the publish Job**, not the backend (preserves the trust
+  boundary: only the dispatcher holds k8s-API/Job-create RBAC; the backend stays a
+  pure HTTP/DB service).
+- **Publisher reports via the publish-job token**, never `POST /runs` (which needs
+  an account token). The backend attaches the links + flips published when the
+  terminal stream item arrives.
+- **Async + streaming.** `POST /runs/{id}/publish` becomes async (enqueue, return a
+  job id/ack); the result is observed over `GET /publish-jobs/{id}/live`. This
+  **changes the CLI + console** (task-7).
+- **Reuse `BackendPublisher.release_code` + `release_playable_build` only**
+  (the two gh/wrangler steps); the link-attach + publish-flip live in a new backend
+  DB method (`complete_publish_job`) so events on the run aren't disturbed.
+- **Idempotency:** duplicate publish jobs are tolerable — `gh repo view` gates repo
+  creation and the publish-flip preserves `published_at`. (A guard against
+  enqueuing a second in-flight publish for the same run is a nice-to-have, not
+  required.)
 
-Remaining (companion files):
+## Credentials & deployment (already provisioned this session)
 
-- `task-9.md` — **deferred**: unify desktop run execution onto the k3d/backend
-  path (removes the desktop in-process `RunEngine` divergence; unblocks
-  desktop-produced failure publishing). Not to be tackled immediately.
-- **Per-account credential vault** (carried over from `task-7.md`, option 2) —
-  the multi-tenant successor to the shipped operator-Secret v1: users upload their
-  subscription files, the backend stores them encrypted keyed to the account, and
-  the dispatcher mounts a per-job Secret. A real build (secure storage, upload
-  UI/CLI, rotation); not started.
+- The cluster (`tcab-prod` on AKS `testcabinet-prod-westus2-aks`) sources all
+  secrets from **Azure Key Vault `testcabinet-clockwyrks`** via the Secrets Store
+  CSI driver + workload identity (`deployments/k8s/components/keyvault-csi/`,
+  managed identity `tcab-keyvault-csi`, clientId
+  `8a5a62e4-7a86-4571-acc5-73107be6e015`). See the `azure-prod-deployment` memory.
+- **`GITHUB_PAT`** is in the repo `.env` (gitignored), not yet in Key Vault — it
+  goes to the publisher Job (task-6).
+- **Cloudflare token for `wrangler`** is **unresolved**: the provided
+  `CLOUDFLARE_API_TOKEN` failed `/tokens/verify`, and `CLOUDFLARE_PAGES_API_KEY` is
+  an API *key*, not a token. `wrangler pages deploy` needs a real **API token with
+  Pages: Edit**. The operator will mint one in the follow-up session (they're also
+  kicking off the GH Actions image build + setting the new package public then).
+- **CSI gotcha:** the CSI driver *creates* synced Secrets but does NOT add keys to
+  an existing one on remount — `kubectl delete` the Secret then restart
+  `tcab-keyvault-sync` so it's recreated complete (or enable rotation).
 
-Done (companion files keep their status headers):
+## Release implication
 
-- `task-6.md` — **publish & score failures as first-class results** (backend-driven
-  path; four-tier `RunState`). ✅ 2026-06-23.
-- `task-7.md` — **subscription harness auth** (operator-Secret v1). ✅ 2026-06-23.
-- `task-8.md` — **adversarial arena execution** (standalone `tcab-arena`). ✅ 2026-06-23.
+Shipping this rebuilds **three** service images — `tcab-backend`,
+`tcab-dispatcher`, and the new `tcab-publisher` — via the GitHub-mirror CI
+(`.github/workflows/build-service-images.yml`; canonical remote is Azure DevOps).
+Write the code + manifests + KV wiring; the image build/publish + the overlay tag
+bump happen via the operator's pipeline.
 
-Completed and committed (phase files removed — kept here as the history):
+## Remaining work (companion files, dependency order)
 
-- Phase 3 — per-run **driver** crate. ✅ `51eab83`.
-- Phase 4 — **dispatcher** crate. ✅ `266f2f2`.
-- Phase 5 — **console rewire** to the backend (+ contract codegen). ✅ `c60ca5b`.
-- Phase 5 — **`tcab-artifacts` service** + driver upload. ✅ `099148b`.
-- Phase 6 — **cutover** (manifests, images, worker removal, docs). ✅ `3e7e86e`.
+- `task-1.md` — **Backend**: publish-queue DB methods, async `/publish` (enqueue),
+  `/publish-jobs/next` claim, the **streaming live relay** + progress/terminal
+  ingestion, `complete_publish_job` (attach links + flip published), AppState +
+  routes.
+- `task-2.md` — **Dispatcher**: poll the publish queue, `build_publish_job`, config
+  (`TCAB_PUBLISHER_IMAGE`, publisher secrets).
+- `task-3.md` — **`tcab-publisher` crate**: download `tree.tar`, run
+  `BackendPublisher` release steps, stream progress + report the terminal result.
+- `task-4.md` — **Artifacts**: `GET /runs/{id}/tree.tar` (job-token auth).
+- `task-5.md` — **Image + CI**: `publisher.Dockerfile` + add `tcab-publisher` to
+  `build-service-images.yml`.
+- `task-6.md` — **Manifests + KV**: overlay (publisher image, SA, secrets via CSI),
+  `tcab-publisher-secrets` in the SPC, upload `GITHUB_PAT` (+ the Cloudflare token
+  once minted).
+- `task-7.md` — **CLI + console**: async/streaming publish UX (subscribe to
+  `/publish-jobs/{id}/live` instead of expecting a synchronous `newlyPublished`).
 
-## References (session-local, not in the repo)
+## References
 
-- Plan file: `~/.claude/plans/tingly-dreaming-truffle.md`.
-- Memory: `failures-as-publishable-results.md` (the deferred design),
-  `failed-runs-persisted.md` (the stance it reverses).
+- Branch: `chore/azure-prod-keyvault-csi` (this session's commits live here).
+- Memory: `azure-prod-deployment.md` (how the cluster + Key Vault + Postgres are
+  wired and operated — read it before touching the deployment).
+- The whole deploy + subscription auth + R2 publishing from this session are
+  **done and live**; this publishing feature is the only remaining piece.
