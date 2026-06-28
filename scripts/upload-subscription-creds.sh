@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # Upload the harness SUBSCRIPTION credentials (Codex + Claude Code) from this
-# machine into Azure Key Vault, then refresh the cluster so new driver Jobs pick
-# them up. Run it again whenever the tokens refresh — Claude Code's credentials are
-# typically good for ~a day and Codex's for ~a week, so this is the routine you
-# re-run, not a one-time setup.
+# machine into Azure Key Vault. The cluster pulls the new values in on its own — run
+# it again whenever the tokens refresh (Claude Code's credentials are typically good
+# for ~a day and Codex's for ~a week), so this is the routine you re-run, not a
+# one-time setup.
 #
 # Background: subscription runs authenticate from per-harness sign-in files rather
 # than an API key (see deployments/k8s/base/secrets.example.yaml and the dispatcher's
 # TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_* env). On the cluster those files live in the
 # `tcab-driver-subscription` Secret, which the keyvault-csi component mirrors out of
-# Key Vault. This script writes the local files into the matching Key Vault secrets
-# and restarts the sync pod so that mirror is refreshed; the dispatcher then mounts
-# the fresh files into each new driver Job.
+# Key Vault. This script only writes the local files into the matching Key Vault
+# secrets; the Secrets Store CSI driver has secret auto-rotation enabled (poll
+# interval ~2m), so it reconciles the new values into that Secret on its own — no
+# pod restart, no delete/recreate. Each new driver Job then mounts the fresh files.
+# (If rotation is ever disabled the upload still lands in the vault, but the cluster
+# Secret will go stale; re-enable it with
+#   az aks addon update -g $RG -n $CLUSTER -a azure-keyvault-secrets-provider \
+#     --enable-secret-rotation --rotation-poll-interval 2m
+# rather than reaching for a manual restart.)
 #
 # Key Vault secret names cannot contain dots/underscores, so the files map to dashed
 # names that the SecretProviderClass maps back to the credential basenames the driver
@@ -28,25 +34,22 @@
 # copy is still too large the script stops and lists the biggest remaining keys so you
 # can extend the drop list.
 #
-# Values are never printed: each upload reads a file with `--file`, the trimmed copy
-# is written to a private temp file and removed on exit, and the cluster refresh only
-# restarts a pod. The script temporarily opens the vault firewall to this machine's
-# egress IP only if it isn't already permitted, and removes that rule on exit (a
-# no-op when you run it from the VPN, whose subnet is already allowed).
+# Values are never printed: each upload reads a file with `--file` and the trimmed
+# copy is written to a private temp file and removed on exit. The script temporarily
+# opens the vault firewall to this machine's egress IP only if it isn't already
+# permitted, and removes that rule on exit (a no-op when you run it from the VPN,
+# whose subnet is already allowed).
 #
-# Prerequisites: `az` logged in with rights to set secrets on the vault and run
-# `az aks command invoke`; `jq`; the harness CLIs already signed in on this machine;
-# and the keyvault-csi component already lists these objects (it does once
-# deployments/k8s/overlays/azure-prod is applied).
+# Prerequisites: `az` logged in with rights to set secrets on the vault; `jq`; the
+# harness CLIs already signed in on this machine; and the keyvault-csi component
+# already lists these objects (it does once deployments/k8s/overlays/azure-prod is
+# applied).
 #
 # Usage:
 #   scripts/upload-subscription-creds.sh
 #
 # Overridable via env (defaults shown):
 #   VAULT=testcabinet-clockwyrks
-#   RG=testcabinet-prod-westus2-rg
-#   CLUSTER=testcabinet-prod-westus2-aks
-#   NAMESPACE=tcab-prod
 #   CODEX_AUTH=$HOME/.codex/auth.json
 #   CLAUDE_CONFIG=$HOME/.claude.json
 #   CLAUDE_CREDS=$HOME/.claude/.credentials.json
@@ -54,9 +57,6 @@
 set -euo pipefail
 
 VAULT="${VAULT:-testcabinet-clockwyrks}"
-RG="${RG:-testcabinet-prod-westus2-rg}"
-CLUSTER="${CLUSTER:-testcabinet-prod-westus2-aks}"
-NAMESPACE="${NAMESPACE:-tcab-prod}"
 CODEX_AUTH="${CODEX_AUTH:-$HOME/.codex/auth.json}"
 CLAUDE_CONFIG="${CLAUDE_CONFIG:-$HOME/.claude.json}"
 CLAUDE_CREDS="${CLAUDE_CREDS:-$HOME/.claude/.credentials.json}"
@@ -134,9 +134,15 @@ echo "  set claude-credentials-json  (from ${CLAUDE_CREDS})"
 az keyvault secret set --vault-name "$VAULT" --name claude-config-json      --file "$trimmed" -o none
 echo "  set claude-config-json       (trimmed from ${CLAUDE_CONFIG})"
 
-echo "refreshing the cluster secret sync (rollout restart tcab-keyvault-sync)…"
-az aks command invoke -g "$RG" -n "$CLUSTER" \
-  --command "kubectl rollout restart deploy/tcab-keyvault-sync -n ${NAMESPACE} && kubectl rollout status deploy/tcab-keyvault-sync -n ${NAMESPACE} --timeout=90s" \
-  >/dev/null
-
-echo "done — new driver Jobs will mount the refreshed subscription credentials."
+# No cluster action needed: the Secrets Store CSI driver has secret auto-rotation
+# enabled, so its reconciler pulls these new values into the tcab-driver-subscription
+# Secret on its own within the poll interval (~2m). Driver Jobs are created per run
+# and mount the Secret fresh, so any run started after that window picks up the new
+# credentials — without restarting a pod or recreating the Secret.
+#
+# (Why this matters: without rotation, the driver materialises a `secretObjects`
+# Secret only on first mount and never reconciles an existing one — a rollout restart
+# leaves the stale token in place. Codex/OpenRouter don't notice, their values rarely
+# change, but Claude Code's ~daily token expires and the run fails "Not logged in".)
+echo "done — the CSI driver will reconcile the new credentials into the cluster within"
+echo "the rotation poll interval (~2m); runs started after that mount the fresh files."
