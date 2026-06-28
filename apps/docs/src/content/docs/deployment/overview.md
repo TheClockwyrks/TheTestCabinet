@@ -227,10 +227,10 @@ Operators reach prod by **browsing to a private URL over the VPN**, not by runni
 the console locally. An **internal-only ingress-nginx** — fronting the in-cluster
 `tcab-web` console and the four services at one hostname each — is the documented
 path. On the VPN, an operator opens the console at
-`https://console.testcabinet.ai`; the console talks to the backend at
-`https://api.testcabinet.ai` and the auth service at `https://auth.testcabinet.ai`,
+`https://console.tcab.testcabinet.ai`; the console talks to the backend at
+`https://api.tcab.testcabinet.ai` and the auth service at `https://auth.tcab.testcabinet.ai`,
 and pulls a pre-publish run's artifact and arena media from
-`https://artifacts.testcabinet.ai` and `https://arena.testcabinet.ai` (the URLs the
+`https://artifacts.tcab.testcabinet.ai` and `https://arena.tcab.testcabinet.ai` (the URLs the
 backend reports via `GET /config`). [cert-manager](/deployment/kubernetes/#internal-ingress)
 provides each host a real Let's Encrypt certificate.
 

@@ -44,7 +44,7 @@ spec:
 ---
 # Admit the ingress controller to the console (tcab-web). Nothing in-cluster reaches
 # tcab-web today — the ingress is its only caller — so this is the policy that lets
-# `console.testcabinet.ai` reach the pod at all.
+# `console.tcab.testcabinet.ai` reach the pod at all.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

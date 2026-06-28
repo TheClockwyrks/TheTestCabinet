@@ -38,8 +38,8 @@ GitOps pipeline — adapt them rather than applying them blind.
                  ▼
    ingress-nginx (internal LB, private VNet IP, VPN-only)   TLS: cert-manager (LE)
    ┌──────────────────────────────────────────────────────────────────────────┐
-   │  console.testcabinet.ai → tcab-web   api.testcabinet.ai → tcab-backend:8787 │
-   │  auth.testcabinet.ai → tcab-auth:8789  artifacts.* → tcab-artifacts:8790    │
+   │  console.tcab.testcabinet.ai → tcab-web   api.tcab.testcabinet.ai → tcab-backend:8787 │
+   │  auth.tcab.testcabinet.ai → tcab-auth:8789  artifacts.* → tcab-artifacts:8790    │
    │                                        arena.*     → tcab-arena:8791        │
    └──────────────────────────────────────┬─────────────────────────────────────┘
                                           │ (NetworkPolicy admits ingress-nginx ns)
@@ -395,7 +395,7 @@ default-deny exceptions, selecting the controller by its namespace's automatic
 - **ingress-nginx → backend/auth/artifacts/arena** (on `8787`/`8789`/`8790`/`8791`)
   — routing the four service hostnames.
 - **ingress-nginx → tcab-web** (on `8080`) — the only caller the console has; the
-  ingress is what makes `console.testcabinet.ai` reach the pod at all.
+  ingress is what makes `console.tcab.testcabinet.ai` reach the pod at all.
 
 These are **additive** — the base policies above are left intact. (They take effect
 only on a `NetworkPolicy`-enforcing CNI such as Calico or Cilium.)
@@ -467,11 +467,11 @@ cluster-internal DNS (`http://tcab-artifacts:8790` / `http://tcab-arena:8791`), 
 a laptop on the VPN cannot resolve — so artifact and arena media would break even
 with everything else routed. The `azure-prod` overlay therefore patches:
 
-- the backend's `TCAB_ARTIFACTS_PUBLIC_URL` → `https://artifacts.testcabinet.ai` and
-  `TCAB_ARENA_PUBLIC_URL` → `https://arena.testcabinet.ai`
+- the backend's `TCAB_ARTIFACTS_PUBLIC_URL` → `https://artifacts.tcab.testcabinet.ai` and
+  `TCAB_ARENA_PUBLIC_URL` → `https://arena.tcab.testcabinet.ai`
   (`patch-backend-public-urls.yaml`), and
-- the `tcab-web` pod's `TCAB_WEB_BACKEND_URL` → `https://api.testcabinet.ai` and
-  `TCAB_WEB_AUTH_URL` → `https://auth.testcabinet.ai` (`patch-web-config.yaml`).
+- the `tcab-web` pod's `TCAB_WEB_BACKEND_URL` → `https://api.tcab.testcabinet.ai` and
+  `TCAB_WEB_AUTH_URL` → `https://auth.tcab.testcabinet.ai` (`patch-web-config.yaml`).
 
 `TCAB_BACKEND_AUTH_URL` — the backend's **server-side** token-verify URL — is
 deliberately **not** repointed; it stays the in-cluster `http://tcab-auth:8789`.
@@ -532,7 +532,7 @@ internal LB IP:
 6. **Confirm VPN DNS resolution.** The OpenVPN config must make clients resolve the
    private zone (push Azure DNS `168.63.129.16`, or a resolver that sees the Private
    DNS zone). Validate from a connected client:
-   `nslookup console.testcabinet.ai` should return the internal LB IP.
+   `nslookup console.tcab.testcabinet.ai` should return the internal LB IP.
 
 The Cloudflare token (step 4) and the Azure DNS zone (step 2) are independent and can
 be prepared in parallel.

@@ -2,13 +2,13 @@
 # SPA served by nginx, see deployments/images/web.Dockerfile). Operators currently
 # run the console locally and point it at a `kubectl port-forward`ed backend; this
 # Deployment serves it inside the cluster so there is a real private URL to visit
-# (console.testcabinet.ai, fronted by the internal ingress in ingress.yaml).
+# (console.tcab.testcabinet.ai, fronted by the internal ingress in ingress.yaml).
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha, like the
 # publisher image), so the backend + auth URLs are injected at RUNTIME via env: the
 # image's entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__).
 # The placeholders below are empty defaults — each overlay patches the real https
-# URLs (task-3 sets TCAB_WEB_BACKEND_URL=https://api.testcabinet.ai etc.).
+# URLs (task-3 sets TCAB_WEB_BACKEND_URL=https://api.tcab.testcabinet.ai etc.).
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
 # in-cluster surface, and the ingress (never a LoadBalancer here) is the boundary.

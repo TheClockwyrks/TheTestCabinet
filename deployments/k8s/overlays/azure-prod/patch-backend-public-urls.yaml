@@ -7,8 +7,8 @@
 # component's Deployment) set them to cluster-internal Service DNS
 # (http://tcab-artifacts:8790 / http://tcab-arena:8791), which a laptop on the VPN
 # cannot resolve — so they are repointed here to the per-host ingress https names the
-# internal-ingress component routes (artifacts.testcabinet.ai → tcab-artifacts,
-# arena.testcabinet.ai → tcab-arena).
+# internal-ingress component routes (artifacts.tcab.testcabinet.ai → tcab-artifacts,
+# arena.tcab.testcabinet.ai → tcab-arena).
 #
 # These are env VALUES, not container `image:` fields, so kustomize's `images:`
 # transformer cannot reach them — same rationale as patch-dispatcher-driver-image.yaml
@@ -33,6 +33,6 @@ spec:
         - name: backend
           env:
             - name: TCAB_ARTIFACTS_PUBLIC_URL
-              value: "https://artifacts.testcabinet.ai"
+              value: "https://artifacts.tcab.testcabinet.ai"
             - name: TCAB_ARENA_PUBLIC_URL
-              value: "https://arena.testcabinet.ai"
+              value: "https://arena.tcab.testcabinet.ai"

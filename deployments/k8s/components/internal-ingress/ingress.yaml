@@ -39,10 +39,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - console.testcabinet.ai
+        - console.tcab.testcabinet.ai
       secretName: tls-console
   rules:
-    - host: console.testcabinet.ai
+    - host: console.tcab.testcabinet.ai
       http:
         paths:
           - path: /
@@ -68,10 +68,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - api.testcabinet.ai
+        - api.tcab.testcabinet.ai
       secretName: tls-api
   rules:
-    - host: api.testcabinet.ai
+    - host: api.tcab.testcabinet.ai
       http:
         paths:
           - path: /
@@ -97,10 +97,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - auth.testcabinet.ai
+        - auth.tcab.testcabinet.ai
       secretName: tls-auth
   rules:
-    - host: auth.testcabinet.ai
+    - host: auth.tcab.testcabinet.ai
       http:
         paths:
           - path: /
@@ -126,10 +126,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - artifacts.testcabinet.ai
+        - artifacts.tcab.testcabinet.ai
       secretName: tls-artifacts
   rules:
-    - host: artifacts.testcabinet.ai
+    - host: artifacts.tcab.testcabinet.ai
       http:
         paths:
           - path: /
@@ -155,10 +155,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - arena.testcabinet.ai
+        - arena.tcab.testcabinet.ai
       secretName: tls-arena
   rules:
-    - host: arena.testcabinet.ai
+    - host: arena.tcab.testcabinet.ai
       http:
         paths:
           - path: /

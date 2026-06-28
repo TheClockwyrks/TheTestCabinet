@@ -6,7 +6,7 @@
 # `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The
 # internal-ingress component (web.yaml) ships these env keys with empty defaults; this
 # overlay patches them to the prod https names the ingress routes
-# (api.testcabinet.ai → tcab-backend, auth.testcabinet.ai → tcab-auth).
+# (api.tcab.testcabinet.ai → tcab-backend, auth.tcab.testcabinet.ai → tcab-auth).
 #
 # These are env VALUES the kustomize `images:` transformer cannot reach, hence a patch
 # (same rationale as the dispatcher image-value patches). The console then learns the
@@ -24,6 +24,6 @@ spec:
         - name: web
           env:
             - name: TCAB_WEB_BACKEND_URL
-              value: "https://api.testcabinet.ai"
+              value: "https://api.tcab.testcabinet.ai"
             - name: TCAB_WEB_AUTH_URL
-              value: "https://auth.testcabinet.ai"
+              value: "https://auth.tcab.testcabinet.ai"

@@ -131,8 +131,8 @@ logging in with an account. There are two ways to reach a remote backend:
   Point `tcab` straight at them — no port-forward needed:
 
   ```sh
-  export TCAB_BACKEND_URL=https://api.testcabinet.ai
-  export TCAB_AUTH_URL=https://auth.testcabinet.ai
+  export TCAB_BACKEND_URL=https://api.tcab.testcabinet.ai
+  export TCAB_AUTH_URL=https://auth.tcab.testcabinet.ai
   tcab login --username <name>     # authenticate against the auth service
   tcab run --test-case pong --version v1.0.0 --variant base \
     --harness claude --model claude-opus-4-8   # enqueue + watch, exactly as locally
@@ -140,7 +140,7 @@ logging in with an account. There are two ways to reach a remote backend:
 
   These hostnames resolve **only** on the VPN, via the cloud's private DNS — they
   are not public. The backend reports the artifact and arena URLs
-  (`https://artifacts.testcabinet.ai` / `https://arena.testcabinet.ai`) at
+  (`https://artifacts.tcab.testcabinet.ai` / `https://arena.tcab.testcabinet.ai`) at
   `GET /config`, so media and arena views resolve over the same VPN.
 
 - **`kubectl port-forward` (off-VPN fallback / debugging, or before the ingress is
