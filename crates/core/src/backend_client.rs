@@ -25,6 +25,7 @@ use crate::event::HarnessEvent;
 use crate::job_api::{ActiveJobOut, JobStatusOut, LaunchAck, LaunchBody, Notification};
 use crate::match_play::{ARENA_OPPONENT_IDS, ControllerRef, TournamentRecord};
 use crate::preview::AssetPreview;
+use crate::publish_job_api::{PublishProgress, PublishResult};
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
@@ -71,14 +72,22 @@ pub struct PushAck {
     pub newly_pushed: bool,
 }
 
-/// The backend's acknowledgement of publishing a run (flipping it public).
+/// The backend's acknowledgement of *enqueuing* a publish for a run.
+///
+/// Publishing is asynchronous: `POST /runs/{id}/publish` no longer flips the run
+/// public synchronously — it gates the run, enqueues a per-publish job, and returns
+/// this ack. The gh/wrangler release runs in a `tcab-publisher` Job and is observed
+/// over the live stream at [`live_url`](Self::live_url) (subscribe with
+/// [`BackendClient::watch_publish_job`]), which ends with a terminal
+/// [`PublishResult`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishAck {
-    /// The run id that was published (`record.id`).
-    pub id: String,
-    /// Whether this publish flipped a pending run public (`true`) or was an
-    /// idempotent re-publish of an already-published run (`false`).
-    pub newly_published: bool,
+    /// The enqueued publish job's id — the handle [`BackendClient::watch_publish_job`]
+    /// takes to observe the release.
+    pub publish_job_id: String,
+    /// The relative URL of the live NDJSON stream to observe the publish on
+    /// (`/publish-jobs/{id}/live`), as the backend reported it.
+    pub live_url: String,
 }
 
 /// A run on the backend's read side, as served by `GET /runs` and
@@ -143,6 +152,19 @@ pub enum LiveItem {
     Preview(AssetPreview),
 }
 
+/// One item from a publish job's live stream (`GET /publish-jobs/{id}/live`,
+/// NDJSON): a non-terminal progress line, or the terminal release outcome. The
+/// backend tags each line with a `type` discriminator (`progress` or `result`) so
+/// the two are told apart; the stream closes after the [`Result`](Self::Result).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublishLiveItem {
+    /// A human-readable progress line streamed while the release runs.
+    Progress(PublishProgress),
+    /// The terminal release outcome (links on success, reason on failure); the
+    /// stream ends with this.
+    Result(PublishResult),
+}
+
 /// What runners use to resolve definitions from, and publish runs to, the
 /// backend.
 #[async_trait::async_trait]
@@ -200,10 +222,40 @@ pub trait BackendClient: Send + Sync {
     /// updates it. Requires a bearer token.
     async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()>;
 
-    /// Publish a run: flip it public. (`POST /runs/{id}/publish`) Refused by the
-    /// backend unless the run has at least one review. Idempotent; requires a
+    /// Enqueue a publish for a run. (`POST /runs/{id}/publish`) Publishing is
+    /// asynchronous: the backend gates the run (refused unless it has at least one
+    /// review and is not an infrastructure failure), enqueues a per-publish job, and
+    /// returns the [`PublishAck`] carrying the publish-job id and the live URL. The
+    /// gh/wrangler release runs in a `tcab-publisher` Job; observe it (and learn its
+    /// terminal outcome) by subscribing with [`Self::watch_publish_job`]. Requires a
     /// bearer token.
     async fn publish_run(&self, run_id: &str) -> Result<PublishAck>;
+
+    /// Watch a publish job's live progress. (`GET /publish-jobs/{id}/live`, NDJSON)
+    /// Each line is one [`PublishLiveItem`] — a progress line or the terminal result
+    /// — passed to `on_item` as it arrives. Returns once the stream closes, which the
+    /// backend does after delivering the terminal [`PublishLiveItem::Result`]; a
+    /// connection to an already-finished publish returns after the replayed backlog
+    /// (which ends in that result). The terminal outcome (links on success, reason on
+    /// failure) is the last item delivered.
+    ///
+    /// `on_item` is a `&mut dyn FnMut` (not an `impl Stream`) so the trait stays
+    /// object-safe — it is consumed through `dyn BackendClient`, mirroring
+    /// [`Self::watch_job`]. A malformed line is surfaced as a failure
+    /// [`PublishResult`] rather than tearing down the watch.
+    ///
+    /// Defaults to an error so a backend without publish support (or a test stub) is
+    /// explicit about not streaming; the HTTP client overrides it.
+    async fn watch_publish_job(
+        &self,
+        publish_job_id: &str,
+        _on_item: &mut (dyn FnMut(PublishLiveItem) + Send),
+    ) -> Result<()> {
+        Err(Error::Publish(format!(
+            "this backend client cannot stream the live progress of publish job \
+             `{publish_job_id}`"
+        )))
+    }
 
     /// Upload one proof-of-implementation media file for a published run, served
     /// back as the reviewer's submitted-evidence pane. `file` is `<proof-id>.<ext>`.
@@ -849,15 +901,58 @@ impl BackendClient for HttpBackendClient {
             .send()
             .await
             .map_err(|err| backend_err(&url, err))?;
+        // `202 Accepted` with the enqueued publish job's id + live URL; the gate
+        // failures (no review, infra failure) surface as the backend's error
+        // envelope through `error_for_status`.
         let response = error_for_status(&url, response).await?;
         let ack: PublishAckBody = response
             .json()
             .await
             .map_err(|err| backend_err(&url, err))?;
         Ok(PublishAck {
-            id: ack.id,
-            newly_published: ack.newly_published,
+            publish_job_id: ack.publish_job_id,
+            live_url: ack.live_url,
         })
+    }
+
+    #[instrument(
+        skip(self, on_item),
+        fields(otel.kind = "client", http.request.method = "GET", publish_job.id = %publish_job_id),
+        err,
+    )]
+    async fn watch_publish_job(
+        &self,
+        publish_job_id: &str,
+        on_item: &mut (dyn FnMut(PublishLiveItem) + Send),
+    ) -> Result<()> {
+        let url = self.url(&format!("/publish-jobs/{}/live", encode(publish_job_id)));
+        let response = self
+            .http
+            .get(&url)
+            .headers(self.headers())
+            .header(http::header::ACCEPT, "application/x-ndjson")
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        let mut response = error_for_status(&url, response).await?;
+        // NDJSON: accumulate bytes and emit one item per `\n`-terminated line,
+        // mirroring `watch_job`. The `stream` feature isn't enabled workspace-wide,
+        // so pull chunks directly (`Response::chunk`) rather than a `bytes_stream`.
+        let mut buffer = String::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| backend_err(&url, err))?
+        {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(newline) = buffer.find('\n') {
+                let line: String = buffer.drain(..=newline).collect();
+                emit_publish_line(line.trim(), on_item);
+            }
+        }
+        // A final line the stream closed without a trailing newline on.
+        emit_publish_line(buffer.trim(), on_item);
+        Ok(())
     }
 
     #[instrument(
@@ -1169,6 +1264,49 @@ fn emit_live_line(line: &str, on_item: &mut (dyn FnMut(LiveItem) + Send)) {
         return;
     }
     on_item(LiveItem::Event(unknown_event(line)));
+}
+
+/// Emit one publish-stream NDJSON line as a [`PublishLiveItem`]. The backend tags
+/// each line with a `type` discriminator: a `progress` line carries a `message`,
+/// the terminal `result` line carries the release outcome. An empty line is
+/// skipped; a line that is neither (a malformed item) is surfaced as a failure
+/// [`PublishResult`] so nothing is silently dropped, mirroring `emit_live_line`'s
+/// `unknown` fallback.
+fn emit_publish_line(line: &str, on_item: &mut (dyn FnMut(PublishLiveItem) + Send)) {
+    if line.is_empty() {
+        return;
+    }
+    let kind = serde_json::from_str::<TaggedLine>(line)
+        .ok()
+        .and_then(|tagged| tagged.r#type);
+    match kind.as_deref() {
+        Some("progress") => {
+            if let Ok(progress) = serde_json::from_str::<PublishProgress>(line) {
+                on_item(PublishLiveItem::Progress(progress));
+                return;
+            }
+        }
+        Some("result") => {
+            if let Ok(result) = serde_json::from_str::<PublishResult>(line) {
+                on_item(PublishLiveItem::Result(result));
+                return;
+            }
+        }
+        _ => {}
+    }
+    on_item(PublishLiveItem::Result(unknown_publish_result(line)));
+}
+
+/// The terminal [`PublishResult`] standing in for an unparseable publish-stream
+/// line: a failure carrying the raw text as its `detail`, so a malformed item ends
+/// the watch with a legible reason rather than being dropped.
+fn unknown_publish_result(raw: &str) -> PublishResult {
+    PublishResult {
+        state: crate::publish_job_api::PublishState::Failed,
+        source_repo: None,
+        playable_build: None,
+        detail: Some(format!("unrecognized publish stream line: {raw}")),
+    }
 }
 
 /// Decode one SSE event block into a [`Notification`]: concatenate its `data:`
@@ -1738,11 +1876,14 @@ struct PushAckBody {
     newly_pushed: bool,
 }
 
+/// The body of the `202 Accepted` from `POST /runs/{id}/publish`: the enqueued
+/// publish job's id and the live URL to observe it on (mirrors the backend's
+/// `PublishResponse`).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishAckBody {
-    id: String,
-    newly_published: bool,
+    publish_job_id: String,
+    live_url: String,
 }
 
 #[derive(Deserialize)]

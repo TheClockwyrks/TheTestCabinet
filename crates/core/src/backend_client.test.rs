@@ -133,8 +133,8 @@ impl BackendClient for StubBackend {
     }
     async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
         Ok(PublishAck {
-            id: run_id.to_string(),
-            newly_published: true,
+            publish_job_id: format!("pj-{run_id}"),
+            live_url: format!("/publish-jobs/pj-{run_id}/live"),
         })
     }
     async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
@@ -322,6 +322,33 @@ async fn serve_once(json: impl Into<String>) -> String {
     format!("http://{addr}")
 }
 
+/// Serve a single fixed response with a custom status line and content type, for
+/// the publish-path tests (a `202` enqueue ack and an `x-ndjson` live stream),
+/// returning the bound base URL.
+async fn serve_once_raw(status: &str, content_type: &str, body: impl Into<String>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let status = status.to_string();
+    let content_type = content_type.to_string();
+    let body = body.into();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut buf = [0u8; 1024];
+        let _ = socket.read(&mut buf).await;
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    format!("http://{addr}")
+}
+
 /// A minimal valid run record whose `links` are empty, so a test can prove the
 /// backend's separately-served links are what end up on the resolved run.
 fn sample_record(id: &str) -> RunRecord {
@@ -473,4 +500,78 @@ async fn read_run_parses_a_single_stored_run() {
     );
     assert_eq!(run.reviews[0].writeup, "Janky.");
     assert!(run.links.source_repo.is_none());
+}
+
+#[tokio::test]
+async fn publish_run_parses_the_async_enqueue_ack() {
+    // Publishing is async: the backend answers `202` with the enqueued publish
+    // job's id and the live URL to observe it on.
+    let body = serde_json::json!({
+        "publishJobId": "pj-42",
+        "liveUrl": "/publish-jobs/pj-42/live",
+    });
+    let base = serve_once_raw("202 Accepted", "application/json", body.to_string()).await;
+
+    let ack = HttpBackendClient::new(base)
+        .publish_run("run-42")
+        .await
+        .expect("publish run");
+
+    assert_eq!(ack.publish_job_id, "pj-42");
+    assert_eq!(ack.live_url, "/publish-jobs/pj-42/live");
+}
+
+#[tokio::test]
+async fn watch_publish_job_streams_progress_then_the_terminal_result() {
+    // The live stream is NDJSON, each line tagged with a `type` discriminator:
+    // `progress` lines, then the terminal `result`.
+    let stream = "\
+{\"type\":\"progress\",\"message\":\"creating repository\"}\n\
+{\"type\":\"progress\",\"message\":\"deploying build\"}\n\
+{\"type\":\"result\",\"state\":\"succeeded\",\"sourceRepo\":\"https://example.com/repo\",\"playableBuild\":\"https://abc.pages.dev\"}\n";
+    let base = serve_once_raw("200 OK", "application/x-ndjson", stream).await;
+
+    let client = HttpBackendClient::new(base);
+    let mut items = Vec::new();
+    let mut on_item = |item: PublishLiveItem| items.push(item);
+    client
+        .watch_publish_job("pj-42", &mut on_item)
+        .await
+        .expect("watch publish job");
+
+    assert_eq!(items.len(), 3);
+    assert_eq!(
+        items[0],
+        PublishLiveItem::Progress(crate::publish_job_api::PublishProgress {
+            message: "creating repository".to_string(),
+        })
+    );
+    assert_eq!(
+        items[2],
+        PublishLiveItem::Result(PublishResult {
+            state: crate::publish_job_api::PublishState::Succeeded,
+            source_repo: Some("https://example.com/repo".to_string()),
+            playable_build: Some("https://abc.pages.dev".to_string()),
+            detail: None,
+        })
+    );
+}
+
+#[test]
+fn emit_publish_line_surfaces_a_malformed_line_as_a_failure_result() {
+    // A line that is neither a tagged progress nor result item ends the watch with
+    // a legible failure rather than being silently dropped.
+    let mut items = Vec::new();
+    let mut on_item = |item: PublishLiveItem| items.push(item);
+    emit_publish_line("{\"type\":\"mystery\"}", &mut on_item);
+    emit_publish_line("", &mut on_item); // empty lines are skipped
+
+    assert_eq!(items.len(), 1);
+    match &items[0] {
+        PublishLiveItem::Result(result) => {
+            assert_eq!(result.state, crate::publish_job_api::PublishState::Failed);
+            assert!(result.detail.as_deref().unwrap().contains("mystery"));
+        }
+        other => panic!("expected a failure result, got {other:?}"),
+    }
 }
