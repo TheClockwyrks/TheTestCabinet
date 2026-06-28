@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { PublishProgress } from "../../../client/types";
 import { Link } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
@@ -101,7 +102,7 @@ export function RunFailuresPage() {
                 token={token}
                 onPublish={
                   client
-                    ? () => client.publish(run.id, token!)
+                    ? (onProgress) => client.publish(run.id, token!, onProgress)
                     : null
                 }
                 onPublished={requestRefresh}
@@ -129,26 +130,34 @@ function FailureRow({
   run: RunRecord;
   published: boolean;
   token: string | null;
-  onPublish: (() => Promise<unknown>) | null;
+  onPublish:
+    | ((onProgress: (progress: PublishProgress) => void) => Promise<unknown>)
+    | null;
   onPublished: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { subject } = run;
   const presentation = describeRunState(run.status.state);
   const model = findModelByModelId(subject.modelId);
 
+  // Publishing is asynchronous: enqueue and observe the release over its live
+  // stream, surfacing each progress line, and only let the row settle into
+  // "Published" (via the parent re-read) once the stream reports success.
   const publish = useCallback(async () => {
     if (!onPublish || !token) return;
     setBusy(true);
     setError(null);
+    setStatus("Publishing…");
     try {
-      await onPublish();
+      await onPublish((progress) => setStatus(`Publishing… ${progress.message}`));
       onPublished();
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
+      setStatus(null);
     }
   }, [onPublish, token, onPublished]);
 
@@ -165,6 +174,7 @@ function FailureRow({
         {run.status.detail && (
           <p className={styles.detail}>{run.status.detail}</p>
         )}
+        {status && <p className={styles.detail}>{status}</p>}
         {error && <p className={styles.error}>{error}</p>}
       </div>
       <div className={styles.controls}>

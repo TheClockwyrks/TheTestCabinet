@@ -14,6 +14,7 @@ import type {
   LaunchConfig,
   Model,
   ProgressCallback,
+  PublishProgress,
   PublishResult,
   PushResult,
   ReviewItem,
@@ -235,11 +236,20 @@ export interface WorkerClient {
   ): Promise<void>;
 
   /**
-   * Publish a run (`POST /publish`, Bearer): clear the publish gate so the run
-   * becomes public. The backend refuses a run carrying zero reviews. Idempotent
-   * (`newlyPublished` is false when it was already public).
+   * Publish a run (`POST /publish`, Bearer): **enqueue** the release and observe it
+   * to completion. Publishing is asynchronous — the backend gates the run (it
+   * refuses one carrying zero reviews, or an infrastructure failure), enqueues a
+   * per-publish job, and the gh/wrangler release runs in a `tcab-publisher` Job. The
+   * transport subscribes to the live stream and resolves with the terminal
+   * {@link PublishResult} once the run is published (rejecting with the publisher's
+   * reason on failure). `onProgress`, when given, is called with each progress line
+   * as the release advances so the console can show live "Publishing…" status.
    */
-  publish(id: string, token: string): Promise<PublishResult>;
+  publish(
+    id: string,
+    token: string,
+    onProgress?: (progress: PublishProgress) => void,
+  ): Promise<PublishResult>;
 
   /**
    * Permanently delete a produced run (`DELETE /runs/{id}`, Bearer): remove its

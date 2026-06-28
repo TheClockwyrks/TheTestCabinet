@@ -23,6 +23,7 @@ import type {
   LaunchConfig,
   Model,
   ProgressCallback,
+  PublishProgress,
   PublishResult,
   PushResult,
   ReviewDocumentInput,
@@ -688,16 +689,23 @@ export function createBackendExec(
       );
     },
 
-    async publish(id: string, token: string): Promise<PublishResult> {
-      // `POST /runs/{id}/publish` is the gate — the backend refuses a run with
-      // zero reviews.
-      const ack = await postJson<{ id: string; newlyPublished: boolean }>(
+    async publish(
+      id: string,
+      token: string,
+      onProgress?: (progress: PublishProgress) => void,
+    ): Promise<PublishResult> {
+      // Publishing is asynchronous. `POST /runs/{id}/publish` is the gate (the
+      // backend refuses a run with zero reviews / an infra failure) and the
+      // *enqueue*: it answers `202` with the publish-job id and the live URL to
+      // observe the gh/wrangler release on. Subscribe to that NDJSON stream and
+      // resolve once it reports the terminal result — never poll.
+      const ack = await postJson<{ publishJobId: string; liveUrl: string }>(
         backendUrl,
         `/runs/${encodeURIComponent(id)}/publish`,
         {},
         token,
       );
-      return { newlyPublished: ack.newlyPublished };
+      return streamPublish(backendUrl, ack.liveUrl, onProgress);
     },
 
     async deleteRun(id: string, token: string): Promise<void> {
@@ -806,4 +814,96 @@ function emitLine(line: string, handlers: RunSubscription): void {
     return;
   }
   handlers.onEvent(parsed as HarnessEvent);
+}
+
+// One line of the publish live stream (`GET /publish-jobs/{id}/live`), hand-typed
+// here rather than from a generated contract: the publish-queue wire types are
+// deliberately internal (backend↔dispatcher↔publisher), so the console binds the
+// few fields it needs by hand. Each line is tagged with a `type` discriminator: a
+// `progress` line carries a human-readable `message`, the terminal `result` line
+// carries the release outcome (`succeeded`/`failed`, the produced links, or the
+// failure reason). The stream ends with the `result`.
+type PublishStreamLine =
+  | { type: "progress"; message: string }
+  | {
+      type: "result";
+      state: "succeeded" | "failed";
+      sourceRepo?: string | null;
+      playableBuild?: string | null;
+      detail?: string | null;
+    };
+
+// Read the backend's live publish stream (`GET /publish-jobs/{id}/live`, NDJSON),
+// forwarding each progress line to `onProgress` and resolving with the terminal
+// {@link PublishResult} once the release succeeds — or rejecting with the
+// publisher's reason on failure. `liveUrl` is the root-relative URL the enqueue
+// ack returned (`/publish-jobs/{id}/live`). Same line-framing as `streamLive`.
+async function streamPublish(
+  backendUrl: string,
+  liveUrl: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  const res = await fetch(joinUrl(backendUrl, liveUrl), {
+    headers: { accept: "application/x-ndjson" },
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`publish stream failed: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let terminal: PublishResult | null = null;
+
+  const handle = (line: string): void => {
+    let parsed: PublishStreamLine;
+    try {
+      parsed = JSON.parse(line) as PublishStreamLine;
+    } catch {
+      // A malformed line shouldn't tear down the stream silently; treat it as a
+      // terminal failure carrying the raw text so the publish ends legibly.
+      terminal = {
+        published: false,
+        sourceRepo: null,
+        playableBuild: null,
+      };
+      throw new Error(`unrecognized publish stream line: ${line}`);
+    }
+    if (parsed.type === "progress") {
+      onProgress?.({ message: parsed.message });
+      return;
+    }
+    if (parsed.type === "result") {
+      if (parsed.state === "failed") {
+        throw new Error(parsed.detail ?? "Publish failed.");
+      }
+      terminal = {
+        published: true,
+        sourceRepo: parsed.sourceRepo ?? null,
+        playableBuild: parsed.playableBuild ?? null,
+      };
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) handle(line);
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) handle(tail);
+
+  // The stream closes only after the terminal result; its absence means the
+  // connection dropped before the publish reported an outcome.
+  if (!terminal) {
+    throw new Error(
+      "The publish stream ended before reporting a result — retry to observe it.",
+    );
+  }
+  return terminal;
 }

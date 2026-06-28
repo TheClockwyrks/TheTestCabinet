@@ -239,11 +239,26 @@ export interface PushResult {
   newlyPushed: boolean;
 }
 
-// The worker's `POST /publish` ack: whether this call was the one that published
-// the run (false when it was already public). The backend refuses (422) to
-// publish a run carrying zero reviews — the editor gates the action on that.
+// The terminal outcome of a publish. Publishing is **asynchronous**: the backend
+// enqueues a per-publish job and the gh/wrangler release runs in a `tcab-publisher`
+// Job, observed over a live stream that ends with this result. `published` is true
+// when the release succeeded (the run is now public); `sourceRepo`/`playableBuild`
+// carry the links the release produced (null when none — e.g. asset generation). On
+// failure the transport rejects with the publisher's reason rather than resolving.
+// The backend refuses (422) to enqueue a publish for a run carrying zero reviews —
+// the editor gates the action on that.
 export interface PublishResult {
-  newlyPublished: boolean;
+  published: boolean;
+  sourceRepo: string | null;
+  playableBuild: string | null;
+}
+
+// A human-readable progress line streamed while a publish runs, surfaced so a
+// console can show "Publishing…" advance (creating repo → pushing → deploying)
+// rather than a frozen spinner. Mirrors the Rust `PublishProgress`
+// (crates/core/src/publish_job_api.rs).
+export interface PublishProgress {
+  message: string;
 }
 
 // A live asset-generation preview frame, streamed as the model draws (mirrors the

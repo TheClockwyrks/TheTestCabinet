@@ -295,8 +295,13 @@ export function RunReviewEditor({
       if (solo) {
         await client!.submitReview(runId, buildReview(), token!);
       }
-      const result = await client!.publish(runId, token!);
-      setMessage(result.newlyPublished ? "Published." : "Already published.");
+      // Publishing is asynchronous: enqueue and observe the release over its live
+      // stream, surfacing each progress line, then confirm on the terminal result.
+      setMessage("Publishing…");
+      const result = await client!.publish(runId, token!, (progress) => {
+        setMessage(`Publishing… ${progress.message}`);
+      });
+      setMessage(result.published ? "Published." : "Publish did not complete.");
     });
 
   if (!client) {
