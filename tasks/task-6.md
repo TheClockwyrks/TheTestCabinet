@@ -17,10 +17,12 @@ Add two secrets (KV names use dashes — no underscores/dots):
 - `github-pat` — value from the repo `.env` `GITHUB_PAT`. Upload with the firewall
   pattern used elsewhere (temporarily allow the egress IP, set, remove) — see
   `scripts/upload-subscription-creds.sh` for the exact idiom, or run from the VPN.
-- `cloudflare-pages-api-token` — **the operator must mint a real Cloudflare API
-  token with Pages: Edit** (the existing `CLOUDFLARE_API_TOKEN`/
-  `CLOUDFLARE_PAGES_API_KEY` are not usable — see context.md). Defer this secret
-  until that token exists; everything else can land first.
+- `cloudflare-pages-api-token` — upload the **value of `CLOUDFLARE_PAGES_API_KEY`**
+  from the repo `.env`. Verified 2026-06-27: it is a valid, active scoped API token
+  with Pages access (passes `/user/tokens/verify`; lists the account's Pages
+  projects, including the target `test-cabinet-runs`). No minting needed — the
+  earlier "must mint" note is stale (it was the unrelated `CLOUDFLARE_API_TOKEN`
+  that failed verify). Same firewall idiom as `github-pat`.
 
 ## SecretProviderClass (`deployments/k8s/components/keyvault-csi/secretproviderclass.yaml`)
 
@@ -52,9 +54,9 @@ add keys to it later, `kubectl delete secret tcab-publisher-secrets` then restar
     `:<git-sha>` once built — the `images:` transformer doesn't reach an env value,
     same reason `patch-dispatcher-driver-image.yaml` exists).
   - `TCAB_DISPATCHER_PUBLISHER_SECRETS=tcab-publisher-secrets`.
-  - `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` if overriding the `PublishConfig`
-    defaults (`TheClockwyrks` / `test-cabinet-runs`) — confirm the real Pages
-    project name with the operator.
+  - `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` — **no override needed**: the
+    `PublishConfig` defaults (`TheClockwyrks` / `test-cabinet-runs`) are correct.
+    The `test-cabinet-runs` Pages project was confirmed to exist (2026-06-27).
 - Add `ghcr.io/REPLACE_OWNER/tcab-publisher` → `ghcr.io/theclockwyrks/tcab-publisher`
   to the `images:` block (so the dispatcher-created Job's image, if also set as a
   container image anywhere, is rewritten; the env value is patched above

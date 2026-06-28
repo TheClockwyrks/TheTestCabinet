@@ -163,11 +163,15 @@ test-cabinet-migration` is green.
   `8a5a62e4-7a86-4571-acc5-73107be6e015`). See the `azure-prod-deployment` memory.
 - **`GITHUB_PAT`** is in the repo `.env` (gitignored), not yet in Key Vault — it
   goes to the publisher Job (task-6).
-- **Cloudflare token for `wrangler`** is **unresolved**: the provided
-  `CLOUDFLARE_API_TOKEN` failed `/tokens/verify`, and `CLOUDFLARE_PAGES_API_KEY` is
-  an API *key*, not a token. `wrangler pages deploy` needs a real **API token with
-  Pages: Edit**. The operator will mint one in the follow-up session (they're also
-  kicking off the GH Actions image build + setting the new package public then).
+- **Cloudflare token for `wrangler`** is **resolved** (verified 2026-06-27):
+  `CLOUDFLARE_PAGES_API_KEY` in the repo `.env` — despite the `_API_KEY` name — is a
+  valid, active scoped **API token** (passes `/user/tokens/verify`: `status: active`)
+  with Pages access (it lists the account's Pages projects). The separate
+  `CLOUDFLARE_API_TOKEN` is the one that failed verify; ignore it for publishing. No
+  new token needs minting — the operator just uploads the `CLOUDFLARE_PAGES_API_KEY`
+  **value** to Key Vault as `cloudflare-pages-api-token` (task-6). The target Pages
+  project **`test-cabinet-runs` already exists**, matching the `PublishConfig`
+  default, so `TCAB_PAGES_PROJECT` needs **no** override.
 - **CSI gotcha:** the CSI driver *creates* synced Secrets but does NOT add keys to
   an existing one on remount — `kubectl delete` the Secret then restart
   `tcab-keyvault-sync` so it's recreated complete (or enable rotation).
