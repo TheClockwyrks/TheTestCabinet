@@ -9,11 +9,21 @@ name: Build containers
 #   - the adversarial image (the base plus the wasm toolchain and the Foray tooling
 #     compiled from crates/ — the `foray` CLI, the controller buildkit, and the
 #     reference modules + map), used by every adversarial run.
-# All four are built by containers/build.sh in one invocation (the sprite,
-# sprite-sheet, and adversarial images are built FROM the base built alongside
-# them). Runners resolve the image for a run's test type and asset kind directly
-# from their own registry configuration (default ghcr.io/theclockwyrks on the
-# latest tag); the backend plays no part — see docs/components/core/execution.md.
+# (plus the performance image — the base plus the wasm toolchain and the Lattice
+# tooling). All are built by containers/build.sh in one invocation (the sprite,
+# sprite-sheet, adversarial, and performance images are built FROM the base built
+# alongside them). Runners resolve the image for a run's test type and asset kind
+# directly from their own registry configuration (default ghcr.io/theclockwyrks on
+# the latest tag); the backend plays no part — see docs/components/core/execution.md.
+#
+# Each image is published MULTI-ARCH (linux/amd64 + linux/arm64): the `build` job
+# below runs build.sh once per architecture on a native runner (pushing an
+# arch-suffixed tag) and the `manifest` job fuses those into the `:latest` manifest
+# list. arm64 is not optional — the deployments run on arm64 nodes, and an
+# amd64-only image makes every run pod die at startup with `exec format error`
+# (the seeding `tar` exec into the dead container then fails). Build natively per
+# arch rather than cross-building under QEMU: the Rust/wasm compiles in the
+# non-base images are far too slow emulated.
 #
 # None is a per-harness image: a run installs the selected harness's CLI into the
 # image at run time (see harnesses/README.md), so the images never need rebuilding
@@ -59,8 +69,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Build every image once per target architecture, each on a NATIVE runner, and
+  # push an arch-suffixed tag (e.g. test-cabinet-base:latest-arm64). Building
+  # natively rather than cross-building under QEMU matters here: the sprite,
+  # sprite-sheet, adversarial, and performance images compile Rust (and the
+  # adversarial/performance images a wasm toolchain) inside the build, which is
+  # punishingly slow under emulation — a native arm64 runner builds them at the
+  # same speed as amd64. The `manifest` job below then fuses the two arch-tags into
+  # the multi-arch `:latest` tag the runner actually resolves. Both architectures
+  # are required because the deployments run on arm64 nodes (Azure prod) while
+  # contributors and the amd64 cloud pull the amd64 variant.
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
 
@@ -72,16 +100,52 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # build.sh builds the base, sprite, and sprite-sheet images, pushes them to
-      # IMAGE_REGISTRY, and prints their pinned digests. The registry namespace is
-      # the repository owner, lowercased (GHCR requires lowercase), which is the
-      # resolver's default for the canonical repo.
+      # build.sh builds the base, sprite, sprite-sheet, adversarial, and
+      # performance images natively for this runner's architecture, pushes them to
+      # IMAGE_REGISTRY under the arch-suffixed tag, and prints their pinned digests.
+      # The registry namespace is the repository owner, lowercased (GHCR requires
+      # lowercase), which is the resolver's default for the canonical repo. Only the
+      # arch tag is written here; the bare `:latest` manifest list is created by the
+      # manifest job, so a half-finished matrix never leaves `:latest` single-arch.
       - name: Build and push images
         env:
           PUSH: "1"
           DOCKER: docker
           OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: latest-${{ matrix.arch }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          echo "Pushing to $registry"
+          echo "Pushing $IMAGE_TAG images to $registry"
           IMAGE_REGISTRY="$registry" ./containers/build.sh
+
+  # Fuse the per-arch tags into the multi-arch `:latest` manifest list every runner
+  # resolves (DEFAULT_CONTAINER_TAG). `imagetools create` assembles the list purely
+  # from registry references — no builder, no pulls — so it is fast and runs on any
+  # architecture. Runs only after BOTH arch builds succeed, so `:latest` flips to
+  # the new build atomically and is never left pointing at a single architecture.
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifests
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          for name in base sprite sprite-sheet adversarial performance; do
+            repo="$registry/test-cabinet-$name"
+            echo "==> assembling $repo:latest from :latest-amd64 + :latest-arm64"
+            docker buildx imagetools create -t "$repo:latest" \
+              "$repo:latest-amd64" "$repo:latest-arm64"
+            docker buildx imagetools inspect "$repo:latest"
+          done
