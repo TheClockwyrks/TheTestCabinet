@@ -37,6 +37,8 @@
 //! | `TCAB_K8S_RUN_MEMORY_REQUEST` / `TCAB_K8S_RUN_MEMORY_LIMIT` | Memory request/limit per sandbox pod. |
 //! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits for a sandbox pod to reach `Running`. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
+//! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (`core::harness::resolve_run_image`); unset uses the compiled defaults (`ghcr.io/theclockwyrks` / `latest`). Set `TCAB_CONTAINER_TAG` to a `:<git-sha>` to **pin** the run image, just as the overlays pin the service `image:` tags. |
+//! | `TCAB_CONTAINER_IMAGE_BASE` / `_SPRITE` / `_SPRITE_SHEET` / `_ADVERSARIAL` / `_PERFORMANCE` | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
@@ -48,10 +50,10 @@
 use std::time::Duration;
 
 /// The variables the dispatcher passes through into each driver `Job`'s env
-/// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the artifact
-/// service URL, and the observability vars. Listed once so the Job builder and the
-/// config doc stay in sync; the dispatcher never interprets their values, only
-/// forwards the ones that are set.
+/// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the
+/// run-container image selection, the artifact service URL, and the observability
+/// vars. Listed once so the Job builder and the config doc stay in sync; the
+/// dispatcher never interprets their values, only forwards the ones that are set.
 pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_NAMESPACE",
     "TCAB_K8S_RUN_SERVICE_ACCOUNT",
@@ -62,6 +64,22 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_K8S_POD_READY_TIMEOUT_SECONDS",
     "TCAB_K8S_RUN_POD_PREFIX",
+    // The run-container image the driver resolves for each sandbox pod
+    // (`core::harness::resolve_run_image`, which reads these from the driver's own
+    // env). Forwarded so a deployment can pin the run images by `:<git-sha>` —
+    // setting `TCAB_CONTAINER_TAG` on the dispatcher — the same way the overlays pin
+    // the service `image:` tags. Without this passthrough the driver always falls
+    // back to the compiled defaults (`ghcr.io/theclockwyrks` / `latest`), so a
+    // mutable `:latest` is the only run image a cluster can ever get. The per-image
+    // `TCAB_CONTAINER_IMAGE_*` overrides are forwarded too for full-ref overrides;
+    // all are "forward only if set".
+    "TCAB_CONTAINER_REGISTRY",
+    "TCAB_CONTAINER_TAG",
+    "TCAB_CONTAINER_IMAGE_BASE",
+    "TCAB_CONTAINER_IMAGE_SPRITE",
+    "TCAB_CONTAINER_IMAGE_SPRITE_SHEET",
+    "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
+    "TCAB_CONTAINER_IMAGE_PERFORMANCE",
     // Not a sandbox-pod setting, but forwarded the same way: the driver uploads the
     // produced run tree to this artifact service before reporting terminal status.
     // Unset (a single-box dev cluster with no artifact service) skips the upload.

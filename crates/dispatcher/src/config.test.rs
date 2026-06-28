@@ -29,6 +29,17 @@ const ALL_VARS: &[&str] = &[
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
+    // Run-container image passthroughs — cleared for the same reason as the
+    // observability vars below: a developer or CI machine may have these set (they
+    // are the runner's own image-resolution env), and they must not leak into the
+    // passthrough-collection assertions (notably the exact-count one).
+    "TCAB_CONTAINER_REGISTRY",
+    "TCAB_CONTAINER_TAG",
+    "TCAB_CONTAINER_IMAGE_BASE",
+    "TCAB_CONTAINER_IMAGE_SPRITE",
+    "TCAB_CONTAINER_IMAGE_SPRITE_SHEET",
+    "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
+    "TCAB_CONTAINER_IMAGE_PERFORMANCE",
     // Observability passthroughs — cleared so the ambient process env (which may set
     // TCAB_ENV / OTEL_* on a developer or CI machine) cannot leak into the
     // passthrough-collection assertions below.
@@ -291,6 +302,40 @@ fn artifacts_url_is_passed_through() {
             "TCAB_ARTIFACTS_URL".to_string(),
             "http://tcab-artifacts:8790".to_string()
         )));
+    });
+}
+
+#[test]
+fn container_image_vars_are_passed_through() {
+    with_env(|| {
+        set_required();
+        set("TCAB_CONTAINER_REGISTRY", "ghcr.io/theclockwyrks");
+        set("TCAB_CONTAINER_TAG", "deadbeef");
+        set(
+            "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
+            "ghcr.io/example/custom-adversarial:1.0",
+        );
+
+        let config = Config::from_env().expect("config should resolve");
+        // The run-image selection is forwarded into each driver Job so the driver's
+        // `resolve_run_image` pins the run-container image to the same `:<git-sha>`
+        // the deployment chose, instead of the compiled `:latest` default.
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_CONTAINER_REGISTRY".to_string(),
+            "ghcr.io/theclockwyrks".to_string()
+        )));
+        assert!(
+            config
+                .passthrough_k8s_env
+                .contains(&("TCAB_CONTAINER_TAG".to_string(), "deadbeef".to_string()))
+        );
+        // Per-image full-ref overrides ride the same passthrough.
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_CONTAINER_IMAGE_ADVERSARIAL".to_string(),
+            "ghcr.io/example/custom-adversarial:1.0".to_string()
+        )));
+        // The unset per-image overrides are not forwarded ("forward only if set").
+        assert_eq!(config.passthrough_k8s_env.len(), 3);
     });
 }
 

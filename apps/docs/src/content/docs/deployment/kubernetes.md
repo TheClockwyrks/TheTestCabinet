@@ -106,16 +106,28 @@ first, confirm the flow, then repeat for prod with prod's own secrets and a
   conformant cluster works, including GKE Autopilot, EKS, and AKS.
 - A container registry the cluster can pull the service images and the
   [run-container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
-  from. The canonical builds are published to GHCR by CI — the five **service**
-  images (`tcab-backend`, `tcab-auth-service`, `tcab-dispatcher`, `tcab-driver`,
-  `tcab-artifacts`) by
+  from. The canonical builds are published to GHCR by CI — the **service** images
+  (`tcab-backend`, `tcab-auth-service`, `tcab-dispatcher`, `tcab-driver`,
+  `tcab-artifacts`, `tcab-arena`, `tcab-publisher`, `tcab-web`) by
   [`build-service-images.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-service-images.yml)
   and the run-container images by
   [`build-containers.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-containers.yml),
-  each tagged `:latest` and an immutable `:<git-sha>`. Point the overlays'
-  `image:` fields at that namespace and pin a `:<git-sha>` tag. If the registry is
-  private, an `imagePullSecret` (referenced by `TCAB_K8S_IMAGE_PULL_SECRETS` for
-  sandbox pods).
+  all published **multi-arch** (`linux/amd64` + `linux/arm64`, so they run on either
+  node architecture) and each tagged `:latest` and an immutable `:<git-sha>`. These
+  are pinned in **two different places**, because the two image sets reach the
+  cluster differently:
+  - **Service images** are Kubernetes `image:` fields, so the overlays' kustomize
+    `images:` transformer pins them — set `newTag` to a `:<git-sha>`.
+  - **Run-container images** are *not* `image:` fields anywhere; the driver resolves
+    them at run time (`core::harness::resolve_run_image`). Pin them by setting
+    `TCAB_CONTAINER_TAG` (and optionally `TCAB_CONTAINER_REGISTRY`) on the
+    **dispatcher**, which forwards both into every driver `Job`. Left unset/`latest`
+    the driver tracks the mutable `:latest`. Roll both sets in lockstep — same
+    `:<git-sha>`, staging before prod — so the run images promote on the same flow as
+    the services.
+
+  If the registry is private, an `imagePullSecret` (referenced by
+  `TCAB_K8S_IMAGE_PULL_SECRETS` for sandbox pods).
 - A `StorageClass` for the backend, auth, and artifact `PersistentVolumeClaim`s
   (`ReadWriteOnce` is sufficient; none of the volumes is shared).
 - The backend's publishing credentials, if it will publish runs: a `GITHUB_TOKEN`

@@ -25,9 +25,11 @@ The dispatcher runs a single control loop forever:
 2. **Create one driver `Job`** for the claimed run through the Kubernetes API, with
    exactly the environment the [driver](/components/driver/overview/) reads: the
    backend URL, the job id and its per-job token, the serialized launch request,
-   `TCAB_DRIVER_RUNTIME=kubernetes`, and the `TCAB_K8S_*` sandbox-pod passthroughs
-   (plus the driver pod's own IP from the downward API, so the driver can route a
-   sandbox's live-preview frames back to itself).
+   `TCAB_DRIVER_RUNTIME=kubernetes`, the `TCAB_K8S_*` sandbox-pod passthroughs, and
+   the `TCAB_CONTAINER_*` run-image selection the driver resolves the sandbox image
+   from (so a deployment pins the run images by `:<git-sha>` here, not via a
+   Kubernetes `image:` field) — plus the driver pod's own IP from the downward API,
+   so the driver can route a sandbox's live-preview frames back to itself.
 3. **Watch** the `Job`s it created, holding at most `TCAB_DISPATCHER_MAX_INFLIGHT`
    in flight, and **report** any driver-pod death the driver itself could not
    (`POST /jobs/{id}/status`), reading the dead pod's logs for the failure detail.
