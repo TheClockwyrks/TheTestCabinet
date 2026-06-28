@@ -73,6 +73,12 @@
 !/apps/web
 !/packages/run-record
 !/packages/ui
+# This image is also the one service Dockerfile that COPYs sibling files from its
+# own deployments/images/ directory (the nginx server block, the config.js
+# envsubst template, and the entrypoint that renders it) — the Rust images embed
+# nothing from here. They live outside every path re-included above, so without
+# this the COPYs fail with "not found" against the allowlisted context.
+!/deployments/images/web
 
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
