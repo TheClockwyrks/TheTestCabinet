@@ -1,0 +1,37 @@
+# Enable in-cluster publishing: point the dispatcher at the tcab-publisher image and
+# its credential Secret so it claims queued publish jobs and turns each into one
+# per-publish tcab-publisher Job. (Same as overlays/azure-prod, but namespace
+# tcab-staging and REPLACE_OWNER/latest until staging is concretized + the image
+# tag pinned.)
+#
+# TCAB_PUBLISHER_IMAGE is a plain env VALUE, not a container `image:` field, so the
+# images: transformer cannot rewrite it (the same reason patch-dispatcher-driver-image.yaml
+# exists for TCAB_DRIVER_IMAGE). Pin it to the registry + tag the publisher image the
+# staging cluster pulls, in lockstep with the dispatcher/driver tags; pin an immutable
+# :<git-sha> rather than :latest in a real deploy.
+#
+# TCAB_DISPATCHER_PUBLISHER_SECRETS names the Secret(s) the dispatcher mounts (envFrom)
+# into each publish Job: tcab-publisher-secrets, carrying GH_TOKEN (for `gh`) and
+# CLOUDFLARE_API_TOKEN (for `wrangler`). On Azure, sync it from Key Vault by adding the
+# keyvault-csi component (as azure-prod does — the SecretProviderClass already maps
+# github-pat / cloudflare-pages-api-token → these keys); otherwise create it manually
+# in tcab-staging from your secret manager (see base/secrets.example.yaml). The
+# publisher needs NO Kubernetes API access; the dispatcher's build_publish_job sets no
+# ServiceAccount, so the Job runs under the namespace `default` SA (explicitly NOT the
+# pod-creating tcab-driver SA).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_PUBLISHER_IMAGE
+              value: "ghcr.io/REPLACE_OWNER/tcab-publisher:latest"
+            - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
+              value: "tcab-publisher-secrets"

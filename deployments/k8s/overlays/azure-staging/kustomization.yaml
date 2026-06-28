@@ -35,6 +35,9 @@ components:
 patches:
   - path: patch-env.yaml
   - path: patch-dispatcher-driver-image.yaml
+  # Enable in-cluster publishing: point the dispatcher at the tcab-publisher image
+  # (an env VALUE the images: transformer can't reach) and its credential Secret.
+  - path: patch-dispatcher-publisher.yaml
 
 images:
   - name: REPLACE_REGISTRY/tcab-backend
@@ -54,4 +57,10 @@ images:
     newTag: latest
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/REPLACE_OWNER/tcab-arena
+    newTag: latest
+  # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
+  # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
+  # rewrites nothing today — it is kept so the registry/tag set stays complete.
+  - name: REPLACE_REGISTRY/tcab-publisher
+    newName: ghcr.io/REPLACE_OWNER/tcab-publisher
     newTag: latest
