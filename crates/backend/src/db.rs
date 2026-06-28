@@ -392,7 +392,9 @@ impl Db {
     }
 
     /// Delete a stored run and its dependent rows (its reviews and links cascade
-    /// via their `ON DELETE CASCADE` foreign keys). Refused with
+    /// via their `ON DELETE CASCADE` foreign keys; its run- and publish-queue rows
+    /// are deleted explicitly, as they reference the run by a plain column with no
+    /// foreign key). Refused with
     /// [`crate::error::BackendError::Unprocessable`] when the run is **published**:
     /// a public run is in the snapshot and the gallery, so it can never be deleted
     /// out from under them. [`crate::error::BackendError::NotFound`] when no run
@@ -415,9 +417,19 @@ impl Db {
         }
 
         // Reviews and the run's links row carry `ON DELETE CASCADE`, so deleting
-        // the run removes them too. The job that produced the run is part of the
-        // queue's history (no foreign key back to the run) and is left intact.
+        // the run removes them too. The run- and publish-queue rows reference the
+        // run by a plain column (`job.record_id` / `publish_job.run_id`, no foreign
+        // key back to the run), so they would otherwise be orphaned — delete them in
+        // the same transaction so a deleted run leaves nothing behind.
         run::Entity::delete_by_id(run_id.to_string())
+            .exec(&txn)
+            .await?;
+        job::Entity::delete_many()
+            .filter(job::Column::RecordId.eq(run_id))
+            .exec(&txn)
+            .await?;
+        publish_job::Entity::delete_many()
+            .filter(publish_job::Column::RunId.eq(run_id))
             .exec(&txn)
             .await?;
 

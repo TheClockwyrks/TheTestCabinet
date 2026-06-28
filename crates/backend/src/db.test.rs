@@ -269,6 +269,58 @@ async fn delete_run_removes_an_unpublished_run_and_cascades_its_reviews() {
 }
 
 #[tokio::test]
+async fn delete_run_also_removes_its_run_and_publish_queue_rows() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A run produced by a job (the job carries the produced run's id in
+    // `record_id`, a plain column with no foreign key back to `run`), with a
+    // publish job enqueued against it by `run_id` (likewise no foreign key).
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("j1", "succeeded", "2026-06-23T00:05:00Z", None, Some("r1"))
+        .await
+        .unwrap();
+    db.enqueue_publish_job(NewPublishJob {
+        id: "p1".to_string(),
+        run_id: "r1".to_string(),
+        job_token: "token-p1".to_string(),
+        created_at: "2026-06-23T00:06:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+
+    // A second run and its queue rows are left untouched, to prove the delete is
+    // scoped to the deleted run.
+    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.enqueue_job(new_job("j2", "2026-06-23T00:10:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("j2", "succeeded", "2026-06-23T00:15:00Z", None, Some("r2"))
+        .await
+        .unwrap();
+    db.enqueue_publish_job(NewPublishJob {
+        id: "p2".to_string(),
+        run_id: "r2".to_string(),
+        job_token: "token-p2".to_string(),
+        created_at: "2026-06-23T00:16:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+
+    db.delete_run("r1").await.unwrap();
+
+    // The deleted run leaves no orphan in either queue...
+    assert!(db.get_run("r1").await.unwrap().is_none());
+    assert!(db.get_job("j1").await.unwrap().is_none());
+    assert!(db.get_publish_job("p1").await.unwrap().is_none());
+    // ...while the untouched run's queue rows remain.
+    assert!(db.get_job("j2").await.unwrap().is_some());
+    assert!(db.get_publish_job("p2").await.unwrap().is_some());
+}
+
+#[tokio::test]
 async fn delete_run_is_refused_for_a_published_run() {
     let db = Db::connect_in_memory().await.unwrap();
     push_review_publish(&db, "r1", "2026-06-17T10:00:00Z").await;
