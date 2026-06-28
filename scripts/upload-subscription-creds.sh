@@ -14,10 +14,8 @@
 # interval ~2m), so it reconciles the new values into that Secret on its own — no
 # pod restart, no delete/recreate. Each new driver Job then mounts the fresh files.
 # (If rotation is ever disabled the upload still lands in the vault, but the cluster
-# Secret will go stale; re-enable it with
-#   az aks addon update -g $RG -n $CLUSTER -a azure-keyvault-secrets-provider \
-#     --enable-secret-rotation --rotation-poll-interval 2m
-# rather than reaching for a manual restart.)
+# Secret will go stale; re-enable it with scripts/enable-secret-rotation.sh rather
+# than reaching for a manual restart.)
 #
 # Key Vault secret names cannot contain dots/underscores, so the files map to dashed
 # names that the SecretProviderClass maps back to the credential basenames the driver

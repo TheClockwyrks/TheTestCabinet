@@ -557,10 +557,17 @@ internal LB IP:
    Secret (key `api-token`) — prod adds it as a `cloudflare-dns-token` Key Vault secret
    synced via the
    [`components/keyvault-csi`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/keyvault-csi)
-   `SecretProviderClass`, mirroring how the other secrets are added. (CSI gotcha: the
-   driver won't add keys to an *existing* synced Secret on remount — a brand-new
-   Secret materializes fine, but if you later add keys to one, delete it and restart
-   the sync pod.)
+   `SecretProviderClass`, mirroring how the other secrets are added. (CSI gotcha: on a
+   plain remount the driver does **not** reconcile an *existing* synced Secret — it
+   neither picks up changed values nor adds new keys; a brand-new Secret materializes
+   fine. **Secret auto-rotation** closes the gap for changed *values*: with it enabled
+   on the AKS `azure-keyvault-secrets-provider` add-on, the driver polls Key Vault and
+   reconciles updated values into the synced Secrets on its own (~2m), so a refreshed
+   credential reaches the cluster without a restart. Enable it once per cluster with
+   [`scripts/enable-secret-rotation.sh`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/enable-secret-rotation.sh)
+   — it's AKS add-on config, not a Kubernetes object, so it can't live in the overlay.
+   Adding a brand-new key to a Secret still needs `kubectl delete secret <name> &&
+   kubectl rollout restart deploy/tcab-keyvault-sync`.)
 
 5. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`), then
    `kubectl rollout restart deploy/tcab-keyvault-sync -n tcab-prod` so the new
