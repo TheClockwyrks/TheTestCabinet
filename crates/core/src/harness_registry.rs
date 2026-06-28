@@ -481,10 +481,10 @@ fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
 pub fn host_api_key_values() -> Vec<String> {
     let mut values = Vec::new();
     let mut push_env = |var: &str| {
-        if let Ok(value) = std::env::var(var) {
-            if !value.trim().is_empty() {
-                values.push(value);
-            }
+        if let Ok(value) = std::env::var(var)
+            && !value.trim().is_empty()
+        {
+            values.push(value);
         }
     };
     for slug in HarnessSlug::ALL {
