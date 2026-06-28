@@ -485,7 +485,8 @@ matters** — the DNS records can only be created once the ingress controller ha
 internal LB IP:
 
 1. **Install ingress-nginx (INTERNAL LB)** via Helm into its own `ingress-nginx`
-   namespace, forcing an Azure internal LB so it gets a private VNet IP:
+   namespace (prod pins chart `4.15.1`), forcing an Azure internal LB so it gets a
+   private VNet IP. Values:
 
    ```yaml
    controller:
@@ -499,25 +500,49 @@ internal LB IP:
    After it settles, read the assigned private IP — the DNS records point at it:
 
    ```sh
-   kubectl -n ingress-nginx get svc <controller> \
-     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+   kubectl -n ingress-nginx get svc ingress-nginx-controller \
+     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'   # prod: 10.224.0.9
    ```
 
-2. **Create the Azure Private DNS zone + records.** Create a Private DNS zone for
-   the hostnames, **link it to the AKS VNet** (virtual-network-link), and add **A
-   records** for `console` / `api` / `auth` / `artifacts` / `arena` → the internal LB
-   IP from step 1. (A private `testcabinet.ai` zone linked to the VNet *shadows* the
-   public zone for VPN clients; if reaching the public site/docs from the VPN
-   matters, use a dedicated internal sub-zone and name the hosts accordingly — and
-   update the component's hostnames + certs to match.)
+   The LB IP lives in the **AKS node VNet** (`aks-vnet-*`, `10.224.0.0/12`), not the
+   app VNet.
 
-3. **Install cert-manager (with CRDs)** via Helm into the `cert-manager` namespace.
-   The CRDs must exist before the component's `ClusterIssuer` applies.
+2. **Create the Azure Private DNS zone + records.** Prod uses a dedicated
+   **`tcab.testcabinet.ai`** sub-zone (NOT a private `testcabinet.ai` zone, which
+   would *shadow* the public zone for VPN clients and stop them resolving the public
+   gallery/docs). Create the zone, **link it to both the AKS VNet and the app/VPN
+   VNet** (virtual-network-link, registration disabled), and add **A records** for
+   `console` / `api` / `auth` / `artifacts` / `arena` → the internal LB IP from
+   step 1. The `_acme-challenge` TXT records (step 5) still live in the **public
+   Cloudflare `testcabinet.ai` zone** — `tcab.` is only a private Azure zone, not a
+   public delegation — so the `Zone:DNS:Edit` token covers them.
+
+3. **Install cert-manager (with CRDs)** via Helm into the `cert-manager` namespace
+   (prod pins `v1.20.3`). Two non-default flags are **load-bearing**:
+
+   ```sh
+   helm upgrade --install cert-manager jetstack/cert-manager \
+     --namespace cert-manager --create-namespace --version v1.20.3 \
+     --set crds.enabled=true \
+     --set clusterResourceNamespace=tcab-prod \
+     --set "extraArgs={--dns01-recursive-nameservers-only=true,--dns01-recursive-nameservers=1.1.1.1:53,1.0.0.1:53}"
+   ```
+
+   - `clusterResourceNamespace=tcab-prod` makes the **cluster-scoped** `ClusterIssuer`
+     resolve the `cert-manager-cloudflare` Secret from `tcab-prod` (where keyvault-csi
+     syncs it), instead of the `cert-manager` namespace.
+   - `--dns01-recursive-nameservers*` points the DNS-01 self-check at **public**
+     resolvers. This is required because the `tcab.testcabinet.ai` private zone is
+     linked to the AKS VNet, so in-cluster DNS resolves those names to the private LB
+     IP and has no public NS records — without this flag cert-manager loops on
+     *"Could not determine authoritative nameservers for `_acme-challenge.…`"* and no
+     cert ever issues. The CRDs must exist before the component's `ClusterIssuer`
+     applies.
 
 4. **Provision the Cloudflare DNS-01 token.** Mint a Cloudflare API token with
    `Zone:DNS:Edit` scoped to `testcabinet.ai` (the Pages-scoped publishing token
    cannot edit DNS records). Store it for cert-manager as the `cert-manager-cloudflare`
-   Secret (key `api-token`) — preferably as a `cloudflare-dns-token` Key Vault secret
+   Secret (key `api-token`) — prod adds it as a `cloudflare-dns-token` Key Vault secret
    synced via the
    [`components/keyvault-csi`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/keyvault-csi)
    `SecretProviderClass`, mirroring how the other secrets are added. (CSI gotcha: the
@@ -525,9 +550,11 @@ internal LB IP:
    Secret materializes fine, but if you later add keys to one, delete it and restart
    the sync pod.)
 
-5. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`);
-   cert-manager then completes the DNS-01 challenge with the Cloudflare token and
-   issues the five certificates.
+5. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`), then
+   `kubectl rollout restart deploy/tcab-keyvault-sync -n tcab-prod` so the new
+   `cert-manager-cloudflare` Secret materializes. cert-manager then completes the
+   DNS-01 challenge with the Cloudflare token and issues the five certificates
+   (`kubectl -n tcab-prod get certificate` → all `Ready=True`).
 
 6. **Confirm VPN DNS resolution.** The OpenVPN config must make clients resolve the
    private zone (push Azure DNS `168.63.129.16`, or a resolver that sees the Private

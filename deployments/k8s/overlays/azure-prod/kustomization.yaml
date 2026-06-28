@@ -97,8 +97,10 @@ images:
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha, like the publisher
   # image; the per-env backend/auth URLs are injected at runtime via env, not baked.
-  # Pinned to the first published build (the .dockerignore fix that let the web
-  # image's sibling COPYs resolve; GHCR package is Public, anonymously pullable).
+  # Pinned to the build that fixes the runtime config render (web root made
+  # writable for uid 101 so 30-render-config.sh can write config.js; template moved
+  # out of /etc/nginx/templates/). The earlier cb0fef3 build crash-looped on a
+  # read-only web root. GHCR package is Public/anonymously pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: cb0fef3f8e4eb6ebe64bebfe8cb2a1e57ce04ec6
+    newTag: 13d2d1454b083ac5bd1d0e99866d15cfeefa8dd8
