@@ -6,13 +6,16 @@
 //!   applies);
 //! - ungated reads (a build request with no token still succeeds — browser media
 //!   cannot carry one);
-//! - upload auth (an upload without a valid job token is rejected).
+//! - upload auth (an upload without a valid job token is rejected);
+//! - the `tree.tar` source-tree download (round-trip, publish-job-token auth, and
+//!   a `404` for an unknown run).
 //!
-//! Only the upload check talks to an upstream (the backend, the per-job-token
-//! authority), so a tiny **stub** server stands in for it: it accepts a fixed
-//! "good" job token at `/jobs/{id}/verify-token`, rejecting everything else with
-//! `401`. The artifact service is pointed at it, exercising the real verify code
-//! path without the real backend.
+//! The two token checks talk to an upstream (the backend, the token authority), so
+//! a tiny **stub** server stands in for it: it accepts a fixed "good" job token at
+//! `/jobs/{id}/verify-token` and a "good" publish-job token at
+//! `/publish-jobs/{id}/verify-token`, rejecting everything else with `401`. The
+//! artifact service is pointed at it, exercising the real verify code paths without
+//! the real backend.
 
 use std::io::Cursor;
 use std::net::SocketAddr;
@@ -36,26 +39,52 @@ const GOOD_JOB_TOKEN: &str = "good-job-token";
 /// id in the path.
 const GOOD_JOB_ID: &str = "job-1";
 
+/// The per-publish-job token the stub accepts at `/publish-jobs/{id}/verify-token`.
+const GOOD_PUBLISH_TOKEN: &str = "good-publish-token";
+/// The **publish-job id** the stub accepts the publish token for. As with
+/// [`GOOD_JOB_ID`], deliberately not a run id a `tree.tar` download uses as its
+/// path/store key, so a passing download proves the service verified against the
+/// publish-job id from the `x-tcab-publish-job-id` header, not the run id.
+const GOOD_PUBLISH_JOB_ID: &str = "publish-1";
+
 /// Spawn the stub backend server on an ephemeral port and return its base URL. It
 /// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) — the only
 /// upstream the artifact service calls now that reads are ungated. It accepts the
 /// good token only for [`GOOD_JOB_ID`], so it also asserts the service forwards the
 /// header's job id rather than the upload path's run id.
 async fn spawn_stub() -> String {
-    let app = Router::new().route(
-        "/jobs/{id}/verify-token",
-        post(
-            |axum::extract::Path(id): axum::extract::Path<String>,
-             body: Json<serde_json::Value>| async move {
-                let presented = body.0.get("token").and_then(|t| t.as_str());
-                if id == GOOD_JOB_ID && presented == Some(GOOD_JOB_TOKEN) {
-                    StatusCode::NO_CONTENT
-                } else {
-                    StatusCode::UNAUTHORIZED
-                }
-            },
-        ),
-    );
+    let app = Router::new()
+        .route(
+            "/jobs/{id}/verify-token",
+            post(
+                |axum::extract::Path(id): axum::extract::Path<String>,
+                 body: Json<serde_json::Value>| async move {
+                    let presented = body.0.get("token").and_then(|t| t.as_str());
+                    if id == GOOD_JOB_ID && presented == Some(GOOD_JOB_TOKEN) {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::UNAUTHORIZED
+                    }
+                },
+            ),
+        )
+        // The publish path's analogue, the upstream the `tree.tar` download calls.
+        // Accepts the good publish token only for `GOOD_PUBLISH_JOB_ID`, so a passing
+        // download proves the service forwarded the header's publish-job id.
+        .route(
+            "/publish-jobs/{id}/verify-token",
+            post(
+                |axum::extract::Path(id): axum::extract::Path<String>,
+                 body: Json<serde_json::Value>| async move {
+                    let presented = body.0.get("token").and_then(|t| t.as_str());
+                    if id == GOOD_PUBLISH_JOB_ID && presented == Some(GOOD_PUBLISH_TOKEN) {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::UNAUTHORIZED
+                    }
+                },
+            ),
+        );
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
@@ -111,6 +140,176 @@ fn build_tarball() -> Vec<u8> {
         )
         .unwrap();
     builder.into_inner().unwrap()
+}
+
+/// A `tar` archive of a richer run tree: a generated source file under
+/// `implementation/`, the `run-record.json`, the recorded `events.jsonl`, and a
+/// built `dist/index.html`. Used to assert what `tree.tar` carries.
+fn source_tree_tarball() -> Vec<u8> {
+    let entries: &[(&str, &[u8])] = &[
+        ("run-record.json", b"{\"id\":\"src\"}"),
+        ("events.jsonl", b"{\"kind\":\"start\"}\n"),
+        ("implementation/src/main.ts", b"console.log(1)"),
+        ("implementation/dist/index.html", b"<html></html>"),
+    ];
+    let mut builder = tar::Builder::new(Vec::new());
+    for (path, contents) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append_data(&mut header, path, *contents).unwrap();
+    }
+    builder.into_inner().unwrap()
+}
+
+/// Untar a `tree.tar` response body into a `(path, contents)` map.
+fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut reader = tar::Archive::new(Cursor::new(archive));
+    for entry in reader.entries().unwrap() {
+        let mut entry = entry.unwrap();
+        if entry.header().entry_type().is_dir() {
+            continue;
+        }
+        let path = entry.path().unwrap().display().to_string();
+        let mut contents = Vec::new();
+        std::io::copy(&mut entry, &mut contents).unwrap();
+        out.insert(path, contents);
+    }
+    out
+}
+
+/// Build a `GET /runs/{run_id}/tree.tar` request with optional bearer token and
+/// optional `x-tcab-publish-job-id` header.
+fn tree_tar_request(
+    run_id: &str,
+    token: Option<&str>,
+    publish_job_id: Option<&str>,
+) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/tree.tar"));
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    if let Some(id) = publish_job_id {
+        builder = builder.header("x-tcab-publish-job-id", id);
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn tree_tar_round_trips_source_record_and_events() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    // Seed a run tree. The path id (`run-src`, the store key) differs from the
+    // publish-job id (`publish-1`, in the header) the publish token is verified
+    // against.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-src/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(source_tree_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    let response = app
+        .clone()
+        .oneshot(tree_tar_request(
+            "run-src",
+            Some(GOOD_PUBLISH_TOKEN),
+            Some(GOOD_PUBLISH_JOB_ID),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let entries = untar_to_map(&bytes);
+
+    assert_eq!(
+        entries.get("run-record.json").map(Vec::as_slice),
+        Some(&b"{\"id\":\"src\"}"[..]),
+        "the record is in the source tar"
+    );
+    assert_eq!(
+        entries.get("events.jsonl").map(Vec::as_slice),
+        Some(&b"{\"kind\":\"start\"}\n"[..]),
+        "the events are in the source tar"
+    );
+    assert_eq!(
+        entries.get("implementation/src/main.ts").map(Vec::as_slice),
+        Some(&b"console.log(1)"[..]),
+        "the generated source is in the tar under its `implementation/` prefix"
+    );
+}
+
+#[tokio::test]
+async fn tree_tar_without_a_publish_token_is_rejected() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    // No token → 401.
+    assert_eq!(
+        app.clone()
+            .oneshot(tree_tar_request("run-x", None, Some(GOOD_PUBLISH_JOB_ID)))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A wrong token (with the right header) → 401 (the backend stub rejects it).
+    assert_eq!(
+        app.clone()
+            .oneshot(tree_tar_request(
+                "run-x",
+                Some("not-the-token"),
+                Some(GOOD_PUBLISH_JOB_ID),
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A good token but no `x-tcab-publish-job-id` header → 401: the service cannot
+    // verify the token without the publish-job id (the run id in the path is a
+    // different value the backend has no publish job for).
+    assert_eq!(
+        app.clone()
+            .oneshot(tree_tar_request("run-x", Some(GOOD_PUBLISH_TOKEN), None))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn tree_tar_for_an_unknown_run_is_not_found() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    // A valid publish token but no stored tree → 404 (auth passes, the run is
+    // unknown).
+    let response = app
+        .clone()
+        .oneshot(tree_tar_request(
+            "no-such-run",
+            Some(GOOD_PUBLISH_TOKEN),
+            Some(GOOD_PUBLISH_JOB_ID),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

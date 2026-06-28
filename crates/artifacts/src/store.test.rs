@@ -118,6 +118,98 @@ fn delete_run_refuses_an_unsafe_id() {
     std::fs::remove_dir_all(&sibling).ok();
 }
 
+/// Untar `archive` into a `(path, contents)` map for asserting on a built tree.
+fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut reader = tar::Archive::new(Cursor::new(archive));
+    for entry in reader.entries().unwrap() {
+        let mut entry = entry.unwrap();
+        if entry.header().entry_type().is_dir() {
+            continue;
+        }
+        let path = entry.path().unwrap().display().to_string();
+        let mut contents = Vec::new();
+        std::io::copy(&mut entry, &mut contents).unwrap();
+        out.insert(path, contents);
+    }
+    out
+}
+
+#[test]
+fn read_run_tree_archives_the_implementation_tree_record_and_events() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    store
+        .store_run(
+            "abc",
+            &mut Cursor::new(tar_of(&[
+                ("run-record.json", b"{\"id\":\"abc\"}"),
+                ("events.jsonl", b"{\"kind\":\"start\"}\n"),
+                ("implementation/src/main.ts", b"console.log(1)"),
+                // Both the generated source and the built output ride along — the
+                // publisher gits the source and deploys the build.
+                ("implementation/dist/index.html", b"<html></html>"),
+            ])),
+        )
+        .unwrap();
+
+    let archive = store.read_run_tree("abc").expect("read tree");
+    let entries = untar_to_map(&archive);
+
+    assert_eq!(
+        entries.get("run-record.json").map(Vec::as_slice),
+        Some(&b"{\"id\":\"abc\"}"[..]),
+        "the record rides along"
+    );
+    assert_eq!(
+        entries.get("events.jsonl").map(Vec::as_slice),
+        Some(&b"{\"kind\":\"start\"}\n"[..]),
+        "the recorded events ride along"
+    );
+    assert_eq!(
+        entries.get("implementation/src/main.ts").map(Vec::as_slice),
+        Some(&b"console.log(1)"[..]),
+        "the generated source is included under its `implementation/` prefix"
+    );
+    // The whole `implementation/` tree is archived as-is — the built output the
+    // publisher deploys to Pages rides along beside the source it gits, and the
+    // archive untars back to the same layout `store_run` unpacked.
+    assert!(
+        entries.contains_key("implementation/dist/index.html"),
+        "the implementation tree round-trips whole"
+    );
+}
+
+#[test]
+fn read_run_tree_omits_absent_optional_files() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    // A run with only a source tree — no record, no events — still tars cleanly.
+    store
+        .store_run(
+            "bare",
+            &mut Cursor::new(tar_of(&[("implementation/src/main.ts", b"x")])),
+        )
+        .unwrap();
+
+    let entries = untar_to_map(&store.read_run_tree("bare").unwrap());
+    assert!(entries.contains_key("implementation/src/main.ts"));
+    assert!(!entries.contains_key("run-record.json"));
+    assert!(!entries.contains_key("events.jsonl"));
+}
+
+#[test]
+fn read_run_tree_is_not_found_for_an_unstored_run() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    assert!(
+        matches!(store.read_run_tree("nope"), Err(StoreError::NotFound(_))),
+        "an unstored run reads as NotFound, not an I/O fault"
+    );
+}
+
 #[test]
 fn safe_join_keeps_normal_entries_inside_the_base() {
     let base = Path::new("/store/run-1");

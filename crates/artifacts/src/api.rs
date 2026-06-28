@@ -1,11 +1,16 @@
 //! The artifact service's HTTP surface: upload a run's tree, serve its build and
 //! media.
 //!
-//! Two callers (see [`crate::auth`]):
+//! Three callers (see [`crate::auth`]):
 //!
 //! - The **driver** uploads a finished run's collected tree —
 //!   `POST /runs/{id}/artifacts` with a `tar` body — authed by its **per-job
 //!   token**, which the service forwards to the backend to verify.
+//! - The **publisher** Job downloads a run's source tree —
+//!   `GET /runs/{id}/tree.tar` — authed by its **per-publish-job token**, which the
+//!   service forwards to the backend's publish-job verify endpoint. This is the one
+//!   *read* that is token-gated: it is a server-to-server pull (not browser-loaded
+//!   media), and a run's source tree is published deliberately, never ambiently.
 //! - A **reviewer** (through the console) reads the run's playable build and
 //!   proof/asset media — `GET /runs/{id}/build` (and the trailing-slash
 //!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
@@ -38,7 +43,7 @@ use tower_http::trace::TraceLayer;
 
 use test_cabinet_core::{find_build_output, serve_asset_file, serve_build_file, serve_proof_file};
 
-use crate::auth::verify_job_token;
+use crate::auth::{verify_job_token, verify_publish_job_token};
 use crate::error::ApiError;
 use crate::store::{ArtifactStore, impl_dir};
 
@@ -83,6 +88,11 @@ pub fn router(state: AppState) -> Router {
                 .delete(delete)
                 .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES)),
         )
+        // Download a run's source tree as a tar (publisher → service, per-publish-job
+        // token). The one *gated* read: a server-to-server pull the publisher uses to
+        // drive the GitHub-repo + Pages release, verified against the backend like an
+        // upload — not browser-loaded media.
+        .route("/runs/{id}/tree.tar", get(tree_tar))
         // Serve the run's playable build and media (reviewer → service, ungated:
         // browser-loaded media carries no Authorization header). These mirror the
         // worker's handlers exactly, reading from the store's per-run root.
@@ -123,6 +133,14 @@ async fn healthz() -> Json<serde_json::Value> {
 /// different UUID from the job id — the token authority (the backend) only knows
 /// the job, so the verify must use the job id, not the store key.
 const JOB_ID_HEADER: &str = "x-tcab-job-id";
+
+/// The header the publisher sets to its **publish-job id** on a `tree.tar`
+/// download, so the service verifies the per-publish-job token against the right
+/// publish job. As with an upload, the path id is the **run/record id** (the store
+/// key), which is a different UUID from the publish-job id the token was minted
+/// for — the token authority (the backend) only knows the publish job, so the
+/// verify must use the publish-job id, not the store key.
+const PUBLISH_JOB_ID_HEADER: &str = "x-tcab-publish-job-id";
 
 /// `POST /runs/{id}/artifacts` — store a finished run's collected artifact tree.
 ///
@@ -206,6 +224,56 @@ async fn delete(
 
     tracing::info!(run.id = %id, "deleted run artifacts");
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// `GET /runs/{id}/tree.tar` — stream a tar of run `{id}`'s stored source tree
+/// (`implementation/` plus `run-record.json` and, when present, `events.jsonl`) to
+/// the publisher Job, which untars it to drive the GitHub-repo + Pages release.
+///
+/// `{id}` is the **run/record id** (the store key). Unlike the ungated build/media
+/// reads — browser-loaded `<img>`/`<iframe>` resources that cannot carry a token —
+/// this is a server-to-server pull, so it is gated by the **per-publish-job token**,
+/// verified against the backend exactly as an upload's per-job token is. The token
+/// was minted for the **publish-job id**, which differs from the run id in the path,
+/// so the publisher sends its publish-job id in the [`PUBLISH_JOB_ID_HEADER`] and the
+/// verify uses that. `200 OK` with the tar body on success; `401` for a
+/// missing/invalid token or absent publish-job-id header; `404` for a run with no
+/// stored tree.
+#[tracing::instrument(name = "artifacts.tree_tar", skip(state, headers), fields(run.id = %id), err(Debug))]
+async fn tree_tar(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    let token = crate::auth::bearer(&headers)
+        .ok_or_else(|| ApiError::unauthorized("missing publish-job token"))?;
+    // Verify against the publish job the token was minted for — the publish-job id
+    // the publisher sends, not the run id in the path (the store key). They are
+    // distinct UUIDs; verifying against the run id always fails, since the backend
+    // has no publish job by that id.
+    let publish_job_id = headers
+        .get(PUBLISH_JOB_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ApiError::unauthorized(format!("missing `{PUBLISH_JOB_ID_HEADER}` header"))
+        })?;
+    verify_publish_job_token(&state.http, &state.backend_url, publish_job_id, &token).await?;
+
+    // Building the tar is blocking (it reads many small files off the store); run it
+    // off the async runtime so a large source tree does not stall other connections.
+    // Keyed by the run id from the path, not the publish-job id the token was
+    // verified against.
+    let store = state.store.clone();
+    let id_for_task = id.clone();
+    let tarball = tokio::task::spawn_blocking(move || store.read_run_tree(&id_for_task))
+        .await
+        .map_err(|err| ApiError::internal(format!("artifact tar task failed: {err}")))?
+        .map_err(map_store_error)?;
+
+    tracing::info!(run.id = %id, bytes = tarball.len(), "served run source tree");
+    Ok(([(header::CONTENT_TYPE, "application/x-tar")], tarball).into_response())
 }
 
 /// `GET /runs/{id}/build` — serve a produced run's playable build at its root (the
@@ -322,12 +390,13 @@ fn serve_run_stream(state: &AppState, id: &str, file_name: &str) -> Result<Respo
 }
 
 /// Map a [`StoreError`](crate::store::StoreError) onto the HTTP envelope: a
-/// traversal attempt is the client's bad upload (`400`); an I/O fault is the
-/// service's (`500`).
+/// traversal attempt is the client's bad upload (`400`); a read of an unknown run's
+/// tree is a `404`; an I/O fault is the service's (`500`).
 fn map_store_error(err: crate::store::StoreError) -> ApiError {
     use crate::store::StoreError;
     match err {
         StoreError::Traversal(_) => ApiError::bad_request(err.to_string()),
+        StoreError::NotFound(_) => ApiError::not_found(err.to_string()),
         StoreError::Io(_) => ApiError::internal(err.to_string()),
     }
 }

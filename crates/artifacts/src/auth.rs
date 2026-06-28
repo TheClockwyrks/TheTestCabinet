@@ -64,6 +64,51 @@ pub async fn verify_job_token(
     }
 }
 
+/// Verify a `tree.tar` download's per-**publish-job** token against the backend
+/// (the token authority) by forwarding it to
+/// `POST {backend_url}/publish-jobs/{id}/verify-token` — the publish-path analogue
+/// of [`verify_job_token`]. The publisher Job presents the publish-job token it was
+/// minted with; the backend answers `2xx` when it matches publish job `id`, `401`
+/// when it does not, and `404` for an unknown publish job — all mapped to a `401`
+/// download rejection (only the publisher holding the publish job's token may pull
+/// its source tree). A transport/server fault against the backend is surfaced as a
+/// retry-able auth-unavailable error, exactly as the upload path does.
+pub async fn verify_publish_job_token(
+    http: &reqwest::Client,
+    backend_url: &str,
+    id: &str,
+    token: &str,
+) -> Result<(), ApiError> {
+    if token.is_empty() {
+        return Err(ApiError::unauthorized("missing publish-job token"));
+    }
+    let url = format!("{backend_url}/publish-jobs/{id}/verify-token");
+    let response = http
+        .post(&url)
+        .json(&serde_json::json!({ "token": token }))
+        .send()
+        .await
+        .map_err(|err| {
+            ApiError::auth_unavailable(format!(
+                "verifying the publish-job token with the backend: {err}"
+            ))
+        })?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    // As with the upload path, a `401`/`404` is a rejected token; anything else is
+    // the backend being unavailable, which the publisher should retry rather than
+    // treat as a permanent auth failure.
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::NOT_FOUND {
+        Err(ApiError::unauthorized("invalid publish-job token"))
+    } else {
+        Err(ApiError::auth_unavailable(format!(
+            "the backend's publish-job-token verify returned HTTP {status}"
+        )))
+    }
+}
+
 /// Authorize a control-plane **delete** of a run's tree: the caller must present
 /// the shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the backend holds.
 /// Unlike an upload (a per-job token verified against the backend), a delete is

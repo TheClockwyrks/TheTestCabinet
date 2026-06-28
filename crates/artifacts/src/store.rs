@@ -35,6 +35,10 @@ pub enum StoreError {
     /// directory (a `..` segment or absolute path) — a traversal attempt, refused.
     #[error("rejected artifact entry `{0}`: path escapes the run directory")]
     Traversal(String),
+    /// A read was requested for a run with no stored tree. Distinct from an I/O
+    /// fault so the HTTP layer can map it to a `404` rather than a `500`.
+    #[error("no stored tree for run `{0}`")]
+    NotFound(String),
 }
 
 /// The backing store for run artifacts, keyed per run id. Small by design (see the
@@ -59,6 +63,25 @@ pub trait ArtifactStore: Send + Sync {
     /// when the control plane deletes a run, so the data plane drops its build and
     /// media too rather than leaving an orphaned tree behind.
     fn delete_run(&self, id: &str) -> Result<(), StoreError>;
+
+    /// Tar run `id`'s tree — the whole `implementation/` directory plus
+    /// `run-record.json` and (when present) `events.jsonl` — into an in-memory
+    /// archive, the inverse of [`store_run`](ArtifactStore::store_run). The
+    /// publisher Job downloads this to drive the GitHub-repo + Pages release: it
+    /// needs the generated **source** (which `release_code` gits into a public repo)
+    /// *and* the built playable output under `implementation/` (which
+    /// `release_playable_build` deploys to Pages), plus the record and recorded
+    /// events without extra round-trips. So the `implementation/` tree is archived
+    /// whole — only the run's *separately addressed* proof/asset media endpoints are
+    /// not bundled here (they live under the run root, not under `implementation/`,
+    /// and the publisher does not republish them).
+    ///
+    /// Returns [`StoreError::NotFound`] when the run has no stored tree (so the
+    /// caller maps an unknown run to a `404`), and the entry paths are relative to
+    /// the run root (`implementation/...`, `run-record.json`, `events.jsonl`),
+    /// matching the layout `store_run` unpacks — so the publisher untars it back to
+    /// the same shape the driver produced.
+    fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError>;
 }
 
 /// A [`LocalFsStore`] convenience: the implementation directory of a run
@@ -142,6 +165,38 @@ impl ArtifactStore for LocalFsStore {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(err.into()),
         }
+    }
+
+    fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError> {
+        let run_dir = self.run_dir(id);
+        // An absent run directory is an unknown run, mapped to a `404` upstream —
+        // not a `500`. (An id with no stored tree never created the directory.)
+        if !run_dir.is_dir() {
+            return Err(StoreError::NotFound(id.to_string()));
+        }
+
+        let mut builder = tar::Builder::new(Vec::new());
+        // The whole `implementation/` tree: the generated source `release_code` gits
+        // into the public repo *and* the built playable output `release_playable_build`
+        // deploys to Pages both live under it. `append_dir_all` keeps the
+        // `implementation/` prefix, so the archive untars back to the same layout the
+        // driver produced.
+        let impl_dir = run_dir.join("implementation");
+        if impl_dir.is_dir() {
+            builder.append_dir_all("implementation", &impl_dir)?;
+        }
+        // The record and the recorded events sit beside `implementation/` and the
+        // publisher reads them without an extra round-trip; each is optional, so a
+        // missing file is simply skipped rather than failing the archive.
+        for file in ["run-record.json", "events.jsonl"] {
+            let path = run_dir.join(file);
+            match std::fs::File::open(&path) {
+                Ok(mut handle) => builder.append_file(file, &mut handle)?,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Ok(builder.into_inner()?)
     }
 }
 
