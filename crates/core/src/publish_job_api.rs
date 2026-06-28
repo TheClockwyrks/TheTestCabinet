@@ -62,6 +62,19 @@ pub struct PublishResult {
     pub detail: Option<String>,
 }
 
+/// A progress line the publisher streams to `POST /publish-jobs/{id}/events` while
+/// the release runs, fanned out verbatim to the publish job's live stream
+/// (`GET /publish-jobs/{id}/live`). This is the non-terminal stream item, kept
+/// deliberately open-ended (just a human-readable `message` today) so future
+/// per-step progress — "creating repo", "pushing", "deploying" — is a non-breaking
+/// extension: add fields here, same stream. The terminal item is [`PublishResult`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishProgress {
+    /// A human-readable progress line a console renders as the release advances.
+    pub message: String,
+}
+
 /// A publish job's lifecycle state, stored by the backend and reported by
 /// `GET /publish-jobs/{id}`. Mirrors [`crate::job_api::JobState`] for the publish
 /// path.

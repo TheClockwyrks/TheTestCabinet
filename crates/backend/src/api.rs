@@ -16,12 +16,14 @@ use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::db::Db;
+use crate::publish_relay::PublishRelay;
 use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
 mod ingest_api;
 mod jobs;
+mod publish_jobs;
 mod runs;
 mod test_cases;
 mod tournaments;
@@ -50,6 +52,10 @@ pub struct AppState {
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
+    /// The live progress fan-out for in-flight publish jobs (the
+    /// `/publish-jobs/{id}/live` stream), fed by the publisher's progress and
+    /// terminal-result ingestion. The publish path's analogue of [`relay`].
+    pub publish_relay: PublishRelay,
     /// The resolved configuration (checkout path for ingest, etc.).
     pub config: Arc<Config>,
     /// The HTTP client for the backend's own outbound calls — today the best-effort
@@ -176,6 +182,27 @@ pub fn router(state: AppState) -> Router {
         // accepting an upload. The presented token is the secret, so this needs no
         // other auth.
         .route("/jobs/{id}/verify-token", post(jobs::verify_token))
+        // The publish queue. A console enqueues a publish (`POST /runs/{id}/publish`,
+        // auth-gated, in `runs`); the dispatcher claims the oldest
+        // (`POST /publish-jobs/next`, service-token); a per-publish `tcab-publisher`
+        // pod streams progress and the terminal result back
+        // (`POST /publish-jobs/{id}/events|result`, per-job token). The console
+        // observes it via the live NDJSON stream, which ends with the result.
+        // `/publish-jobs/next` is static, so it outranks the `/publish-jobs/{id}`
+        // dynamic route regardless of registration order.
+        .route("/publish-jobs/next", post(publish_jobs::claim))
+        .route("/publish-jobs/{id}", get(publish_jobs::status))
+        .route("/publish-jobs/{id}/live", get(publish_jobs::live))
+        .route("/publish-jobs/{id}/events", post(publish_jobs::ingest_events))
+        .route("/publish-jobs/{id}/result", post(publish_jobs::report_result))
+        // The artifact service's internal publish-job-token verify call: it forwards
+        // the publisher's per-job token here (the backend is the token authority)
+        // before serving the run's `tree.tar`. The presented token is the secret, so
+        // this needs no other auth.
+        .route(
+            "/publish-jobs/{id}/verify-token",
+            post(publish_jobs::verify_token),
+        )
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))

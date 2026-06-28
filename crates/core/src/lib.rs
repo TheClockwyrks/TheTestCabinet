@@ -116,7 +116,9 @@ pub use publish::{
     PushOutcome, PushRequest, SystemCommandRunner, implementation_dir, parse_wrangler_url,
     read_event_log, run_slug,
 };
-pub use publish_job_api::{PublishClaim, PublishJobState, PublishResult, PublishState};
+pub use publish_job_api::{
+    PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
+};
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{
     DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup, missing_ratings,

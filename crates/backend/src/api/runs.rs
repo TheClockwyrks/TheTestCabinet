@@ -14,6 +14,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
@@ -165,9 +166,14 @@ pub async fn add_review(
     Ok(Json(ReviewResponse { id, published }))
 }
 
-/// `POST /runs/{id}/publish` — publish a run (flip it public). Refused with 422
-/// unless the run has at least one review. Requires a bearer token. Idempotent
-/// (201 newly published, 200 re-publish). `404` for an unknown run.
+/// `POST /runs/{id}/publish` — **enqueue** a publish for a run. The publish is now
+/// asynchronous: the gh/wrangler release runs in a per-publish `tcab-publisher`
+/// Job, so this only **gates** the run (refused with 422 unless it is publishable —
+/// not an infrastructure failure, and a completed run with ≥1 review) and enqueues
+/// a publish job. It no longer flips `published` synchronously — that happens when
+/// the publisher reports a terminal success (see [`crate::api::publish_jobs`]).
+/// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
+/// the publish-job id and the live URL to observe it on.
 #[tracing::instrument(
     name = "runs.publish",
     skip(state, _user),
@@ -179,32 +185,37 @@ pub async fn publish(
     Path(id): Path<String>,
     _user: AuthUser,
 ) -> Result<Response, ApiError> {
-    let published_at = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .map_err(|e| ApiError::internal(format!("formatting published_at: {e}")))?;
-
-    let outcome = state
+    // Gate at enqueue so the user is rejected immediately (rather than after a
+    // publish Job spins up and fails). This is the same gate the legacy
+    // `Db::publish` flip enforces.
+    state
         .db
-        .publish(&id, &published_at)
+        .ensure_publishable(&id)
         .await
         .map_err(ApiError::from)?;
 
-    // Coalesced: the dirty flag was set in the publish transaction; this only
-    // wakes the debounce loop, which folds a burst into one regen/upload/rebuild.
-    state.publisher.queue_refresh();
-    crate::metrics::record_run_published(outcome.newly_published);
+    let publish_job_id = Uuid::new_v4().to_string();
+    let job_token = Uuid::new_v4().to_string();
+    let created_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting created_at: {e}")))?;
+
+    state
+        .db
+        .enqueue_publish_job(crate::db::NewPublishJob {
+            id: publish_job_id.clone(),
+            run_id: id.clone(),
+            job_token,
+            created_at,
+        })
+        .await
+        .map_err(ApiError::from)?;
 
     let body = PublishResponse {
-        id: id.clone(),
-        newly_published: outcome.newly_published,
-        snapshot_refresh: "queued",
+        publish_job_id: publish_job_id.clone(),
+        live_url: format!("/publish-jobs/{publish_job_id}/live"),
     };
-    let status = if outcome.newly_published {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    };
-    Ok((status, Json(body)).into_response())
+    Ok((StatusCode::ACCEPTED, Json(body)).into_response())
 }
 
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
@@ -471,12 +482,15 @@ pub struct ReviewResponse {
     published: bool,
 }
 
+/// The body of `POST /runs/{id}/publish`: the enqueued publish job's id and the
+/// live URL to observe it on. Publishing is now asynchronous — the console
+/// subscribes to `live_url` (an NDJSON stream ending in the terminal result) rather
+/// than receiving a synchronous `newlyPublished`.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishResponse {
-    id: String,
-    newly_published: bool,
-    snapshot_refresh: &'static str,
+    publish_job_id: String,
+    live_url: String,
 }
 
 #[derive(Serialize)]

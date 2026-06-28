@@ -675,3 +675,204 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
         "a published run leaves the unpublished worklist"
     );
 }
+
+// --- Publish queue ----------------------------------------------------------
+
+fn new_publish_job(id: &str, run_id: &str, created_at: &str) -> NewPublishJob {
+    NewPublishJob {
+        id: id.to_string(),
+        run_id: run_id.to_string(),
+        job_token: format!("ptoken-{id}"),
+        created_at: created_at.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn enqueue_then_claim_publish_job_flips_queued_to_dispatched_then_drains() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let claimed = db
+        .claim_next_publish_job("2026-06-27T00:00:05Z")
+        .await
+        .unwrap()
+        .expect("the queued publish job is claimable");
+    assert_eq!(claimed.id, "p1");
+    assert_eq!(claimed.run_id, "r1");
+    assert_eq!(claimed.state, "dispatched");
+    assert_eq!(claimed.job_token, "ptoken-p1");
+
+    // A claimed publish job is no longer queued, so a second claim finds nothing.
+    assert!(
+        db.claim_next_publish_job("2026-06-27T00:00:06Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "the publish queue is drained"
+    );
+}
+
+#[tokio::test]
+async fn claim_takes_the_oldest_queued_publish_job_first() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("newer", "r2", "2026-06-27T00:10:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("older", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let first = db.claim_next_publish_job("2026-06-27T01:00:00Z").await.unwrap();
+    assert_eq!(first.unwrap().id, "older", "oldest enqueued is claimed first");
+    let second = db
+        .claim_next_publish_job("2026-06-27T01:00:01Z")
+        .await
+        .unwrap();
+    assert_eq!(second.unwrap().id, "newer");
+}
+
+#[tokio::test]
+async fn ensure_publishable_mirrors_the_publish_gate() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A completed run with no review is refused, exactly like `publish`.
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    let err = db.ensure_publishable("r1").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+
+    // With a review it passes (without flipping anything).
+    db.add_review("r1", &review()).await.unwrap();
+    db.ensure_publishable("r1").await.unwrap();
+    assert!(
+        !db.get_run("r1").await.unwrap().unwrap().published,
+        "the gate does not publish"
+    );
+
+    // An infrastructure failure is refused even with a review.
+    let mut infra = record("infra");
+    infra.status.state = RunState::Infrastructure;
+    db.push(&infra, &RunLinks::default(), None).await.unwrap();
+    db.add_review("infra", &review()).await.unwrap();
+    let err = db.ensure_publishable("infra").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+
+    // A publishable failure tier passes with no review at all.
+    let mut cat = record("cat");
+    cat.status.state = RunState::Catastrophic;
+    db.push(&cat, &RunLinks::default(), None).await.unwrap();
+    db.ensure_publishable("cat").await.unwrap();
+
+    // An unknown run is not found.
+    let err = db.ensure_publishable("nope").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn complete_publish_job_attaches_links_flips_published_and_marks_the_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A reviewed but not-yet-published run, pushed with no links.
+    db.push(&record("r1"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+    db.add_review("r1", &review()).await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let outcome = db
+        .complete_publish_job(
+            "p1",
+            "r1",
+            Some("https://github.com/x/y"),
+            Some("https://abc.pages.dev"),
+            "2026-06-27T01:00:00Z",
+        )
+        .await
+        .unwrap();
+    assert!(outcome.newly_published);
+
+    // The run is published, the links are on both the sibling and the record blob,
+    // and the snapshot is dirty.
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert!(stored.published);
+    assert_eq!(stored.published_at.as_deref(), Some("2026-06-27T01:00:00Z"));
+    assert_eq!(
+        stored.links.source_repo.as_deref(),
+        Some("https://github.com/x/y")
+    );
+    assert_eq!(
+        stored.record.links.playable_build.as_deref(),
+        Some("https://abc.pages.dev"),
+        "the record blob's links agree with the sibling"
+    );
+    assert!(db.snapshot_state().await.unwrap().dirty);
+
+    // The publish job is marked succeeded with the same links.
+    let job = db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.state, "succeeded");
+    assert_eq!(job.source_repo.as_deref(), Some("https://github.com/x/y"));
+    assert_eq!(job.updated_at, "2026-06-27T01:00:00Z");
+}
+
+#[tokio::test]
+async fn complete_publish_job_preserves_an_existing_published_at() {
+    let db = Db::connect_in_memory().await.unwrap();
+    push_review_publish(&db, "r1", "2026-06-27T00:00:00Z").await;
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:30:00Z"))
+        .await
+        .unwrap();
+
+    let outcome = db
+        .complete_publish_job("p1", "r1", None, None, "2026-06-27T02:00:00Z")
+        .await
+        .unwrap();
+    assert!(
+        !outcome.newly_published,
+        "re-publishing an already-published run is not newly published"
+    );
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(
+        stored.published_at.as_deref(),
+        Some("2026-06-27T00:00:00Z"),
+        "the first publish's timestamp is preserved"
+    );
+}
+
+#[tokio::test]
+async fn complete_publish_job_is_not_found_for_a_missing_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "missing", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    let err = db
+        .complete_publish_job("p1", "missing", None, None, "2026-06-27T01:00:00Z")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn set_publish_job_state_records_a_failure_detail() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let failed = db
+        .set_publish_job_state("p1", "failed", "2026-06-27T01:00:00Z", Some("wrangler exploded"))
+        .await
+        .unwrap()
+        .expect("the publish job exists");
+    assert_eq!(failed.state, "failed");
+    assert_eq!(failed.detail.as_deref(), Some("wrangler exploded"));
+
+    // An unknown publish job yields None rather than erroring.
+    assert!(
+        db.set_publish_job_state("missing", "failed", "2026-06-27T01:00:00Z", None)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

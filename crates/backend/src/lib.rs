@@ -26,6 +26,7 @@ pub mod db;
 pub mod error;
 pub mod ingest;
 pub mod metrics;
+pub mod publish_relay;
 pub mod publisher;
 pub mod r2;
 pub mod relay;
@@ -131,6 +132,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         publisher,
         auth,
         relay: crate::relay::Relay::new(),
+        publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
         http: reqwest::Client::new(),
     };

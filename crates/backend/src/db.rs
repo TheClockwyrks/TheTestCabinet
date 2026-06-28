@@ -26,7 +26,9 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{job, review, run, run_link, snapshot_state, tournament};
+use test_cabinet_entities::{
+    job, publish_job, review, run, run_link, snapshot_state, tournament,
+};
 
 use crate::error::Result;
 
@@ -368,30 +370,10 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        // Publishability is decided by the run's terminal state. Infrastructure
-        // failures are the Test Cabinet's fault, not a model result, and are never
-        // publishable. Completed runs publish through the review gate (≥1 review).
-        // The publishable failure tiers — catastrophic and timed-out — are real
-        // model signal: publishable, but with no review checklist to complete, so
-        // the review-count requirement is waived for them (they publish through the
-        // separate publish-failures path).
-        if run.run_state == "infrastructure" {
-            return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` is an infrastructure failure and can never be published"
-            )));
-        }
-        let is_publishable_failure = matches!(run.run_state.as_str(), "catastrophic" | "timed_out");
-        if !is_publishable_failure {
-            let review_count = review::Entity::find()
-                .filter(review::Column::RunId.eq(run_id))
-                .count(&txn)
-                .await?;
-            if review_count == 0 {
-                return Err(crate::error::BackendError::Unprocessable(format!(
-                    "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
-                )));
-            }
-        }
+        // The gate (infrastructure → refuse; completed needs ≥1 review;
+        // catastrophic/timed-out waived) is shared with [`Db::ensure_publishable`],
+        // the publish-queue's at-enqueue check.
+        gate_publishable(&txn, run_id, &run.run_state).await?;
 
         let newly_published = !run.published;
         // Preserve the first publish's timestamp on re-publish.
@@ -833,6 +815,41 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     Ok(())
 }
 
+/// The publish gate, factored out so both [`Db::publish`] (the legacy/desktop
+/// flip) and [`Db::ensure_publishable`] (the publish-queue's at-enqueue check)
+/// enforce it identically.
+///
+/// Publishability is decided by the run's terminal state. Infrastructure failures
+/// are the Test Cabinet's fault, not a model result, and are never publishable.
+/// Completed runs publish through the review gate (≥1 review). The publishable
+/// failure tiers — catastrophic and timed-out — are real model signal: publishable,
+/// but with no review checklist to complete, so the review-count requirement is
+/// waived for them (they publish through the separate publish-failures path).
+async fn gate_publishable<C: ConnectionTrait>(
+    conn: &C,
+    run_id: &str,
+    run_state: &str,
+) -> Result<()> {
+    if run_state == "infrastructure" {
+        return Err(crate::error::BackendError::Unprocessable(format!(
+            "run `{run_id}` is an infrastructure failure and can never be published"
+        )));
+    }
+    let is_publishable_failure = matches!(run_state, "catastrophic" | "timed_out");
+    if !is_publishable_failure {
+        let review_count = review::Entity::find()
+            .filter(review::Column::RunId.eq(run_id))
+            .count(conn)
+            .await?;
+        if review_count == 0 {
+            return Err(crate::error::BackendError::Unprocessable(format!(
+                "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
 /// JSON-backed ratings/checklist columns.
 fn stored_review(model: review::Model) -> Result<StoredReview> {
@@ -902,6 +919,20 @@ pub struct NewJob {
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
     /// The per-job bearer token the driver authenticates its streaming with.
+    pub job_token: String,
+    /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
+    pub created_at: String,
+}
+
+/// A publish job to enqueue: the minted id and token, and the run it releases. The
+/// publish path's analogue of [`NewJob`] — it references an existing run by id
+/// rather than carrying a launch request.
+pub struct NewPublishJob {
+    /// The publish job id, minted by the backend at enqueue.
+    pub id: String,
+    /// The id of the (already pushed, reviewed) run to release.
+    pub run_id: String,
+    /// The per-job bearer token the publisher reports its result with.
     pub job_token: String,
     /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
     pub created_at: String,
@@ -1024,6 +1055,195 @@ impl Db {
             .order_by_asc(job::Column::Id)
             .all(&self.conn)
             .await?)
+    }
+}
+
+/// The **publish-queue** operations on the store: the parallel, smaller queue that
+/// turns a `POST /runs/{id}/publish` into a per-publish Kubernetes Job. It mirrors
+/// the run queue above — enqueue, claim, advance, read — but a publish job
+/// references an existing run rather than carrying a launch request, and its
+/// terminal success records the links the gh/wrangler release produced and flips
+/// the run published in one transaction ([`Db::complete_publish_job`]).
+impl Db {
+    /// The publish gate, with no flip: refuse a run that can never be published
+    /// (an infrastructure failure, or a completed run with no review yet). Called
+    /// at enqueue so the user is rejected immediately rather than after a publish
+    /// Job spins up and fails. Loads the run (404 if missing) and applies the same
+    /// gate [`Db::publish`] does.
+    pub async fn ensure_publishable(&self, run_id: &str) -> Result<()> {
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&self.conn)
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+        gate_publishable(&self.conn, run_id, &run.run_state).await
+    }
+
+    /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
+    /// claim. Mirrors [`Db::enqueue_job`] for the publish path.
+    pub async fn enqueue_publish_job(&self, new: NewPublishJob) -> Result<()> {
+        publish_job::Entity::insert(publish_job::ActiveModel {
+            id: Set(new.id),
+            state: Set("queued".to_string()),
+            run_id: Set(new.run_id),
+            job_token: Set(new.job_token),
+            source_repo: Set(None),
+            playable_build: Set(None),
+            detail: Set(None),
+            created_at: Set(new.created_at.clone()),
+            updated_at: Set(new.created_at),
+        })
+        .exec(&self.conn)
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically claim the oldest `queued` publish job, flipping it to
+    /// `dispatched`, and return it (or `None` when the queue is empty). The
+    /// select-then-update runs in one transaction, exactly like
+    /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
+    pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
+        let txn = self.conn.begin().await?;
+        let candidate = publish_job::Entity::find()
+            .filter(publish_job::Column::State.eq("queued"))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id)
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("dispatched".to_string());
+        active.updated_at = Set(now.to_string());
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
+    /// Fetch one publish job by id.
+    pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
+        Ok(publish_job::Entity::find_by_id(id.to_string())
+            .one(&self.conn)
+            .await?)
+    }
+
+    /// Advance a publish job to a new state, stamping `updated_at` and — when
+    /// supplied — the terminal `detail` (a failure reason). The failure path; the
+    /// success path goes through [`Db::complete_publish_job`], which also records
+    /// the links and flips the run. Returns the updated row, or `None` when no
+    /// publish job with `id` is stored.
+    pub async fn set_publish_job_state(
+        &self,
+        id: &str,
+        state: &str,
+        now: &str,
+        detail: Option<&str>,
+    ) -> Result<Option<publish_job::Model>> {
+        let Some(model) = publish_job::Entity::find_by_id(id.to_string())
+            .one(&self.conn)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set(state.to_string());
+        active.updated_at = Set(now.to_string());
+        if let Some(detail) = detail {
+            active.detail = Set(Some(detail.to_string()));
+        }
+        Ok(Some(active.update(&self.conn).await?))
+    }
+
+    /// Finalize a **succeeded** publish: in one transaction, attach the links the
+    /// release produced to the run, flip it published, mark the snapshot dirty, and
+    /// mark the publish job `succeeded` with the same links. This is the publish
+    /// path's terminal write — the analogue of [`Db::publish`] but driven by the
+    /// publisher's reported result rather than a synchronous flip, and it also
+    /// records the links (which `publish` does not, since the legacy path's links
+    /// arrive via `push`).
+    ///
+    /// Patches both the `run_link` sibling row and the `run.record_json` blob's
+    /// `links` so the two never disagree (exactly as [`Db::push`] keeps them in
+    /// sync). Preserves an existing `published_at` on a re-publish, like
+    /// [`Db::publish`]. `404` when the run is missing.
+    pub async fn complete_publish_job(
+        &self,
+        publish_job_id: &str,
+        run_id: &str,
+        source_repo: Option<&str>,
+        playable_build: Option<&str>,
+        now: &str,
+    ) -> Result<PublishRunOutcome> {
+        let txn = self.conn.begin().await?;
+
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&txn)
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+
+        let newly_published = !run.published;
+        let effective_published_at = run
+            .published_at
+            .clone()
+            .unwrap_or_else(|| now.to_string());
+
+        // Patch the record blob's links so the verbatim JSON and the `run_link`
+        // sibling agree — the same invariant `push` maintains.
+        let mut record: RunRecord = serde_json::from_str(&run.record_json)?;
+        record.links = RunLinks {
+            source_repo: source_repo.map(|s| s.to_string()),
+            playable_build: playable_build.map(|s| s.to_string()),
+        };
+        let record_json = serde_json::to_string(&record)?;
+
+        let mut active = run.into_active_model();
+        active.published = Set(true);
+        active.published_at = Set(Some(effective_published_at));
+        active.record_json = Set(record_json);
+        active.update(&txn).await?;
+
+        // Upsert the links sibling, exactly like `push`.
+        run_link::Entity::insert(run_link::ActiveModel {
+            run_id: Set(run_id.to_string()),
+            source_repo: Set(source_repo.map(|s| s.to_string())),
+            playable_build: Set(playable_build.map(|s| s.to_string())),
+        })
+        .on_conflict(
+            OnConflict::column(run_link::Column::RunId)
+                .update_columns([
+                    run_link::Column::SourceRepo,
+                    run_link::Column::PlayableBuild,
+                ])
+                .to_owned(),
+        )
+        .exec(&txn)
+        .await?;
+
+        set_dirty(&txn).await?;
+
+        // Mark the publish job succeeded with the links it produced.
+        let Some(job_model) = publish_job::Entity::find_by_id(publish_job_id.to_string())
+            .one(&txn)
+            .await?
+        else {
+            return Err(crate::error::BackendError::NotFound(format!(
+                "publish job `{publish_job_id}` not found"
+            )));
+        };
+        let mut job_active = job_model.into_active_model();
+        job_active.state = Set("succeeded".to_string());
+        job_active.source_repo = Set(source_repo.map(|s| s.to_string()));
+        job_active.playable_build = Set(playable_build.map(|s| s.to_string()));
+        job_active.updated_at = Set(now.to_string());
+        job_active.update(&txn).await?;
+
+        txn.commit().await?;
+        Ok(PublishRunOutcome { newly_published })
     }
 }
 
