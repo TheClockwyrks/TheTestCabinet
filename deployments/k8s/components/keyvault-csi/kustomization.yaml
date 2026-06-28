@@ -1,0 +1,27 @@
+# Key Vault CSI secret-sync component — the reusable, environment-agnostic wiring
+# that populates the deployment's Kubernetes Secrets from Azure Key Vault via the
+# Secrets Store CSI driver + Azure Workload Identity, instead of committing real
+# Secret manifests. Layered onto an environment overlay via its `components:` list
+# (today overlays/azure-prod), so the including overlay's `namespace:` directive
+# retargets these resources to that environment's namespace, exactly as it does the
+# base and the postgres/observability components.
+#
+# It adds:
+#   1. secretproviderclass.yaml — the Key Vault → Secret mapping (which vault
+#      secrets, and which Kubernetes Secret + key each lands in).
+#   2. secret-sync.yaml         — the ServiceAccount (federated to the managed
+#      identity) and the always-on pause Deployment that mounts the
+#      SecretProviderClass so the CSI driver keeps those Secrets materialised.
+#
+# Prerequisites (see the deployment runbook): the AKS cluster has the Azure Key
+# Vault Secrets Provider addon enabled, a user-assigned managed identity is
+# federated to the tcab-keyvault-sync ServiceAccount and granted `get` on the vault,
+# and that identity's client id is filled into REPLACE_IDENTITY_CLIENT_ID in both
+# files above. The vault must also permit the cluster's egress (firewall/private
+# endpoint), and the referenced secrets must exist in the vault.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - secretproviderclass.yaml
+  - secret-sync.yaml

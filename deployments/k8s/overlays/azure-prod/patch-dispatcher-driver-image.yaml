@@ -15,4 +15,4 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/REPLACE_OWNER/tcab-driver:latest"
+              value: "ghcr.io/theclockwyrks/tcab-driver:latest"
