@@ -31,6 +31,7 @@ pub mod preview;
 pub mod pricing;
 pub mod prompt;
 pub mod publish;
+pub mod publish_job_api;
 pub mod redact;
 pub mod reference;
 pub mod review;
@@ -115,6 +116,7 @@ pub use publish::{
     PushOutcome, PushRequest, SystemCommandRunner, implementation_dir, parse_wrangler_url,
     read_event_log, run_slug,
 };
+pub use publish_job_api::{PublishClaim, PublishJobState, PublishResult, PublishState};
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{
     DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup, missing_ratings,
