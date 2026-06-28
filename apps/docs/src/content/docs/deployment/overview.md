@@ -32,15 +32,17 @@ that do.
 | [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`) | A `Deployment` (1 replica), no `Service`; claims queued runs and creates one driver `Job` per run | This section |
 | [Driver](/components/driver/overview/) (`tcab-driver`) | One Kubernetes `Job` **per run**, created by the dispatcher; each spawns a sandbox pod via the API and exits | This section |
 | [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | A `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees | This section |
-| [Web console](/components/web/overview/) (`apps/web`) | A static bundle served to operators on the cluster network | This section |
+| [Web console](/components/web/overview/) (`apps/web`) | A static bundle served in-cluster (`tcab-web`) and reached over the VPN at a private hostname through the internal `Ingress` | This section |
 | [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static Cloudflare Pages sites | [Releasing](/development/releasing/) |
 | [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs | Not deployed — see [Building](/development/building/) |
 
 The [CLI](/components/cli/overview/) and [Tauri app](/components/tauri/overview/)
 are runner/reporter tools an individual operator runs on their own machine; they
 are not part of a deployment. The web console *is* part of one, but it is just a
-static bundle — the stateful, always-on processes to operate are the backend, the
-auth service, the dispatcher, and the artifact service.
+static bundle — served in-cluster by `tcab-web` and reached through the
+[internal Ingress](#access-the-cluster-network-plus-accounts-on-it) — so the
+stateful, always-on processes to operate are the backend, the auth service, the
+dispatcher, and the artifact service.
 
 ## Why Kubernetes
 
@@ -191,10 +193,14 @@ own secrets, and their `TCAB_ENV` tag. The
 ## Access: the cluster network, plus accounts on it
 
 **Reachability is the first line of access control.** Every service is a
-`ClusterIP` `Service` (the dispatcher has none at all) with no public `Ingress`, so
-only workloads and operators who can already reach the cluster network can use them.
-A `NetworkPolicy` per namespace restricts traffic to the components that need to
-talk to each other. As described under
+`ClusterIP` `Service` (the dispatcher has none at all) with no *public* `Ingress`,
+so only workloads and operators who can already reach the cluster network can use
+them. The standing way operators reach that network is an **internal-only
+`Ingress`** — an ingress controller whose load balancer holds a **private** VNet
+IP, reachable only over the company **VPN** and resolvable only through private DNS
+(see [Internal ingress](#internal-ingress-the-private-console-and-service-urls)
+below). A `NetworkPolicy` per namespace restricts traffic to the components that
+need to talk to each other. As described under
 [Backend authentication](/components/backend/overview/#authentication), on top of
 that the [auth service](/components/auth/overview/) adds real **user
 [accounts](/components/backend/overview/#accounts)** so that the mutating run
@@ -215,9 +221,33 @@ build and media from the artifact service at the URL the backend reports
 (`TCAB_ARTIFACTS_PUBLIC_URL`). There is no worker list to maintain and nothing to
 register one pod at a time.
 
-Operators reach the web console from inside the cluster network:
-`kubectl port-forward` for ad-hoc access, or an internal-only `Ingress` behind your
-VPN/bastion for a standing one. Nothing here is ever given a public FQDN.
+### Internal ingress: the private console and service URLs
+
+Operators reach prod by **browsing to a private URL over the VPN**, not by running
+the console locally. An **internal-only ingress-nginx** — fronting the in-cluster
+`tcab-web` console and the four services at one hostname each — is the documented
+path. On the VPN, an operator opens the console at
+`https://console.testcabinet.ai`; the console talks to the backend at
+`https://api.testcabinet.ai` and the auth service at `https://auth.testcabinet.ai`,
+and pulls a pre-publish run's artifact and arena media from
+`https://artifacts.testcabinet.ai` and `https://arena.testcabinet.ai` (the URLs the
+backend reports via `GET /config`). [cert-manager](/deployment/kubernetes/#internal-ingress)
+provides each host a real Let's Encrypt certificate.
+
+**This is an INTERNAL load balancer, never a public one.** Its IP is a private VNet
+address; the `*.testcabinet.ai` console/service hostnames resolve **only** through
+the cloud's private DNS, which only VPN clients see. Nothing here is ever given a
+**public** `Ingress`, a public `LoadBalancer`, or a publicly resolvable FQDN — the
+public surfaces remain solely the static [gallery](/components/site/overview/) and
+[docs](/components/docs/overview/) on Cloudflare Pages. The full build — the
+ingress controller, the host routes, the TLS issuer, the DNS records, and the VPN
+DNS setup — is in
+[Kubernetes: internal ingress](/deployment/kubernetes/#internal-ingress).
+
+For ad-hoc or off-VPN access — debugging, or before the ingress/DNS is stood up —
+`kubectl port-forward` against the `ClusterIP` services stays valid; see
+[Running](/development/running/#pointing-tcab-at-a-deployment) for pointing `tcab`
+at either a private hostname or a forwarded port.
 
 ## Secrets and telemetry
 

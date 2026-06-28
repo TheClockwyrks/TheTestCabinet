@@ -1,0 +1,35 @@
+# Internal-ingress component — the reusable, environment-agnostic app-level wiring
+# that serves the console in-cluster and exposes the console + the four services over
+# an INTERNAL ingress-nginx (VPN-reachable, never public) at host-per-service
+# `*.testcabinet.ai` names with TLS from cert-manager. Layered onto an environment
+# overlay via its `components:` list (today overlays/azure-prod, task-3), so the
+# including overlay's `namespace:` directive retargets these resources to that
+# environment's namespace and its `images:` transformer rewrites the tcab-web image —
+# exactly as it does the base and the postgres/observability/keyvault-csi components.
+#
+# It adds:
+#   1. web.yaml          — the tcab-web console Deployment + ClusterIP Service (the
+#                          static SPA, backend/auth URLs injected at runtime via env).
+#   2. ingress.yaml      — five host-per-service Ingress routes (console/api/auth/
+#                          artifacts/arena), each with a cert-manager-issued TLS cert.
+#   3. clusterissuer.yaml — the cert-manager ClusterIssuer (Let's Encrypt prod,
+#                          Cloudflare DNS-01) the Ingresses reference.
+#   4. networkpolicy.yaml — admits the ingress-nginx namespace through the base's
+#                          default-deny-ingress to each routed service + tcab-web.
+#
+# Prerequisites (out of band — see task-4 / the deployment runbook): the ingress-nginx
+# controller (Azure internal LB) and cert-manager (with CRDs) are Helm-installed, the
+# Cloudflare DNS token is in the `cert-manager-cloudflare` Secret, and the Azure
+# Private DNS zone resolves the hostnames to the controller's internal LB IP for VPN
+# clients. This component carries ONLY the app-level resources.
+#
+# Hostnames + the tcab-web backend/auth env + the ClusterIssuer email default to the
+# prod values; an overlay patches the per-environment ones (task-3).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - web.yaml
+  - ingress.yaml
+  - clusterissuer.yaml
+  - networkpolicy.yaml

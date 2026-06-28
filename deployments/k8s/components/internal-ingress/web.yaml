@@ -1,0 +1,79 @@
+# The in-cluster web console (apps/web, packaged as the tcab-web image — a static
+# SPA served by nginx, see deployments/images/web.Dockerfile). Operators currently
+# run the console locally and point it at a `kubectl port-forward`ed backend; this
+# Deployment serves it inside the cluster so there is a real private URL to visit
+# (console.testcabinet.ai, fronted by the internal ingress in ingress.yaml).
+#
+# The single tcab-web image is environment-agnostic (one build per git-sha, like the
+# publisher image), so the backend + auth URLs are injected at RUNTIME via env: the
+# image's entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__).
+# The placeholders below are empty defaults — each overlay patches the real https
+# URLs (task-3 sets TCAB_WEB_BACKEND_URL=https://api.testcabinet.ai etc.).
+#
+# It is a DATA-plane peer like the other services: a ClusterIP Service is the only
+# in-cluster surface, and the ingress (never a LoadBalancer here) is the boundary.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-web
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  # ClusterIP only — the internal ingress is the boundary; never a LoadBalancer here.
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-web
+  namespace: tcab-prod
+spec:
+  # Stateless static-asset server: it holds no per-pod state, so it could scale out,
+  # but one replica is plenty for the operator console. Bump replicas, not state.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-web
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      containers:
+        - name: web
+          image: REPLACE_REGISTRY/tcab-web:latest # CI publishes ghcr.io/<owner>/tcab-web; pin a :<git-sha> tag
+          ports:
+            - containerPort: 8080
+          env:
+            # The console reads these at container start (the entrypoint emits
+            # /config.js from them). Empty by default so an unset env yields a valid
+            # (empty) config; each overlay patches the real https URLs (task-3).
+            - name: TCAB_WEB_BACKEND_URL
+              value: ""
+            - name: TCAB_WEB_AUTH_URL
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          # Static assets only — no host mounts, no Kubernetes API, no privilege.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # nginx writes /config.js + its cache/run dirs
+            capabilities:
+              drop: ["ALL"]

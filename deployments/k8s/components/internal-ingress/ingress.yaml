@@ -1,0 +1,170 @@
+# The five host-per-service Ingress routes that expose the console + the four
+# services over the INTERNAL ingress-nginx (the controller's Service carries the
+# Azure internal-LB annotation, task-4, so it only has a private VNet IP reachable
+# from the company VPN). This is the "internal-only Ingress behind your VPN" the
+# deployment docs already anticipate — NEVER a public Ingress/LoadBalancer or FQDN.
+#
+# One Ingress per host (rather than one multi-rule Ingress) keeps each host's TLS
+# secret + backend explicit and lets an overlay patch a single host in isolation.
+# cert-manager watches the `cert-manager.io/cluster-issuer` annotation and issues a
+# certificate for each `tls[].hosts` into the named secret (the ClusterIssuer in
+# clusterissuer.yaml solves the ACME challenge over Cloudflare DNS-01).
+#
+# Hostnames default to the prod `*.testcabinet.ai` names; an overlay for another
+# environment patches the host strings (and the cert hosts) — see task-3.
+#
+# Shared nginx annotations, applied to every host:
+#   - proxy-body-size: "0" — disable the body-size cap. The artifact service streams
+#     run trees as tars (GET /runs/{id}/tree.tar) and accepts driver uploads; the
+#     default 1m cap would truncate a large tar. "0" means unlimited (the data plane
+#     already gates these), which the console + artifact host both need.
+#   - proxy-read-timeout / proxy-send-timeout: "3600" (seconds) — the backend serves
+#     long-lived NDJSON live streams (run + publish `/…/live`) and the arena streams
+#     live tournament progress; nginx's default 60s read timeout would sever those
+#     long-poll responses mid-stream. One hour is comfortably longer than any run.
+#   - proxy-buffering: "off" — flush the NDJSON stream chunks straight through to the
+#     client instead of buffering, so live progress is not held back by nginx.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-console
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - console.testcabinet.ai
+      secretName: tls-console
+  rules:
+    - host: console.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-web
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-api
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.testcabinet.ai
+      secretName: tls-api
+  rules:
+    - host: api.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-backend
+                port:
+                  number: 8787
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - auth.testcabinet.ai
+      secretName: tls-auth
+  rules:
+    - host: auth.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-auth
+                port:
+                  number: 8789
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - artifacts.testcabinet.ai
+      secretName: tls-artifacts
+  rules:
+    - host: artifacts.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-artifacts
+                port:
+                  number: 8790
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - arena.testcabinet.ai
+      secretName: tls-arena
+  rules:
+    - host: arena.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-arena
+                port:
+                  number: 8791

@@ -1,0 +1,65 @@
+# Admit the internal ingress controller through the base's default-deny-ingress.
+#
+# base/networkpolicy.yaml's `tcab-default-deny-ingress` blocks all inbound in the
+# namespace, and the existing allow policies only admit the in-cluster control-plane
+# callers (dispatcher/driver/artifacts/arena, the console-over-the-boundary). None of
+# them admit the ingress-nginx pods, so without these rules every Ingress route would
+# hit a connection the NetworkPolicy refuses. These additive policies admit the
+# ingress-nginx namespace to each routed service on its port. They mirror the base's
+# `tcab-allow-services-from-runners`; the base policies are left intact.
+#
+# The ingress controller runs in its own `ingress-nginx` namespace (task-4 Helm-
+# installs it there); Kubernetes auto-sets the immutable `kubernetes.io/metadata.name`
+# label on every namespace, so selecting on it admits exactly that namespace's pods.
+# Needs a NetworkPolicy-enforcing CNI (Calico/Cilium) to take effect.
+
+# Admit the ingress controller to the four services it routes to (backend/auth/
+# artifacts/arena), each on its bind port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-services-from-ingress
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: ["tcab-backend", "tcab-auth", "tcab-artifacts", "tcab-arena"]
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8787 # tcab-backend
+        - protocol: TCP
+          port: 8789 # tcab-auth
+        - protocol: TCP
+          port: 8790 # tcab-artifacts
+        - protocol: TCP
+          port: 8791 # tcab-arena
+---
+# Admit the ingress controller to the console (tcab-web). Nothing in-cluster reaches
+# tcab-web today — the ingress is its only caller — so this is the policy that lets
+# `console.testcabinet.ai` reach the pod at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-web-from-ingress
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-web
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -33,30 +33,41 @@ GitOps pipeline — adapt them rather than applying them blind.
 ## Topology
 
 ```
-   Kubernetes namespace: tcab-prod   (NetworkPolicy: no public Ingress)
+          OpenVPN client (operator laptop)  ──▶  resolves *.testcabinet.ai
+                 │                                via private DNS → internal LB IP
+                 ▼
+   ingress-nginx (internal LB, private VNet IP, VPN-only)   TLS: cert-manager (LE)
    ┌──────────────────────────────────────────────────────────────────────────┐
+   │  console.testcabinet.ai → tcab-web   api.testcabinet.ai → tcab-backend:8787 │
+   │  auth.testcabinet.ai → tcab-auth:8789  artifacts.* → tcab-artifacts:8790    │
+   │                                        arena.*     → tcab-arena:8791        │
+   └──────────────────────────────────────┬─────────────────────────────────────┘
+                                          │ (NetworkPolicy admits ingress-nginx ns)
+   Kubernetes namespace: tcab-prod   (NetworkPolicy: no PUBLIC Ingress)
+   ┌──────────────────────────────────────▼─────────────────────────────────────┐
    │                                                                            │
-   │   tcab-backend (StatefulSet, 1)         tcab-dispatcher (Deployment, 1)    │
+   │   tcab-web (Deployment, 1)              tcab-dispatcher (Deployment, 1)    │
    │   ┌────────────────────┐  ClusterIP     ┌──────────────────────┐  no Svc   │
-   │   │ tcab-backend       │◀── enqueue ────│ claims a queued run, │ (binds no  │
-   │   │ + PVC (state)      │── claim ──────▶│ creates ONE Job/run  │  socket)   │
-   │   │ + run queue        │                └──────────┬───────────┘            │
-   │   │ + headless browser │                           │ creates Job (K8s API)  │
-   │   └─────────┬──────────┘                           ▼                        │
-   │             │                            ┌──────────────────────┐           │
-   │   tcab-auth (StatefulSet, 1)             │ tcab-driver Job       │ one per   │
-   │   ┌────────────────────┐  ClusterIP      │ (per-run, then GC'd)  │  run      │
-   │   │ tcab-auth + PVC    │◀────────────────│ creates / exec /      │           │
-   │   └────────────────────┘                 │ deletes ▼ (K8s API)   │           │
-   │                                          │  ┌────────────────┐   │           │
-   │   tcab-artifacts (StatefulSet, 1)        │  │  sandbox pod   │   │ untrusted │
-   │   ┌────────────────────┐  ClusterIP      │  │  (ephemeral)   │   │           │
-   │   │ tcab-artifacts     │◀── upload ──────┤  └────────────────┘   │           │
-   │   │ + PVC (artifacts)  │── read ─┐       └──────────────────────┘           │
-   │   └────────────────────┘         │                                          │
-   │                                  ▼                                          │
-   │        web console (enqueue at backend; read artifacts; via kubectl        │
-   │        port-forward / internal Ingress)                                     │
+   │   │ static console SPA │                │ claims a queued run, │ (binds no  │
+   │   │ (runtime cfg → API)│                │ creates ONE Job/run  │  socket)   │
+   │   └────────────────────┘                └──────────┬───────────┘            │
+   │                                                    │ creates Job (K8s API)  │
+   │   tcab-backend (StatefulSet, 1)                    ▼                        │
+   │   ┌────────────────────┐  ClusterIP     ┌──────────────────────┐           │
+   │   │ tcab-backend       │◀── enqueue ────│ tcab-driver Job       │ one per   │
+   │   │ + PVC (state)      │── claim ──────▶│ (per-run, then GC'd)  │  run      │
+   │   │ + run queue        │                │ creates / exec /      │           │
+   │   │ + headless browser │                │ deletes ▼ (K8s API)   │           │
+   │   └─────────┬──────────┘                │  ┌────────────────┐   │           │
+   │   tcab-auth (StatefulSet, 1)            │  │  sandbox pod   │   │ untrusted │
+   │   ┌────────────────────┐  ClusterIP     │  │  (ephemeral)   │   │           │
+   │   │ tcab-auth + PVC    │◀───────────────│  └────────────────┘   │           │
+   │   └────────────────────┘                └──────────────────────┘           │
+   │   tcab-artifacts (StatefulSet, 1)        tcab-arena (Deployment, 1)         │
+   │   ┌────────────────────┐  ClusterIP      ┌────────────────────┐  ClusterIP  │
+   │   │ tcab-artifacts     │◀── upload ──────│ tcab-arena (wasm)  │             │
+   │   │ + PVC (artifacts)  │                 └────────────────────┘             │
+   │   └─────────┬──────────┘                                                    │
    └─────────────┼──────────────────────────────────────────────────────────────┘
                  │ outbound only (backend)
                  ▼
@@ -73,6 +84,15 @@ those artifacts from there — **artifact bytes never transit the backend**. The
 backend's only outbound traffic is the snapshot upload to Cloudflare R2 and the
 deploy-hook call that rebuilds the
 [public gallery](/components/site/overview/).
+
+Operators reach all of this over the **VPN**: an **internal** ingress-nginx (its
+load balancer holds a private VNet IP, never a public one) fronts the in-cluster
+`tcab-web` console and the four services at one `*.testcabinet.ai` hostname each,
+with TLS from cert-manager. The `*.testcabinet.ai` names resolve only through
+private DNS that VPN clients see — nothing is given a **public** `Ingress` or FQDN.
+That layer ships as the reusable
+[`components/internal-ingress`](#internal-ingress) component, wired into the live
+`overlays/azure-prod` overlay; the section below builds it.
 
 One environment is one **namespace** — `tcab-staging` and `tcab-prod` — so the
 two are isolated and tearing one down is `kubectl delete namespace`. Build staging
@@ -365,10 +385,157 @@ flows. The pods carry selectable labels: sandbox pods are labelled
 - **arena → backend** — fetching controller inputs and persisting tournaments.
 - **console → arena** — running matches/tournaments (over the private boundary).
 
+When the [internal ingress](#internal-ingress) is in play, the `tcab-web` console
+and the four services are no longer reached pod-to-pod but **through ingress-nginx**,
+which runs in its own `ingress-nginx` namespace and so is not admitted by the rules
+above. The `components/internal-ingress` component therefore adds two more
+default-deny exceptions, selecting the controller by its namespace's automatic
+`kubernetes.io/metadata.name: ingress-nginx` label:
+
+- **ingress-nginx → backend/auth/artifacts/arena** (on `8787`/`8789`/`8790`/`8791`)
+  — routing the four service hostnames.
+- **ingress-nginx → tcab-web** (on `8080`) — the only caller the console has; the
+  ingress is what makes `console.testcabinet.ai` reach the pod at all.
+
+These are **additive** — the base policies above are left intact. (They take effect
+only on a `NetworkPolicy`-enforcing CNI such as Calico or Cilium.)
+
 Everything else is denied. The sandbox pods themselves need **no** inbound access
 except the driver's `exec`/preview connections, which Kubernetes routes over the
 API server and pod network respectively; their egress is the model APIs and
 package registries a run needs.
+
+## Internal ingress
+
+By default the services are `ClusterIP`-only and the web console isn't served
+in-cluster at all — an operator runs `apps/web` locally against a
+`kubectl port-forward`ed backend. That works for one operator at a debugging
+laptop, but not for a team. The
+[`components/internal-ingress`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/internal-ingress)
+kustomize component closes that gap by serving the console in-cluster and exposing
+it plus the four services over an **internal-only** ingress-nginx, so operators
+reach prod by **browsing a private URL over the VPN**. It is included by the live
+[`overlays/azure-prod`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/overlays/azure-prod)
+overlay and is written reusable, so a future staging overlay adopts it with its own
+hostnames.
+
+The boundary is **never public.** ingress-nginx is installed with the Azure
+internal-LB annotation, so its `Service` gets a **private VNet IP** — there is no
+public `LoadBalancer`, no public `Ingress`, and no publicly resolvable FQDN. The
+`*.testcabinet.ai` console/service names resolve only through an **Azure Private DNS
+zone** that VPN clients see; off the VPN they do not resolve at all. The public
+[gallery](/components/site/overview/) and [docs](/components/docs/overview/) stay on
+Cloudflare Pages and are unaffected.
+
+### What the component adds
+
+The component carries only **app-level** resources — the controllers are a cluster
+prerequisite (see [the runbook](#internal-ingress-prerequisites-controllers-dns-tls)):
+
+- **`tcab-web`** — a `Deployment` + `ClusterIP` `Service` serving the console
+  (`apps/web`) as a static SPA from the
+  [`tcab-web` image](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/web.Dockerfile)
+  (nginx, port `8080`). The single image is environment-agnostic — one build per
+  git-sha, like the publisher image — so the backend/auth URLs are injected at
+  **runtime**: the image's entrypoint `envsubst`s a `/config.js` from
+  `TCAB_WEB_BACKEND_URL` / `TCAB_WEB_AUTH_URL`, and the SPA prefers that
+  `window.__TCAB_CONFIG__` over its build-time `VITE_*` defaults.
+- **Five host-per-service `Ingress` routes** (one `Ingress` each, no path-routing) —
+  `console` → `tcab-web`, `api` → `tcab-backend:8787`, `auth` → `tcab-auth:8789`,
+  `artifacts` → `tcab-artifacts:8790`, `arena` → `tcab-arena:8791`, all with
+  `ingressClassName: nginx`. Each carries the nginx annotations the data plane
+  needs: `proxy-body-size: "0"` (the artifact service streams run-tree tars and
+  accepts uploads, which the default 1 MB cap would truncate),
+  `proxy-read-timeout`/`proxy-send-timeout: "3600"` (the backend and arena serve
+  long-lived NDJSON live streams the default 60 s timeout would sever), and
+  `proxy-buffering: "off"` (flush stream chunks straight through).
+- **A cert-manager `ClusterIssuer`** (`letsencrypt-internal`) issuing each host a
+  real Let's Encrypt certificate over the ACME **production** directory, solved by
+  **DNS-01 over Cloudflare** (`cert-manager.io/cluster-issuer` annotation → per-host
+  TLS secret). DNS-01 is required because the hosts are internal-only: Let's Encrypt
+  cannot reach an HTTP-01 token, but proving control of the `testcabinet.ai` zone via
+  a TXT record needs no inbound. The solver reads a **Cloudflare API token with
+  `Zone:DNS:Edit`** from the `cert-manager-cloudflare` Secret (key `api-token`).
+- **Two additive `NetworkPolicy` rules** admitting the `ingress-nginx` namespace
+  through the base default-deny — see [NetworkPolicy](#networkpolicy) above.
+
+### Client-facing URL repointing
+
+A second sharp edge the overlay fixes: the backend advertises the artifact and arena
+base URLs to the console (via `GET /config`), and the base sets those to
+cluster-internal DNS (`http://tcab-artifacts:8790` / `http://tcab-arena:8791`), which
+a laptop on the VPN cannot resolve — so artifact and arena media would break even
+with everything else routed. The `azure-prod` overlay therefore patches:
+
+- the backend's `TCAB_ARTIFACTS_PUBLIC_URL` → `https://artifacts.testcabinet.ai` and
+  `TCAB_ARENA_PUBLIC_URL` → `https://arena.testcabinet.ai`
+  (`patch-backend-public-urls.yaml`), and
+- the `tcab-web` pod's `TCAB_WEB_BACKEND_URL` → `https://api.testcabinet.ai` and
+  `TCAB_WEB_AUTH_URL` → `https://auth.testcabinet.ai` (`patch-web-config.yaml`).
+
+`TCAB_BACKEND_AUTH_URL` — the backend's **server-side** token-verify URL — is
+deliberately **not** repointed; it stays the in-cluster `http://tcab-auth:8789`.
+Only the **client-facing** URLs move to the https hostnames.
+
+### Internal-ingress prerequisites (controllers, DNS, TLS)
+
+The component carries app-level resources only; the controllers and the cloud-side
+plumbing are a one-time cluster prerequisite, installed out of band. **Order
+matters** — the DNS records can only be created once the ingress controller has its
+internal LB IP:
+
+1. **Install ingress-nginx (INTERNAL LB)** via Helm into its own `ingress-nginx`
+   namespace, forcing an Azure internal LB so it gets a private VNet IP:
+
+   ```yaml
+   controller:
+     service:
+       annotations:
+         service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+       externalTrafficPolicy: Local
+     ingressClassResource: { name: nginx, default: false }
+   ```
+
+   After it settles, read the assigned private IP — the DNS records point at it:
+
+   ```sh
+   kubectl -n ingress-nginx get svc <controller> \
+     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+   ```
+
+2. **Create the Azure Private DNS zone + records.** Create a Private DNS zone for
+   the hostnames, **link it to the AKS VNet** (virtual-network-link), and add **A
+   records** for `console` / `api` / `auth` / `artifacts` / `arena` → the internal LB
+   IP from step 1. (A private `testcabinet.ai` zone linked to the VNet *shadows* the
+   public zone for VPN clients; if reaching the public site/docs from the VPN
+   matters, use a dedicated internal sub-zone and name the hosts accordingly — and
+   update the component's hostnames + certs to match.)
+
+3. **Install cert-manager (with CRDs)** via Helm into the `cert-manager` namespace.
+   The CRDs must exist before the component's `ClusterIssuer` applies.
+
+4. **Provision the Cloudflare DNS-01 token.** Mint a Cloudflare API token with
+   `Zone:DNS:Edit` scoped to `testcabinet.ai` (the Pages-scoped publishing token
+   cannot edit DNS records). Store it for cert-manager as the `cert-manager-cloudflare`
+   Secret (key `api-token`) — preferably as a `cloudflare-dns-token` Key Vault secret
+   synced via the
+   [`components/keyvault-csi`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/keyvault-csi)
+   `SecretProviderClass`, mirroring how the other secrets are added. (CSI gotcha: the
+   driver won't add keys to an *existing* synced Secret on remount — a brand-new
+   Secret materializes fine, but if you later add keys to one, delete it and restart
+   the sync pod.)
+
+5. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`);
+   cert-manager then completes the DNS-01 challenge with the Cloudflare token and
+   issues the five certificates.
+
+6. **Confirm VPN DNS resolution.** The OpenVPN config must make clients resolve the
+   private zone (push Azure DNS `168.63.129.16`, or a resolver that sees the Private
+   DNS zone). Validate from a connected client:
+   `nslookup console.testcabinet.ai` should return the internal LB IP.
+
+The Cloudflare token (step 4) and the Azure DNS zone (step 2) are independent and can
+be prepared in parallel.
 
 ## Observability (in-cluster Grafana LGTM)
 

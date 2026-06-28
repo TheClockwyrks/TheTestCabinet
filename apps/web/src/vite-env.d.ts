@@ -25,3 +25,22 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/**
+ * Runtime console config injected by the deployment, taking precedence over the
+ * build-time `VITE_*` fallbacks (see {@link useBackendConnection}/
+ * {@link useExecConnection}). The committed `public/config.js` sets this to an
+ * empty object so `vite build` ships a harmless placeholder and local
+ * `npm run dev` works unchanged; the `tcab-web` container image overwrites
+ * `/config.js` at start, `envsubst`-ing the URLs from its environment.
+ */
+interface TcabRuntimeConfig {
+  /** Backend URL the console talks to, unless the user overrides it. */
+  readonly backendUrl?: string;
+  /** Auth service URL the console registers/logs in against. */
+  readonly authUrl?: string;
+}
+
+interface Window {
+  readonly __TCAB_CONFIG__?: TcabRuntimeConfig;
+}

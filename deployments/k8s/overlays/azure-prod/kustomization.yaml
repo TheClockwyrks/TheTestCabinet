@@ -31,6 +31,15 @@ components:
   # Fill REPLACE_IDENTITY_CLIENT_ID in the component after creating the managed
   # identity; see the runbook.
   - ../../components/keyvault-csi
+  # Serve the web console in-cluster and expose it + the four services over an
+  # INTERNAL (VPN-reachable, never public) ingress-nginx at host-per-service
+  # `*.testcabinet.ai` names with cert-manager TLS. Adds the tcab-web Deployment +
+  # Service, the five Ingress routes, the Let's Encrypt ClusterIssuer, and the
+  # ingress-source NetworkPolicy. The component defaults to the prod hostnames /
+  # ClusterIssuer email; this overlay patches the runtime console + backend URLs
+  # below (patch-web-config.yaml / patch-backend-public-urls.yaml). The ingress-nginx
+  # + cert-manager controllers are a Helm-installed cluster prerequisite (task-4).
+  - ../../components/internal-ingress
 
 # TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
 # transformer can't reach it — patch it to match the driver image.
@@ -43,6 +52,13 @@ patches:
   # Enable in-cluster publishing: point the dispatcher at the tcab-publisher image
   # (an env VALUE the images: transformer can't reach) and its credential Secret.
   - path: patch-dispatcher-publisher.yaml
+  # Repoint the backend's advertised data-plane URLs (TCAB_ARTIFACTS_PUBLIC_URL /
+  # TCAB_ARENA_PUBLIC_URL — env VALUES the images: transformer can't reach) to the
+  # internal-ingress https hostnames so console media resolves over the VPN.
+  - path: patch-backend-public-urls.yaml
+  # Set the in-cluster console's runtime backend/auth URLs (TCAB_WEB_BACKEND_URL /
+  # TCAB_WEB_AUTH_URL on the internal-ingress tcab-web pod) to the https hostnames.
+  - path: patch-web-config.yaml
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
@@ -77,4 +93,12 @@ images:
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
+    newTag: latest
+  # The in-cluster web console image (the internal-ingress component's tcab-web
+  # Deployment). One environment-agnostic build per git-sha, like the publisher
+  # image; the per-env backend/auth URLs are injected at runtime via env, not baked.
+  # :latest UNTIL the operator's CI builds it — pin an immutable :<git-sha> tag here
+  # once tcab-web is published (and set the GHCR package Public, like the others).
+  - name: REPLACE_REGISTRY/tcab-web
+    newName: ghcr.io/theclockwyrks/tcab-web
     newTag: latest

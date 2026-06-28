@@ -1,0 +1,7 @@
+// Runtime console config — rendered per container by 30-render-config.sh, which
+// envsubst's ${TCAB_WEB_BACKEND_URL} / ${TCAB_WEB_AUTH_URL} from the environment.
+// This OVERWRITES the placeholder apps/web/public/config.js baked into the bundle.
+// index.html loads it before the app's module script, so the console reads these
+// URLs at boot (see apps/web/src/state/useConnections.ts). Both default to empty,
+// yielding a valid empty config when the env is unset.
+window.__TCAB_CONFIG__ = { backendUrl: "${TCAB_WEB_BACKEND_URL}", authUrl: "${TCAB_WEB_AUTH_URL}" };

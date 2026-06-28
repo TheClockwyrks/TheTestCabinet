@@ -52,6 +52,28 @@
 # embeds, so it must survive the allowlist; the path tracks the Dockerfile's COPY.
 !/test-cases/performance-factorio/v1.0.0/references/training
 
+# The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
+# service image: it `npm ci`s the npm workspace and `vite build`s the web console
+# (apps/web) into static assets nginx serves. So its build context needs the npm
+# workspace too — but only the slice the console build reads:
+#   - the root npm manifests (package.json + the lockfile npm ci validates against),
+#   - EVERY workspace member's package.json (npm ci validates the whole workspace
+#     against the lockfile, so a missing member's manifest aborts the install), and
+#   - the SOURCE of the three packages the console actually bundles: apps/web itself
+#     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
+#     Vite resolves to their TypeScript sources (packages/ui exports ./src/*).
+# node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
+# win), so a local install/build never rides along.
+!/package.json
+!/package-lock.json
+!/tsconfig.base.json
+!/apps/desktop/package.json
+!/apps/docs/package.json
+!/apps/site/package.json
+!/apps/web
+!/packages/run-record
+!/packages/ui
+
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
 # the context or churns the layer cache. These come last so they win.

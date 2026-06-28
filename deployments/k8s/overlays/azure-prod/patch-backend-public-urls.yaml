@@ -1,0 +1,38 @@
+# Repoint the backend's advertised data-plane URLs to the internal-ingress https
+# hostnames so console media resolves over the VPN.
+#
+# TCAB_ARTIFACTS_PUBLIC_URL / TCAB_ARENA_PUBLIC_URL are the base URLs the backend
+# reports to the console via GET /config; the console then fetches artifact media +
+# arena views directly from the data plane at those URLs. The base (and the postgres
+# component's Deployment) set them to cluster-internal Service DNS
+# (http://tcab-artifacts:8790 / http://tcab-arena:8791), which a laptop on the VPN
+# cannot resolve — so they are repointed here to the per-host ingress https names the
+# internal-ingress component routes (artifacts.testcabinet.ai → tcab-artifacts,
+# arena.testcabinet.ai → tcab-arena).
+#
+# These are env VALUES, not container `image:` fields, so kustomize's `images:`
+# transformer cannot reach them — same rationale as patch-dispatcher-driver-image.yaml
+# / patch-dispatcher-publisher.yaml, hence a patch.
+#
+# TCAB_BACKEND_AUTH_URL is the backend's SERVER-SIDE token-verify URL and is
+# deliberately NOT touched here — it stays the in-cluster http://tcab-auth:8789. Only
+# the client-facing *_PUBLIC_URLs (and the console's own backend/auth URLs, set on the
+# tcab-web pod in patch-web-config.yaml) move to the https hostnames.
+#
+# The azure-prod overlay's postgres component swaps the base's tcab-backend
+# StatefulSet for a Deployment, so this patch targets the Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "https://artifacts.testcabinet.ai"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "https://arena.testcabinet.ai"

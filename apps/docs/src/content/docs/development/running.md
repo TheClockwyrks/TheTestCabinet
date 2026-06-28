@@ -119,6 +119,48 @@ first); the desktop app uses the same backend URL in its Connections settings.
 After editing a test case, re-ingest with
 `make -C deployments/local local-ingest`.
 
+## Pointing `tcab` at a deployment
+
+`tcab` is a thin enqueue-and-watch client, so the only difference between the local
+k3d stack and a remote staging/prod deployment is the URL you point it at and
+logging in with an account. There are two ways to reach a remote backend:
+
+- **Over the VPN, at the private hostnames (the prod path).** A deployment with the
+  [internal ingress](/deployment/kubernetes/#internal-ingress) serves the backend and
+  auth service at private `*.testcabinet.ai` hostnames, reachable on the company VPN.
+  Point `tcab` straight at them — no port-forward needed:
+
+  ```sh
+  export TCAB_BACKEND_URL=https://api.testcabinet.ai
+  export TCAB_AUTH_URL=https://auth.testcabinet.ai
+  tcab login --username <name>     # authenticate against the auth service
+  tcab run --test-case pong --version v1.0.0 --variant base \
+    --harness claude --model claude-opus-4-8   # enqueue + watch, exactly as locally
+  ```
+
+  These hostnames resolve **only** on the VPN, via the cloud's private DNS — they
+  are not public. The backend reports the artifact and arena URLs
+  (`https://artifacts.testcabinet.ai` / `https://arena.testcabinet.ai`) at
+  `GET /config`, so media and arena views resolve over the same VPN.
+
+- **`kubectl port-forward` (off-VPN fallback / debugging, or before the ingress is
+  up).** Forward the backend (and auth) `ClusterIP` services to localhost and point
+  `tcab` at the forwarded ports:
+
+  ```sh
+  kubectl -n tcab-prod port-forward svc/tcab-backend 8787:8787 &
+  kubectl -n tcab-prod port-forward svc/tcab-auth    8789:8789 &
+  export TCAB_BACKEND_URL=http://127.0.0.1:8787
+  export TCAB_AUTH_URL=http://127.0.0.1:8789
+  tcab login --username <name>
+  tcab run --test-case pong --version v1.0.0 --variant base \
+    --harness claude --model claude-opus-4-8
+  ```
+
+  Note that artifact/arena **media** still resolves to whatever the backend
+  advertises at `GET /config`; if those `TCAB_*_PUBLIC_URL`s point at the private
+  ingress hostnames, you also need the VPN (or matching forwards) for media to load.
+
 ## Iterating on the backend and auth services as bare processes
 
 You can run the **backend and auth** services as ordinary host processes — the

@@ -1,0 +1,41 @@
+# The cert-manager ClusterIssuer the Ingresses (ingress.yaml) reference by the
+# `cert-manager.io/cluster-issuer: letsencrypt-internal` annotation. It issues the
+# per-host certificates from Let's Encrypt over the ACME PRODUCTION directory.
+#
+# DNS-01, not HTTP-01: the hosts are internal-only (the ingress LB has no public IP),
+# so Let's Encrypt cannot reach an HTTP-01 challenge token. DNS-01 proves control of
+# the zone by writing a TXT record instead, which works for hosts with no inbound.
+# The solver writes that record into the `testcabinet.ai` Cloudflare zone using an
+# API token with Zone:DNS:Edit — a NEW token (the existing Pages-scoped token cannot
+# edit DNS). task-4 mints it and lands it in the `cert-manager-cloudflare` Secret
+# (key `api-token`) — preferably synced from Key Vault via the keyvault-csi
+# SecretProviderClass (the `cloudflare-dns-token` vault secret).
+#
+# `ClusterIssuer` is a cert-manager custom kind: its CRD must be installed (task-4
+# Helm-installs cert-manager) before this applies — `kubectl kustomize` rendering it
+# without the CRD present is fine for a build check.
+#
+# The ACME account email is overlay-overridable (an overlay patches `spec.acme.email`
+# for a non-prod environment); the prod operator email is the default here.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-internal
+spec:
+  acme:
+    # Let's Encrypt PRODUCTION directory — real, trusted certificates (rate-limited).
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # ACME account contact. Overlay-overridable per environment.
+    email: ops@testcabinet.ai
+    # Where cert-manager stores this issuer's ACME account private key.
+    privateKeySecretRef:
+      name: letsencrypt-internal-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            # The Zone:DNS:Edit API token, from the Secret task-4 provisions (synced
+            # from the `cloudflare-dns-token` Key Vault secret). cert-manager reads
+            # this token to create/clean the `_acme-challenge` TXT record.
+            apiTokenSecretRef:
+              name: cert-manager-cloudflare
+              key: api-token

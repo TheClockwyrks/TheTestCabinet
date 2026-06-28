@@ -21,12 +21,19 @@ name: Build service images
 #   - tcab-publisher     — the per-publish publisher (tcab-publisher); the dispatcher
 #                          creates one publisher Job per publish, which releases a
 #                          reviewed run to a public GitHub repo + Cloudflare Pages and
-#                          so carries git + gh + a pinned wrangler (no browser).
+#                          so carries git + gh + a pinned wrangler (no browser); and
+#   - tcab-web           — the web console (apps/web) served as STATIC assets by
+#                          nginx; the one NON-Rust image here (a `vite build` behind
+#                          nginx, no crate compiled), fronted in-cluster by the
+#                          internal-only ingress. Its backend/auth URLs are injected
+#                          at container start (envsubst /config.js), not baked, so the
+#                          one shared image works for every environment.
 # Each is built from its Dockerfile under deployments/images/ with the repository
-# root as the build context (the Dockerfiles compile their crate from source), and
-# tagged both `:latest` and `:<git-sha>` so a deployment can pin an immutable
-# digest/tag. The Kubernetes manifests under deployments/k8s/ pull these from the
-# registry the cluster is pointed at (see deployment/kubernetes.md).
+# root as the build context (the Rust Dockerfiles compile their crate from source;
+# the web Dockerfile npm-builds the console from the workspace), and tagged both
+# `:latest` and `:<git-sha>` so a deployment can pin an immutable digest/tag. The
+# Kubernetes manifests under deployments/k8s/ pull these from the registry the
+# cluster is pointed at (see deployment/kubernetes.md).
 #
 # These are NOT the run-container images a run executes inside — those (base,
 # sprite, sprite-sheet, adversarial, performance) are built by the separate
@@ -41,21 +48,27 @@ name: Build service images
 #
 # One-time setup: after the first successful push, set each published package's
 # visibility (tcab-backend, tcab-auth-service, tcab-dispatcher, tcab-driver,
-# tcab-artifacts, tcab-arena, tcab-publisher) to Public in the org's GHCR package
-# settings if the cluster should
+# tcab-artifacts, tcab-arena, tcab-publisher, tcab-web) to Public in the org's GHCR
+# package settings if the cluster should
 # pull them unauthenticated; otherwise reference them through an imagePullSecret
 # (see deployments/k8s/base/secrets.example.yaml).
 on:
   push:
     branches: [master]
-    # The images compile the backend/auth/dispatcher/driver/artifacts crates (and
-    # their workspace dependencies) from source, so any change under crates/ or to
-    # the workspace manifests must rebuild them — not just a change to the
-    # Dockerfiles.
+    # The Rust images compile the backend/auth/dispatcher/driver/artifacts crates
+    # (and their workspace dependencies) from source, so any change under crates/ or
+    # to the workspace manifests must rebuild them — not just a change to the
+    # Dockerfiles. The tcab-web image instead builds the npm console, so its sources
+    # (apps/web + the packages it bundles) and the npm manifests/lockfile rebuild it.
     paths:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/web/**"
+      - "packages/ui/**"
+      - "packages/run-record/**"
+      - "package.json"
+      - "package-lock.json"
       - "deployments/images/**"
       - ".github/workflows/build-service-images.yml"
   workflow_dispatch:
@@ -106,6 +119,9 @@ jobs:
           - name: publisher
             image: tcab-publisher
             dockerfile: deployments/images/publisher.Dockerfile
+          - name: web
+            image: tcab-web
+            dockerfile: deployments/images/web.Dockerfile
         # Each arch builds on a runner of that architecture, natively. (GitHub-hosted
         # arm64 runners are free on public repositories.)
         arch:
@@ -193,6 +209,8 @@ jobs:
             image: tcab-arena
           - name: publisher
             image: tcab-publisher
+          - name: web
+            image: tcab-web
     steps:
       - name: Download this image's per-arch digests
         uses: actions/download-artifact@v4

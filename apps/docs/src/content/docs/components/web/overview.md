@@ -65,7 +65,10 @@ static bundle (`vite build`). Unlike the site, it is an **operator** tool, not a
 public gallery: it reads from and writes to the private backend and drives
 private workers, so it is served on the same private network as the services it
 talks to (see [Authentication](/components/backend/overview/#authentication)),
-not deployed to the public internet.
+not deployed to the public internet. In a cluster deployment that bundle is the
+in-cluster `tcab-web` workload, reached over the VPN at a private hostname through
+the [internal ingress](/deployment/kubernetes/#internal-ingress) — never a public
+FQDN.
 
 ## Status
 

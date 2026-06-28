@@ -32,8 +32,18 @@ function readStored<T>(key: string, fallback: T): T {
 export function useBackendConnection(): BackendContextValue {
   const [url, setUrlState] = useState<string | null>(
     () =>
-      readStored<string>(BACKEND_KEY, import.meta.env.VITE_BACKEND_URL ?? "") ||
-      null,
+      // The user's localStorage override always wins (the settings UI lets an
+      // operator point a deployment-served console at a local stack). Below it,
+      // the deployment's runtime config (window.__TCAB_CONFIG__, injected into
+      // /config.js at container start) is preferred over the build-time
+      // VITE_BACKEND_URL — one tcab-web image serves every environment, so the
+      // URL cannot be baked at build. Empty string ⇒ unconfigured (→ null).
+      readStored<string>(
+        BACKEND_KEY,
+        window.__TCAB_CONFIG__?.backendUrl ??
+          import.meta.env.VITE_BACKEND_URL ??
+          "",
+      ) || null,
   );
   const [identity, setIdentity] = useState<BackendIdentity | null>(null);
   const [status, setStatus] = useState<BackendStatus>("unconfigured");
@@ -97,8 +107,13 @@ export function useBackendConnection(): BackendContextValue {
 export function useExecConnection(
   backendUrl: string | null,
 ): WorkersContextValue {
+  // Auth service URL: the deployment's runtime config (injected /config.js) is
+  // preferred over the build-time VITE_AUTH_URL, then falls back to the backend
+  // URL (the single-box dev setup where the backend also fronts auth).
   const authUrl = backendUrl
-    ? (import.meta.env.VITE_AUTH_URL ?? backendUrl)
+    ? (window.__TCAB_CONFIG__?.authUrl ??
+      import.meta.env.VITE_AUTH_URL ??
+      backendUrl)
     : null;
   const [artifactsUrl, setArtifactsUrl] = useState<string | null>(null);
 
