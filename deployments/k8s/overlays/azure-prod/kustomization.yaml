@@ -67,45 +67,49 @@ patches:
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
+#
+# All service images are pinned to ONE git-sha so the whole deployment versions
+# together. This sha is `c461b06` (make run-container images pinnable by git-sha):
+# the first build that publishes the run images MULTI-ARCH and teaches the
+# dispatcher to forward TCAB_CONTAINER_* into driver Jobs. It is a descendant of the
+# previous pins, so it carries everything they did — the in-cluster-publishing build
+# (backend/dispatcher/artifacts, formerly `deefcb40…`) and the tcab-web runtime
+# config-render fix (formerly `13d2d145…`). The run-container images are pinned to
+# the SAME sha via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml (they are
+# not `image:` fields, so the images: transformer can't reach them). Roll all of them
+# in lockstep to a new sha — staging before prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    # Pinned to the in-cluster-publishing build (task-1: publish queue, async
-    # /publish, streaming relay, publish_job migration). Roll in lockstep with
-    # tcab-dispatcher + tcab-artifacts below and TCAB_PUBLISHER_IMAGE.
-    newTag: deefcb40373aff87b96ce20f5835d12677579346
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: latest
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    # Pinned to the in-cluster-publishing build (task-2: drains the publish queue,
-    # builds tcab-publisher Jobs).
-    newTag: deefcb40373aff87b96ce20f5835d12677579346
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: latest
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    # Pinned to the in-cluster-publishing build (task-4: GET /runs/{id}/tree.tar).
-    newTag: deefcb40373aff87b96ce20f5835d12677579346
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: latest
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: latest
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
   # The in-cluster web console image (the internal-ingress component's tcab-web
-  # Deployment). One environment-agnostic build per git-sha, like the publisher
-  # image; the per-env backend/auth URLs are injected at runtime via env, not baked.
-  # Pinned to the build that fixes the runtime config render (web root made
-  # writable for uid 101 so 30-render-config.sh can write config.js; template moved
-  # out of /etc/nginx/templates/). The earlier cb0fef3 build crash-looped on a
-  # read-only web root. GHCR package is Public/anonymously pullable.
+  # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
+  # URLs are injected at runtime via env, not baked. This sha carries the runtime
+  # config-render fix (web root made writable for uid 101 so 30-render-config.sh can
+  # write config.js; template moved out of /etc/nginx/templates/) that the earlier
+  # cb0fef3 build crash-looped without. GHCR package is Public/anonymously pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 13d2d1454b083ac5bd1d0e99866d15cfeefa8dd8
+    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
