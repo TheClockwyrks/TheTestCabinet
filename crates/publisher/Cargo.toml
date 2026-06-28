@@ -1,0 +1,44 @@
+[package]
+name = "tcab-publisher"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tcab-publisher"
+path = "src/main.rs"
+
+[lib]
+name = "tcab_publisher"
+path = "src/lib.rs"
+
+[dependencies]
+test-cabinet-core = { path = "../core" }
+# The publisher is a binary: it owns telemetry init, so it pulls the heavy `otlp`
+# feature (the propagation-only default is for libraries like `core`), exactly as
+# the driver's main does.
+test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# The HTTP client the publisher downloads the run tree with and streams
+# progress/result back to the backend with. rustls (no system OpenSSL), `json`
+# for the bodies — see `crates/core`.
+reqwest = { workspace = true }
+# Untar the `application/x-tar` source tree the artifact service serves (pure
+# Rust, matching the driver's upload side which tars the same layout).
+tar = "0.4"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+axum = { workspace = true }
+# Implementing the core `CommandRunner` trait for the test's stub runner.
+async-trait = { workspace = true }
+
+[lints]
+workspace = true

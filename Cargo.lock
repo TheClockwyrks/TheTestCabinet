@@ -5502,6 +5502,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tcab-publisher"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "test-cabinet-core",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
