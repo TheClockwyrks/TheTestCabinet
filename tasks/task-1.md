@@ -1,6 +1,6 @@
 # Task 1 — Backend: publish queue, async publish, streaming relay
 
-**Status:** ⬜ Not started. Depends on the scaffolding in `7cb94bb` (entity, wire
+**Status:** ✅ Code-complete, verified 2026-06-27. Depends on the scaffolding in `7cb94bb` (entity, wire
 types, migration already exist). This is the spine — do it first.
 
 ## Goal

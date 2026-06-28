@@ -1,6 +1,6 @@
 # Task 3 — `tcab-publisher` crate (the per-publish Job binary)
 
-**Status:** ⬜ Not started. Depends on task-1 (result/stream endpoints) and task-4
+**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-1 (result/stream endpoints) and task-4
 (`tree.tar` download). Mirror the **driver** crate's shape (`crates/driver`).
 
 ## Goal

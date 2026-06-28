@@ -1,6 +1,6 @@
 # Task 4 — Artifacts: `tree.tar` source-tree download
 
-**Status:** ⬜ Not started. Small, self-contained. Needed by task-3.
+**Status:** ✅ Code-complete, verified 2026-06-27. Small, self-contained. Needed by task-3.
 
 ## Goal
 

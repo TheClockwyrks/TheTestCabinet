@@ -1,6 +1,6 @@
 # Task 6 — Manifests + Key Vault wiring for the publisher
 
-**Status:** ⬜ Not started. Depends on task-2 (dispatcher config keys) and task-5
+**Status:** ✅ Code-complete (manifests written), pending operator follow-ups. Verified 2026-06-27. Depends on task-2 (dispatcher config keys) and task-5
 (the published image). Read the `azure-prod-deployment` memory first.
 
 ## Goal

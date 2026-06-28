@@ -1,6 +1,6 @@
 # Task 7 — CLI + console: async/streaming publish UX
 
-**Status:** ⬜ Not started. Depends on task-1 (the async `/publish` + the
+**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-1 (the async `/publish` + the
 `/publish-jobs/{id}/live` stream). Do this once the backend behavior is in.
 
 ## Why

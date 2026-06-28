@@ -1,6 +1,6 @@
 # Task 2 — Dispatcher: claim publish jobs, build the publish Job
 
-**Status:** ⬜ Not started. Depends on task-1 (the `/publish-jobs/next` claim
+**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-1 (the `/publish-jobs/next` claim
 endpoint + `PublishClaim` wire type) and task-5 (the publisher image reference).
 
 ## Goal

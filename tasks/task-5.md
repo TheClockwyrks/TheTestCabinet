@@ -1,6 +1,6 @@
 # Task 5 — Publisher image + CI
 
-**Status:** ⬜ Not started. Depends on task-3 (the crate must exist to build).
+**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-3 (the crate must exist to build).
 
 ## Goal
 
