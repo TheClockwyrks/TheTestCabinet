@@ -59,6 +59,11 @@ patches:
   # Set the in-cluster console's runtime backend/auth URLs (TCAB_WEB_BACKEND_URL /
   # TCAB_WEB_AUTH_URL on the internal-ingress tcab-web pod) to the https hostnames.
   - path: patch-web-config.yaml
+  # Catalog ingest sidecar in the backend pod (shares /state, POSTs /ingest over
+  # localhost) — the base CronJob can't reach the backend or share its checkout volume.
+  - path: patch-backend-ingest.yaml
+  # …and suspend that now-superseded base CronJob so it stops failing every 30 min.
+  - path: patch-suspend-ingest-cronjob.yaml
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
