@@ -97,8 +97,8 @@ images:
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha, like the publisher
   # image; the per-env backend/auth URLs are injected at runtime via env, not baked.
-  # :latest UNTIL the operator's CI builds it — pin an immutable :<git-sha> tag here
-  # once tcab-web is published (and set the GHCR package Public, like the others).
+  # Pinned to the first published build (the .dockerignore fix that let the web
+  # image's sibling COPYs resolve; GHCR package is Public, anonymously pullable).
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: latest
+    newTag: cb0fef3f8e4eb6ebe64bebfe8cb2a1e57ce04ec6
