@@ -16,7 +16,12 @@ name: Build service images
 #                          and
 #   - tcab-arena         — the arena service (tcab-arena), a slim STATELESS runtime
 #                          that runs adversarial matches/tournaments (CPU-bound wasm)
-#                          and talks HTTP to the backend only (no volume, no browser).
+#                          and talks HTTP to the backend only (no volume, no browser);
+#                          and
+#   - tcab-publisher     — the per-publish publisher (tcab-publisher); the dispatcher
+#                          creates one publisher Job per publish, which releases a
+#                          reviewed run to a public GitHub repo + Cloudflare Pages and
+#                          so carries git + gh + a pinned wrangler (no browser).
 # Each is built from its Dockerfile under deployments/images/ with the repository
 # root as the build context (the Dockerfiles compile their crate from source), and
 # tagged both `:latest` and `:<git-sha>` so a deployment can pin an immutable
@@ -36,8 +41,8 @@ name: Build service images
 #
 # One-time setup: after the first successful push, set each published package's
 # visibility (tcab-backend, tcab-auth-service, tcab-dispatcher, tcab-driver,
-# tcab-artifacts, tcab-arena) to Public in the org's GHCR package settings if the
-# cluster should
+# tcab-artifacts, tcab-arena, tcab-publisher) to Public in the org's GHCR package
+# settings if the cluster should
 # pull them unauthenticated; otherwise reference them through an imagePullSecret
 # (see deployments/k8s/base/secrets.example.yaml).
 on:
@@ -98,6 +103,9 @@ jobs:
           - name: arena
             image: tcab-arena
             dockerfile: deployments/images/arena.Dockerfile
+          - name: publisher
+            image: tcab-publisher
+            dockerfile: deployments/images/publisher.Dockerfile
         # Each arch builds on a runner of that architecture, natively. (GitHub-hosted
         # arm64 runners are free on public repositories.)
         arch:
@@ -183,6 +191,8 @@ jobs:
             image: tcab-artifacts
           - name: arena
             image: tcab-arena
+          - name: publisher
+            image: tcab-publisher
     steps:
       - name: Download this image's per-arch digests
         uses: actions/download-artifact@v4
