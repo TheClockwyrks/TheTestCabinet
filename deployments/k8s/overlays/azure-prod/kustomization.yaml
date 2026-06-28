@@ -49,19 +49,25 @@ patches:
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: latest
+    # Pinned to the in-cluster-publishing build (task-1: publish queue, async
+    # /publish, streaming relay, publish_job migration). Roll in lockstep with
+    # tcab-dispatcher + tcab-artifacts below and TCAB_PUBLISHER_IMAGE.
+    newTag: deefcb40373aff87b96ce20f5835d12677579346
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
     newTag: latest
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: latest
+    # Pinned to the in-cluster-publishing build (task-2: drains the publish queue,
+    # builds tcab-publisher Jobs).
+    newTag: deefcb40373aff87b96ce20f5835d12677579346
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
     newTag: latest
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: latest
+    # Pinned to the in-cluster-publishing build (task-4: GET /runs/{id}/tree.tar).
+    newTag: deefcb40373aff87b96ce20f5835d12677579346
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
     newTag: latest
