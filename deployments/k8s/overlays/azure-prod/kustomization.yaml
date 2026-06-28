@@ -68,42 +68,48 @@ patches:
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
 #
-# All service images are pinned to ONE git-sha so the whole deployment versions
-# together. This sha is `c461b06` (make run-container images pinnable by git-sha):
-# the first build that publishes the run images MULTI-ARCH and teaches the
-# dispatcher to forward TCAB_CONTAINER_* into driver Jobs. It is a descendant of the
-# previous pins, so it carries everything they did — the in-cluster-publishing build
-# (backend/dispatcher/artifacts, formerly `deefcb40…`) and the tcab-web runtime
-# config-render fix (formerly `13d2d145…`). The run-container images are pinned to
-# the SAME sha via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml (they are
-# not `image:` fields, so the images: transformer can't reach them). Roll all of them
-# in lockstep to a new sha — staging before prod — when promoting a build.
+# All service images are pinned to ONE git-sha so they version together. This sha is
+# `69ac355` (fix(backend): delete run/publish queue rows when a run is deleted): a
+# descendant of `c461b06`, it carries everything the previous pins did — the
+# multi-arch run-image build + TCAB_CONTAINER_* forwarding, the in-cluster-publishing
+# build (backend/dispatcher/artifacts, formerly `deefcb40…`), and the tcab-web
+# runtime config-render fix (formerly `13d2d145…`) — plus the run-delete cleanup fix
+# (delete_run now also removes the orphaned run-/publish-queue rows).
+#
+# The RUN-CONTAINER images (test-cabinet-base/-sprite/-sprite-sheet/-adversarial/
+# -performance) are pinned SEPARATELY to `c461b06` via TCAB_CONTAINER_TAG in
+# patch-dispatcher-driver-image.yaml. They are NOT in lockstep with the service
+# images here: `69ac355` changed only backend Rust, so the `build-containers`
+# workflow did not run for it and no run images exist at that sha. The run images are
+# decoupled from service-image rolls — only re-pin TCAB_CONTAINER_TAG to a sha at
+# which `build-containers` actually published (multi-arch — required for the arm64
+# nodes). Roll the service images — staging before prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
   # URLs are injected at runtime via env, not baked. This sha carries the runtime
@@ -112,4 +118,4 @@ images:
   # cb0fef3 build crash-looped without. GHCR package is Public/anonymously pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: c461b06d5ccbacab29d1738f84ef09239c386235
+    newTag: 69ac355ce749fdd6128f7458cd91451542ad2663

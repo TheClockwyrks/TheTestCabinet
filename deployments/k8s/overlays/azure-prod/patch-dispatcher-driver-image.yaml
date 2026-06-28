@@ -7,10 +7,13 @@
 # -sprite-sheet/-adversarial/-performance) the driver resolves for each sandbox pod.
 # Like TCAB_DRIVER_IMAGE it is an env value, not an `image:` field — the driver reads
 # it at run time (core::harness::resolve_run_image) and the dispatcher forwards it
-# into every driver Job (PASSTHROUGH_K8S_VARS). Set to the SAME sha as the service
-# images so the run images version with the rest of the deployment; the run images at
-# this sha are multi-arch (amd64+arm64), required for the arm64 nodes. Without this
-# the base default (latest) would leave the run images tracking the mutable tag.
+# into every driver Job (PASSTHROUGH_K8S_VARS). It is pinned SEPARATELY from the
+# service images and is NOT kept in lockstep: the run images only rebuild when the
+# `build-containers` workflow runs, so this tracks the latest sha at which that
+# workflow published multi-arch (amd64+arm64) run images — required for the arm64
+# nodes — which is `c461b06`. The service images are ahead at `69ac355` (a
+# backend-only change that did not rebuild the run images). Without this the base
+# default (latest) would leave the run images tracking the mutable tag.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,6 +26,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:c461b06d5ccbacab29d1738f84ef09239c386235"
+              value: "ghcr.io/theclockwyrks/tcab-driver:69ac355ce749fdd6128f7458cd91451542ad2663"
             - name: TCAB_CONTAINER_TAG
               value: "c461b06d5ccbacab29d1738f84ef09239c386235"
