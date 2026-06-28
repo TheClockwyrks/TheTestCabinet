@@ -67,8 +67,8 @@ impl Config {
             .ok_or(ConfigError::Missing("TCAB_BACKEND_URL"))?
             .trim_end_matches('/')
             .to_string();
-        let publish_job_id = non_empty("TCAB_PUBLISH_JOB_ID")
-            .ok_or(ConfigError::Missing("TCAB_PUBLISH_JOB_ID"))?;
+        let publish_job_id =
+            non_empty("TCAB_PUBLISH_JOB_ID").ok_or(ConfigError::Missing("TCAB_PUBLISH_JOB_ID"))?;
         let publish_job_token = non_empty("TCAB_PUBLISH_JOB_TOKEN")
             .ok_or(ConfigError::Missing("TCAB_PUBLISH_JOB_TOKEN"))?;
         let run_id =

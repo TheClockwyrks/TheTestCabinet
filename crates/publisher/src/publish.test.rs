@@ -14,8 +14,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use test_cabinet_core::{
-    AuthMode, CommandOutput, CommandRunner, Cost, HarnessSlug, RunEnvironment, RunLinks, RunMetrics,
-    RunRecord, RunState, RunStatus, RunSubject, RunTooling, TestType, TokenCounts, ValidationSummary,
+    AuthMode, CommandOutput, CommandRunner, Cost, HarnessSlug, RunEnvironment, RunLinks,
+    RunMetrics, RunRecord, RunState, RunStatus, RunSubject, RunTooling, TestType, TokenCounts,
+    ValidationSummary,
 };
 
 /// A [`CommandRunner`] standing in for `gh`/`git`/`wrangler`: it records every call
@@ -168,8 +169,13 @@ async fn releases_source_then_build_and_returns_both_links() {
     let calls = runner.calls();
     let commit = calls.iter().position(|c| c.contains("git commit"));
     let create = calls.iter().position(|c| c.contains("gh repo create"));
-    let deploy = calls.iter().position(|c| c.contains("wrangler pages deploy"));
-    assert!(commit.is_some() && create.is_some() && deploy.is_some(), "{calls:?}");
+    let deploy = calls
+        .iter()
+        .position(|c| c.contains("wrangler pages deploy"));
+    assert!(
+        commit.is_some() && create.is_some() && deploy.is_some(),
+        "{calls:?}"
+    );
     assert!(commit < create, "commit before push: {calls:?}");
     assert!(create < deploy, "code released before the build: {calls:?}");
 }

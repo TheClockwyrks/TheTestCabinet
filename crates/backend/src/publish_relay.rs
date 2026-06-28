@@ -83,7 +83,9 @@ impl LivePublish {
         }
         // A send error only means there are no live subscribers, which is fine —
         // the item is in the backlog for a later one.
-        let _ = self.tx.send(PublishStreamItem::Progress(Box::new(progress)));
+        let _ = self
+            .tx
+            .send(PublishStreamItem::Progress(Box::new(progress)));
     }
 
     /// Record the terminal result, mark the publish finished, and signal every live

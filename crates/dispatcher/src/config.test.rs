@@ -122,10 +122,11 @@ fn publisher_config_parses_when_set() {
         );
         // The GitHub org and Pages project are forwarded into the publish Job for
         // the publisher's `PublishConfig::from_env` to resolve.
-        assert!(config.passthrough_publisher_env.contains(&(
-            "TCAB_GITHUB_ORG".to_string(),
-            "TheClockwyrks".to_string()
-        )));
+        assert!(
+            config
+                .passthrough_publisher_env
+                .contains(&("TCAB_GITHUB_ORG".to_string(), "TheClockwyrks".to_string()))
+        );
         assert!(
             config
                 .passthrough_publisher_env

@@ -12,9 +12,7 @@ fn success_result() -> PublishResult {
 /// Drain a publish NDJSON stream to its close, returning each non-empty line parsed
 /// as JSON. A heartbeat-free publish stream closes promptly on the terminal result,
 /// so this completes without a timeout.
-async fn drain(
-    stream: impl Stream<Item = Result<Bytes, Infallible>>,
-) -> Vec<serde_json::Value> {
+async fn drain(stream: impl Stream<Item = Result<Bytes, Infallible>>) -> Vec<serde_json::Value> {
     let bytes: Vec<u8> = stream
         .map(|chunk| chunk.unwrap())
         .collect::<Vec<_>>()
@@ -98,7 +96,10 @@ fn terminal_from_row_reconstructs_succeeded_and_failed() {
     };
     let result = terminal_from_row(&succeeded);
     assert_eq!(result.state, PublishState::Succeeded);
-    assert_eq!(result.source_repo.as_deref(), Some("https://github.com/x/y"));
+    assert_eq!(
+        result.source_repo.as_deref(),
+        Some("https://github.com/x/y")
+    );
 
     let failed = publish_job::Model {
         state: "failed".to_string(),

@@ -403,10 +403,7 @@ fn publish_job_sets_the_claim_env() {
         map["TCAB_PUBLISH_JOB_TOKEN"].value.as_deref(),
         Some("pub-token-xyz")
     );
-    assert_eq!(
-        map["TCAB_PUBLISH_RUN_ID"].value.as_deref(),
-        Some("run-789")
-    );
+    assert_eq!(map["TCAB_PUBLISH_RUN_ID"].value.as_deref(), Some("run-789"));
 }
 
 #[test]
@@ -422,7 +419,10 @@ fn publish_job_forwards_artifacts_org_and_pages_project() {
         map["TCAB_GITHUB_ORG"].value.as_deref(),
         Some("TheClockwyrks")
     );
-    assert_eq!(map["TCAB_PAGES_PROJECT"].value.as_deref(), Some("tcab-runs"));
+    assert_eq!(
+        map["TCAB_PAGES_PROJECT"].value.as_deref(),
+        Some("tcab-runs")
+    );
 }
 
 #[test]

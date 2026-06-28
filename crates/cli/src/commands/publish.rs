@@ -130,7 +130,10 @@ pub async fn publish(args: PublishArgs) -> Result<()> {
         }
     }
     if failures > 0 {
-        bail!("{failures} of {} run(s) failed to publish", args.run_ids.len());
+        bail!(
+            "{failures} of {} run(s) failed to publish",
+            args.run_ids.len()
+        );
     }
     Ok(())
 }
@@ -194,7 +197,10 @@ fn report_result(run_id: &str, result: &PublishResult) -> Result<()> {
             Ok(())
         }
         PublishState::Failed => {
-            let detail = result.detail.as_deref().unwrap_or("the publish did not complete");
+            let detail = result
+                .detail
+                .as_deref()
+                .unwrap_or("the publish did not complete");
             bail!("{detail}")
         }
     }

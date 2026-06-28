@@ -117,7 +117,10 @@ async fn post_result_hits_result_with_the_links() {
         playable_build: Some("https://abc.test-cabinet-runs.pages.dev".to_string()),
         detail: None,
     };
-    client.post_result(&result).await.expect("result should post");
+    client
+        .post_result(&result)
+        .await
+        .expect("result should post");
 
     let captured = captured.lock().unwrap();
     assert_eq!(captured.len(), 1);

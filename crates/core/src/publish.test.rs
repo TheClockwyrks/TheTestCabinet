@@ -656,10 +656,7 @@ async fn review_then_publish_are_separate_backend_calls() {
     // Publishing is now asynchronous: the ack carries the enqueued publish job's id
     // and the live URL to observe the release on, not a synchronous `newlyPublished`.
     assert_eq!(ack.publish_job_id, format!("pj-{}", record.id));
-    assert_eq!(
-        ack.live_url,
-        format!("/publish-jobs/pj-{}/live", record.id)
-    );
+    assert_eq!(ack.live_url, format!("/publish-jobs/pj-{}/live", record.id));
 
     let reviews = publisher.backend().reviews();
     assert_eq!(reviews.len(), 1);

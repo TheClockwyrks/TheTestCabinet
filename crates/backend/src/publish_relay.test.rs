@@ -50,7 +50,10 @@ async fn a_late_subscriber_replays_the_backlog_ending_in_the_result() {
     live.finish(success());
 
     let sub = live.subscribe();
-    assert!(sub.terminated, "the publish is already terminal at subscribe");
+    assert!(
+        sub.terminated,
+        "the publish is already terminal at subscribe"
+    );
     assert_eq!(sub.backlog.len(), 3, "two progress lines plus the result");
     assert!(matches!(
         &sub.backlog[0],
@@ -79,7 +82,11 @@ async fn finish_is_idempotent_and_progress_after_terminal_is_dropped() {
     live.push_progress(progress("too late"));
 
     let sub = live.subscribe();
-    assert_eq!(sub.backlog.len(), 1, "only the first terminal result is kept");
+    assert_eq!(
+        sub.backlog.len(),
+        1,
+        "only the first terminal result is kept"
+    );
     assert!(matches!(
         &sub.backlog[0],
         PublishStreamItem::Result(r) if r.state == PublishState::Succeeded

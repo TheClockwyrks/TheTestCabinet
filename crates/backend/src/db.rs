@@ -26,9 +26,7 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{
-    job, publish_job, review, run, run_link, snapshot_state, tournament,
-};
+use test_cabinet_entities::{job, publish_job, review, run, run_link, snapshot_state, tournament};
 
 use crate::error::Result;
 
@@ -1187,10 +1185,7 @@ impl Db {
             })?;
 
         let newly_published = !run.published;
-        let effective_published_at = run
-            .published_at
-            .clone()
-            .unwrap_or_else(|| now.to_string());
+        let effective_published_at = run.published_at.clone().unwrap_or_else(|| now.to_string());
 
         // Patch the record blob's links so the verbatim JSON and the `run_link`
         // sibling agree — the same invariant `push` maintains.

@@ -724,8 +724,15 @@ async fn claim_takes_the_oldest_queued_publish_job_first() {
         .await
         .unwrap();
 
-    let first = db.claim_next_publish_job("2026-06-27T01:00:00Z").await.unwrap();
-    assert_eq!(first.unwrap().id, "older", "oldest enqueued is claimed first");
+    let first = db
+        .claim_next_publish_job("2026-06-27T01:00:00Z")
+        .await
+        .unwrap();
+    assert_eq!(
+        first.unwrap().id,
+        "older",
+        "oldest enqueued is claimed first"
+    );
     let second = db
         .claim_next_publish_job("2026-06-27T01:00:01Z")
         .await
@@ -861,7 +868,12 @@ async fn set_publish_job_state_records_a_failure_detail() {
         .unwrap();
 
     let failed = db
-        .set_publish_job_state("p1", "failed", "2026-06-27T01:00:00Z", Some("wrangler exploded"))
+        .set_publish_job_state(
+            "p1",
+            "failed",
+            "2026-06-27T01:00:00Z",
+            Some("wrangler exploded"),
+        )
         .await
         .unwrap()
         .expect("the publish job exists");
