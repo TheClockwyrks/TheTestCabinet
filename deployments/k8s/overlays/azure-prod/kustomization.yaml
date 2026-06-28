@@ -37,6 +37,9 @@ components:
 patches:
   - path: patch-dispatcher-driver-image.yaml
   - path: patch-otel.yaml
+  # Enable subscription auth (Codex + Claude Code) by mounting the
+  # tcab-driver-subscription Secret into each driver Job.
+  - path: patch-dispatcher-subscription.yaml
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.

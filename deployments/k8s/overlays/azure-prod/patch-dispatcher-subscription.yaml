@@ -1,0 +1,24 @@
+# Turn on subscription auth for the harnesses that use it (Codex, Claude Code).
+#
+# The base leaves the subscription env commented (an API-key-only default). This
+# points the dispatcher at the `tcab-driver-subscription` Secret (materialised from
+# Key Vault by the keyvault-csi component) and the dir it mounts that Secret into on
+# every driver Job, so a run requested with subscription auth finds the sign-in files
+# the harness CLI expects. TCAB_DISPATCHER_DRIVER_AUTH_MODE is deliberately NOT set:
+# auth mode stays per-run, so OpenRouter API-key harnesses keep working alongside.
+# Refresh the credentials with scripts/upload-subscription-creds.sh as they expire.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-dispatcher
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: dispatcher
+          env:
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET
+              value: "tcab-driver-subscription"
+            - name: TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR
+              value: "/var/run/tcab/subscription"
