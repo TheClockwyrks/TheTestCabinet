@@ -40,6 +40,13 @@ spec:
   policyTypes: ["Ingress"]
   ingress:
     - from:
+        # The backend itself, which verifies every bearer token against the auth
+        # service (`POST /auth/verify`) — e.g. when authorizing a run submission.
+        # Without this the backend's in-cluster call to tcab-auth is refused by the
+        # default-deny ingress and run creation fails with a 502 auth transport error.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-backend
         # The dispatcher.
         - podSelector:
             matchLabels:
