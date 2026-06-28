@@ -1,212 +1,184 @@
-# In-cluster publishing — working context
+# Private internal-ingress + in-cluster web console — working context
 
-A handoff document for closing the **in-cluster publishing gap**: making the
-per-run GitHub-repo + Cloudflare Pages release happen *through the cluster* instead
-of only when a human runs `tcab publish` on a host with `gh`/`wrangler`
-authenticated. Self-contained so it survives a fresh session.
+A handoff document for closing the **operator-access gap** on the prod cluster: making the
+web console and the backend/auth/artifact/arena services reachable over the company VPN at
+private `*.testcabinet.ai` hostnames (TLS), so multiple operators can use prod by browsing
+to a URL — instead of `kubectl port-forward` + running the console locally with env vars.
+Self-contained so it survives a fresh session.
 
-This `tasks/` directory was reset for this work; the previous contents (the
-completed per-run-Job refactor) were deleted. The companion files
-`task-1.md … task-7.md` hold the remaining implementation, in dependency order.
+This `tasks/` directory was reset for this work; the previous contents (the completed
+in-cluster-publishing handoff) were deleted. The companion files `task-1.md … task-6.md`
+hold the implementation, in dependency order.
 
 ## The gap (why this work exists)
 
-Tracing the code (confirmed this session):
+Confirmed this session against the live cluster (`tcab-prod` on AKS
+`testcabinet-prod-westus2-aks`, private cluster — operate via `az aks command invoke`):
 
-- `BackendPublisher` (`crates/core/src/publish.rs:310`) is the **only** thing that
-  creates a per-run **public GitHub repo** (`gh`/`git`) and deploys the playable
-  build to **Cloudflare Pages** (`wrangler`). It is **never instantiated in
-  production** — only in tests.
-- The **driver** wires `NoopPublisher` (`crates/driver/src/run.rs:~246`,
-  "publishing is a separate, explicit backend operation").
-- The backend's `POST /runs/{id}/publish` (`crates/backend/src/api/runs.rs:171`)
-  only flips the DB `published` flag (`crates/backend/src/db.rs:361`) and queues a
-  snapshot refresh — **no `gh`/`wrangler`**.
-- The **CLI** `tcab publish` (`crates/cli/src/commands/publish.rs`) only calls that
-  HTTP endpoint; it does **not** drive `BackendPublisher` either.
+- Every service is a **`ClusterIP`** with **no Ingress** and **no LoadBalancer**
+  (`kubectl get svc` shows `tcab-backend` 8787, `tcab-auth` 8789, `tcab-artifacts` 8790,
+  `tcab-arena` 8791, all internal). There is **no ingress controller** installed.
+- The **web console is not served at all** in-cluster — there is no `tcab-web` workload.
+  `apps/web` is a static SPA operators currently run locally (`npm run dev`) and point at a
+  `kubectl port-forward`ed backend.
+- The base manifests are explicit that this is by design — `base/backend.yaml`:
+  `# ClusterIP only — never expose the backend with a public Ingress/LoadBalancer.` The
+  intent is a **private boundary supplied by the deployment**, never a public FQDN
+  (`apps/docs/.../deployment/overview.md`: operators reach the console "from inside the
+  cluster network: kubectl port-forward … or an internal-only Ingress behind your
+  VPN/bastion").
+- A second sharp edge: the backend advertises the **artifact/arena URLs** to clients as
+  cluster-internal DNS (`TCAB_ARTIFACTS_PUBLIC_URL=http://tcab-artifacts:8790`,
+  `TCAB_ARENA_PUBLIC_URL=http://tcab-arena:8791`), which a laptop on the VPN cannot
+  resolve — so even with a port-forwarded backend, artifact media + arena views break.
 
-So today the GitHub/Pages release happens nowhere in the deployed system. With the
-k8s design the run's implementation lives in the cluster (uploaded to the artifact
-service), so publishing must be triggerable through the cluster.
+The operator has **OpenVPN** configured for the Azure private network. The decided fix is
+the "internal-only Ingress behind the VPN" the docs already anticipate, plus serving the
+console in-cluster so there is a real private URL to visit.
 
 ## Target architecture (decided)
 
-A **dedicated per-publish Kubernetes Job**, reusing the run path's
-queue→dispatcher→Job machinery via a **separate, parallel publish queue** (so the
-run path — `LaunchBody`/`ClaimedJob`/the driver — is completely untouched). The
-**dispatcher** owns all Job creation (it already has the k8s client + RBAC); the
-**backend** gains no k8s client.
+An **internal-only (VPN-reachable) ingress-nginx**, fronting the console + the four
+services at host-per-service `*.testcabinet.ai` names, with TLS from cert-manager.
 
 ```
-console / CLI ──POST /runs/{id}/publish──> backend
-                                            │  gate-check (reviewed, not infra)
-                                            │  enqueue publish_job (queued)
-                                            ▼
-                               publish queue (publish_job table)
-                                            ▲ claim
-                        dispatcher ──POST /publish-jobs/next──┘
-                            │ build_publish_job  (k8s API)
-                            ▼
-                   tcab-publisher Job  (new image: node + git + gh + wrangler)
-                     │ 1. GET /runs/{id}/tree.tar  ← artifact service (download)
-                     │ 2. BackendPublisher.release_code   (gh/git → public repo)
-                     │ 3. BackendPublisher.release_playable_build (wrangler → Pages)
-                     │ 4. stream progress + terminal result ─┐
-                     ▼                                        │
-console / CLI ◀─ GET /publish-jobs/{id}/live (NDJSON) ◀── backend relay
-                                            │ on terminal success:
-                                            │  attach links (run_link + record blob),
-                                            │  flip published, queue snapshot refresh
+                       OpenVPN client (operator laptop)
+                                  │  resolves *.testcabinet.ai via Azure Private DNS
+                                  ▼            → ingress internal LB private IP (10.x)
+        ┌──────────────── ingress-nginx (internal LB, VPN-only) ───────────────┐
+        │  console.testcabinet.ai  → tcab-web      (static console, runtime cfg) │
+        │  api.testcabinet.ai      → tcab-backend:8787                           │
+        │  auth.testcabinet.ai     → tcab-auth:8789                              │
+        │  artifacts.testcabinet.ai→ tcab-artifacts:8790                         │
+        │  arena.testcabinet.ai    → tcab-arena:8791                             │
+        └───────────────────────────────────────────────────────────────────────┘
+  TLS:  cert-manager ClusterIssuer (Let's Encrypt, DNS-01 via Cloudflare) → per-host certs
+  Console config: backend=https://api.testcabinet.ai, auth=https://auth.testcabinet.ai
+        injected at runtime (config.js); artifacts/arena learned from backend GET /config
+        whose TCAB_*_PUBLIC_URL are repointed to the https hostnames.
 ```
-
-### Streaming, not polling (operator preference, 2026-06-27)
-
-The console/CLI must observe a publish over a **live NDJSON stream**, mirroring the
-run path's live relay (`crates/backend/src/api/jobs.rs` `live`/`event_stream`,
-`crates/backend/src/relay.rs`) — **not** by polling a status endpoint. The
-publisher streams progress events to the backend, which fans them out to
-subscribers, ending with a terminal item carrying the outcome. This keeps the
-first cut simple *and* makes future per-step progress (creating repo → pushing →
-deploying) a non-breaking extension: add more event kinds, same stream.
-
-## What's already done (this work)
-
-**Committed** on branch `chore/azure-prod-keyvault-csi`:
-
-- `7cb94bb` — **publish-job scaffolding** (inert, compiles, no behavior change):
-  - `crates/core/src/publish_job_api.rs` — wire types `PublishClaim`,
-    `PublishResult`, `PublishState`, `PublishJobState` (no `contract` codegen
-    derives — these cross only backend↔dispatcher↔publisher, no console TS
-    binding). Re-exported from `crates/core/src/lib.rs`.
-  - `crates/entities/src/publish_job.rs` — the `publish_job` SeaORM entity
-    (`id, state, run_id, job_token, source_repo, playable_build, detail,
-    created_at, updated_at`). Registered in `crates/entities/src/lib.rs`.
-  - `crates/migration/src/m20260628_000004_create_publish_job.rs` — creates the
-    `publish_job` table + `idx_publish_job_state_created`. Registered in
-    `crates/migration/src/lib.rs`.
-
-Verified: `cargo check -p test-cabinet-core -p test-cabinet-entities -p
-test-cabinet-migration` is green.
-
-> NOTE: the streaming decision came *after* the scaffolding. The committed wire
-> types include a single `PublishResult` (terminal) and a `PublishJobState`
-> (lifecycle, for a status endpoint). Keep `PublishResult` as the **terminal**
-> stream item; treat `PublishJobState`/any status endpoint as optional/secondary —
-> the live stream is the primary observation path (see task-1).
-
-## Building blocks to reuse (with file refs)
-
-- **`BackendPublisher`** (`crates/core/src/publish.rs:310`): `release_code`
-  (`:464`, secret-scrub → `git init/add/commit` → `gh repo view` (idempotent gate,
-  `:485`) → `gh repo create --public --source --push`), `release_playable_build`
-  (`:513`, scrub → `wrangler pages deploy <dir> --project-name <p> --branch=<run>`
-  → parse URL), `push`/`push_run` (these POST `/runs` with an **account** token —
-  the publisher must NOT use them; it reports via the publish-job token instead).
-  Trait: `Publisher` (`:88`). Inputs: `PushRequest` (`:31`) =
-  `{record, artifacts: &ArtifactCollection, build_dir: Option<&Path>, events}`.
-  `PublishConfig::from_env` (`:190`): `TCAB_GITHUB_ORG` (default `TheClockwyrks`),
-  `TCAB_PAGES_PROJECT`. Helpers: `read_event_log` (`:56`), `implementation_dir`,
-  `find_build_output` (`crates/core/src/playable.rs`), `run_slug`.
-- **Run queue patterns to mirror** (`crates/backend/src/api/jobs.rs`):
-  `launch`/`enqueue_job` (`:64`), `claim` (`:184`, `ServiceAuth`), `update_status`
-  (`:251`, per-job-token via `authorize_job` `:411`), `verify_token` (`:360`, what
-  the artifact service calls). Live relay: `live` (`:153`) + `event_stream`
-  (`:456`); `crates/backend/src/relay.rs`.
-- **DB patterns** (`crates/backend/src/db.rs`): `NewJob` (`:891`), `enqueue_job`
-  (`:915`), `claim_next_job` (`:939`, txn select-then-update), `set_job_state`
-  (`:962`), `get_job` (`:989`), `publish` (`:361`, the gate + flip),
-  `push`/`run_link` upsert (`:200`/`:262`). The `run` entity blob column is
-  `RecordJson`; `run_link` has `source_repo`/`playable_build`
-  (`crates/entities/src/run_link.rs`).
-- **Artifact service** (`crates/artifacts/src/api.rs`): upload `:127`, serves
-  `build`/proof/asset/events but **no source-tree download yet** (task-4 adds
-  `tree.tar`). Store layout: `{store-root}/{run_id}/` = `run-record.json` +
-  `implementation/` + `events.jsonl` + `raw.jsonl`. Driver upload client:
-  `crates/driver/src/artifacts.rs:73` (`upload_run_tree`, tar of the run dir).
-- **Dispatcher** (`crates/dispatcher`): `build_driver_job` (`src/job.rs:97`, pure,
-  unit-tested), control loop `claim_next`/`dispatch` (`src/controller.rs:~102`),
-  `Config` (`src/config.rs`). Existing RBAC already lets it create Jobs in-namespace
-  (`deployments/k8s/base/rbac.yaml:59`).
-- **Driver image** (`deployments/images/driver.Dockerfile`): `node:24-bookworm-slim`
-  + `git`; **no `gh`/`wrangler`** — the publisher image adds those (task-5).
 
 ## Key decisions (load-bearing)
 
-- **Separate publish queue** (`publish_job` table + `/publish-jobs/*` endpoints),
-  not a `job_kind` discriminator on the run `job` table — keeps `LaunchBody`/
-  `ClaimedJob`/the driver untouched. (Refines the originally-approved "reuse the
-  queue→dispatcher→Job machinery" — the *machinery* reused is the dispatcher's
-  Job creation + control loop + RBAC, via a parallel small queue.)
-- **Dispatcher creates the publish Job**, not the backend (preserves the trust
-  boundary: only the dispatcher holds k8s-API/Job-create RBAC; the backend stays a
-  pure HTTP/DB service).
-- **Publisher reports via the publish-job token**, never `POST /runs` (which needs
-  an account token). The backend attaches the links + flips published when the
-  terminal stream item arrives.
-- **Async + streaming.** `POST /runs/{id}/publish` becomes async (enqueue, return a
-  job id/ack); the result is observed over `GET /publish-jobs/{id}/live`. This
-  **changes the CLI + console** (task-7).
-- **Reuse `BackendPublisher.release_code` + `release_playable_build` only**
-  (the two gh/wrangler steps); the link-attach + publish-flip live in a new backend
-  DB method (`complete_publish_job`) so events on the run aren't disturbed.
-- **Idempotency:** duplicate publish jobs are tolerable — `gh repo view` gates repo
-  creation and the publish-flip preserves `published_at`. (A guard against
-  enqueuing a second in-flight publish for the same run is a nice-to-have, not
-  required.)
+- **Serve the web console** (`apps/web`), NOT the public gallery (`apps/site`, which stays
+  public on Cloudflare Pages). "The site" in the original ask = the operator console.
+- **Host-per-service** hostnames under `testcabinet.ai` (no path-routing/rewrites):
+  `console` → tcab-web, `api` → tcab-backend, `auth` → tcab-auth, `artifacts` →
+  tcab-artifacts, `arena` → tcab-arena. Five hostnames, five Ingress routes, one cert each.
+- **Azure Private DNS zone** linked to the AKS VNet, with A records → the ingress
+  controller's **internal** load-balancer private IP. Resolvable ONLY for VPN clients using
+  Azure DNS — nothing public. (The VPN must push Azure DNS / a resolver that sees the
+  private zone; this is an operator/VPN-config step — see task-4.)
+- **TLS via cert-manager + Let's Encrypt, DNS-01 over Cloudflare.** DNS-01 works for
+  internal-only hosts (no inbound needed). Requires a **Cloudflare API token with
+  Zone:DNS:Edit** on `testcabinet.ai` — the publisher's Pages-scoped token is NOT enough;
+  mint a new one.
+- **ingress-nginx with the Azure internal-LB annotation**
+  (`service.beta.kubernetes.io/azure-load-balancer-internal: "true"`) so its Service gets a
+  private VNet IP, never a public one. Controllers (ingress-nginx + cert-manager) are
+  installed via **Helm as a cluster prerequisite**; our kustomize component carries only the
+  app-level resources (Ingresses, ClusterIssuer, the tcab-web workload, NetworkPolicy).
+- **Console config is injected at RUNTIME, not baked at build.** The CI builds one
+  `tcab-web:<sha>` image used by every overlay (mirroring the publisher image), so the
+  backend/auth URLs cannot be baked per-env via `VITE_*`. Instead the image's nginx
+  entrypoint `envsubst`s a `/config.js` from `TCAB_WEB_BACKEND_URL` / `TCAB_WEB_AUTH_URL`,
+  and a tiny `apps/web` change prefers `window.__TCAB_CONFIG__` over `import.meta.env.VITE_*`.
+- **Internal ingress, never PUBLIC.** Preserve the existing invariant — this adds a
+  *private* boundary only. Do not add a public LoadBalancer/Ingress or a public FQDN.
+- **azure-prod first.** Wire only the live `azure-prod` overlay now. Staging is not stood up
+  yet; it adopts the same component when it is (the operator confirmed staging follows once
+  prod is verified). The `internal-ingress` component is written reusable so staging just
+  adds it later with staging hostnames.
 
-## Credentials & deployment (already provisioned this session)
+## What's already true (prior session, live)
 
-- The cluster (`tcab-prod` on AKS `testcabinet-prod-westus2-aks`) sources all
-  secrets from **Azure Key Vault `testcabinet-clockwyrks`** via the Secrets Store
-  CSI driver + workload identity (`deployments/k8s/components/keyvault-csi/`,
-  managed identity `tcab-keyvault-csi`, clientId
-  `8a5a62e4-7a86-4571-acc5-73107be6e015`). See the `azure-prod-deployment` memory.
-- **`GITHUB_PAT`** is in the repo `.env` (gitignored), not yet in Key Vault — it
-  goes to the publisher Job (task-6).
-- **Cloudflare token for `wrangler`** is **resolved** (verified 2026-06-27):
-  `CLOUDFLARE_PAGES_API_KEY` in the repo `.env` — despite the `_API_KEY` name — is a
-  valid, active scoped **API token** (passes `/user/tokens/verify`: `status: active`)
-  with Pages access (it lists the account's Pages projects). The separate
-  `CLOUDFLARE_API_TOKEN` is the one that failed verify; ignore it for publishing. No
-  new token needs minting — the operator just uploads the `CLOUDFLARE_PAGES_API_KEY`
-  **value** to Key Vault as `cloudflare-pages-api-token` (task-6). The target Pages
-  project **`test-cabinet-runs` already exists**, matching the `PublishConfig`
-  default, so `TCAB_PAGES_PROJECT` needs **no** override.
-- **CSI gotcha:** the CSI driver *creates* synced Secrets but does NOT add keys to
-  an existing one on remount — `kubectl delete` the Secret then restart
-  `tcab-keyvault-sync` so it's recreated complete (or enable rotation).
+The in-cluster **publishing** feature is implemented + deployed (branch
+`chore/azure-prod-keyvault-csi`): backend/dispatcher/artifacts run image
+`deefcb40373aff87b96ce20f5835d12677579346`; the publisher path is live; KV secrets are
+synced via the keyvault-csi component. The cluster is otherwise healthy and unchanged. This
+ingress work is the next layer on top; it touches **no** publishing code.
+
+## Building blocks to reuse (with file refs — re-verify line numbers when implementing)
+
+- **Console build + URL discovery:** `apps/web` is a pure static SPA (`vite build` →
+  `apps/web/dist/`; `apps/web/vite.config.ts` sets no `base`). URL discovery in
+  `apps/web/src/state/useConnections.ts`: backend = localStorage `tcab.web.backendUrl` else
+  `import.meta.env.VITE_BACKEND_URL`; auth = `import.meta.env.VITE_AUTH_URL ?? backendUrl`.
+  This is the exact spot the runtime-config change lands (task-1).
+- **Backend `GET /config`:** handler `client_config` in `crates/backend/src/api.rs` returns
+  `{ artifactsUrl, arenaUrl }` from `TCAB_ARTIFACTS_PUBLIC_URL` / `TCAB_ARENA_PUBLIC_URL`
+  (parsed in `crates/backend/src/config.rs`). Console consumes via
+  `packages/ui/src/transport/httpBackend.ts` (`fetchArtifactsUrl`/`fetchArenaUrl`). These
+  envs are repointed to the https hostnames in task-3 (currently set in
+  `deployments/k8s/base/backend.yaml`, alongside `TCAB_BACKEND_AUTH_URL`).
+- **Services to route (all ClusterIP):** `base/backend.yaml` (8787), `base/auth.yaml`
+  (8789), `base/artifacts.yaml` (8790), `base/arena.yaml` (8791) — each with the
+  "ClusterIP only / never expose publicly" comment to respect.
+- **NetworkPolicy:** `base/networkpolicy.yaml` has `tcab-default-deny-ingress` plus
+  `tcab-allow-services-from-runners` (admits dispatcher/driver/artifacts/arena to
+  backend+auth). MIRROR this policy to admit the ingress-nginx namespace to
+  backend/auth/artifacts/arena/tcab-web (task-2).
+- **Kustomize component pattern:** `deployments/k8s/components/{observability,keyvault-csi}/`
+  (`kind: Component`, a `kustomization.yaml` + resource/patch files). Overlays add via
+  `components:` — see `overlays/azure-prod/kustomization.yaml`. The new `internal-ingress`
+  component follows this shape (task-2); the overlay opt-in is task-3.
+- **Image + CI:** `deployments/images/*.Dockerfile` (node-based examples: `backend`,
+  `driver`; the recent `publisher.Dockerfile` is the freshest "new image" precedent). The
+  build matrix is in `.github/workflows/build-service-images.yml` — add a `tcab-web` entry
+  + update the header comment (task-1).
+- **Operating the private cluster + KV firewall idiom:** the `azure-prod-deployment` memory
+  and `scripts/upload-subscription-creds.sh` (temporarily allow egress IP → set → remove).
+  Apply manifests with `az aks command invoke … --command "kubectl apply -f -" --file …`.
+
+## Credentials & prerequisites (provisioned vs pending)
+
+- **Cloudflare DNS-01 token — PENDING.** Mint a Cloudflare API token with **Zone:DNS:Edit**
+  on `testcabinet.ai` (the existing `CLOUDFLARE_PAGES_API_KEY` is Pages-scoped only). Store
+  it as a cert-manager solver Secret — preferably as a new Key Vault secret
+  (`cloudflare-dns-token`) synced via the keyvault-csi SecretProviderClass, mirroring how
+  `github-pat`/`cloudflare-pages-api-token` were added.
+- **Azure Private DNS zone + VNet link + A records — PENDING (operator).** See task-4;
+  ordering matters (install the ingress controller first to learn its internal LB IP, then
+  create the records).
+- **OpenVPN DNS — operator must confirm.** VPN clients must resolve the private zone (push
+  Azure DNS / the private resolver). If `nslookup console.testcabinet.ai` on the VPN does
+  not return the internal LB IP, this is the thing to fix.
+- **`tcab-web` GHCR image — built by the operator's CI** (the GitHub-mirror pipeline;
+  canonical remote is Azure DevOps), then set the new package **Public** like the other
+  service images.
 
 ## Release implication
 
-Shipping this rebuilds **three** service images — `tcab-backend`,
-`tcab-dispatcher`, and the new `tcab-publisher` — via the GitHub-mirror CI
-(`.github/workflows/build-service-images.yml`; canonical remote is Azure DevOps).
-Write the code + manifests + KV wiring; the image build/publish + the overlay tag
-bump happen via the operator's pipeline.
+Shipping this adds **one new service image** (`tcab-web`) and changes **no Rust service**
+images — the only code change is a tiny `apps/web` (TypeScript) runtime-config tweak, which
+rides into the `tcab-web` image. The backend/dispatcher/etc. images are untouched. The
+image build/publish + the overlay tag bump happen via the operator's pipeline (same as the
+publisher image).
 
 ## Remaining work (companion files, dependency order)
 
-- `task-1.md` — **Backend**: publish-queue DB methods, async `/publish` (enqueue),
-  `/publish-jobs/next` claim, the **streaming live relay** + progress/terminal
-  ingestion, `complete_publish_job` (attach links + flip published), AppState +
-  routes.
-- `task-2.md` — **Dispatcher**: poll the publish queue, `build_publish_job`, config
-  (`TCAB_PUBLISHER_IMAGE`, publisher secrets).
-- `task-3.md` — **`tcab-publisher` crate**: download `tree.tar`, run
-  `BackendPublisher` release steps, stream progress + report the terminal result.
-- `task-4.md` — **Artifacts**: `GET /runs/{id}/tree.tar` (job-token auth).
-- `task-5.md` — **Image + CI**: `publisher.Dockerfile` + add `tcab-publisher` to
-  `build-service-images.yml`.
-- `task-6.md` — **Manifests + KV**: overlay (publisher image, SA, secrets via CSI),
-  `tcab-publisher-secrets` in the SPC, upload `GITHUB_PAT` (+ the Cloudflare token
-  once minted).
-- `task-7.md` — **CLI + console**: async/streaming publish UX (subscribe to
-  `/publish-jobs/{id}/live` instead of expecting a synchronous `newlyPublished`).
+- `task-1.md` — **`tcab-web` image + runtime console config**: `web.Dockerfile` (vite build
+  → nginx serving `dist/` with SPA fallback + `envsubst` `/config.js`), the small `apps/web`
+  runtime-config change, and the CI matrix entry.
+- `task-2.md` — **`internal-ingress` kustomize component**: tcab-web Deployment+Service, the
+  five Ingress routes, the cert-manager ClusterIssuer + per-host certs, and the
+  ingress-source NetworkPolicy.
+- `task-3.md` — **azure-prod overlay wiring + URL repointing**: add the component + the
+  tcab-web image, repoint `TCAB_*_PUBLIC_URL`, set the tcab-web pod's backend/auth env.
+- `task-4.md` — **controllers + Azure/Cloudflare prerequisites** (mostly operator): Helm
+  install ingress-nginx (internal) + cert-manager; Azure Private DNS zone + VNet link + A
+  records; the Cloudflare DNS token + solver Secret; VPN DNS.
+- `task-5.md` — **docs update**: the deployment access model (browse the private console URL
+  / point `tcab` at `api.testcabinet.ai`), preserving "never a public ingress".
+- `task-6.md` — **apply + verify**: cert issuance, VPN resolution, console login + media,
+  and a CLI smoke run + publish against prod.
 
 ## References
 
-- Branch: `chore/azure-prod-keyvault-csi` (this session's commits live here).
-- Memory: `azure-prod-deployment.md` (how the cluster + Key Vault + Postgres are
-  wired and operated — read it before touching the deployment).
-- The whole deploy + subscription auth + R2 publishing from this session are
-  **done and live**; this publishing feature is the only remaining piece.
+- Branch: `chore/azure-prod-keyvault-csi` (the publishing work + the overlay edits live
+  here; this feature continues on it unless the operator opens a new branch).
+- Memory: `azure-prod-deployment.md` (private cluster + Key Vault + Postgres operating
+  model — read before touching the deployment) and `cargo-target-virtiofs-race.md` (export
+  `CARGO_TARGET_DIR` off the virtiofs mount before any parallel cargo build).
+- The just-shipped in-cluster-publishing handoff (now deleted from `tasks/`, but in git
+  history) is the **style template** for tone, structure, and depth.

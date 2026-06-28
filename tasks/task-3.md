@@ -1,67 +1,67 @@
-# Task 3 — `tcab-publisher` crate (the per-publish Job binary)
+# Task 3 — azure-prod overlay wiring + URL repointing
 
-**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-1 (result/stream endpoints) and task-4
-(`tree.tar` download). Mirror the **driver** crate's shape (`crates/driver`).
+**Status:** ⬜ Not started. Depends on task-1 (the `tcab-web` image) and task-2 (the
+`internal-ingress` component).
 
 ## Goal
 
-A new binary crate `crates/publisher` (package `tcab-publisher`) that runs as the
-per-publish Job: download the run's implementation tree, perform the GitHub +
-Cloudflare Pages release via `BackendPublisher`, and report progress + the terminal
-result back to the backend (over the publish-job token).
+Turn the component on for the live `azure-prod` overlay: add it, pin the `tcab-web` image,
+set the console's backend/auth env to the https hostnames, and **repoint the backend's
+advertised artifact/arena URLs** so console media resolves over the VPN.
 
-## Shape
+## Changes (`deployments/k8s/overlays/azure-prod/`)
 
-Mirror `crates/driver/src/main.rs` (env-configured, no server, telemetry init,
-do-work, report terminal status, exit). Add to the workspace `Cargo.toml` members.
+1. **`kustomization.yaml` — add the component** to `components:`:
+   ```
+   components:
+     - ../../components/postgres
+     - ../../components/observability
+     - ../../components/keyvault-csi
+     - ../../components/internal-ingress   # NEW
+   ```
+2. **`kustomization.yaml` — add the `tcab-web` image** to `images:` (concrete owner +
+   pinned `:<git-sha>` once built, like the other services):
+   ```
+   - name: REPLACE_REGISTRY/tcab-web
+     newName: ghcr.io/theclockwyrks/tcab-web
+     newTag: <git-sha once built>      # :latest until then
+   ```
+3. **Console env** — set the tcab-web pod's runtime config via a patch (or override the
+   component default): `TCAB_WEB_BACKEND_URL=https://api.testcabinet.ai`,
+   `TCAB_WEB_AUTH_URL=https://auth.testcabinet.ai`.
+4. **Repoint the backend's advertised URLs** — patch the backend Deployment env (current
+   values live in `deployments/k8s/base/backend.yaml`):
+   - `TCAB_ARTIFACTS_PUBLIC_URL` → `https://artifacts.testcabinet.ai`
+   - `TCAB_ARENA_PUBLIC_URL` → `https://arena.testcabinet.ai`
+   (`TCAB_BACKEND_AUTH_URL` is the backend's SERVER-SIDE token-verify URL and stays the
+   in-cluster `http://tcab-auth:8789` — do NOT repoint it; only the client-facing
+   `*_PUBLIC_URL`s and the console's own backend/auth URLs change.)
+5. **Hostnames** — if the component left hostnames as a prod default, confirm they match;
+   if the component parameterized them, set the five `*.testcabinet.ai` hosts here. Set the
+   ClusterIssuer ACME email here too if not in the component.
 
-### Config (env, from the Job built in task-2)
+Mirror the existing overlay conventions — the patches stack alongside
+`patch-dispatcher-driver-image.yaml` / `patch-dispatcher-publisher.yaml` /
+`patch-dispatcher-subscription.yaml`; add any new patch file to the `patches:` list (and
+remember the `images:` transformer can't reach env VALUES, which is why the URL repoint is
+a patch, same rationale as `patch-dispatcher-driver-image.yaml`).
 
-`TCAB_BACKEND_URL`, `TCAB_PUBLISH_JOB_ID`, `TCAB_PUBLISH_JOB_TOKEN`,
-`TCAB_PUBLISH_RUN_ID`, `TCAB_ARTIFACTS_URL`, plus `TCAB_GITHUB_ORG` /
-`TCAB_PAGES_PROJECT` (read by `PublishConfig::from_env`, `crates/core/src/publish.rs:190`).
-`GH_TOKEN` + `CLOUDFLARE_API_TOKEN` arrive via `envFrom` (used by `gh`/`wrangler`
-directly — the binary doesn't parse them).
+## Staging note
 
-### Steps
+Do NOT wire `azure-staging` / `prod` / `staging` yet — staging isn't stood up. When it is,
+it adds the same component with `*.staging.testcabinet.ai` (or chosen) hostnames and its
+own ClusterIssuer/secret; the component is written to support that via overlay overrides.
 
-1. **Download the run tree** from the artifact service: `GET
-   {TCAB_ARTIFACTS_URL}/runs/{run_id}/tree.tar` authed with the publish-job token
-   (task-4 defines the auth). Untar into a temp dir → `run-record.json` +
-   `implementation/` + `events.jsonl`. (No download client exists today; write a
-   small `reqwest` GET + `tar`/`flate2` untar, or a thin client in this crate.
-   `crates/driver/src/artifacts.rs:73` is the upload analogue to mirror.)
-2. **Build the `PushRequest`** (`crates/core/src/publish.rs:31`):
-   `record` = parse `run-record.json`; `artifacts` = `ArtifactCollection {
-   repo_path: <impl dir> }`; `build_dir` = `find_build_output` over the impl dir
-   (`crates/core/src/playable.rs`); `events` = `read_event_log` (`publish.rs:56`).
-3. **Construct `BackendPublisher`** with `SystemCommandRunner` and a `BackendClient`
-   (the `B` type param). NOTE: `release_code` + `release_playable_build` do **not**
-   use the backend client — pass `HttpBackendClient` (or a no-op) to satisfy the
-   type; **do not** call `push`/`push_run` (those POST `/runs` with an account
-   token the publisher doesn't have).
-4. **Release:** call `release_code` (gh/git → repo URL or `None`) then
-   `release_playable_build` (wrangler → build URL or `None`). Stream a progress line
-   to `POST /publish-jobs/{id}/events` before/after each step (optional for v1 but
-   cheap, and the reason we chose streaming — see context.md).
-5. **Report terminal result:** `POST /publish-jobs/{id}/result` with
-   `PublishResult { state: Succeeded, source_repo, playable_build, detail: None }`
-   (`core::publish_job_api`). On any error, report `Failed` with the reason, then
-   exit non-zero.
+## Tests / checks
 
-## Notes
-
-- Secret scrubbing is already inside `release_code`/`release_playable_build`
-  (`SecretScrubber`), so leaked keys are redacted before the push — keep using
-  those methods rather than re-implementing.
-- Keep the binary slim; the heavy lifting is in `core`.
-
-## Tests
-
-- Unit-test the result/progress reporting client against a stub server, and the
-  tree-download/untar against a fixture tar. The release orchestration itself is
-  already covered by `BackendPublisher`'s tests (`publish.test.rs`).
+- `kubectl kustomize deployments/k8s/overlays/azure-prod` builds cleanly and the rendered
+  output shows: the tcab-web Deployment on the pinned image, the five Ingresses, the
+  backend env carrying the https `*_PUBLIC_URL`s, and the tcab-web pod env carrying the
+  api/auth https URLs.
+- Diff against live with `kubectl diff` (via `az aks command invoke`) before applying
+  (task-6) to confirm the blast radius is only the new/changed resources.
 
 ## Out of scope
 
-The image (task-5) and the `tree.tar` server route (task-4).
+Installing controllers + DNS + token (task-4), the docs (task-5), the apply + smoke
+(task-6).

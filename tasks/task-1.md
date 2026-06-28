@@ -1,102 +1,82 @@
-# Task 1 — Backend: publish queue, async publish, streaming relay
+# Task 1 — `tcab-web` image + runtime console config
 
-**Status:** ✅ Code-complete, verified 2026-06-27. Depends on the scaffolding in `7cb94bb` (entity, wire
-types, migration already exist). This is the spine — do it first.
+**Status:** ⬜ Not started. This is the foundation — the in-cluster console artifact +
+its env-driven config. No dependency on the other tasks; do it first.
 
 ## Goal
 
-Turn `POST /runs/{id}/publish` into an **async** trigger that enqueues a publish
-job, expose the queue to the dispatcher, and let the console/CLI observe the
-publish over a **live NDJSON stream** (no polling). When the publisher reports a
-terminal success, attach the produced links to the run and flip it published.
+Package the web console (`apps/web`) as a static container image (`tcab-web`) that an
+in-cluster Deployment can serve, and make the running console take its **backend + auth
+URLs from runtime env** (not a build-time bake) so one image works for every environment.
 
-## DB methods (`crates/backend/src/db.rs`)
+## Why runtime config (not `VITE_BACKEND_URL` at build)
 
-Mirror the run-queue methods (`enqueue_job` `:915`, `claim_next_job` `:939`,
-`set_job_state` `:962`, `get_job` `:989`). Add (new `impl Db` block near the job
-ops, importing `publish_job` into the `use test_cabinet_entities::{…}` line `:29`):
+CI builds a single `tcab-web:<git-sha>` image shared by all overlays (exactly like
+`tcab-publisher`). The console today reads the backend URL from `VITE_BACKEND_URL`
+(build-time, inlined by Vite) or localStorage (`apps/web/src/state/useConnections.ts`).
+Baking a prod URL into the shared image would break staging. Instead, inject the URLs at
+container start.
 
-1. `NewPublishJob { id, run_id, job_token, created_at }` + `enqueue_publish_job` —
-   insert `state="queued"`.
-2. `claim_next_publish_job(now) -> Option<publish_job::Model>` — txn
-   select-oldest-`queued` → flip `dispatched` (copy `claim_next_job` exactly).
-3. `get_publish_job(id)`.
-4. `set_publish_job_state(id, state, now, detail)` — for the failure path.
-5. `complete_publish_job(id, run_id, source_repo, playable_build, now) ->
-   PublishRunOutcome` — **one transaction** that:
-   - loads the `run` (404 if missing),
-   - upserts `run_link` (source_repo/playable_build) exactly like `push` `:262`,
-   - patches the `run.record_json` blob's `links` (deserialize `RunRecord`, set
-     `record.links`, reserialize) so the blob and `run_link` agree — `RunRecord`/
-     `RunLinks` are already imported for `push`,
-   - flips `published=true` + stamps `published_at` (preserve an existing one, like
-     `publish` `:396`), saving the patched blob too,
-   - `set_dirty(&txn)` (snapshot refresh),
-   - marks the `publish_job` `succeeded` with the links + `updated_at`.
-   Reuse the existing `PublishRunOutcome` struct.
-6. `ensure_publishable(run_id) -> Result<()>` — the **gate only** (no flip),
-   factored out of `publish` `:361` (`infrastructure` → refuse; `completed` needs
-   ≥1 review; `catastrophic`/`timed_out` waived). Call it at enqueue so the user
-   gets immediate rejection; `publish`'s own gate can stay for the legacy/desktop
-   path or be refactored to call this.
+## App change (`apps/web`)
 
-## Streaming relay (mirror `crates/backend/src/relay.rs`)
+1. **`apps/web/index.html`** — add `<script src="/config.js"></script>` in `<head>` BEFORE
+   the module script, so `window.__TCAB_CONFIG__` exists before the app boots.
+2. **`apps/web/src/state/useConnections.ts`** — where it currently derives the backend URL
+   (localStorage `tcab.web.backendUrl` → `import.meta.env.VITE_BACKEND_URL`) and the auth
+   URL (`import.meta.env.VITE_AUTH_URL ?? backendUrl`), insert `window.__TCAB_CONFIG__`
+   ahead of the `VITE_*` fallbacks:
+   - backend: `localStorage` → `window.__TCAB_CONFIG__?.backendUrl` → `VITE_BACKEND_URL` → "".
+   - auth: `window.__TCAB_CONFIG__?.authUrl` → `VITE_AUTH_URL` → `backendUrl`.
+   Keep the user-override (settings UI / localStorage) winning over the injected default so
+   an operator can still point at a local stack. Add a typed declaration for
+   `window.__TCAB_CONFIG__` (`{ backendUrl?: string; authUrl?: string }`).
+3. Ship a **default `apps/web/public/config.js`** that sets `window.__TCAB_CONFIG__ = {}`
+   (so `vite build` includes a harmless placeholder and local `npm run dev` works unchanged;
+   the image overwrites it at runtime).
 
-The console observes the publish over a live stream, **not** polling. Two viable
-shapes — pick the lighter:
+Run `npm run typecheck` (workspace) after the change.
 
-- **(preferred) Generalize the existing relay** to carry a publish progress item,
-  keyed by publish-job id, with a terminal item. Reuse `event_stream`-style NDJSON
-  framing (`api/jobs.rs:456`).
-- Or a small parallel `publish_relay` with the same broadcast + backlog +
-  terminal-close shape.
+## Image (`deployments/images/web.Dockerfile`)
 
-Define a `PublishProgress` event (a `{ message, … }` line) as the extension point
-for future per-step progress. For the first cut the only required items are
-optional progress lines + the **terminal** `PublishResult` (already in
-`core::publish_job_api`). The terminal item closes the stream.
+Model the multi-stage shape on the other images, but this is a **static-asset** image (no
+Rust, no Playwright):
 
-## Endpoints (`crates/backend/src/api/`)
+- **Build stage** (`node:24-bookworm-slim`): copy the npm workspace, `npm ci`, then
+  `npm run build` for `apps/web` → `apps/web/dist/`. (Confirm the build needs `packages/ui`
+  + `packages/run-record` workspaces; build from the repo root so workspace deps resolve,
+  as the other node builds do.)
+- **Runtime stage** (`nginx:1-bookworm` or `nginxinc/nginx-unprivileged`): copy `dist/` to
+  the web root; add an nginx conf with **SPA fallback** (`try_files $uri /index.html;`).
+- **Runtime config injection:** an entrypoint that runs `envsubst` over a template into
+  `<webroot>/config.js` before nginx starts, e.g. emitting
+  `window.__TCAB_CONFIG__ = { backendUrl: "${TCAB_WEB_BACKEND_URL}", authUrl: "${TCAB_WEB_AUTH_URL}" };`
+  Default both to empty so an unset env yields a valid (empty) config. Run unprivileged;
+  no host mounts.
 
-New module `api/publish_jobs.rs` (mirror `api/jobs.rs`); register routes in
-`crates/backend/src/api.rs`.
+Decide + pin the nginx base; keep the entrypoint minimal (a tiny shell script, not a
+framework). Container listens on a fixed port (e.g. 8080) referenced by the Deployment in
+task-2.
 
-1. **`POST /runs/{id}/publish`** (modify `api/runs.rs:171`): require the account
-   bearer (`AuthUser`), call `ensure_publishable`, mint a publish-job id + token,
-   `enqueue_publish_job`, return `202` with the job id (and the live URL
-   `/publish-jobs/{id}/live`). **No longer flips published synchronously.** Drop/replace
-   the old `db.publish` call + `queue_refresh` here (they move to
-   `complete_publish_job` / the result handler).
-2. **`POST /publish-jobs/next`** (`ServiceAuth`, mirror `claim` `:184`):
-   `claim_next_publish_job` → `PublishClaim { job_id, job_token, run_id }` or `204`.
-3. **`GET /publish-jobs/{id}/live`** (NDJSON, mirror `live` `:153` +
-   `event_stream`): replay backlog + tail, close on terminal. Open to the account
-   (or unauthenticated like `/jobs/{id}/live` — match that endpoint's gating).
-4. **`POST /publish-jobs/{id}/events`** (per-job token, mirror `ingest_events`
-   `:210`, optional for v1): publisher streams progress lines into the relay.
-5. **`POST /publish-jobs/{id}/result`** (per-job token via `authorize_*`): on
-   `Succeeded` → `complete_publish_job` + push the terminal item to the relay +
-   `state.publisher.queue_refresh()`; on `Failed` → `set_publish_job_state(failed,
-   detail)` + terminal item. Authenticate with the publish-job token (mirror
-   `authorize_job` `:411`; the artifact service's `verify_token` `:360` pattern is
-   the analogue if the publisher needs token verification for `tree.tar`).
+## CI (`.github/workflows/build-service-images.yml`)
 
-## AppState / wiring
+Add a `tcab-web` entry to the build matrix alongside the other service images, building
+`deployments/images/web.Dockerfile` and publishing `ghcr.io/<owner>/tcab-web` tagged
+`:latest` and `:<git-sha>`. Update the workflow header comment's image list.
 
-- If a parallel relay is used, add it to `AppState` (mirror `relay`).
-- Register all routes in `crates/backend/src/api.rs`.
+## Operator follow-ups (NOT code)
 
-## Tests (`.test.rs`, per the coding skill)
+- Kick off the workflow so the image builds, then set the new `tcab-web` GHCR package to
+  **Public** (same one-time step the other service packages needed).
+- Pin the overlay to the published `:<git-sha>` (task-3) once built.
 
-- `enqueue_publish_job` → `claim_next_publish_job` flips `queued`→`dispatched`;
-  empty queue → `None`.
-- `complete_publish_job` attaches links to `run_link` + blob, flips published,
-  preserves an existing `published_at`, marks the job `succeeded`.
-- `ensure_publishable` matches the existing gate (reuse `publish`'s test cases).
-- A live-stream test: a subscriber sees a progress item then the terminal result.
+## Tests / checks
 
-## Out of scope (other tasks)
+- `npm run typecheck` green; `vite build` for `apps/web` produces `dist/` with `config.js`.
+- Locally: `docker run -e TCAB_WEB_BACKEND_URL=https://api.testcabinet.ai … tcab-web`, then
+  `curl localhost:8080/config.js` shows the injected URL, and `/` + a deep link both return
+  `index.html` (SPA fallback works).
 
-Dispatcher (task-2), the publisher binary (task-3), `tree.tar` (task-4), and the
-CLI/console stream consumer (task-7). This task only makes the backend enqueue,
-serve the queue, stream, and finalize.
+## Out of scope
+
+The Deployment/Service/Ingress (task-2), overlay wiring (task-3). This task only produces
+the image + the runtime-config behavior.

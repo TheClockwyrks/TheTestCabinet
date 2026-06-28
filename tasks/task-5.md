@@ -1,41 +1,43 @@
-# Task 5 — Publisher image + CI
+# Task 5 — Docs update: the internal-ingress access model
 
-**Status:** ✅ Code-complete, verified 2026-06-27. Depends on task-3 (the crate must exist to build).
+**Status:** ⬜ Not started. Do after the shape is settled (task-2/3) so the docs match what
+shipped. Pure documentation.
 
 ## Goal
 
-Build and publish the `tcab-publisher` service image, with the tooling the release
-needs that the driver image lacks (`gh`, `wrangler`).
+Update the deployment docs so operators know how to reach prod over the VPN at the private
+hostnames, replacing the "port-forward only" framing — while preserving the load-bearing
+invariant that nothing is ever exposed on a PUBLIC ingress.
 
-## Image (`deployments/images/publisher.Dockerfile`)
+## Changes (`apps/docs/src/content/docs/deployment/`)
 
-Model on `deployments/images/driver.Dockerfile` (`node:24-bookworm-slim`, builds
-its crate from source in a cargo stage, slim runtime, runs unprivileged). Beyond
-the driver's `git`, add:
+- **`overview.md`** — the access-control / reachability section currently says operators
+  reach the console via `kubectl port-forward` or "an internal-only Ingress behind your
+  VPN/bastion." Promote the internal Ingress from a suggestion to the documented path:
+  on the VPN, browse `https://console.testcabinet.ai`; the console talks to
+  `https://api.testcabinet.ai` (backend) and `https://auth.testcabinet.ai`, and pulls
+  artifact/arena media from `https://artifacts.testcabinet.ai` / `https://arena.testcabinet.ai`.
+  Keep the "never a PUBLIC ingress / no public FQDN" statement — this is an INTERNAL LB
+  reachable only on the VPN via Azure Private DNS.
+- **`kubernetes.md`** — update the topology diagram/notes: add the ingress-nginx (internal
+  LB) + the `tcab-web` workload + the five host routes; note cert-manager (LE, DNS-01 via
+  Cloudflare) provides TLS; update the "web console … via kubectl port-forward" line.
+  Document the NetworkPolicy addition (ingress-nginx namespace admitted to the services).
+- **CLI usage** — wherever the docs tell operators to point `tcab` at a port-forwarded
+  backend (e.g. `development/running.md` references `TCAB_BACKEND_URL=http://127.0.0.1:8787`),
+  add the prod path: on the VPN, `TCAB_BACKEND_URL=https://api.testcabinet.ai` (+
+  `TCAB_AUTH_URL=https://auth.testcabinet.ai`), `tcab login`, then run. (Port-forward stays
+  valid as a fallback when off-VPN or for debugging.)
+- Capture the **operator runbook** bits from task-4 (Helm installs, the Private DNS
+  zone/records, the Cloudflare DNS token, VPN DNS) wherever deployment runbooks live, so the
+  setup is reproducible — and note the **ordering** (controller IP → DNS records → certs).
 
-- **`gh`** (GitHub CLI) — for `gh repo view` / `gh repo create --push`.
-- **`wrangler`** — Cloudflare's CLI for `wrangler pages deploy`. It's an npm
-  package; the base is already Node, so `npm i -g wrangler` (pin a version) or
-  invoke via `npx --yes wrangler`. Decide one and pin it.
-- **`git`** (as the driver image installs it).
-- **No** Playwright/Chromium (the publisher renders nothing) — drop that layer.
+## Cross-check
 
-Entrypoint `tcab-publisher`. Keep it self-contained (no host mounts).
-
-## CI (`.github/workflows/build-service-images.yml`)
-
-Add `tcab-publisher` to the build matrix alongside the other five service images
-(`tcab-backend`, `tcab-auth-service`, `tcab-dispatcher`, `tcab-driver`,
-`tcab-artifacts`), publishing `ghcr.io/<owner>/tcab-publisher` tagged `:latest` and
-`:<git-sha>`. Update the workflow header comment's image list.
-
-## Operator follow-ups (NOT code — handled in the follow-up session)
-
-- Kick off the workflow so the image is built, then **set the new
-  `tcab-publisher` GHCR package to Public** (same one-time step the other service
-  packages needed), so the cluster can pull it without a pull secret.
-- Pin the overlay to the published `:<git-sha>` (task-6) once it's built.
+- `CLAUDE.md`'s component map / any "how to access" pointers don't contradict the new model.
+- The public site/docs (Cloudflare Pages) story is unchanged — only the private console +
+  services gained an internal ingress.
 
 ## Out of scope
 
-Wiring the image into the overlay/dispatcher env (task-6 / task-2).
+Code/manifests (tasks 1–4), the apply + smoke (task-6).
