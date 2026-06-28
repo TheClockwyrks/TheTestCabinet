@@ -40,6 +40,9 @@ patches:
   # Enable subscription auth (Codex + Claude Code) by mounting the
   # tcab-driver-subscription Secret into each driver Job.
   - path: patch-dispatcher-subscription.yaml
+  # Enable in-cluster publishing: point the dispatcher at the tcab-publisher image
+  # (an env VALUE the images: transformer can't reach) and its credential Secret.
+  - path: patch-dispatcher-publisher.yaml
 
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
@@ -61,4 +64,11 @@ images:
     newTag: latest
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
+    newTag: latest
+  # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
+  # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
+  # rewrites nothing today — it is kept for parity so the registry/tag set stays
+  # complete and a future container-image reference to the publisher is covered.
+  - name: REPLACE_REGISTRY/tcab-publisher
+    newName: ghcr.io/theclockwyrks/tcab-publisher
     newTag: latest
