@@ -20,14 +20,19 @@
 # ship: every service exports OTLP to it in-cluster — reach Grafana with
 # `make local-grafana`.
 #
-# Secrets come from the host ENVIRONMENT, never a tracked file. Before `local-up`,
-# export the harness provider API key the run needs — at least one of:
-#   export ANTHROPIC_API_KEY=…     # the `claude` harness
-#   export OPENAI_API_KEY=…        # codex
-#   export OPENROUTER_API_KEY=…    # cline, goose, kilo, opencode, pi
-# The shared dispatcher↔backend claim token defaults to a dev value; override it
-# with `SERVICE_TOKEN=… make local-up` if you want. The `secrets` target creates
-# the cluster Secrets from these; nothing sensitive is ever written to disk.
+# Secrets come from the host ENVIRONMENT or the gitignored repo-root .env, never a
+# tracked file. Before `local-up`, provide the harness provider API key the run
+# needs — at least one of ANTHROPIC_API_KEY (the `claude` harness), OPENAI_API_KEY
+# (codex), or OPENROUTER_API_KEY (cline, goose, kilo, opencode, pi) — either by
+# exporting it:
+#   export ANTHROPIC_API_KEY=…
+# or by adding it to the repo-root .env (the `secrets` target sources it):
+#   OPENROUTER_API_KEY=…
+# Comment a line out in .env to leave that key unset (e.g. when using
+# subscription-based auth for that provider instead). The shared
+# dispatcher↔backend claim token defaults to a dev value; override it with
+# `SERVICE_TOKEN=… make local-up` if you want. The `secrets` target creates the
+# cluster Secrets from these; nothing sensitive is ever written to a tracked file.
 #
 # Targets:
 #   local-up        create the cluster, build+import images, apply, ingest catalog
@@ -77,6 +82,19 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
+
+# Sourced (not `include`d) at the top of any recipe that needs harness secrets, so
+# keys configured in the repo-root .env reach the recipe environment without having
+# to be exported by hand first. .env is gitignored (it is NOT a tracked file), so
+# this keeps secrets off disk-in-the-repo just as the host-environment path does.
+# `set -a` exports everything the file assigns; sourcing in-shell (rather than a
+# Make `include`) lets the shell handle comments, quoting, and `=` in values — so a
+# commented-out ANTHROPIC_API_KEY/OPENAI_API_KEY line is correctly left unset.
+# Assignments in the file overwrite the existing environment, so the .env is the
+# source of truth when present (point ENV_FILE elsewhere, or comment a line out, to
+# fall back to a value exported in the shell).
+ENV_FILE  ?= $(REPO)/.env
+LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 
 # A throwaway docker config dir used ONLY for the image builds (the `images`
 # target points DOCKER_CONFIG at it). It deliberately carries no credsStore: the
@@ -195,8 +213,10 @@ images:
 # fresh each run) or `local-rebuild` to restart the long-lived services. Idempotent
 # — re-running updates each Secret in place.
 #
-# Requires at least one harness API key in the environment (ANTHROPIC_API_KEY /
-# OPENAI_API_KEY / OPENROUTER_API_KEY); only the key(s) present are included.
+# Requires at least one harness API key in the environment OR the repo-root .env
+# (ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY); only the key(s)
+# present are included. The .env is sourced (see LOAD_ENV) before the keys are
+# read, so its assignments take effect here.
 #
 # OPTIONALLY also builds tcab-driver-subscription from the host's signed-in harness
 # CLI credential files (the same files the local `tcab run` reads): Claude's
@@ -213,13 +233,15 @@ secrets:
 	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
 	  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 	@set -e; \
+	  $(LOAD_ENV); \
 	  args=""; \
 	  if [ -n "$$ANTHROPIC_API_KEY" ];  then args="$$args --from-literal=ANTHROPIC_API_KEY=$$ANTHROPIC_API_KEY"; fi; \
 	  if [ -n "$$OPENAI_API_KEY" ];     then args="$$args --from-literal=OPENAI_API_KEY=$$OPENAI_API_KEY"; fi; \
 	  if [ -n "$$OPENROUTER_API_KEY" ]; then args="$$args --from-literal=OPENROUTER_API_KEY=$$OPENROUTER_API_KEY"; fi; \
 	  if [ -z "$$args" ]; then \
-	    echo "ERROR: no harness API key found in the environment."; \
-	    echo "       Export at least one of ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY"; \
+	    echo "ERROR: no harness API key found in the environment or $(ENV_FILE)."; \
+	    echo "       Export (or set in $(ENV_FILE)) at least one of"; \
+	    echo "       ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY"; \
 	    echo "       before running this (it injects the key into each driver Job)."; \
 	    exit 1; \
 	  fi; \
