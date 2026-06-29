@@ -145,6 +145,7 @@ export default defineConfig({
             "quickstarts/create-a-sprite-sheet-variant",
             "quickstarts/review-a-run",
             "quickstarts/publish-a-run",
+            "quickstarts/roll-prod-service-images",
           ],
         },
         {
@@ -161,6 +162,7 @@ export default defineConfig({
             "guides/creating-a-sprite-sheet-variant",
             "guides/reviewing-test-run-results",
             "guides/publishing-a-test-run-result",
+            "guides/rolling-prod-service-images",
           ],
         },
         {
