@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +131,35 @@ pub struct ContainerHandle {
     pub id: String,
 }
 
+/// The result of starting a container: a handle to it, plus how long the start
+/// spent merely *waiting for capacity* before any startup work began.
+///
+/// On a busy cluster a run pod can sit `Pending` for a while because the
+/// scheduler has nowhere to place it yet — it is queued, not broken. That queue
+/// time is wall-clock the run did not spend doing anything, so it is reported
+/// separately here and excluded from the run's measured duration. Runtimes that
+/// admit a container immediately (a local Docker/Podman) report
+/// [`Duration::ZERO`].
+#[derive(Debug, Clone)]
+pub struct ContainerStart {
+    /// Handle to the started container.
+    pub handle: ContainerHandle,
+    /// Wall-clock time the container spent queued for capacity before startup
+    /// work (image pull, container creation) began. Excluded from the recorded
+    /// run duration.
+    pub scheduling_wait: Duration,
+}
+
+impl ContainerStart {
+    /// A start with no scheduling wait — the container was admitted immediately.
+    pub fn ready(handle: ContainerHandle) -> Self {
+        Self {
+            handle,
+            scheduling_wait: Duration::ZERO,
+        }
+    }
+}
+
 /// Which standard stream a captured output line came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -174,7 +204,11 @@ pub trait ContainerRuntime: Send + Sync {
     /// Start a container from the given spec, copying the seeded repository into
     /// its working tree and supplying secrets, without granting access to the
     /// host filesystem.
-    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle>;
+    ///
+    /// The returned [`ContainerStart`] carries the handle and how long the start
+    /// spent queued for capacity (see [`ContainerStart::scheduling_wait`]); a
+    /// runtime that admits the container immediately reports a zero wait.
+    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerStart>;
 
     /// Run a command inside the container and wait for it to finish.
     async fn exec(&self, container: &ContainerHandle, command: &[String]) -> Result<ExecOutput>;

@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ExecOutput, OutputSink, OutputStream,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -280,7 +280,7 @@ impl ContainerRuntime for CliContainerRuntime {
     // `spec` is skipped: it carries the run's secrets (API keys passed as
     // container env vars). Only the non-sensitive image reference is recorded.
     #[instrument(name = "container.start", skip_all, fields(image = %spec.image), err)]
-    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
+    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerStart> {
         // The seeded repository is copied into the container after it starts
         // rather than bind-mounted from the host (see `seed_workdir`): an
         // anonymous volume keeps `/work` on the runtime's own Linux storage on
@@ -346,7 +346,9 @@ impl ContainerRuntime for CliContainerRuntime {
             let _ = self.stop(&handle).await;
             return Err(err);
         }
-        Ok(handle)
+        // A host Docker/Podman admits the container immediately — there is no
+        // scheduler queue to wait behind, so the start spent no time queued.
+        Ok(ContainerStart::ready(handle))
     }
 
     async fn exec(&self, container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
