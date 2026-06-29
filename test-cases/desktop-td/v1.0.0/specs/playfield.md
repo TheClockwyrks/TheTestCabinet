@@ -12,7 +12,7 @@ layout. All positions and sizes are in the logical-pixel coordinate system from
 The reactor floor is a grid of **40 x 40** logical-pixel tiles, **25 columns**
 (`c = 0..24`) by **18 rows** (`r = 0..17`). Tile `(c, r)` spans `x` in `[40c,
 40c + 40]` and `y` in `[40r, 40r + 40]`; its **center** is at `(40c + 20, 40r +
-20)`. Every tower occupies exactly **one tile**, snapped to the grid, and the
+20)`. Every tower occupies exactly one tile, snapped to the grid, and the
 surge walks between tile centers. The faint grid (`#23272e`) is drawn over the
 floor (`#15181d`) at all times so the player can read tiles.
 
@@ -49,7 +49,7 @@ dangerous (`#ff5a3c`).
 
 ## Mazing — towers are walls
 
-There is **no fixed path**. The surge pathfinds across the open floor, and
+There is no fixed path. The surge pathfinds across the open floor, and
 **every tower is also a wall**: building one blocks its tile, so you lengthen
 the surge's route by building structures it must walk around. This is the core
 of the game — you build the maze.
@@ -57,8 +57,8 @@ of the game — you build the maze.
 - A tower may be built only on an **open** tile. It may not be built on an
   intake, an exhaust, a tile already holding a tower, or a tile a surge unit is
   currently standing on.
-- **You can never seal the floor.** A placement is **rejected** if, after it,
-  any intake would have **no path** to **any** exhaust, or if it would trap a
+- **You can never seal the floor.** A placement is rejected if, after it,
+  any intake would have no path to **any** exhaust, or if it would trap a
   surge unit already on the floor with no remaining route out. The build UI must
   show a blocked placement as invalid (`#ff4d4d`) and refuse it, rather than
   letting the player wall the surge in. There must always be at least one open
@@ -71,11 +71,11 @@ of the game — you build the maze.
 The surge walks the **shortest available route** from its intake to an exhaust:
 
 - Movement is on the tile grid between tile centers. A unit may step to an
-  **orthogonally or diagonally adjacent open tile**, but a **diagonal** step is
+  orthogonally or diagonally adjacent open tile, but a diagonal step is
   allowed only when **both** orthogonally-adjacent tiles it cuts past are also
   open — the surge never squeezes through the corner gap between two
   diagonally-touching towers.
-- Each unit heads for the **nearest reachable exhaust** by path distance (not
+- Each unit heads for the nearest reachable exhaust by path distance (not
   straight-line distance), so the two intakes' streams may favor different
   exhausts depending on the maze. Ties may be broken however you like, but
   consistently.
@@ -93,12 +93,12 @@ set is the strategic spine the heat system sits on top of.
 
 ## The build panel and HUD
 
-The **build panel** occupies the right strip (`x` in `[1000, 1280]`, full
+The build panel occupies the right strip (`x` in `[1000, 1280]`, full
 height), drawn on the panel background (`#1b1f26`) and separated from the floor
 by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
 
-- **Status readouts** — the current **money** (in `#ffcf4d`), the **lives**
-  remaining, and the **wave** indicator (`WAVE n / N`, plus a small progress
+- **Status readouts** — the current money (in `#ffcf4d`), the lives
+  remaining, and the wave indicator (`WAVE n / N`, plus a small progress
   read of the current wave). See `specs/flow.md` for what each means.
 - **The shop** — a grid of buyable towers, one button per type (the six emitters
   plus the Forge and Vent of `specs/towers.md`), each showing the tower's icon,
@@ -106,12 +106,12 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   Selecting a shop entry arms placement (see `specs/controls.md`).
 - **The selected-tower inspector** — when a placed tower is selected, this area
   shows its type and level, its current stats (range, damage or effect, fire
-  rate), its **live heat read** (the same heat value drawn on the tile, shown
+  rate), its live heat read (the same heat value drawn on the tile, shown
   here as a labeled bar from `0%` to redline), and **Upgrade** (with its cost)
   and **Sell** (with its refund) actions. When nothing is selected it shows a
   brief hint or the next-wave preview.
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
-  see `specs/flow.md`), a **game-speed** toggle (`1x` / `2x`), and **Pause**.
+  see `specs/flow.md`), a game-speed toggle (`1x` / `2x`), and **Pause**.
 
 The floor itself never shows persistent UI chrome over the play area beyond the
 grid, the towers, the surge, transient range/placement indicators, and small

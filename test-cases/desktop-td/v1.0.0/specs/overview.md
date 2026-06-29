@@ -3,22 +3,22 @@
 ## Overview
 
 **Meltdown** is an open-field **tower-defense** game for the browser. Waves of
-**surge** intruders pour in through the intakes of a reactor floor and try to
+'surge' intruders pour in through the intakes of a reactor floor and try to
 reach the exhaust vents; you stop them by building **emitter towers** on the
 open floor. Your towers are also **walls**, so you do not defend a fixed path —
 you *build the maze* the surge must walk, winding it the long way around so your
 emitters have time to burn it down.
 
-Meltdown's defining idea is **heat as power**. Every emitter **fires harder the
-hotter it runs** — its damage climbs the more it shoots — but push it past the
-**redline** and it **trips offline** to cool, leaving a hole in your defense. So
-laying out the floor is a thermal problem as much as a spatial one: you want
-your guns hot, but not so hot they cut out. Two support structures let you
-sculpt that heat — a **Forge** that pours heat into its neighbors and a **Vent**
-that draws it away — and one emitter, the cryo **Rime**, runs the rule
-*backward*: it slows the surge best when it stays **cold**. Skilled play is
-about pacing heat across the floor — running a tight core white-hot, keeping a
-sniper fed, holding the cryo line cold — not just walling a path.
+Meltdown's defining idea is **heat as power**. Every emitter fires harder the
+hotter it runs — its damage climbs the more it shoots — but push it past the
+redline and it trips offline to cool, leaving a hole in your defense. So laying
+out the floor is a thermal problem as much as a spatial one: you want your guns
+hot, but not so hot they cut out. Two support structures let you sculpt that
+heat — a **Forge** that pours heat into its neighbors and a **Vent** that draws
+it away — and one emitter, the cryo **Rime**, runs the rule *backward*: it
+slows the surge best when it stays cold. Skilled play is about pacing heat
+across the floor — running a tight core white-hot, keeping a sniper fed,
+holding the cryo line cold — not just walling a path.
 
 Meltdown is inspired by classic open-field "maze" tower-defense games but is its
 own game, with an original name, look, the heat-as-power emitters, and its own
@@ -101,8 +101,8 @@ fixed maze, and you must not ship one.
 ## Coordinate system and presentation
 
 All positions, sizes, speeds, and ranges in this document are given in **logical
-pixels** on a fixed **1280 x 720** stage (16:9). The origin `(0, 0)` is the
-**top-left**; `x` increases to the right and `y` increases downward.
+pixels** on a fixed 1280 x 720 stage (16:9). The origin `(0, 0)` is the
+top-left; `x` increases to the right and `y` increases downward.
 
 - The stage scales uniformly to fit the browser window while preserving its 16:9
   aspect ratio, letterboxed with the background color on the remaining space.
@@ -126,7 +126,7 @@ in `specs/playfield.md`.
 
 ## Visual design
 
-The look is an **industrial reactor floor**: cold dark steel and a faint
+The look is an industrial reactor floor: cold dark steel and a faint
 structural grid, with the action lit by **heat** — every emitter glows along a
 temperature ramp from cool blue when idle to white-hot at the redline. The
 canonical palette and type are below; match them.
@@ -167,13 +167,13 @@ canonical palette and type are below; match them.
   hazard-striped and read as dangerous (the surge escaping there is what costs
   you).
 - **Heat must be readable at a glance, and by more than color alone.** An
-  emitter's **glow color tracks its heat** along the ramp above — cold blue →
-  warm amber → hot orange → white-hot just under the redline — and a **tripped**
+  emitter's glow color tracks its heat along the ramp above — cold blue →
+  warm amber → hot orange → white-hot just under the redline — and a tripped
   emitter is unmistakable (strobing red, visibly offline). Because heat is the
-  heart of the game, also give each tower a small **heat read** (for example a
+  heart of the game, also give each tower a small heat read (for example a
   short bar or ring segment on the tile) so a player can tell a tower at `90%`
   heat from one at `30%` without guessing from glow alone. Pick one convention
-  and use it consistently. The cryo **Rime** is the exception that proves the
+  and use it consistently. The cryo Rime is the exception that proves the
   rule: it reads cold/cyan and you *want* it cold (see `specs/heat.md`).
 - Keep the surge **off the temperature axis** so it never reads as "heat":
   ground intruders are acid green, flyers violet, the boss a deep violet — never
