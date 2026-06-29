@@ -4,8 +4,14 @@
 # (k3s-in-Docker) using the SAME manifests staging/prod use, so runs are handled
 # the way they will be in the cloud. `make local-down` tears it all down.
 #
-# Requirements on the host: docker (or a docker-compatible runtime), k3d, and
-# kubectl. Everything runs in the cluster — the backend + auth, the dispatcher, the
+# This is meant to run INSIDE the devcontainer, which ships `docker` (a client
+# only), `k3d`, and `kubectl` and binds the HOST's Docker daemon socket in
+# (Docker-outside-of-Docker; see .devcontainer/docker-compose.yml). The cluster is
+# created on that host daemon, so its node containers and the built images are
+# host-daemon siblings, and `kubectl` reaches the API server published on the host
+# via host.docker.internal (the `cluster`/`kubeconfig` targets wire this up). It
+# also works on a bare host with `docker`/`k3d`/`kubectl` installed directly.
+# Everything runs in the cluster — the backend + auth, the dispatcher, the
 # artifact service, the arena service, the in-cluster Grafana LGTM observability
 # stack, and one per-run driver Job per enqueued run. There is no worker-on-host
 # wiring; a run enqueued at the backend schedules as a Job here, and an adversarial
@@ -43,6 +49,10 @@ CLUSTER ?= tcab
 NS      ?= tcab-local
 OVERLAY := $(REPO)/deployments/k8s/overlays/local
 
+# Name k3d gives this cluster's kubeconfig context/cluster entry (used by the
+# `kubeconfig` target to repoint the API server for in-devcontainer access).
+KUBE_CTX := k3d-$(CLUSTER)
+
 # Container runtime used to build the images. Prefers podman when installed,
 # falling back to docker; override with `CONTAINER_TOOL=… make …`. (podman is
 # checked first on purpose: a host that points `docker` at podman would otherwise
@@ -68,7 +78,7 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster images apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images apply
 
 local-up: cluster images apply local-ingest
 	@echo ""
@@ -81,14 +91,55 @@ local-up: cluster images apply local-ingest
 # Create the k3d cluster if it does not already exist, mapping the repository to
 # /repo on the server node so the backend can ingest from a read-only mount of it
 # (see the local overlay's patch-backend.yaml).
+#
+# The mount source must be a path the cluster's HOST daemon can see. When this runs
+# inside the devcontainer (Docker-outside-of-Docker), $(REPO) is an in-container
+# path the host daemon knows nothing about — but the workspace is itself a bind
+# mount from the host, so the host path is the Source of this devcontainer's mount
+# at $(REPO). Read it back by inspecting our own container (named by hostname) and
+# pass THAT to k3d. On a bare host the inspect finds no such mount and we fall back
+# to $(REPO), which is already a real host path there.
 cluster:
 	@if k3d cluster list 2>/dev/null | grep -qw '$(CLUSTER)'; then \
 	  echo "k3d cluster '$(CLUSTER)' already exists."; \
 	else \
-	  echo "Creating k3d cluster '$(CLUSTER)'…"; \
-	  k3d cluster create '$(CLUSTER)' --volume '$(REPO):/repo@server:0' --wait; \
+	  host_repo="$$(docker inspect "$$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "$(REPO)"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
+	  if [ -z "$$host_repo" ]; then host_repo='$(REPO)'; fi; \
+	  echo "Creating k3d cluster '$(CLUSTER)' (mounting $$host_repo → /repo)…"; \
+	  k3d cluster create '$(CLUSTER)' --volume "$$host_repo:/repo@server:0" --wait; \
 	fi
-	@k3d kubeconfig merge '$(CLUSTER)' --kubeconfig-switch-context >/dev/null
+	@k3d kubeconfig merge '$(CLUSTER)' --kubeconfig-merge-default --kubeconfig-switch-context >/dev/null
+	@$(MAKE) -s -f '$(firstword $(MAKEFILE_LIST))' kubeconfig
+
+# Make the merged kubeconfig reachable from inside the devcontainer. When the
+# devcontainer drives the HOST Docker daemon, `k3d kubeconfig merge` records the
+# API server with a host IP that is not dialable from in here (e.g.
+# https://0.0.0.0:<port>), so kubectl cannot reach the API server. Repoint the
+# cluster's server at host.docker.internal — the host loopback the daemon
+# publishes the API port on (the devcontainer maps it via extra_hosts) — while
+# KEEPING TLS verification by pinning tls-server-name to `localhost`, a SAN the
+# k3s API certificate actually carries (k3d adds it by default).
+#
+# The API port MUST be read from k3d's own view (`k3d kubeconfig get`), which
+# always reflects the cluster's CURRENT published host port — never from the
+# already-merged kubeconfig. Two reasons: (1) `k3d kubeconfig merge` does NOT
+# overwrite an existing cluster entry's server, so reading the port back from the
+# merged file would just re-pin whatever was last written; (2) the published host
+# port is reassigned whenever the serverlb container is recreated (e.g. a docker
+# or host restart), so a port cached in the kubeconfig goes stale. Idempotent:
+# re-running re-pins to the live port. A no-op repoint on a bare host is harmless —
+# host.docker.internal resolves to the loopback there too.
+kubeconfig:
+	@server="$$(k3d kubeconfig get '$(CLUSTER)' 2>/dev/null | grep -E '^[[:space:]]*server:' | head -n1)"; \
+	if [ -z "$$server" ]; then \
+	  echo "ERROR: could not read the API server for cluster '$(CLUSTER)' from k3d; run 'make cluster' first." >&2; exit 1; \
+	fi; \
+	hostport="$${server##*://}"; \
+	port="$${hostport##*:}"; \
+	case "$$port" in (''|*[!0-9]*) echo "ERROR: could not parse the API port from k3d server '$$server'." >&2; exit 1;; esac; \
+	kubectl config set-cluster '$(KUBE_CTX)' --server="https://host.docker.internal:$$port" >/dev/null; \
+	kubectl config set 'clusters.$(KUBE_CTX).tls-server-name' localhost >/dev/null; \
+	echo "kubeconfig: '$(KUBE_CTX)' server → https://host.docker.internal:$$port (tls-server-name=localhost)."
 
 # Build the service images from the same Dockerfiles the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).

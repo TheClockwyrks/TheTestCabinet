@@ -49,7 +49,12 @@ run you enqueue schedules as a Job inside the cluster, exactly as in the cloud.
 ## Prerequisites
 
 You do **not** need to build the service binaries by hand — the bring-up builds
-each service's container image from `deployments/images/`. You need:
+each service's container image from `deployments/images/`. In the
+[devcontainer](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.devcontainer/README.md)
+the container-runtime, `k3d`, and `kubectl` requirements below are already
+provided (the host Docker daemon is bound in over a socket — Docker-outside-of-
+Docker — and `k3d`/`kubectl` ship in the image); on a bare host, install them
+yourself. Either way you need:
 
 - A **container runtime** (Docker, or a Docker-compatible one such as Podman). k3d
   runs the cluster nodes as containers, and the bring-up builds the images through

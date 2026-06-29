@@ -3,8 +3,10 @@
 A VS Code devcontainer for developing The Test Cabinet. It provides the Rust
 toolchain (with `rustfmt`, `clippy`, and the `x86_64-unknown-linux-musl` target
 for the portable `tcab` build), Node.js, the Tauri v2 system libraries for the
-desktop shell, `markdownlint-cli2` for the docs, and the Cloudflare `wrangler`
-CLI that `tcab publish` uses to deploy run builds to Cloudflare Pages.
+desktop shell, `markdownlint-cli2` for the docs, the Cloudflare `wrangler`
+CLI that `tcab publish` uses to deploy run builds to Cloudflare Pages, and the
+`k3d`, `kubectl`, and `docker` (client-only) tooling the
+[local service stack](#host-docker-access-the-local-service-stack) runs on.
 
 ## First-time setup
 
@@ -31,6 +33,31 @@ cp .env.podman .env
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
 
+## Host Docker access (the local service stack)
+
+The local service stack (`make -C deployments/local local-up`) runs `k3d` and
+builds the service images against the **host's** Docker daemon —
+Docker-outside-of-Docker. The compose file bind-mounts the host runtime socket to
+`/var/run/docker.sock` inside the container, and the image ships the `docker`
+client the Makefile shells out to (build/save the images, and inspect this
+devcontainer to resolve the host path of the repo it mounts into the k3d node so
+the backend can ingest the catalog); `k3d` talks to the socket directly. The
+cluster's API server is published on a host port, which `kubectl` in here reaches
+at `host.docker.internal` (mapped via the compose file's `extra_hosts`); the
+Makefile's `cluster`/`kubeconfig` targets repoint the kubeconfig there.
+
+This works out of the box on a standard setup. Two knobs cover the rest:
+
+- **Non-default socket path** (e.g. rootless Podman at
+  `/run/user/1000/podman/podman.sock`): set `DOCKER_SOCKET` in `.env` to the
+  host path before opening the container.
+- **Socket permissions** are aligned automatically at container start by
+  `tools/docker-socket-access.sh` (run from `postStartCommand`), regardless of
+  the host socket's owning group — so you do not need to match `DOCKER_GID` by
+  hand. If `make local-up` still reports it cannot reach the daemon, confirm the
+  host daemon is running and that `docker ps` works **from a fresh terminal**
+  inside the container.
+
 ## Building inside the container
 
 ```sh
@@ -46,15 +73,17 @@ npm install && npm run build    # the TypeScript workspaces
 
 ## Running benchmarks
 
-The devcontainer is for development. Running a benchmark needs a container
-runtime to launch the run-container image, which the container does not provide by
-default. Either:
+The devcontainer is for development. The supported way to run the full stack
+locally is the k3d **local service stack** (`make -C deployments/local local-up`),
+which builds the images and drives the host Docker daemon over the bound socket
+(see [Host Docker access](#host-docker-access-the-local-service-stack) above and
+[development/running](../apps/docs/src/content/docs/development/running.md)).
 
-- build the portable binary (`cargo build-portable`) and run `tcab` on the host,
-  where Podman or Docker is available; or
-- expose a runtime to the devcontainer yourself (for example by mounting the
-  host's Podman/Docker socket) — the container user is already added to the
-  `DOCKER_GID` group for this case.
+Driving a single run-container image directly with `tcab run` also needs a
+container runtime. Because the host daemon socket is now bound in by default, a
+`tcab` built here can reach it; otherwise build the portable binary
+(`cargo build-portable`) and run `tcab` on the host, where Podman or Docker is
+available natively.
 
 ## Local observability
 

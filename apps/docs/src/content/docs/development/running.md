@@ -45,12 +45,15 @@ staging and prod — see [Deployment](/deployment/overview/).
 
 ## Prerequisites
 
-- A **container runtime** (Docker) on the host — needed by **k3d**, which runs the
-  cluster as containers. The CLI and desktop app no longer need a host runtime of
-  their own (the in-cluster driver creates the run's sandbox via the Kubernetes
-  API). See [Execution](/components/core/execution/) and
+- A **container runtime** (Docker) — needed by **k3d**, which runs the cluster as
+  containers. In the [devcontainer](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.devcontainer/README.md)
+  this is the **host's** daemon, reached over a bound socket (Docker-outside-of-
+  Docker); on a bare host it is the local daemon. The CLI and desktop app no longer
+  need a runtime of their own (the in-cluster driver creates the run's sandbox via
+  the Kubernetes API). See [Execution](/components/core/execution/) and
   [first-time setup](/guides/first-time-setup/).
-- [`k3d`](https://k3d.io) and `kubectl` on the host, for the service-driven flow.
+- [`k3d`](https://k3d.io) and `kubectl`, for the service-driven flow — both ship
+  in the devcontainer (install them yourself on a bare host).
 - The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
   built or pullable for whichever harness you intend to run.
 - The service binaries, built per [Building](/development/building/):
@@ -74,8 +77,9 @@ the service-driven flow runs the services **the way a
 [deployment](/deployment/kubernetes/) runs them** — in a real (local) Kubernetes
 cluster, from the same manifests. The
 [`deployments/local/Makefile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/Makefile)
-drives the whole thing; it needs only `docker`, [`k3d`](https://k3d.io), and
-`kubectl` on the host:
+drives the whole thing, and is meant to run **inside the devcontainer** (which
+ships `docker`, [`k3d`](https://k3d.io), and `kubectl` and binds the host daemon
+socket in); it also works on a bare host with those three installed directly:
 
 Before bringing the stack up, **export the harness provider API key** the run
 needs — the Makefile reads it from your environment and creates the cluster

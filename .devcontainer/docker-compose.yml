@@ -28,12 +28,30 @@ services:
       # intermittent "E0463: can't find crate" failures at high parallelism; a
       # coherent filesystem eliminates the race so builds run at full -j.
       - CARGO_TARGET_DIR=/cargo-target/the-test-cabinet
+    extra_hosts:
+      # Gives the devcontainer a route to the host's loopback. The local service
+      # stack stands up its k3d cluster on the HOST daemon (Docker-outside-of-
+      # Docker, below), so the cluster's API server is published on a host port;
+      # `kubectl` in here reaches it at host.docker.internal:<port> (the
+      # deployments/local Makefile repoints the kubeconfig at that address).
+      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
     volumes:
       - ..:/workspaces/the-test-cabinet:rw
       # Off-virtiofs cargo target dir (see CARGO_TARGET_DIR above).
       - cargo-target:/cargo-target
+      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
+      # the local service stack drives the HOST daemon. This is what lets `k3d`
+      # create its cluster (its node containers are siblings on that same daemon),
+      # and the deployments/local Makefile's `docker` calls reach a daemon at all:
+      # building/saving the service images, and inspecting this devcontainer to
+      # resolve the HOST path of the workspace it mounts into the k3d node (so the
+      # backend can ingest the catalog from a read-only /repo). Override the source
+      # for a non-default socket (e.g. rootless Podman at
+      # /run/user/1000/podman/podman.sock) with DOCKER_SOCKET in .env. Access is
+      # granted at container start by tools/docker-socket-access.sh.
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
 
 volumes:
   # Cargo build artifacts, kept off the host-mounted workspace; survives
