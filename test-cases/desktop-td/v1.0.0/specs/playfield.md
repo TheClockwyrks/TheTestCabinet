@@ -1,4 +1,6 @@
-# Meltdown — The reactor floor: grid, intakes and exhausts, mazing, and HUD
+# Playfield
+
+## Overview
 
 This file defines the geometry of the reactor floor and the rules that govern
 it: the tile grid, where the surge enters and leaves, how towers wall the floor,
@@ -7,9 +9,9 @@ layout. All positions and sizes are in the logical-pixel coordinate system from
 `specs/overview.md` (a fixed `1280 x 720` stage; the floor is `x` in `[0,
 1000]`, `y` in `[0, 720]`; the build panel is `x` in `[1000, 1280]`).
 
-## The tile grid
+## Tile Grid
 
-The reactor floor is a grid of **40 x 40** logical-pixel tiles, **25 columns**
+The reactor floor is a grid of 40 x 40 logical-pixel tiles, **25 columns**
 (`c = 0..24`) by **18 rows** (`r = 0..17`). Tile `(c, r)` spans `x` in `[40c,
 40c + 40]` and `y` in `[40r, 40r + 40]`; its **center** is at `(40c + 20, 40r +
 20)`. Every tower occupies exactly one tile, snapped to the grid, and the
@@ -23,9 +25,9 @@ Each tile is in one of these states:
 - **Intake** or **exhaust** — a fixed edge portal (below). The surge walks
   *through* these; no tower may be built on them.
 
-## Intakes and exhausts
+## Intakes and Exhausts
 
-The surge enters at two **intakes** and leaves at two **exhausts**, each a
+The surge enters at two intakes and leaves at two exhausts, each a
 **two-tile** opening at the middle of an edge:
 
 - **Left intake** — the left edge, rows `r = 8` and `r = 9` (tiles `(0, 8)` and
@@ -40,33 +42,33 @@ The surge enters at two **intakes** and leaves at two **exhausts**, each a
 Because the floor is a wide rectangle and the intakes and exhausts sit at the
 edge midpoints, the routes are **asymmetric**: an intruder entering at the top
 has a shorter run to the bottom exhaust than to the right one, and vice versa.
-The player must account for one exhaust being nearer than the other when shaping
-the maze. These four portals are fixed for the whole game; only their visual
-state (idle vs. surge passing through) changes.
+The player must account for one exhaust being nearer than the other when
+shaping the maze. These four portals are fixed for the whole game; only their
+visual state (idle vs. surge passing through) changes.
 
 Intakes glow cool blue (`#5f9bd6`); exhausts are hazard-striped and read as
 dangerous (`#ff5a3c`).
 
-## Mazing — towers are walls
+## Tower Construction and Mazing
 
 There is no fixed path. The surge pathfinds across the open floor, and
-**every tower is also a wall**: building one blocks its tile, so you lengthen
+every tower is *also* a wall: building one blocks its tile, so you lengthen
 the surge's route by building structures it must walk around. This is the core
 of the game — you build the maze.
 
 - A tower may be built only on an **open** tile. It may not be built on an
   intake, an exhaust, a tile already holding a tower, or a tile a surge unit is
   currently standing on.
-- **You can never seal the floor.** A placement is rejected if, after it,
-  any intake would have no path to **any** exhaust, or if it would trap a
-  surge unit already on the floor with no remaining route out. The build UI must
-  show a blocked placement as invalid (`#ff4d4d`) and refuse it, rather than
-  letting the player wall the surge in. There must always be at least one open
-  route from each intake to an exhaust.
+- **You can never seal the floor.** A placement is rejected if, after it would
+  be placed, any intake would have no path to **any** exhaust, or if it would
+  trap a surge unit already on the floor with no remaining route out. The build
+  UI must show a blocked placement as invalid (`#ff4d4d`) and refuse it, rather
+  than letting the player wall the surge in. There must always be at least one
+  open route from each intake to an exhaust.
 - Selling a tower (see `specs/towers.md`) reopens its tile immediately and the
   surge re-paths.
 
-## How the surge paths
+## Surge Movement
 
 The surge walks the **shortest available route** from its intake to an exhaust:
 
@@ -78,20 +80,17 @@ The surge walks the **shortest available route** from its intake to an exhaust:
 - Each unit heads for the nearest reachable exhaust by path distance (not
   straight-line distance), so the two intakes' streams may favor different
   exhausts depending on the maze. Ties may be broken however you like, but
-  consistently.
+  it must be done consistently.
 - The path is **recomputed live** whenever the floor changes — a tower built or
   sold re-routes every unit currently walking, smoothly redirecting it from
-  where it stands (no teleporting, no snapping backward). Units already past a
+  where it stands (no teleporting or snapping backwards). Units already past a
   junction follow the new shortest route from their current tile.
 - **Flyers are the exception.** Flying surge units (see `specs/creeps.md`)
   ignore the maze entirely: they travel in a straight line from their intake to
   the nearest exhaust, passing over towers and walls. Only anti-air towers can
-  hit them. Build a maze all you like — it does nothing to a flyer.
+  hit them.
 
-This "build-the-maze, but it can always get through, and flyers ignore it" rule
-set is the strategic spine the heat system sits on top of.
-
-## The build panel and HUD
+## Build Panel and HUD
 
 The build panel occupies the right strip (`x` in `[1000, 1280]`, full
 height), drawn on the panel background (`#1b1f26`) and separated from the floor
