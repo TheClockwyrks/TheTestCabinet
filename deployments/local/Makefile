@@ -78,6 +78,20 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
 
+# A throwaway docker config dir used ONLY for the image builds (the `images`
+# target points DOCKER_CONFIG at it). It deliberately carries no credsStore: the
+# devcontainer auto-writes ~/.docker/config.json with a `credsStore` (the VS Code
+# dev-containers credential helper) that the BuildKit builder invokes even for the
+# PUBLIC base-image pulls and which errors hard in here — the legacy builder
+# tolerated it, BuildKit does not. The service-image Dockerfiles only ever pull
+# public docker.io images, so an empty auth set is correct. Pointing DOCKER_CONFIG
+# here also pins buildx to its `default` (docker-driver) builder, which loads the
+# result into the daemon image store so the `docker save`/`k3d image import` below
+# can find it — sidestepping any `docker-container` builder a host might default to.
+# buildx itself lives in the system cli-plugins dir, so it is still found with
+# DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
+BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
+
 .PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images apply
 
 local-up: cluster images apply local-ingest
@@ -144,12 +158,20 @@ kubeconfig:
 # Build the service images from the same Dockerfiles the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
 #
+# The Dockerfiles are BuildKit Dockerfiles (`# syntax=…` + `--mount=type=cache`
+# Rust build caches), so the build needs the buildx plugin — the devcontainer ships
+# it in the system cli-plugins dir (see .devcontainer/tools/docker.sh); a bare host
+# gets it from its docker install. DOCKER_CONFIG is pinned to a credsStore-free
+# config dir for the builds (see BUILD_DOCKER_CONFIG above for why).
+#
 # Images are imported as saved tarballs rather than by name: `k3d image import`
 # does its own `save` from a name through the runtime, which fails on podman (the
 # name resolves under a `localhost/` prefix). Saving with $(CONTAINER_TOOL)
 # ourselves and importing the tar sidesteps that entirely and works on both docker
 # and podman.
+images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images:
+	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	$(CONTAINER_TOOL) build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
 	$(CONTAINER_TOOL) build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
 	$(CONTAINER_TOOL) build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'

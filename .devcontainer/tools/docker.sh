@@ -35,3 +35,26 @@ wget -O "$TAR_PATH" \
 tar -xzf "$TAR_PATH" -C "/tmp/$USERNAME" docker/docker
 install -m 0755 "/tmp/$USERNAME/docker/docker" "$BIN_DIR/docker"
 rm -rf "$TAR_PATH" "/tmp/$USERNAME/docker"
+
+# ── docker buildx (the BuildKit builder) ─────────────────────────────────────
+# The service-image Dockerfiles (deployments/images/*.Dockerfile) are BuildKit
+# Dockerfiles — a `# syntax=docker/dockerfile:1` frontend plus `--mount=type=cache`
+# build caches that keep the Rust rebuilds incremental. The modern docker CLI only
+# speaks BuildKit through the buildx plugin (it no longer falls back to the daemon's
+# integrated builder via DOCKER_BUILDKIT=1), and the static client tarball above
+# ships no plugins — so without buildx, `docker build` silently drops to the legacy
+# builder, which errors on the cache mounts (`the --mount option requires BuildKit`).
+#
+# Install it into the SYSTEM cli-plugins dir rather than ~/.docker/cli-plugins so it
+# is still discovered when DOCKER_CONFIG is overridden — which deployments/local/Makefile
+# does at build time to sidestep the devcontainer's BuildKit-incompatible credsStore
+# helper. buildx's BUILDARCH naming (amd64/arm64) matches $BUILDARCH directly.
+readonly BUILDX_VERSION="v0.35.0"
+readonly BUILDX_PLUGIN_DIR="/usr/local/lib/docker/cli-plugins"
+readonly BUILDX_PATH="/tmp/$USERNAME/docker-buildx"
+
+wget -O "$BUILDX_PATH" \
+	"https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${BUILDARCH}"
+sudo mkdir -p "$BUILDX_PLUGIN_DIR"
+sudo install -m 0755 "$BUILDX_PATH" "$BUILDX_PLUGIN_DIR/docker-buildx"
+rm -f "$BUILDX_PATH"

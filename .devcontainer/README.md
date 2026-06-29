@@ -39,9 +39,14 @@ The local service stack (`make -C deployments/local local-up`) runs `k3d` and
 builds the service images against the **host's** Docker daemon —
 Docker-outside-of-Docker. The compose file bind-mounts the host runtime socket to
 `/var/run/docker.sock` inside the container, and the image ships the `docker`
-client the Makefile shells out to (build/save the images, and inspect this
-devcontainer to resolve the host path of the repo it mounts into the k3d node so
-the backend can ingest the catalog); `k3d` talks to the socket directly. The
+client (plus the `buildx` plugin) the Makefile shells out to (build/save the
+images, and inspect this devcontainer to resolve the host path of the repo it
+mounts into the k3d node so the backend can ingest the catalog); `k3d` talks to
+the socket directly. The service-image Dockerfiles are BuildKit Dockerfiles
+(`--mount=type=cache` Rust build caches), so the build goes through `buildx`; the
+Makefile points `DOCKER_CONFIG` at a credsStore-free config dir for the builds so
+BuildKit does not trip over the devcontainer's credential helper (the base images
+are all public). The
 cluster's API server is published on a host port, which `kubectl` in here reaches
 at `host.docker.internal` (mapped via the compose file's `extra_hosts`); the
 Makefile's `cluster`/`kubeconfig` targets repoint the kubeconfig there.
