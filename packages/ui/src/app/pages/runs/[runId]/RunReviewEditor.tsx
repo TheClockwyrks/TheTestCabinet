@@ -50,14 +50,13 @@ function pts(weight: number): string {
 
 // The editable Verdict mode for a produced run the active worker owns: rate it,
 // work the case's declared checklist one item at a time, write the review, and
-// drive it through the push -> review -> publish lifecycle. Pushing a run (its
-// source + build released and the record stored privately) needs *no* review — it
-// is what makes the run reviewable — and a run can be published only once it
-// carries at least one review. On the web flow these are three distinct actions
-// (Push / Submit review / Publish). The desktop's local core folds review +
-// publish into one *solo* command, so there the editor offers a standalone "Push
-// run" (so a run can be pushed without being reviewed) alongside a single
-// "Publish run" that saves the review and pushes + publishes in one step.
+// drive it through the review -> publish lifecycle. A produced run's record is
+// already stored privately on the backend (the driver submits it when the run
+// finishes), so a run is reviewable as soon as it is produced and can be published
+// once it carries at least one review. On the web flow these are two distinct
+// actions (Submit review / Publish). The desktop's local core folds review +
+// publish into one *solo* command, so there the editor offers a single
+// "Publish run" that saves the review and publishes in one step.
 //
 // Every mutating action requires a signed-in account; signing in and viewing the
 // account live on their own pages (reached from the top bar's account control),
@@ -83,8 +82,8 @@ export function RunReviewEditor({
 }) {
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
-  // The desktop's local worker collapses push/review/publish into one solo
-  // command, so the editor offers a single Publish action there.
+  // The desktop's local worker collapses review/publish into one solo command, so
+  // the editor offers a single Publish action there.
   const solo = worker?.local ?? false;
   const { account, token } = useAuth();
   // The checklist items are catalog data: read them from the backend, keyed by
@@ -112,17 +111,13 @@ export function RunReviewEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Whether the run has been pushed this session (the worker stores it privately
-  // once pushed). Seeded true when it already carries reviews — those imply it
-  // was pushed. Used by both flows' Push button to disable a redundant re-push.
-  const [pushed, setPushed] = useState(reviews.length > 0);
   // Reviews this account has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
   // Whether the review form is open. A reviewer who has not yet reviewed this run
   // sees it open to write their first review; once they carry one it collapses to
   // the summary (with an Edit affordance on their own review) so the form is not
-  // in the way of pushing/publishing. Deriving the effective `showForm` from this
+  // in the way of publishing. Deriving the effective `showForm` from this
   // OR "has no own review" keeps the form open while `ownReview` is still
   // resolving (account/reviews loading) and reopens it for a re-review on Edit.
   const [editing, setEditing] = useState(false);
@@ -285,18 +280,6 @@ export function RunReviewEditor({
 
   // --- Lifecycle actions ---
 
-  // Push: release the run's source + build and store it privately (web flow).
-  const onPush = () =>
-    run("Pushed — source and build released.", async () => {
-      const result = await client!.push(runId, token!);
-      setPushed(true);
-      setMessage(
-        `${result.newlyPushed ? "Pushed" : "Already pushed"}` +
-          (result.sourceRepo ? ` — source ${result.sourceRepo}` : "") +
-          (result.playableBuild ? `, build ${result.playableBuild}` : ""),
-      );
-    });
-
   // Submit review: attribute this account's review to the run (web flow). On the
   // solo desktop path this saves the local draft.
   const onSubmitReview = () =>
@@ -308,7 +291,7 @@ export function RunReviewEditor({
     });
 
   // Publish: clear the gate (web flow). On the solo desktop path this saves the
-  // review and runs push + review + publish in one step.
+  // review and runs review + publish in one step.
   const onPublish = () =>
     run("Published.", async () => {
       if (solo) {
@@ -386,7 +369,7 @@ export function RunReviewEditor({
       ) : (
         <p className={`${styles.notice} ${styles.warn}`}>
           <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
-          push, review, and publish this run.
+          review and publish this run.
         </p>
       )}
 
@@ -616,28 +599,14 @@ export function RunReviewEditor({
           ? undefined
           : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
-        // The solo desktop path offers a standalone Push (release the run without
-        // a review, so it need not be reviewed first) alongside a single Publish
-        // that saves the review and pushes + publishes in one step. The web flow
-        // splits into push, submit review, and publish (the last gated on the run
-        // having a review).
+        // The solo desktop path offers a single Publish that saves the review and
+        // publishes in one step. The web flow splits into submit review and publish
+        // (the latter gated on the run having a review). A produced run's record is
+        // already stored on the backend (the driver pushes it on completion), so
+        // neither flow has a separate push step.
         if (solo) {
           return (
             <div className={styles.actions}>
-              <button
-                className={styles.secondary}
-                onClick={onPush}
-                disabled={busy || needAccount || pushed}
-                title={
-                  needAccount
-                    ? "Sign in to push"
-                    : pushed
-                      ? "Already pushed"
-                      : "Release this run's source and build, storing it privately — no review needed"
-                }
-              >
-                {pushed ? "Pushed" : "Push run"}
-              </button>
               <button
                 className={styles.primary}
                 onClick={onPublish}
@@ -652,32 +621,12 @@ export function RunReviewEditor({
         }
         return (
           <div className={styles.actions}>
-            <button
-              className={styles.secondary}
-              onClick={onPush}
-              disabled={busy || needAccount || pushed}
-              title={
-                needAccount
-                  ? "Sign in to push"
-                  : pushed
-                    ? "Already pushed"
-                    : "Release this run's source and build, storing it privately"
-              }
-            >
-              {pushed ? "Pushed" : "Push run"}
-            </button>
             {showForm && (
               <button
                 className={styles.secondary}
                 onClick={onSubmitReview}
-                disabled={busy || needAccount || !pushed || !reviewReady}
-                title={
-                  needAccount
-                    ? "Sign in to review"
-                    : !pushed
-                      ? "Push the run before reviewing it"
-                      : reviewTitle
-                }
+                disabled={busy || needAccount || !reviewReady}
+                title={needAccount ? "Sign in to review" : reviewTitle}
               >
                 {ownReview ? "Update review" : "Submit review"}
               </button>

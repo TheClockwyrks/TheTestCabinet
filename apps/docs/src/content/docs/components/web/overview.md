@@ -7,8 +7,12 @@ browser. It is the same console as the [Tauri app](/components/tauri/overview/) 
 sign in, configure and launch runs, watch their live
 [event](/components/core/events/) stream, return to any run still in progress and
 be notified when one completes, read [specs](/testing/end-to-end/overview/),
-[push](/components/core/results/#push) finished runs, review them, and publish —
-but delivered as a static web app instead of a desktop binary. Both consoles
+[review](/components/core/results/#review) finished runs, and
+[publish](/components/core/results/#publish) them — but delivered as a static web
+app instead of a desktop binary. (A produced run's record is
+[pushed](/components/core/results/#push) to the backend by the
+[driver](/components/driver/overview/) when the run finishes, so the console has
+no separate push step.) Both consoles
 enqueue runs at the [backend](/components/backend/overview/)'s run queue and watch
 them; neither runs a test case itself.
 
@@ -34,8 +38,8 @@ The console talks to two distinct services, mirroring
   back through the backend to the console. The backend also **proxies** account
   register/login to the
   [auth service](/components/auth/overview/) and forwards the signed-in account's
-  bearer token to the backend when the console pushes, reviews, or publishes, so
-  the console authenticates through the same worker it runs on.
+  bearer token to the backend when the console reviews or publishes, so the
+  console authenticates through the same worker it runs on.
 
 The web console and the [Tauri app](/components/tauri/overview/) are now wired the
 same way: both enqueue runs at a single backend over the **same HTTP transport**

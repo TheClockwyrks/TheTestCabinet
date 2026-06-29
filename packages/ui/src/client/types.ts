@@ -228,17 +228,6 @@ export interface LaunchConfig {
   maxRuntimeOverride: number | null;
 }
 
-// The worker's `POST /push` ack: the run's released source repo and (where the
-// run produced one) playable build, and whether this call was the one that
-// released them (false when the run was already pushed). A push stores the run
-// privately — no review, not yet published.
-export interface PushResult {
-  // `null` for an asset-generation run, which releases no code (no repo created).
-  sourceRepo: string | null;
-  playableBuild: string | null;
-  newlyPushed: boolean;
-}
-
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend
 // enqueues a per-publish job and the gh/wrangler release runs in a `tcab-publisher`
 // Job, observed over a live stream that ends with this result. `published` is true

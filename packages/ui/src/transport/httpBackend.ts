@@ -25,7 +25,6 @@ import type {
   ProgressCallback,
   PublishProgress,
   PublishResult,
-  PushResult,
   ReviewDocumentInput,
   ReviewItem,
   RunEventStreams,
@@ -661,14 +660,10 @@ export function createBackendExec(
     },
 
     // --- Run lifecycle: review -> publish ---
-
-    async push(_id: string, _token: string): Promise<PushResult> {
-      // The driver pushes a finished run's record to the backend itself, so by the
-      // time the console sees a produced run it is already stored. There is no
-      // console-driven push; report it as already pushed with no freshly-released
-      // links (the record's own links resolve the build/media).
-      return { sourceRepo: null, playableBuild: null, newlyPushed: false };
-    },
+    //
+    // There is no console-driven push: the driver pushes a finished run's record
+    // to the backend itself, so by the time the console sees a produced run it is
+    // already stored and reviewable (its own links resolve the build/media).
 
     async submitReview(
       id: string,

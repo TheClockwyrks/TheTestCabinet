@@ -16,7 +16,6 @@ import type {
   ProgressCallback,
   PublishProgress,
   PublishResult,
-  PushResult,
   ReviewItem,
   ReviewVerdict,
   RunEventStreams,
@@ -213,21 +212,16 @@ export interface WorkerClient {
    */
   login(username: string, password: string): Promise<AuthResult>;
 
-  // --- Run lifecycle: push -> review -> publish ---
-
-  /**
-   * Push a produced run (`POST /push`, Bearer): release its source repo and (when
-   * it produced one) playable build, and store the record privately — with no
-   * review and not yet published. Idempotent on the run (`newlyPushed` is false
-   * when it was already pushed).
-   */
-  push(id: string, token: string): Promise<PushResult>;
+  // --- Run lifecycle: review -> publish ---
+  //
+  // A produced run's record is pushed to the backend by the driver when the run
+  // finishes, so it is already stored and reviewable by the time a console sees
+  // it; there is no console-driven push step.
 
   /**
    * Submit a review against a run (`POST /review`, Bearer), attributed to the
    * token's account. Multiple reviews are allowed — one per account; submitting
-   * again from the same account replaces that account's review. The run must
-   * already be pushed.
+   * again from the same account replaces that account's review.
    */
   submitReview(
     id: string,

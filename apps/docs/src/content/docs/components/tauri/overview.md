@@ -9,7 +9,7 @@ other being scripting through the [CLI](/components/cli/overview/)). It is an
 reporter, exposing the run lifecycle through an interactive window rather than a
 command line or an HTTP API.
 
-A person can sign in, launch a run, watch it, judge it, and push or publish it
+A person can sign in, launch a run, watch it, judge it, and publish it
 without leaving the app — which is what makes it the natural hub. It does not run
 a test case itself: like the [web console](/components/web/overview/), it
 enqueues the run at the backend, a [dispatcher](/components/dispatcher/overview/)
@@ -51,23 +51,24 @@ no `make`, and no manually-run services — only a container runtime (see
   run was built from, so the produced implementation can be judged against what
   was actually asked for.
 - **Sign in.** Log in to (or register with) the
-  [auth service](/components/auth/overview/) so that pushes, reviews, and
-  publishes are attributed to an [account](/components/backend/overview/#accounts).
-- **Push runs.** [Push](/components/core/results/#push) a finished run — release
-  its code and deploy its build, then store its
-  [run record](/components/core/run-records/) on the
-  [backend](/components/backend/overview/) — so the playable build can be reviewed.
-  Pushing needs **no** review; the run stays private until it is published.
+  [auth service](/components/auth/overview/) so that reviews and publishes are
+  attributed to an [account](/components/backend/overview/#accounts).
 - **Review runs.** Record a [review](/components/core/results/#reviews) — the
   hand-written writeup and rating — after playing a finished build, attributed to
-  the signed-in account. A run may carry several reviews, one per account.
-- **Publish.** [Publish](/components/core/results/#publish) a pushed, reviewed run
-  to flip it public. The solo path (push + self-review + publish in one action) is
-  available too, for when the same person does all three.
+  the signed-in account. A run may carry several reviews, one per account. A
+  produced run's [record](/components/core/run-records/) is
+  [pushed](/components/core/results/#push) to the
+  [backend](/components/backend/overview/) by the
+  [driver](/components/driver/overview/) when the run finishes — so it is private
+  but reviewable as soon as it is produced, with no separate push step in the
+  console.
+- **Publish.** [Publish](/components/core/results/#publish) a reviewed run to flip
+  it public. The solo path (self-review + publish in one action) is available too,
+  for when the same person reviews and publishes.
 
 The app does not execute runs in-process — it enqueues them at the
 [backend](/components/backend/overview/) (which drives them server-side), resolves
-definitions from it, and pushes/reviews/publishes to it. It requires a reachable
+definitions from it, and reviews/publishes to it. It requires a reachable
 backend, which it either **stands up itself** (the self-contained cluster below,
 the default for a shipped app) or is **pointed at** (`TCAB_BACKEND_URL`, the
 developer path). The only work the app performs in-process is the local
@@ -149,7 +150,7 @@ The desktop's departures from the web console are now small. It uses the **same
 HTTP transport** the web console does — the shared
 [`@test-cabinet/ui/transport`](/components/ui/overview/) `BackendClient` — to
 resolve the catalog, enqueue and watch runs, sign in to the auth service, read
-the seeded specs, push a finished run, write a review, and publish. A run's
+the seeded specs, write a review, and publish. A run's
 loadable media — a produced run's proof artifacts and an
 [asset-generation](/testing/asset-generation/overview/) run's
 regenerated/target/preview images and action log — is loaded over **HTTP from the
