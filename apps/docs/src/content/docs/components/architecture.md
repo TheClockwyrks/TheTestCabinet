@@ -27,7 +27,7 @@ The Test Cabinet is made up of the following components.
 | [Artifacts](/components/artifacts/overview/) | A data-plane service that serves produced run trees (playable builds, proof/asset media) off a persistent volume. |
 | [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. It enqueues runs at the backend like the web console. |
 | [Web console](/components/web/overview/) | The same launcher/reporter console as the Tauri app, running in a browser, that enqueues runs at the backend's run queue. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results (pushed, reviewed, and published). |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results (stored, reviewed, and published). |
 | [Auth service](/components/auth/overview/) | A small standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
 | [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend client interfaces the Tauri and web consoles share. |
@@ -81,8 +81,8 @@ a private network, so reaching it is the first line of access control (see
 **user [accounts](/components/backend/overview/#accounts)** — held in a standalone
 [auth service](/components/auth/overview/) — identify *who* acts, so that every
 [review](/components/core/results/#reviews) is attributed to a person. The backend
-verifies the auth service's bearer tokens on the mutating run endpoints (push,
-review, publish); reads stay open. The [public site](/components/site/overview/)
+verifies the auth service's bearer tokens on the mutating run endpoints (review,
+publish); reads stay open. The [public site](/components/site/overview/)
 remains a fully static, backend-less deployment: publishing exports a public
 snapshot of the **published** runs that the site builds from, so the gallery has
 no live dependency on the private backend.
@@ -111,8 +111,9 @@ machine. The launcher **enqueues** the run at the
 Kubernetes `Job` running a [driver](/components/driver/overview/); the driver
 executes the run (creating an untrusted sandbox pod via the Kubernetes API), streams
 its live progress back to the backend (which relays it to the launcher), uploads the
-produced tree to the [artifact service](/components/artifacts/overview/), and pushes
-the produced record. Each run is one schedulable `Job`, so concurrency scales with
+produced tree to the [artifact service](/components/artifacts/overview/), and reports
+the produced record (the backend stores it privately). Each run is one schedulable
+`Job`, so concurrency scales with
 the cluster rather than with a hand-sized pool — there is no per-pod registration
 and no long-lived worker. Local development runs the **same** manifests on
 [k3d](/development/running/), so a run is a `Job` everywhere. This topology replaces
@@ -132,15 +133,18 @@ At a high level, launching a run must:
 - Record [metrics](/components/core/metrics/) as the run proceeds and collect the
   produced repository when it finishes.
 - Run [validation](/components/core/validation/) over the produced implementation.
-- Write a [run record](/components/core/run-records/), and then optionally
-  [push, review, and publish](/components/core/results/#lifecycle) the run.
+- Write a [run record](/components/core/run-records/); the driver reports it to the
+  backend, which stores it *privately*, leaving the run ready to be
+  [reviewed and published](/components/core/results/#lifecycle).
 
-Getting a run onto the gallery is three explicit steps: **push** releases the
-produced code to its own public repository, makes its build playable for review,
-and stores the run record on the backend *privately*; **review** lets people
-(typically not the operator) submit assessments; and **publish** flips a reviewed
-run public, which refreshes the snapshot the site is built from. The CLI's
-`tcab publish` collapses all three for the solo case. See
+Getting a run onto the gallery is two explicit steps: **review** lets people
+(typically not the operator) submit assessments of the produced run (its build is
+playable for review off the [artifact service](/components/artifacts/overview/));
+and **publish** releases the produced code to its own public repository, deploys
+its build to Cloudflare Pages, and flips the reviewed run public, which refreshes
+the snapshot the site is built from. The produced record is stored privately the
+moment the run finishes, so neither step is a separate "push". The CLI's
+`tcab publish` collapses both for the solo case. See
 [Results](/components/core/results/).
 
 ## Live Streaming

@@ -271,14 +271,6 @@ fn main() -> Result<()> {
             "backend-api/resolved-test-case-version.schema.json",
             root_schema::<bapi::VersionResponse>(),
         ),
-        // The backend's push request (`POST /runs`): the run record, its links,
-        // and the recorded event stream. References the core run-record document
-        // by URL; its `LinksIn` and the `HarnessEvent`/`EventKind` tree stay
-        // inline as this is their only referencer.
-        anon(
-            "backend-api/publish-run-request.schema.json",
-            root_schema::<bapi::PushRequest>(),
-        ),
         SchemaDoc {
             rel_path: "backend-api/review.schema.json",
             root: Some("Review"),

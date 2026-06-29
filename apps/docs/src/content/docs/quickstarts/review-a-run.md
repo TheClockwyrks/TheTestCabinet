@@ -11,9 +11,10 @@ the build. The verdicts and the items' point weights produce each review's
 overall rating is the worst. Every review is attributed to the
 [account](/components/backend/overview/#accounts) that wrote it, a run may carry
 **one review per account** (often from people other than whoever
-[pushed](/components/core/results/#push) it), and publishing refuses a run with no
-review. You review a *pushed* run — one whose build has been released so it can be
-played. The full workflow is in
+produced it), and publishing refuses a run with no review. You review a *produced*
+run — one whose build is playable off the
+[artifact service](/components/artifacts/overview/) — before it is published. The
+full workflow is in
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/).
 
 ## Review in a console

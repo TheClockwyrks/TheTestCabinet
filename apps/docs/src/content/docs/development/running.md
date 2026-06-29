@@ -22,7 +22,7 @@ locally means standing up the **service-driven stack**:
   the [driver](/components/driver/overview/), which executes that one run. Because
   execution is a cluster concern, the local service-driven story runs on a **k3d**
   cluster (k3s-in-Docker) from the same manifests a deployment uses. (The auth
-  service is what lets you register, log in, and launch / push / review / publish;
+  service is what lets you register, log in, and launch / review / publish;
   without it the read-only flow still works, but mutations are rejected `401`.)
 - **A single run from the CLI or desktop** still targets that **same** stack.
   `tcab run` and the desktop app are thin enqueue + watch clients, so they need a
@@ -266,7 +266,7 @@ the published one (see [Test Cases](/testing/end-to-end/overview/)).
 
 ### Start the auth service
 
-So you can register, log in, and push/review/publish, start the auth service. It
+So you can register, log in, and review/publish, start the auth service. It
 takes its own bind address and its own database, separate from the backend's:
 
 ```sh
@@ -285,7 +285,7 @@ tcab register --username dev --display-name "Dev"
 
 The backend (pointed at it by `TCAB_BACKEND_AUTH_URL`) now verifies the token the
 CLI stored, so mutations are accepted. Without the auth service running, reads
-still work but push/review/publish are rejected `401`.
+still work but review/publish are rejected `401`.
 
 ### Start the web console
 

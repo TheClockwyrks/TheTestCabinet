@@ -41,15 +41,11 @@ pub enum Command {
     /// Revoke the stored token and log out.
     Logout,
 
-    /// Push finished run(s) to the backend (release source + build, no review).
-    /// The run is stored privately and is playable for review, but not yet public.
-    Push(PushArgs),
-
-    /// Submit a review (from the run's `writeup.md`) for an already-pushed run.
+    /// Submit a review (from the run's `writeup.md`) for a produced run.
     Review(ReviewArgs),
 
-    /// Publish finished run(s): push + self-review + publish in one step (the solo
-    /// path). A run cannot be published without at least one review.
+    /// Publish finished run(s): self-review + publish in one step (the solo path).
+    /// A run cannot be published without at least one review.
     Publish(PublishArgs),
 
     /// List supported harnesses and their availability.
@@ -220,16 +216,6 @@ pub struct LoginArgs {
     /// is used.
     #[arg(long, value_name = "PASSWORD")]
     pub password: Option<String>,
-}
-
-/// Arguments for `tcab push`.
-#[derive(Debug, Args)]
-pub struct PushArgs {
-    /// One or more backend run ids to confirm are pushed. A backend-driven run's
-    /// record and artifacts are pushed by the driver during the run, so this only
-    /// reports each run's stored state.
-    #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
-    pub run_ids: Vec<String>,
 }
 
 /// Arguments for `tcab review`.

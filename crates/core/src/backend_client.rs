@@ -62,16 +62,6 @@ pub struct ResolvedArtifact {
     pub bytes: Vec<u8>,
 }
 
-/// The backend's acknowledgement of a pushed run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PushAck {
-    /// The run id the backend stored the push under (`record.id`).
-    pub id: String,
-    /// Whether this push newly stored the run (`true`) or was an idempotent
-    /// re-push of an already-stored run (`false`).
-    pub newly_pushed: bool,
-}
-
 /// The backend's acknowledgement of *enqueuing* a publish for a run.
 ///
 /// Publishing is asynchronous: `POST /runs/{id}/publish` no longer flips the run
@@ -202,19 +192,6 @@ pub trait BackendClient: Send + Sync {
     /// The prompt template source for a version (also returned inline by
     /// [`Self::resolve_version`]; this is the explicit fetch).
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String>;
-
-    /// Push a run: record + resolved links + recorded event stream, **without** a
-    /// review. (`POST /runs`) Stores it privately (unpublished) so a reviewer can
-    /// play the build; it does not enter the public snapshot until published.
-    /// Idempotent on `record.id`. `events` is the run's normalized event log; pass
-    /// an empty slice when none is available. Requires the client to carry a
-    /// bearer token (see [`HttpBackendClient::with_token`]).
-    async fn push_run(
-        &self,
-        record: &RunRecord,
-        links: &RunLinks,
-        events: &[HarnessEvent],
-    ) -> Result<PushAck>;
 
     /// Submit a review for a pushed run. (`POST /runs/{id}/reviews`) The review is
     /// attributed to the account behind the client's bearer token; a run may carry
@@ -817,50 +794,6 @@ impl BackendClient for HttpBackendClient {
             ))
             .await?;
         Ok(body.prompt_template)
-    }
-
-    #[instrument(
-        skip(self, record, links, events),
-        fields(
-            otel.kind = "client",
-            http.request.method = "POST",
-            url.path = "/runs",
-            run.id = %record.id,
-        ),
-        err,
-    )]
-    async fn push_run(
-        &self,
-        record: &RunRecord,
-        links: &RunLinks,
-        events: &[HarnessEvent],
-    ) -> Result<PushAck> {
-        let url = self.url("/runs");
-        let body = PushBody {
-            record,
-            links: LinksBody {
-                source_repo: links.source_repo.clone(),
-                playable_build: links.playable_build.clone(),
-            },
-            events,
-        };
-        let response = self
-            .http
-            .post(&url)
-            .headers(self.headers())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| backend_err(&url, err))?;
-        let response = error_for_status(&url, response).await?;
-        let ack: PushAckBody = response
-            .json()
-            .await
-            .map_err(|err| backend_err(&url, err))?;
-        Ok(PushAck {
-            id: ack.id,
-            newly_pushed: ack.newly_pushed,
-        })
     }
 
     #[instrument(
@@ -1845,35 +1778,12 @@ struct CheckBody {
 }
 
 #[derive(serde::Serialize)]
-struct PushBody<'a> {
-    record: &'a RunRecord,
-    links: LinksBody,
-    /// The run's normalized event stream. Always sent (an empty array when the
-    /// run has none); the backend stores it for the published Events tab.
-    events: &'a [HarnessEvent],
-}
-
-#[derive(serde::Serialize)]
 struct ReviewBody<'a> {
     /// The reviewer's rating for each scoring domain.
     ratings: &'a [crate::review::DomainRating],
     writeup: &'a str,
     /// The reviewer's verdicts on the case's declared checklist items.
     checklist: &'a [crate::review::ReviewVerdict],
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LinksBody {
-    source_repo: Option<String>,
-    playable_build: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PushAckBody {
-    id: String,
-    newly_pushed: bool,
 }
 
 /// The body of the `202 Accepted` from `POST /runs/{id}/publish`: the enqueued

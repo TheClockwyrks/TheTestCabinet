@@ -2,15 +2,14 @@
 //!
 //! Given a run directory untarred from the artifact service
 //! (`run-record.json` + `implementation/` + `events.jsonl`), this builds the
-//! [`PushRequest`](test_cabinet_core::PushRequest) and drives the two release steps
-//! [`BackendPublisher`](test_cabinet_core::BackendPublisher) exposes —
+//! [`ReleaseRequest`](test_cabinet_core::ReleaseRequest) and drives the two release
+//! steps [`BackendPublisher`](test_cabinet_core::BackendPublisher) exposes —
 //! [`release_code`](test_cabinet_core::Publisher::release_code) (gh/git → a public
 //! per-run repo) and
 //! [`release_playable_build`](test_cabinet_core::Publisher::release_playable_build)
-//! (wrangler → a Pages deploy). It deliberately does **not** call `push`/`push_run`:
-//! those POST `/runs` with an *account* token the publisher does not hold, and the
-//! link-attach + publish-flip are the backend's job once it receives the terminal
-//! result.
+//! (wrangler → a Pages deploy). It releases only: the link-attach + publish-flip are
+//! the backend's job once it receives the terminal result, and the run record was
+//! already stored by the driver when the run finished.
 //!
 //! Secret scrubbing is already inside both release steps (the `SecretScrubber`
 //! redacts any leaked provider key from the staged tree and the built output before
@@ -20,7 +19,7 @@ use std::path::Path;
 
 use test_cabinet_core::{
     ArtifactCollection, BackendPublisher, CommandRunner, HttpBackendClient, PublishConfig,
-    Publisher, PushRequest, RunRecord, SystemCommandRunner, find_build_output, read_event_log,
+    Publisher, ReleaseRequest, RunRecord, SystemCommandRunner, find_build_output,
 };
 
 /// The links a successful release produced.
@@ -69,29 +68,26 @@ pub fn load_record(run_dir: &Path) -> Result<RunRecord, ReleaseError> {
 /// [`SystemCommandRunner`]. A [`PublishConfig::from_env`] resolves the GitHub org +
 /// Pages project (the `TCAB_GITHUB_ORG`/`TCAB_PAGES_PROJECT` the Job forwards). The
 /// backend client is the type the publisher *must* supply to construct a
-/// [`BackendPublisher`], but `release_code`/`release_playable_build` never touch it
-/// — only `push`/`push_run` would, which this never calls — so a read-only
-/// [`HttpBackendClient`] (no token) satisfies the bound without being used.
+/// [`BackendPublisher`], but `release_code`/`release_playable_build` never touch it,
+/// so a read-only [`HttpBackendClient`] (no token) satisfies the bound without being
+/// used.
 pub async fn release_with_runner<R: CommandRunner>(
     run_dir: &Path,
     runner: R,
 ) -> Result<ReleasedLinks, ReleaseError> {
     let record = load_record(run_dir)?;
 
-    // Own the inputs the `PushRequest` borrows for the lifetime of the release: the
-    // collected implementation tree, the build directory found within it, and the
-    // recorded event log.
+    // Own the inputs the `ReleaseRequest` borrows for the lifetime of the release:
+    // the collected implementation tree and the build directory found within it.
     let artifacts = ArtifactCollection {
         repo_path: run_dir.join("implementation"),
     };
     let build_dir = find_build_output(&artifacts.repo_path);
-    let events = read_event_log(run_dir);
 
-    let request = PushRequest {
+    let request = ReleaseRequest {
         record: &record,
         artifacts: &artifacts,
         build_dir: build_dir.as_deref(),
-        events: &events,
     };
 
     let publisher = BackendPublisher::new(

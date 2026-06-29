@@ -6,9 +6,8 @@ The public snapshot is the dataset the [site](/components/site/overview/) is
 built from. The backend is private, so rather than letting the site read it
 directly, the backend **exports** its published runs to a public
 [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket and the site build
-fetches that export. The snapshot holds **only published runs** — a run that has
-been [pushed](/components/core/results/#push) but not yet published is private and
-never appears here. The [Overview](/components/backend/overview/#public-snapshot)
+fetches that export. The snapshot holds **only published runs** — a produced run
+that has not yet been published is private and never appears here. The [Overview](/components/backend/overview/#public-snapshot)
 covers why this boundary exists; this page is the authoritative contract for the
 snapshot's **layout** — the cross-component surface between the backend that
 writes it and the site that reads it.

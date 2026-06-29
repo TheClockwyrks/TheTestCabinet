@@ -18,9 +18,9 @@ use std::sync::Arc;
 use test_cabinet_core::{
     ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
-    NoopPublisher, OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer,
-    RenderedReference, RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog,
-    TestCaseVersion, materialize_version,
+    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
+    RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog, TestCaseVersion,
+    materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -241,9 +241,6 @@ where
         orchestrators: OrchestratorCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
         validator: DispatchValidator::new(screenshot_dir),
-        // The driver only runs; publishing is a separate, explicit backend
-        // operation reached through the publish endpoint.
-        publisher: NoopPublisher,
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
         // The cluster path has no host credential files; a subscription run reads

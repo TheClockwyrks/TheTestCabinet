@@ -34,7 +34,6 @@ pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
     StatusUpdate,
 };
-pub use runs::{LinksIn, PushRequest};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
@@ -103,12 +102,13 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
-        // Push a run (record + links + events, no review; requires auth) and list
-        // runs. `GET /runs` lists published runs by default; `?state=review` lists
-        // all runs (pending + published) for the reviewer worklist.
-        .route("/runs", post(runs::push).get(runs::list))
-        // The pushed adversarial controllers for a case (id + model label), so the
-        // arena can pit a pushed implementation from any host. A read.
+        // List runs. `GET /runs` lists published runs by default; `?state=review`
+        // lists all runs (pending + published) for the reviewer worklist. A run's
+        // record is stored on the backend by the driver when the run finishes (via
+        // `POST /jobs/{id}/status`); there is no operator-driven push.
+        .route("/runs", get(runs::list))
+        // The adversarial controllers for a case (id + model label), so the arena
+        // can pit a produced implementation from any host. A read.
         .route("/adversarial/controllers", get(runs::adversarial_controllers))
         // Read one run, or delete it (auth-gated; refused for a published run).
         .route("/runs/{id}", get(runs::get).delete(runs::delete))

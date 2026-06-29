@@ -10,7 +10,7 @@ be notified when one completes, read [specs](/testing/end-to-end/overview/),
 [review](/components/core/results/#review) finished runs, and
 [publish](/components/core/results/#publish) them — but delivered as a static web
 app instead of a desktop binary. (A produced run's record is
-[pushed](/components/core/results/#push) to the backend by the
+[stored](/components/core/results/#stored-when-produced) on the backend by the
 [driver](/components/driver/overview/) when the run finishes, so the console has
 no separate push step.) Both consoles
 enqueue runs at the [backend](/components/backend/overview/)'s run queue and watch
@@ -87,6 +87,6 @@ contract: the backend serves the catalog and published runs, owns the run queue
 that the [dispatcher](/components/dispatcher/overview/) drains into per-run
 [driver](/components/driver/overview/) `Job`s, and exposes its run-enqueue,
 produced-run listing, recorded-event, notification, auth-proxy, and
-push/review/publish endpoints. Where a host can't
+review/publish endpoints. Where a host can't
 provide a piece of data — for example a worker that returns no recorded events
 for an older run — the shared UI degrades gracefully rather than erroring.

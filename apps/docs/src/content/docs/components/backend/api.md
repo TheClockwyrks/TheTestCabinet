@@ -4,8 +4,8 @@ title: HTTP API
 
 The backend exposes a single HTTP API that every other component talks to: the
 [runners](/components/architecture/#runners-and-reporters) resolve test case
-definitions through it, the operator's component pushes, reviews, and publishes
-runs to it, and reporters read published runs back from it. User identity is **not**
+definitions through it, the operator's component reviews and publishes runs to it,
+and reporters read published runs back from it. User identity is **not**
 served here — it lives in the standalone [auth service](/components/auth/overview/),
 whose tokens this API verifies. Container images are **not** part of
 this API — a runner pulls them from its own configured registry (see
@@ -31,7 +31,7 @@ this contract.
   `flawless`, `great`, `scuffed`, `broken`.
 - **Reads are open; mutations require a bearer token.** Reachability is the first
   line of access control — the backend sits on a private network — but the
-  mutating run endpoints (push, review, publish) additionally require an
+  mutating run endpoints (review, publish) additionally require an
   `Authorization: Bearer <token>` header identifying the acting
   [account](/components/backend/overview/#accounts), which the backend verifies
   against the [auth service](/components/auth/overview/). A missing or invalid
@@ -243,50 +243,23 @@ self-hosted one) and with no backend at all. See
 [Execution](/components/core/execution/#containerization) for how a runner
 resolves and records the image it ran.
 
-## Pushing, reviewing, publishing, and reading runs
+## Reviewing, publishing, and reading runs
 
-A run reaches the gallery through three mutating steps — **push** the run, attach
-one or more **reviews**, then **publish** it (the
-[lifecycle](/components/core/results/#lifecycle)). Each of the three requires a
-bearer token (`401` without). Reads need none.
+A run reaches the gallery through two mutating steps — attach one or more
+**reviews**, then **publish** it (the
+[lifecycle](/components/core/results/#lifecycle)). Each requires a bearer token
+(`401` without). Reads need none.
 
-### `POST /runs` — push
-
-**Push** a finished run: its [run record](/components/core/run-records/) and the
-resolved links — **no review**. The operator's component has already released the
-source repo and deployed the build before calling, so it sends the captured URLs;
-the backend writes the authoritative links onto the stored record. A pushed run is
-stored **privately** — it is *not* in the public snapshot, but its build is
-playable so it can be reviewed. The call is **idempotent on the record's id** —
-re-pushing updates the links and record blob without changing when it was first
-pushed and without disturbing any reviews already attached. Requires a bearer
-token.
-
-```jsonc
-{
-  "record": { "…": "a full RunRecord; its links MAY be empty here" },
-  "links": {
-    "sourceRepo": "https://github.com/TheClockwyrks/tcab-pong-claude-…",
-    "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
-  },
-  // The run's recorded normalized event stream, stored and re-emitted to the
-  // snapshot for the run's Events tab once published. Optional; an array of
-  // HarnessEvents. Raw harness output is never published.
-  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
-}
-```
-
-The `playableBuild` link is the URL the deploy tool **reported**, recorded
-verbatim — not a host constructed from the run id and project, which Cloudflare's
-branch-alias sanitization may truncate (see
-[Hosting](/components/site/overview/#hosting)).
-
-The response reports the run id and whether it was newly stored. Schema:
-[`backend-api/publish-run-request.schema.json`](https://docs.testcabinet.ai/schema/backend-api/publish-run-request.schema.json).
+A produced run's [run record](/components/core/run-records/) is stored privately
+**when the run finishes**: the [driver](/components/driver/overview/) reports it
+when it posts the job's terminal status (it is not posted by an operator), and the
+produced build and media land on the [artifact service](/components/artifacts/overview/),
+playable for review. The public release of the source repo and Cloudflare build is
+done by the publisher at **publish** time, not before.
 
 ### `POST /runs/{id}/reviews` — submit a review
 
-Submit a [review](/components/core/results/#reviews) for a pushed run: the
+Submit a [review](/components/core/results/#reviews) for a produced run: the
 per-domain `ratings`, the markdown `writeup`, and the checklist verdicts. The
 review is **attributed to the account the bearer token resolves to** — the
 reviewer identity is taken from the token, not the body. A run may carry **many
@@ -298,11 +271,13 @@ Schema:
 
 ### `POST /runs/{id}/publish` — publish
 
-Flip a pushed run **public** — the gate that puts it in the snapshot and the
-gallery. **Refuses a run that has no review** (`422`). Idempotent: re-publishing
-an already-published run is a no-op success. The response reports the run id,
-whether it was newly published, and whether a snapshot refresh was queued or
-coalesced into a pending one. Requires a bearer token.
+**Release** a reviewed run and flip it **public** — the gate that puts it in the
+snapshot and the gallery. **Refuses a run that has no review** (`422`). The release
+(source repo + Cloudflare build) runs asynchronously in a per-publish
+`tcab-publisher` Job; this endpoint gates the run and enqueues that Job, answering
+`202 Accepted` with the publish-job id and the live URL to observe the release on
+(the run flips public when the Job reports a terminal success). Requires a bearer
+token.
 
 ### `DELETE /runs/{id}` — delete
 
@@ -331,14 +306,14 @@ List stored runs, newest first, paginated by a `before` cursor and a `limit`. A
 
 - `state=published` (the **default**) — published runs only, ordered by publish
   time, for reporters and the public-facing views.
-- `state=review` — the **reviewer worklist**: **completed** runs (pushed but not
+- `state=review` — the **reviewer worklist**: **completed** runs (produced but not
   yet published, plus published ones), ordered by finish time, so a reviewer can
   find runs to assess. The failure tiers are excluded — they carry no review
   checklist.
 - `state=failures` — the **publishable-failure worklist**: catastrophic and
   timed-out runs (pending and published), for the publish-failures affordance.
   Infrastructure failures are excluded (never publishable).
-- `state=unpublished` — **every** pushed-but-unpublished run whatever its terminal
+- `state=unpublished` — **every** unpublished run whatever its terminal
   state (completed, every failure tier, including the never-publishable
   infrastructure failures), ordered by finish time. This is the console's
   "produced" worklist — every run that exists but is not yet public, so an

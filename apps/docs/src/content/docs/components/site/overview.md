@@ -9,8 +9,8 @@ by recency, and visitors compare implementations above all by playing them — b
 each run also carries a numeric [score and rating](/components/core/results/#reviews)
 aggregated across its [reviews](/components/core/results/#reviews), and each test
 case has a [leaderboard](#leaderboard) that ranks models by score. Only published
-runs appear; a run that has been [pushed](/components/core/results/#push) but not
-yet published is private and never reaches the gallery.
+runs appear; a produced run that has not yet been published is private and never
+reaches the gallery.
 
 ## A Static Site
 

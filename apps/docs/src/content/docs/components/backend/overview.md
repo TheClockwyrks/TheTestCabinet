@@ -20,9 +20,9 @@ The backend serves two kinds of client, as described in
 
 - **Runners** ([CLI](/components/cli/overview/),
   [driver](/components/driver/overview/), [Tauri app](/components/tauri/overview/))
-  resolve test case definitions from the backend, then push their
-  [run records](/components/core/run-records/) back to it when a run is
-  [pushed](/components/core/results/#push), reviewed, and published.
+  resolve test case definitions from the backend; the driver reports each
+  [run record](/components/core/run-records/) back to it when the run finishes, and
+  the run is then [reviewed and published](/components/core/results/#lifecycle).
   (Container images are not resolved from the backend — a runner pulls them from
   its configured registry directly; see
   [Execution](/components/core/execution/#containerization).)
@@ -67,9 +67,9 @@ boundary is not replaced — auth is an *added* layer.
 
 - **Reads stay open.** Pulling definitions and reading runs require only that the
   caller can reach the backend on its private network.
-- **Mutations require an account.** The mutating run endpoints — pushing,
-  reviewing, and publishing — require a **bearer token** identifying the account
-  acting; without one the backend answers `401`. The backend does not itself store
+- **Mutations require an account.** The mutating run endpoints — reviewing and
+  publishing — require a **bearer token** identifying the account acting; without
+  one the backend answers `401`. The backend does not itself store
   credentials; it verifies each token against a separate [auth
   service](/components/auth/overview/) (see [Accounts](#accounts)).
 
@@ -84,7 +84,7 @@ itself. The auth service handles open self-registration and password login
 (hashing with Argon2id) and mints opaque **bearer tokens**; the backend stays out
 of the credential business entirely.
 
-On every mutating run request (push, review, publish) the caller presents its
+On every mutating run request (review, publish) the caller presents its
 token as `Authorization: Bearer <token>`, and the backend **verifies** it against
 the auth service (`POST /auth/verify`) to resolve the acting account — failing the
 request `401` if the token is missing or invalid. The account it resolves is what a
@@ -97,32 +97,31 @@ service, and open self-registration is acceptable precisely because reaching it
 already requires being on that network. See the
 [auth service overview](/components/auth/overview/).
 
-## Push, Review, Publish, and Synchronization
+## Review, Publish, and Synchronization
 
-A run reaches the gallery through three steps the backend mediates — **push**,
+A produced run reaches the gallery through two steps the backend mediates —
 **review**, then **publish** (the [lifecycle](/components/core/results/#lifecycle)
-is the conceptual account; this is the backend's role in it). The release work is
-split into a half that operators do directly and a half the backend owns.
+is the conceptual account; this is the backend's role in it).
 
-On **push**, an operator's component (the [CLI](/components/cli/overview/) or
-[Tauri app](/components/tauri/overview/)) releases the run's generated code to its
-own public repository and makes the playable build embeddable — work that has no
-shared state, since each run is a distinct repository — and then submits the run
-record and the resulting links to the backend. The backend stores the run
-**privately**: it is not in the public snapshot, but its build is playable so it
-can be reviewed. **Review** then attaches one or more
-[reviews](/components/core/results/#reviews) (one per account) to a pushed run.
+A run's record is stored **privately** the moment the run finishes — the
+[driver](/components/driver/overview/) reports it when it posts the job's terminal
+status, and the produced build and media land on the
+[artifact service](/components/artifacts/overview/). It is not in the public
+snapshot, but its build is playable so it can be reviewed. **Review** attaches one
+or more [reviews](/components/core/results/#reviews) (one per account) to the run.
 
-The backend owns the **synchronized** half, which runs on **publish**. Being a
-single, central entity is the point: it serializes publish requests so that two
-operators publishing at the same time cannot race on the shared state. Publish is
-a gate — it **refuses a run that has no review** (`422`) — and on each accepted
-publish the backend:
+The public **release** of the run — its generated code to its own public
+repository, its build to Cloudflare Pages — happens only on **publish**, and the
+backend owns this **synchronized** half. Being a single, central entity is the
+point: it serializes publish requests so that two operators publishing at the same
+time cannot race on the shared state. Publish is a gate — it **refuses a run that
+has no review** (`422`) — and on each accepted publish the backend enqueues a
+per-publish [`tcab-publisher`](/components/dispatcher/overview/) Job to do the
+release, then on its terminal success:
 
 1. Marks the run published in its store, the system of record.
 2. Regenerates the [public snapshot](#public-snapshot) from the full set of
-   **published** runs (a pushed-but-unpublished run is excluded), each with its
-   reviews.
+   **published** runs (an unpublished run is excluded), each with its reviews.
 3. Uploads the snapshot to its public bucket and triggers a rebuild of the site.
 
 Because the backend coordinates this, it can also **coalesce** a burst of
@@ -131,7 +130,7 @@ regeneration, one upload, and one site rebuild, rather than one of each per run.
 Regenerating the whole published set each time (rather than applying deltas)
 keeps the operation idempotent: re-running it converges on the same snapshot.
 
-Each of these three mutations requires a bearer token (see [Accounts](#accounts));
+Both of these mutations require a bearer token (see [Accounts](#accounts));
 reviews are attributed to the account the token resolves to.
 
 ## Public Snapshot
@@ -140,7 +139,7 @@ The public site must show published runs to anonymous visitors without depending
 on the private backend. To bridge this, the backend **exports a public
 snapshot** of its published dataset — the run records, their reviews (each
 attributed to its reviewer), and the case metadata the gallery needs — that the
-static site is built from. Only **published** runs are exported; a pushed run
+static site is built from. Only **published** runs are exported; a produced run
 that has not been published is never in the snapshot.
 
 - The snapshot is uploaded to a **[Cloudflare R2](https://developers.cloudflare.com/r2/)**
@@ -179,7 +178,7 @@ connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
 (`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`). The backend binds to
 `8787` by default (the worker uses `8788`, the auth service `8789`). Only
 `TCAB_BACKEND_CHECKOUT` is required; with the R2 and deploy-hook variables omitted
-the backend still ingests, records pushes/reviews/publishes, and regenerates the
+the backend still ingests, records reviews/publishes, and regenerates the
 snapshot on disk, skipping only the upload and rebuild — a dev-only mode.
 
 User identity is **not** part of this crate. It lives in the standalone

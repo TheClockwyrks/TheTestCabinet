@@ -51,13 +51,7 @@ including:
   subsequent mutating calls.
 - **`logout`** — discard the stored token (calls the auth service's
   `POST /auth/logout`).
-- **`push`** — a thin confirmation, by **run id**. A backend-driven run's record
-  and artifacts are pushed by the driver during the run, so by the time an
-  operator sees a produced run it is already stored; `tcab push <run-id>…` reads
-  each run back and reports whether the backend holds it and where its source and
-  playable build resolve. Takes multiple ids for batch. Requires a logged-in
-  account. (Mirrors the web console, whose `push` is a near no-op.)
-- **`review`** — submit a [review](/components/core/results/#reviews) for a stored
+- **`review`** — submit a [review](/components/core/results/#reviews) for a produced
   run by id: `tcab review <run-id> [--writeup writeup.md]`, attributed to the
   logged-in account, from a writeup the reviewer authored locally (defaulting to
   `writeup.md` in the working directory). A run may carry several reviews, one per
@@ -66,8 +60,8 @@ including:
   step, by run id: submit the operator's own review (from a `<run-id>.md` writeup
   in the working directory) and flip the run public — including in batch.
   Publishing a run requires it to have at least one review; the self-review
-  satisfies that. For the three-step flow where different people review, use
-  `review` then have an operator publish. Requires a logged-in account.
+  satisfies that. For the flow where different people review, use `review` then
+  have an operator publish. Requires a logged-in account.
 - **`catalog`** — regenerate the bundled model dataset (`models.json`) every host
   ships, refreshing each model's OpenRouter prices, context window, and release
   date. (Test-case data is served from the backend's public snapshot, not emitted
@@ -94,7 +88,6 @@ them:
   password may be supplied with `--password` or `TCAB_PASSWORD` rather than
   interactively. These calls fail without a logged-in account; reads do not.
 - **Release credentials** — the repository-host and Cloudflare tokens used to
-  [push](/components/core/results/#push) a run's code and playable build — no
-  longer live with `tcab`: a backend-driven run's record and artifacts are released
-  by the driver during the run, so the CLI's `push` is only a read-back
-  confirmation and carries no release credentials.
+  [release](/components/core/results/#publish) a run's code and playable build — do
+  **not** live with `tcab`: the public release happens in the backend's
+  `tcab-publisher` Job at publish time, so the CLI carries no release credentials.

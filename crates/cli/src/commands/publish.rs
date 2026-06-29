@@ -1,59 +1,28 @@
-//! `tcab push` / `tcab review` / `tcab publish` — the run release lifecycle,
-//! against the backend.
+//! `tcab review` / `tcab publish` — the run release lifecycle, against the backend.
 //!
 //! Runs no longer execute locally: a `tcab run` enqueues a run on the backend and
-//! a per-run driver pod executes it, pushing the produced record (and its
-//! artifacts) to the backend's run store during the run. So this lifecycle
-//! operates by **backend run id**, not by a local run directory:
+//! a per-run driver pod executes it, storing the produced record (and its
+//! artifacts) on the backend's run store during the run. So this lifecycle operates
+//! by **backend run id**, not by a local run directory:
 //!
-//! - **push** is a thin confirmation. The driver already pushed the run's record
-//!   and artifacts to the backend, so by the time an operator sees a produced run
-//!   it is already stored — `push` reads the run back and reports its state and
-//!   resolved links (mirroring the web console, whose `push` is a near no-op).
-//! - **review** submits a review (from a locally authored `writeup.md`) for an
-//!   already-stored run, attributed to the logged-in account. A run may carry many
+//! - **review** submits a review (from a locally authored `writeup.md`) for a
+//!   produced run, attributed to the logged-in account. A run may carry many
 //!   reviews, one per account.
 //! - **publish** is the solo convenience: self-review + publish gate in one step,
 //!   for an operator reviewing their own run. A run cannot be published without at
 //!   least one review.
 //!
-//! All three require a logged-in account (`tcab login`) and `TCAB_BACKEND_URL`.
+//! Both require a logged-in account (`tcab login`) and `TCAB_BACKEND_URL`.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::backend_client::PublishLiveItem;
 use test_cabinet_core::publish_job_api::{PublishResult, PublishState};
-use test_cabinet_core::{BackendClient, HttpBackendClient, PublishedRun, Writeup, parse_writeup};
+use test_cabinet_core::{BackendClient, HttpBackendClient, Writeup, parse_writeup};
 
-use crate::cli::{PublishArgs, PushArgs, ReviewArgs};
+use crate::cli::{PublishArgs, ReviewArgs};
 use crate::config;
-
-/// `tcab push` — confirm each run is stored on the backend and report its links.
-///
-/// The driver pushes a finished run's record and artifacts to the backend during
-/// the run, so there is no operator-driven release here; `push` reads each run back
-/// and reports whether the backend holds it and where its source/build resolve.
-pub async fn push(args: PushArgs) -> Result<()> {
-    let client = backend_client()?;
-
-    println!("tcab push: {} run(s) <- backend", args.run_ids.len());
-    for run_id in &args.run_ids {
-        let run = client
-            .read_run(run_id)
-            .await
-            .with_context(|| format!("reading run {run_id} from the backend"))?;
-        let state = if run.published {
-            "stored (published)"
-        } else {
-            "stored (private)"
-        };
-        println!("  {} — {state}", run.record.id);
-        print_links(&run);
-    }
-    println!("\nReview a stored run with `tcab review`, then `tcab publish` to make it public.");
-    Ok(())
-}
 
 /// `tcab review` — submit a review (from a locally authored `writeup.md`) for a
 /// stored run, attributed to the logged-in account.
@@ -203,18 +172,6 @@ fn report_result(run_id: &str, result: &PublishResult) -> Result<()> {
                 .unwrap_or("the publish did not complete");
             bail!("{detail}")
         }
-    }
-}
-
-/// Print a stored run's resolved source-repo and playable-build links.
-fn print_links(run: &PublishedRun) {
-    match &run.links.source_repo {
-        Some(url) => println!("    source: {url}"),
-        None => println!("    source: (no source repo — asset generation)"),
-    }
-    match &run.links.playable_build {
-        Some(url) => println!("    build:  {url}"),
-        None => println!("    build:  (no static build deployed)"),
     }
 }
 

@@ -57,7 +57,7 @@ no `make`, and no manually-run services — only a container runtime (see
   hand-written writeup and rating — after playing a finished build, attributed to
   the signed-in account. A run may carry several reviews, one per account. A
   produced run's [record](/components/core/run-records/) is
-  [pushed](/components/core/results/#push) to the
+  [stored](/components/core/results/#stored-when-produced) on the
   [backend](/components/backend/overview/) by the
   [driver](/components/driver/overview/) when the run finishes — so it is private
   but reviewable as soon as it is produced, with no separate push step in the

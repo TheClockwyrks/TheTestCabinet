@@ -23,7 +23,7 @@ separate from the backend's, so credential storage stays out of the backend.
 
 The [backend](/components/backend/overview/) is The Test Cabinet's central private
 service. It is the canonical source of test case definitions for runners and the
-system of record for run results — pushed, reviewed, and published. It does not
+system of record for run results — stored, reviewed, and published. It does not
 store credentials itself; it verifies the [auth service](#auth-service)'s bearer
 tokens.
 
@@ -95,21 +95,19 @@ run, defaults to `one-shot` (a single session), and is harness-agnostic. See
 
 ## Publishing
 
-"Publishing" is the explicit gate that flips a [pushed](#push) run **public** —
-adding it to the public snapshot and gallery. It is **refused unless the run has
-at least one [review](#review)**, so only assessed runs reach the gallery. It is
-the third of three steps ([push](#push) → review → publish); the CLI's
-`tcab publish` is a solo convenience that does all three at once (push,
-self-review, publish). See [Results](/components/core/results/#lifecycle).
+"Publishing" is the explicit gate that **releases** a [reviewed](#review) run and
+flips it **public** — releasing its source (a public GitHub repo) and playable
+build (Cloudflare Pages), and adding it to the public snapshot and gallery. It is
+**refused unless the run has at least one [review](#review)**, so only assessed
+runs reach the gallery. It is the second of two steps (review → publish); the
+CLI's `tcab publish` is a solo convenience that does both at once (self-review and
+publish). The release runs asynchronously in a per-publish `tcab-publisher` Job.
+See [Results](/components/core/results/#lifecycle).
 
-## Push
-
-"Pushing" a run is the first step toward the gallery: an operator releases its
-source (a public GitHub repo) and playable build (Cloudflare Pages) and stores its
-[run record](#run-records) on the [backend](/components/backend/overview/) —
-**without** a review. A pushed run is **private** (not in the gallery), but its
-build is playable so anyone can [review](#review) it before it is
-[published](#publishing). Test runs exist only locally until pushed.
+A produced run is stored on the backend privately as soon as it finishes (the
+[driver](/components/driver/overview/) reports it) and its build is playable for
+review off the [artifact service](/components/artifacts/overview/) — so there is no
+separate operator "push" step; publishing is what first releases anything publicly.
 
 ## Rating
 
@@ -136,7 +134,7 @@ review carries a per-domain [rating](#rating), a prose writeup, a verdict on eac
 [reviewer-checklist](#reviewer-checklist) item the case declares, and the identity
 of the [account](#user--account) that wrote it. A run may carry **multiple
 reviews — one per account** — typically from people other than the operator who
-[pushed](#push) it; the verdicts and item [weights](#score) produce each review's
+produced it; the verdicts and item [weights](#score) produce each review's
 numeric score, which are then averaged across reviews for the run.
 
 ## Reviewer Checklist
@@ -189,9 +187,8 @@ some isolated task that a harness/model must perform.
 A user account is a real, registered identity in the
 [auth service](#auth-service), created by open self-registration with a username,
 password, and display name. Logging in mints a bearer token that authenticates the
-mutating run actions — [push](#push), [review](#review), and
-[publish](#publishing) — so every review a run carries is attributed to the
-account that wrote it. Accounts are an identity layer on top of the private
+mutating run actions — [review](#review) and [publish](#publishing) — so every
+review a run carries is attributed to the account that wrote it. Accounts are an identity layer on top of the private
 network, not a replacement for it; reading the gallery or the backend needs no
 account.
 

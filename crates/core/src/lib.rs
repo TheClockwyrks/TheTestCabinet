@@ -75,7 +75,7 @@ pub use auth::{
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
-    PublishedRun, PushAck, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
+    PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
@@ -112,9 +112,8 @@ pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{
-    BackendPublisher, CommandOutput, CommandRunner, NoopPublisher, PublishConfig, Publisher,
-    PushOutcome, PushRequest, SystemCommandRunner, implementation_dir, parse_wrangler_url,
-    read_event_log, run_slug,
+    BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
+    SystemCommandRunner, implementation_dir, parse_wrangler_url, run_slug,
 };
 pub use publish_job_api::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
@@ -203,16 +202,16 @@ pub fn runtime_hours_to_seconds(hours: f64) -> u64 {
 /// Drives a single run through its full lifecycle.
 ///
 /// The orchestrator wires together the swappable seams — test case catalog,
-/// repo seeder, container runtime, harness registry, validator, and publisher —
-/// and sequences them: resolve, seed, execute, collect metrics, validate, write
-/// record, publish.
-pub struct RunEngine<S, R, C, V, P>
+/// repo seeder, container runtime, harness registry, and validator — and
+/// sequences them: resolve, seed, execute, collect metrics, validate, write
+/// record. Releasing a finished run to the public gallery is a separate,
+/// explicit backend operation (publish), not part of the run engine.
+pub struct RunEngine<S, R, C, V>
 where
     S: RepoSeeder,
     R: ContainerRuntime,
     C: ArtifactCollector,
     V: Validator,
-    P: Publisher,
 {
     /// Resolves test case slugs and versions.
     pub catalog: TestCaseCatalog,
@@ -231,8 +230,6 @@ where
     pub renderer: Box<dyn ReferenceRenderer>,
     /// Runs the validation pass.
     pub validator: V,
-    /// Publishes finished runs.
-    pub publisher: P,
     /// Looks up model prices for the comparable cost.
     pub prices: OpenRouterPrices,
     /// Directory each run's record and collected implementation are written to.
@@ -252,13 +249,12 @@ where
     pub creds: Option<Box<dyn auth::CredBytesSource + Send + Sync>>,
 }
 
-impl<S, R, C, V, P> RunEngine<S, R, C, V, P>
+impl<S, R, C, V> RunEngine<S, R, C, V>
 where
     S: RepoSeeder,
     R: ContainerRuntime,
     C: ArtifactCollector,
     V: Validator,
-    P: Publisher,
 {
     /// Resolve a [`RunRequest`] into an exact, immutable [`TestCaseVersion`].
     pub fn resolve(&self, request: &RunRequest) -> Result<TestCaseVersion> {
@@ -744,12 +740,6 @@ where
         let implementation = run_dir.join("implementation");
         copy_tree(&artifacts.repo_path, &implementation)?;
         Ok(())
-    }
-
-    /// Push a finished run: release code, deploy the build, store the record
-    /// (unpublished). Reviewing and publishing are separate backend calls.
-    pub async fn push(&self, request: &PushRequest<'_>) -> Result<PushOutcome> {
-        self.publisher.push(request).await
     }
 
     /// Drive an entire run end to end through every lifecycle stage.

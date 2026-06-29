@@ -39,7 +39,7 @@ static HTTP_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 static RUNS_PUBLISHED: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
         .u64_counter("tcab.runs.published")
-        .with_description("Count of runs accepted by `POST /runs`.")
+        .with_description("Count of runs successfully published.")
         .build()
 });
 

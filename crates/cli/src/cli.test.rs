@@ -228,13 +228,7 @@ fn publish_accepts_a_batch_of_run_ids() {
 }
 
 #[test]
-fn push_and_review_parse() {
-    let cli = Cli::try_parse_from(["tcab", "push", "run-a", "run-b"]).expect("push parses");
-    match cli.command {
-        Command::Push(args) => assert_eq!(args.run_ids.len(), 2),
-        other => panic!("expected a push command, got {other:?}"),
-    }
-
+fn review_parses() {
     let cli = Cli::try_parse_from(["tcab", "review", "run-a", "--writeup", "w.md"])
         .expect("review parses");
     match cli.command {

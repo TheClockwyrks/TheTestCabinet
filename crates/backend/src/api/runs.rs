@@ -1,10 +1,10 @@
-//! The run lifecycle endpoints: push, review, publish, and reads.
+//! The run lifecycle endpoints: review, publish, and reads.
 //!
-//! A run is **pushed** (record + links + events, no review) — stored privately,
-//! its build playable for reviewers but absent from the public snapshot. Any
-//! account may then **review** it (one review per account). An explicit
-//! **publish** flips it public, and is refused unless it has at least one review.
-//! Push, review, and publish each require a valid bearer token (see
+//! A produced run is stored privately when it finishes (the driver reports it via
+//! `POST /jobs/{id}/status`) — its build playable for reviewers but absent from the
+//! public snapshot. Any account may then **review** it (one review per account). An
+//! explicit **publish** flips it public, and is refused unless it has at least one
+//! review. Review and publish each require a valid bearer token (see
 //! [`crate::auth::AuthUser`]); reads stay open on the private network.
 
 use axum::Json;
@@ -16,10 +16,9 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{RunLinks, RunRecord, RunState};
+use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
 use crate::db::{Reviewer, StoredReview, StoredRun};
@@ -30,86 +29,6 @@ use super::AppState;
 /// The default and maximum page size for `GET /runs`.
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
-
-/// `POST /runs` — push a run (record + links + events, **no** review). Stores it
-/// privately (unpublished) so a reviewer can play the build; it does not enter
-/// the public snapshot until published. Requires a bearer token. Idempotent on
-/// `record.id` (201 newly pushed, 200 re-push).
-#[tracing::instrument(
-    name = "runs.push",
-    skip(state, _user, request),
-    fields(
-        run.id = %request.record.id,
-        case.slug = %request.record.subject.test_case_slug,
-        case.version = %request.record.subject.test_case_version,
-    ),
-    err(Debug),
-)]
-pub async fn push(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Json(request): Json<PushRequest>,
-) -> Result<Response, ApiError> {
-    // Only a run that produced a result can enter the backend: a failed run is
-    // recorded so the consoles can show why it stopped, but it is never reviewable
-    // or publishable. The consoles already refuse to push one; this is the
-    // server-side guard so a failed run can never reach the public snapshot even
-    // if a client bypasses the UI.
-    if request.record.status.state != RunState::Completed {
-        return Err(ApiError::unprocessable(
-            "a run that did not complete cannot be pushed; only completed runs are reviewable",
-        ));
-    }
-
-    // The subject should resolve to an ingested version, but this is a warning,
-    // not a hard fail, so a historical case can still be pushed.
-    let subject = &request.record.subject;
-    if !state
-        .store
-        .has_version(&subject.test_case_slug, &subject.test_case_version)
-    {
-        tracing::warn!(
-            "pushing run {} against uningested case {}@{}",
-            request.record.id,
-            subject.test_case_slug,
-            subject.test_case_version
-        );
-    }
-
-    let links = RunLinks {
-        source_repo: request.links.source_repo,
-        playable_build: request.links.playable_build,
-    };
-
-    // Persist the run's recorded event stream verbatim as a JSON array (omitted
-    // when empty), so the published Events tab can replay it. Raw harness output
-    // is never published.
-    let events_json = if request.events.is_empty() {
-        None
-    } else {
-        Some(
-            serde_json::to_string(&request.events)
-                .map_err(|e| ApiError::internal(format!("serializing events: {e}")))?,
-        )
-    };
-
-    let outcome = state
-        .db
-        .push(&request.record, &links, events_json.as_deref())
-        .await
-        .map_err(ApiError::from)?;
-
-    let body = PushResponse {
-        id: request.record.id.clone(),
-        newly_pushed: outcome.newly_pushed,
-    };
-    let status = if outcome.newly_pushed {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    };
-    Ok((status, Json(body)).into_response())
-}
 
 /// `POST /runs/{id}/reviews` — submit a review for a run, attributed to the
 /// token's account. The review gate (at least one domain rated, a non-empty
@@ -422,27 +341,6 @@ fn review_out(review: &StoredReview) -> ReviewOut {
 
 // --- Wire shapes ------------------------------------------------------------
 
-/// The body of `POST /runs`, the **push** step: a finished run's
-/// machine-generated record, its resolved public links, and its optional
-/// recorded event stream. A push stores the run *without* a review and does not
-/// make it public — the build is released so it can be reviewed, but the run is
-/// excluded from the public snapshot until it is published (see
-/// `POST /runs/{id}/publish`). Reviews are submitted separately to
-/// `POST /runs/{id}/reviews`. Requires a bearer token; idempotent on `record.id`.
-#[derive(Deserialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PushRequest {
-    /// A full run record. Its `links` MAY be empty here; the `links` below are
-    /// authoritative and the backend writes them onto the stored record.
-    record: RunRecord,
-    #[serde(default)]
-    links: LinksIn,
-    /// The run's recorded normalized event stream (empty when the run recorded
-    /// none); stored verbatim and re-emitted to the snapshot once published.
-    #[serde(default)]
-    events: Vec<HarnessEvent>,
-}
-
 #[derive(Deserialize)]
 pub struct ReviewRequest {
     #[serde(default)]
@@ -450,28 +348,6 @@ pub struct ReviewRequest {
     writeup: String,
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
-}
-
-/// The resolved public links for a pushed run — the authoritative copies the
-/// backend writes onto the stored record.
-#[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LinksIn {
-    /// The public repository holding the run's generated source.
-    #[serde(default)]
-    source_repo: Option<String>,
-    /// The deployment URL the build tool reported, recorded verbatim. A pushed
-    /// run's build is playable (so it can be reviewed) even before publish.
-    #[serde(default)]
-    playable_build: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PushResponse {
-    id: String,
-    newly_pushed: bool,
 }
 
 #[derive(Serialize)]

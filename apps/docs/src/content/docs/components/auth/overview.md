@@ -65,14 +65,14 @@ The account and token shapes are specified in
 [`backend-api/auth.schema.json`](https://docs.testcabinet.ai/schema/backend-api/auth.schema.json).
 The [backend](/components/backend/overview/) **proxies** `POST /auth/register` and
 `POST /auth/login` so the consoles have a single origin to talk to, and verifies a
-user's bearer token against the auth service on push, review, and publish.
+user's bearer token against the auth service on review and publish.
 
 ## Who talks to it
 
 - The [CLI](/components/cli/overview/) (`tcab register` / `login` / `logout`), the
   [Tauri app](/components/tauri/overview/), and the
   [web console](/components/web/overview/) call it to register and log in, then send
-  the resulting bearer token on push/review/publish. They are pointed at it with
+  the resulting bearer token on review/publish. They are pointed at it with
   `TCAB_AUTH_URL`. The CLI stores its token at `~/.config/tcab/credentials.json`
   (overridable with `$TCAB_CONFIG_DIR`).
 - The [backend](/components/backend/overview/) proxies register/login to it and

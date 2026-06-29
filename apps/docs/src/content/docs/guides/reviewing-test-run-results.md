@@ -16,13 +16,14 @@ build, not emitted by the run — and it is deliberately not part of the
 [run record](/components/core/run-records/) contract. Every review is attributed
 to the [account](/components/backend/overview/#accounts) that wrote it, and a run
 may carry **several reviews, one per account** — typically from people other than
-the operator who [pushed](/components/core/results/#push) the run. Across them, the
+the operator who produced the run. Across them, the
 run's score is the **average** and its overall rating the **worst**. A run needs at
 least one review before it can be [published](/guides/publishing-a-test-run-result/),
-so review is the gate between pushing a run and putting it on the gallery.
+so review is the gate between producing a run and putting it on the gallery.
 
-You review a [pushed](/components/core/results/#push) run — one whose build has been
-released so it can be played. From a console, open the run and submit a review; from
+You review a [produced](/components/core/results/#stored-when-produced) run — one
+whose build is playable off the artifact service. From a console, open the run and
+submit a review; from
 the CLI, `tcab review <run-record> --writeup writeup.md` submits one attributed to
 your logged-in account. Either way you must be
 [signed in](/quickstarts/register-and-login/).

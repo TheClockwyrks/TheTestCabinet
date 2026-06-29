@@ -117,17 +117,6 @@ impl BackendClient for StubBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok("Build {{variant.name}} at {{workspace}}".to_string())
     }
-    async fn push_run(
-        &self,
-        record: &crate::run_record::RunRecord,
-        _links: &crate::run_record::RunLinks,
-        _events: &[crate::event::HarnessEvent],
-    ) -> Result<PushAck> {
-        Ok(PushAck {
-            id: record.id.clone(),
-            newly_pushed: true,
-        })
-    }
     async fn submit_review(&self, _run_id: &str, _review: &crate::review::Writeup) -> Result<()> {
         Ok(())
     }
@@ -250,14 +239,6 @@ impl BackendClient for AdversarialStubBackend {
     }
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String> {
         StubBackend.prompt_template(slug, version).await
-    }
-    async fn push_run(
-        &self,
-        record: &crate::run_record::RunRecord,
-        links: &crate::run_record::RunLinks,
-        events: &[crate::event::HarnessEvent],
-    ) -> Result<PushAck> {
-        StubBackend.push_run(record, links, events).await
     }
     async fn submit_review(&self, run_id: &str, review: &crate::review::Writeup) -> Result<()> {
         StubBackend.submit_review(run_id, review).await

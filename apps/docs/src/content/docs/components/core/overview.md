@@ -32,9 +32,9 @@ contracts the rest of the system is built around:
 - **[Run records](/components/core/run-records/)** — the fixed data contract a
   run emits.
 - **[Results](/components/core/results/)** — getting a finished run onto the
-  gallery through push, review, and publish: releasing its code, uploading its
-  record to the [backend](/components/backend/overview/), and gathering its
-  reviews.
+  gallery through review and publish: gathering its reviews, then releasing its
+  code and flipping it public. The record is stored on the
+  [backend](/components/backend/overview/) automatically when the run finishes.
 
 ## Wrapping the Core
 
