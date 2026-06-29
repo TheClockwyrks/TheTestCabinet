@@ -32,8 +32,18 @@ resources:
 # so a `make local-up` cluster observes its own traces/metrics/logs. Reach Grafana
 # (and the OTLP port, for host/devcontainer processes) with
 # `make -C deployments/local local-grafana`.
+#
+# Serve the web console IN THE CLUSTER too, the same way prod does (prod gets it via
+# the internal-ingress component; here we take the bare console workload without that
+# component's ingress/cert/NetworkPolicy wiring). This drops the separate
+# `npm run dev` + VITE_BACKEND_URL the local console used to need — patch-web-config
+# below bakes the host-forwarded backend/auth URLs into the pod's /config.js, and the
+# Makefile's `local-forward` serves the console on 127.0.0.1:1430. The browser still
+# reaches the backend/artifacts/arena over those same forwards (it runs outside the
+# cluster), exactly as before.
 components:
   - ../../components/observability
+  - ../../components/web
 
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
@@ -57,6 +67,9 @@ images:
   - name: REPLACE_REGISTRY/tcab-arena
     newName: tcab-arena
     newTag: local
+  - name: REPLACE_REGISTRY/tcab-web
+    newName: tcab-web
+    newTag: local
 
 # Secrets are deliberately NOT generated here — a secretGenerator would bake the
 # values into this tracked file. The Makefile creates them in-cluster from the host
@@ -79,6 +92,7 @@ patches:
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
   - path: patch-arena.yaml
+  - path: patch-web-config.yaml
 
   # Drop the base resources the local stack does without. The Makefile force-ingests
   # the catalog from the mounted checkout, so the ingest CronJob is redundant; and a

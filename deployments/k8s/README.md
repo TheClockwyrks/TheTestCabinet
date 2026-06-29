@@ -50,14 +50,16 @@ Overlays compose in reusable kustomize **components**:
 | --- | --- |
 | `components/observability` | Runs the Grafana LGTM stack (`grafana/otel-lgtm`: collector + Tempo/Mimir/Loki + Grafana) in-cluster as `tcab-lgtm` (StatefulSet + ClusterIP Service + PVC for Grafana state) plus a NetworkPolicy admitting the services' OTLP. Included by `overlays/{local,staging,prod,azure-staging,azure-prod}`; each overlay's env patch sets every workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318`. Drop it (and the endpoint) to send telemetry to Grafana Cloud / an external collector instead. |
 | `components/postgres` | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays). |
+| `components/web` | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend/auth URLs injected at runtime into `/config.js` (each consumer patches the real values). Reused two ways: the `internal-ingress` component pulls it in behind a prod ingress, and `overlays/local` includes it directly and serves it over a `kubectl port-forward`. |
 
 The service container images are built from [`../images/`](../images/)
 (`backend.Dockerfile`, `auth.Dockerfile`, `dispatcher.Dockerfile`,
-`driver.Dockerfile`, `artifacts.Dockerfile`, `arena.Dockerfile`) and published to
+`driver.Dockerfile`, `artifacts.Dockerfile`, `arena.Dockerfile`, `web.Dockerfile`)
+and published to
 GHCR by the
 [`build-service-images.yml`](../../.github/workflows/build-service-images.yml)
 workflow as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, and `…/tcab-arena`. The overlays' `images:`
+`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`, and `…/tcab-web`. The overlays' `images:`
 blocks point each at that namespace — pin the immutable `:<git-sha>` tag rather
 than `:latest` in a real deployment. The **run-container** images the sandbox runs
 inside are separate — see [`containers/`](../../containers/README.md).

@@ -451,7 +451,12 @@ prerequisite (see [the runbook](#internal-ingress-prerequisites-controllers-dns-
   git-sha, like the publisher image — so the backend/auth URLs are injected at
   **runtime**: the image's entrypoint `envsubst`s a `/config.js` from
   `TCAB_WEB_BACKEND_URL` / `TCAB_WEB_AUTH_URL`, and the SPA prefers that
-  `window.__TCAB_CONFIG__` over its build-time `VITE_*` defaults.
+  `window.__TCAB_CONFIG__` over its build-time `VITE_*` defaults. The console
+  workload itself is factored into its own
+  [`components/web`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/web)
+  component (included here as a nested component) so the local k3d overlay can serve
+  the same in-cluster console over a `kubectl port-forward` without this component's
+  ingress/cert/NetworkPolicy wiring.
 - **Five host-per-service `Ingress` routes** (one `Ingress` each, no path-routing) —
   `console` → `tcab-web`, `api` → `tcab-backend:8787`, `auth` → `tcab-auth:8789`,
   `artifacts` → `tcab-artifacts:8790`, `arena` → `tcab-arena:8791`, all with

@@ -1,0 +1,18 @@
+# Web-console component — the in-cluster tcab-web console Deployment + ClusterIP
+# Service, as a reusable, environment-agnostic unit.
+#
+# It is consumed two ways, both of which patch the runtime backend/auth URLs the
+# single environment-agnostic image reads from /config.js at start (see web.yaml):
+#   - by the `internal-ingress` component (prod), which adds the ingress routes,
+#     cert-manager ClusterIssuer, and ingress-source NetworkPolicy in front of it;
+#   - directly by the `local` overlay, which serves the console over a
+#     `kubectl port-forward` (no ingress) and points it at the host-forwarded
+#     backend/auth — see overlays/local/patch-web-config.yaml.
+#
+# The including overlay's `namespace:` directive retargets the resources here and its
+# `images:` transformer rewrites the tcab-web image, exactly as for the base.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - web.yaml

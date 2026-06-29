@@ -4,7 +4,8 @@
 # The single tcab-web image is environment-agnostic (one build per git-sha), so the
 # backend + auth URLs are injected at RUNTIME via env: the image's entrypoint
 # `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The
-# internal-ingress component (web.yaml) ships these env keys with empty defaults; this
+# components/web Deployment (pulled in by the internal-ingress component) ships these
+# env keys with empty defaults; this
 # overlay patches them to the prod https names the ingress routes
 # (api.tcab.testcabinet.ai → tcab-backend, auth.tcab.testcabinet.ai → tcab-auth).
 #

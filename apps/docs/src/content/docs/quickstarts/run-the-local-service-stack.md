@@ -28,19 +28,14 @@ every service variable, [Running](/development/running/).
 ```sh
 export OPENROUTER_API_KEY=…                   # the harness you'll run
 
-make -C deployments/local local-up            # cluster + images + secrets + overlay + ingest
-make -C deployments/local local-forward       # backend → :8787, auth → :8789 (leave running)
+make -C deployments/local local-up            # cluster + images (incl. web console) + secrets + overlay + ingest
+make -C deployments/local local-forward       # console → :1430, backend → :8787, auth → :8789, artifacts → :8790, arena → :8791 (leave running)
 ```
 
-In another terminal, start the console pointed at the forwarded services:
-
-```sh
-VITE_BACKEND_URL=http://127.0.0.1:8787 \
-VITE_AUTH_URL=http://127.0.0.1:8789 \
-  npm run dev -w @test-cabinet/web
-```
-
-Then, in the console:
+The web console runs **in-cluster** (no separate `npm run dev`, no
+`VITE_BACKEND_URL`). Open it at <http://127.0.0.1:1430> — its backend/auth URLs are
+baked into the pod's `/config.js`, so the catalog loads on first visit. Then, in the
+console:
 
 1. **Register / log in** (or `tcab register --username dev --display-name "Dev"`)
    so push/review/publish are attributed to you.

@@ -8,8 +8,10 @@
 # exactly as it does the base and the postgres/observability/keyvault-csi components.
 #
 # It adds:
-#   1. web.yaml          — the tcab-web console Deployment + ClusterIP Service (the
-#                          static SPA, backend/auth URLs injected at runtime via env).
+#   1. components/web    — the tcab-web console Deployment + ClusterIP Service (the
+#                          static SPA, backend/auth URLs injected at runtime via env),
+#                          pulled in as a nested component so the local overlay can
+#                          reuse the same console workload without this ingress wiring.
 #   2. ingress.yaml      — five host-per-service Ingress routes (console/api/auth/
 #                          artifacts/arena), each with a cert-manager-issued TLS cert.
 #   3. clusterissuer.yaml — the cert-manager ClusterIssuer (Let's Encrypt prod,
@@ -28,8 +30,12 @@
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
+# The console workload lives in its own component so the local overlay can reuse it
+# without this component's ingress/cert/NetworkPolicy wiring.
+components:
+  - ../web
+
 resources:
-  - web.yaml
   - ingress.yaml
   - clusterissuer.yaml
   - networkpolicy.yaml

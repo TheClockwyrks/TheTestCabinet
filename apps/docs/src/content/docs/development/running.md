@@ -60,7 +60,9 @@ staging and prod — see [Deployment](/deployment/overview/).
   `cargo build -p test-cabinet-backend`, `cargo build -p tcab-auth-service`,
   `cargo build -p test-cabinet-dispatcher`, `cargo build -p test-cabinet-driver`,
   and `cargo build -p test-cabinet-artifacts` (or the `build-portable-*` aliases
-  for static binaries). The web console is a Vite app under `apps/web`.
+  for static binaries). The web console is a Vite app under `apps/web`; the k3d
+  flow below builds it into the `tcab-web` image and serves it in-cluster for you,
+  so you only run its Vite dev server by hand for the bare-process path.
 - A harness API key for the harness you will run (for example
   `ANTHROPIC_API_KEY` for `claude`).
 
@@ -92,7 +94,7 @@ export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
 
 ```sh
 make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
-make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, arena→:8791 open on localhost
+make -C deployments/local local-forward   # hold console→:1430, backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 open on localhost
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
 make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
@@ -102,25 +104,34 @@ make -C deployments/local local-down      # delete the cluster and everything in
 ```
 
 `local-up` creates a throwaway k3d cluster, builds the **backend**, **auth**,
-**dispatcher**, **driver**, and **artifact** images from
+**dispatcher**, **driver**, **artifact**, **arena**, and **web console** images from
 [`deployments/images/`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images),
 loads them with `k3d image import` (no registry needed), creates the cluster
 Secrets from your environment (the harness key above plus a dev service token),
 applies the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests
-the catalog from a read-only mount of this repository. The dispatcher and driver run
+the catalog from a read-only mount of this repository. The **web console runs
+in-cluster** the same way prod serves it — so `local-up` brings the whole UI up,
+with no separate `npm run dev` and no `VITE_BACKEND_URL`/`.env.local` to set: the
+console's backend + auth URLs are baked into the pod's `/config.js`, so it is
+configured the moment you open it. The dispatcher and driver run
 in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 **schedules as a Job in this same cluster** — exactly as a cloud deployment runs
 it. The host no longer runs any worker process.
 
-`make local-forward` holds the backend open on `127.0.0.1:8787`, the auth service
-on `127.0.0.1:8789`, and the arena service on `127.0.0.1:8791`, which is all any
-launcher needs: the web console, **and equally `tcab run` or the desktop app**,
-enqueue runs against the one backend URL (the in-cluster dispatcher and driver
-execute them), and the web console runs adversarial matches/tournaments against
-the arena (the backend reports its URL at `GET /config`). Point `tcab` at the
-forwarded backend with `TCAB_BACKEND_URL=http://127.0.0.1:8787` (and `tcab login`
-first); the desktop app uses the same backend URL in its Connections settings.
-After editing a test case, re-ingest with
+`make local-forward` holds the **web console** open on `127.0.0.1:1430`, the
+backend on `127.0.0.1:8787`, the auth service on `127.0.0.1:8789`, the artifact
+service on `127.0.0.1:8790`, and the arena service on `127.0.0.1:8791`. Open the
+console at <http://127.0.0.1:1430> — it is served from the in-cluster `tcab-web`
+pod with its backend/auth URLs already baked in, so it is configured on first load
+(no `npm run dev`, no `VITE_BACKEND_URL`). The forwards are still needed because the
+**browser runs outside the cluster**: it loads the console, and reaches the backend
+(which the in-cluster dispatcher and driver drain), the artifact service (each run's
+build + proof/asset media, as `<img>`/`<iframe>` requests), and the arena
+(adversarial matches/tournaments — the backend reports its URL at `GET /config`)
+over these same forwards. `tcab run` and the desktop app target the **same**
+forwarded backend: point `tcab` at it with `TCAB_BACKEND_URL=http://127.0.0.1:8787`
+(and `tcab login` first); the desktop app uses the same backend URL in its
+Connections settings. After editing a test case, re-ingest with
 `make -C deployments/local local-ingest`.
 
 ## Pointing `tcab` at a deployment

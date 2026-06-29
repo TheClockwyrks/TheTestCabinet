@@ -115,13 +115,19 @@ make -C deployments/local local-up
 ```
 
 This creates a throwaway k3d cluster, builds the **backend**, **auth**,
-**dispatcher**, **driver**, and **artifact** images and loads them into the
-cluster with `k3d image import` (no registry needed), creates the cluster Secrets
-from your environment (the harness key above, plus a fixed dev service token the
-dispatcher claims jobs with), applies the
+**dispatcher**, **driver**, **artifact**, **arena**, and **web console** images and
+loads them into the cluster with `k3d image import` (no registry needed), creates the
+cluster Secrets from your environment (the harness key above, plus a fixed dev
+service token the dispatcher claims jobs with), applies the
 [`deployments/k8s/overlays/local`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/local)
 kustomize overlay, and force-ingests the test-case catalog from a read-only mount
 of the repository. It finishes once every service is rolled out.
+
+The **web console runs in-cluster**, the same way prod serves it (the overlay's
+`components/web`) — so this one command brings the whole UI up too. There is no
+separate `npm run dev` and no `VITE_BACKEND_URL`/`.env.local`: the console's backend
+and auth URLs are baked into the pod's `/config.js`, so it is configured the moment
+you open it (step 3).
 
 If you forgot to export a harness key, the bring-up stops before applying with a
 message naming the variables it accepts — export one and re-run.
@@ -132,40 +138,38 @@ Check what came up:
 make -C deployments/local local-status      # pods, services, and volumes in the namespace
 ```
 
-## 2. Expose the backend and auth service
+## 2. Expose the stack on localhost
 
-The console needs the backend and the auth service reachable on localhost. Hold
-them open in their own terminal:
-
-```sh
-make -C deployments/local local-forward     # backend → 127.0.0.1:8787, auth → 127.0.0.1:8789, artifacts → 127.0.0.1:8790, arena → 127.0.0.1:8791
-```
-
-Leave this running (Ctrl-C stops it). The console reads the live stream from the
-backend and pulls each run's playable build and proof/asset media **directly from
-the artifact service** — as ordinary browser `<img>`/`<iframe>` requests — so that
-service has to be reachable on localhost too. The local overlay points the
-artifact URL the backend advertises (`GET /config`) at this forwarded
-`127.0.0.1:8790`; in a real deployment it is the data-plane host the console
-reaches over the network instead.
-
-## 3. Start the web console
-
-In another terminal, run the console's dev server, pointing it at the forwarded
-services:
+The browser runs **outside** the cluster, so reach the in-cluster services over a
+port-forward. Hold them open in their own terminal:
 
 ```sh
-VITE_BACKEND_URL=http://127.0.0.1:8787 \
-VITE_AUTH_URL=http://127.0.0.1:8789 \
-  npm run dev -w @test-cabinet/web
+make -C deployments/local local-forward     # console → 127.0.0.1:1430, backend → :8787, auth → :8789, artifacts → :8790, arena → :8791
 ```
 
-You can also set the backend URL in the UI instead of `VITE_BACKEND_URL`; the
-console derives the auth URL from `VITE_AUTH_URL`, falling back to the backend URL
-if it is unset. Either way the backend is the **one** URL the console talks to for
-runs — there is no worker to register.
+Leave this running (Ctrl-C stops it). It forwards the **web console** itself
+(`127.0.0.1:1430`, served from the in-cluster `tcab-web` pod) alongside the data
+plane the browser then talks to directly: the backend (live run stream), the
+**artifact service** (each run's playable build and proof/asset media, as ordinary
+`<img>`/`<iframe>` requests), and the arena (matches/tournaments). The local overlay
+points the artifact and arena URLs the backend advertises (`GET /config`) at these
+forwarded `127.0.0.1` ports; in a real deployment they are the data-plane hosts the
+console reaches over the network instead.
 
-Open the console and **register an account**. Sign-in is required to **launch a
+## 3. Open the web console
+
+The console is already running in the cluster, so just open the forwarded address:
+
+<http://127.0.0.1:1430>
+
+There is **nothing to configure** — its backend and auth URLs are baked into the
+pod's `/config.js` (the overlay's `patch-web-config.yaml` points them at the
+forwarded `127.0.0.1:8787` / `:8789`), so the catalog loads on first visit. The
+backend is the **one** URL the console talks to for runs — there is no worker to
+register. (You can still override the backend URL in the UI's settings if you want
+to point this console at a different stack.)
+
+Now **register an account**. Sign-in is required to **launch a
 run** as well as to push, review, and publish — the backend gates `POST /jobs`
 on the launching account and attributes the run to it, so every mutation
 (enqueue included) needs a token. Reads still work signed-out, but those

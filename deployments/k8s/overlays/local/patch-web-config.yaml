@@ -1,0 +1,33 @@
+# Local web-console runtime config: point the in-cluster tcab-web pod at the
+# host-forwarded backend and auth service.
+#
+# The single tcab-web image is environment-agnostic (one build per git-sha), so the
+# backend + auth URLs are injected at RUNTIME via env: the image's entrypoint
+# `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The components/web
+# Deployment ships these env keys with empty defaults; this patch sets them to the
+# addresses `make local-forward` exposes on localhost.
+#
+# These MUST be the forwarded host addresses, not in-cluster Service DNS: the browser
+# runs OUTSIDE the cluster, so it loads the console over `kubectl port-forward`
+# (127.0.0.1:1430) and reaches the backend/auth the same way — the in-cluster
+# `tcab-backend:8787` / `tcab-auth:8789` names are not resolvable from the host
+# browser. (Same rationale as the backend's TCAB_ARTIFACTS_PUBLIC_URL /
+# TCAB_ARENA_PUBLIC_URL in patch-backend.yaml, which the console learns from
+# `GET /config`.) This is the local counterpart of azure-prod's patch-web-config.yaml,
+# which points the same env at the https ingress hostnames instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-web
+  # the base/component pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: TCAB_WEB_BACKEND_URL
+              value: "http://127.0.0.1:8787"
+            - name: TCAB_WEB_AUTH_URL
+              value: "http://127.0.0.1:8789"
