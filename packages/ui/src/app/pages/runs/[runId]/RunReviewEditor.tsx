@@ -24,9 +24,9 @@ import {
   aggregateScore,
   isRating,
   scoreChecklist,
-  worstRating,
   type Rating,
 } from "../../../data/ratings";
+import { ReviewList } from "./ReviewList";
 import styles from "../RunExec.module.scss";
 
 interface VerdictDraft {
@@ -119,6 +119,13 @@ export function RunReviewEditor({
   // Reviews this account has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
+  // Whether the review form is open. A reviewer who has not yet reviewed this run
+  // sees it open to write their first review; once they carry one it collapses to
+  // the summary (with an Edit affordance on their own review) so the form is not
+  // in the way of pushing/publishing. Deriving the effective `showForm` from this
+  // OR "has no own review" keeps the form open while `ownReview` is still
+  // resolving (account/reviews loading) and reopens it for a re-review on Edit.
+  const [editing, setEditing] = useState(false);
 
   // The expected reference media (by view) and the submitted proof media (by id)
   // for this run, resolved from the gallery data so each question can show both.
@@ -207,6 +214,16 @@ export function RunReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domains, account?.id]);
 
+  // Seed the writeup from the account's own prior review, re-seeding when the
+  // account resolves (it can load after mount). Mirrors the rating/verdict
+  // seeding above so an existing reviewer's prose is restored when they reopen
+  // the form to revise — the form may be collapsed until then.
+  useEffect(() => {
+    setWriteup(ownReview?.writeup ?? "");
+    // Seed when the account changes; `ownReview` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
+
   const allAddressed = items.every((item) => verdicts[item.id]?.status);
   const allRated = domains.every((domain) => ratings[domain.id]);
   const answeredCount = items.filter((i) => verdicts[i.id]?.status).length;
@@ -286,6 +303,8 @@ export function RunReviewEditor({
     run("Review submitted.", async () => {
       await client!.submitReview(runId, buildReview(), token!);
       setSubmittedThisSession(true);
+      // Collapse back to the summary; the just-submitted review now shows there.
+      setEditing(false);
     });
 
   // Publish: clear the gate (web flow). On the solo desktop path this saves the
@@ -319,6 +338,23 @@ export function RunReviewEditor({
   // one or one just submitted this session). The backend is the real gate.
   const canPublish = reviews.length > 0 || submittedThisSession || solo;
 
+  // Show the form when re-reviewing (Edit) or when this account has no review yet
+  // — so a first-time reviewer always lands on the form, and a reviewer who has
+  // already weighed in sees only the summary until they choose to revise.
+  const showForm = editing || !ownReview;
+  // Offered while revising an existing review, to back out without changing it.
+  const cancelButton =
+    editing && ownReview ? (
+      <button
+        type="button"
+        className={styles.secondary}
+        onClick={() => setEditing(false)}
+        disabled={busy}
+      >
+        Cancel
+      </button>
+    ) : null;
+
   const item = items[current];
   const draft = item ? (verdicts[item.id] ?? { status: "", note: "" }) : null;
   const expected = item?.reference
@@ -329,8 +365,16 @@ export function RunReviewEditor({
   return (
     <Panel>
       {/* The run's existing reviews and the aggregate rating + score, so a
-          reviewer sees what others recorded before adding their own. */}
-      <ExistingReviews reviews={reviews} items={items} />
+          reviewer sees what others recorded before adding their own. Each review
+          links to its own page; the active account's own review carries an Edit
+          control that reopens the form to revise it. */}
+      <ExistingReviews
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        ownReviewerId={account?.id ?? null}
+        onEdit={() => setEditing(true)}
+      />
 
       {/* Mutating actions are gated on being signed in. Signing in and managing
           the account live on their own pages (top-bar account control); here we
@@ -346,212 +390,225 @@ export function RunReviewEditor({
         </p>
       )}
 
-      {item && draft && (
-        <div className={styles.reviewLayout}>
-          {/* The navigable rail of every checklist item; answered items are
+      {/* The review form proper — the checklist questions, the writeup, and the
+          per-domain ratings — shown only while writing or revising a review. */}
+      {showForm && (
+        <>
+          {item && draft && (
+            <div className={styles.reviewLayout}>
+              {/* The navigable rail of every checklist item; answered items are
               marked done, the current one highlighted. */}
-          <nav className={styles.itemRail} aria-label="Checklist items">
-            <p className={styles.sectionLabel}>
-              {answeredCount}/{items.length} addressed
-            </p>
-            <ol className={styles.itemNavList}>
-              {items.map((it, index) => {
-                const answered = Boolean(verdicts[it.id]?.status);
-                const isCurrent = index === current;
-                return (
-                  <li key={it.id}>
-                    <button
-                      type="button"
-                      className={`${styles.itemNav}${
-                        isCurrent ? ` ${styles.itemNavActive}` : ""
-                      }${answered ? ` ${styles.itemNavDone}` : ""}`}
-                      onClick={() => setCurrent(index)}
-                      aria-current={isCurrent ? "true" : undefined}
-                    >
-                      <span className={styles.itemNavMark} aria-hidden="true">
-                        {answered ? "✓" : index + 1}
-                      </span>
-                      <span className={styles.itemNavTitle}>
-                        {it.title} ({pts(it.weight)})
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
+              <nav className={styles.itemRail} aria-label="Checklist items">
+                <p className={styles.sectionLabel}>
+                  {answeredCount}/{items.length} addressed
+                </p>
+                <ol className={styles.itemNavList}>
+                  {items.map((it, index) => {
+                    const answered = Boolean(verdicts[it.id]?.status);
+                    const isCurrent = index === current;
+                    return (
+                      <li key={it.id}>
+                        <button
+                          type="button"
+                          className={`${styles.itemNav}${
+                            isCurrent ? ` ${styles.itemNavActive}` : ""
+                          }${answered ? ` ${styles.itemNavDone}` : ""}`}
+                          onClick={() => setCurrent(index)}
+                          aria-current={isCurrent ? "true" : undefined}
+                        >
+                          <span
+                            className={styles.itemNavMark}
+                            aria-hidden="true"
+                          >
+                            {answered ? "✓" : index + 1}
+                          </span>
+                          <span className={styles.itemNavTitle}>
+                            {it.title} ({pts(it.weight)})
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </nav>
 
-          {/* The current question: title, description, the expected vs submitted
+              {/* The current question: title, description, the expected vs submitted
               media (when the item pairs them), and the verdict controls. */}
-          <div className={styles.questionPanel}>
-            <span className={styles.checklistTitle}>
-              <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
-              {item.title} ({pts(item.weight)})
-            </span>
-            <span className={styles.checklistText}>{item.text}</span>
+              <div className={styles.questionPanel}>
+                <span className={styles.checklistTitle}>
+                  <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
+                  {item.title} ({pts(item.weight)})
+                </span>
+                <span className={styles.checklistText}>{item.text}</span>
 
-            {/* For an asset-generation item that names sheet sequences/frames, the
+                {/* For an asset-generation item that names sheet sequences/frames, the
                 relevant animations and frames inline (with an Animation/Frames
                 toggle) so the reviewer checks the item against exactly the assets
                 it is about, without leaving the question. */}
-            {asset &&
-              ((item.sequences?.length ?? 0) > 0 ||
-                (item.frames?.length ?? 0) > 0) && (
-                <ReviewItemAssets
-                  key={item.id}
-                  asset={asset}
-                  sequences={item.sequences ?? []}
-                  frames={item.frames ?? []}
-                />
-              )}
+                {asset &&
+                  ((item.sequences?.length ?? 0) > 0 ||
+                    (item.frames?.length ?? 0) > 0) && (
+                    <ReviewItemAssets
+                      key={item.id}
+                      asset={asset}
+                      sequences={item.sequences ?? []}
+                      frames={item.frames ?? []}
+                    />
+                  )}
 
-            {/* Expected reference beside submitted proof. Each pane shows only
+                {/* Expected reference beside submitted proof. Each pane shows only
                 when that side exists — an item may declare just a proof (e.g. a
                 video clip with no still that depicts it), so it takes the full
                 width rather than reserving an empty Expected column. */}
-            {(expected || item.proof) && (
-              <div
-                className={`${styles.mediaPanes}${
-                  expected && item.proof ? "" : ` ${styles.mediaPanesSingle}`
-                }`}
-              >
-                {expected && (
-                  <figure className={styles.mediaPane}>
-                    <figcaption className={styles.mediaPaneLabel}>
-                      Expected
-                    </figcaption>
-                    <MediaView
-                      kind={expected.kind}
-                      url={expected.url}
-                      alt={`Expected ${item.reference}`}
-                    />
-                  </figure>
-                )}
-                {item.proof && (
-                  <figure className={styles.mediaPane}>
-                    <figcaption className={styles.mediaPaneLabel}>
-                      Submitted
-                    </figcaption>
-                    {submitted && submitted.present && submitted.url ? (
-                      <MediaView
-                        kind={submitted.kind}
-                        url={submitted.url}
-                        alt={`Submitted ${item.proof}`}
-                      />
-                    ) : (
-                      <p className={styles.mediaMissing}>
-                        {submitted && !submitted.present
-                          ? "The agent did not submit this proof."
-                          : "Proof media is not available here."}
-                      </p>
+                {(expected || item.proof) && (
+                  <div
+                    className={`${styles.mediaPanes}${
+                      expected && item.proof
+                        ? ""
+                        : ` ${styles.mediaPanesSingle}`
+                    }`}
+                  >
+                    {expected && (
+                      <figure className={styles.mediaPane}>
+                        <figcaption className={styles.mediaPaneLabel}>
+                          Expected
+                        </figcaption>
+                        <MediaView
+                          kind={expected.kind}
+                          url={expected.url}
+                          alt={`Expected ${item.reference}`}
+                        />
+                      </figure>
                     )}
-                  </figure>
+                    {item.proof && (
+                      <figure className={styles.mediaPane}>
+                        <figcaption className={styles.mediaPaneLabel}>
+                          Submitted
+                        </figcaption>
+                        {submitted && submitted.present && submitted.url ? (
+                          <MediaView
+                            kind={submitted.kind}
+                            url={submitted.url}
+                            alt={`Submitted ${item.proof}`}
+                          />
+                        ) : (
+                          <p className={styles.mediaMissing}>
+                            {submitted && !submitted.present
+                              ? "The agent did not submit this proof."
+                              : "Proof media is not available here."}
+                          </p>
+                        )}
+                      </figure>
+                    )}
+                  </div>
                 )}
+
+                <div className={styles.checklistControls}>
+                  <select
+                    className={styles.select}
+                    value={draft.status}
+                    onChange={(e) =>
+                      setVerdict(item.id, {
+                        status: e.target.value as VerdictStatus | "",
+                      })
+                    }
+                  >
+                    <option value="">— pick —</option>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {VERDICT_META[s].label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={styles.input}
+                    value={draft.note}
+                    onChange={(e) =>
+                      setVerdict(item.id, { note: e.target.value })
+                    }
+                    placeholder="note (optional)"
+                  />
+                </div>
+
+                <div className={styles.questionNav}>
+                  <button
+                    type="button"
+                    className={styles.secondary}
+                    onClick={() => setCurrent((c) => Math.max(0, c - 1))}
+                    disabled={current === 0}
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondary}
+                    onClick={() =>
+                      setCurrent((c) => Math.min(items.length - 1, c + 1))
+                    }
+                    disabled={current >= items.length - 1}
+                  >
+                    Next →
+                  </button>
+                </div>
               </div>
-            )}
-
-            <div className={styles.checklistControls}>
-              <select
-                className={styles.select}
-                value={draft.status}
-                onChange={(e) =>
-                  setVerdict(item.id, {
-                    status: e.target.value as VerdictStatus | "",
-                  })
-                }
-              >
-                <option value="">— pick —</option>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {VERDICT_META[s].label}
-                  </option>
-                ))}
-              </select>
-              <input
-                className={styles.input}
-                value={draft.note}
-                onChange={(e) => setVerdict(item.id, { note: e.target.value })}
-                placeholder="note (optional)"
-              />
             </div>
+          )}
 
-            <div className={styles.questionNav}>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => setCurrent((c) => Math.max(0, c - 1))}
-                disabled={current === 0}
-              >
-                ← Previous
-              </button>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() =>
-                  setCurrent((c) => Math.min(items.length - 1, c + 1))
-                }
-                disabled={current >= items.length - 1}
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <label className={styles.field}>
-        <span className={styles.fieldLabel}>Writeup</span>
-        <textarea
-          className={styles.textarea}
-          rows={8}
-          value={writeup}
-          onChange={(e) => setWriteup(e.target.value)}
-          placeholder="How did the build play? What worked, what was broken?"
-        />
-      </label>
-
-      {/* One rating per scoring domain — the reviewer rates each independently and
-          the run's overall rating is the worst across them. */}
-      <fieldset className={styles.ratings}>
-        <legend className={styles.fieldLabel}>
-          Ratings
-          <span
-            className={styles.help}
-            role="img"
-            aria-label="Rating criteria"
-            title={RATING_CRITERIA}
-          >
-            ?
-          </span>
-        </legend>
-        {domains.map((domain) => (
-          <label
-            key={domain.id}
-            className={`${styles.field} ${styles.fieldStacked}`}
-          >
-            <span className={styles.fieldLabel} title={domain.description}>
-              {domain.name}
-            </span>
-            <select
-              className={styles.select}
-              value={ratings[domain.id] ?? "great"}
-              onChange={(e) =>
-                isRating(e.target.value) &&
-                setRatings((prev) => ({
-                  ...prev,
-                  [domain.id]: e.target.value as Rating,
-                }))
-              }
-            >
-              {RATINGS.map((rt) => (
-                <option key={rt} value={rt}>
-                  {rt}
-                </option>
-              ))}
-            </select>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Writeup</span>
+            <textarea
+              className={styles.textarea}
+              rows={8}
+              value={writeup}
+              onChange={(e) => setWriteup(e.target.value)}
+              placeholder="How did the build play? What worked, what was broken?"
+            />
           </label>
-        ))}
-      </fieldset>
+
+          {/* One rating per scoring domain — the reviewer rates each independently and
+          the run's overall rating is the worst across them. */}
+          <fieldset className={styles.ratings}>
+            <legend className={styles.fieldLabel}>
+              Ratings
+              <span
+                className={styles.help}
+                role="img"
+                aria-label="Rating criteria"
+                title={RATING_CRITERIA}
+              >
+                ?
+              </span>
+            </legend>
+            {domains.map((domain) => (
+              <label
+                key={domain.id}
+                className={`${styles.field} ${styles.fieldStacked}`}
+              >
+                <span className={styles.fieldLabel} title={domain.description}>
+                  {domain.name}
+                </span>
+                <select
+                  className={styles.select}
+                  value={ratings[domain.id] ?? "great"}
+                  onChange={(e) =>
+                    isRating(e.target.value) &&
+                    setRatings((prev) => ({
+                      ...prev,
+                      [domain.id]: e.target.value as Rating,
+                    }))
+                  }
+                >
+                  {RATINGS.map((rt) => (
+                    <option key={rt} value={rt}>
+                      {rt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </fieldset>
+        </>
+      )}
 
       {(() => {
         const reviewReady = writeup.trim() !== "" && allAddressed && allRated;
@@ -589,6 +646,7 @@ export function RunReviewEditor({
               >
                 Publish run
               </button>
+              {cancelButton}
             </div>
           );
         }
@@ -608,20 +666,22 @@ export function RunReviewEditor({
             >
               {pushed ? "Pushed" : "Push run"}
             </button>
-            <button
-              className={styles.secondary}
-              onClick={onSubmitReview}
-              disabled={busy || needAccount || !pushed || !reviewReady}
-              title={
-                needAccount
-                  ? "Sign in to review"
-                  : !pushed
-                    ? "Push the run before reviewing it"
-                    : reviewTitle
-              }
-            >
-              Submit review
-            </button>
+            {showForm && (
+              <button
+                className={styles.secondary}
+                onClick={onSubmitReview}
+                disabled={busy || needAccount || !pushed || !reviewReady}
+                title={
+                  needAccount
+                    ? "Sign in to review"
+                    : !pushed
+                      ? "Push the run before reviewing it"
+                      : reviewTitle
+                }
+              >
+                {ownReview ? "Update review" : "Submit review"}
+              </button>
+            )}
             <button
               className={styles.primary}
               onClick={onPublish}
@@ -636,6 +696,7 @@ export function RunReviewEditor({
             >
               Publish run
             </button>
+            {cancelButton}
           </div>
         );
       })()}
@@ -647,16 +708,25 @@ export function RunReviewEditor({
 }
 
 // The run's existing reviews and the aggregate verdict, shown above the editor so
-// a reviewer sees what others recorded. The aggregate rating is the worst any
-// reviewer gave any domain ({@link aggregateRating}); the aggregate score is the
-// mean earned over the case's checklist across reviews ({@link aggregateScore}),
-// when the scoring model is available.
+// a reviewer sees what others recorded. The header pairs the aggregate verdict —
+// the worst rating any reviewer gave any domain ({@link aggregateRating}) and the
+// mean earned over the case's checklist ({@link aggregateScore}, when the scoring
+// model is available) — with the review count pushed to its right. Each review is
+// a compact, clickable row (author, its own rating + score, and the first line of
+// its writeup) linking to that review's own page; the active account's own review
+// carries an Edit control that reopens the form to revise it.
 function ExistingReviews({
   reviews,
   items,
+  runId,
+  ownReviewerId,
+  onEdit,
 }: {
   reviews: StoredReview[];
   items: ReviewItem[];
+  runId: string;
+  ownReviewerId: string | null;
+  onEdit: () => void;
 }) {
   if (reviews.length === 0) return null;
 
@@ -667,42 +737,35 @@ function ExistingReviews({
       : null;
 
   return (
-    <div className={styles.field}>
-      <p className={styles.sectionLabel}>
-        {reviews.length} review{reviews.length === 1 ? "" : "s"}
-      </p>
-      <div className={styles.actions}>
-        {aggRating && (
-          <span title="Aggregate rating (worst across all reviews)">
-            <RatingBadge rating={aggRating} />
-          </span>
-        )}
-        {aggScore && (
-          <span className={styles.muted}>
-            {aggScore.earned.toFixed(1)} / {aggScore.total} pts (avg of{" "}
-            {aggScore.reviews})
-          </span>
-        )}
+    <div className={styles.reviewSummary}>
+      {/* The aggregate verdict on the left, the review count pushed to the right
+          on the same row. */}
+      <div className={styles.reviewSummaryHeader}>
+        <div className={styles.reviewSummaryVerdict}>
+          {aggRating && (
+            <span title="Aggregate rating (worst across all reviews)">
+              <RatingBadge rating={aggRating} />
+            </span>
+          )}
+          {aggScore && (
+            <span className={styles.muted}>
+              {aggScore.earned.toFixed(1)} / {aggScore.total} pts (avg of{" "}
+              {aggScore.reviews})
+            </span>
+          )}
+        </div>
+        <span className={styles.reviewCount}>
+          {reviews.length} review{reviews.length === 1 ? "" : "s"}
+        </span>
       </div>
-      <ul>
-        {reviews.map((review) => {
-          const overall = worstRating(review.ratings.map((r) => r.rating));
-          return (
-            <li key={review.reviewerId || review.reviewer}>
-              <strong>{review.reviewer}</strong>
-              {overall && (
-                <>
-                  {" — "}
-                  <RatingBadge rating={overall} />
-                </>
-              )}
-              {review.writeup.trim() && (
-                <p className={styles.muted}>{review.writeup.trim()}</p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+
+      <ReviewList
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        ownReviewerId={ownReviewerId}
+        onEdit={onEdit}
+      />
     </div>
   );
 }

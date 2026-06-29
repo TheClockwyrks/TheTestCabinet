@@ -65,12 +65,16 @@ export const routes = {
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
   runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
+  // One reviewer's full review of a run: their writeup and per-item verdicts.
+  // Keyed by the reviewing account's id (a run carries at most one review per
+  // account), so each review is its own linkable URL.
+  runReview: (runId: string, reviewerId: string): string =>
+    `/runs/${encodeURIComponent(runId)}/reviews/${encodeURIComponent(reviewerId)}`,
   runInputs: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/inputs`,
   runProof: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/proof`,
-  runPlay: (runId: string): string =>
-    `/runs/${encodeURIComponent(runId)}/play`,
+  runPlay: (runId: string): string => `/runs/${encodeURIComponent(runId)}/play`,
   runMetrics: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/metrics`,
   runMetadata: (runId: string): string =>
@@ -114,6 +118,7 @@ export const routePatterns = {
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
+  runReview: "/runs/:runId/reviews/:reviewerId",
   runInputs: "/runs/:runId/inputs",
   runProof: "/runs/:runId/proof",
   runPlay: "/runs/:runId/play",

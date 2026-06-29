@@ -566,3 +566,44 @@
   gap: t.$space-sm;
   margin-top: t.$space-sm;
 }
+
+// --- Existing-reviews summary (above the review editor) ----------------------
+
+// The whole summary block: the aggregate-verdict header over the per-review rows.
+// It leads the review panel, so the panel's own padding supplies the space above;
+// a bottom margin sets it off from the form/notice beneath.
+.reviewSummary {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+// The header row: the aggregate rating + score on the left, the review count
+// pushed to the right, on one line (wrapping only when truly cramped).
+.reviewSummaryHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.reviewSummaryVerdict {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.reviewCount {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// The per-review rows themselves are the shared `ReviewList` component, which
+// owns its own styling (ReviewList.module.scss) so the read-only published
+// verdict can list reviews with the same rows.

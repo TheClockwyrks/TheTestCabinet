@@ -1,0 +1,81 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// The list of a run's individual reviews, shared by the Verdict tab's editor
+// (above the form) and its read-only published view. One row per review: a
+// clickable summary linking to the review's own page, with an optional Edit
+// control (the owner's review, in the editor) pinned to its right.
+.reviewList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One review as a row: the clickable summary fills the width, with the owner's
+// Edit control (when present) pinned to its right.
+.reviewRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The clickable review summary: author, its rating + score, and a one-line
+// writeup preview, on a single line that truncates rather than wraps.
+.reviewLink {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  text-decoration: none;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.reviewAuthor {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.reviewScore {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.reviewSnippet {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewEdit {
+  flex: 0 0 auto;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}

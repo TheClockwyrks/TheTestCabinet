@@ -11,6 +11,7 @@ import { RunPlayPage } from "./[runId]/RunPlayPage";
 import { RunProofPage } from "./[runId]/RunProofPage";
 import { RunInputsPage } from "./[runId]/RunInputsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
+import { RunReviewPage } from "./[runId]/RunReviewPage";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
 // detail, whose Verdict / Play / Inputs / Proof / Metrics / Events / Metadata
@@ -31,10 +32,7 @@ export function runsRoutes(canExecute: boolean) {
           produced failures and publishes them, which the static site cannot do.
           Its static path outranks the `/runs/:runId` dynamic route. */}
       {canExecute && (
-        <Route
-          path={routePatterns.runFailures}
-          element={<RunFailuresPage />}
-        />
+        <Route path={routePatterns.runFailures} element={<RunFailuresPage />} />
       )}
       {canExecute && (
         <Route path={routePatterns.runNew} element={<NewRunPage />} />
@@ -43,6 +41,7 @@ export function runsRoutes(canExecute: boolean) {
         <Route path={routePatterns.runMonitor} element={<RunMonitorPage />} />
       )}
       <Route path={routePatterns.runDetail} element={<RunVerdictPage />} />
+      <Route path={routePatterns.runReview} element={<RunReviewPage />} />
       <Route path={routePatterns.runInputs} element={<RunInputsPage />} />
       <Route path={routePatterns.runProof} element={<RunProofPage />} />
       <Route path={routePatterns.runPlay} element={<RunPlayPage />} />

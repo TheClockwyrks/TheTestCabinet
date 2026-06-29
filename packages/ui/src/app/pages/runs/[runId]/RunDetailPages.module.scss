@@ -299,6 +299,38 @@
   margin: 0 0 t.$space-xs;
 }
 
+// The individual-reviews list beneath the read-only published verdict, set off
+// from the checklist above it the same way the checklist is set off from the
+// writeup.
+.reviews {
+  margin-top: t.$space-xl;
+}
+
+// --- The single-review page (RunReviewPage) ----------------------------------
+
+// The "← All reviews" link back to the Verdict tab, above one reviewer's review.
+.backLink {
+  display: inline-block;
+  margin-bottom: t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-decoration: none;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+// The attribution line beneath the back link: who wrote this review and when.
+.reviewAttribution {
+  margin: 0 0 t.$space-md;
+  color: t.$color-text;
+}
+
+.reviewWhen {
+  color: t.$color-text-muted;
+}
+
 // --- The generated-asset view (AssetResultSection) ---------------------------
 
 // A stack of sequence rows, spaced so each animation reads as its own band. Used

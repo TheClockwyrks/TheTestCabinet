@@ -12,6 +12,7 @@ import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
+import { ReviewList } from "./ReviewList";
 import { AssetResultSection } from "./AssetResultSection";
 import styles from "./RunDetailPages.module.scss";
 
@@ -77,18 +78,37 @@ export function RunVerdictPage() {
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
-                <Panel>
-                  {review ? (
-                    <PublishedVerdict
-                      review={review}
-                      model={gallery.reviewModelFor(run.subject)}
-                    />
-                  ) : (
-                    <p className={styles.empty}>
-                      No manual review has been written for this run yet.
-                    </p>
-                  )}
-                </Panel>
+                (() => {
+                  const model = gallery.reviewModelFor(run.subject);
+                  const reviews = gallery.reviewsFor(run.id);
+                  return (
+                    <Panel>
+                      {review ? (
+                        <PublishedVerdict review={review} model={model} />
+                      ) : (
+                        <p className={styles.empty}>
+                          No manual review has been written for this run yet.
+                        </p>
+                      )}
+                      {/* The individual reviews behind the aggregate verdict above,
+                          each linking to its own page (its full prose and per-item
+                          verdicts). Shown whenever the run carries any review. */}
+                      {reviews.length > 0 && (
+                        <div className={styles.reviews}>
+                          <h2 className={styles.checklistHeading}>
+                            {reviews.length} review
+                            {reviews.length === 1 ? "" : "s"}
+                          </h2>
+                          <ReviewList
+                            reviews={reviews}
+                            items={model.items}
+                            runId={run.id}
+                          />
+                        </div>
+                      )}
+                    </Panel>
+                  );
+                })()
               )
             }
           </div>
@@ -102,7 +122,7 @@ export function RunVerdictPage() {
 // the writeup prose, and the checklist broken down by domain. The scoring model
 // (item weights + domains) is resolved from the catalog; when it is unavailable
 // (a case not in this host's catalog) the score and weights are simply omitted.
-function PublishedVerdict({
+export function PublishedVerdict({
   review,
   model,
 }: {
@@ -189,7 +209,11 @@ function PublishedVerdict({
         </div>
       )}
 
-      <Markdown className={styles.writeupBody}>{review.body}</Markdown>
+      {/* The writeup is prose typed in a textarea, so honor its line breaks
+          literally rather than collapsing single newlines the CommonMark way. */}
+      <Markdown breaks className={styles.writeupBody}>
+        {review.body}
+      </Markdown>
 
       {/* The reviewer's per-item checklist, grouped by domain. */}
       {review.checklist.length > 0 && (
