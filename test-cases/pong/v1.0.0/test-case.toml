@@ -340,3 +340,4 @@ weight = 1
 id = "menu-rendering"
 title = "Menu Rendering"
 text = "Menus are rendered and styled according to the provided references and without visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
+weight = 1
