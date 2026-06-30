@@ -62,6 +62,18 @@ OVERLAY := $(REPO)/deployments/k8s/overlays/local
 # `kubeconfig` target to repoint the API server for in-devcontainer access).
 KUBE_CTX := k3d-$(CLUSTER)
 
+# Every cluster-operating recipe goes through this instead of bare `kubectl`, so
+# it ALWAYS targets the local k3d cluster regardless of the kubeconfig's
+# current-context. Without the pin, a kubeconfig whose active context points at a
+# `tcab` staging/prod AKS cluster (a common state when an operator has just been
+# working against a deployment) would silently send these creates/applies/restarts
+# — and the secrets — at the wrong cluster. `--context` selects the context by the
+# fixed name k3d gives it; if it does not exist yet, kubectl fails fast with a clear
+# "context not found" instead of acting on prod. (The `kubeconfig` target's
+# `kubectl config set-*` calls are deliberately NOT routed through this: they edit a
+# named cluster entry and are independent of the current context.)
+KUBECTL := kubectl --context '$(KUBE_CTX)'
+
 # Container runtime used to build the images. Prefers podman when installed,
 # falling back to docker; override with `CONTAINER_TOOL=… make …`. (podman is
 # checked first on purpose: a host that points `docker` at podman would otherwise
@@ -232,13 +244,13 @@ images:
 # block this NEVER errors when the files are absent — subscription is opt-in; the
 # Secret is mounted optional, so missing creds just leave runs API-key-only.
 secrets:
-	@kubectl create namespace '$(NS)' --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-	@kubectl -n '$(NS)' create secret generic tcab-backend-secrets \
+	@$(KUBECTL) create namespace '$(NS)' --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	@$(KUBECTL) -n '$(NS)' create secret generic tcab-backend-secrets \
 	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
-	  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-	@kubectl -n '$(NS)' create secret generic tcab-dispatcher-secrets \
+	  --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	@$(KUBECTL) -n '$(NS)' create secret generic tcab-dispatcher-secrets \
 	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
-	  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	  --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	@set -e; \
 	  $(LOAD_ENV); \
 	  args=""; \
@@ -252,8 +264,8 @@ secrets:
 	    echo "       before running this (it injects the key into each driver Job)."; \
 	    exit 1; \
 	  fi; \
-	  kubectl -n '$(NS)' create secret generic tcab-driver-secrets $$args \
-	    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	  $(KUBECTL) -n '$(NS)' create secret generic tcab-driver-secrets $$args \
+	    --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	@echo "Secrets applied to namespace '$(NS)' from the environment."
 	@# OPTIONAL subscription creds, keyed by credential BASENAME (the driver maps
 	@# each back to its full container path). Opt-in: include only the files that
@@ -267,8 +279,8 @@ secrets:
 	  if [ -f "$$codex_home/auth.json" ];            then args="$$args --from-file=auth.json=$$codex_home/auth.json"; fi; \
 	  if [ -f "$$HOME/.gemini/antigravity-cli/antigravity-oauth-token" ]; then args="$$args --from-file=antigravity-oauth-token=$$HOME/.gemini/antigravity-cli/antigravity-oauth-token"; fi; \
 	  if [ -n "$$args" ]; then \
-	    kubectl -n '$(NS)' create secret generic tcab-driver-subscription $$args \
-	      --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	    $(KUBECTL) -n '$(NS)' create secret generic tcab-driver-subscription $$args \
+	      --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null; \
 	    echo "Subscription creds applied to tcab-driver-subscription (opt-in)."; \
 	  else \
 	    echo "No host subscription creds found — skipping tcab-driver-subscription (runs stay API-key-only)."; \
@@ -277,14 +289,14 @@ secrets:
 # Apply the local overlay and wait for every service to become ready. Secrets are
 # created first (from the environment) so the pods find them on their first start.
 apply: secrets
-	kubectl apply -k '$(OVERLAY)'
-	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-lgtm      --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
+	$(KUBECTL) apply -k '$(OVERLAY)'
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-lgtm      --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
 # Uses an ephemeral port-forward that is torn down when the recipe exits, then
@@ -311,7 +323,7 @@ local-ingest:
 	    fi; \
 	  fi; \
 	  pflog="$$(mktemp)"; \
-	  kubectl -n '$(NS)' port-forward svc/tcab-backend $$port:8787 >"$$pflog" 2>&1 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend $$port:8787 >"$$pflog" 2>&1 & \
 	  pf=$$!; trap 'kill $$pf 2>/dev/null; rm -f "$$pflog"' EXIT; \
 	  ready=""; \
 	  for i in $$(seq 1 30); do \
@@ -337,11 +349,11 @@ local-ingest:
 # are still required even though the console itself now lives in-cluster.
 local-forward:
 	@echo "Forwarding console→http://127.0.0.1:1430, backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
-	@kubectl -n '$(NS)' port-forward svc/tcab-web 1430:80 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
+	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-web 1430:80 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
 	  wait
 
 # Hold the in-cluster Grafana LGTM stack open on localhost until interrupted
@@ -354,9 +366,9 @@ local-forward:
 # export to the `tcab-lgtm` Service directly.
 local-grafana:
 	@echo "Forwarding Grafana→http://127.0.0.1:3000, OTLP→127.0.0.1:4318 (HTTP) + :4317 (gRPC) (Ctrl-C to stop)…"
-	@kubectl -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-lgtm 4318:4318 & \
-	  kubectl -n '$(NS)' port-forward svc/tcab-lgtm 4317:4317 & \
+	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 4318:4318 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 4317:4317 & \
 	  wait
 
 # Rebuild after a code change: new images, re-import, re-apply the overlay, rolling
@@ -369,13 +381,13 @@ local-grafana:
 # restart below still forces the pods to pick up rebuilt images even when their spec
 # is byte-identical (same :local tag), which apply alone would not trigger.
 local-rebuild: images apply
-	kubectl -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher deployment/tcab-web
-	kubectl -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
-	kubectl -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
-	kubectl -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher deployment/tcab-web
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
+	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
 
 # Re-apply the overlay ONLY, with no image rebuild or service restart — the fast
 # path after a manifest-only change (RBAC, env, volumes). `kubectl apply -k` is
@@ -386,10 +398,10 @@ local-rebuild: images apply
 # after this; a Role change like the driver's pods/exec RBAC takes effect for the
 # next driver Job with no restart.
 local-reapply:
-	kubectl apply -k '$(OVERLAY)'
+	$(KUBECTL) apply -k '$(OVERLAY)'
 
 local-status:
-	kubectl -n '$(NS)' get pods,svc,pvc
+	$(KUBECTL) -n '$(NS)' get pods,svc,pvc
 
 local-down:
 	-k3d cluster delete '$(CLUSTER)'
