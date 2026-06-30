@@ -68,13 +68,8 @@ patches:
 # Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
 # rather than :latest in a real deployment.
 #
-# All service images are pinned to ONE git-sha so they version together. This sha is
-# `88a572d` (refactor: remove the standalone "push" run operation): a descendant of
-# `69ac355` (and of `c461b06`), it carries everything the previous pins did — the
-# multi-arch run-image build + TCAB_CONTAINER_* forwarding, the in-cluster-publishing
-# build (backend/dispatcher/artifacts), the tcab-web runtime config-render fix, and
-# the run-delete queue-row cleanup — plus the review-UI rework and the removal of the
-# standalone "push" run operation.
+# All service images are pinned to ONE git-sha so they version together, currently
+# `7f29773`.
 #
 # The RUN-CONTAINER images (test-cabinet-base/-sprite/-sprite-sheet/-adversarial/
 # -performance) are pinned SEPARATELY to `c461b06` via TCAB_CONTAINER_TAG in
@@ -88,35 +83,33 @@ patches:
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
-  # URLs are injected at runtime via env, not baked. This sha carries the runtime
-  # config-render fix (web root made writable for uid 101 so 30-render-config.sh can
-  # write config.js; template moved out of /etc/nginx/templates/) that the earlier
-  # cb0fef3 build crash-looped without. GHCR package is Public/anonymously pullable.
+  # URLs are injected at runtime via env, not baked. GHCR package is Public/anonymously
+  # pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 88a572d02295f22ad997422e3804ee0abca28f93
+    newTag: 7f297733d9ece54d1a720482c2489d46c9756ff6
