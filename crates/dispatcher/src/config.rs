@@ -35,7 +35,8 @@
 //! | `TCAB_K8S_IMAGE_PULL_SECRETS` | Comma-separated `imagePullSecret` names for the run-container image. |
 //! | `TCAB_K8S_RUN_CPU_REQUEST` / `TCAB_K8S_RUN_CPU_LIMIT` | CPU request/limit per sandbox pod. |
 //! | `TCAB_K8S_RUN_MEMORY_REQUEST` / `TCAB_K8S_RUN_MEMORY_LIMIT` | Memory request/limit per sandbox pod. |
-//! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits for a sandbox pod to reach `Running`. |
+//! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits, once a sandbox pod is **scheduled**, for it to reach `Running` before failing the run. |
+//! | `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS` | How long the driver lets a sandbox pod sit unscheduled (queued for capacity) before giving up. Unset/`0` waits forever, so a busy cluster makes runs queue rather than fail. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
 //! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (`core::harness::resolve_run_image`); unset uses the compiled defaults (`ghcr.io/theclockwyrks` / `latest`). Set `TCAB_CONTAINER_TAG` to a `:<git-sha>` to **pin** the run image, just as the overlays pin the service `image:` tags. |
 //! | `TCAB_CONTAINER_IMAGE_BASE` / `_SPRITE` / `_SPRITE_SHEET` / `_ADVERSARIAL` / `_PERFORMANCE` | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
@@ -63,6 +64,7 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_RUN_MEMORY_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_K8S_POD_READY_TIMEOUT_SECONDS",
+    "TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS",
     "TCAB_K8S_RUN_POD_PREFIX",
     // The run-container image the driver resolves for each sandbox pod
     // (`core::harness::resolve_run_image`, which reads these from the driver's own

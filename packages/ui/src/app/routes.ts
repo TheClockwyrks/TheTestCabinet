@@ -64,7 +64,11 @@ export const routes = {
   },
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
-  runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
+  // The run's default (Verdict) tab. `edit` opens the review editor in revise
+  // mode — used by the single-review page's Edit control to return here with the
+  // owner's review form reopened.
+  runDetail: (runId: string, opts?: { edit?: boolean }): string =>
+    `/runs/${encodeURIComponent(runId)}${opts?.edit ? "?edit=1" : ""}`,
   // One reviewer's full review of a run: their writeup and per-item verdicts.
   // Keyed by the reviewing account's id (a run carries at most one review per
   // account), so each review is its own linkable URL.

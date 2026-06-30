@@ -145,6 +145,7 @@ export default defineConfig({
             "quickstarts/create-a-sprite-sheet-variant",
             "quickstarts/review-a-run",
             "quickstarts/publish-a-run",
+            "quickstarts/roll-prod-service-images",
           ],
         },
         {
@@ -161,12 +162,14 @@ export default defineConfig({
             "guides/creating-a-sprite-sheet-variant",
             "guides/reviewing-test-run-results",
             "guides/publishing-a-test-run-result",
+            "guides/rolling-prod-service-images",
           ],
         },
         {
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.3.3",
             "changelogs/v0.3.2",
             "changelogs/v0.3.1",
             "changelogs/v0.3.0",

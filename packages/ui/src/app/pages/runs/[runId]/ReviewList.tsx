@@ -3,34 +3,30 @@ import { RatingBadge } from "@test-cabinet/ui";
 import {
   scoreChecklist,
   worstRating,
+  type Rating,
+  type Score,
   type WeightedItem,
 } from "../../../data/ratings";
 import type { StoredReview } from "../../../../client/types";
 import { routes } from "../../../routes";
 import styles from "./ReviewList.module.scss";
 
-// A run's individual reviews as compact rows — author, the review's own rating
-// and score, and a one-line preview of its writeup — each linking to that
-// review's own page (its full prose and per-item verdicts). Shared by the Verdict
-// tab's editor (above the form, where the active account's own review carries an
-// Edit control) and its read-only published view (listed, not editable).
+// A run's individual reviews as compact, clickable cards — author and overall
+// rating on the first line, the review's timestamp and score on the second, and a
+// few lines of its writeup beneath — each linking to that review's own page (its
+// full prose and per-item verdicts). Shared by the Verdict tab's editor (above the
+// form) and its read-only published view.
 //
 // Scoring uses the case's declared `items`; pass an empty list when the scoring
-// model is unavailable and the per-row score is simply omitted. `ownReviewerId`
-// + `onEdit` are the editor's affordance for revising one's own review; omit them
-// (the default) for a read-only listing.
+// model is unavailable and the per-review score is simply omitted.
 export function ReviewList({
   reviews,
   items,
   runId,
-  ownReviewerId = null,
-  onEdit,
 }: {
   reviews: StoredReview[];
   items: readonly WeightedItem[];
   runId: string;
-  ownReviewerId?: string | null;
-  onEdit?: () => void;
 }) {
   return (
     <ul className={styles.reviewList}>
@@ -38,43 +34,81 @@ export function ReviewList({
         const overall = worstRating(review.ratings.map((r) => r.rating));
         const score =
           items.length > 0 ? scoreChecklist(items, review.checklist) : null;
-        // The first non-empty line of the writeup, as a one-line preview; the
-        // full prose (with its line breaks honored) lives on the review's page.
-        const snippet =
-          review.writeup.split(/\r?\n/).find((line) => line.trim()) ?? "";
-        const isOwn = !!ownReviewerId && review.reviewerId === ownReviewerId;
+        // The leading lines of the writeup as a preview, clamped to a few lines
+        // with an ellipsis; the full prose lives on the review's own page.
+        const snippet = review.writeup.trim();
         return (
-          <li
-            key={review.reviewerId || review.reviewer}
-            className={styles.reviewRow}
-          >
+          <li key={review.reviewerId || review.reviewer}>
             <Link
               to={routes.runReview(runId, review.reviewerId)}
               className={styles.reviewLink}
             >
-              <span className={styles.reviewAuthor}>{review.reviewer}</span>
-              {overall && <RatingBadge rating={overall} />}
-              {score && (
-                <span className={styles.reviewScore}>
-                  {score.earned} / {score.total} pts
-                </span>
-              )}
-              {snippet && (
-                <span className={styles.reviewSnippet}>{snippet.trim()}</span>
-              )}
+              <div className={styles.reviewBody}>
+                <ReviewHeader
+                  reviewer={review.reviewer}
+                  rating={overall}
+                  reviewedAt={review.reviewedAt}
+                  score={score}
+                />
+                {snippet && (
+                  <p className={styles.reviewSnippet}>{snippet}</p>
+                )}
+              </div>
+              {/* Marks the card as navigable — it opens the review's own page. */}
+              <span className={styles.chevron} aria-hidden="true">
+                ›
+              </span>
             </Link>
-            {isOwn && onEdit && (
-              <button
-                type="button"
-                className={styles.reviewEdit}
-                onClick={onEdit}
-              >
-                Edit
-              </button>
-            )}
           </li>
         );
       })}
     </ul>
   );
+}
+
+// The two-row header shared by a review card and the single-review page's top
+// section: the reviewer's name beside their overall rating, then the review's
+// timestamp beside its score. Each row spreads its pair to opposite edges.
+export function ReviewHeader({
+  reviewer,
+  rating,
+  reviewedAt,
+  score,
+}: {
+  reviewer: string;
+  rating: Rating | null;
+  reviewedAt?: string | null;
+  score: Score | null;
+}) {
+  return (
+    <div className={styles.reviewHeader}>
+      <div className={styles.reviewHeaderRow}>
+        <span className={styles.reviewAuthor}>{reviewer}</span>
+        {rating && <RatingBadge rating={rating} />}
+      </div>
+      {(reviewedAt || score) && (
+        <div className={styles.reviewHeaderRow}>
+          <span className={styles.reviewWhen}>
+            {reviewedAt ? formatReviewedAt(reviewedAt) : ""}
+          </span>
+          {score && (
+            <span className={styles.reviewScore}>
+              {score.earned} / {score.total} pts
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A review's submission time as a plain calendar date and clock time.
+export function formatReviewedAt(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }

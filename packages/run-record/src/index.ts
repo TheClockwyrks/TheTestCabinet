@@ -207,6 +207,12 @@ export type TokenMetrics = {
 
 /**
  * Cost of a run, recorded two ways.
+ *
+ * Each figure is optional: `None` means the cost is **unknown** — typically
+ * because the model's per-token prices could not be resolved (the model is
+ * absent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).
+ * This is distinct from `Some(0.0)`, a genuinely free run. Keeping the two
+ * apart avoids presenting an unknown cost as `$0.00`.
  */
 export type CostMetrics = {
   /**
@@ -214,14 +220,15 @@ export type CostMetrics = {
    * derived from token classes and OpenRouter's listed prices, except for
    * harnesses that drive a single provider directly and report their own
    * exact cost (such as Claude Code), where that reported cost — itself
-   * provider-stable — is used instead.
+   * provider-stable — is used instead. `None` when the cost is unknown.
    */
-  comparable: number;
+  comparable: number | null;
   /**
    * The amount actually charged for the run, recorded for reference. Equal
    * to the comparable figure unless the harness reports its own exact cost.
+   * `None` when the cost is unknown.
    */
-  actual: number;
+  actual: number | null;
 };
 
 /**

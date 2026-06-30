@@ -38,6 +38,9 @@ guide when you are doing the task for the first time, or when you need to know
   finished run, read its validation signals, and write the required review.
 - [Publishing a Test Run Result](/guides/publishing-a-test-run-result/) — release
   a reviewed run to public hosting and the gallery.
+- [Rolling Production Service Images](/guides/rolling-prod-service-images/) —
+  promote a CI-built service-image sha to the production cluster: re-pin the
+  overlay, apply it through the private cluster, and commit.
 
 These guides describe how to *use* The Test Cabinet. To understand how it works
 internally, see the [Components](/components/architecture/) section.

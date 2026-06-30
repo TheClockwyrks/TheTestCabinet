@@ -30,6 +30,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::{AssetKind, SheetSpec, TestType};
+use uuid::Uuid;
 
 use crate::error::{BackendError, Result};
 
@@ -496,6 +497,64 @@ impl DefinitionStore {
         self.manifest_path(slug, version).is_file()
     }
 
+    /// The root under which version builds are staged before being swapped into the
+    /// served `test-cases/` tree. It lives inside the store's sidecar so it shares
+    /// the store's filesystem (the swap is then a plain rename) and stays off the
+    /// `test-cases/` tree that `list_versions` walks, so a half-built staging dir is
+    /// never mistaken for an ingested version.
+    fn staging_root(&self) -> PathBuf {
+        self.root.join(SIDECAR).join("staging")
+    }
+
+    /// Create a fresh, empty staging directory for building one version's tree
+    /// before [`publish_staged_version`](Self::publish_staged_version) swaps it into
+    /// place. The name is unique per call so concurrent ingests never collide.
+    pub fn new_staging_dir(&self, slug: &str, version: &str) -> Result<PathBuf> {
+        let dir = self
+            .staging_root()
+            .join(format!("{slug}-{version}-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    /// Atomically publish a fully-built `staged` tree as `(slug, version)`, replacing
+    /// any existing copy. A concurrent [`read_manifest`](Self::read_manifest) sees
+    /// either the previous version or the new one but never a half-written or
+    /// manifest-less tree — the window a destructive in-place re-ingest opened, which
+    /// surfaced as a spurious 404 "is not ingested" while a force re-ingest rewrote a
+    /// version. `staged` must already hold the complete tree (including its `.tcab`
+    /// sidecar) and sit under this store's root so the rename is a same-filesystem
+    /// move rather than a copy.
+    pub fn publish_staged_version(&self, slug: &str, version: &str, staged: &Path) -> Result<()> {
+        let dest = self.version_dir(slug, version);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if !dest.exists() {
+            std::fs::rename(staged, &dest)?;
+            return Ok(());
+        }
+        // Two-step swap: move the live version aside, move the staged one in, then
+        // drop the retired copy. The window where `dest` is briefly absent is two
+        // rename syscalls wide (microseconds) rather than the seconds-to-minutes a
+        // destructive in-place rebuild (remove → copy → render → write manifest)
+        // left it manifest-less.
+        let retired = self
+            .staging_root()
+            .join(format!("retired-{slug}-{version}-{}", Uuid::new_v4()));
+        if let Some(parent) = retired.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&dest, &retired)?;
+        if let Err(err) = std::fs::rename(staged, &dest) {
+            // Roll the live version back so a failed swap is not a lost version.
+            let _ = std::fs::rename(&retired, &dest);
+            return Err(err.into());
+        }
+        let _ = std::fs::remove_dir_all(&retired);
+        Ok(())
+    }
+
     /// Path to the store-root marker recording the catalog version of the most
     /// recent whole-catalog ingest. Lives in a root-level `.tcab/` sidecar (parallel
     /// to the per-version sidecars) so it is wiped together with the store it
@@ -564,9 +623,7 @@ impl DefinitionStore {
 
     /// Path to a version's resolved manifest sidecar.
     pub fn manifest_path(&self, slug: &str, version: &str) -> PathBuf {
-        self.version_dir(slug, version)
-            .join(SIDECAR)
-            .join("manifest.json")
+        manifest_in(&self.version_dir(slug, version))
     }
 
     /// Read a version's stored manifest.
@@ -580,14 +637,10 @@ impl DefinitionStore {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    /// Persist a version's resolved manifest sidecar.
+    /// Persist a version's resolved manifest sidecar into its canonical directory.
     pub fn write_manifest(&self, manifest: &StoredManifest) -> Result<()> {
-        let path = self.manifest_path(&manifest.slug, &manifest.version);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, serde_json::to_vec_pretty(manifest)?)?;
-        Ok(())
+        let version_dir = self.version_dir(&manifest.slug, &manifest.version);
+        write_manifest_in(&version_dir, manifest)
     }
 
     /// Resolve a store-relative artifact key inside a version directory, guarding
@@ -605,11 +658,7 @@ impl DefinitionStore {
     /// Path to a stored reference media file for a version. `scope` is `_common`
     /// or a variant slug; `file` is `<view>.<ext>`.
     pub fn reference_path(&self, slug: &str, version: &str, scope: &str, file: &str) -> PathBuf {
-        self.version_dir(slug, version)
-            .join(SIDECAR)
-            .join("references")
-            .join(scope)
-            .join(file)
+        reference_in(&self.version_dir(slug, version), scope, file)
     }
 
     /// Read a stored reference media file (`<view>.<ext>`).
@@ -897,6 +946,37 @@ fn first_component_is_sidecar(key: &str) -> bool {
             _ => None,
         })
         .unwrap_or(false)
+}
+
+/// The manifest sidecar path relative to a version directory (its canonical
+/// directory or a staging one). Single source of the layout shared by
+/// [`DefinitionStore::manifest_path`] and the staging build path.
+pub fn manifest_in(version_dir: &Path) -> PathBuf {
+    version_dir.join(SIDECAR).join("manifest.json")
+}
+
+/// A stored reference media path relative to a version directory. `scope` is
+/// `_common` or a variant slug; `file` is `<view>.<ext>`. Single source of the
+/// layout shared by [`DefinitionStore::reference_path`] and the staging build path.
+pub fn reference_in(version_dir: &Path, scope: &str, file: &str) -> PathBuf {
+    version_dir
+        .join(SIDECAR)
+        .join("references")
+        .join(scope)
+        .join(file)
+}
+
+/// Write a resolved manifest into an explicit version directory (canonical or
+/// staging), creating its sidecar dir. [`DefinitionStore::write_manifest`] is this
+/// against the canonical [`version_dir`](DefinitionStore::version_dir); ingest uses
+/// it against a staging dir it then swaps into place.
+pub fn write_manifest_in(version_dir: &Path, manifest: &StoredManifest) -> Result<()> {
+    let path = manifest_in(version_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_vec_pretty(manifest)?)?;
+    Ok(())
 }
 
 /// Whether a string is a single safe path segment (no separators, no `.`/`..`,

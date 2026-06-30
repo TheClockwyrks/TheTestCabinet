@@ -12,9 +12,13 @@
 # This co-locates ingest INSIDE the backend pod as a sidecar instead: it shares the
 # `state` volume (writing the /state/checkout the backend ingests) and calls
 # POST /ingest over localhost — intra-pod traffic, so the NetworkPolicy never applies
-# and no service token / extra route is needed. It re-clones + re-ingests on every
-# backend start (self-healing the ephemeral store) and refreshes every 30 minutes.
-# The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
+# and no service token / extra route is needed. It runs a ONE-SHOT ingest on backend
+# start to self-heal the ephemeral (emptyDir) store after a reschedule, then idles.
+# It deliberately does NOT re-ingest on a schedule: a periodic force re-ingest
+# rewrites every version and briefly leaves each one manifest-less, 404-ing any run
+# that resolves its version mid-cycle. Catalog changes are published on demand with
+# `scripts/reingest-prod.sh` (a force re-ingest, kept safe by the backend's atomic
+# version swap). The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
 #
 # Targets kind: Deployment because the postgres component converts the backend
 # StatefulSet to a Deployment; the strategic-merge patch appends the `ingest`
@@ -41,28 +45,40 @@ spec:
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              while true; do
-                if [ -d "$CHECKOUT/.git" ]; then
-                  echo "ingest: refreshing checkout"
-                  git -C "$CHECKOUT" fetch --depth 1 origin HEAD \
-                    && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
-                    || echo "ingest: fetch failed"
-                else
-                  echo "ingest: cloning catalog into $CHECKOUT"
-                  rm -rf "$CHECKOUT" \
-                    && git clone --depth 1 "$REPO" "$CHECKOUT" \
-                    || echo "ingest: clone failed"
+              # One-shot: clone the catalog the backend ingests from, then trigger a
+              # single ingest. No periodic loop — see the header. `git fetch` the live
+              # checkout if one already survives a lone sidecar restart, else clone.
+              if [ -d "$CHECKOUT/.git" ]; then
+                echo "ingest: refreshing checkout"
+                git -C "$CHECKOUT" fetch --depth 1 origin HEAD \
+                  && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
+                  || echo "ingest: fetch failed"
+              else
+                echo "ingest: cloning catalog into $CHECKOUT"
+                rm -rf "$CHECKOUT" \
+                  && git clone --depth 1 "$REPO" "$CHECKOUT" \
+                  || echo "ingest: clone failed"
+              fi
+              echo "ingest: waiting for backend healthz"
+              until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
+              # A bare scan (no force): a fresh emptyDir store ingests everything, while
+              # a store that survived a lone sidecar restart skips already-ingested
+              # versions instead of re-rendering them. Retry a stuck POST a few times so
+              # a slow-to-ready backend does not leave the store empty.
+              n=0
+              until curl -fsS -X POST http://127.0.0.1:8787/ingest \
+                     -H 'content-type: application/json' -d '{}' >/dev/null; do
+                n=$((n + 1))
+                if [ "$n" -ge 10 ]; then
+                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-prod.sh)"
+                  break
                 fi
-                echo "ingest: waiting for backend healthz"
-                until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-                if curl -fsS -X POST http://127.0.0.1:8787/ingest \
-                     -H 'content-type: application/json' -d '{"force": true}' >/dev/null; then
-                  echo "ingest: triggered ok"
-                else
-                  echo "ingest: POST /ingest failed; retrying next cycle"
-                fi
-                sleep 1800
+                echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
               done
+              [ "$n" -lt 10 ] && echo "ingest: triggered ok"
+              # Idle forever: an exited container would be restarted by the pod and
+              # re-run the one-shot, so park instead of looping or exiting.
+              exec sleep infinity
           volumeMounts:
             - name: state
               mountPath: /state

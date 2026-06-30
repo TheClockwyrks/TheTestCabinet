@@ -8,7 +8,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::core::v1::{
-    ContainerState, ContainerStateWaiting, ContainerStatus, PodStatus,
+    ContainerState, ContainerStateWaiting, ContainerStatus, PodCondition, PodSpec, PodStatus,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{StatusCause, StatusDetails};
 use test_cabinet_core::execution::{ContainerFile, ContainerSpec};
@@ -344,6 +344,91 @@ fn waiting_reason_surfaces_image_pull_backoff() {
         pod_waiting_reason(&pod).as_deref(),
         Some("ImagePullBackOff")
     );
+}
+
+// ── pod_scheduled / pod_scheduling_message ───────────────────────────────────
+
+fn pod_with_condition(reason: Option<&str>, status: &str, message: Option<&str>) -> Pod {
+    Pod {
+        status: Some(PodStatus {
+            conditions: Some(vec![PodCondition {
+                type_: "PodScheduled".to_string(),
+                status: status.to_string(),
+                reason: reason.map(str::to_string),
+                message: message.map(str::to_string),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn scheduled_condition_true_marks_pod_scheduled() {
+    assert!(pod_scheduled(&pod_with_condition(None, "True", None)));
+}
+
+#[test]
+fn assigned_node_marks_pod_scheduled() {
+    let pod = Pod {
+        spec: Some(PodSpec {
+            node_name: Some("node-1".to_string()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert!(pod_scheduled(&pod));
+}
+
+#[test]
+fn unscheduled_pod_is_not_scheduled() {
+    // A pod the scheduler cannot yet place: PodScheduled=False, no node bound.
+    let pod = pod_with_condition(
+        Some("Unschedulable"),
+        "False",
+        Some("0/3 nodes are available"),
+    );
+    assert!(!pod_scheduled(&pod));
+    // A brand-new pod with no status at all is likewise not scheduled.
+    assert!(!pod_scheduled(&Pod::default()));
+    // An empty node name does not count as bound.
+    let blank_node = Pod {
+        spec: Some(PodSpec {
+            node_name: Some(String::new()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert!(!pod_scheduled(&blank_node));
+}
+
+#[test]
+fn scheduling_message_joins_reason_and_message() {
+    let pod = pod_with_condition(
+        Some("Unschedulable"),
+        "False",
+        Some("0/3 nodes are available: insufficient memory"),
+    );
+    assert_eq!(
+        pod_scheduling_message(&pod).as_deref(),
+        Some("Unschedulable: 0/3 nodes are available: insufficient memory")
+    );
+}
+
+#[test]
+fn scheduling_message_falls_back_to_reason_or_message_alone() {
+    assert_eq!(
+        pod_scheduling_message(&pod_with_condition(Some("Unschedulable"), "False", None))
+            .as_deref(),
+        Some("Unschedulable")
+    );
+    assert_eq!(
+        pod_scheduling_message(&pod_with_condition(None, "False", Some("waiting"))).as_deref(),
+        Some("waiting")
+    );
+    // No PodScheduled condition at all: nothing to report.
+    assert_eq!(pod_scheduling_message(&Pod::default()), None);
 }
 
 #[test]

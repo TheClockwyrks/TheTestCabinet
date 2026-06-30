@@ -2,9 +2,9 @@
 @use "../../../styles/surfaces" as s;
 
 // The list of a run's individual reviews, shared by the Verdict tab's editor
-// (above the form) and its read-only published view. One row per review: a
-// clickable summary linking to the review's own page, with an optional Edit
-// control (the owner's review, in the editor) pinned to its right.
+// (above the form) and its read-only published view. One clickable card per
+// review: a two-row header (author + rating, then timestamp + score) over a short
+// writeup excerpt, with a chevron marking it navigable.
 .reviewList {
   list-style: none;
   margin: 0;
@@ -14,19 +14,9 @@
   gap: t.$space-xs;
 }
 
-// One review as a row: the clickable summary fills the width, with the owner's
-// Edit control (when present) pinned to its right.
-.reviewRow {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-}
-
-// The clickable review summary: author, its rating + score, and a one-line
-// writeup preview, on a single line that truncates rather than wraps.
+// One review as a clickable card: the text column fills the width with the
+// chevron pinned to its right.
 .reviewLink {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
   align-items: center;
   gap: t.$space-sm;
@@ -39,43 +29,73 @@
 
   &:hover {
     border-color: t.$color-accent;
+    // The card is an anchor; without this the global `a:hover` underline
+    // would re-apply over the base `text-decoration: none`.
+    text-decoration: none;
   }
 }
 
-.reviewAuthor {
-  flex: 0 0 auto;
-  font-weight: 600;
-}
-
-.reviewScore {
-  flex: 0 0 auto;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  white-space: nowrap;
-}
-
-.reviewSnippet {
+// The card's text column (everything but the chevron): the header over the
+// writeup excerpt. Fills the width and lets its children truncate rather than
+// push the chevron off the row.
+.reviewBody {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The two-row header — name beside rating, then timestamp beside score — shared
+// with the single-review page's top section.
+.reviewHeader {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.reviewHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.reviewAuthor {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.reviewEdit {
-  flex: 0 0 auto;
-  font-family: var(--ttc-font);
+.reviewWhen {
   font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-md;
-  border-radius: t.$radius-md;
-  border: t.$border-hairline solid t.$color-border;
-  background: s.$panel-bg;
-  color: t.$color-text;
-  cursor: pointer;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
 
-  &:hover {
-    border-color: t.$color-accent;
-  }
+.reviewScore {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// A few lines of the writeup as a preview, clamped with an ellipsis; the full
+// prose lives on the review's own page.
+.reviewSnippet {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+// The "navigable" affordance pinned to the card's right edge.
+.chevron {
+  flex: 0 0 auto;
+  font-size: t.$font-lg;
+  color: t.$color-text-muted;
 }

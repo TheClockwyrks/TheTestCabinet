@@ -374,20 +374,19 @@
       "type": "object"
     },
     "CostMetrics": {
-      "description": "Cost of a run, recorded two ways.",
+      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token prices could not be resolved (the model is\nabsent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).\nThis is distinct from `Some(0.0)`, a genuinely free run. Keeping the two\napart avoids presenting an unknown cost as `$0.00`.",
       "properties": {
         "actual": {
-          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.",
+          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.\n`None` when the cost is unknown.",
           "format": "double",
-          "type": "number"
+          "type": ["number", "null"]
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead. `None` when the cost is unknown.",
           "format": "double",
-          "type": "number"
+          "type": ["number", "null"]
         }
       },
-      "required": ["comparable", "actual"],
       "type": "object"
     },
     "HarnessSlug": {

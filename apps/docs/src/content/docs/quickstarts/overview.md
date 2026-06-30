@@ -39,6 +39,9 @@ API key.
   for a pushed run.
 - [Publish a Run](/quickstarts/publish-a-run/) — push, review, and publish a run
   to public hosting and the gallery.
+- [Roll Production Service Images](/quickstarts/roll-prod-service-images/) —
+  promote the latest CI-built service images to the prod cluster by re-pinning the
+  overlay.
 
 Each quickstart has a matching User Guide that covers the same task in full,
 including prerequisites and the reasoning behind each step.

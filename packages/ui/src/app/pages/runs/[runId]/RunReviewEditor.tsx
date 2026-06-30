@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Panel, RatingBadge } from "@test-cabinet/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
@@ -116,11 +116,13 @@ export function RunReviewEditor({
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
   // Whether the review form is open. A reviewer who has not yet reviewed this run
   // sees it open to write their first review; once they carry one it collapses to
-  // the summary (with an Edit affordance on their own review) so the form is not
-  // in the way of publishing. Deriving the effective `showForm` from this
-  // OR "has no own review" keeps the form open while `ownReview` is still
-  // resolving (account/reviews loading) and reopens it for a re-review on Edit.
-  const [editing, setEditing] = useState(false);
+  // the summary so the form is not in the way of publishing. Deriving the
+  // effective `showForm` from this OR "has no own review" keeps the form open
+  // while `ownReview` is still resolving (account/reviews loading). The
+  // single-review page's Edit control reopens it for a re-review by linking back
+  // here with `?edit=1`, which seeds this open.
+  const [searchParams] = useSearchParams();
+  const [editing, setEditing] = useState(searchParams.get("edit") === "1");
 
   // The expected reference media (by view) and the submitted proof media (by id)
   // for this run, resolved from the gallery data so each question can show both.
@@ -349,34 +351,29 @@ export function RunReviewEditor({
     <Panel>
       {/* The run's existing reviews and the aggregate rating + score, so a
           reviewer sees what others recorded before adding their own. Each review
-          links to its own page; the active account's own review carries an Edit
-          control that reopens the form to revise it. */}
-      <ExistingReviews
-        reviews={reviews}
-        items={items}
-        runId={runId}
-        ownReviewerId={account?.id ?? null}
-        onEdit={() => setEditing(true)}
-      />
-
-      {/* Mutating actions are gated on being signed in. Signing in and managing
-          the account live on their own pages (top-bar account control); here we
-          only confirm who is reviewing, or link to the sign-in page. */}
-      {account ? (
-        <p className={styles.notice}>
-          Reviewing as <strong>{account.displayName}</strong>.
-        </p>
-      ) : (
-        <p className={`${styles.notice} ${styles.warn}`}>
-          <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
-          review and publish this run.
-        </p>
-      )}
+          links to its own page, where the active account's own review carries the
+          Edit control that reopens this form to revise it. */}
+      <ExistingReviews reviews={reviews} items={items} runId={runId} />
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
       {showForm && (
         <>
+          {/* Mutating actions are gated on being signed in. Signing in and
+              managing the account live on their own pages (top-bar account
+              control); while reviewing we only confirm who is reviewing, or link
+              to the sign-in page. */}
+          {account ? (
+            <p className={styles.notice}>
+              Reviewing as <strong>{account.displayName}</strong>.
+            </p>
+          ) : (
+            <p className={`${styles.notice} ${styles.warn}`}>
+              <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
+              review and publish this run.
+            </p>
+          )}
+
           {item && draft && (
             <div className={styles.reviewLayout}>
               {/* The navigable rail of every checklist item; answered items are
@@ -661,21 +658,16 @@ export function RunReviewEditor({
 // the worst rating any reviewer gave any domain ({@link aggregateRating}) and the
 // mean earned over the case's checklist ({@link aggregateScore}, when the scoring
 // model is available) — with the review count pushed to its right. Each review is
-// a compact, clickable row (author, its own rating + score, and the first line of
-// its writeup) linking to that review's own page; the active account's own review
-// carries an Edit control that reopens the form to revise it.
+// a compact, clickable card linking to that review's own page, where the active
+// account's own review carries the Edit control that reopens the form to revise it.
 function ExistingReviews({
   reviews,
   items,
   runId,
-  ownReviewerId,
-  onEdit,
 }: {
   reviews: StoredReview[];
   items: ReviewItem[];
   runId: string;
-  ownReviewerId: string | null;
-  onEdit: () => void;
 }) {
   if (reviews.length === 0) return null;
 
@@ -708,13 +700,7 @@ function ExistingReviews({
         </span>
       </div>
 
-      <ReviewList
-        reviews={reviews}
-        items={items}
-        runId={runId}
-        ownReviewerId={ownReviewerId}
-        onEdit={onEdit}
-      />
+      <ReviewList reviews={reviews} items={items} runId={runId} />
     </div>
   );
 }

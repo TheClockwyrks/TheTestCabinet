@@ -108,7 +108,14 @@ The backend records the resulting links on the run and, once the Job reports a
 terminal success, flips the run public and regenerates the snapshot. Releasing
 per-run artifacts has no shared state — each run is its own repository and its own
 build — so each release is independent and the Job holds the credentials it needs.
-The release is idempotent: a re-publish leaves an existing repository in place.
+The release is idempotent: a re-publish reuses an existing repository rather than
+recreating it, but still re-commits and re-pushes the implementation — a clean
+no-op when the repository is already current, and the recovery path when an
+earlier publish created the repository but its first push never landed. The push
+is retried through GitHub's brief permission-propagation lag on a freshly created
+organization repository (a short settle before the first push, then bounded
+retries with backoff), so a transient post-create `403` self-heals instead of
+failing the publish.
 
 The public snapshot, and therefore the gallery, contains **only published runs**.
 A published failure shows its generated source but has no playable build (it

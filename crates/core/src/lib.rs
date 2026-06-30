@@ -85,8 +85,8 @@ pub use event::{
 };
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ExecOutput, OutputSink, OutputStream, RawOutputLine, RepoSeeder, SeedRequest,
-    SeededRepo, WORKSPACE_DIR,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, RawOutputLine, RepoSeeder,
+    SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
@@ -320,7 +320,10 @@ where
     /// seeded repository.
     ///
     /// The caller owns the returned [`ContainerHandle`] and must stop it. On any
-    /// failure after the container starts, it is stopped before returning.
+    /// failure after the container starts, it is stopped before returning. The
+    /// returned [`Duration`] is how long the container spent queued for capacity
+    /// before startup began (see [`ContainerStart::scheduling_wait`]), so the
+    /// caller can exclude it from the run's measured duration.
     #[instrument(
         name = "execute",
         skip_all,
@@ -345,7 +348,7 @@ where
         orchestrator: &Orchestrator,
         events: &mut dyn EventSink,
         host_gateway: bool,
-    ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment)> {
+    ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
         let slug = request.harness;
         let harness = self
             .harnesses
@@ -446,8 +449,11 @@ where
             SystemStage::StartContainer,
             SystemStatus::Started,
         ));
-        let handle = match self.runtime.start(&spec).await {
-            Ok(handle) => handle,
+        let ContainerStart {
+            handle,
+            scheduling_wait,
+        } = match self.runtime.start(&spec).await {
+            Ok(start) => start,
             Err(err) => {
                 events.emit(&HarnessEvent::system(
                     SystemStage::StartContainer,
@@ -626,7 +632,7 @@ where
         match with_runtime_cap(drive, max_runtime, slug).await {
             Ok(mut outcome) => {
                 outcome.harness_version = availability.version;
-                Ok((handle, outcome, environment))
+                Ok((handle, outcome, environment, scheduling_wait))
             }
             Err(err) => {
                 let _ = self.runtime.stop(&handle).await;
@@ -689,10 +695,12 @@ where
         let tokens = outcome.usage.tokens;
         let cost = match outcome.reported_cost {
             Some(reported) => Cost {
-                comparable: reported,
-                actual: reported,
+                comparable: Some(reported),
+                actual: Some(reported),
             },
             None => {
+                // `comparable_from` yields `None` when the model's prices are
+                // unknown, leaving both figures null rather than a misleading $0.
                 let comparable = Cost::comparable_from(&tokens, prices);
                 // No harness-reported charge to record separately yet; the
                 // comparable figure is the canonical, provider-stable value.
@@ -877,7 +885,7 @@ where
             &references,
             live.as_ref().map(LivePreview::endpoint),
         )?;
-        let (handle, outcome, environment) = self
+        let (handle, outcome, environment, scheduling_wait) = self
             .execute(
                 test_case,
                 &variant,
@@ -904,7 +912,15 @@ where
         ));
         let artifacts = artifacts?;
 
-        let run_time_seconds = timer.elapsed().as_secs_f64();
+        // The measured run duration excludes any time the run pod spent queued
+        // for cluster capacity before it started: that is wall-clock the run was
+        // waiting its turn, not running, so counting it would unfairly inflate a
+        // run's time whenever the cluster was busy. `scheduling_wait` is zero for
+        // runtimes (a local Docker/Podman) that admit the container immediately.
+        let run_time_seconds = timer
+            .elapsed()
+            .saturating_sub(scheduling_wait)
+            .as_secs_f64();
         // A harness that reports its own exact cost needs no OpenRouter lookup;
         // its native model ID may not even appear in OpenRouter's catalog.
         let prices = if outcome.reported_cost.is_some() {
@@ -922,7 +938,7 @@ where
                 Err(err) => {
                     eprintln!(
                         "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
-                         recording zero comparable cost"
+                         recording unknown (null) comparable cost"
                     );
                     TokenPrices::default()
                 }

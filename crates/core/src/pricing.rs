@@ -111,6 +111,20 @@ fn prices_of(model: &Model) -> TokenPrices {
     }
 }
 
+/// Parse an OpenRouter per-token price string into a known price, or `None` when
+/// the price is unknown.
+///
+/// OpenRouter reports prices as USD strings. A value that does not parse, or one
+/// that parses to a negative number — a nonsensical price some catalog entries
+/// use as an "unpublished" sentinel — is treated as unknown rather than free.
+/// A genuine `"0"` (a free class) parses to `Some(0.0)`.
+fn parse_price(value: &str) -> Option<f64> {
+    match value.parse::<f64>() {
+        Ok(price) if price >= 0.0 => Some(price),
+        _ => None,
+    }
+}
+
 /// Convert OpenRouter's `created` unix timestamp (seconds) into an RFC 3339 UTC
 /// string, returning `None` when the timestamp is out of range or cannot be
 /// formatted. This matches the timestamp convention used elsewhere in run
@@ -147,9 +161,4 @@ struct Pricing {
     completion: String,
     #[serde(default)]
     input_cache_read: Option<String>,
-}
-
-/// Parse an OpenRouter price string into a number, treating bad values as free.
-fn parse_price(value: &str) -> f64 {
-    value.parse().unwrap_or(0.0)
 }

@@ -117,7 +117,10 @@ first, confirm the flow, then repeat for prod with prod's own secrets and a
   are pinned in **two different places**, because the two image sets reach the
   cluster differently:
   - **Service images** are Kubernetes `image:` fields, so the overlays' kustomize
-    `images:` transformer pins them — set `newTag` to a `:<git-sha>`.
+    `images:` transformer pins them — set `newTag` to a `:<git-sha>`. For the
+    routine "promote the latest CI build to prod" loop — finding the built sha,
+    re-pinning, and applying through the private cluster — see
+    [Rolling Production Service Images](/guides/rolling-prod-service-images/).
   - **Run-container images** are *not* `image:` fields anywhere; the driver resolves
     them at run time (`core::harness::resolve_run_image`). Pin them by setting
     `TCAB_CONTAINER_TAG` (and optionally `TCAB_CONTAINER_REGISTRY`) on the
@@ -214,7 +217,7 @@ and
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished Job is garbage-collected | `300` |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | yes | Comma-separated `Secret` names mounted into each driver Job via `envFrom` — how the harness API key reaches the run engine | — |
 | `TCAB_ARTIFACTS_URL` | yes | The artifact `Service`, forwarded to each driver so it can upload | — |
-| `TCAB_K8S_*` (sandbox passthroughs) | no | `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_CPU_REQUEST`/`_LIMIT`, `TCAB_K8S_RUN_MEMORY_REQUEST`/`_LIMIT`, `TCAB_K8S_IMAGE_PULL_SECRETS`, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX` — forwarded verbatim into each driver Job | per-variable |
+| `TCAB_K8S_*` (sandbox passthroughs) | no | `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_CPU_REQUEST`/`_LIMIT`, `TCAB_K8S_RUN_MEMORY_REQUEST`/`_LIMIT`, `TCAB_K8S_IMAGE_PULL_SECRETS`, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`, `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX` — forwarded verbatim into each driver Job | per-variable |
 
 Concurrency scales with the cluster: `TCAB_DISPATCHER_MAX_INFLIGHT` plus the
 cluster's own capacity admit runs, rather than a hand-sized pool. There is no
@@ -247,6 +250,24 @@ scheduler can place sandbox pods sensibly and one heavy run cannot starve a node
 A run compiles and runs a small app under a coding agent, so a request in the
 region of `500m`/`1Gi` and a limit a few times that is a reasonable starting
 point; tune against your cases.
+
+### Queueing when the cluster is full
+
+When more runs are dispatched than the cluster has capacity for, the surplus
+sandbox pods sit `Pending` until the scheduler can place them. **This is not a
+failure:** an unscheduled run waits its turn rather than erroring out, and the
+time it spends queued for capacity is excluded from the run's recorded duration
+(it was waiting, not running). Only once a pod is scheduled onto a node does the
+`TCAB_K8S_POD_READY_TIMEOUT_SECONDS` clock start, so a genuinely broken pod
+(`ImagePullBackOff`, a bad image, …) still fails promptly.
+
+The scheduling wait is **unbounded by default**, which is what lets a busy
+cluster absorb a large batch of runs. Set `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`
+to a positive value only if you want to cap how long a run may queue — for
+example to surface a pod whose resource requests no node can ever satisfy. `0`
+(or unset) means wait forever. Right-size `TCAB_K8S_RUN_CPU_*`/`_MEMORY_*` so a
+run's requests actually fit on a node; a request larger than any node is
+unschedulable forever and will only ever queue.
 
 ### Live asset previews
 

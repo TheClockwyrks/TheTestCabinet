@@ -60,13 +60,25 @@ export function formatInteger(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-export function formatUsd(value: number): string {
+// A USD figure for display, or an em dash when it is unknown (null) — a run
+// whose model prices could not be resolved, or a per-token price OpenRouter
+// does not list. An unknown cost reads as "—" rather than a misleading $0.00.
+export function formatUsd(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(value);
+}
+
+// Scale a per-token price to a per-million-token figure for display, preserving
+// an unknown (null) price instead of letting the multiplication turn it into 0.
+export function perMillion(value: number | null): number | null {
+  return value === null ? null : value * 1e6;
 }
 
 // A release date for the model pages: an RFC 3339 timestamp rendered as a plain

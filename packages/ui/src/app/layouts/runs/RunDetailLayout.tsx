@@ -51,7 +51,7 @@ export function RunDetailLayout({
 }: RunDetailLayoutProps) {
   const { runId } = useParams<{ runId: string }>();
   const { runs, localIds, localWriteups, loading } = useRuns();
-  const { readRun } = useGalleryData();
+  const { readRun, canExecute } = useGalleryData();
   const findReview = useFindReview();
   const listed = runId
     ? runs.find((candidate) => candidate.id === runId)
@@ -192,8 +192,11 @@ export function RunDetailLayout({
         </nav>
         {/* Deleting is offered only for an unpublished run the active worker
             produced; the control renders nothing otherwise (a published run, the
-            public gallery). */}
-        <RunDeleteControl runId={run.id} />
+            public gallery). It is mounted only where the host can execute runs,
+            since it reads the worker context the static site does not provide
+            (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
+            — without this gate `useWorkers` throws and blanks the run page. */}
+        {canExecute && <RunDeleteControl runId={run.id} />}
       </div>
 
       {children({ run, review })}

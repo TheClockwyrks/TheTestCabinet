@@ -151,6 +151,9 @@
 
 .writeupBody {
   color: t.$color-text;
+  // Set the writeup off from the per-domain ratings (or the headline) above it,
+  // so the prose doesn't butt up against the ratings block.
+  margin-top: t.$space-lg;
 
   // Collapse the outermost Markdown margins into the panel's own padding.
   > :first-child {
@@ -203,7 +206,16 @@
   font-weight: 600;
 }
 
+// The item's title (name + points) over its optional note: stacked, so a
+// reviewer's note reads on its own line beneath the item rather than trailing it.
 .verdictItem {
+  color: t.$color-text;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.verdictItemTitle {
   color: t.$color-text;
 }
 
@@ -308,10 +320,20 @@
 
 // --- The single-review page (RunReviewPage) ----------------------------------
 
-// The "← All reviews" link back to the Verdict tab, above one reviewer's review.
-.backLink {
-  display: inline-block;
+// The bar above the review: the "← All reviews" link on the left, with the Edit
+// control (shown only on the signed-in owner's own review) pushed to the right.
+.reviewTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
   margin-bottom: t.$space-md;
+}
+
+// The "← All reviews" link back to the Verdict tab, and the Edit control beside
+// it: muted, accenting on hover.
+.backLink,
+.editReviewLink {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   text-decoration: none;
@@ -321,14 +343,10 @@
   }
 }
 
-// The attribution line beneath the back link: who wrote this review and when.
-.reviewAttribution {
-  margin: 0 0 t.$space-md;
-  color: t.$color-text;
-}
-
-.reviewWhen {
-  color: t.$color-text-muted;
+// The review's top section — the reviewer's name + rating over the timestamp +
+// score (the shared ReviewHeader) — set off from the verdict body beneath it.
+.reviewTop {
+  margin-bottom: t.$space-lg;
 }
 
 // --- The generated-asset view (AssetResultSection) ---------------------------

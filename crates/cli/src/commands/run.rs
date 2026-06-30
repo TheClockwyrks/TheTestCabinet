@@ -180,10 +180,13 @@ fn print_summary(record: &RunRecord) {
         count(tokens.output),
         count(tokens.reasoning),
     );
-    println!(
-        "  cost:    ${:.4} comparable",
-        record.metrics.cost.comparable
-    );
+    // An unknown comparable cost (the model's prices could not be resolved) shows
+    // as `n/a` rather than a misleading $0.0000, matching the token display above.
+    let comparable = match record.metrics.cost.comparable {
+        Some(cost) => format!("${cost:.4}"),
+        None => "n/a".to_string(),
+    };
+    println!("  cost:    {comparable} comparable");
     println!("  time:    {:.1}s", record.metrics.run_time_seconds);
     println!("  loaded:  {}", record.validation.loaded);
     print_step("install", record.validation.install.as_ref());

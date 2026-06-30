@@ -45,7 +45,7 @@ use uuid::Uuid;
 
 use test_cabinet_core::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ExecOutput, OutputSink, OutputStream,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
 };
 use test_cabinet_core::{Error, Result};
 
@@ -56,6 +56,12 @@ const WORK_DIR: &str = "/work";
 /// The name of the single container in each run pod. `exec` targets it explicitly
 /// so a future sidecar would not make the target ambiguous.
 const RUN_CONTAINER: &str = "run";
+
+/// How many times to attempt the streaming `tar` artifact collection before giving
+/// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
+/// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run;
+/// `tar -c` is read-only so re-running it is safe. See `KubernetesArtifactCollector`.
+const COLLECT_ATTEMPTS: u32 = 4;
 
 /// Configuration for the Kubernetes runtime, resolved from the driver's
 /// environment (see [`crate::config`]). Everything here scopes *sandbox pods*;
@@ -78,8 +84,18 @@ pub struct KubernetesConfig {
     pub memory_request: Option<String>,
     /// Memory limit applied to each run pod (e.g. `4Gi`).
     pub memory_limit: Option<String>,
-    /// How long to wait for a run pod to reach `Running` before failing the run.
+    /// How long to wait, **once the pod has been scheduled onto a node**, for it
+    /// to reach `Running` before failing the run. This bounds startup work (image
+    /// pull, container creation) so a genuinely broken pod (`ImagePullBackOff`,
+    /// `CreateContainerError`, …) fails promptly instead of hanging.
     pub pod_ready_timeout: Duration,
+    /// How long to wait for a run pod to be *scheduled onto a node* before giving
+    /// up. While unscheduled the pod is simply queued for cluster capacity — it is
+    /// not broken — so this is `None` by default: a busy cluster makes new runs
+    /// sit `Pending` until capacity frees up rather than failing them. Set a bound
+    /// only to cap how long a run may queue (for example to catch a pod whose
+    /// resource requests no node can ever satisfy).
+    pub pod_schedule_timeout: Option<Duration>,
     /// The driver pod's own IP, used to route a watched asset-generation sandbox
     /// pod's live preview frames back to the driver via a `hostAlias`. `None`
     /// disables the route (previews are best-effort, so runs are unaffected).
@@ -99,6 +115,7 @@ impl Default for KubernetesConfig {
             memory_request: None,
             memory_limit: None,
             pod_ready_timeout: Duration::from_secs(180),
+            pod_schedule_timeout: None,
             pod_ip: None,
             run_pod_prefix: "tcab-run-".to_string(),
         }
@@ -159,18 +176,88 @@ impl KubernetesContainerRuntime {
     }
 
     /// Wait for a freshly created run pod to reach `Running`, returning the
-    /// resolved image digest (when the image carries one). A pod that fails to
-    /// start, or does not become ready within the configured timeout, is an error
-    /// carrying the pod's waiting reason and any logs to aid diagnosis.
-    async fn await_running(&self, name: &str) -> Result<Option<String>> {
+    /// resolved image digest (when the image carries one) and how long the pod
+    /// spent *waiting to be scheduled* onto a node.
+    ///
+    /// The wait is split into two phases that are bounded very differently, so a
+    /// cluster at capacity makes new runs queue rather than fail:
+    ///
+    /// - **Scheduling.** Until the scheduler binds the pod to a node it sits
+    ///   `Pending` with no node assigned. When every node is full this is just a
+    ///   queue — the pod is healthy, it is waiting its turn — so this phase is
+    ///   bounded only by the generous, opt-in [`pod_schedule_timeout`]
+    ///   (unbounded by default). The time spent here is returned so the caller can
+    ///   exclude it from the run's measured duration; queueing for capacity is not
+    ///   work done for the run.
+    /// - **Startup.** Once scheduled, the kubelet pulls the image and creates the
+    ///   container. A genuine fault here (`ImagePullBackOff`,
+    ///   `CreateContainerError`, …) must fail the run promptly rather than hang, so
+    ///   this phase keeps the tight [`pod_ready_timeout`].
+    ///
+    /// A pod that fails outright, or that does not finish startup within
+    /// `pod_ready_timeout` once scheduled, is an error carrying the pod's waiting
+    /// reason and any logs to aid diagnosis.
+    ///
+    /// [`pod_schedule_timeout`]: KubernetesConfig::pod_schedule_timeout
+    /// [`pod_ready_timeout`]: KubernetesConfig::pod_ready_timeout
+    async fn await_running(&self, name: &str) -> Result<(Option<String>, Duration)> {
         let pods = self.pods();
+
+        // Phase 1 — scheduling. Wait for the pod to be bound to a node, bounded
+        // only by the opt-in schedule timeout. A pod that reaches a terminal phase
+        // here failed before it ever started.
+        let scheduling_started = Instant::now();
+        let schedule_deadline = self
+            .config
+            .pod_schedule_timeout
+            .map(|timeout| scheduling_started + timeout);
+        loop {
+            let pod = pods.get(name).await.map_err(|err| {
+                Error::ContainerRuntime(format!("reading run pod `{name}`: {err}"))
+            })?;
+            match pod.status.as_ref().and_then(|s| s.phase.as_deref()) {
+                // Scheduled and already running (or past it): no startup wait left.
+                Some("Running") => {
+                    return Ok((resolved_image_digest(&pod), scheduling_started.elapsed()));
+                }
+                Some(phase @ ("Failed" | "Succeeded")) => {
+                    let logs = self.pod_logs(name).await;
+                    return Err(Error::ContainerRuntime(format!(
+                        "run pod `{name}` entered `{phase}` before the session started{logs}"
+                    )));
+                }
+                _ => {}
+            }
+            if pod_scheduled(&pod) {
+                break;
+            }
+            if let Some(deadline) = schedule_deadline
+                && Instant::now() >= deadline
+            {
+                let reason =
+                    pod_scheduling_message(&pod).unwrap_or_else(|| "still unscheduled".to_string());
+                return Err(Error::ContainerRuntime(format!(
+                    "run pod `{name}` was not scheduled within {}s ({reason})",
+                    self.config
+                        .pod_schedule_timeout
+                        .unwrap_or_default()
+                        .as_secs(),
+                )));
+            }
+            sleep(Duration::from_millis(500)).await;
+        }
+        let scheduling_wait = scheduling_started.elapsed();
+
+        // Phase 2 — startup. The pod is on a node; wait for the container to reach
+        // `Running`, bounded by the ready timeout so a broken image or container
+        // fails fast instead of hanging.
         let deadline = Instant::now() + self.config.pod_ready_timeout;
         loop {
             let pod = pods.get(name).await.map_err(|err| {
                 Error::ContainerRuntime(format!("reading run pod `{name}`: {err}"))
             })?;
             match pod.status.as_ref().and_then(|s| s.phase.as_deref()) {
-                Some("Running") => return Ok(resolved_image_digest(&pod)),
+                Some("Running") => return Ok((resolved_image_digest(&pod), scheduling_wait)),
                 Some(phase @ ("Failed" | "Succeeded")) => {
                     let logs = self.pod_logs(name).await;
                     return Err(Error::ContainerRuntime(format!(
@@ -412,7 +499,7 @@ mod tests;
 #[async_trait::async_trait]
 impl ContainerRuntime for KubernetesContainerRuntime {
     #[instrument(name = "k8s.start", skip_all, fields(image = %spec.image), err)]
-    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerHandle> {
+    async fn start(&self, spec: &ContainerSpec) -> Result<ContainerStart> {
         let name = format!("{}{}", self.config.run_pod_prefix, Uuid::new_v4());
         let pod = self.run_pod(&name, spec);
         self.pods()
@@ -423,11 +510,16 @@ impl ContainerRuntime for KubernetesContainerRuntime {
             })?;
 
         // From here a failure tears the pod down so a failed start leaks nothing,
-        // mirroring the CLI runtime's stop-on-failure contract.
-        if let Err(err) = self.await_running(&name).await {
-            let _ = self.stop(&ContainerHandle { id: name.clone() }).await;
-            return Err(err);
-        }
+        // mirroring the CLI runtime's stop-on-failure contract. The pod may sit
+        // queued for cluster capacity first; that wait is reported back so it can
+        // be excluded from the run's measured duration.
+        let scheduling_wait = match self.await_running(&name).await {
+            Ok((_digest, scheduling_wait)) => scheduling_wait,
+            Err(err) => {
+                let _ = self.stop(&ContainerHandle { id: name.clone() }).await;
+                return Err(err);
+            }
+        };
         let handle = ContainerHandle { id: name };
         if let Err(err) = self.seed_workdir(&handle.id, &spec.repo_path).await {
             let _ = self.stop(&handle).await;
@@ -437,7 +529,10 @@ impl ContainerRuntime for KubernetesContainerRuntime {
             let _ = self.stop(&handle).await;
             return Err(err);
         }
-        Ok(handle)
+        Ok(ContainerStart {
+            handle,
+            scheduling_wait,
+        })
     }
 
     async fn exec(&self, container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
@@ -587,12 +682,6 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // the extracting `tar` ran as `node`, so it can read its own tree. Stream it
         // to a scratch file (the tree can be large) and unpack into the native host
         // destination.
-        let archive_path = self
-            .base_dir
-            .join(format!("artifact-{}.tar", Uuid::new_v4()));
-        let mut archive = tokio::fs::File::create(&archive_path)
-            .await
-            .map_err(|err| Error::ArtifactCollection(format!("creating scratch archive: {err}")))?;
         let command = [
             "tar".to_string(),
             "-c".to_string(),
@@ -602,23 +691,60 @@ impl ArtifactCollector for KubernetesArtifactCollector {
             WORK_DIR.to_string(),
             ".".to_string(),
         ];
-        let (exit_code, stderr) = self
-            .runtime
-            .exec_stream_stdout(&container.id, &command, &mut archive)
-            .await?;
-        drop(archive);
-        if exit_code != 0 {
+
+        // Retry the streaming collection a few times. `tar -c` is read-only, so
+        // re-running it is safe, and the failure it guards against is transient: the
+        // collection rides the kube exec WebSocket, and a managed API-server tunnel
+        // severing that long-lived stream surfaces as a missing terminating `Status`
+        // frame — `tar exit -1` with empty stderr — even though the run finished and
+        // its tree is intact. Without this the one blip permanently fails an
+        // otherwise-successful run, since the dispatcher never retries a driver Job.
+        let archive_path = self
+            .base_dir
+            .join(format!("artifact-{}.tar", Uuid::new_v4()));
+        for attempt in 1..=COLLECT_ATTEMPTS {
+            let mut archive = tokio::fs::File::create(&archive_path)
+                .await
+                .map_err(|err| {
+                    Error::ArtifactCollection(format!("creating scratch archive: {err}"))
+                })?;
+            let result = self
+                .runtime
+                .exec_stream_stdout(&container.id, &command, &mut archive)
+                .await;
+            drop(archive);
+
+            // Treat both a non-zero `tar` exit and an exec transport error as
+            // retryable; surface the last one if every attempt is exhausted.
+            let failure = match result {
+                Ok((0, _)) => {
+                    let unpack = unpack_archive_file(&archive_path, &dest);
+                    let _ = std::fs::remove_file(&archive_path);
+                    unpack?;
+                    return Ok(ArtifactCollection { repo_path: dest });
+                }
+                Ok((exit_code, stderr)) => Error::ArtifactCollection(format!(
+                    "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
+                    container.id,
+                    stderr.trim()
+                )),
+                Err(err) => err,
+            };
             let _ = std::fs::remove_file(&archive_path);
-            return Err(Error::ArtifactCollection(format!(
-                "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
-                container.id,
-                stderr.trim()
-            )));
+
+            if attempt == COLLECT_ATTEMPTS {
+                return Err(failure);
+            }
+            tracing::warn!(
+                pod = %container.id,
+                attempt,
+                attempts = COLLECT_ATTEMPTS,
+                error = %failure,
+                "collecting run artifacts failed; retrying",
+            );
+            sleep(Duration::from_millis(500 * 2u64.pow(attempt - 1))).await;
         }
-        let unpack = unpack_archive_file(&archive_path, &dest);
-        let _ = std::fs::remove_file(&archive_path);
-        unpack?;
-        Ok(ArtifactCollection { repo_path: dest })
+        unreachable!("the collection loop returns on the final attempt")
     }
 }
 
@@ -833,6 +959,47 @@ fn normalize_image_id(image_id: &str) -> Option<String> {
         .strip_prefix("docker-pullable://")
         .unwrap_or(image_id);
     (image_id.contains("@sha256:") && !image_id.is_empty()).then(|| image_id.to_string())
+}
+
+/// Whether the scheduler has bound the pod to a node — the boundary between the
+/// "queued for capacity" wait and the "startup work" wait. True once the pod
+/// carries a `PodScheduled=True` condition or has a node assigned in its spec
+/// (the field the scheduler sets on binding); either signal alone is sufficient.
+fn pod_scheduled(pod: &Pod) -> bool {
+    let condition_true = pod
+        .status
+        .as_ref()
+        .and_then(|status| status.conditions.as_ref())
+        .map(|conditions| {
+            conditions
+                .iter()
+                .any(|c| c.type_ == "PodScheduled" && c.status == "True")
+        })
+        .unwrap_or(false);
+    let node_assigned = pod
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.node_name.as_deref())
+        .is_some_and(|node| !node.is_empty());
+    condition_true || node_assigned
+}
+
+/// The scheduler's explanation for why a pod is not yet scheduled, taken from the
+/// `PodScheduled=False` condition (for example `Unschedulable: 0/3 nodes are
+/// available: insufficient memory`), for a schedule-timeout diagnostic.
+fn pod_scheduling_message(pod: &Pod) -> Option<String> {
+    let condition = pod
+        .status
+        .as_ref()
+        .and_then(|status| status.conditions.as_ref())?
+        .iter()
+        .find(|c| c.type_ == "PodScheduled")?;
+    match (condition.reason.as_deref(), condition.message.as_deref()) {
+        (Some(reason), Some(message)) => Some(format!("{reason}: {message}")),
+        (Some(reason), None) => Some(reason.to_string()),
+        (None, Some(message)) => Some(message.to_string()),
+        (None, None) => None,
+    }
 }
 
 /// The waiting reason of a pod's run container (for example `ImagePullBackOff`),

@@ -51,8 +51,8 @@ fn sample_record() -> RunRecord {
                 reasoning: Some(7974),
             },
             cost: Cost {
-                comparable: 0.2667,
-                actual: 0.2667,
+                comparable: Some(0.2667),
+                actual: Some(0.2667),
             },
         },
         validation: ValidationSummary {
@@ -177,6 +177,10 @@ struct MockRunner {
     /// Whether `git status --porcelain` should report uncommitted work, so the
     /// commit-before-push path either commits (dirty) or skips the commit (clean).
     working_tree_dirty: bool,
+    /// How many leading `git push` invocations should fail before one succeeds,
+    /// so the propagation-lag retry path can be exercised. Counts down as pushes
+    /// are attempted.
+    push_failures: Mutex<u32>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -187,6 +191,7 @@ impl MockRunner {
         Self {
             repo_exists,
             working_tree_dirty: true,
+            push_failures: Mutex::new(0),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -197,8 +202,16 @@ impl MockRunner {
         Self {
             repo_exists,
             working_tree_dirty: false,
+            push_failures: Mutex::new(0),
             calls: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Make the first `n` `git push` attempts fail before one succeeds, modelling
+    /// GitHub rejecting the push until the new repo's write grant propagates.
+    fn failing_first_pushes(mut self, n: u32) -> Self {
+        self.push_failures = Mutex::new(n);
+        self
     }
 
     fn calls(&self) -> Vec<String> {
@@ -226,6 +239,7 @@ impl CommandRunner for MockRunner {
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
         let is_wrangler = program == "wrangler";
         let is_git_status = program == "git" && args.first() == Some(&"status");
+        let is_git_push = program == "git" && args.contains(&"push");
         let stdout = if is_wrangler {
             "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
         } else if is_git_status && self.working_tree_dirty {
@@ -233,10 +247,25 @@ impl CommandRunner for MockRunner {
         } else {
             String::new()
         };
+        // A push fails while there are scripted failures left (the propagation
+        // lag); `gh repo view` reports existence; everything else succeeds.
+        let push_fails = is_git_push && {
+            let mut remaining = self.push_failures.lock().expect("lock");
+            (*remaining > 0).then(|| *remaining -= 1).is_some()
+        };
+        let success = if is_repo_view {
+            self.repo_exists
+        } else {
+            !push_fails
+        };
         Ok(CommandOutput {
-            success: if is_repo_view { self.repo_exists } else { true },
+            success,
             stdout,
-            stderr: String::new(),
+            stderr: if push_fails {
+                "remote: Permission denied. fatal: unable to access ... 403\n".to_string()
+            } else {
+                String::new()
+            },
         })
     }
 }
@@ -301,11 +330,15 @@ fn publisher_for(
     let build_dir = dir.join("dist");
     std::fs::create_dir_all(&impl_dir).expect("impl dir");
     std::fs::create_dir_all(&build_dir).expect("build dir");
-    (
-        BackendPublisher::new(PublishConfig::default(), runner, MockBackend),
-        impl_dir,
-        build_dir,
-    )
+    // Zero out the propagation-lag delays so the release tests never actually
+    // sleep; the retry *count* is preserved so the retry path stays exercised.
+    let publisher = BackendPublisher::new(PublishConfig::default(), runner, MockBackend)
+        .with_push_retry(PushRetry {
+            attempts: 5,
+            initial_delay: Duration::ZERO,
+            backoff: Duration::ZERO,
+        });
+    (publisher, impl_dir, build_dir)
 }
 
 #[tokio::test]
@@ -333,11 +366,27 @@ async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
     );
 
     let calls = publisher.runner().calls();
-    // The repo was created public and pushed.
+    // The repo was created public and empty — the push is a separate step (not
+    // `gh repo create --push`) so it can retry through GitHub's permission lag.
     assert!(
-        calls.iter().any(|c| c.contains("gh repo create")
-            && c.contains("--public")
-            && c.contains("--push"))
+        calls
+            .iter()
+            .any(|c| c.contains("gh repo create") && c.contains("--public")),
+        "{calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.contains("gh repo create") && c.contains("--push")),
+        "create and push must be separate: {calls:?}"
+    );
+    // The implementation is pushed, authenticated through `gh`'s credential
+    // helper (the pod configures no git credential helper of its own).
+    assert!(
+        calls.iter().any(|c| c.contains("git ")
+            && c.contains(" push ")
+            && c.contains("gh auth git-credential")),
+        "{calls:?}"
     );
     // The model's uncommitted work is committed before the push, so the public
     // repo carries the implementation and not just the "Seed test case" commit.
@@ -345,9 +394,9 @@ async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
     // (e.g. `target/`) out.
     assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
     let commit_pos = calls.iter().position(|c| c.contains("git commit"));
-    let create_pos = calls.iter().position(|c| c.contains("gh repo create"));
+    let push_pos = calls.iter().position(|c| c.contains(" push "));
     assert!(
-        matches!((commit_pos, create_pos), (Some(commit), Some(create)) if commit < create),
+        matches!((commit_pos, push_pos), (Some(commit), Some(push)) if commit < push),
         "implementation must be committed before the push: {calls:?}"
     );
 }
@@ -411,13 +460,14 @@ async fn release_code_skips_the_commit_when_the_working_tree_is_already_clean() 
     // Staging still happens, but a clean tree means no commit is made...
     assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
     assert!(!calls.iter().any(|c| c.contains("git commit")), "{calls:?}");
-    // ...and the push still creates and pushes the repo from what is committed.
+    // ...and the repo is still created and the existing commits pushed.
     assert!(
         calls
             .iter()
-            .any(|c| c.contains("gh repo create") && c.contains("--push")),
+            .any(|c| c.contains("gh repo create") && c.contains("--public")),
         "{calls:?}"
     );
+    assert!(calls.iter().any(|c| c.contains(" push ")), "{calls:?}");
 }
 
 #[tokio::test]
@@ -456,7 +506,7 @@ async fn release_code_of_an_asset_generation_run_creates_no_repo() {
 }
 
 #[tokio::test]
-async fn release_code_is_idempotent_when_the_repo_already_exists() {
+async fn release_code_reuses_an_existing_repo_but_still_pushes() {
     let dir = tempfile::tempdir().expect("tempdir");
     // The repo already exists, so the existence probe reports it present.
     let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(true));
@@ -475,13 +525,87 @@ async fn release_code_is_idempotent_when_the_repo_already_exists() {
         .await
         .expect("release code");
 
-    // The existing repo's URL is still returned, but it is left in place — no create.
+    // The existing repo's URL is still returned and the repo is left in place — no
+    // re-create.
     assert_eq!(
         source_repo.as_deref(),
         Some("https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9")
     );
     let calls = publisher.runner().calls();
-    assert!(!calls.iter().any(|c| c.contains("gh repo create")));
+    assert!(
+        !calls.iter().any(|c| c.contains("gh repo create")),
+        "{calls:?}"
+    );
+    // But the push still runs: this is what recovers a repo whose first push never
+    // landed (created but left empty by an earlier failure). A re-push of an
+    // already-complete repo is a clean no-op.
+    assert!(calls.iter().any(|c| c.contains(" push ")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn release_code_retries_the_push_through_the_propagation_lag() {
+    // GitHub rejects the first two pushes (the new org repo's write grant has not
+    // propagated yet), then accepts the third. The publish must ride this out
+    // rather than fail.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_pushes(2));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let source_repo = publisher
+        .release_code(&request)
+        .await
+        .expect("release code should succeed once the push lands");
+
+    assert_eq!(
+        source_repo.as_deref(),
+        Some("https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9")
+    );
+    // Three push attempts: two rejected, the third accepted.
+    let calls = publisher.runner().calls();
+    let pushes = calls.iter().filter(|c| c.contains(" push ")).count();
+    assert_eq!(pushes, 3, "{calls:?}");
+}
+
+#[tokio::test]
+async fn release_code_fails_when_the_push_never_succeeds() {
+    // If every attempt is rejected, the publish surfaces the failure (with the
+    // push's own diagnostics) rather than reporting a success that left an empty
+    // repo. `attempts` is 5 in the test publisher, so 99 scripted failures exhaust
+    // the budget.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_pushes(99));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let err = publisher
+        .release_code(&request)
+        .await
+        .expect_err("release code should fail when the push never lands");
+    let message = err.to_string();
+    assert!(message.contains("after 5 attempt"), "{message}");
+    assert!(message.contains("403"), "{message}");
+
+    // The push was attempted exactly `attempts` times before giving up.
+    let calls = publisher.runner().calls();
+    let pushes = calls.iter().filter(|c| c.contains(" push ")).count();
+    assert_eq!(pushes, 5, "{calls:?}");
 }
 
 #[tokio::test]
@@ -506,6 +630,52 @@ async fn release_playable_build_without_a_build_dir_skips_the_deploy() {
     assert!(playable_build.is_none());
     let calls = publisher.runner().calls();
     assert!(!calls.iter().any(|c| c.contains("wrangler")));
+}
+
+#[test]
+fn failure_details_prefers_stdout_when_stderr_is_empty() {
+    // `wrangler` writes its diagnostics to stdout, leaving stderr empty — the
+    // exact case that previously rendered the error as `… failed: ` with nothing
+    // after it.
+    let output = CommandOutput {
+        success: false,
+        stdout: "  Authentication error [code: 10000]\n".to_string(),
+        stderr: String::new(),
+    };
+    assert_eq!(
+        output.failure_details(),
+        "Authentication error [code: 10000]"
+    );
+}
+
+#[test]
+fn failure_details_prefers_stderr_when_stdout_is_empty() {
+    let output = CommandOutput {
+        success: false,
+        stdout: String::new(),
+        stderr: "  fatal: repository not found\n".to_string(),
+    };
+    assert_eq!(output.failure_details(), "fatal: repository not found");
+}
+
+#[test]
+fn failure_details_combines_both_streams_when_present() {
+    let output = CommandOutput {
+        success: false,
+        stdout: "deploy output\n".to_string(),
+        stderr: "a warning\n".to_string(),
+    };
+    assert_eq!(output.failure_details(), "a warning\ndeploy output");
+}
+
+#[test]
+fn failure_details_reports_when_no_output_was_captured() {
+    let output = CommandOutput {
+        success: false,
+        stdout: "   \n".to_string(),
+        stderr: String::new(),
+    };
+    assert_eq!(output.failure_details(), "(no output captured)");
 }
 
 #[test]

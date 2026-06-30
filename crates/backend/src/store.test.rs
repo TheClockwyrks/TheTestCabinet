@@ -214,3 +214,65 @@ fn delete_run_media_rejects_an_unsafe_run_id() {
     let err = store.delete_run_media("../escape").unwrap_err();
     assert!(matches!(err, BackendError::BadRequest(_)));
 }
+
+#[test]
+fn publish_staged_version_swaps_a_fresh_build_into_place() {
+    // A re-ingest builds into a staging dir and swaps it in wholesale: new content
+    // wins, a file dropped between builds does not linger, and no staging debris is
+    // left behind. This is the mechanism that closes the manifest-less window a
+    // destructive in-place rebuild opened (the spurious 404 "is not ingested" a run
+    // hit while resolving its version mid-re-ingest).
+    let (_dir, store) = temp_store();
+    let version_dir = store.version_dir("pong", "v1.0.0");
+
+    // First publish: a tree with a manifest plus a file a later build will drop.
+    let staged = store.new_staging_dir("pong", "v1.0.0").unwrap();
+    std::fs::write(staged.join("keep.txt"), "v1").unwrap();
+    std::fs::write(staged.join("stale.txt"), "old").unwrap();
+    write_manifest_in(&staged, &sample_manifest("pong", "v1.0.0")).unwrap();
+    store
+        .publish_staged_version("pong", "v1.0.0", &staged)
+        .unwrap();
+
+    assert!(store.has_version("pong", "v1.0.0"));
+    assert_eq!(
+        std::fs::read_to_string(version_dir.join("keep.txt")).unwrap(),
+        "v1"
+    );
+
+    // Re-publish from a fresh build: updated content, and `stale.txt` is absent.
+    let staged2 = store.new_staging_dir("pong", "v1.0.0").unwrap();
+    std::fs::write(staged2.join("keep.txt"), "v2").unwrap();
+    write_manifest_in(&staged2, &sample_manifest("pong", "v1.0.0")).unwrap();
+    store
+        .publish_staged_version("pong", "v1.0.0", &staged2)
+        .unwrap();
+
+    assert_eq!(
+        store.read_manifest("pong", "v1.0.0").unwrap().version,
+        "v1.0.0"
+    );
+    assert_eq!(
+        std::fs::read_to_string(version_dir.join("keep.txt")).unwrap(),
+        "v2"
+    );
+    assert!(
+        !version_dir.join("stale.txt").exists(),
+        "a file removed between builds must not linger after the swap"
+    );
+
+    // Only the real version is served — staging/retired dirs never leak into the
+    // listed `test-cases/` tree, and the staging area is drained after the swap.
+    assert_eq!(
+        store.list_versions("pong").unwrap(),
+        vec!["v1.0.0".to_string()]
+    );
+    let leaked: Vec<_> = std::fs::read_dir(store.staging_root())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "staging area should be empty after publish, found {leaked:?}"
+    );
+}

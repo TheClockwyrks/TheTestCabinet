@@ -130,7 +130,6 @@ a.row {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
 }
 
 // The title text truncates with an ellipsis so an overlong test name can't push

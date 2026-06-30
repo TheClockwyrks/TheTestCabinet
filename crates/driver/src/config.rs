@@ -204,6 +204,23 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         }
         None => defaults.pod_ready_timeout,
     };
+    // The scheduling wait is unbounded by default (a busy cluster makes runs
+    // queue rather than fail). A value of `0` means the same as unset — wait
+    // forever; any positive value caps how long a run may sit unscheduled.
+    let pod_schedule_timeout = match non_empty("TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS") {
+        Some(value) => {
+            let seconds: u64 =
+                value
+                    .parse()
+                    .map_err(|err: std::num::ParseIntError| ConfigError::Invalid {
+                        name: "TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS",
+                        value: value.clone(),
+                        detail: err.to_string(),
+                    })?;
+            (seconds > 0).then(|| Duration::from_secs(seconds))
+        }
+        None => defaults.pod_schedule_timeout,
+    };
     let image_pull_secrets = non_empty("TCAB_K8S_IMAGE_PULL_SECRETS")
         .map(|value| {
             value
@@ -223,6 +240,7 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         memory_request: non_empty("TCAB_K8S_RUN_MEMORY_REQUEST"),
         memory_limit: non_empty("TCAB_K8S_RUN_MEMORY_LIMIT"),
         pod_ready_timeout,
+        pod_schedule_timeout,
         // The driver is the trusted pod; the sandbox connects back to it for live
         // preview, so its own pod IP (from the downward API) is the hostAlias
         // target.

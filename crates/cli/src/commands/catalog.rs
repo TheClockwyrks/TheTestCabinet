@@ -47,16 +47,17 @@ struct ModelEntry {
     released_at: Option<String>,
 }
 
-/// Per-token prices for a model, mirrored from OpenRouter.
+/// Per-token prices for a model, mirrored from OpenRouter. Each price is `null`
+/// when OpenRouter lists no usable value for that class.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ModelPrices {
-    /// Price per uncached input token.
-    uncached_input: f64,
-    /// Price per cached input token.
-    cached_input: f64,
-    /// Price per output token.
-    output: f64,
+    /// Price per uncached input token, or `null` when unknown.
+    uncached_input: Option<f64>,
+    /// Price per cached input token, or `null` when unknown.
+    cached_input: Option<f64>,
+    /// Price per output token, or `null` when unknown.
+    output: Option<f64>,
 }
 
 impl From<TokenPrices> for ModelPrices {
