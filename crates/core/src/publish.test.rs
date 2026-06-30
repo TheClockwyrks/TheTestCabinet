@@ -239,7 +239,7 @@ impl CommandRunner for MockRunner {
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
         let is_wrangler = program == "wrangler";
         let is_git_status = program == "git" && args.first() == Some(&"status");
-        let is_git_push = program == "git" && args.iter().any(|a| *a == "push");
+        let is_git_push = program == "git" && args.contains(&"push");
         let stdout = if is_wrangler {
             "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
         } else if is_git_status && self.working_tree_dirty {
