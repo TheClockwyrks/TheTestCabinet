@@ -44,7 +44,7 @@ flight, and slow-immunity.
   of the early waves.
 - **Sprint** — half the HP, double the speed of a Mote. Sprints blow through a
   long maze quickly, so they punish a defense built only for slow tanks; a
-  **Rime** line (`specs/towers.md`) earns its keep against them.
+  Rime line (`specs/towers.md`) earns its keep against them.
 - **Hulk** — a slow wall of HP that soaks fire and leaks **2** lives if it
   escapes through an exhaust. Hulks reward concentrated, high-heat damage (a
   white-hot **Lance** or a **Bloom**-fed core), not a spread of cold guns.
@@ -57,8 +57,8 @@ flight, and slow-immunity.
   and wall (`specs/playfield.md`). No maze and no ground emitter can touch it;
   only a **Flak** (`specs/towers.md`) can shoot it down. Drifts force the player
   to spend on anti-air rather than leaning entirely on the maze.
-- **Core** — the **boss**: a massive HP pool that is **immune** to slowing
-  entirely (a **Rime** does nothing to it, regardless of the Rime's heat),
+- **Core** — the **boss**: a massive HP pool that is immune to slowing
+  entirely (a Rime does nothing to it, regardless of the Rime's heat),
   leaking **5** lives if it escapes through an exhaust. A Core appears on the
   milestone waves of `specs/flow.md` and is the test of whether your hot core
   can actually output the damage to break it before it crosses the floor.
@@ -83,7 +83,7 @@ timing and intake split per wave is yours to design, within
   makeup (previewed in the build panel, `specs/flow.md`) and re-shaping the
   floor for it is the between-wave game.
 
-## Reading the surge against the heat system
+## Surge and Heat System Relationship
 
 The surge and the heat system are intertwined: the denser a wave packs into
 your maze, the hotter your guns run on it; a Swarm flood will redline a tight
