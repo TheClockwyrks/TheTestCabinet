@@ -57,6 +57,12 @@ const WORK_DIR: &str = "/work";
 /// so a future sidecar would not make the target ambiguous.
 const RUN_CONTAINER: &str = "run";
 
+/// How many times to attempt the streaming `tar` artifact collection before giving
+/// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
+/// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run;
+/// `tar -c` is read-only so re-running it is safe. See `KubernetesArtifactCollector`.
+const COLLECT_ATTEMPTS: u32 = 4;
+
 /// Configuration for the Kubernetes runtime, resolved from the driver's
 /// environment (see [`crate::config`]). Everything here scopes *sandbox pods*;
 /// the driver reaches the API through its own in-cluster service account.
@@ -676,12 +682,6 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // the extracting `tar` ran as `node`, so it can read its own tree. Stream it
         // to a scratch file (the tree can be large) and unpack into the native host
         // destination.
-        let archive_path = self
-            .base_dir
-            .join(format!("artifact-{}.tar", Uuid::new_v4()));
-        let mut archive = tokio::fs::File::create(&archive_path)
-            .await
-            .map_err(|err| Error::ArtifactCollection(format!("creating scratch archive: {err}")))?;
         let command = [
             "tar".to_string(),
             "-c".to_string(),
@@ -691,23 +691,60 @@ impl ArtifactCollector for KubernetesArtifactCollector {
             WORK_DIR.to_string(),
             ".".to_string(),
         ];
-        let (exit_code, stderr) = self
-            .runtime
-            .exec_stream_stdout(&container.id, &command, &mut archive)
-            .await?;
-        drop(archive);
-        if exit_code != 0 {
+
+        // Retry the streaming collection a few times. `tar -c` is read-only, so
+        // re-running it is safe, and the failure it guards against is transient: the
+        // collection rides the kube exec WebSocket, and a managed API-server tunnel
+        // severing that long-lived stream surfaces as a missing terminating `Status`
+        // frame — `tar exit -1` with empty stderr — even though the run finished and
+        // its tree is intact. Without this the one blip permanently fails an
+        // otherwise-successful run, since the dispatcher never retries a driver Job.
+        let archive_path = self
+            .base_dir
+            .join(format!("artifact-{}.tar", Uuid::new_v4()));
+        for attempt in 1..=COLLECT_ATTEMPTS {
+            let mut archive = tokio::fs::File::create(&archive_path)
+                .await
+                .map_err(|err| {
+                    Error::ArtifactCollection(format!("creating scratch archive: {err}"))
+                })?;
+            let result = self
+                .runtime
+                .exec_stream_stdout(&container.id, &command, &mut archive)
+                .await;
+            drop(archive);
+
+            // Treat both a non-zero `tar` exit and an exec transport error as
+            // retryable; surface the last one if every attempt is exhausted.
+            let failure = match result {
+                Ok((0, _)) => {
+                    let unpack = unpack_archive_file(&archive_path, &dest);
+                    let _ = std::fs::remove_file(&archive_path);
+                    unpack?;
+                    return Ok(ArtifactCollection { repo_path: dest });
+                }
+                Ok((exit_code, stderr)) => Error::ArtifactCollection(format!(
+                    "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
+                    container.id,
+                    stderr.trim()
+                )),
+                Err(err) => err,
+            };
             let _ = std::fs::remove_file(&archive_path);
-            return Err(Error::ArtifactCollection(format!(
-                "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
-                container.id,
-                stderr.trim()
-            )));
+
+            if attempt == COLLECT_ATTEMPTS {
+                return Err(failure);
+            }
+            tracing::warn!(
+                pod = %container.id,
+                attempt,
+                attempts = COLLECT_ATTEMPTS,
+                error = %failure,
+                "collecting run artifacts failed; retrying",
+            );
+            sleep(Duration::from_millis(500 * 2u64.pow(attempt - 1))).await;
         }
-        let unpack = unpack_archive_file(&archive_path, &dest);
-        let _ = std::fs::remove_file(&archive_path);
-        unpack?;
-        Ok(ArtifactCollection { repo_path: dest })
+        unreachable!("the collection loop returns on the final attempt")
     }
 }
 
