@@ -176,9 +176,9 @@
       "openrouter/z-ai/glm-5.1"
     ],
     "prices": {
-      "uncachedInput": 9.8e-7,
-      "cachedInput": 1.82e-7,
-      "output": 3.08e-6
+      "uncachedInput": 9.75e-7,
+      "cachedInput": 9.75e-7,
+      "output": 4.3e-6
     },
     "contextLength": 202752,
     "releasedAt": "2026-04-07T16:07:05Z"
@@ -288,9 +288,9 @@
       "openrouter/moonshotai/kimi-k2.7-code"
     ],
     "prices": {
-      "uncachedInput": 6.12e-7,
-      "cachedInput": 1.296e-7,
-      "output": 3.069e-6
+      "uncachedInput": 7.4e-7,
+      "cachedInput": 1.5e-7,
+      "output": 3.5e-6
     },
     "contextLength": 262144,
     "releasedAt": "2026-06-12T12:12:41Z"
@@ -306,8 +306,8 @@
       "openrouter/xiaomi/mimo-v2.5"
     ],
     "prices": {
-      "uncachedInput": 1.4e-7,
-      "cachedInput": 2.8e-9,
+      "uncachedInput": 1.05e-7,
+      "cachedInput": 1.05e-7,
       "output": 2.8e-7
     },
     "contextLength": 1048576,
@@ -360,9 +360,9 @@
       "openrouter/openrouter/pareto-code"
     ],
     "prices": {
-      "uncachedInput": -1.0,
-      "cachedInput": -1.0,
-      "output": -1.0
+      "uncachedInput": null,
+      "cachedInput": null,
+      "output": null
     },
     "contextLength": 2000000,
     "releasedAt": "2026-04-21T05:05:00Z"
