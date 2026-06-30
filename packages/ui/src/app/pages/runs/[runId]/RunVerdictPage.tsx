@@ -122,12 +122,18 @@ export function RunVerdictPage() {
 // the writeup prose, and the checklist broken down by domain. The scoring model
 // (item weights + domains) is resolved from the catalog; when it is unavailable
 // (a case not in this host's catalog) the score and weights are simply omitted.
+//
+// `showOverall` (default) leads with the overall rating + tier description + score
+// headline; the single-review page omits it (`showOverall={false}`) because its
+// own top section already carries that reviewer's name, rating, and score.
 export function PublishedVerdict({
   review,
   model,
+  showOverall = true,
 }: {
   review: ParsedWriteup;
   model: ReviewModel;
+  showOverall?: boolean;
 }) {
   const overall = worstRating(review.ratings.map((r) => r.rating));
   const haveModel = model.items.length > 0;
@@ -166,25 +172,29 @@ export function PublishedVerdict({
 
   return (
     <>
-      {/* Overall rating (worst across domains) and score (earned / total pts). */}
-      <div className={styles.verdictHeader}>
-        {overall && (
-          <p className={styles.verdict}>
-            <RatingBadge rating={overall} />
-            <span className={styles.verdictLabel}>
-              {RATING_META[overall].description}
-            </span>
-          </p>
-        )}
-        {score && (
-          <p className={styles.score}>
-            <span className={styles.scoreValue}>
-              {score.earned} / {score.total}
-            </span>{" "}
-            <span className={styles.scoreUnit}>pts</span>
-          </p>
-        )}
-      </div>
+      {/* Overall rating (worst across domains) and score (earned / total pts).
+          Omitted on the single-review page, whose own top section already pairs
+          the reviewer's name with that rating and score. */}
+      {showOverall && (
+        <div className={styles.verdictHeader}>
+          {overall && (
+            <p className={styles.verdict}>
+              <RatingBadge rating={overall} />
+              <span className={styles.verdictLabel}>
+                {RATING_META[overall].description}
+              </span>
+            </p>
+          )}
+          {score && (
+            <p className={styles.score}>
+              <span className={styles.scoreValue}>
+                {score.earned} / {score.total}
+              </span>{" "}
+              <span className={styles.scoreUnit}>pts</span>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Per-domain ratings: the reviewer's call for each mode the case declares. */}
       {model.domains.length > 0 && (
@@ -277,9 +287,9 @@ function ChecklistRow({
         {VERDICT_META[verdict.status].label}
       </span>
       <span className={styles.verdictItem}>
-        {label}
+        <span className={styles.verdictItemTitle}>{label}</span>
         {verdict.note && (
-          <span className={styles.verdictNote}> — {verdict.note}</span>
+          <span className={styles.verdictNote}>{verdict.note}</span>
         )}
       </span>
     </li>
