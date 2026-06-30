@@ -40,8 +40,8 @@ fn sample_record() -> RunRecord {
                 reasoning: Some(50),
             },
             cost: Cost {
-                comparable: 1.25,
-                actual: 1.40,
+                comparable: Some(1.25),
+                actual: Some(1.40),
             },
         },
         validation: ValidationSummary {

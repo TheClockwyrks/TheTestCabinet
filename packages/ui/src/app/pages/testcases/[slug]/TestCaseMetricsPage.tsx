@@ -20,7 +20,10 @@ const TOKEN_TICKS = "~s";
 // Null for a harness that doesn't report every token class; such runs are then
 // excluded from the token chart rather than charted with an incomplete total.
 const tokensValue = (run: RunRecord): number | null => totalTokens(run.metrics);
-const costValue = (run: RunRecord): number => run.metrics.cost.comparable;
+// Null when the run's comparable cost is unknown (the model's prices could not
+// be resolved); such runs are excluded from the cost chart rather than charted
+// as zero.
+const costValue = (run: RunRecord): number | null => run.metrics.cost.comparable;
 
 // The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions
 // for the selected variant, grouped by model so the spread across runs is

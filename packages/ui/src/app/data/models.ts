@@ -7,12 +7,12 @@ import modelsData from "./models.json";
 
 /** Per-token USD prices resolved from OpenRouter, when available. */
 export interface ModelPrices {
-  /** USD per uncached input token. */
-  uncachedInput: number;
-  /** USD per cached input token. */
-  cachedInput: number;
-  /** USD per output token. */
-  output: number;
+  /** USD per uncached input token, or null when OpenRouter lists no price. */
+  uncachedInput: number | null;
+  /** USD per cached input token, or null when OpenRouter lists no price. */
+  cachedInput: number | null;
+  /** USD per output token, or null when OpenRouter lists no price. */
+  output: number | null;
 }
 
 /** One curated model in the catalog. */

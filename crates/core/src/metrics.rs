@@ -79,18 +79,31 @@ fn sum_reported(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 ///
 /// These come from the prices OpenRouter lists for the model used. Reasoning
 /// tokens are priced at the output rate, so no separate field is needed.
+///
+/// Each price is optional: `None` means the price is **unknown** (OpenRouter
+/// does not list one, or lists a nonsensical value such as a negative sentinel),
+/// which is distinct from `Some(0.0)` (a genuinely free class). A class priced
+/// `None` poisons any cost it contributes to rather than being silently treated
+/// as free — see [`Cost::comparable_from`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPrices {
-    /// Price per uncached input token.
-    pub uncached_input: f64,
-    /// Price per cached input token.
-    pub cached_input: f64,
-    /// Price per output token (also applied to reasoning tokens).
-    pub output: f64,
+    /// Price per uncached input token, or `None` when unknown.
+    pub uncached_input: Option<f64>,
+    /// Price per cached input token, or `None` when unknown.
+    pub cached_input: Option<f64>,
+    /// Price per output token (also applied to reasoning tokens), or `None` when
+    /// unknown.
+    pub output: Option<f64>,
 }
 
 /// Cost of a run, recorded two ways.
+///
+/// Each figure is optional: `None` means the cost is **unknown** — typically
+/// because the model's per-token prices could not be resolved (the model is
+/// absent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).
+/// This is distinct from `Some(0.0)`, a genuinely free run. Keeping the two
+/// apart avoids presenting an unknown cost as `$0.00`.
 #[cfg_attr(
     feature = "contract",
     derive(ts_rs::TS, schemars::JsonSchema),
@@ -104,25 +117,42 @@ pub struct Cost {
     /// derived from token classes and OpenRouter's listed prices, except for
     /// harnesses that drive a single provider directly and report their own
     /// exact cost (such as Claude Code), where that reported cost — itself
-    /// provider-stable — is used instead.
-    pub comparable: f64,
+    /// provider-stable — is used instead. `None` when the cost is unknown.
+    pub comparable: Option<f64>,
     /// The amount actually charged for the run, recorded for reference. Equal
     /// to the comparable figure unless the harness reports its own exact cost.
-    pub actual: f64,
+    /// `None` when the cost is unknown.
+    pub actual: Option<f64>,
 }
 
 impl Cost {
-    /// Compute the comparable cost from token counts and listed prices.
+    /// Compute the comparable cost from token counts and listed prices, or
+    /// `None` when the cost cannot be determined.
     ///
-    /// Reasoning tokens are priced at the output rate. An unknown class
+    /// Reasoning tokens are priced at the output rate. An unknown token class
     /// (`None`) contributes nothing to the cost: its tokens are either genuinely
     /// absent or already folded into another class that is priced here (for
     /// example a harness that reports reasoning only inside its `output` total).
-    pub fn comparable_from(counts: &TokenCounts, prices: &TokenPrices) -> f64 {
-        let output = counts.output.unwrap_or(0) + counts.reasoning.unwrap_or(0);
-        counts.uncached_input.unwrap_or(0) as f64 * prices.uncached_input
-            + counts.cached_input.unwrap_or(0) as f64 * prices.cached_input
-            + output as f64 * prices.output
+    /// An **unknown price** (`None`), on the other hand, poisons the total: if a
+    /// class carries tokens but its per-token price is unknown, the whole cost is
+    /// unknown rather than under-counted. A class with zero tokens needs no
+    /// price.
+    pub fn comparable_from(counts: &TokenCounts, prices: &TokenPrices) -> Option<f64> {
+        // A priced class contributes `tokens * price`; zero tokens contribute
+        // nothing regardless of price, but a nonzero count with an unknown price
+        // makes the whole total unknown.
+        let part = |tokens: u64, price: Option<f64>| -> Option<f64> {
+            if tokens == 0 {
+                Some(0.0)
+            } else {
+                price.map(|price| tokens as f64 * price)
+            }
+        };
+        let uncached_input = part(counts.uncached_input.unwrap_or(0), prices.uncached_input)?;
+        let cached_input = part(counts.cached_input.unwrap_or(0), prices.cached_input)?;
+        let output_tokens = counts.output.unwrap_or(0) + counts.reasoning.unwrap_or(0);
+        let output = part(output_tokens, prices.output)?;
+        Some(uncached_input + cached_input + output)
     }
 }
 

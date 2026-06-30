@@ -3,6 +3,7 @@ import {
   formatCompact,
   formatReleaseDate,
   formatUsd,
+  perMillion,
 } from "../../../format";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
 import styles from "./ModelStatsPage.module.scss";
@@ -31,15 +32,15 @@ function StatsContent({ model }: { model: ModelSummary }) {
             <>
               <Stat
                 label="Uncached input / Mtok"
-                value={formatUsd(model.prices.uncachedInput * 1e6)}
+                value={formatUsd(perMillion(model.prices.uncachedInput))}
               />
               <Stat
                 label="Cached input / Mtok"
-                value={formatUsd(model.prices.cachedInput * 1e6)}
+                value={formatUsd(perMillion(model.prices.cachedInput))}
               />
               <Stat
                 label="Output / Mtok"
-                value={formatUsd(model.prices.output * 1e6)}
+                value={formatUsd(perMillion(model.prices.output))}
               />
             </>
           ) : (

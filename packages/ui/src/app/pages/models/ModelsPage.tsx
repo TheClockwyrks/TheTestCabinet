@@ -4,7 +4,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import type { ModelSummary } from "../../data/models";
 import { useModels } from "../../data/useModels";
 import { providerLogo } from "../../data/providerLogo";
-import { formatCompact, formatUsd } from "../../format";
+import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
 import styles from "./ModelsPage.module.scss";
 
@@ -69,11 +69,11 @@ function ModelRow({ model }: { model: ModelSummary }) {
         {model.provider}
       </span>
       <Price
-        value={model.prices ? model.prices.uncachedInput * 1e6 : null}
+        value={perMillion(model.prices?.uncachedInput ?? null)}
         label="Input / Mtok"
       />
       <Price
-        value={model.prices ? model.prices.output * 1e6 : null}
+        value={perMillion(model.prices?.output ?? null)}
         label="Output / Mtok"
       />
       <span

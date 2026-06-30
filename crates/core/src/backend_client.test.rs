@@ -365,8 +365,8 @@ fn sample_record(id: &str) -> RunRecord {
                 reasoning: Some(0),
             },
             cost: Cost {
-                comparable: 0.0,
-                actual: 0.0,
+                comparable: Some(0.0),
+                actual: Some(0.0),
             },
         },
         validation: ValidationSummary {

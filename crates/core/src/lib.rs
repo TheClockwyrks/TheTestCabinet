@@ -695,10 +695,12 @@ where
         let tokens = outcome.usage.tokens;
         let cost = match outcome.reported_cost {
             Some(reported) => Cost {
-                comparable: reported,
-                actual: reported,
+                comparable: Some(reported),
+                actual: Some(reported),
             },
             None => {
+                // `comparable_from` yields `None` when the model's prices are
+                // unknown, leaving both figures null rather than a misleading $0.
                 let comparable = Cost::comparable_from(&tokens, prices);
                 // No harness-reported charge to record separately yet; the
                 // comparable figure is the canonical, provider-stable value.
@@ -936,7 +938,7 @@ where
                 Err(err) => {
                     eprintln!(
                         "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
-                         recording zero comparable cost"
+                         recording unknown (null) comparable cost"
                     );
                     TokenPrices::default()
                 }
