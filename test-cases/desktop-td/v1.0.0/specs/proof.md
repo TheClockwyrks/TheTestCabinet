@@ -1,4 +1,4 @@
-# Meltdown — Proof of implementation
+# Proof of Implementation
 
 As part of the finished build, capture **proof of implementation**: a small set
 of screenshots and two short clips that evidence the game runs and the

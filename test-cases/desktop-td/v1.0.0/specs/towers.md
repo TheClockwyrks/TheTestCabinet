@@ -117,11 +117,10 @@ effect.
   (`specs/controls.md`). Its cost is deducted from your money
   (`specs/flow.md`); you cannot build what you cannot afford. Placement obeys
   the mazing rules in `specs/playfield.md` (never seal the floor).
-- **Upgrade.** A selected tower can be upgraded through three levels — I
-  (as built), II, and III. Each upgrade improves the tower and, for
-  emitters, makes it run hotter — a maxed emitter is a glass cannon that
-  needs thermal support. Each level applies, on top of the previous level's
-  stats:
+- **Upgrade.** A selected tower can be upgraded through three levels — I (base
+  level, as built), II, and III. Each upgrade improves the tower and, for
+  emitters, makes it run hotter — a maxed emitter is a glass cannon that needs
+  thermal support. Each level applies, on top of the previous level's stats:
   - **Emitters:** `baseDamage * 1.6`, `range + 0.5` tiles, `fireRate * 1.15`,
     and `heatPerShot * 1.3` (it heats faster; `coolRate` is unchanged). The
     **Rime** instead raises its cold-slow ceiling — `0.55 → 0.68 → 0.80` at
