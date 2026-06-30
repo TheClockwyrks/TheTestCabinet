@@ -162,6 +162,112 @@ pub async fn upload_adversarial_to_backend(
     Ok(())
 }
 
+/// Mirror a run's proof-of-implementation media into the **backend store**, keyed by
+/// run id — the backend-driven counterpart to the artifact-service tarball upload.
+///
+/// The backend store is a different place from the artifact service. The artifact
+/// service serves a run's proof to the *open* console session it was produced in;
+/// but the public static site (and any other host) reads proof from the snapshot
+/// the backend exports out of **its own store** (`snapshot::run_proofs` →
+/// `store::list_run_proofs`). Nothing else writes that store's `runs/{id}/proof/`
+/// dir, so without this a backend-driven run's proof never reaches the snapshot and
+/// the published site renders "Proof media is not available here." for every
+/// declared proof.
+///
+/// Each present proof is read from the produced tree at
+/// `{out_dir}/{id}/implementation/<dest>` and uploaded under the served file name
+/// `<proof-id>.<ext>` — the same `<proof-id>.<ext>` spelling `playable::serve_proof_file`
+/// serves and the gallery's `proofMediaUrl` requests, so the snapshot key matches the
+/// UI lookup. The extension is derived from the proof's `dest` exactly as the UI's
+/// `extensionFor` does (defaulting to `png`); it is cosmetic, since the backend
+/// resolves the file by its proof-id stem.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a run that
+/// declares no proofs, and skips any proof the agent did not produce or whose file is
+/// unreadable. The backend upload route is ungated on the private network, so the
+/// client carries no token. A rejected upload is surfaced so the caller can log it.
+pub async fn upload_proofs_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let impl_dir = out_dir.join(&record.id).join("implementation");
+    let client = HttpBackendClient::new(backend_url);
+
+    for proof in &record.validation.proofs {
+        if !proof.present {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(impl_dir.join(&proof.dest)) else {
+            continue;
+        };
+        let file = format!(
+            "{}.{}",
+            proof.id,
+            test_cabinet_core::proof_served_extension(&proof.dest),
+        );
+        client.publish_run_proof(&record.id, &file, bytes).await?;
+    }
+    Ok(())
+}
+
+/// Mirror an asset-generation run's media into the **backend store**, keyed by run
+/// id — the asset-gen counterpart to [`upload_proofs_to_backend`], for the same
+/// reason: the public snapshot reads a run's asset media from the backend store
+/// (`snapshot::run_assets` → `store::read_run_asset`), and nothing else writes that
+/// store's `runs/{id}/asset/` dir for an asset-generation run. Without this mirror a
+/// backend-driven sprite/sheet run's regenerated image, preview, and action log
+/// never reach the snapshot and the published site's asset result view has no media
+/// to show.
+///
+/// Each frame's three artifacts are read from the produced tree at
+/// `{out_dir}/{id}/implementation/<recorded path>` and uploaded under the served
+/// names the result view requests — a single sprite's bare
+/// `regenerated.png`/`preview.png`/`actions.json` (its one frame), or a sprite
+/// sheet's per-frame `regenerated-<index>.png`/`preview-<index>.png`/`actions-<index>.json`
+/// — matching `playable::serve_asset_file` and the snapshot exactly so the keys line
+/// up with the UI lookup.
+///
+/// A no-op for any non-asset-generation run (an adversarial run's replays are
+/// mirrored by [`upload_adversarial_to_backend`] instead). Best-effort: a frame
+/// artifact missing from disk is skipped (the run is still inspectable); a rejected
+/// upload is surfaced so the caller can log it. The backend upload route is ungated
+/// on the private network, so the client carries no token.
+pub async fn upload_assets_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let Some(asset) = record.validation.asset.as_ref() else {
+        return Ok(());
+    };
+    let impl_dir = out_dir.join(&record.id).join("implementation");
+    let client = HttpBackendClient::new(backend_url);
+
+    // A single sprite serves under bare names; a sheet suffixes each frame with
+    // `-<index>`, matching `playable::serve_asset_file` and the snapshot.
+    let is_sheet = asset.sheet.is_some();
+    for frame in &asset.frames {
+        let suffix = if is_sheet {
+            format!("-{}", frame.index)
+        } else {
+            String::new()
+        };
+        let artifacts = [
+            (format!("regenerated{suffix}.png"), &frame.regenerated_image),
+            (format!("preview{suffix}.png"), &frame.preview_image),
+            (format!("actions{suffix}.json"), &frame.actions_log),
+        ];
+        for (served, rel) in artifacts {
+            let Ok(bytes) = std::fs::read(impl_dir.join(rel)) else {
+                continue;
+            };
+            client.publish_run_asset(&record.id, &served, bytes).await?;
+        }
+    }
+    Ok(())
+}
+
 /// Tar `run_dir` into an in-memory archive, with every entry path relative to
 /// `run_dir` itself (so the archive root *is* the run directory's contents). The
 /// whole tree is walked: `run-record.json`, the `implementation/` build/media, and

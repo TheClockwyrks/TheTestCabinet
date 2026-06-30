@@ -1,10 +1,13 @@
-//! Tests for the backend-store mirror upload (`upload_adversarial_to_backend`).
+//! Tests for the backend-store mirror uploads (`upload_adversarial_to_backend`,
+//! `upload_proofs_to_backend`, and `upload_assets_to_backend`).
 //!
-//! These pin the behaviour the arena and the replay player depend on: a
-//! backend-driven adversarial run's controller wasm and every proof replay are
-//! POSTed to the backend store at the exact paths the CLI push uses, read from the
-//! produced `implementation/` tree the driver still holds on disk. A non-adversarial
-//! run (or a forfeit with no files) makes no request at all.
+//! These pin the behaviour the arena, the replay player, and the published site
+//! depend on: a backend-driven run's adversarial controller wasm, every proof
+//! replay, every proof-of-implementation media file, and an asset-generation run's
+//! per-frame media are POSTed to the backend store at the exact paths the snapshot
+//! reads back, read from the produced `implementation/` tree the driver still holds
+//! on disk. A run with nothing to mirror (or whose files are absent) makes no
+//! request at all.
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -15,9 +18,10 @@ use tokio::net::TcpListener;
 
 use test_cabinet_core::metrics::*;
 use test_cabinet_core::run_record::*;
+use test_cabinet_core::test_case::{MediaKind, SheetSpec};
 use test_cabinet_core::validation::*;
 
-use super::upload_adversarial_to_backend;
+use super::{upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend};
 
 /// One upload the stub backend received: its request path and body byte length.
 #[derive(Debug, Clone)]
@@ -359,5 +363,360 @@ async fn missing_files_are_skipped_without_failing() {
     assert!(
         received.lock().unwrap().is_empty(),
         "nothing on disk means nothing to upload",
+    );
+}
+
+/// A produced run record carrying the given proof results (and no adversarial).
+fn record_with_proofs(proofs: Vec<ProofResult>) -> RunRecord {
+    let mut rec = record(None);
+    rec.validation.proofs = proofs;
+    rec
+}
+
+/// A proof result the agent did (or did not) produce at `dest`.
+fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
+    ProofResult {
+        id: id.into(),
+        name: id.into(),
+        kind,
+        dest: dest.into(),
+        present,
+        detail: None,
+    }
+}
+
+#[tokio::test]
+async fn uploads_each_present_proof_under_its_served_file_name() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // An image and a video, each produced at its declared dest. The served name is
+    // `<proof-id>.<ext>` with the extension taken from the dest — the same name the
+    // snapshot keys on and the gallery requests.
+    write_impl_file(out.path(), "proof/title-screen.png", b"\x89PNG-bytes");
+    write_impl_file(out.path(), "proof/gameplay.mp4", b"\0\0\0\x18ftyp-bytes");
+
+    let rec = record_with_proofs(vec![
+        proof(
+            "title-screen",
+            "proof/title-screen.png",
+            MediaKind::Image,
+            true,
+        ),
+        proof("gameplay", "proof/gameplay.mp4", MediaKind::Video, true),
+    ]);
+
+    upload_proofs_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    let paths: Vec<&str> = uploads.iter().map(|u| u.path.as_str()).collect();
+    assert!(
+        paths.contains(&"/runs/run-1/proof/title-screen.png"),
+        "the image proof uploaded under its served name; got {paths:?}",
+    );
+    assert!(
+        paths.contains(&"/runs/run-1/proof/gameplay.mp4"),
+        "the video proof uploaded under its served name; got {paths:?}",
+    );
+    let image = uploads
+        .iter()
+        .find(|u| u.path == "/runs/run-1/proof/title-screen.png")
+        .unwrap();
+    assert_eq!(
+        image.body_len,
+        b"\x89PNG-bytes".len(),
+        "the proof upload carries the on-disk media bytes verbatim",
+    );
+}
+
+#[tokio::test]
+async fn served_name_extension_lowercases_and_defaults_to_png() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // An uppercase extension is normalised, and a dest with no usable extension
+    // falls back to `png` — matching the gallery's `extensionFor` so the key lines up.
+    write_impl_file(out.path(), "proof/Shot.PNG", b"png");
+    write_impl_file(out.path(), "proof/screenshot", b"raw");
+
+    let rec = record_with_proofs(vec![
+        proof("shot", "proof/Shot.PNG", MediaKind::Image, true),
+        proof("screenshot", "proof/screenshot", MediaKind::Image, true),
+    ]);
+
+    upload_proofs_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert!(
+        paths.contains(&"/runs/run-1/proof/shot.png".to_string()),
+        "the uppercase extension is lowercased; got {paths:?}",
+    );
+    assert!(
+        paths.contains(&"/runs/run-1/proof/screenshot.png".to_string()),
+        "a dest with no extension defaults to png; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn skips_proofs_the_agent_did_not_produce() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Only the present proof's file exists on disk; the absent one is recorded as
+    // not produced and must not be uploaded (nor fail the mirror).
+    write_impl_file(out.path(), "proof/title-screen.png", b"png");
+
+    let rec = record_with_proofs(vec![
+        proof(
+            "title-screen",
+            "proof/title-screen.png",
+            MediaKind::Image,
+            true,
+        ),
+        proof("gameplay", "proof/gameplay.mp4", MediaKind::Video, false),
+    ]);
+
+    upload_proofs_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert_eq!(
+        paths,
+        vec!["/runs/run-1/proof/title-screen.png".to_string()],
+        "only the produced proof is uploaded; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn present_proof_missing_on_disk_is_skipped_without_failing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The record marks the proof present, but its file is absent from the produced
+    // tree (a truncated upload tree). It is skipped rather than failing the mirror.
+    let rec = record_with_proofs(vec![proof(
+        "title-screen",
+        "proof/title-screen.png",
+        MediaKind::Image,
+        true,
+    )]);
+
+    upload_proofs_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("a missing-on-disk proof is skipped, not fatal");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "nothing on disk means nothing to upload",
+    );
+}
+
+#[tokio::test]
+async fn run_with_no_proofs_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    upload_proofs_to_backend(&backend_url, &record_with_proofs(vec![]), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run with no proofs makes no backend upload",
+    );
+}
+
+/// A produced run record carrying the given asset-generation result (and no
+/// adversarial). The recorded on-disk paths can differ from the served names, which
+/// the mirror computes itself.
+fn record_with_asset(asset: AssetGenResult) -> RunRecord {
+    let mut rec = record(None);
+    rec.subject.test_type = test_cabinet_core::test_case::TestType::AssetGeneration;
+    rec.validation.asset = Some(asset);
+    rec
+}
+
+/// An asset frame whose three artifacts live at the given run-root-relative paths.
+fn asset_frame(index: u32, regenerated: &str, preview: &str, actions: &str) -> AssetFrameResult {
+    AssetFrameResult {
+        index,
+        regenerated_image: regenerated.into(),
+        preview_image: preview.into(),
+        actions_log: actions.into(),
+        operation_count: 3,
+        cheat_divergence: Some(0.05),
+        detail: None,
+    }
+}
+
+#[tokio::test]
+async fn uploads_a_single_sprite_under_bare_served_names() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The recorded on-disk paths are deliberately not the served names: the mirror
+    // reads from the recorded path and uploads under the canonical served name.
+    write_impl_file(out.path(), "draw/regen.png", b"regen-bytes");
+    write_impl_file(out.path(), "draw/prev.png", b"prev-bytes");
+    write_impl_file(out.path(), "draw/acts.json", b"[]");
+
+    let rec = record_with_asset(AssetGenResult {
+        frames: vec![asset_frame(
+            0,
+            "draw/regen.png",
+            "draw/prev.png",
+            "draw/acts.json",
+        )],
+        sheet: None,
+        detail: None,
+    });
+
+    upload_assets_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    let paths: Vec<&str> = uploads.iter().map(|u| u.path.as_str()).collect();
+    assert!(
+        paths.contains(&"/runs/run-1/asset/regenerated.png"),
+        "the regenerated image serves under its bare name; got {paths:?}",
+    );
+    assert!(
+        paths.contains(&"/runs/run-1/asset/preview.png"),
+        "the preview serves under its bare name; got {paths:?}",
+    );
+    assert!(
+        paths.contains(&"/runs/run-1/asset/actions.json"),
+        "the action log serves under its bare name; got {paths:?}",
+    );
+    let regen = uploads
+        .iter()
+        .find(|u| u.path == "/runs/run-1/asset/regenerated.png")
+        .unwrap();
+    assert_eq!(
+        regen.body_len,
+        b"regen-bytes".len(),
+        "the upload carries the recorded on-disk bytes verbatim",
+    );
+}
+
+#[tokio::test]
+async fn uploads_a_sprite_sheet_with_per_frame_index_suffixes() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    for index in [0u32, 1] {
+        write_impl_file(out.path(), &format!("f{index}-regen.png"), b"r");
+        write_impl_file(out.path(), &format!("f{index}-prev.png"), b"p");
+        write_impl_file(out.path(), &format!("f{index}-acts.json"), b"[]");
+    }
+
+    let rec = record_with_asset(AssetGenResult {
+        frames: vec![
+            asset_frame(0, "f0-regen.png", "f0-prev.png", "f0-acts.json"),
+            asset_frame(1, "f1-regen.png", "f1-prev.png", "f1-acts.json"),
+        ],
+        // Any `Some(sheet)` selects the per-frame `-<index>` naming; its contents
+        // are not read by the mirror.
+        sheet: Some(SheetSpec {
+            frame_width: 16,
+            frame_height: 16,
+            frames: vec![0, 1],
+            sequences: vec![],
+        }),
+        detail: None,
+    });
+
+    upload_assets_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    for expected in [
+        "/runs/run-1/asset/regenerated-0.png",
+        "/runs/run-1/asset/preview-0.png",
+        "/runs/run-1/asset/actions-0.json",
+        "/runs/run-1/asset/regenerated-1.png",
+        "/runs/run-1/asset/preview-1.png",
+        "/runs/run-1/asset/actions-1.json",
+    ] {
+        assert!(
+            paths.contains(&expected.to_string()),
+            "sheet frame artifact {expected} uploaded with its index suffix; got {paths:?}",
+        );
+    }
+}
+
+#[tokio::test]
+async fn asset_frame_artifacts_missing_on_disk_are_skipped_without_failing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Only the regenerated image exists; the preview and action log were not written
+    // (a truncated tree). The present file uploads, the absent ones are skipped.
+    write_impl_file(out.path(), "draw/regen.png", b"regen-bytes");
+
+    let rec = record_with_asset(AssetGenResult {
+        frames: vec![asset_frame(
+            0,
+            "draw/regen.png",
+            "draw/prev.png",
+            "draw/acts.json",
+        )],
+        sheet: None,
+        detail: None,
+    });
+
+    upload_assets_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("missing frame artifacts are skipped, not fatal");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert_eq!(
+        paths,
+        vec!["/runs/run-1/asset/regenerated.png".to_string()],
+        "only the present artifact is uploaded; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn non_asset_run_uploads_no_asset_media() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A run with no `validation.asset` (here, a plain non-asset record) is a no-op —
+    // an adversarial run's replays are mirrored separately.
+    upload_assets_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a non-asset-generation run makes no asset upload",
     );
 }

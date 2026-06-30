@@ -98,6 +98,15 @@ async fn main() -> ExitCode {
             // it a backend-driven run is invisible to the arena and its replays
             // 404 — a no-op for any other run type.
             finalize_adversarial_backend_upload(&config, &record).await;
+            // Mirror the run's proof-of-implementation media into the *backend*
+            // store too. The artifact service only serves the session that produced
+            // the run; the public snapshot reads proof from the backend store, so
+            // without this proof never reaches the published site.
+            finalize_proof_backend_upload(&config, &record).await;
+            // Same for an asset-generation run's media (regenerated/preview image +
+            // action log): the public snapshot reads it from the backend store, so
+            // mirror it there or the published asset result view has nothing to show.
+            finalize_asset_backend_upload(&config, &record).await;
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
             if let Err(err) = client.post_status_succeeded(record).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
@@ -170,6 +179,52 @@ async fn finalize_adversarial_backend_upload(
             run_id = %record.id,
             error = %err,
             "could not upload adversarial controller/replays to the backend store",
+        );
+    }
+}
+
+/// Mirror a run's proof-of-implementation media into the **backend store**, so the
+/// public snapshot the backend exports carries it and the published site can display
+/// it — the backend-driven counterpart to the artifact-service tarball, which only
+/// serves the session that produced the run. A no-op for a run that declares no
+/// proofs. Reads the media from the produced tree the driver still holds on disk; an
+/// upload failure is logged but never fatal, exactly like the artifact-service and
+/// adversarial uploads.
+async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_proofs_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload proof media to the backend store",
+        );
+    }
+}
+
+/// Mirror an asset-generation run's media (regenerated/preview image + action log)
+/// into the **backend store**, so the public snapshot carries it and the published
+/// asset result view can display it. A no-op for a non-asset-generation run. Reads
+/// the media from the produced tree the driver still holds on disk; an upload failure
+/// is logged but never fatal, exactly like the proof and adversarial uploads.
+async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_assets_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload asset-generation media to the backend store",
         );
     }
 }
