@@ -282,6 +282,12 @@ text = "The ball bounces off both mid-field obstacles, enabling bank shots, and 
 weight = 1
 
 [[review_item]]
+id = "gameplay-keybinds"
+title = "Gameplay keybinds"
+text = "The paddles can be controlled with the <Up> and <Down> or <w> and <s> keys (both in Versus mode), and the game can be paused using <Esc> or <p>"
+weight = 1
+
+[[review_item]]
 id = "scoring-point"
 title = "Scoring"
 text = "A ball fully crossing a goal edge (x < 0 or x > 1280) scores a point for the player on the opposite side and increments the correct score."
@@ -329,3 +335,8 @@ id = "fits-window"
 title = "Window fit"
 text = "The entire 1280x720 field — both paddles, both scores, every menu item, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
 weight = 1
+
+[[review_item]]
+id = "menu-rendering"
+title = "Menu Rendering"
+text = "Menus are rendered and styled according to the provided references and without visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
