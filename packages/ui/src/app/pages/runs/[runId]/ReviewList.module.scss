@@ -29,6 +29,9 @@
 
   &:hover {
     border-color: t.$color-accent;
+    // The card is an anchor; without this the global `a:hover` underline
+    // would re-apply over the base `text-decoration: none`.
+    text-decoration: none;
   }
 }
 
