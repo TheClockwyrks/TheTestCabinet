@@ -509,6 +509,52 @@ async fn release_playable_build_without_a_build_dir_skips_the_deploy() {
 }
 
 #[test]
+fn failure_details_prefers_stdout_when_stderr_is_empty() {
+    // `wrangler` writes its diagnostics to stdout, leaving stderr empty — the
+    // exact case that previously rendered the error as `… failed: ` with nothing
+    // after it.
+    let output = CommandOutput {
+        success: false,
+        stdout: "  Authentication error [code: 10000]\n".to_string(),
+        stderr: String::new(),
+    };
+    assert_eq!(
+        output.failure_details(),
+        "Authentication error [code: 10000]"
+    );
+}
+
+#[test]
+fn failure_details_prefers_stderr_when_stdout_is_empty() {
+    let output = CommandOutput {
+        success: false,
+        stdout: String::new(),
+        stderr: "  fatal: repository not found\n".to_string(),
+    };
+    assert_eq!(output.failure_details(), "fatal: repository not found");
+}
+
+#[test]
+fn failure_details_combines_both_streams_when_present() {
+    let output = CommandOutput {
+        success: false,
+        stdout: "deploy output\n".to_string(),
+        stderr: "a warning\n".to_string(),
+    };
+    assert_eq!(output.failure_details(), "a warning\ndeploy output");
+}
+
+#[test]
+fn failure_details_reports_when_no_output_was_captured() {
+    let output = CommandOutput {
+        success: false,
+        stdout: "   \n".to_string(),
+        stderr: String::new(),
+    };
+    assert_eq!(output.failure_details(), "(no output captured)");
+}
+
+#[test]
 fn scrub_build_dir_redacts_keys_in_nested_text_files_only() {
     let key = "sk-ant-api03-AbCdEf0123456789AbCdEf0123456789AbCdEf01";
     let dir = tempfile::tempdir().expect("tempdir");

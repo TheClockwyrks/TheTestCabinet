@@ -171,6 +171,28 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
+impl CommandOutput {
+    /// Human-readable diagnostics for a failed command, drawn from *both*
+    /// streams.
+    ///
+    /// The publish tools disagree about where failure output goes: `git` and
+    /// `gh` write to stderr, but `wrangler` prints most of its diagnostics to
+    /// stdout — so a stderr-only message renders empty exactly when a deploy
+    /// fails and the operator most needs to see why. Surface whatever each
+    /// stream carried, labelling them only when both are non-empty, and say so
+    /// explicitly when a failing command produced nothing at all.
+    fn failure_details(&self) -> String {
+        let stdout = self.stdout.trim();
+        let stderr = self.stderr.trim();
+        match (stderr.is_empty(), stdout.is_empty()) {
+            (true, true) => "(no output captured)".to_string(),
+            (false, true) => stderr.to_string(),
+            (true, false) => stdout.to_string(),
+            (false, false) => format!("{stderr}\n{stdout}"),
+        }
+    }
+}
+
 /// Runs external commands (`gh`, `git`, `wrangler`, ...) on behalf of a
 /// publisher.
 ///
@@ -257,7 +279,7 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             return Err(Error::Publish(format!(
                 "`{program} {}` failed: {}",
                 args.join(" "),
-                output.stderr.trim()
+                output.failure_details()
             )));
         }
         Ok(output)
