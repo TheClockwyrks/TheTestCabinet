@@ -34,6 +34,7 @@
 		"shellcheck.ignorePatterns": {
 			"**/.env*": true,
 		},
+		"workbench.browser.openLocalhostLinks": false,
 		"[markdown]": {
 			"editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
 			"editor.formatOnType": false,
