@@ -81,9 +81,14 @@ available here." for each declared proof) and an asset-generation run's result v
 has no media to show. Each mirror is best-effort: a failure is logged, never fatal,
 and the run's record still reports.
 
-Runs published *before* this mirror existed have media only in the artifact service;
-`scripts/backfill-run-media-prod.sh` is the one-shot operator backfill that copies it
-into the store and triggers a snapshot refresh.
+The store is only the fast path, though: it is an ephemeral volume in production, so
+it can be empty for a run published before a backend restart. The
+[snapshot builder](/components/backend/overview/) therefore **falls back to the
+artifact service** for any run media missing from the store, re-exporting it to
+durable R2 — so a store wipe self-heals on the next refresh and the mirror above is
+an optimization, not a correctness requirement. `scripts/backfill-run-media-prod.sh`
+is the one-shot operator backfill that populates the store and triggers a refresh
+immediately, rather than waiting for the next publish.
 
 ## RBAC
 

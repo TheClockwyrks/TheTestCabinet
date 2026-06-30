@@ -115,6 +115,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         store.clone(),
         r2,
         config.deploy_hook_url.clone(),
+        config.artifacts_url.clone(),
         config.coalesce,
     );
     let refresher = publisher.spawn();

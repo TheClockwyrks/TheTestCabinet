@@ -1,11 +1,19 @@
 use super::*;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+
+use test_cabinet_core::MediaKind;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::{AssetFrameResult, AssetGenResult, ValidationSummary};
+use test_cabinet_core::validation::{
+    AssetFrameResult, AssetGenResult, ProofResult, ValidationSummary,
+};
 
 use crate::db::StoredReview;
 use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
@@ -167,12 +175,13 @@ fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
-#[test]
-fn snapshot_has_index_runs_per_run_and_case_objects() {
+#[tokio::test]
+async fn snapshot_has_index_runs_per_run_and_case_objects() {
     let runs = vec![stored_run("r1", "2026-06-17T21:40:00Z")];
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(runs, vec![manifest()], store)
         .build(now())
+        .await
         .unwrap();
 
     assert_eq!(snapshot.run_count, 1);
@@ -185,8 +194,8 @@ fn snapshot_has_index_runs_per_run_and_case_objects() {
     assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));
 }
 
-#[test]
-fn index_points_at_the_versioned_prefix() {
+#[tokio::test]
+async fn index_points_at_the_versioned_prefix() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
@@ -194,6 +203,7 @@ fn index_points_at_the_versioned_prefix() {
         store,
     )
     .build(now())
+    .await
     .unwrap();
     let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
     assert_eq!(index["schemaVersion"], 1);
@@ -204,8 +214,8 @@ fn index_points_at_the_versioned_prefix() {
     assert_eq!(index["casesPrefix"], format!("{prefix}/cases/"));
 }
 
-#[test]
-fn run_summary_carries_denormalized_case_name_and_camelcase_fields() {
+#[tokio::test]
+async fn run_summary_carries_denormalized_case_name_and_camelcase_fields() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
@@ -213,6 +223,7 @@ fn run_summary_carries_denormalized_case_name_and_camelcase_fields() {
         store,
     )
     .build(now())
+    .await
     .unwrap();
 
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
@@ -232,8 +243,8 @@ fn run_summary_carries_denormalized_case_name_and_camelcase_fields() {
     assert_eq!(summary["links"]["playableBuild"], "https://abc.pages.dev");
 }
 
-#[test]
-fn per_run_file_embeds_full_record_review_and_links() {
+#[tokio::test]
+async fn per_run_file_embeds_full_record_review_and_links() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
@@ -241,6 +252,7 @@ fn per_run_file_embeds_full_record_review_and_links() {
         store,
     )
     .build(now())
+    .await
     .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     let per_run = snapshot
@@ -261,8 +273,8 @@ fn per_run_file_embeds_full_record_review_and_links() {
     assert_eq!(parsed["reviews"][0]["reviewerId"], "u1");
 }
 
-#[test]
-fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
+#[tokio::test]
+async fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     let (_tmp, store) = empty_store();
     let mut with_events = stored_run("r1", "2026-06-17T21:40:00Z");
     with_events.events_json =
@@ -270,6 +282,7 @@ fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     let without_events = stored_run("r2", "2026-06-17T21:41:00Z");
     let snapshot = SnapshotBuilder::new(vec![with_events, without_events], vec![manifest()], store)
         .build(now())
+        .await
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
@@ -292,8 +305,8 @@ fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     assert!(r2.get("events").is_none());
 }
 
-#[test]
-fn per_run_file_exports_asset_media_and_names_it_by_key() {
+#[tokio::test]
+async fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let (_tmp, store) = empty_store();
     // Stage the asset media the run uploaded; one of the three (preview.png) is
     // deliberately absent to prove a missing file is skipped, not fatal.
@@ -308,6 +321,7 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
         store,
     )
     .build(now())
+    .await
     .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
@@ -346,8 +360,8 @@ fn per_run_file_exports_asset_media_and_names_it_by_key() {
     assert_eq!(regen_meta["key"], regen_key);
 }
 
-#[test]
-fn per_run_file_omits_asset_media_for_a_non_asset_run() {
+#[tokio::test]
+async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
@@ -355,6 +369,7 @@ fn per_run_file_omits_asset_media_for_a_non_asset_run() {
         store,
     )
     .build(now())
+    .await
     .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     let per_run = snapshot
@@ -368,11 +383,12 @@ fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
 }
 
-#[test]
-fn case_metadata_omits_specs_and_inlines_description() {
+#[tokio::test]
+async fn case_metadata_omits_specs_and_inlines_description() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(vec![], vec![manifest()], store)
         .build(now())
+        .await
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     let case = snapshot
@@ -390,8 +406,8 @@ fn case_metadata_omits_specs_and_inlines_description() {
     assert!(parsed.get("promptTemplate").is_none());
 }
 
-#[test]
-fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
+#[tokio::test]
+async fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
     // A case with a common reference (`gameplay`, applies to every variant) and a
     // variant-scoped one (`title` on `base`). Render both into the store.
     let mut m = manifest();
@@ -410,6 +426,7 @@ fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
 
     let snapshot = SnapshotBuilder::new(vec![], vec![m], store)
         .build(now())
+        .await
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
@@ -442,11 +459,12 @@ fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
     assert_eq!(title["key"], variant_key);
 }
 
-#[test]
-fn snapshot_id_changes_with_the_run_set() {
+#[tokio::test]
+async fn snapshot_id_changes_with_the_run_set() {
     let (_tmp_a, store_a) = empty_store();
     let a = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![], store_a)
         .build(now())
+        .await
         .unwrap();
     let (_tmp_b, store_b) = empty_store();
     let b = SnapshotBuilder::new(
@@ -455,6 +473,199 @@ fn snapshot_id_changes_with_the_run_set() {
         store_b,
     )
     .build(now())
+    .await
     .unwrap();
     assert_ne!(a.snapshot_id, b.snapshot_id);
+}
+
+/// A stored run carrying the given proof results (end-to-end). The recorded proofs
+/// are what the builder enumerates from — the store/artifact-service only supply the
+/// bytes.
+fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
+    let mut run = stored_run(id, "2026-06-17T21:40:00Z");
+    run.record.validation.proofs = proofs;
+    run
+}
+
+/// A proof result the agent did (or did not) produce at `dest`.
+fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
+    ProofResult {
+        id: id.into(),
+        name: id.into(),
+        kind,
+        dest: dest.into(),
+        present,
+        detail: None,
+    }
+}
+
+/// A throwaway HTTP server standing in for the artifact service: it answers `200`
+/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path and `404`
+/// otherwise, recording every path it is asked for so a test can assert the store
+/// fast-path skipped it. Returns its base URL and that request log.
+async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let files = files.clone();
+            let sink = sink.clone();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("")
+                    .to_string();
+                sink.lock().expect("lock").push(path.clone());
+                let resp = match files.get(&path) {
+                    Some(body) => {
+                        let mut r =
+                            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
+                                .into_bytes();
+                        r.extend_from_slice(body);
+                        r
+                    }
+                    None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),
+                };
+                let _ = sock.write_all(&resp).await;
+                let _ = sock.flush().await;
+            });
+        }
+    });
+    (format!("http://{addr}"), seen)
+}
+
+#[tokio::test]
+async fn per_run_file_exports_proof_media_from_the_record() {
+    let (_tmp, store) = empty_store();
+    // The store holds the produced proofs under their served names; the record
+    // declares them (one image, one video) plus one the agent did not produce.
+    store
+        .write_run_proof("p1", "title.png", b"png:title")
+        .unwrap();
+    store
+        .write_run_proof("p1", "rally.mp4", b"mp4:rally")
+        .unwrap();
+
+    let run = proof_run(
+        "p1",
+        vec![
+            proof("title", "proof/title.png", MediaKind::Image, true),
+            proof("rally", "proof/rally.mp4", MediaKind::Video, true),
+            proof("skip", "proof/skip.png", MediaKind::Image, false),
+        ],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // Each present proof's bytes are exported under its served key, with a content
+    // type that follows the extension (the video stays a video).
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .expect("image proof exported");
+    assert_eq!(title.content_type, "image/png");
+    assert_eq!(title.bytes, b"png:title");
+    let rally = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.mp4"))
+        .expect("video proof exported");
+    assert_eq!(rally.content_type, "video/mp4");
+
+    // The per-run document lists the present proofs with the record's kinds; the
+    // unproduced `skip` is omitted.
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let media = parsed["proofMedia"].as_array().unwrap();
+    let ids: Vec<&str> = media.iter().map(|m| m["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["title", "rally"]);
+    let rally_meta = media.iter().find(|m| m["id"] == "rally").unwrap();
+    assert_eq!(rally_meta["kind"], "video");
+}
+
+#[tokio::test]
+async fn missing_store_media_falls_back_to_the_artifact_service() {
+    // The store is empty (as after a backend restart wiped its emptyDir), but the
+    // artifact service still holds the run's proof. The builder must recover it.
+    let (_tmp, store) = empty_store();
+    let (base, seen) = stub_artifacts(HashMap::from([(
+        "/runs/p1/proof/title.png".to_string(),
+        b"durable:title".to_vec(),
+    )]))
+    .await;
+
+    let run = proof_run(
+        "p1",
+        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_artifacts(Some(base), reqwest::Client::new())
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .expect("proof recovered from the artifact service");
+    assert_eq!(title.bytes, b"durable:title");
+    assert!(
+        seen.lock()
+            .unwrap()
+            .contains(&"/runs/p1/proof/title.png".to_string()),
+        "the builder fetched the missing proof from the artifact service",
+    );
+}
+
+#[tokio::test]
+async fn store_media_is_used_without_calling_the_artifact_service() {
+    // When the store has the media, it is the fast path: no artifact request is made
+    // even though the fallback is configured.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_proof("p1", "title.png", b"local:title")
+        .unwrap();
+    let (base, seen) = stub_artifacts(HashMap::new()).await;
+
+    let run = proof_run(
+        "p1",
+        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_artifacts(Some(base), reqwest::Client::new())
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .expect("proof exported from the store");
+    assert_eq!(title.bytes, b"local:title");
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "the store fast-path made no artifact-service request",
+    );
 }

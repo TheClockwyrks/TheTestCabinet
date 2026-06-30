@@ -11,6 +11,12 @@
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
 //! hook. The split lets the generation be unit-tested without R2.
+//!
+//! A run's proof/asset media is read from the local store (where the driver mirrors
+//! it at run time), falling back to the artifact service for anything missing — the
+//! store is an ephemeral volume in production, so this fallback lets a refresh
+//! re-export media to durable R2 even after a restart wiped it (see
+//! [`SnapshotBuilder::with_artifacts`]).
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -59,6 +65,12 @@ pub struct SnapshotBuilder {
     runs: Vec<StoredRun>,
     cases: Vec<StoredManifest>,
     store: DefinitionStore,
+    /// The artifact service's base URL, used to fall back for a run's proof/asset
+    /// media when it is absent from the local store. `None` disables the fallback
+    /// (store-only) — the dev/single-box default, and what the unit tests use.
+    artifacts_url: Option<String>,
+    /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
+    http: reqwest::Client,
 }
 
 impl SnapshotBuilder {
@@ -66,14 +78,39 @@ impl SnapshotBuilder {
     /// ingested case manifests used to denormalize case names and emit case
     /// metadata files, and the definition store the rendered reference baselines
     /// are read from (so they can be exported alongside the case metadata).
+    ///
+    /// The artifact-service fallback is off by default; call [`Self::with_artifacts`]
+    /// to enable it for a real deployment.
     pub fn new(runs: Vec<StoredRun>, cases: Vec<StoredManifest>, store: DefinitionStore) -> Self {
-        Self { runs, cases, store }
+        Self {
+            runs,
+            cases,
+            store,
+            artifacts_url: None,
+            http: reqwest::Client::new(),
+        }
+    }
+
+    /// Enable the artifact-service fallback: when a run's proof/asset media is not in
+    /// the local store, the builder fetches it from `artifacts_url` (the artifact
+    /// service's public read endpoint) using `http`.
+    ///
+    /// The backend store that media is normally mirrored into is an ephemeral
+    /// emptyDir in production, so it can be wiped between a run finishing and a later
+    /// snapshot refresh. The artifact service holds the run tree durably, so this
+    /// fallback lets a refresh re-export the media (to durable R2) even after the
+    /// store loses it — without it a backend restart would silently drop media from
+    /// the published site. A `None` URL leaves behavior store-only.
+    pub fn with_artifacts(mut self, artifacts_url: Option<String>, http: reqwest::Client) -> Self {
+        self.artifacts_url = artifacts_url;
+        self.http = http;
+        self
     }
 
     /// Generate the snapshot. The id is `<rfc3339-compact>-<short-hash>`, where
     /// the hash is over the run ids so a re-run with the same data is stable
     /// enough to debug while never clobbering a prior prefix.
-    pub fn build(&self, generated_at: OffsetDateTime) -> Result<Snapshot> {
+    pub async fn build(&self, generated_at: OffsetDateTime) -> Result<Snapshot> {
         let snapshot_id = self.snapshot_id(generated_at)?;
         let prefix = format!("snapshots/{snapshot_id}");
 
@@ -116,8 +153,8 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
-            let (proof_media, proof_objects) = self.run_proofs(&run.record.id, &prefix);
-            let (asset_media, asset_objects) = self.run_assets(run, &prefix);
+            let (proof_media, proof_objects) = self.run_proofs(&run.record, &prefix).await;
+            let (asset_media, asset_objects) = self.run_assets(run, &prefix).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
@@ -270,39 +307,45 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
-    /// Collect a run's uploaded proof media: the `proofMedia[]` metadata entries
-    /// (snapshot-relative keys + kind) and the media objects to upload. A run with
-    /// no stored proofs contributes nothing.
-    fn run_proofs(&self, run_id: &str, prefix: &str) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
+    /// Collect a run's proof media: the `proofMedia[]` metadata entries
+    /// (snapshot-relative keys + kind) and the media objects to upload.
+    ///
+    /// The set of proofs is taken from the run record's `validation.proofs` (the
+    /// authoritative declaration), not from whatever happens to be in the store — so
+    /// a wiped store still produces the full list, each resolved through the
+    /// store-then-artifact-service fallback ([`Self::read_media`]). Each present
+    /// proof is served as `<proof-id>.<ext>` (the `<ext>` from its recorded `dest`),
+    /// the same name the driver mirror writes and the gallery requests. A proof the
+    /// agent did not produce, or whose bytes are in neither place, contributes
+    /// nothing.
+    async fn run_proofs(
+        &self,
+        record: &RunRecord,
+        prefix: &str,
+    ) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
-        let Ok(files) = self.store.list_run_proofs(run_id) else {
-            return (metas, objects);
-        };
-        for file in files {
-            let Ok(bytes) = self.store.read_run_proof(run_id, &file) else {
+        let run_id = &record.id;
+        for proof in &record.validation.proofs {
+            if !proof.present {
                 continue;
-            };
-            let extension = std::path::Path::new(&file)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            let id = file
-                .rsplit_once('.')
-                .map(|(stem, _)| stem.to_string())
-                .unwrap_or_else(|| file.clone());
-            let kind = if extension.eq_ignore_ascii_case("mp4") {
-                test_cabinet_core::MediaKind::Video
-            } else {
-                test_cabinet_core::MediaKind::Image
+            }
+            let extension = test_cabinet_core::proof_served_extension(&proof.dest);
+            let file = format!("{}.{}", proof.id, extension);
+            let Some(bytes) = self.read_media(run_id, "proof", &file).await else {
+                continue;
             };
             let key = format!("{prefix}/runs/{run_id}/proof/{file}");
             objects.push(SnapshotObject {
                 key: key.clone(),
                 bytes,
-                content_type: media_content_type(extension).to_string(),
+                content_type: media_content_type(&extension).to_string(),
             });
-            metas.push(RunProofOut { id, kind, key });
+            metas.push(RunProofOut {
+                id: proof.id.clone(),
+                kind: proof.kind,
+                key,
+            });
         }
         (metas, objects)
     }
@@ -323,9 +366,14 @@ impl SnapshotBuilder {
     ///   itself ships with the UI/site bundle, not per run, so nothing else is
     ///   exported here).
     ///
-    /// Each named file is read from the run's stored asset directory and skipped if
-    /// missing. A run that is neither type contributes nothing.
-    fn run_assets(&self, run: &StoredRun, prefix: &str) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
+    /// Each named file is resolved through the store-then-artifact-service fallback
+    /// ([`Self::read_media`]) and skipped if it is in neither. A run that is neither
+    /// type contributes nothing.
+    async fn run_assets(
+        &self,
+        run: &StoredRun,
+        prefix: &str,
+    ) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let files: Vec<String> = if let Some(asset) = run.record.validation.asset.as_ref() {
@@ -356,7 +404,7 @@ impl SnapshotBuilder {
         let run_id = &run.record.id;
         for file in &files {
             let file = file.as_str();
-            let Ok(bytes) = self.store.read_run_asset(run_id, file) else {
+            let Some(bytes) = self.read_media(run_id, "asset", file).await else {
                 continue;
             };
             let extension = std::path::Path::new(file)
@@ -375,6 +423,55 @@ impl SnapshotBuilder {
             });
         }
         (metas, objects)
+    }
+
+    /// Resolve one run media file (`kind` is `proof` or `asset`) to its bytes,
+    /// preferring the local store and falling back to the artifact service.
+    ///
+    /// The store is the fast path — the driver mirrors a run's media there at run
+    /// time — but it is an ephemeral emptyDir in production, so it may be empty for a
+    /// run published before a backend restart. The artifact service holds the run
+    /// tree durably and serves it under the same `<kind>/<file>` names, so it backs
+    /// the miss. `None` only when the file is in neither place (or the fallback is
+    /// disabled) — the caller then omits that media from the snapshot.
+    async fn read_media(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
+        let from_store = match kind {
+            "proof" => self.store.read_run_proof(run_id, file),
+            _ => self.store.read_run_asset(run_id, file),
+        };
+        if let Ok(bytes) = from_store {
+            return Some(bytes);
+        }
+        self.fetch_artifact(run_id, kind, file).await
+    }
+
+    /// Fetch one run media file from the artifact service's public read endpoint
+    /// (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`), or `None` when the
+    /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
+    /// request fails. A non-404 failure is logged — it means the durable copy could
+    /// not be read, so the media will be missing from the snapshot until the next
+    /// refresh.
+    async fn fetch_artifact(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
+        let base = self.artifacts_url.as_deref()?;
+        let url = format!("{base}/runs/{run_id}/{kind}/{file}");
+        match self.http.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(bytes) => Some(bytes.to_vec()),
+                Err(err) => {
+                    tracing::warn!(run.id = run_id, %url, error = %err, "reading artifact media body failed");
+                    None
+                }
+            },
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => None,
+            Ok(resp) => {
+                tracing::warn!(run.id = run_id, %url, status = %resp.status(), "artifact media fetch failed");
+                None
+            }
+            Err(err) => {
+                tracing::warn!(run.id = run_id, %url, error = %err, "artifact media request failed");
+                None
+            }
+        }
     }
 
     /// Compute the snapshot id: a compact RFC-3339 timestamp plus a short hash of
