@@ -24,7 +24,7 @@ use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
     StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
     StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredTool, StoredVariant, StoredWorkspaceFile,
+    StoredTool, StoredVariant, StoredWorkspaceFile, reference_in, write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -176,6 +176,14 @@ impl<'a> Ingestor<'a> {
     /// Ingest one test-case version: resolve it (which validates structure), copy
     /// the version folder verbatim, render its references, and write the resolved
     /// store-relative manifest. Idempotent unless `force`.
+    ///
+    /// The build happens in a staging directory that is then swapped into place
+    /// atomically (see [`DefinitionStore::publish_staged_version`]). A re-ingest
+    /// therefore never leaves the served version half-built or manifest-less, even
+    /// for the seconds-to-minutes its references take to render — the window a prior
+    /// destructive in-place rebuild opened, which a run resolving its version during
+    /// a force re-ingest saw as a spurious 404 "is not ingested". Building fresh also
+    /// guarantees a file removed in the checkout does not linger in the store.
     fn ingest_version(&self, slug: &str, version: &str, force: bool) -> Result<IngestedVersion> {
         if !force && self.store.has_version(slug, version) {
             return Ok(IngestedVersion {
@@ -189,19 +197,17 @@ impl<'a> Ingestor<'a> {
         let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
         let resolved = catalog.resolve(slug, version).map_err(BackendError::Core)?;
 
-        let dest = self.store.version_dir(slug, version);
-        // Re-ingest is destructive only on the keyed dir for this version. A fresh
-        // copy guarantees the store reflects exactly the current checkout (a
-        // removed file in the checkout must not linger in the store).
-        if dest.exists() {
-            std::fs::remove_dir_all(&dest)?;
-        }
-        std::fs::create_dir_all(&dest)?;
-        copy_tree(&resolved.root, &dest)?;
-
-        let rendered = self.render_references(&resolved)?;
-        let manifest = build_stored_manifest(&resolved)?;
-        self.store.write_manifest(&manifest)?;
+        let staged = self.store.new_staging_dir(slug, version)?;
+        let rendered = match self.build_version(&staged, &resolved) {
+            Ok(rendered) => rendered,
+            Err(err) => {
+                // Discard the partial build so a failed ingest leaves no debris and
+                // never publishes an incomplete version.
+                let _ = std::fs::remove_dir_all(&staged);
+                return Err(err);
+            }
+        };
+        self.store.publish_staged_version(slug, version, &staged)?;
 
         Ok(IngestedVersion {
             slug: slug.to_string(),
@@ -211,43 +217,53 @@ impl<'a> Ingestor<'a> {
         })
     }
 
-    /// Store every reference view (common + per-variant) of a resolved version
-    /// into the store's reference sidecar. An HTML mockup is rendered to a
-    /// screenshot; a static image/video is copied as-is. A failure aborts the
-    /// version's ingest, since serving a version with a missing baseline would let
-    /// a runner validate against a hole. Returns the number of references stored.
-    fn render_references(&self, resolved: &TestCaseVersion) -> Result<usize> {
-        let slug = &resolved.slug;
-        let version = &resolved.version;
+    /// Build a resolved version's full tree — sources, rendered references, and the
+    /// resolved manifest — into `dest`, returning the number of references stored.
+    /// `dest` is a staging directory the caller swaps into place; on any error the
+    /// caller discards it, so a partial build is never served.
+    fn build_version(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<usize> {
+        copy_tree(&resolved.root, dest)?;
+        let rendered = self.render_references(dest, resolved)?;
+        let manifest = build_stored_manifest(resolved)?;
+        write_manifest_in(dest, &manifest)?;
+        Ok(rendered)
+    }
+
+    /// Store every reference view (common + per-variant) of a resolved version into
+    /// `dest`'s reference sidecar (a staging directory; see [`build_version`]). An
+    /// HTML mockup is rendered to a screenshot; a static image/video is copied as-is.
+    /// A failure aborts the version's ingest, since serving a version with a missing
+    /// baseline would let a runner validate against a hole. Returns the number of
+    /// references stored.
+    fn render_references(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<usize> {
         let mut count = 0;
 
         // Common references store once under the `_common` scope.
         for reference in &resolved.common_references {
-            self.store_one_reference(slug, version, "_common", reference)?;
+            self.store_one_reference(dest, "_common", reference)?;
             count += 1;
         }
         // Variant-specific references store under each variant's slug scope, so a
         // view shared across variants (e.g. a per-variant `title`) does not clobber.
         for variant in &resolved.variants {
             for reference in &variant.references {
-                self.store_one_reference(slug, version, &variant.slug, reference)?;
+                self.store_one_reference(dest, &variant.slug, reference)?;
                 count += 1;
             }
         }
         Ok(count)
     }
 
-    /// Store one reference under `scope`: render an HTML mockup to a `.png`, or
-    /// copy a static image/video as-is to `<view>.<ext>`.
+    /// Store one reference into `dest` under `scope`: render an HTML mockup to a
+    /// `.png`, or copy a static image/video as-is to `<view>.<ext>`.
     fn store_one_reference(
         &self,
-        slug: &str,
-        version: &str,
+        dest: &Path,
         scope: &str,
         reference: &test_cabinet_core::ReferenceView,
     ) -> Result<()> {
         let file = format!("{}.{}", reference.view, reference.extension());
-        let out = self.store.reference_path(slug, version, scope, &file);
+        let out = reference_in(dest, scope, &file);
         if let Some(parent) = out.parent() {
             std::fs::create_dir_all(parent)?;
         }
