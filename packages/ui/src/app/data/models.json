@@ -76,6 +76,25 @@
     "releasedAt": "2026-02-17T15:43:10Z"
   },
   {
+    "slug": "claude-sonnet-5",
+    "name": "Claude Sonnet 5",
+    "provider": "Anthropic",
+    "openrouterUrl": "https://openrouter.ai/anthropic/claude-sonnet-5",
+    "description": "**Claude Sonnet 5** is Anthropic's latest-generation balanced workhorse — the\npractical default that sits between fast, economical Haiku and the heavyweight\nOpus flagship. In The Test Cabinet it runs through the **Claude Code** harness,\nwhich drives it against a benchmark case inside a fresh, isolated repository.\n\nThe mid-tier is where most real coding actually happens, which makes Sonnet a\ncentral data point for the suite: it shows how much of a substantial task a\nstrong general-purpose model can carry on its own, and how close it lands to the\nflagship without the flagship's cost. Its runs are a natural midpoint to compare\nthe lighter and heavier models against on the same case. Pricing shown on its\npage is the comparable per-token cost reported by OpenRouter, which is what The\nTest Cabinet uses for the canonical, provider-stable cost of a run.\n",
+    "modelIds": [
+      "claude-sonnet-5",
+      "anthropic/claude-sonnet-5",
+      "openrouter/anthropic/claude-sonnet-5"
+    ],
+    "prices": {
+      "uncachedInput": 2e-6,
+      "cachedInput": 2e-7,
+      "output": 0.00001
+    },
+    "contextLength": 1000000,
+    "releasedAt": "2026-06-30T18:11:23Z"
+  },
+  {
     "slug": "deepseek-v4-flash",
     "name": "DeepSeek V4 Flash",
     "provider": "DeepSeek",
@@ -86,9 +105,9 @@
       "openrouter/deepseek/deepseek-v4-flash"
     ],
     "prices": {
-      "uncachedInput": 9e-8,
+      "uncachedInput": 9.8e-8,
       "cachedInput": 2e-8,
-      "output": 1.8e-7
+      "output": 1.96e-7
     },
     "contextLength": 1048576,
     "releasedAt": "2026-04-24T03:17:46Z"
