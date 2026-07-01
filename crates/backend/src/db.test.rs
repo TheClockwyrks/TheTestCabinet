@@ -565,9 +565,15 @@ async fn cancel_job_refuses_a_terminal_or_unknown_job() {
     db.enqueue_job(new_job("done", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
-    db.set_job_state("done", "succeeded", "2026-06-23T00:05:00Z", None, Some("r1"))
-        .await
-        .unwrap();
+    db.set_job_state(
+        "done",
+        "succeeded",
+        "2026-06-23T00:05:00Z",
+        None,
+        Some("r1"),
+    )
+    .await
+    .unwrap();
 
     // A finished job cannot be canceled — `cancel_job` transitions only from a
     // non-terminal state, so it reports no change and leaves the row untouched.

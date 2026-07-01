@@ -156,14 +156,13 @@ impl JobClient {
                 body,
             });
         }
-        let out: JobStatusOut =
-            response
-                .json()
-                .await
-                .map_err(|source| ClientError::Transport {
-                    what: "status poll",
-                    source,
-                })?;
+        let out: JobStatusOut = response
+            .json()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "status poll",
+                source,
+            })?;
         Ok(Some(out.state))
     }
 

@@ -150,9 +150,7 @@ async fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Some(Err(failure)) => {
-            report_failure(&client, &config, &request, started_at, failure).await
-        }
+        Some(Err(failure)) => report_failure(&client, &config, &request, started_at, failure).await,
     }
 }
 

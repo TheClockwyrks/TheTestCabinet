@@ -73,7 +73,9 @@ fn resolves_carom_from_its_manifest() {
         "carom should be listed"
     );
 
-    let version = catalog.resolve_latest("carom").expect("resolve latest carom");
+    let version = catalog
+        .resolve_latest("carom")
+        .expect("resolve latest carom");
     assert_eq!(version.slug, "carom");
     // The prompt template and the decomposed common specs are resolved from the
     // manifest. Every variant seeds the overview spec and the standard mode.

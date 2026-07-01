@@ -27,24 +27,24 @@ front-end task that should separate stronger builds from weaker ones.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                            |
-| ---------------------- | -------------- | -------------------------------------------------- |
-| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
-| `assets/`              | **Yes**        | The provided art (sprite sheets); build with these.|
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
-| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
-| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
-| `README.md`            | No             | This overview.                                     |
+| Path                  | Seeded to run? | Purpose                                                            |
+| --------------------- | -------------- | ------------------------------------------------------------------ |
+| `specs/`              | **Yes**        | The spec handed to the model, by concern.                          |
+| `assets/`             | **Yes**        | The provided art (sprite sheets); build with these.                |
+| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.                      |
+| `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.                 |
+| reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.                     |
+| `test-case.toml`      | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
+| `README.md`           | No             | This overview.                                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `sensing.md`, `movement.md`, `predators.md`, `flow.md`,
 `assets.md` (the provided-art contract), and the mode specs under
 `specs/modes/`. The common specs (everything except the variant-only mode
 specs) are seeded for every variant; each variant adds at most one extra mode
-spec. Each variant is a standalone TOML file under `variants/`, listed in order in
-the manifest's `variants` key (the first is the default). The case offers four
+spec. Each variant is a standalone TOML file under `variants/`, listed in order
+in the manifest's `variants` key (the first is the default). The case offers four
 variants — `base` (Trench only), `murk`
 (adds Murk, where passive light bends around corners like sonar), `reserve` (adds
 Reserve, where ink is limited charges refilled by ink-glands), and `beam` (adds

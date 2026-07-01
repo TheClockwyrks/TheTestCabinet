@@ -7,8 +7,8 @@ obstacles** in the field. A **Frenzy** mode adds an uncapped speed ramp.
 
 `carom` is the catalog slug for this lineage of paddle-and-ball cases, and the
 game's in-fiction title. The case is inspired by classic paddle games (such as
-Pong) but is not a clone of any of them — the name, look, spin mechanic, and obstacle layout
-are original to The Test Cabinet.
+Pong) but is not a clone of any of them — the name, look, spin mechanic, and
+obstacle layout are original to The Test Cabinet.
 
 ## Why Pong as the first test case
 
@@ -20,15 +20,15 @@ without the scale of the harder cases.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                            |
-| ---------------------- | -------------- | -------------------------------------------------- |
-| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
-| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
-| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
-| `README.md`            | No             | This overview.                                     |
+| Path                  | Seeded to run? | Purpose                                                            |
+| --------------------- | -------------- | ------------------------------------------------------------------ |
+| `specs/`              | **Yes**        | The spec handed to the model, by concern.                          |
+| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.                      |
+| `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.                 |
+| reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.                     |
+| `test-case.toml`      | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
+| `README.md`           | No             | This overview.                                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `physics.md`, `flow.md`, and the mode specs under `specs/modes/`.
@@ -55,5 +55,5 @@ rather than copying the mockup code.
 ## Versioning
 
 This case follows semantic versioning per version folder
-(`test-cases/carom/v1.0.0/`). Each version is self-contained and immutable once a
-run references it; design revisions land as new version folders.
+(`test-cases/carom/v1.0.0/`). Each version is self-contained and immutable once
+a run references it; design revisions land as new version folders.

@@ -23,15 +23,15 @@ a meaningful run without the scale of the harder cases.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                            |
-| ---------------------- | -------------- | -------------------------------------------------- |
-| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
-| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
-| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
-| `README.md`            | No             | This overview.                                     |
+| Path                  | Seeded to run? | Purpose                                                            |
+| --------------------- | -------------- | ------------------------------------------------------------------ |
+| `specs/`              | **Yes**        | The spec handed to the model, by concern.                          |
+| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.                      |
+| `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.                 |
+| reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.                     |
+| `test-case.toml`      | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
+| `README.md`           | No             | This overview.                                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `mechanics.md`, `flow.md`, and the mode specs under
