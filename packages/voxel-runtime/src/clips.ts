@@ -1,20 +1,25 @@
-import type { AutoPlaySpec } from "./contract";
+import type { AnimationSpec, AutoPlaySpec, KeyframeSpec } from "./contract";
 
 /**
- * Sample an auto-play clip at a time offset, with linear interpolation between
- * keyframes.
+ * Sample a keyframe timeline at a time offset, with linear interpolation between
+ * keyframes. Shared by a joint's auto-play {@link sampleClip} and a named
+ * {@link sampleAnimation} track — both are a looping timeline of `{ tMs, value }`
+ * keyframes over a period.
  *
  * Keyframes are expected in time order (as emitted by the contract). Behaviour:
- * - empty clip → `0`; single keyframe → that keyframe's value.
+ * - empty timeline → `0`; single keyframe → that keyframe's value.
  * - `timeMs` at or before the first keyframe → the first value; at or after the
  *   last keyframe → the last value (unless looping, see below).
- * - when {@link AutoPlaySpec.looping} is true and {@link AutoPlaySpec.periodMs}
- *   is positive, `timeMs` is wrapped into `[0, periodMs)` and, if the last
- *   keyframe ends before `periodMs`, the tail interpolates back toward the first
- *   keyframe so the loop is seamless.
+ * - when `looping` is true and `periodMs` is positive, `timeMs` is wrapped into
+ *   `[0, periodMs)` and, if the last keyframe ends before `periodMs`, the tail
+ *   interpolates back toward the first keyframe so the loop is seamless.
  */
-export function sampleClip(auto: AutoPlaySpec, timeMs: number): number {
-  const frames = auto.keyframes;
+export function sampleKeyframes(
+  frames: readonly KeyframeSpec[],
+  periodMs: number,
+  looping: boolean,
+  timeMs: number,
+): number {
   const n = frames.length;
   if (n === 0) return 0;
 
@@ -22,10 +27,9 @@ export function sampleClip(auto: AutoPlaySpec, timeMs: number): number {
   if (n === 1) return first.value;
   const last = frames[n - 1]!;
 
-  const period = auto.periodMs;
   let t = timeMs;
-  if (auto.looping && period > 0) {
-    t = ((t % period) + period) % period;
+  if (looping && periodMs > 0) {
+    t = ((t % periodMs) + periodMs) % periodMs;
   }
 
   if (t <= first.tMs) return first.value;
@@ -33,8 +37,8 @@ export function sampleClip(auto: AutoPlaySpec, timeMs: number): number {
   if (t >= last.tMs) {
     // Seamless wrap: interpolate from the last keyframe back to the first over
     // the remainder of the period.
-    if (auto.looping && period > last.tMs) {
-      const span = period - last.tMs;
+    if (looping && periodMs > last.tMs) {
+      const span = periodMs - last.tMs;
       const frac = (t - last.tMs) / span;
       return last.value + (first.value - last.value) * frac;
     }
@@ -53,4 +57,35 @@ export function sampleClip(auto: AutoPlaySpec, timeMs: number): number {
   }
 
   return last.value;
+}
+
+/**
+ * Sample an auto-play clip at a time offset. A thin wrapper over
+ * {@link sampleKeyframes} keyed on the clip's own period and loop flag.
+ */
+export function sampleClip(auto: AutoPlaySpec, timeMs: number): number {
+  return sampleKeyframes(auto.keyframes, auto.periodMs, auto.looping, timeMs);
+}
+
+/**
+ * Sample a named, predetermined {@link AnimationSpec} at a time offset into a map
+ * of joint values, one per track — the caller values that pose the rig at this
+ * instant of the animation. Every track shares the animation's period and loop
+ * flag. Feed the result to {@link import("./hierarchy").poseRig} (as `caller`) or
+ * to `VoxelRig.playAnimation`.
+ */
+export function sampleAnimation(
+  animation: AnimationSpec,
+  timeMs: number,
+): Record<string, number> {
+  const values: Record<string, number> = {};
+  for (const track of animation.tracks) {
+    values[track.joint] = sampleKeyframes(
+      track.keyframes,
+      animation.periodMs,
+      animation.looping,
+      timeMs,
+    );
+  }
+  return values;
 }

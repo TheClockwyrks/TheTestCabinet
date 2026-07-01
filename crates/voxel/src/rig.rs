@@ -40,8 +40,10 @@ pub struct Part {
     /// The parent part this one is attached to, or `None` for the root part.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
-    /// The attachment point of this part in the parent's local voxel coordinates
-    /// (`[x, y, z]`). For the root this is its origin in world space.
+    /// The part's attachment point, in the **shared volume's coordinates** — the
+    /// same coordinates the part is sculpted in (`[x, y, z]`). Parts are sculpted in
+    /// place where they sit on the assembled model, so this is not a placement
+    /// offset; it is the anchor the part's joints rotate about.
     pub pivot: [i64; 3],
 }
 
@@ -62,7 +64,8 @@ pub struct Joint {
     pub kind: JointKind,
     /// The axis the joint acts about (rotation) or along (translation).
     pub axis: Axis,
-    /// The joint origin in the part's local voxel coordinates (`[x, y, z]`).
+    /// The joint origin — the point it rotates about — in the **shared volume's
+    /// coordinates**, the same coordinates the part is sculpted in (`[x, y, z]`).
     pub pivot: [i64; 3],
     /// Minimum value: radians for a rotation, voxel units for a translation.
     pub min: f64,

@@ -7,14 +7,14 @@ unmistakably as this tank and poses correctly from the description below.
 
 ## The volume and coordinate system
 
-- The volume is **24 wide (x) x 16 tall (y) x 32 deep (z)**, in opaque voxels. It
+- The volume is **60 wide (x) x 40 tall (y) x 80 deep (z)**, in opaque voxels. It
   starts **empty**.
-- **x** runs across the tank, `0`-`23`. **y** runs up, `0` (bottom, the ground)
-  to `15` (top). **z** runs front-to-back, `0`-`31`.
-- **Forward is +z:** the gun points toward `z = 31` (the front) when the turret
+- **x** runs across the tank, `0`-`59`. **y** runs up, `0` (bottom, the ground)
+  to `39` (top). **z** runs front-to-back, `0`-`79`.
+- **Forward is +z:** the gun points toward `z = 79` (the front) when the turret
   is at rest. Up is +y.
 - Build the tank **symmetric about the lengthwise vertical centerplane between
-  `x = 11` and `x = 12`** — the two tracks mirror each other, and the turret and
+  `x = 29` and `x = 30`** — the two tracks mirror each other, and the turret and
   barrel are centered on it.
 - Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
   same volume's coordinates, positioned where the part sits on the assembled tank.
@@ -41,21 +41,21 @@ sits on the finished tank:
 | Part | Parent | Attaches at (pivot) | What it is |
 | --- | --- | --- | --- |
 | `chassis` | *(root)* | `[0, 0, 0]` | The tank body and its two tracks |
-| `turret` | `chassis` | `[12, 8, 16]` | The rotating turret on top |
-| `barrel` | `turret` | `[12, 11, 20]` | The main gun, on the turret front |
+| `turret` | `chassis` | `[30, 20, 40]` | The rotating turret on top |
+| `barrel` | `turret` | `[30, 28, 50]` | The main gun, on the turret front |
 
 - **`chassis`** is the **root** — the fixed base of the tank. Sculpt a low, boxy
   hull in the olive hull color (dark olive on its underside) sitting on the ground
   (from `y = 0`), running most of the depth. Down each side, along the full length,
   sculpt a **track** in the track color, standing a little taller than the hull
-  floor. Keep the hull top flat around `y = 8` so the turret has a mount to rest
+  floor. Keep the hull top flat around `y = 20` so the turret has a mount to rest
   on.
-- **`turret`** attaches to the top-center of the chassis at **`[12, 8, 16]`**.
+- **`turret`** attaches to the top-center of the chassis at **`[30, 20, 40]`**.
   Sculpt a compact turret box (a hatch or cupola in the accent color reads well)
-  centered over that mount, sitting from about `y = 8` up. It must sit **on** the
+  centered over that mount, sitting from about `y = 20` up. It must sit **on** the
   chassis, meeting it at the mount with no gap and no voxel poking down into the
   hull.
-- **`barrel`** attaches to the front of the turret at **`[12, 11, 20]`**. Sculpt
+- **`barrel`** attaches to the front of the turret at **`[30, 28, 50]`**. Sculpt
   a long, straight gun barrel in the gunmetal color projecting **forward (+z)**
   from the turret's front face, centered on the centerplane. It must meet the
   turret with no gap.
@@ -65,7 +65,7 @@ sits on the finished tank:
 A consuming game drives the rig by joint name. The **required** joint is:
 
 - **`turret_yaw`** — a **rotation** about the **y** (up) axis, through the turret's
-  vertical mount at pivot **`[12, 8, 16]`**, driven by the **caller** (the game).
+  vertical mount at pivot **`[30, 20, 40]`**, driven by the **caller** (the game).
   Its range is a **full half-turn each way**, `min = -π`, `max = +π`, resting at
   `0` (facing straight forward). Driving it must **swing the whole turret — and
   the barrel with it — left and right about that mount**, so the tank can aim in

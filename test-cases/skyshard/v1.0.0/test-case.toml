@@ -3,7 +3,7 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "ship"]
 summary = """
 Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \
-a 24x8x32 opaque-voxel model, one recorded operation at a time."""
+a 60x20x80 opaque-voxel model, one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -20,9 +20,9 @@ variants = ["variants/base.toml"]
 # volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 24
-height = 8
-depth = 32
+width = 60
+height = 20
+depth = 80
 background = "transparent"
 
 # The sculpting tool. `voxel` is the only way to place a voxel; it records every
@@ -67,7 +67,7 @@ id = "symmetry"
 title = "Bilateral symmetry"
 text = """
 The interceptor is cleanly symmetric about its lengthwise vertical centerplane \
-(between x = 11 and x = 12): the two wings, the two tail fins, and any engine \
+(between x = 29 and x = 30): the two wings, the two tail fins, and any engine \
 intakes mirror each other, so it reads as a deliberate aircraft rather than a \
 lopsided hull."""
 weight = 2
@@ -87,7 +87,7 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The jet uses most of the 24x8x32 volume — long along z, spanning most of the \
+The jet uses most of the 60x20x80 volume — long along z, spanning most of the \
 width at the wingtips, a few voxels of margin on every side — neither shrunk into \
 one corner nor clipped where it runs past a face of the volume."""
 weight = 1

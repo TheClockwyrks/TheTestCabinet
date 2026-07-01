@@ -58,9 +58,13 @@ transforms for a given pose:
 poseRig(rig, { caller, time }) -> PosedPart[]
 ```
 
-Each part's world transform is its parent's world composed with a translate to the
-part's pivot and each joint's contribution — `parentWorld ∘ translate(pivot) ∘
-joint(param)`. A joint's parameter comes from one of two sources, by its `drive`:
+Each part's world transform is its parent's world composed with each joint's
+contribution — `parentWorld ∘ joint(param)`. Parts are sculpted in the shared
+volume's world coordinates (each part's voxels already sit where the part belongs
+on the assembled model), so a part contributes no placement translation of its
+own: its `pivot` is the world-space anchor its joints rotate about, not an offset
+that re-places the part, and at rest a part stays exactly where it was sculpted. A
+joint's parameter comes from one of two sources, by its `drive`:
 
 - **caller-driven** joints take their value from the `caller` map the consumer
   supplies (a game setting `turret_yaw`), **clamped** to the joint's `[min, max]`
@@ -85,6 +89,12 @@ parts under the rig hierarchy:
   `rig.pose({ turret_yaw: 0.64 })`); values are clamped to each joint's range.
 - **`play(clip)` / `update(dt)`** — start an auto-play clip and advance all
   auto-play joints by `dt` each frame.
+- **`playAnimation(animation)` / `update(dt)`** — play a named, case-authored
+  [`AnimationSpec`](/testing/asset-generation/manifests/) (or `null` to stop): each
+  of its tracks poses its joint from the animation sampled at the current clock, so
+  driving `update(dt)` walks the whole choreography forward. The pure-core
+  `sampleAnimation(animation, timeMs)` samples one into a `{ joint: value }` map if
+  you would rather pose the rig yourself.
 - **`jointNames(drive)`** — the joint names for a `drive` (`"caller"` to discover
   the game-facing controls, `"auto"` for the self-animating ones).
 - **`jointRange(name)`** — a joint's `{ min, max, rest }`, e.g. to build a slider.

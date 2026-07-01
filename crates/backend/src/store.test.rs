@@ -35,6 +35,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![StoredSpec {
             source: "specs/overview.hbs".to_string(),

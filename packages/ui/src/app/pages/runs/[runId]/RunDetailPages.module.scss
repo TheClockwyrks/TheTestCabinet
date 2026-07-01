@@ -576,3 +576,96 @@
 .liveCaption {
   text-align: center;
 }
+
+// --- The 3D voxel viewer (GuardedVoxelViewer) --------------------------------
+
+// The inline viewer's positioning context, so the expand button can sit over its
+// top-right corner.
+.voxelStage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+// The expand-to-fullscreen button, floated over the viewer's top-right corner. Kept
+// unobtrusive until hovered so it doesn't compete with the model.
+.voxelExpandButton {
+  position: absolute;
+  top: t.$space-xs;
+  right: t.$space-xs;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  font-size: t.$font-md;
+  line-height: 1;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
+// The expanded (fullscreen) overlay: a fixed, near-opaque sheet over the whole
+// page, portalled to the body so it escapes any panel's overflow/stacking.
+.voxelFullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: t.$space-sm;
+  padding: t.$space-lg;
+  background: color-mix(in srgb, t.$color-bg 94%, #000);
+}
+
+.voxelFullscreenStage {
+  width: 100%;
+  max-width: 72rem;
+}
+
+.voxelFullscreenClose {
+  position: absolute;
+  top: t.$space-lg;
+  right: t.$space-lg;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-surface;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+}
+
+.voxelFullscreenHint {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// --- The live voxel view (LiveAssetView, voxel branch) -----------------------
+
+// The Model/Scene segmented control sits above the live 3D view; it reuses the
+// `.viewToggle` look. This just spaces the live 3D canvas below it.
+.liveVoxelCanvas {
+  width: 100%;
+  height: 340px;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+}

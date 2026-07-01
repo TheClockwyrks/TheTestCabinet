@@ -2,7 +2,12 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import type { ModelSpec, VoxelsFile } from "@test-cabinet/run-record";
+import type {
+  AnimationSpec,
+  ModelSpec,
+  VoxelDims,
+  VoxelsFile,
+} from "@test-cabinet/run-record";
 import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
 
 // How the viewer presents the model: `auto-rotate` slowly orbits the camera on
@@ -59,6 +64,9 @@ export default function VoxelViewer({
   mode,
   autoPlayClip,
   callerJoints,
+  animation,
+  enableZoom,
+  frameDims,
   height = 320,
   label,
 }: {
@@ -75,6 +83,16 @@ export default function VoxelViewer({
   autoPlayClip?: string | null;
   /** Caller-driven joint values to pose the rig at (e.g. `{ turret_yaw: 0.6 }`). */
   callerJoints?: Record<string, number>;
+  /** A predetermined animation to play (its tracks drive their joints over time),
+   * or `null`/omitted for none. */
+  animation?: AnimationSpec | null;
+  /** Whether scroll-to-zoom is enabled. Off by default: the inline gallery views
+   * disable zoom, and only the expanded (fullscreen) view turns it on. */
+  enableZoom?: boolean;
+  /** Frame the camera from this fixed volume instead of the posed bounding box.
+   * Used by the live view so the camera stays steady as the model is sculpted
+   * (the bounding box grows operation by operation); omit for post-run views. */
+  frameDims?: VoxelDims | null;
   /** Canvas height in px. */
   height?: number;
   /** Accessible name for the canvas. */
@@ -85,10 +103,24 @@ export default function VoxelViewer({
   const voxelRig = useMemo(() => new VoxelRig(rig, voxels), [rig, voxels]);
   useEffect(() => () => voxelRig.dispose(), [voxelRig]);
 
-  // Frame the camera from the posed bounding box so any size of model fills the
-  // view. Computed once per rig (the rest pose is representative enough for
-  // framing; posing a joint doesn't grow the model meaningfully).
+  // Frame the camera so any size of model fills the view. When `frameDims` is
+  // given (the live view) frame the fixed volume so the camera holds steady as the
+  // model grows; otherwise frame the posed bounding box (the rest pose is
+  // representative — posing a joint doesn't grow the model meaningfully).
   const { center, distance, far } = useMemo(() => {
+    if (frameDims) {
+      const size = Math.max(frameDims.width, frameDims.height, frameDims.depth, 1);
+      const dist = size * 2.2;
+      return {
+        center: [
+          frameDims.width / 2,
+          frameDims.height / 2,
+          frameDims.depth / 2,
+        ] as Vec3,
+        distance: dist,
+        far: dist * 20,
+      };
+    }
     voxelRig.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(voxelRig.root);
     if (box.isEmpty()) {
@@ -105,13 +137,18 @@ export default function VoxelViewer({
       distance: dist,
       far: dist * 20,
     };
-  }, [voxelRig]);
+  }, [voxelRig, frameDims]);
 
   // Isolate the requested auto-play clip (or play them all with `null`); a
   // caller-posed/static view passes no clip, which holds every auto joint at rest.
   useEffect(() => {
     voxelRig.play(autoPlayClip ?? null);
   }, [voxelRig, autoPlayClip]);
+
+  // Play the requested predetermined animation (or stop it with `null`).
+  useEffect(() => {
+    voxelRig.playAnimation(animation ?? null);
+  }, [voxelRig, animation]);
 
   // Re-pose whenever the caller-driven joint values change. Keyed on the values'
   // JSON so a fresh object of the same values doesn't re-pose needlessly.
@@ -122,7 +159,9 @@ export default function VoxelViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voxelRig, callerKey]);
 
-  const animate = autoPlayClip !== undefined;
+  // Advance the playback clock each frame when an auto-play clip or a predetermined
+  // animation is running; a static or caller-posed model needs no per-frame work.
+  const animate = autoPlayClip !== undefined || animation != null;
 
   return (
     <div style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}>
@@ -144,6 +183,7 @@ export default function VoxelViewer({
         <OrbitControls
           makeDefault
           enablePan={false}
+          enableZoom={enableZoom ?? false}
           autoRotate={mode === "auto-rotate"}
           autoRotateSpeed={1.5}
         />

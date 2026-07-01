@@ -19,7 +19,10 @@ use clap::{Args, Subcommand};
 use serde::Deserialize;
 
 use crate::color::Rgb;
-use crate::{Axis, Camera, Dims, Operation, PreviewBackground, VoxelSet, rasterize, render};
+use crate::{
+    Axis, Camera, Dims, Operation, PreviewBackground, SceneView, VoxelSet, rasterize,
+    rasterize_scene, render,
+};
 
 /// A single sculpting operation, expressed as a `clap` subcommand.
 ///
@@ -429,6 +432,13 @@ pub struct AnimConfig {
     /// name (for example `parts/{part}.png`).
     #[serde(default = "default_anim_preview")]
     pub preview: String,
+    /// Template for the **assembled-scene** preview path, with `{view}` replaced by
+    /// the view name (`iso`, `front`, `side`, `top`). The whole rig composed at rest
+    /// and re-rendered after every operation, so the model can check how its
+    /// separately sculpted parts fit together on the finished model. Not a scored
+    /// artifact (the per-part previews are); defaults to `scene/{view}.png`.
+    #[serde(default = "default_anim_scene")]
+    pub scene: String,
     /// Run-workspace-relative path of the rig structure (`rig.json`).
     #[serde(default = "default_rig")]
     pub rig: PathBuf,
@@ -464,6 +474,11 @@ impl AnimConfig {
         PathBuf::from(self.preview.replace("{part}", part))
     }
 
+    /// The assembled-scene preview path for `view` (`iso`, `front`, `side`, `top`).
+    pub fn scene_for(&self, view: &str) -> PathBuf {
+        PathBuf::from(self.scene.replace("{view}", view))
+    }
+
     /// Whether `part` is one of the declared parts.
     pub fn has_part(&self, part: &str) -> bool {
         self.parts.iter().any(|p| p == part)
@@ -488,6 +503,10 @@ fn default_anim_actions() -> String {
 
 fn default_anim_preview() -> String {
     "parts/{part}.png".to_string()
+}
+
+fn default_anim_scene() -> String {
+    "scene/{view}.png".to_string()
 }
 
 fn default_rig() -> PathBuf {
@@ -558,7 +577,7 @@ pub fn apply(
     actions: &Path,
     preview: &Path,
     operation: Operation,
-) -> Result<(usize, Vec<u8>), String> {
+) -> Result<ApplyResult, String> {
     let mut operations = read_actions(actions)?;
     operations.push(operation);
     write_actions(actions, &operations)?;
@@ -567,7 +586,25 @@ pub fn apply(
     ensure_parent(preview)?;
     fs::write(preview, &bytes)
         .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
-    Ok((operations.len(), bytes))
+    Ok(ApplyResult {
+        count: operations.len(),
+        image: bytes,
+        voxels: set.to_voxels_json(),
+    })
+}
+
+/// The outcome of applying one operation: the running operation count, the
+/// re-rendered isometric preview PNG, and the current sparse `voxels.json` — the
+/// last of these fed to the live viewer so it can rebuild the 3D model as it takes
+/// shape (see [`send_live_preview`]).
+pub struct ApplyResult {
+    /// How many operations the part's action log now holds.
+    pub count: usize,
+    /// The re-rendered isometric preview PNG.
+    pub image: Vec<u8>,
+    /// The current occupied voxels in the sparse `voxels.json` shape core's
+    /// `VoxelsFile` reads.
+    pub voxels: String,
 }
 
 /// Rasterize an arbitrary voxel set to PNG bytes with the preview camera and the
@@ -577,23 +614,78 @@ pub fn preview_bytes(set: &VoxelSet, background: PreviewBackground) -> Vec<u8> {
     rasterize(set, &Camera::PREVIEW, background)
 }
 
+/// The assembled-scene views the animated tool renders, as `(name, view)` pairs in
+/// output order. The name substitutes the `{view}` token of `AnimConfig::scene`.
+pub const SCENE_VIEWS: [(&str, SceneView); 4] = [
+    ("iso", SceneView::Iso),
+    ("front", SceneView::Front),
+    ("side", SceneView::Side),
+    ("top", SceneView::Top),
+];
+
+/// Compose every part's action log into one assembled volume, posed at **rest**.
+///
+/// Each part is rendered from its own log in the shared volume's coordinates (where
+/// the model sculpted it) and unioned in `part_logs` order, so a later part's
+/// voxels overpaint an earlier part's where they coincide. At rest the rig applies
+/// no per-part transform (parts are sculpted in place), so this union *is* the
+/// assembled model; joint motion is not applied here (rotating voxels in the grid
+/// is lossy), which for the required rest pose is exact.
+pub fn compose_scene(dims: &Dims, part_logs: &[Vec<Operation>]) -> VoxelSet {
+    let mut set = VoxelSet::empty(*dims);
+    for operations in part_logs {
+        let part = render(dims, operations);
+        for (cell, part_cell) in set.cells.iter_mut().zip(part.cells.iter()) {
+            if let Some(color) = part_cell {
+                *cell = Some(*color);
+            }
+        }
+    }
+    set
+}
+
+/// Re-render the assembled scene from the current per-part logs: compose every
+/// declared part and write one PNG per [`SCENE_VIEWS`] entry to the config's
+/// `scene` path. Returns the composed volume so a caller can reuse it. A scene view
+/// is a non-scored aid — the per-part previews remain the scored artifacts.
+pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
+    let dims = config.dims();
+    let background = config.background()?;
+    let mut logs = Vec::with_capacity(config.parts.len());
+    for part in &config.parts {
+        logs.push(read_actions(&config.actions_for(part))?);
+    }
+    let set = compose_scene(&dims, &logs);
+    for (name, view) in SCENE_VIEWS {
+        let path = config.scene_for(name);
+        ensure_parent(&path)?;
+        let bytes = rasterize_scene(&set, view, background);
+        fs::write(&path, &bytes)
+            .map_err(|err| format!("writing scene {}: {err}", path.display()))?;
+    }
+    Ok(set)
+}
+
 /// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.
 ///
 /// A sculpting operation must never fail because the live view is unavailable, so
 /// every error here is swallowed — the recorded action log remains the run's
 /// authoritative output regardless of whether a frame reaches a viewer. The wire
 /// form is one JSON header line (`{ token, frame, operation, operationCount,
-/// length }`) followed by exactly `length` raw PNG bytes; the listener validates
-/// the token before accepting the frame. `frame` carries the part index (0 for a
-/// single static model).
+/// length, voxelLength }`) followed by exactly `length` raw PNG bytes and then
+/// `voxelLength` bytes of the sparse `voxels.json` text; the listener validates the
+/// token before accepting the frame. `frame` carries the part index (0 for a single
+/// static model). The voxel body lets the live viewer rebuild the model in 3D — a
+/// PNG-only viewer simply ignores it.
 pub fn send_live_preview(
     live: &LiveConfig,
     frame: u32,
     operation: &str,
     operation_count: usize,
     image: &[u8],
+    voxels: &str,
 ) {
-    let _ = try_send_live_preview(live, frame, operation, operation_count, image);
+    let _ = try_send_live_preview(live, frame, operation, operation_count, image, voxels);
 }
 
 fn try_send_live_preview(
@@ -602,6 +694,7 @@ fn try_send_live_preview(
     operation: &str,
     operation_count: usize,
     image: &[u8],
+    voxels: &str,
 ) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind, Write};
     use std::net::{TcpStream, ToSocketAddrs};
@@ -616,16 +709,19 @@ fn try_send_live_preview(
         })?;
     let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
     stream.set_write_timeout(Some(TIMEOUT))?;
+    let voxel_bytes = voxels.as_bytes();
     let mut header = serde_json::to_vec(&serde_json::json!({
         "token": live.token,
         "frame": frame,
         "operation": operation,
         "operationCount": operation_count,
         "length": image.len(),
+        "voxelLength": voxel_bytes.len(),
     }))?;
     header.push(b'\n');
     stream.write_all(&header)?;
     stream.write_all(image)?;
+    stream.write_all(voxel_bytes)?;
     stream.flush()
 }
 

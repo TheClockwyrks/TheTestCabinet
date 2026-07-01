@@ -1,9 +1,10 @@
 //! The `voxel-anim` CLI: sculpting a rigged, **animated** model, one part at a time.
 //!
 //! This binary extends [`voxel`](../voxel.rs) with a required `--part <name>`: the
-//! sculpting operations and how each applies are **identical**, but each part is a
-//! **completely separate file** — its own action log and preview, never a region of
-//! one shared volume. On top of the per-part sculpting it maintains the rig
+//! sculpting operations and how each applies are **identical**, but each part has
+//! its **own action log and preview** — separate files — though every part is
+//! sculpted in the **same shared volume's coordinates**, in place where it sits on
+//! the assembled model. On top of the per-part sculpting it maintains the rig
 //! structure in `rig.json`: the parts' hierarchy and the named joints a consuming
 //! game (or an auto-play clip) drives. The manifest pre-seeds the required parts
 //! and joints; the `define-part` / `set-pivot` / `define-joint` / `define-clip`
@@ -31,11 +32,11 @@ use test_cabinet_voxel::rig::{Drive, Joint, JointKind, Keyframe, Rig};
 )]
 struct Cli {
     /// Path to the rig config JSON (`{ width, height, depth, background, parts,
-    /// actions, preview, rig }`). Read by `init` and by every sculpting operation.
+    /// actions, preview, scene, rig }`). Read by `init` and every sculpting operation.
     #[arg(long, default_value = "voxel-anim.config.json", global = true)]
     config: PathBuf,
     /// Which part to sculpt into. **Required** for a sculpting operation; each part
-    /// is its own separate volume.
+    /// has its own action log and preview, all in the shared volume's coordinates.
     #[arg(long, global = true)]
     part: Option<String>,
     #[command(subcommand)]
@@ -47,6 +48,10 @@ enum Command {
     /// Initialize every declared part: write an empty action log and a blank
     /// preview per part so the run starts from a known, empty state.
     Init,
+    /// Re-render the assembled scene (every part composed at rest) from the current
+    /// per-part logs, writing one PNG per view (`iso`, `front`, `side`, `top`).
+    /// Runs automatically after every sculpting operation; this is the manual form.
+    Scene,
     /// Regenerate a preview from an action log without modifying it.
     Render(RenderArgs),
     /// Add a part to the rig, or update its parent if it already exists.
@@ -58,8 +63,8 @@ enum Command {
         #[arg(long)]
         parent: Option<String>,
     },
-    /// Set an existing part's pivot (its attachment point in the parent's local
-    /// voxel coordinates).
+    /// Set an existing part's pivot: the point, in the shared volume's coordinates
+    /// (the same coordinates the part is sculpted in), that its joints rotate about.
     SetPivot {
         /// The part to update.
         #[arg(long)]
@@ -88,7 +93,8 @@ enum Command {
         /// The axis the joint acts about (rotation) or along (translation).
         #[arg(long, value_enum)]
         axis: Axis,
-        /// Joint-origin x, in the part's local voxel coordinates.
+        /// Joint-origin x, in the shared volume's coordinates (the same coordinates
+        /// the part is sculpted in): the point the joint rotates about.
         #[arg(long)]
         pivot_x: i64,
         /// Joint-origin y.
@@ -198,6 +204,9 @@ fn run(cli: Cli) -> Result<(), String> {
                     &config.preview_for(part),
                 )?;
             }
+            // Render the (blank) assembled scene too, so every scene view exists
+            // from the start and updates in step with the per-part previews.
+            cli::render_scene(&config)?;
             println!(
                 "initialized {} part{} of {}x{}x{}",
                 config.parts.len(),
@@ -205,6 +214,15 @@ fn run(cli: Cli) -> Result<(), String> {
                 dims.width,
                 dims.height,
                 dims.depth
+            );
+            Ok(())
+        }
+        Command::Scene => {
+            let config: AnimConfig = cli::read_config(&cli.config)?;
+            cli::render_scene(&config)?;
+            println!(
+                "rendered assembled scene ({} views)",
+                cli::SCENE_VIEWS.len()
             );
             Ok(())
         }
@@ -296,19 +314,26 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             let dims = config.dims();
             let name = op.name();
-            let (count, image) = cli::apply(
+            let cli::ApplyResult {
+                count,
+                image,
+                voxels,
+            } = cli::apply(
                 &dims,
                 config.background()?,
                 &config.actions_for(&part),
                 &config.preview_for(&part),
                 op.into_operation(),
             )?;
-            // Stream this part's re-rendered preview to the live viewer, keyed by
-            // its part index. Best-effort; a no-op for an unobserved run.
+            // Stream this part's re-rendered preview and current voxels to the live
+            // viewer, keyed by its part index. Best-effort; a no-op for an
+            // unobserved run.
             if let Some(live) = &config.live {
                 let index = config.parts.iter().position(|p| *p == part).unwrap_or(0) as u32;
-                cli::send_live_preview(live, index, name, count, &image);
+                cli::send_live_preview(live, index, name, count, &image, &voxels);
             }
+            // Refresh the assembled scene so its views reflect this operation.
+            cli::render_scene(&config)?;
             println!(
                 "applied {name} to part {part} ({count} operation{} recorded)",
                 if count == 1 { "" } else { "s" }

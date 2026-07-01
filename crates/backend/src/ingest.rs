@@ -428,6 +428,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         }),
         asset_kind: resolved.asset_kind,
         sheet: resolved.sheet.clone(),
+        voxel: resolved.voxel.clone(),
+        model: resolved.model.clone(),
         prompt_template,
         common_specs,
         workspace,

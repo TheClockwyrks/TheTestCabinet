@@ -47,22 +47,31 @@ pub const HOST_GATEWAY_ADD_HOST: &str = "host.docker.internal:host-gateway";
 /// any real frame; a header over it is dropped rather than allocated.
 const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 
+/// A cap on the `voxels.json` body a voxel frame may append after its PNG. A sparse
+/// voxel volume is far smaller than this even at the largest declared dimensions, so
+/// a header advertising more is dropped rather than allocated.
+const MAX_VOXEL_BYTES: usize = 32 * 1024 * 1024;
+
 /// A cap on reading one frame off a connection, so a client that opens a socket
 /// and then stalls cannot tie up the listener.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One re-rendered asset-generation frame, streamed live as the model draws.
 ///
-/// This is what a viewer renders to watch the sprite take shape: the `image` is
+/// This is what a viewer renders to watch the asset take shape: the `image` is
 /// the frame's PNG, base64-encoded so it travels in the same JSON transport as
 /// every other live update, and `frame`/`operationCount` let the UI show which
-/// frame changed and how far along it is. It is never persisted — the post-run view
-/// regenerates the asset from the recorded action log instead.
+/// frame changed and how far along it is. A voxel run additionally carries the
+/// frame's current [`voxels`](Self::voxels) so the viewer can rebuild the part in
+/// 3D and assemble the scene; a 2D sprite run leaves it `None`. It is never
+/// persisted — the post-run view regenerates the asset from the recorded action log
+/// instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetPreview {
-    /// The frame this preview belongs to. A single sprite is always frame `0`; a
-    /// sprite sheet uses the `draw-sheet --frame` index.
+    /// The frame this preview belongs to. A single sprite (or static voxel model) is
+    /// always frame `0`; a sprite sheet uses the `draw-sheet --frame` index, and an
+    /// animated voxel model uses the part's declared index.
     pub frame: u32,
     /// How many operations the frame's action log holds after this one — the
     /// frame's progress, shown alongside the image.
@@ -74,6 +83,11 @@ pub struct AssetPreview {
     /// The frame's PNG, base64-encoded (no `data:` prefix; a viewer builds the
     /// data URL).
     pub image: String,
+    /// The frame's current occupied voxels, for a voxel run — the same sparse
+    /// `voxels.json` shape the post-run viewer loads, so the live viewer can rebuild
+    /// the part in 3D. `None` for a 2D sprite run (which streams only the PNG).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voxels: Option<crate::validation::VoxelsFile>,
 }
 
 /// Receives [`AssetPreview`]s as the drawing binary streams them during a run.
@@ -182,6 +196,10 @@ struct FrameHeader {
     operation: Option<String>,
     /// The number of PNG bytes that follow the header line.
     length: usize,
+    /// The number of `voxels.json` text bytes that follow the PNG body, for a voxel
+    /// run. `0` (or absent, for a 2D sprite run) means no voxel body follows.
+    #[serde(default)]
+    voxel_length: usize,
 }
 
 /// Read one framed preview off a connection: a JSON header line, then exactly
@@ -212,17 +230,34 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
     }
 
     let header: FrameHeader = serde_json::from_slice(&header_line).ok()?;
-    if header.token != token || header.length > MAX_FRAME_BYTES {
+    if header.token != token
+        || header.length > MAX_FRAME_BYTES
+        || header.voxel_length > MAX_VOXEL_BYTES
+    {
         return None;
     }
 
     let mut image = vec![0u8; header.length];
     reader.read_exact(&mut image).await.ok()?;
+
+    // A voxel run appends its current `voxels.json` after the PNG so the live viewer
+    // can rebuild the model in 3D. Read and parse it when present; a malformed or
+    // oversized body simply drops the voxels (the PNG preview still stands) rather
+    // than the whole frame.
+    let voxels = if header.voxel_length > 0 {
+        let mut buf = vec![0u8; header.voxel_length];
+        reader.read_exact(&mut buf).await.ok()?;
+        serde_json::from_slice::<crate::validation::VoxelsFile>(&buf).ok()
+    } else {
+        None
+    };
+
     Some(AssetPreview {
         frame: header.frame,
         operation_count: header.operation_count,
         operation: header.operation,
         image: base64::engine::general_purpose::STANDARD.encode(&image),
+        voxels,
     })
 }
 

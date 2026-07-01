@@ -29,7 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::{AssetKind, SheetSpec, TestType};
+use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
 use crate::error::{BackendError, Result};
@@ -128,6 +128,17 @@ pub struct StoredManifest {
     /// backend-driven run without a mapping step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<SheetSpec>,
+    /// The bounding volume of a voxel case. `Some` only for the two voxel kinds.
+    /// Reuses the core [`VoxelSpec`] verbatim — its serialized shape is the wire
+    /// shape the runner deserializes — so the volume survives a backend-driven run
+    /// without a mapping step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voxel: Option<VoxelSpec>,
+    /// The required rig of a voxel-animation case. `Some` only for a
+    /// voxel-animation case. Reuses the core [`ModelSpec`] verbatim, as with
+    /// [`Self::voxel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelSpec>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the

@@ -25,30 +25,41 @@ const world = (posed: ReturnType<typeof poseRig>, name: string): Float32Array =>
   posed.find((p) => p.name === name)!.worldMatrix;
 
 describe("poseRig", () => {
-  it("composes the hierarchy: child world = parent ∘ child local", () => {
+  it("leaves parts where they were sculpted at rest (pivot is not a placement offset)", () => {
+    // Parts are authored in the shared volume's world coordinates, so a part's
+    // pivot must NOT translate it: at rest every part's world transform is the
+    // identity, keeping its voxels exactly where they were sculpted.
     const rig: ModelSpec = {
       parts: [
         part("chassis", { pivot: [10, 0, 0] }),
-        part("turret", { parent: "chassis", pivot: [0, 5, 0] }),
+        part("turret", { parent: "chassis", pivot: [12, 8, 16] }),
       ],
       joints: [],
     };
     const posed = poseRig(rig, {});
     const turret = world(posed, "turret");
-    // Translation column (indices 12,13,14) accumulates both pivots.
-    expect([turret[12], turret[13], turret[14]]).toEqual([10, 5, 0]);
+    expect([turret[12], turret[13], turret[14]]).toEqual([0, 0, 0]);
+    const chassis = world(posed, "chassis");
+    expect([chassis[12], chassis[13], chassis[14]]).toEqual([0, 0, 0]);
   });
 
-  it("resolves parents declared after their children", () => {
+  it("composes the hierarchy: a child inherits its parent's joint motion", () => {
+    // The chassis swings on a joint about x=2; the turret has no joint of its
+    // own, so it must ride along with the parent — its world transform equals
+    // the parent's, resolved regardless of declaration order.
     const rig: ModelSpec = {
       parts: [
-        part("turret", { parent: "chassis", pivot: [0, 5, 0] }),
+        part("turret", { parent: "chassis" }),
         part("chassis", { pivot: [10, 0, 0] }),
       ],
-      joints: [],
+      joints: [yaw({ part: "chassis", pivot: [2, 0, 0], min: -Math.PI, max: Math.PI })],
     };
-    const turret = world(poseRig(rig, {}), "turret");
-    expect([turret[12], turret[13], turret[14]]).toEqual([10, 5, 0]);
+    const posed = poseRig(rig, { caller: { turret_yaw: Math.PI } });
+    const chassis = world(posed, "chassis");
+    const turret = world(posed, "turret");
+    // 180° about Y through x=2 maps the origin to x=4, and the child inherits it.
+    expect(chassis[12]).toBeCloseTo(4, 6);
+    expect([turret[12], turret[13], turret[14]]).toEqual([chassis[12], chassis[13], chassis[14]]);
   });
 
   it("clamps caller values to [min,max] and falls back to rest", () => {

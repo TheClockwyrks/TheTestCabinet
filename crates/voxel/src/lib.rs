@@ -20,7 +20,7 @@ pub mod rig;
 
 pub use color::{ColorError, PreviewBackground, Rgb};
 pub use ops::{Axis, Operation};
-pub use raster::{Camera, rasterize};
+pub use raster::{Camera, SceneView, rasterize, rasterize_scene};
 pub use rig::{Drive, Joint, JointKind, Keyframe, Part, Rig};
 
 /// The bounding volume the model sculpts within: extents along each axis, in

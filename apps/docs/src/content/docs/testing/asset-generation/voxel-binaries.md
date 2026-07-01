@@ -101,14 +101,18 @@ the model's sculpting can be streamed to the viewer in real time, exactly as for
 the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
 orchestrator adds a `live` block to the seeded config, and after each operation the
 binary connects back to the run host and streams a one-line JSON header
-(`{ token, frame, operationCount, operation, length }`) followed by the freshly
-rendered isometric PNG's raw bytes. For an animated model the `frame` field carries
-the **part index**, so the viewer can show the most-recently-sculpted part and the
-status of every part at once (a static model uses part index `0`). Streaming is
-**best-effort and non-essential** — absent for an unwatched run, never fails an
-operation, and never recorded; the recorded **operation log** remains the run's
-authoritative output, and the reviewed voxels and preview are always
-[regenerated](/testing/asset-generation/evaluation/) from it.
+(`{ token, frame, operationCount, operation, length, voxelLength }`) followed by the
+freshly rendered isometric PNG's raw bytes and then the part's current `voxels.json`
+text (`voxelLength` bytes). The voxel body lets the viewer rebuild the model **in
+3D** as it is sculpted — rotating it and assembling the scene exactly as the
+finished-run view does — rather than showing only the flat isometric PNG; a
+PNG-only viewer simply ignores it. For an animated model the `frame` field carries
+the **part index**, so the viewer can show the most-recently-sculpted part, the
+status of every part, and the assembled scene at once (a static model uses part
+index `0`). Streaming is **best-effort and non-essential** — absent for an unwatched
+run, never fails an operation, and never recorded; the recorded **operation log**
+remains the run's authoritative output, and the reviewed voxels and preview are
+always [regenerated](/testing/asset-generation/evaluation/) from it.
 
 ## `voxel-anim`: one volume per part, plus the rig
 
@@ -117,8 +121,14 @@ named parts in a hierarchy with named joints. `voxel-anim` is `voxel` plus a
 required `--part <name>` that selects which part an operation sculpts into; that
 part has its own operation log and its own preview, both `{part}` templates the
 case declares (for example `parts/{part}.actions.json` and `parts/{part}.png`).
-Coordinates are **within the part's local volume** — the part hierarchy's pivots,
-not shared coordinates, place a part on its parent.
+Every part is sculpted in the **same shared volume's coordinates** — the full
+`[voxel]` dims — **in place** where the part sits on the assembled model (a turret
+already up on top of the hull, a barrel already out front), not in a private
+per-part box. A part's **pivot** is the anchor its joints rotate about, not a
+placement offset: the [voxel-runtime](/components/voxel-runtime/overview/) poses a
+part by rotating it about that pivot, and at rest a part stays exactly where it was
+sculpted. (Sculpting each part in place is what lets the parts be composed into the
+assembled model with no per-part offset — see the assembled scene below.)
 
 ```
 voxel-anim --help                                       # same operations, plus --part
@@ -131,7 +141,32 @@ The seeded `voxel-anim.config.json` lists the declared part names and the `{part
 templates, so `voxel-anim init` initializes every part's empty log and blank
 preview and seeds a `rig.json` pre-populated with the case's **required** parts and
 joints. The **per-part previews are the scored artifacts** (each deterministic);
-any assembled or posed preview is a non-scored extra.
+the assembled scene below is a non-scored extra.
+
+### The assembled scene
+
+Because each part is sculpted in place in the shared coordinates, `voxel-anim` also
+renders the whole model **composed at rest** — every part unioned in one volume —
+after every operation (and on `init`), alongside the per-part previews. This is the
+view that catches assembly mistakes a per-part preview can't: a turret that reads
+fine alone but sits off-center on the hull, or a barrel that misses the turret
+front. It is written to the config's `scene` template (default `scene/{view}.png`),
+one PNG per view:
+
+```
+voxel-anim scene        # re-render the assembled scene on demand (also automatic after each op)
+```
+
+- **`iso`** — the same isometric projection as the per-part previews, for a 3D read
+  of the whole model.
+- **`front`**, **`side`**, **`top`** — flat orthographic elevations (one voxel is
+  one filled square; the nearest voxel along the view axis wins), so it is easy to
+  check a part is centered and aligned head-on.
+
+The scene composes parts at **rest** (the required rig rests at `0`, so this is the
+true rest pose); it does not apply joint motion — the interactive, posable view is
+the frontend's [voxel-runtime](/components/voxel-runtime/overview/) rendering. Like
+the per-part previews, the scene is **not** a scored artifact.
 
 ### Rig subcommands
 
@@ -149,10 +184,10 @@ voxel-anim define-clip  --joint recoil --period-ms 600 --loop false \
                         --keyframe 0:0 --keyframe 100:-2 --keyframe 600:0
 ```
 
-- **`define-part`** adds a part under a declared `--parent` at a `--pivot` (its
-  attachment point in the parent's local voxel coordinates); it then becomes a
-  `--part` target for sculpting.
-- **`set-pivot`** moves an existing part's attachment pivot.
+- **`define-part`** adds a part under a declared `--parent`; it then becomes a
+  `--part` target for sculpting. Set its pivot with `set-pivot`.
+- **`set-pivot`** sets an existing part's pivot — the point, in the shared volume's
+  coordinates, its joints rotate about.
 - **`define-joint`** adds a named degree of freedom on a part — its `--kind`
   (`rotation`/`translation`), `--axis`, `--pivot`, `--min`/`--max`/`--rest` range,
   and `--drive` (`caller` for a game-supplied value, `auto` for a clip).

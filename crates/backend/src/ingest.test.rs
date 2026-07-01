@@ -220,3 +220,102 @@ fn stored_manifest_carries_performance_specs() {
         .expect("build.module survives ingest");
     assert!(module.ends_with(".wasm"));
 }
+
+#[test]
+fn stored_manifest_carries_voxel_specs() {
+    // A voxel case's `[voxel]` bounding volume — and, for a voxel-animation case,
+    // its required `[model]` rig — must survive into the stored manifest. They are
+    // what the runner's seeder reads to write the `voxel(-anim).config.json` and
+    // pre-seed `rig.json`; if they are dropped, seeding fails with
+    // "voxel case has no [voxel]" (the regression this guards). Resolving the real
+    // static Skyshard and rigged Ironward cases guards the ingest path for both
+    // voxel kinds, mirroring the adversarial/performance guards above.
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+
+    // A static voxel-model case: the volume survives; there is no rig.
+    let skyshard = catalog.resolve("skyshard", "v1.0.0").unwrap();
+    let manifest = build_stored_manifest(&skyshard).unwrap();
+    let voxel = manifest.voxel.expect("voxel volume survives ingest");
+    assert_eq!((voxel.width, voxel.height, voxel.depth), (60, 20, 80));
+    assert!(
+        manifest.model.is_none(),
+        "a static voxel-model case declares no rig"
+    );
+
+    // A rigged voxel-animation case: the volume and the required rig both survive.
+    let ironward = catalog.resolve("ironward", "v1.0.0").unwrap();
+    let manifest = build_stored_manifest(&ironward).unwrap();
+    assert!(manifest.voxel.is_some(), "voxel volume survives ingest");
+    let model = manifest.model.expect("required rig survives ingest");
+    assert!(
+        !model.parts.is_empty(),
+        "the required rig must carry its declared parts"
+    );
+}
+
+#[test]
+fn every_stored_manifest_preserves_its_asset_shape() {
+    // A whole-catalog guard against ingest drift: a field that resolution fills in
+    // but `build_stored_manifest` forgets to copy, so a run seeds from a manifest
+    // missing the tables its shape requires (exactly how the voxel volume was lost).
+    // For every committed case + version, build the stored manifest and assert
+    // (a) the tables its `asset_kind` requires are present, and (b) the manifest
+    // survives a JSON round-trip unchanged (the on-disk sidecar and the wire
+    // encoding the runner deserializes are lossless).
+    use test_cabinet_core::AssetKind;
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let cases = catalog.list().expect("list catalog");
+    assert!(!cases.is_empty(), "catalog should not be empty");
+    for case in &cases {
+        for version in &case.versions {
+            let resolved = catalog
+                .resolve(&case.slug, version)
+                .unwrap_or_else(|err| panic!("resolve {}@{}: {err:?}", case.slug, version));
+            let manifest = build_stored_manifest(&resolved)
+                .unwrap_or_else(|err| panic!("build manifest {}@{}: {err:?}", case.slug, version));
+            let id = format!("{}@{}", case.slug, version);
+
+            // Each asset shape's required tables must survive ingest.
+            match manifest.asset_kind {
+                AssetKind::SpriteSheet => {
+                    assert!(
+                        manifest.sheet.is_some(),
+                        "{id}: sprite-sheet lost its [sheet]"
+                    );
+                }
+                AssetKind::VoxelModel => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: voxel-model lost its [voxel]"
+                    );
+                    assert!(
+                        manifest.model.is_none(),
+                        "{id}: static voxel-model has no [model]"
+                    );
+                }
+                AssetKind::VoxelAnimation => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: voxel-animation lost its [voxel]"
+                    );
+                    assert!(
+                        manifest.model.is_some(),
+                        "{id}: voxel-animation lost its [model]"
+                    );
+                }
+                AssetKind::Sprite => {}
+            }
+
+            // The persisted / wire encoding must be lossless.
+            let json = serde_json::to_string(&manifest).expect("serialize stored manifest");
+            let round: StoredManifest =
+                serde_json::from_str(&json).expect("deserialize stored manifest");
+            assert_eq!(
+                round, manifest,
+                "{id}: stored manifest changed across a JSON round-trip"
+            );
+        }
+    }
+}
