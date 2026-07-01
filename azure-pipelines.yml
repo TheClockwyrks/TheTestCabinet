@@ -19,8 +19,9 @@
 # costly and only needed at release time.
 #
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
-# the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode)
-# and caching.
+# the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode),
+# reclaiming disk on the near-full hosted Ubuntu agents before the cargo jobs
+# (scripts/ci/free-disk-linux.sh), and caching.
 
 trigger:
   branches:
@@ -47,6 +48,10 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
+      # The hosted Ubuntu image ships ~95% full; free unused SDKs so the cargo
+      # target/ build and its cache save do not run the OS disk out of room.
+      - script: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
       - task: Cache@2
         displayName: Cache cargo home
         inputs:
@@ -91,6 +96,12 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
+      # Linux only: reclaim the near-full hosted Ubuntu disk before the release
+      # target/ build and cache. The Windows agent's disk is not affected and the
+      # paths are Ubuntu-image specific, so it skips this.
+      - bash: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
+        condition: eq(variables['Agent.OS'], 'Linux')
       - task: Cache@2
         displayName: Cache cargo home
         inputs:
@@ -151,6 +162,10 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 1
+      # Frees unused SDKs before the codegen build populates cargo target/; the
+      # Node toolcache is left intact for UseNode below.
+      - script: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
