@@ -560,3 +560,64 @@ fn emit_publish_line_surfaces_a_malformed_line_as_a_failure_result() {
         other => panic!("expected a failure result, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn resolve_version_carries_voxel_volume_and_rig() {
+    // The resolved-version wire body carries a voxel case's `[voxel]` bounding
+    // volume and a voxel-animation case's required `[model]` rig through to the
+    // reconstructed `TestCaseVersion`. These are the twin of the backend's
+    // `VersionResponse`; if `into_version` drops them (it once hardcoded both to
+    // `None`), the runner seeds a voxel run with no volume and seeding fails with
+    // "voxel case has no [voxel]". A voxel-animation body exercises both fields.
+    let body = serde_json::json!({
+        "slug": "ironward",
+        "version": "v1.0.0",
+        "name": "Ironward",
+        "difficulty": "medium",
+        "tags": ["voxel"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "testType": "asset-generation",
+        "assetKind": "voxel-animation",
+        "tool": { "binary": "voxel-anim", "preview": "{part}.png" },
+        "output": { "actions": "{part}.actions.json" },
+        "voxel": { "width": 24, "height": 12, "depth": 24, "background": "transparent" },
+        "model": {
+            "parts": [
+                { "name": "chassis", "pivot": [12, 0, 12] },
+                { "name": "turret", "parent": "chassis", "pivot": [12, 6, 12] }
+            ],
+            "joints": [{
+                "name": "turret_yaw",
+                "part": "turret",
+                "kind": "rotation",
+                "axis": "y",
+                "pivot": [12, 6, 12],
+                "min": -3.0,
+                "max": 3.0,
+                "rest": 0.0,
+                "drive": "caller"
+            }]
+        },
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("ironward", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    let voxel = version.voxel.expect("voxel volume survives the wire");
+    assert_eq!((voxel.width, voxel.height, voxel.depth), (24, 12, 24));
+    let model = version.model.expect("required rig survives the wire");
+    assert_eq!(model.parts.len(), 2);
+    assert_eq!(model.joints.len(), 1);
+    assert_eq!(model.joints[0].name, "turret_yaw");
+}

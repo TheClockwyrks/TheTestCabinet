@@ -31,9 +31,9 @@ use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec,
-    MediaKind, OutputSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
-    ReviewItem, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseVersion,
-    TestType, ToolSpec, Variant, WorkspaceFile,
+    MediaKind, ModelSpec, OutputSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView,
+    ReplaySpec, ReviewItem, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase,
+    TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1373,6 +1373,16 @@ struct VersionBody {
     /// backend-driven sprite-sheet run carries the same layout a local one does.
     #[serde(default)]
     sheet: Option<SheetSpec>,
+    /// The voxel bounding volume of a voxel case. Deserialized straight into
+    /// [`VoxelSpec`] — the wire shape matches it field for field — so a
+    /// backend-driven voxel run carries the same volume a local one does.
+    #[serde(default)]
+    voxel: Option<VoxelSpec>,
+    /// The required rig of a voxel-animation case. Deserialized straight into
+    /// [`ModelSpec`] — the wire shape matches it field for field — so a
+    /// backend-driven voxel-animation run carries the same rig a local one does.
+    #[serde(default)]
+    model: Option<ModelSpec>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     #[serde(default)]
@@ -1462,10 +1472,8 @@ impl VersionBody {
             }),
             asset_kind: self.asset_kind,
             sheet: self.sheet,
-            // Remote resolution does not carry voxel specs yet; a resolved voxel
-            // case is materialized from the store on disk.
-            voxel: None,
-            model: None,
+            voxel: self.voxel,
+            model: self.model,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,

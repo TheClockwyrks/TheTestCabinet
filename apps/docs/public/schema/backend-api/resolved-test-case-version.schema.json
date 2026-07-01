@@ -476,6 +476,35 @@
       ],
       "type": "object"
     },
+    "VoxelSpec": {
+      "description": "The resolved `[voxel]` of a voxel asset-generation case: the bounding volume\nthe model draws into, the 3D analog of [`CanvasSpec`]. `background` is the\nclear color behind the rasterized isometric preview PNG (the voxel volume\nitself always starts empty); it is kept as the manifest string — validated to\nparse — so the resolved version stays serializable without depending on the\nvoxel library's color type, and the validator re-parses it when it regenerates.",
+      "properties": {
+        "background": {
+          "description": "Preview clear color: `transparent` or a hex color.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Volume extent along z, in voxels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "height": {
+          "description": "Volume extent along y (up), in voxels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "description": "Volume extent along x, in voxels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["width", "height", "depth", "background"],
+      "type": "object"
+    },
     "WorkspaceOut": {
       "properties": {
         "dest": {
@@ -592,6 +621,16 @@
       "minimum": 0,
       "type": "integer"
     },
+    "model": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/ModelSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "name": {
       "type": "string"
     },
@@ -681,6 +720,16 @@
     },
     "version": {
       "type": "string"
+    },
+    "voxel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VoxelSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "workspace": {
       "items": {

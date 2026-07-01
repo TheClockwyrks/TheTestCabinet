@@ -7,7 +7,7 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
-use test_cabinet_core::{AssetKind, SheetSpec, TestType};
+use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 
 use crate::error::ApiError;
 use crate::store::{
@@ -236,6 +236,8 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         replay: manifest.replay.clone(),
         asset_kind: manifest.asset_kind,
         sheet: manifest.sheet.clone(),
+        voxel: manifest.voxel.clone(),
+        model: manifest.model.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         workspace: manifest.workspace.iter().map(workspace_out).collect(),
@@ -454,6 +456,10 @@ pub struct VersionResponse {
     asset_kind: AssetKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    voxel: Option<VoxelSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<ModelSpec>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     workspace: Vec<WorkspaceOut>,

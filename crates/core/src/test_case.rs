@@ -1206,6 +1206,7 @@ impl Eq for SheetSequence {}
 /// voxel library's color type, and the validator re-parses it when it regenerates.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct VoxelSpec {
     /// Volume extent along x, in voxels.
     pub width: u32,

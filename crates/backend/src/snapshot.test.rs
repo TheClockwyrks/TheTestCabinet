@@ -135,6 +135,8 @@ fn manifest() -> StoredManifest {
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: vec![],
