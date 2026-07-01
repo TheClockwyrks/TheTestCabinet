@@ -60,12 +60,16 @@ on:
     # to the workspace manifests must rebuild them — not just a change to the
     # Dockerfiles. The tcab-web image instead builds the npm console, so its sources
     # (apps/web + the packages it bundles) and the npm manifests/lockfile rebuild it.
+    # That bundle includes packages reached transitively, not just apps/web's direct
+    # deps: the console bundles @test-cabinet/ui, which pulls in voxel-runtime (and
+    # both pull in run-record), so all three package paths belong here.
     paths:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "apps/web/**"
       - "packages/ui/**"
+      - "packages/voxel-runtime/**"
       - "packages/run-record/**"
       - "package.json"
       - "package-lock.json"
