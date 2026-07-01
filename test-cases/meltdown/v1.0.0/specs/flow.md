@@ -90,7 +90,8 @@ The game is a small state machine. Each state has a clear screen and controls
    towers may show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (stop the surge from reaching the
    exhausts), the controls, heat as power and the redline trip, the Forge
-   and Vent, the heat-averse Rime, the flyers and Flak, and the economy. Returns
+   and Vent, the heat-averse Rime, flyers, air-capable emitters, air-only Flak,
+   and the economy. Returns
    to the menu.
 3. **In match.** The live game: the floor and its maze, the surge walking and
    flying, the towers firing and heating, and the build panel. This covers both
@@ -146,8 +147,9 @@ targets:
   edge contact, scaled by tower alignment (`specs/heat.md`).
 - The **Rime** is **heat-averse** — it slows hardest when cold and degrades as
   it heats (`specs/towers.md`).
-- **Flyers ignore the maze** and only **Flak** can hit them (`specs/creeps.md`,
-  `specs/towers.md`).
+- **Flyers ignore the maze**; every emitter can hit them in range, while
+  **Flak** is air-only and provides dedicated flyer coverage
+  (`specs/creeps.md`, `specs/towers.md`).
 - The six emitters behave per their stances; towers can be **upgraded**
   (stronger and hotter) and **sold** (`specs/towers.md`); the **economy** runs
   on bounties, the wave bonus, interest, and the early-send bonus.

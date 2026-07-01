@@ -95,8 +95,9 @@ The surge walks the **shortest available route** from its intake to an exhaust:
   junction follow the new shortest route from their current tile.
 - **Flyers are the exception.** Flying surge units (see `specs/creeps.md`)
   ignore the maze entirely: they travel in a straight line from their intake to
-  the nearest exhaust, passing over towers and walls. Only anti-air towers can
-  hit them.
+  the nearest exhaust, passing over towers and walls. Any emitter can hit them
+  if they are in range, but the Flak is air-only and exists for dedicated flyer
+  coverage.
 
 ## Build Panel and HUD
 

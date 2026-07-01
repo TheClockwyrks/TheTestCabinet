@@ -22,12 +22,15 @@ stance.
   trigger. A tower's Range is the radius in tiles measured from the center of
   the tower's 2 x 2 footprint; a unit within that radius is targetable.
 - By default an emitter targets the in-range unit **furthest along its path** to
-  an exhaust (the standard "first" target). Splash and anti-air differ as noted.
+  an exhaust (the standard "first" target), whether that unit is ground or
+  flying. Splash and anti-air differ as noted.
 - Each emitter fires at its fire rate (shots/second) whenever it has a
   target, adding `heatPerShot` per shot and dealing `baseDamage *
   heatMultiplier(H)` per shot (`specs/heat.md`). With no target it only cools.
-- **Ground emitters cannot hit flyers**; only the **Flak** can (see
-  `specs/creeps.md`). The Forge and Vent never target anything.
+- The **Arc**, **Stutter**, **Lance**, **Bloom**, and **Rime** can target both
+  ground units and flyers. The **Flak** is the exception: it is **air-only** and
+  can target flyers but never ground units. The Forge and Vent never target
+  anything.
 
 ## Emitters
 
@@ -38,7 +41,7 @@ stance.
 | **Lance** | Long-range sniper, slow heavy shot — heat-hungry, runs cold | 210 | 12.0 | 0.5 /s | 75 | 40 | 9 /s |
 | **Bloom** | Area splash — heat-hungry, heavy heat per shot | 240 | 6.0 | 0.9 /s | 16 | 24 | 12 /s |
 | **Rime** | Cryo slow — heat-averse | 150 | 5.5 | 1.2 /s | 4 | 9 | 12 /s |
-| **Flak** | Anti-air (and ground) — heat-hungry, the only flyer counter | 170 | 8.0 | 2.0 /s | 9 | 8 | 12 /s |
+| **Flak** | Anti-air only — heat-hungry, dedicated flyer counter | 170 | 8.0 | 2.0 /s | 9 | 8 | 12 /s |
 
 Notes on the ones with special behavior:
 
@@ -58,10 +61,11 @@ Notes on the ones with special behavior:
 - **Bloom** damages **all** surge units within `2.4` tiles of its shot's
   impact (it targets the in-range unit furthest along, and splashes around it).
   Its big `heatPerShot` means a Bloom in a packed chokepoint heats quickly.
-- **Flak** is the **only** tower that can target flyers (`specs/creeps.md`);
-  it can also hit ground units. It prefers an in-range flyer when one is
-  present, else the furthest-along ground unit. Without at least one Flak,
-  flyers cross the floor untouched.
+- **Flak** is the dedicated anti-air tower (`specs/creeps.md`): it can target
+  flyers only and ignores ground units entirely. Other emitters can still shoot
+  flyers, but they split attention between air and ground by their normal
+  targeting rules. Flak is how the player buys reliable air coverage without
+  pulling ground damage off the maze.
 
 ### Rime
 

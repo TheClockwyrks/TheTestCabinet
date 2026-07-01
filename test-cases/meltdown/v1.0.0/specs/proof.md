@@ -19,7 +19,7 @@ hand-edit the media.
 | `proof/gameplay.png` | A live mid-wave frame: a maze of towers the player built, towers at a **range of heats** (at least one cold/blue, one white-hot near the redline, and one tripped red), a **Forge** and a **Vent** beside emitters, the surge walking the maze plus at least one flyer, surge health bars, and the build panel (money, lives, `WAVE n / 20`, the shop, and a selected tower's heat read). |
 | `proof/game-over.png` | An end screen after a finished game — Game over (reactor breached) or Victory — with the final score and wave reached. |
 | `proof/heat.mp4` | A short clip of **heat as power**: an emitter heating up through the ramp (cold → white-hot) as the surge pours through it, its damage visibly climbing, then **tripping the redline** and going **offline** for a few seconds (a hole in the defense), then coming back online — ideally also showing a **Vent** beside a hot emitter holding it under the redline, or a **Forge** warming a cold one. |
-| `proof/siege.mp4` | A short clip of the **defense**: the surge pathing the maze the player built, the maze re-pathing when a tower is placed or sold, a **flyer** crossing straight over the maze and being shot down (or leaking) while ground emitters ignore it, and a unit leaking an exhaust and costing a life. |
+| `proof/siege.mp4` | A short clip of the **defense**: the surge pathing the maze the player built, the maze re-pathing when a tower is placed or sold, a **flyer** crossing straight over the maze and being shot down (or leaking), ideally with Flak showing its air-only role, and a unit leaking an exhaust and costing a life. |
 
 Notes:
 

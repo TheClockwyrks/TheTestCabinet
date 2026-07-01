@@ -54,9 +54,11 @@ flight, and slow-immunity.
   toward the redline.
 - **Drift** — the **flyer**. It does **not** walk the maze: it flies in a
   straight line from its intake to the nearest exhaust, over every tower
-  and wall (`specs/playfield.md`). No maze and no ground emitter can touch it;
-  only a **Flak** (`specs/towers.md`) can shoot it down. Drifts force the player
-  to spend on anti-air rather than leaning entirely on the maze.
+  and wall (`specs/playfield.md`). The maze cannot slow or redirect it, but any
+  emitter can shoot it if it is in range. **Flak** (`specs/towers.md`) is the
+  dedicated answer because it targets only flyers, so Drifts still force the
+  player to budget for reliable anti-air rather than leaning entirely on the
+  maze.
 - **Core** — the **boss**: a massive HP pool that is immune to slowing
   entirely (a Rime does nothing to it, regardless of the Rime's heat),
   leaking **5** lives if it escapes through an exhaust. A Core appears on the
@@ -74,12 +76,12 @@ timing and intake split per wave is yours to design, within
 - Swarm packs and Hulks enter as the waves deepen, pressing splash and
   concentrated heat respectively.
 - Drift flyers begin appearing from the mid game on, so a defense with no
-  anti-air starts leaking.
+  dedicated anti-air can be pulled away from ground targets or start leaking.
 - A Core boss anchors each milestone wave (`specs/flow.md`), with the surge
   around it growing toward the late game.
 - A wave should mix types so the player cannot answer everything with one tower:
   Sprints want slowing, Hulks want concentrated heat, Swarms want splash, Drifts
-  want Flak, and a Core wants raw white-hot output. Reading the next wave's
+  want dedicated Flak coverage, and a Core wants raw white-hot output. Reading the next wave's
   makeup (previewed in the build panel, `specs/flow.md`) and re-shaping the
   floor for it is the between-wave game.
 
