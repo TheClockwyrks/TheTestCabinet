@@ -997,9 +997,46 @@ impl Db {
         Ok(Some(updated))
     }
 
+    /// Atomically cancel a job: move it to the terminal `canceled` state, stamping
+    /// `updated_at` and the `detail` reason — but **only** from a non-terminal
+    /// state (`queued`, `dispatched`, or `running`). Returns the updated row, or
+    /// `None` when no such non-terminal job exists (an unknown id, or one that has
+    /// already reached a terminal state). The select-then-update runs in one
+    /// transaction; SQLite serializes writers, so a cancel cannot race a concurrent
+    /// driver status update — whichever commits first wins, and the loser sees the
+    /// terminal row and does nothing.
+    pub async fn cancel_job(
+        &self,
+        id: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<job::Model>> {
+        let txn = self.conn.begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("canceled".to_string());
+        active.updated_at = Set(now.to_string());
+        active.detail = Set(Some(detail.to_string()));
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
     /// Advance a job to a new state, stamping `updated_at` and — when supplied —
     /// the terminal `detail` (a failure reason) and `record_id` (the produced
     /// run). Returns the updated row, or `None` when no job with `id` is stored.
+    ///
+    /// A job already in the terminal `canceled` state is left untouched (returning
+    /// `None`): once an operator has canceled a run, a late `running`/`succeeded`/
+    /// `failed` report from the still-winding-down driver must not resurrect or
+    /// overwrite it.
     pub async fn set_job_state(
         &self,
         id: &str,
@@ -1009,6 +1046,7 @@ impl Db {
         record_id: Option<&str>,
     ) -> Result<Option<job::Model>> {
         let Some(model) = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.ne("canceled"))
             .one(&self.conn)
             .await?
         else {

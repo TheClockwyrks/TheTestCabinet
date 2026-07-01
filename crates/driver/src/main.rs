@@ -8,14 +8,22 @@
 
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
+use test_cabinet_core::job_api::JobState;
 use test_cabinet_core::write_failed_record;
 use time::OffsetDateTime;
 
 use test_cabinet_driver::client::JobClient;
-use test_cabinet_driver::config::Config;
+use test_cabinet_driver::config::{Config, DriverRuntime};
+use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
 use test_cabinet_driver::run::{RunFailure, drive};
 use test_cabinet_driver::sink;
+
+/// How often the driver polls its own job's state to notice an operator
+/// cancellation. Short enough that a killed run stops promptly, long enough to be
+/// negligible load on the backend for the run's duration.
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -75,7 +83,21 @@ async fn main() -> ExitCode {
     let (tx, rx) = sink::channel();
     let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
 
-    let outcome = drive(&config, &request, &tx).await;
+    // Race the run against an operator cancellation. `wait_for_cancellation`
+    // resolves only when the backend reports this job `canceled`, so a cancel makes
+    // the `select!` drop the `drive` future — which cancels the in-flight harness
+    // `exec` — and fall to the `None` teardown arm below. A run that finishes on its
+    // own wins the race, and the watcher future is simply dropped. This is the same
+    // both locally (a k3d cluster) and in production: both drive a run through a
+    // driver pod that polls its backend job here.
+    let outcome = {
+        let cancelled = wait_for_cancellation(&client);
+        tokio::pin!(cancelled);
+        tokio::select! {
+            outcome = drive(&config, &request, &tx) => Some(outcome),
+            _ = &mut cancelled => None,
+        }
+    };
 
     // Drop the sending half so the relay's channel closes once it drains the
     // backlog, then await it: this guarantees every streamed event has reached the
@@ -87,7 +109,21 @@ async fn main() -> ExitCode {
     }
 
     match outcome {
-        Ok(mut record) => {
+        None => {
+            // The run was canceled mid-flight. The backend already moved the job to
+            // `canceled` and closed its live stream (that is what the watcher saw),
+            // so there is no terminal status to report — but dropping the run future
+            // only canceled the harness `exec`, it did not remove the sandbox the
+            // run created, so tear it down now. Exit successfully so the cluster does
+            // not treat the canceled run as a driver failure and retry it.
+            tracing::info!(
+                job_id = %config.job_id,
+                "run canceled by operator; tearing down the sandbox and exiting"
+            );
+            teardown_sandbox(&config).await;
+            ExitCode::SUCCESS
+        }
+        Some(Ok(mut record)) => {
             // Upload the produced tree to the artifact service (when configured) and
             // stamp the playable-build link on the record, *before* reporting the
             // terminal status — so by the time the console sees the run finish, its
@@ -114,7 +150,62 @@ async fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Err(failure) => report_failure(&client, &config, &request, started_at, failure).await,
+        Some(Err(failure)) => {
+            report_failure(&client, &config, &request, started_at, failure).await
+        }
+    }
+}
+
+/// Resolve only when the run is **canceled**: poll this job's backend state and
+/// return once it reports `canceled`. Any other state (still running, a transient
+/// error, even a not-found) is ignored and polled again on the next tick — the
+/// caller races this against the run itself and drops it the moment the run
+/// finishes, so it need only ever fire on a real cancellation. The first tick is
+/// one interval out, so a run that is not canceled pays a single cheap poll every
+/// few seconds and no more.
+async fn wait_for_cancellation(client: &JobClient) {
+    loop {
+        tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
+        match client.poll_state().await {
+            Ok(Some(JobState::Canceled)) => return,
+            Ok(_) => {}
+            Err(err) => {
+                // A blip talking to the backend is not a reason to stop watching for
+                // a cancellation; log at debug and try again next tick.
+                tracing::debug!(error = %err, "polling job state for cancellation failed; retrying");
+            }
+        }
+    }
+}
+
+/// Tear down the run's sandbox on cancellation. Dropping the run future cancels the
+/// in-flight harness `exec`, but the sandbox the run created outlives it, so remove
+/// it here. Under the Kubernetes runtime — the shape both the local cluster and
+/// production use — this deletes the run's sandbox pod(s), selected by this job's
+/// id. Best-effort: a failure is logged, never fatal (the job is already terminal).
+/// A no-op under the CLI runtime, whose short-lived `docker run` container is not a
+/// dispatcher-driven concern.
+async fn teardown_sandbox(config: &Config) {
+    if config.runtime != DriverRuntime::Kubernetes {
+        return;
+    }
+    match KubernetesContainerRuntime::connect(config.kubernetes.clone()).await {
+        Ok(runtime) => match runtime.delete_run_pods_for_job().await {
+            Ok(()) => tracing::info!(
+                job_id = %config.job_id,
+                "tore down the canceled run's sandbox pod"
+            ),
+            Err(err) => tracing::warn!(
+                job_id = %config.job_id,
+                error = %err,
+                "could not tear down the canceled run's sandbox pod"
+            ),
+        },
+        Err(err) => tracing::warn!(
+            job_id = %config.job_id,
+            error = %err,
+            "could not connect to Kubernetes to tear down the canceled run's sandbox"
+        ),
     }
 }
 

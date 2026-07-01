@@ -308,7 +308,11 @@ export type ProgressCallback = (progress: LoadProgress) => void;
 
 export type RunOutcome =
   | { kind: "completed"; record: RunRecord }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string }
+  // The run was killed by an operator before it finished (`POST /jobs/{id}/cancel`
+  // moved it to the terminal `canceled` state). Distinct from `failed` so the
+  // monitor reports an intentional stop rather than a fault.
+  | { kind: "canceled"; message: string };
 
 // The live state of a submitted run job.
 export interface RunJob {

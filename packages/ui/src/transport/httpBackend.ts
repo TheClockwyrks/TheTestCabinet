@@ -536,7 +536,10 @@ export function createBackendExec(
       return { url: backendUrl, version: null, backendId: backendUrl };
     },
 
-    async launchRun(config: LaunchConfig, token?: string | null): Promise<string> {
+    async launchRun(
+      config: LaunchConfig,
+      token?: string | null,
+    ): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
       // driver Job. The body is the backend's `LaunchBody` (camelCase). The
       // backend gates `POST /jobs` on the launching account, so the signed-in
@@ -722,6 +725,20 @@ export function createBackendExec(
       );
     },
 
+    async killRun(id: string, token: string): Promise<void> {
+      // `POST /jobs/{id}/cancel` moves an in-flight run to the terminal `canceled`
+      // state and closes its live stream; the driver polls its own state, notices
+      // the cancellation, and tears its sandbox down. The backend gates it on the
+      // launching account, so the signed-in token rides along; it refuses a run
+      // that already finished (`409`).
+      await postJson<JobStatusResponse>(
+        backendUrl,
+        `/jobs/${encodeURIComponent(id)}/cancel`,
+        {},
+        token,
+      );
+    },
+
     // A pre-publish run's proof / asset media is served by the artifact service
     // (the data plane), so resolve those root-relative paths against its base URL
     // rather than the control-plane backend. Null when no artifact service is
@@ -787,6 +804,13 @@ async function streamLive(
         await backend.readRun(status.recordId),
       ).record;
       handlers.onDone({ kind: "completed", record });
+    } else if (status.state === "canceled") {
+      // An operator killed the run. Report it as an intentional stop rather than a
+      // fault, so the monitor shows "canceled" instead of "failed".
+      handlers.onDone({
+        kind: "canceled",
+        message: status.detail ?? "Run canceled.",
+      });
     } else {
       handlers.onDone({
         kind: "failed",

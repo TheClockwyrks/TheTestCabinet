@@ -1,0 +1,46 @@
+@use "../styles/tokens" as t;
+@use "../styles/halo" as h;
+
+// Sits under the live monitor's header, aligned to the trailing edge so the kill
+// affordance reads as the run-level negative action without crowding the feed.
+.killControl {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-left: auto;
+  margin-bottom: t.$space-xs;
+}
+
+// A muted destructive button: it reads as the negative action without shouting,
+// brightening to the negative color only on hover/focus. Mirrors the run-delete
+// control so the two destructive affordances read as one family.
+.killButton {
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+}
+
+.killError {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  @include h.halo;
+}

@@ -5,8 +5,9 @@ title: Overview
 The web console is The Test Cabinet's runner/reporter GUI running in a plain
 browser. It is the same console as the [Tauri app](/components/tauri/overview/) —
 sign in, configure and launch runs, watch their live
-[event](/components/core/events/) stream, return to any run still in progress and
-be notified when one completes, read [specs](/testing/end-to-end/overview/),
+[event](/components/core/events/) stream, return to any run still in progress —
+and **kill** one from its live monitor — be notified when one completes, read
+[specs](/testing/end-to-end/overview/),
 [review](/components/core/results/#review) finished runs, and
 [publish](/components/core/results/#publish) them — but delivered as a static web
 app instead of a desktop binary. (A produced run's record is

@@ -7,6 +7,7 @@ import type {
   RunOutcome,
 } from "../../../../client/types";
 import { EventFeed } from "../../../components/EventFeed";
+import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import { useGalleryData } from "../../../data/galleryContext";
@@ -40,7 +41,9 @@ export function RunMonitorPage() {
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   // The latest live drawing frame per frame index, for an asset-generation run,
   // plus the frame last drawn into. Empty for every other run type.
-  const [previews, setPreviews] = useState<Map<number, AssetPreview>>(new Map());
+  const [previews, setPreviews] = useState<Map<number, AssetPreview>>(
+    new Map(),
+  );
   const [activeFrame, setActiveFrame] = useState<number | null>(null);
   const [status, setStatus] = useState<MonitorStatus>({ kind: "running" });
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +162,22 @@ export function RunMonitorPage() {
         </p>
       )}
 
+      {/* While the run is still in flight, offer to kill it. The control hides
+          itself when cancellation isn't possible (no execution rights, no token,
+          or a transport that can't cancel). */}
+      {status.kind === "running" && runId && <KillRunControl runId={runId} />}
+
+      {status.kind === "done" && status.outcome.kind === "canceled" && (
+        <p className={`${styles.notice} ${styles.warn}`}>
+          Run canceled
+          {status.outcome.message ? `: ${status.outcome.message}` : ""}.{" "}
+          {runId && (
+            <Link to={routes.runDetail(runId)}>
+              Open the run to see what was recorded.
+            </Link>
+          )}
+        </p>
+      )}
       {status.kind === "done" && status.outcome.kind === "completed" && (
         <p className={`${styles.notice} ${styles.ok}`}>
           Run complete — state {status.outcome.record.status.state}, loaded{" "}

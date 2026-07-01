@@ -173,6 +173,9 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))
+        // Kill an in-flight run: moves it to the terminal `canceled` state and
+        // closes its live stream. Gated on the launching account (bearer token).
+        .route("/jobs/{id}/cancel", post(jobs::cancel))
         .route("/jobs/{id}/live", get(jobs::live))
         .route("/jobs/{id}/events", post(jobs::ingest_events))
         .route("/jobs/{id}/preview", post(jobs::ingest_preview))
