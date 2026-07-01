@@ -34,7 +34,8 @@ them as the authority:
   parts and joints** (caller-driven vs auto-play; required vs model-added);
 - [`testing/asset-generation/voxel-binaries.md`](../../../apps/docs/src/content/docs/testing/asset-generation/voxel-binaries.md)
   — the `voxel-anim` operation set, the required `--part`, the seeded
-  `voxel-anim.config.json`, the per-part isometric PNG preview, and the rig
+  `voxel-anim.config.json`, the per-part isometric PNG preview, the **assembled
+  multi-view scene** (`scene/{view}.png` — iso/front/side/top), and the rig
   subcommands (`define-part`, `set-pivot`, `define-joint`, `define-clip`);
 - [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
   — every manifest field and the rules enforced at resolution (see **Voxel cases**,
@@ -87,8 +88,10 @@ Pick a **catalog slug** (e.g. `ironward`) and a subject that is naturally
 Design the **required rig**:
 
 - **Parts** — name each component and give it a `parent` (the first part is the
-  **root**, with no parent) and an **attachment `pivot`** in its parent's local
-  voxel coordinates. Keep the hierarchy a **tree** (a `turret` on the `chassis`, a
+  **root**, with no parent) and a **`pivot`** in the **shared volume's coordinates**
+  (all parts share one coordinate space): the point the part's joints rotate about,
+  **not** a placement offset — parts are sculpted in place where they sit on the
+  assembled model. Keep the hierarchy a **tree** (a `turret` on the `chassis`, a
   `barrel` on the `turret`).
 - **Joints** — for each degree of freedom a game should drive, declare a joint on a
   part: its `kind` (`rotation` in radians / `translation` in voxels), `axis`,
@@ -111,24 +114,32 @@ Seed a single self-contained `specs/brief.md`. State:
 - the **exact palette** — named `#rrggbb` values, the only colors allowed;
 - **the required parts** — name each part, what it looks like, and where it attaches
   (its pivot), and that each part is sculpted **separately** with
-  `voxel-anim --part <name>` in the part's own local coordinates;
+  `voxel-anim --part <name>` in the **shared volume's coordinates**, positioned
+  where it sits on the assembled model (a turret already up on the hull, a barrel
+  already out front);
 - **the required joints** — name each caller joint, the motion it must produce (e.g.
   the turret swivels left/right about its mount without detaching from the chassis),
   and its range, so the model sculpts the part to move plausibly about that pivot;
 - **how the tool behaves** — `voxel-anim` is the only way to place a voxel and edit
   the rig, `--part` is required on every op, `--help` lists the operations and rig
-  subcommands, it re-renders each part's isometric preview after each call, the
-  volume starts empty, and the recorded operations + `rig.json` are the output;
+  subcommands, it re-renders each part's isometric preview **and the assembled-scene
+  previews** (`scene/{iso,front,side,top}.png` — the whole rig composed at rest) after
+  each call, the volume starts empty, and the recorded operations + `rig.json` are the
+  output;
 - that the model **may add** its own parts/joints/clips beyond the required set, but
   must **not** drop or contradict the required interface.
 
 ### 3. Write `prompt.hbs`
 
 A short instruction pointing the model at the seeded brief, telling it to read
-`voxel-anim --help` (operations *and* rig subcommands), restating the hard
-requirements (sculpt/rig only through the tool; `--part` on every op; produce every
-required part and joint; return when finished). Strict mode — only `{{variant.*}}`
-and `{{#each specs}}`. Model it on `ironward`'s `prompt.hbs`.
+`voxel-anim --help` (operations *and* rig subcommands) and to read both each
+`parts/<part>.png` **and the assembled-scene previews under `scene/`**
+(iso/front/side/top) between calls — the scene is how the model confirms its
+separately sculpted parts fit together (a part centered and seated, a child meeting
+its parent). Restate the hard requirements (sculpt/rig only through the tool;
+`--part` on every op; produce every required part and joint; return when finished).
+Strict mode — only `{{variant.*}}` and `{{#each specs}}`. Model it on `ironward`'s
+`prompt.hbs`.
 
 ### 4. Write the manifest
 
