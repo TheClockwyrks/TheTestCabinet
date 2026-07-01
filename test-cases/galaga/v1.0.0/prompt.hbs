@@ -29,8 +29,9 @@ rule, the dual-use shield, and the resonance/discharge are the heart of this
 game. Then `playfield` (the player lane, the formation and its sway, lanes,
 bullets, HUD), `controls` (movement, firing, the band flip, the discharge),
 `enemies` (the three drones, their entrances and dives, and the Prism's spectral
-inversion), and `flow` (stages, challenge stages, scoring, lives, states).
-Finally read the mode spec(s) under `modes/` for the playable modes. The specs
+inversion), `flow` (stages, challenge stages, scoring, lives, states), and
+`assets` (the provided ship and drone sprites you must render from, and how to
+load them). Finally read the mode spec(s) under `modes/` for the playable modes. The specs
 cross-reference each other by name — treat them as one specification. **You design
 the entrance choreography, the formation layout, and the dive paths** within the
 constraints in `playfield` and `enemies`; there is no fixed set of paths to copy.
@@ -51,8 +52,16 @@ Deliver a complete, polished, playable game, not a tech demo. It must:
   `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
   static site, with no other manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory.
-  Serving that directory as-is at the root of any static file server must run the
-  game; it is deployed to static hosting exactly that way.
+  That directory must run **at any base path, not only the server root** — when
+  played back it is mounted under a per-run sub-path (`/runs/<id>/build/`), so
+  every URL the build requests (the bundled JS/CSS and the seeded sprites alike)
+  must resolve relative to the page, never a root-absolute `/…` URL; use a relative
+  bundler base (for Vite, `base: './'`). `specs/assets.md` states this in full.
+- **Render the ship and drones from the provided sprites.** The player fighter and
+  the three drones are seeded as pre-drawn PNGs under `assets/` — render the game
+  from that art rather than drawing your own, deriving each entity's other band by
+  re-tinting and swapping its glyph, exactly as `specs/assets.md` specifies.
+  Bullets, effects, and the HUD you draw in code.
 - Include a `README.md` at `{{workspace}}` explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
   production build, and the controls.
