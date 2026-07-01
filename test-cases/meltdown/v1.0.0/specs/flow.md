@@ -136,9 +136,9 @@ The game must exhibit these behaviors. They are observable and make good test
 targets:
 
 - **Towers are walls and you build the maze:** the surge pathfinds the shortest
-  open route from each intake to the **nearest reachable exhaust**, re-paths
-  live when a tower is built or sold, and a placement that would seal the floor
-  is **refused** (`specs/playfield.md`).
+  open route from each intake to its **opposite exhaust** (left to right, top to
+  bottom), re-paths live when a tower is built or sold, and a placement that
+  would seal either required route is **refused** (`specs/playfield.md`).
 - **Heat is power:** an emitter's damage climbs with its heat on the
   accelerating curve, and a tower that reaches the redline trips offline for `3
   s` (`specs/heat.md`).

@@ -16,8 +16,9 @@ flight, and slow-immunity.
 ## Shared Rules
 
 - Every unit spawns at an **intake**, follows the rules in `specs/playfield.md`
-  (ground units walk the maze to the nearest reachable exhaust; flyers fly
-  straight), and is removed when it dies or reaches an exhaust.
+  (ground units walk the maze to that intake's opposite exhaust; flyers fly
+  straight to that same assigned exhaust), and is removed when it dies or
+  reaches an exhaust.
 - A unit that reaches an exhaust **leaks**: it costs the player its leak value
   in lives and is removed (see `specs/flow.md`).
 - A killed unit pays its **bounty** in money to the player when it is killed
@@ -53,11 +54,11 @@ flight, and slow-immunity.
   is the natural answer, and a packed Swarm is exactly what heats a kill-box
   toward the redline.
 - **Drift** — the **flyer**. It does **not** walk the maze: it flies in a
-  straight line from its intake to the nearest exhaust, over every tower
-  and wall (`specs/playfield.md`). The maze cannot slow or redirect it, but any
-  emitter can shoot it if it is in range. **Flak** (`specs/towers.md`) is the
-  dedicated answer because it targets only flyers, so Drifts still force the
-  player to budget for reliable anti-air rather than leaning entirely on the
+  straight line from its intake to that intake's opposite exhaust, over every
+  tower and wall (`specs/playfield.md`). The maze cannot slow or redirect it,
+  but any emitter can shoot it if it is in range. **Flak** (`specs/towers.md`)
+  is the dedicated answer because it targets only flyers, so Drifts still force
+  the player to budget for reliable anti-air rather than leaning entirely on the
   maze.
 - **Core** — the **boss**: a massive HP pool that is immune to slowing
   entirely (a Rime does nothing to it, regardless of the Rime's heat),

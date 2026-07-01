@@ -45,12 +45,12 @@ The surge enters at two intakes and leaves at two exhausts, each a
 - **Bottom exhaust** — the bottom edge, columns `c = 24..27` (tiles `(24, 35)`
   through `(27, 35)`).
 
-Because the floor is a wide rectangle and the intakes and exhausts sit at the
-edge midpoints, the routes are **asymmetric**: an intruder entering at the top
-has a shorter run to the bottom exhaust than to the right one, and vice versa.
-The player must account for one exhaust being nearer than the other when
-shaping the maze. These four portals are fixed for the whole game; only their
-visual state (idle vs. surge passing through) changes.
+Each intake has a fixed opposite exhaust target: surge entering from the left
+must leave through the right exhaust, and surge entering from the top must leave
+through the bottom exhaust. The surge never chooses the nearer exhaust. This
+forces each stream to cross the floor and gives the player room to build a maze
+that matters. These four portals are fixed for the whole game; only their visual
+state (idle vs. surge passing through) changes.
 
 Intakes glow cool blue (`#5f9bd6`); exhausts are hazard-striped and read as
 dangerous (`#ff5a3c`).
@@ -68,36 +68,38 @@ the core of the game — you build the maze.
   cursor to the nearest valid interior grid intersection and shows the four
   tiles surrounding that intersection.
 - **You can never seal the floor.** A placement is rejected if, after it would
-  be placed, any intake would have no path to **any** exhaust, or if it would
-  trap a surge unit already on the floor with no remaining route out. The build
-  UI must show a blocked placement as invalid (`#ff4d4d`) and refuse it, rather
-  than letting the player wall the surge in. There must always be at least one
-  open route from each intake to an exhaust.
+  be placed, either intake would have no path to its **opposite exhaust**, or if
+  it would trap a surge unit already on the floor with no remaining route to
+  that unit's assigned exhaust. The build UI must show a blocked placement as
+  invalid (`#ff4d4d`) and refuse it, rather than letting the player wall the
+  surge in. There must always be at least one open route from the left intake to
+  the right exhaust and from the top intake to the bottom exhaust.
 - Selling a tower (see `specs/towers.md`) reopens all four tiles in its
   footprint immediately and the surge re-paths.
 
 ## Surge Movement
 
-The surge walks the **shortest available route** from its intake to an exhaust:
+The surge walks the **shortest available route** from its intake to that
+intake's fixed opposite exhaust:
 
 - Movement is on the tile grid between tile centers. A unit may step to an
   orthogonally or diagonally adjacent open tile, but a diagonal step is
   allowed only when **both** orthogonally-adjacent tiles it cuts past are also
   open — the surge never squeezes through the corner gap between two
   diagonally-touching towers.
-- Each unit heads for the nearest reachable exhaust by path distance (not
-  straight-line distance), so the two intakes' streams may favor different
-  exhausts depending on the maze. Ties may be broken however you like, but
-  it must be done consistently.
+- A unit spawned from the **left intake** always pathfinds to the **right
+  exhaust**. A unit spawned from the **top intake** always pathfinds to the
+  **bottom exhaust**. Path distance still determines the route it takes, but not
+  which exhaust it is trying to reach.
 - The path is **recomputed live** whenever the floor changes — a tower built or
   sold re-routes every unit currently walking, smoothly redirecting it from
   where it stands (no teleporting or snapping backwards). Units already past a
   junction follow the new shortest route from their current tile.
 - **Flyers are the exception.** Flying surge units (see `specs/creeps.md`)
   ignore the maze entirely: they travel in a straight line from their intake to
-  the nearest exhaust, passing over towers and walls. Any emitter can hit them
-  if they are in range, but the Flak is air-only and exists for dedicated flyer
-  coverage.
+  that intake's opposite exhaust, passing over towers and walls. Any emitter can
+  hit them if they are in range, but the Flak is air-only and exists for
+  dedicated flyer coverage.
 
 ## Build Panel and HUD
 
