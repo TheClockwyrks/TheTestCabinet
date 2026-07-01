@@ -220,16 +220,18 @@ pub async fn upload_proofs_to_backend(
 /// never reach the snapshot and the published site's asset result view has no media
 /// to show.
 ///
-/// Each frame's three artifacts are read from the produced tree at
+/// Each artifact is read from the produced tree at
 /// `{out_dir}/{id}/implementation/<recorded path>` and uploaded under the served
 /// names the result view requests — a single sprite's bare
 /// `regenerated.png`/`preview.png`/`actions.json` (its one frame), or a sprite
 /// sheet's per-frame `regenerated-<index>.png`/`preview-<index>.png`/`actions-<index>.json`
 /// — matching `playable::serve_asset_file` and the snapshot exactly so the keys line
-/// up with the UI lookup.
+/// up with the UI lookup. A voxel run mirrors the same way, adding the regenerated
+/// `voxels.json` (bare for a static model, `voxels-<index>.json` per part for an
+/// animated one).
 ///
 /// A no-op for any non-asset-generation run (an adversarial run's replays are
-/// mirrored by [`upload_adversarial_to_backend`] instead). Best-effort: a frame
+/// mirrored by [`upload_adversarial_to_backend`] instead). Best-effort: an
 /// artifact missing from disk is skipped (the run is still inspectable); a rejected
 /// upload is surfaced so the caller can log it. The backend upload route is ungated
 /// on the private network, so the client carries no token.
@@ -238,31 +240,56 @@ pub async fn upload_assets_to_backend(
     record: &RunRecord,
     out_dir: &Path,
 ) -> test_cabinet_core::Result<()> {
-    let Some(asset) = record.validation.asset.as_ref() else {
-        return Ok(());
-    };
     let impl_dir = out_dir.join(&record.id).join("implementation");
     let client = HttpBackendClient::new(backend_url);
 
-    // A single sprite serves under bare names; a sheet suffixes each frame with
-    // `-<index>`, matching `playable::serve_asset_file` and the snapshot.
-    let is_sheet = asset.sheet.is_some();
-    for frame in &asset.frames {
-        let suffix = if is_sheet {
-            format!("-{}", frame.index)
-        } else {
-            String::new()
-        };
-        let artifacts = [
-            (format!("regenerated{suffix}.png"), &frame.regenerated_image),
-            (format!("preview{suffix}.png"), &frame.preview_image),
-            (format!("actions{suffix}.json"), &frame.actions_log),
-        ];
-        for (served, rel) in artifacts {
-            let Ok(bytes) = std::fs::read(impl_dir.join(rel)) else {
-                continue;
+    if let Some(asset) = record.validation.asset.as_ref() {
+        // A single sprite serves under bare names; a sheet suffixes each frame with
+        // `-<index>`, matching `playable::serve_asset_file` and the snapshot.
+        let is_sheet = asset.sheet.is_some();
+        for frame in &asset.frames {
+            let suffix = if is_sheet {
+                format!("-{}", frame.index)
+            } else {
+                String::new()
             };
-            client.publish_run_asset(&record.id, &served, bytes).await?;
+            let artifacts = [
+                (format!("regenerated{suffix}.png"), &frame.regenerated_image),
+                (format!("preview{suffix}.png"), &frame.preview_image),
+                (format!("actions{suffix}.json"), &frame.actions_log),
+            ];
+            for (served, rel) in artifacts {
+                let Ok(bytes) = std::fs::read(impl_dir.join(rel)) else {
+                    continue;
+                };
+                client.publish_run_asset(&record.id, &served, bytes).await?;
+            }
+        }
+    } else if let Some(voxel) = record.validation.voxel.as_ref() {
+        // A voxel run mirrors its parts the same flat way: a static model under
+        // bare names (its one part), an animated model suffixing each part with its
+        // `-<index>` in declared order — matching `playable::serve_asset_file` and
+        // the snapshot. The extra `voxels.json` is the regenerated voxel data the
+        // 3D client renders.
+        let animated = voxel.model.is_some() || voxel.rig.is_some();
+        for (index, part) in voxel.parts.iter().enumerate() {
+            let suffix = if animated {
+                format!("-{index}")
+            } else {
+                String::new()
+            };
+            let artifacts = [
+                (format!("regenerated{suffix}.png"), &part.regenerated_image),
+                (format!("preview{suffix}.png"), &part.preview_image),
+                (format!("actions{suffix}.json"), &part.ops_log),
+                (format!("voxels{suffix}.json"), &part.regenerated_voxels),
+            ];
+            for (served, rel) in artifacts {
+                let Ok(bytes) = std::fs::read(impl_dir.join(rel)) else {
+                    continue;
+                };
+                client.publish_run_asset(&record.id, &served, bytes).await?;
+            }
         }
     }
     Ok(())

@@ -415,6 +415,31 @@ impl SnapshotBuilder {
                     ]
                 })
                 .collect()
+        } else if let Some(voxel) = run.record.validation.voxel.as_ref() {
+            // A voxel run publishes each part's regenerated `voxels.json` (what the
+            // 3D viewer renders), the isometric regenerated/preview PNGs, and the
+            // op log — a static model under bare names, an animated model suffixing
+            // each part with `-<index>`, matching `playable::serve_asset_file` and
+            // the driver mirror. The rig itself travels inline in the run record.
+            let animated = voxel.model.is_some() || voxel.rig.is_some();
+            voxel
+                .parts
+                .iter()
+                .enumerate()
+                .flat_map(|(index, _)| {
+                    let suffix = if animated {
+                        format!("-{index}")
+                    } else {
+                        String::new()
+                    };
+                    [
+                        format!("regenerated{suffix}.png"),
+                        format!("preview{suffix}.png"),
+                        format!("actions{suffix}.json"),
+                        format!("voxels{suffix}.json"),
+                    ]
+                })
+                .collect()
         } else if run.record.validation.adversarial.is_some() {
             vec!["replay.json".to_string()]
         } else {

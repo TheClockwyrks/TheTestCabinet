@@ -580,26 +580,34 @@ export function GalleryDataProvider({
       voxelResultFor(run) {
         const voxel = run.validation.voxel;
         if (!voxel) return null;
-        // The part results carry run-root-relative paths (single artifacts for a
-        // static model, `parts/<name>.*` for animation), so resolve each straight
-        // from the recorded path — no per-frame suffix reconstruction needed.
+        // Parts are addressed by the same flat served names the backend serves and
+        // the snapshot publishes (see `playable::serve_asset_file`): a static model
+        // under bare names (its one part), an animated model suffixing each part
+        // with its `-<index>` in declared order. The recorded per-part paths are
+        // the produced *tree* paths (which carry slashes) — not what the
+        // one-segment `/asset/{file}` endpoint accepts — so they are resolved here
+        // into the flat logical names instead.
+        const animated = !!voxel.model || !!voxel.rig;
         const url = (path: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, path) : null;
-        const parts: VoxelPartView[] = voxel.parts.map((part) => ({
-          name: part.name,
-          voxelsUrl: url(part.regeneratedVoxels),
-          regeneratedUrl: url(part.regeneratedImage),
-          previewUrl: url(part.previewImage),
-          actionsUrl: url(part.opsLog),
-          cheatDivergence: part.cheatDivergence,
-          operationCount: part.operationCount,
-          voxelCount: part.voxelCount,
-          detail: part.detail,
-        }));
+        const parts: VoxelPartView[] = voxel.parts.map((part, index) => {
+          const suffix = animated ? `-${index}` : "";
+          return {
+            name: part.name,
+            voxelsUrl: url(`voxels${suffix}.json`),
+            regeneratedUrl: url(`regenerated${suffix}.png`),
+            previewUrl: url(`preview${suffix}.png`),
+            actionsUrl: url(`actions${suffix}.json`),
+            cheatDivergence: part.cheatDivergence,
+            operationCount: part.operationCount,
+            voxelCount: part.voxelCount,
+            detail: part.detail,
+          };
+        });
         return {
           // A static model declares neither the required nor the produced rig; an
           // animated one carries both. The produced rig drives the viewer.
-          animated: !!voxel.model || !!voxel.rig,
+          animated,
           rig: voxel.rig ?? null,
           model: voxel.model ?? null,
           parts,
