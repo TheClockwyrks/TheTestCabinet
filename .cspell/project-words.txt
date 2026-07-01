@@ -113,3 +113,10 @@ bindgen
 wasmtime
 schemars
 wasip
+
+# Klondike solitaire (Cascade) test case vocabulary.
+untimed
+FreeCell
+frontmost
+redeals
+peekable
