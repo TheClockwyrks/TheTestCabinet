@@ -33,20 +33,30 @@ a game mode.
 4. If the menu differs, add a per-variant `title` mockup
    (`reference/menu-<slug>.html`) copied from a sibling; mockup source is never
    seeded.
-5. Register the variant in `test-case.toml`:
+5. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+   the variant's fields; `dest` defaults to `source`) and add its path to the
+   `variants` list in `test-case.toml` (first = default):
 
 ```toml
-[[variant]]
+# variants/gyre.toml
 slug = "gyre"
 name = "Gyre"
 description = "Standard plus a mode whose obstacles oscillate and rotate."
-spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
+spec = [{ source = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+
+# A mode a variant introduces is usually rated on its own domain, layered on the
+# case's common ones; roll the mode's review item up to it.
+[[domain]]
+id = "gyre"
+name = "Gyre"
+description = "The Gyre mode: swaying, rotating obstacles the ball bounces off at oriented angles."
 ```
 
-`spec` and `reference` entries are additive. Within one variant no two seeded
-specs may share a `dest`, and any [checked](/components/core/validation/#checks)
-view must be supplied by **every** variant.
+`spec` and `reference` entries are additive; a variant's own `[[domain]]` tables
+are additional to the common domains. Within one variant no two seeded specs may
+share a `dest`, and any [checked](/components/core/validation/#checks) view must be
+supplied by **every** variant.
 
 ## Validate
 

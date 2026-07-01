@@ -21,7 +21,8 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, tool, output, variants
+  test-case.toml         # manifest: type, canvas, tool, output, domains
+  variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   specs/brief.md         # what to draw + how the tool behaves — SEEDED
 ```
@@ -44,9 +45,11 @@ its brief.
    model at the binary's `--help`.
 4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
    `type = "asset-generation"`, `asset_kind` (`"sprite"` — the default — or
-   `"sprite-sheet"`), the `[canvas]`/`[tool]`/`[output]` tables, at least one
-   `[[variant]]`, and the `[[domain]]`/`[[review_item]]`s a human reviews the
-   drawing under (each review item carries only a `domain` — no `reference`). The
+   `"sprite-sheet"`), a `variants` list of paths to standalone variant files under
+   `variants/` (a root key, so it must precede the first table header; first =
+   default), the `[canvas]`/`[tool]`/`[output]` tables, and the
+   `[[domain]]`/`[[review_item]]`s a human reviews the drawing under (each review
+   item carries only a `domain` — no `reference`). The
    case declares **no `[[reference]]`**: it has no target image, and resolution
    rejects any reference (common or per-variant). A sprite-sheet case also declares
    a `[sheet]` table (the `[[sheet.frame]]` entries, each just an `index`, and the

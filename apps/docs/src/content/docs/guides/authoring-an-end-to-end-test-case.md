@@ -31,7 +31,8 @@ contamination matters less.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: specs, variants, references, checks, review items
+  test-case.toml         # manifest: common specs, references, checks, domains, review items
+  variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -131,8 +132,12 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
   installs exactly what it pins; the build must emit a static site into `dist/`,
   `build/`, or `out/`.
 - **Common `[[spec]]` and `[[reference]]`** lists — seeded for every variant. A
-  `.hbs` source is rendered; anything else is seeded verbatim.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); see
+  `.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
+  defaults to its `source` (a trailing `.hbs` stripped), so most specs just name
+  their `source`.
+- A **`variants`** list — an ordered array of paths to standalone variant files
+  under `variants/` (the first is the default; at least one is required). Because
+  `variants` is a root key, it must appear **before the first table header**. See
   [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/).
 - Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
   view's baseline must resolve for **every** variant.

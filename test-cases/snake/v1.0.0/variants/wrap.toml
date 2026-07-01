@@ -1,0 +1,22 @@
+# Classic plus Wrap mode, where the board edges wrap into tunnels. Wrap is a
+# separate mode, so it is rated on its own scoring domain rather than folded into
+# the common gameplay domain. Adds its mode spec, its own `title` menu, and the
+# review item that rolls up to that domain.
+slug = "wrap"
+name = "Wrap"
+description = "Classic plus Wrap mode, where the board edges wrap into tunnels."
+
+spec = [{ source = "specs/modes/wrap.md" }]
+reference = [{ view = "title", path = "reference/menu-wrap.html" }]
+
+[[domain]]
+id = "wrap"
+name = "Wrap"
+description = "The Wrap mode: open perimeter tunnels the snake passes through, with no wall death."
+
+[[review_item]]
+id = "wrap-tunnels"
+title = "Wrapping edges"
+text = "In Wrap the four perimeter edges are open tunnels, not solid walls: a snake that leaves one edge reappears on the opposite edge of the same row or column, there is no wall death, and only the snake's own body can end the round."
+weight = 1
+domain = "wrap"

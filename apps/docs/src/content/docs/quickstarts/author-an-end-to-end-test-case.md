@@ -19,7 +19,8 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml     # manifest: specs, variants, references, checks
+  test-case.toml     # manifest: common specs, references, checks, domains
+  variants/          # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs         # rendered into the harness instruction (NOT seeded)
   specs/             # the specification, decomposed by concern — SEEDED
   reference/         # mockup source, rendered to screenshots — NOT seeded
@@ -43,8 +44,10 @@ test-cases/<slug>/<version>/
 5. Author each reference view as self-contained HTML sharing a `theme.css`; the
    harness renders these to screenshots. Never seed the source.
 6. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`), the required
-   `[build]` commands, the common `[[spec]]`/`[[reference]]` lists, at least one
-   `[[variant]]`, and any opt-in `[[check]]`.
+   `[build]` commands, the common `[[spec]]`/`[[reference]]`/`[[domain]]` lists, a
+   `variants` list of paths to standalone variant files under `variants/` (a root
+   key, so it must precede the first table header; first = default), and any opt-in
+   `[[check]]`. A spec's `dest` defaults to its `source`.
 
 The `authoring-an-end-to-end-test-case` skill is the practical procedure to
 follow while doing this; read it before you start. The `pong` case

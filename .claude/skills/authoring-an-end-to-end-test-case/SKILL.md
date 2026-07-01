@@ -45,7 +45,10 @@ case should look like it.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: specs, variants, references, proofs, checks, review items
+  test-case.toml         # manifest: common specs, references, proofs, checks, domains, review items
+  variants/              # one standalone TOML file per variant (listed in `variants`)
+    base.toml            #   the default variant (first in the `variants` list)
+    <other>.toml         #   a variant + its own additive spec/reference/domain/review items
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -149,11 +152,17 @@ and step 4 of [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/S
 
 Author `test-case.toml` per the schema in
 [`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md): metadata, the common
-`[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
-the default — usually `base`), any opt-in `[[check]]`, the common `[[proof]]`
-list (see step 7), and the common `[[review_item]]` list (see step 8). For
-additional variants follow [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). A
-`.hbs` source is rendered; anything else is seeded verbatim.
+`[[spec]]` and `[[reference]]` lists, the common `[[domain]]` list (at least one),
+a `variants` list of paths to standalone variant files under `variants/` (the
+first is the default — usually `base`), any opt-in `[[check]]`, the common
+`[[proof]]` list (see step 7), and the common `[[review_item]]` list (see step 8).
+`variants` is a **root key**, so it must appear **before the first table header**.
+Each variant file is a self-contained TOML document whose top-level keys are the
+variant's own fields, and it may declare its own additive specs, references,
+review items, and scoring domain(s). For additional variants follow
+[`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). A
+`.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
+defaults to its `source` (a trailing `.hbs` stripped).
 
 ### 7. Declare proof of implementation
 

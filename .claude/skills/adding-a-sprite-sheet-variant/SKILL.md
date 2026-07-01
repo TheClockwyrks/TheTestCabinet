@@ -101,21 +101,28 @@ dithering"). Each item is reporter-side (never seeded), carries a stable `id` un
 within the variant's effective set, and a scoring `domain`. A sheet has no single
 `target` reference, so its items carry just the `domain` (no `reference`).
 
-### 4. Register the variant in `test-case.toml`
+### 4. Create the variant file and list it
 
-Add a `[[variant]]` table after the existing ones (the first variant is the
-default). Do **not** add or change a `[sheet]` table here — the sheet is declared
-once at the version level:
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Do **not** add or change a
+`[sheet]` table here — the sheet is declared once at the version level. Paths
+inside resolve against the version folder, and `dest` defaults to `source`:
 
 ```toml
-[[variant]]
+# variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
 description = "Same brief and sheet, drawn with flat fills only — no gradients or dithering, across every frame."
-spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
+spec = [{ source = "specs/flat.md" }]
 review_item = [
   { id = "flat-fills", title = "Flat fills only", text = "Every frame is filled with flat colors — no gradients or dithering in any cell.", domain = "fidelity" },
 ]
+```
+
+```toml
+# test-case.toml — add the new file to the ordered list (first = default)
+variants = ["variants/base.toml", "variants/flat.toml"]
 ```
 
 Rules enforced at resolution:

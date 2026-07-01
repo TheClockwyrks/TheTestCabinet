@@ -72,6 +72,7 @@ impl BackendClient for StubBackend {
                 references: vec![],
                 proofs: vec![],
                 review_items: vec![],
+                domains: vec![],
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),

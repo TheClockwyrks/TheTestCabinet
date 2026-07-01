@@ -24,6 +24,12 @@ max_runtime_hours = 0.5      # cap on the harness session before it's stopped (d
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (per-frame files)
 
+# Variants: an ORDERED list of paths to standalone variant files (first = default).
+# Because `variants` is a root key, it must appear BEFORE the first table header
+# (here `[canvas]`). Each path is relative to the version folder; by convention the
+# files live under `variants/`. See the variant-file example below.
+variants = ["variants/base.toml"]
+
 # The image the model draws on. For a single sprite this is the whole canvas; for
 # a sprite sheet it is ONE frame (every frame is a separate file of this size).
 [canvas]
@@ -68,20 +74,35 @@ fps    = 4                   # playback rate in frames per second (required, > 0
 # brief, with no target image to score the regenerated asset against. (Declaring
 # one — common or per-variant — is rejected.)
 
-# Variants. As with every test type, a case offers one or more and exactly one
-# runs per run. Here a variant varies the BRIEF (an additive spec) the model
-# draws toward — a tighter palette, an operation budget, a required technique —
-# NOT a different reference (a variant declares no reference; see below).
-[[variant]]
+# Common specs, seeded for EVERY variant (the brief describing what to draw and
+# how the tool behaves). Same `source` → `dest` mapping as end-to-end, and `dest`
+# likewise defaults to `source` with a trailing `.hbs` removed — so most briefs
+# just name the source they seed.
+[[spec]]
+source = "specs/brief.md"    # dest defaults to "specs/brief.md"
+
+# Common scoring domains, rated for EVERY variant (at least one required); a
+# variant may add its own domains in its file.
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = "How faithfully the regenerated asset matches the brief." # required
+```
+
+Each `variants` entry points at a standalone variant file, exactly as for an
+[end-to-end case](/testing/end-to-end/manifests/) — a TOML document whose top-level
+keys are the variant's own fields, with every path resolving against the version
+folder. Here a variant varies the **brief** (an additive spec) the model draws
+toward — a tighter palette, an operation budget, a required technique — **not** a
+different reference (an asset-generation case declares none):
+
+```toml
+# test-cases/<slug>/<version>/variants/base.toml
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
-spec = []                    # ADDITIVE specs on top of the common specs
-
-# Common specs, seeded for EVERY variant (the brief describing what to draw and
-# how the tool behaves). Same `source` → `dest` mapping as end-to-end.
-[[spec]]
-source = "specs/brief.hbs"
-dest   = "specs/brief.md"
+spec = []                    # ADDITIVE specs on top of the common specs (dest defaults to source)
+# review_item = [...]        # ADDITIVE reviewer items; may name a common or this variant's own domain
+# [[domain]]                 # ADDITIONAL scoring domains, rated only when this variant runs
 ```
 
 - `type = "asset-generation"` is the explicit test-type discriminator. It is
@@ -112,10 +133,12 @@ dest   = "specs/brief.md"
   images (the sheet layout travels in the run record so the verdict page can
   animate from the run alone).
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
-  `description`), `prompt`, `max_runtime_hours`, and the `[[spec]]` /
-  `[[variant]]` seeding rules behave as they do for an
+  `description`), `prompt`, `max_runtime_hours`, and the `[[spec]]` and `variants`
+  seeding rules behave as they do for an
   [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief,
-  renders a prompt, and may offer variants. The difference is references: an
+  renders a prompt, lists its variants as standalone files (the first the
+  default), and each `[[spec]]` `dest` defaults to its `source`. The difference is
+  references: an
   asset-generation case declares **none** (unlike end-to-end, where the common set
   and each variant may add reference mockups). So a variant here varies only the
   seeded brief — an additive `[[spec]]` — that the model draws toward. There is

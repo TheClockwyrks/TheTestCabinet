@@ -40,7 +40,8 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, tool, output, sheet, variants
+  test-case.toml         # manifest: type, canvas, tool, output, sheet, domains
+  variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -108,8 +109,11 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/):
   Declaring a `[[reference]]` — common or per-variant — is rejected.
 - **`[sheet]` (sprite sheets only)** — the `[[sheet.frame]]` entries (each just the
   `index` it is written to) and the named `[[sheet.sequence]]` animations.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); to
-  add more, see
+- A **`variants`** list — an ordered array of paths to standalone variant files
+  under `variants/` (the first is the default; at least one is required, usually
+  `base`), each a self-contained TOML document. As a root key it must precede the
+  first table header, and each `[[spec]]` `dest` defaults to its `source`. To add
+  more, see
   [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/) or
   [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/),
   per the case's `asset_kind`.

@@ -34,15 +34,17 @@ mode to an [end-to-end](/testing/end-to-end/overview/) case? See
 3. Add `[[review_item]]`s for what the variation makes observable — including
    anything the **animation** reveals — each carrying only a scoring `domain` (the
    case has no target image, so review items have no `reference`).
-4. Register the variant in `test-case.toml` (do **not** add a `[sheet]` table — it
-   is declared once at the version level):
+4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+   the variant's fields; `dest` defaults to `source`) and add its path to the
+   `variants` list in `test-case.toml`. Do **not** add a `[sheet]` table — it is
+   declared once at the version level:
 
 ```toml
-[[variant]]
+# variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
 description = "Same brief, drawn with flat fills only — no gradients or dithering, across every frame."
-spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
+spec = [{ source = "specs/flat.md" }]
 ```
 
 `spec` entries are additive on the common specs; within one variant no two seeded

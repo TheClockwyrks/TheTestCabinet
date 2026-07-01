@@ -68,6 +68,15 @@ workspace = "workspaces/base"
 # pulls their registry deps) so the model's first build is offline-fast.
 init = "cargo fetch"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# v1 ships a single base variant — the shipped ruleset and prototype table scored
+# against the held-out set — declared in its own file under `variants/`. The harder
+# directions the overview names (a much larger SCALE, realistic inner-lane-shorter
+# CURVES, underground belts / long-handed inserters, priority/filter splitters and
+# stack inserters) are future variants layered on this base ruleset, not part of
+# v1. This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
 # How the harness builds the model's submission into a wasm engine module.
 # `install` fetches dependencies; `build` emits the module; `module` names the
 # produced artifact (relative to the run root) the validator loads. The engine
@@ -118,17 +127,6 @@ expected = "cases/medium.out"
 [[case]]
 input = "cases/large.json"     # 64x24 over 200,000 ticks — efficiency dominates here
 expected = "cases/large.out"
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# v1 ships a single base variant — the shipped ruleset and prototype table scored
-# against the held-out set above. The harder directions the overview names (a much
-# larger SCALE, realistic inner-lane-shorter CURVES, underground belts /
-# long-handed inserters, priority/filter splitters and stack inserters) are future
-# variants layered on this base ruleset, not part of v1.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "The shipped base ruleset and prototype table, scored on the held-out small/medium/large scenarios for correctness then fuel."
 
 # Scoring domains. A performance run's decisive signal is correctness plus the
 # fuel number, not a reviewer's rating, but a human review may still accompany a
@@ -205,20 +203,15 @@ domain = "approach"
 # not repeated here.
 [[spec]]
 source = "specs/rules.md"
-dest = "specs/rules.md"
 
 [[spec]]
 source = "specs/prototypes.md"
-dest = "specs/prototypes.md"
 
 [[spec]]
 source = "specs/contract.md"
-dest = "specs/contract.md"
 
 [[spec]]
 source = "specs/canonical-state.md"
-dest = "specs/canonical-state.md"
 
 [[spec]]
 source = "specs/cli.md"
-dest = "specs/cli.md"

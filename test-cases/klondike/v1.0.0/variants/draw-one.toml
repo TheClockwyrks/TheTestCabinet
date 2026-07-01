@@ -1,0 +1,14 @@
+# The gentler deal (stock turns one, more winnable). Adds its deal-mode spec, its
+# own `title` menu, and the review item for the turn count.
+slug = "draw-one"
+name = "Draw One"
+description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
+
+spec = [{ source = "specs/modes/draw-one.md" }]
+reference = [{ view = "title", path = "reference/menu-draw-one.html" }]
+
+[[review_item]]
+id = "draw-one-count"
+title = "Draw One"
+text = "Clicking the stock turns exactly one card onto the waste, which is the playable top card; recycling the empty stock is unlimited, so every stock card is reachable."
+weight = 1

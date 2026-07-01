@@ -71,6 +71,22 @@ assets = [
   "assets/prism.png",   # the two-band boss: cyan shell around a magenta core
 ]
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own additive
+# specs, supplies its own `title` menu reference (the main menu lists a different
+# set of modes per variant; `gameplay` and `game-over` are common), and — for the
+# overload variant — the review item for the mode it introduces (rolling up to the
+# common `polarity` domain, since Overload extends the band system):
+#   - base     — Sortie only.
+#   - overload — adds Overload, where a mismatched shot no longer wastes but
+#                charges the drone toward a per-type overload.
+# This list is a root key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+  "variants/overload.toml",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a
@@ -85,29 +101,25 @@ build = "npm run build"
 # mode specs may reference them freely; the common specs must never reference a
 # mode spec a given variant does not seed (only `modes/standard.md` is always
 # present). All common specs are plain Markdown, seeded verbatim.
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
-dest = "specs/overview.md"
 
 [[spec]]
 source = "specs/playfield.md"
-dest = "specs/playfield.md"
 
 [[spec]]
 source = "specs/polarity.md"
-dest = "specs/polarity.md"
 
 [[spec]]
 source = "specs/controls.md"
-dest = "specs/controls.md"
 
 [[spec]]
 source = "specs/enemies.md"
-dest = "specs/enemies.md"
 
 [[spec]]
 source = "specs/flow.md"
-dest = "specs/flow.md"
 
 # The provided art contract: which sprites are seeded under `assets/`, how to load
 # them under any base path, how each entity's second band is derived at runtime,
@@ -115,47 +127,15 @@ dest = "specs/flow.md"
 # `assets` (above) and this spec stay in lockstep.
 [[spec]]
 source = "specs/assets.md"
-dest = "specs/assets.md"
 
 [[spec]]
 source = "specs/modes/standard.md"
-dest = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the
 # `[[proof]]` entries must match.
 [[spec]]
 source = "specs/proof.md"
-dest = "specs/proof.md"
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each variant seeds the common specs above plus its own additive specs. The base
-# variant is listed first, so it is the default. The variants differ in which
-# extra mode spec (if any) they add on top of the always-present Sortie mode, and
-# in their `title` reference — the main menu lists a different set of modes per
-# variant, so each variant declares its own menu mockup for the `title` view:
-#   - base     — Sortie only.
-#   - overload — adds Overload, where a mismatched shot no longer wastes but
-#                charges the drone toward a per-type overload.
-#
-# A variant's `reference` array is additive on top of the common references. Each
-# variant supplies the `title` view; `gameplay` and `game-over` are common. A view
-# slug must not appear both here and among the common references.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "The standard Sortie defense only."
-reference = [{ view = "title", path = "reference/menu-base.html" }]
-
-[[variant]]
-slug = "overload"
-name = "Overload"
-description = "Sortie plus Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
-spec = [{ source = "specs/modes/overload.md", dest = "specs/modes/overload.md" }]
-reference = [{ view = "title", path = "reference/menu-overload.html" }]
-review_item = [
-  { id = "overload-feeds", title = "Mismatch overloads", text = "In Overload, a mismatched (wrong-band) shot no longer wastes — it adds 1 charge to the drone, and at 3 charge the drone overloads with a per-type reaction: a Shard launches a fast headlong dive at the player, a Flux flips its band and fires a 3-shot spread, and a Prism's exposed layer emits a two-band burst (with a wrong shell hit also spawning an extra Shard escort).", weight = 1, domain = "polarity" },
-]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup the harness renders to a screenshot and seeds as a visual target. The

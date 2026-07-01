@@ -153,6 +153,14 @@ async function toTestCaseSummary(
         weight: item.weight,
         domain: item.domain ?? null,
       })),
+      // The variant's effective scoring domains (common + its own), already
+      // merged on the resolved VariantInfo — the set a run of this variant is
+      // rated against.
+      domains: v.domains.map((d) => ({
+        id: d.id,
+        name: d.name,
+        description: d.description,
+      })),
     })),
   );
   return {

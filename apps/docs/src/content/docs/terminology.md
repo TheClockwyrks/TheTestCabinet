@@ -36,10 +36,13 @@ cases.
 
 A scoring domain is a facet of a test case the reviewer rates independently —
 for example a game's single-player and versus modes. A case declares one or more
-domains; the reviewer assigns a [rating](#rating) to each while playing the
-build, and the run's **overall rating** is the *worst* across them, so a flawless
-mode cannot mask a broken one. A [review item](#reviewer-checklist) may roll up
-to a domain, or stay general when it applies to every mode.
+**common** domains that every variant is rated on, and a [variant](#variant) may
+add its own domains, so the effective set a reviewer rates for a run is the common
+domains plus that run's variant's own. The reviewer assigns a [rating](#rating) to
+each while playing the build, and the run's **overall rating** is the *worst*
+across that effective set, so a flawless mode cannot mask a broken one. A
+[review item](#reviewer-checklist) may roll up to a domain, or stay general when
+it applies to every mode.
 
 ## Dispatcher
 

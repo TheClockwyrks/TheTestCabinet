@@ -26,17 +26,22 @@ without the scale of the harder cases.
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: specs, variants, checks, review items.   |
+| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `physics.md`, `flow.md`, and the mode specs under `specs/modes/`.
 The common specs (overview, playfield, physics, flow, and `modes/standard.md`)
-are seeded for every variant; each variant adds at most one extra mode spec. The
-case offers four variants — `base` (standard modes only), `frenzy` (adds the
-escalating Frenzy mode), `multi` (adds a three-ball mode with ball-to-ball
-collisions), and `gyre` (adds a mode whose obstacles oscillate and rotate, so the
-ball bounces off tilted, oriented faces).
+are seeded for every variant; each variant adds at most one extra mode spec. Each
+variant is a standalone TOML file under `variants/`, listed in order in the
+manifest's `variants` key (the first is the default). The case offers four
+variants — `base` (standard modes only), `frenzy` (adds the escalating Frenzy
+mode), `multi` (adds a three-ball mode with ball-to-ball collisions), and `gyre`
+(adds a mode whose obstacles oscillate and rotate, so the ball bounces off tilted,
+oriented faces). The three mode variants (`frenzy`, `multi`, `gyre`) each declare
+their own scoring domain for the mode they introduce, on top of the case's common
+`single-player` and `versus` domains.
 
 This version has **no assets**: Pong is simple enough to leave all visuals to the
 model, guided by the palette and measurements in the specs and by the seeded

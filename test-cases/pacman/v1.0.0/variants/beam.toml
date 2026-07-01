@@ -1,0 +1,16 @@
+# Trench plus Beam, a second tighter directional sonar pulse. Its review item
+# rolls up to the common `sensing` domain, since Beam is another way of sensing
+# the trench rather than a new axis of judgement.
+slug = "beam"
+name = "Beam"
+description = "Trench plus Beam, a second tighter directional sonar pulse."
+
+spec = [{ source = "specs/modes/beam.md" }]
+reference = [{ view = "title", path = "reference/menu-beam.html" }]
+
+[[review_item]]
+id = "beam-directional"
+title = "Directional beam"
+text = "In Beam, a second sonar — the directional beam (F) — floods only forward down the corridor the forager faces, reaching farther than the omni pulse (Space) and making less noise (it draws the Listener less). The omni pulse still works exactly as in the standard dive."
+weight = 1
+domain = "sensing"

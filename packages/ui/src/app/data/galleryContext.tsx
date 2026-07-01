@@ -31,9 +31,10 @@ import type {
  */
 export type CatalogStatus = "loading" | "ready" | "error";
 
-/** The scoring model for a run: the variant's weighted checklist items and the
- * case's scoring domains, resolved from the catalog. Both empty when the case is
- * not in the catalog this host holds. */
+/** The scoring model for a run: the variant's weighted checklist items and its
+ * effective scoring domains (the case's common domains + the variant's own),
+ * resolved from the catalog. Both empty when the case is not in the catalog this
+ * host holds. */
 export interface ReviewModel {
   items: ReviewItemSummary[];
   domains: DomainSummary[];
@@ -426,10 +427,10 @@ export interface GalleryData extends GalleryDataInput {
   replayResultFor(run: RunRecord): ReplayResultView | null;
   /**
    * The scoring model for a run's subject: the effective (common + variant)
-   * weighted checklist items and the case's scoring domains, resolved from the
-   * catalog this host holds. Items and domains are empty when the case is not in
-   * the catalog. Lets the verdict page and the leaderboard score a run from its
-   * review verdicts and per-domain ratings.
+   * weighted checklist items and the effective (common + variant) scoring
+   * domains, resolved from the catalog this host holds. Items and domains are
+   * empty when the case is not in the catalog. Lets the verdict page and the
+   * leaderboard score a run from its review verdicts and per-domain ratings.
    */
   reviewModelFor(subject: RunSubject): ReviewModel;
 }
@@ -462,7 +463,9 @@ export function GalleryDataProvider({
         );
         return {
           items: variant?.reviewItems ?? [],
-          domains: testCase?.domains ?? [],
+          // The variant's effective scoring domains (common + its own). Falls back
+          // to the case's common domains when the variant can't be resolved.
+          domains: variant?.domains ?? testCase?.domains ?? [],
         };
       },
       proofMediaFor(run) {

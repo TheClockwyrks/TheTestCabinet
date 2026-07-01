@@ -70,6 +70,26 @@ assets = [
   "assets/trench-walls", # the trench tileset: wall autotile + floor + fog + gate
 ]
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own additive
+# specs, supplies its own `title` menu reference (the main menu lists a different
+# set of modes per variant; `gameplay` and `game-over` are common), and — for the
+# three mode variants — the review item for the mode it introduces (each rolling
+# up to a common `sensing`/`predators` domain, since these modes vary how the
+# forager senses or defends rather than adding a new scoring axis):
+#   - base    — Trench only.
+#   - murk    — adds Murk, where passive light scatters and bends around corners.
+#   - reserve — adds Reserve, where ink is limited charges refilled by ink-glands.
+#   - beam    — adds Beam, a second, tighter directional sonar pulse.
+# This list is a root key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+  "variants/murk.toml",
+  "variants/reserve.toml",
+  "variants/beam.toml",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a
@@ -84,99 +104,40 @@ build = "npm run build"
 # mode specs may reference them freely; the common specs must never reference a
 # mode spec a given variant does not seed (only `modes/standard.md` is always
 # present). All common specs are plain Markdown, seeded verbatim.
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
-dest = "specs/overview.md"
 
 [[spec]]
 source = "specs/playfield.md"
-dest = "specs/playfield.md"
 
 [[spec]]
 source = "specs/sensing.md"
-dest = "specs/sensing.md"
 
 [[spec]]
 source = "specs/movement.md"
-dest = "specs/movement.md"
 
 [[spec]]
 source = "specs/predators.md"
-dest = "specs/predators.md"
 
 [[spec]]
 source = "specs/flow.md"
-dest = "specs/flow.md"
 
 # The art-asset contract: which seeded sprites/tiles/effects the build must use,
 # their frame layouts, and what is left to draw in code. Seeded for every variant
-# so the manifest's `assets` (below) and this spec stay in lockstep.
+# so the manifest's `assets` (above) and this spec stay in lockstep.
 [[spec]]
 source = "specs/assets.md"
-dest = "specs/assets.md"
 
 [[spec]]
 source = "specs/modes/standard.md"
-dest = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the
 # `[[proof]]` entries must match.
 [[spec]]
 source = "specs/proof.md"
-dest = "specs/proof.md"
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each variant seeds the common specs above plus its own additive specs. The base
-# variant is listed first, so it is the default. The variants differ in which
-# extra mode spec (if any) they add on top of the always-present Trench mode, and
-# in their `title` reference — the main menu lists a different set of modes per
-# variant, so each variant declares its own menu mockup for the `title` view:
-#   - base    — Trench only.
-#   - murk    — adds Murk, where passive light scatters and bends around corners
-#               (one propagation rule for both light and sonar).
-#   - reserve — adds Reserve, where ink is limited charges refilled by ink-glands
-#               instead of a cooldown.
-#   - beam    — adds Beam, a second, tighter directional sonar pulse.
-#
-# A variant's `reference` array is additive on top of the common references. Each
-# variant supplies the `title` view; `gameplay` and `game-over` are common. A view
-# slug must not appear both here and among the common references.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "The standard Trench dive only."
-reference = [{ view = "title", path = "reference/menu-base.html" }]
-
-[[variant]]
-slug = "murk"
-name = "Murk"
-description = "Trench plus Murk, where passive light bends around corners like sonar."
-spec = [{ source = "specs/modes/murk.md", dest = "specs/modes/murk.md" }]
-reference = [{ view = "title", path = "reference/menu-murk.html" }]
-review_item = [
-  { id = "murk-light-floods", title = "Murk light bends", text = "In Murk, your passive light uses the same corridor-flood propagation as sonar: it bends around corners, so you can see around the corner you stand next to — unlike the line-of-sight passive light of the standard dive.", weight = 1, domain = "sensing" },
-]
-
-[[variant]]
-slug = "reserve"
-name = "Reserve"
-description = "Trench plus Reserve, where ink is limited charges refilled by ink-glands."
-spec = [{ source = "specs/modes/reserve.md", dest = "specs/modes/reserve.md" }]
-reference = [{ view = "title", path = "reference/menu-reserve.html" }]
-review_item = [
-  { id = "reserve-ink-charges", title = "Ink charges", text = "In Reserve, ink is a limited set of charges (start with 2, max 3), spent one per use and refilled only by eating ink-glands that respawn after ~20s — not a recharging cooldown. The HUD shows the number of charges held.", weight = 1, domain = "predators" },
-]
-
-[[variant]]
-slug = "beam"
-name = "Beam"
-description = "Trench plus Beam, a second tighter directional sonar pulse."
-spec = [{ source = "specs/modes/beam.md", dest = "specs/modes/beam.md" }]
-reference = [{ view = "title", path = "reference/menu-beam.html" }]
-review_item = [
-  { id = "beam-directional", title = "Directional beam", text = "In Beam, a second sonar — the directional beam (F) — floods only forward down the corridor the forager faces, reaching farther than the omni pulse (Space) and making less noise (it draws the Listener less). The omni pulse still works exactly as in the standard dive.", weight = 1, domain = "sensing" },
-]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup the harness renders to a screenshot and seeds as a visual target. The

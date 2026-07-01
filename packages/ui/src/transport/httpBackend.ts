@@ -110,7 +110,8 @@ interface ResolvedVersion {
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
-  // The case's scoring domains (case-level).
+  // The case's COMMON scoring domains (every variant is rated on these; a variant
+  // may add its own — carried on each variant's `domains`).
   domains?: Domain[];
   // The sprite-sheet frame grid and named sequences (camelCase `SheetSpec`),
   // present only for a sprite-sheet case. Its shape matches the run-record
@@ -125,6 +126,9 @@ interface ResolvedVersion {
     specs?: SpecDescriptor[];
     reviewItems?: ReviewItem[];
     references?: ReferenceDescriptor[];
+    // The variant's own additive scoring domains (rated only when this variant is
+    // selected, on top of the case's common ones).
+    domains?: Domain[];
   }[];
 }
 
@@ -246,6 +250,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             ...(r.commonReviewItems ?? []),
             ...(v.reviewItems ?? []),
           ],
+          // The common scoring domains apply to every variant; the variant's own
+          // additive domains follow. This effective set is what a run of this
+          // variant is rated against.
+          domains: [...(r.domains ?? []), ...(v.domains ?? [])],
         })),
       };
     },

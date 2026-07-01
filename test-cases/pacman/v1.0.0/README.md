@@ -34,7 +34,8 @@ front-end task that should separate stronger builds from weaker ones.
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: specs, variants, checks, review items.   |
+| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
@@ -42,7 +43,9 @@ The specification is split across `specs/` by concern: `overview.md`,
 `assets.md` (the provided-art contract), and the mode specs under
 `specs/modes/`. The common specs (everything except the variant-only mode
 specs) are seeded for every variant; each variant adds at most one extra mode
-spec. The case offers four variants — `base` (Trench only), `murk`
+spec. Each variant is a standalone TOML file under `variants/`, listed in order in
+the manifest's `variants` key (the first is the default). The case offers four
+variants — `base` (Trench only), `murk`
 (adds Murk, where passive light bends around corners like sonar), `reserve` (adds
 Reserve, where ink is limited charges refilled by ink-glands), and `beam` (adds
 Beam, a second tighter directional sonar pulse).

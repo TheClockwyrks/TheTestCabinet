@@ -1,0 +1,5 @@
+# The default Spectra Shard variant. Listed first in the case manifest's
+# `variants`, so it is the default. Every path here resolves against the version
+# folder, exactly like the main manifest.
+slug = "base"
+name = "Base"

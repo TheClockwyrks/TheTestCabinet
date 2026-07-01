@@ -85,6 +85,11 @@ export interface VariantSummary {
    * carrying the point weights that produce a run's score. Empty when the host
    * could not resolve them. */
   reviewItems: ReviewItemSummary[];
+  /** The scoring domains a run of this variant is rated against — the effective
+   * set (the case's common domains + this variant's own additive ones). A
+   * reviewer rates each independently; a run's overall rating is the worst across
+   * them. Empty when the host could not resolve them. */
+  domains: DomainSummary[];
 }
 
 /** One test case in the catalog, across all of its published versions. */
@@ -108,9 +113,10 @@ export interface TestCaseSummary {
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
-  /** The case's scoring domains (case-level). A reviewer rates each domain
-   * independently; a run's overall rating is the worst across them. At least one
-   * is present when the host could resolve the catalog. */
+  /** The case's COMMON scoring domains (every variant is rated on these; a
+   * variant may add its own — see VariantSummary.domains). A reviewer rates each
+   * domain independently; a run's overall rating is the worst across them. At
+   * least one is present when the host could resolve the catalog. */
   domains: DomainSummary[];
   /** The sprite-sheet frame grid and named sequences a sprite-sheet
    * asset-generation case declares; null for a single sprite or any non-asset

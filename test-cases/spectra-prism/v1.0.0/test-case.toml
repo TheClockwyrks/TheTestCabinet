@@ -10,6 +10,11 @@ prompt = "prompt.hbs"
 max_runtime_hours = 0.75
 type = "asset-generation"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
 [canvas]
 width = 64
 height = 64
@@ -24,11 +29,6 @@ actions = "actions.json"
 
 [[spec]]
 source = "specs/brief.md"
-dest = "specs/brief.md"
-
-[[variant]]
-slug = "base"
-name = "Base"
 
 [[domain]]
 id = "fidelity"

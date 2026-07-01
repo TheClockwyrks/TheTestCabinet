@@ -61,9 +61,10 @@ plays the finished build and writes it up. A review carries three things:
 - A short **writeup** the site shows before the playable build.
 - A **rating per scoring domain** — one of four hand-assigned tiers, **flawless**,
   **great**, **scuffed**, or **broken**, in descending order of fidelity to the
-  spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) the case
-  declares. The run's **overall rating** is the *worst* across its domains, so a
-  flawless mode cannot mask a broken one.
+  spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) in the run's
+  **effective** domain set: the case's common domains plus any the run's variant
+  declares in its own file. The run's **overall rating** is the *worst* across that
+  effective set, so a flawless mode cannot mask a broken one.
 - A **checklist** of binary verdicts — **pass** or **fail**, with an optional
   note — one for each [`[[review_item]]`](/testing/end-to-end/manifests/) the
   case version declares. Every declared item must carry a verdict before a run

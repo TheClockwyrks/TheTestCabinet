@@ -190,11 +190,13 @@ requirement the case author called out. Each item is worth a **weight** in
 points: a `pass` earns the item's weight and a `fail` earns none, and a review's
 **score** is the earned weight over the total declared weight.
 
-A case declares one or more **scoring domains** (for example a game's
-single-player and versus modes); the reviewer assigns one of four tiers —
-**flawless**, **great**, **scuffed**, or **broken**, in descending order of
-fidelity to the spec — to each. Within one review the **overall rating** is the
-*worst* across its domains, so a flawless mode cannot mask a broken one. What each
+A case declares one or more **common scoring domains** (for example a game's
+single-player and versus modes), and the run's variant may add its own; the
+reviewer assigns one of four tiers — **flawless**, **great**, **scuffed**, or
+**broken**, in descending order of fidelity to the spec — to each domain in the
+run variant's **effective** set (common plus that variant's own). Within one
+review the **overall rating** is the *worst* across those domains, so a flawless
+mode cannot mask a broken one. What each
 tier means is reviewer judgment rather than anything a run emits, so the criteria
 for choosing one live with the review workflow; see
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).

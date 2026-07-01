@@ -54,6 +54,20 @@ workspace = "workspaces/base"
 # verify immediately against a project-local Playwright.
 init = "npm install && npx playwright install chromium"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own deal-mode
+# spec, declares its own `title` menu mockup (the menu shows the active deal
+# mode), and the review item for its turn count. The two differ ONLY in the
+# stock's turn count; the `gameplay` and `victory` views are common to both.
+#   - draw-three — the classic Klondike deal (turns three; the default).
+#   - draw-one   — the gentler deal (turns one; more winnable).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/draw-three.toml",
+  "variants/draw-one.toml",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root: dependencies are installed, then the static build is produced
@@ -73,64 +87,28 @@ build = "npm run build"
 #
 # Every common spec is plain Markdown, seeded verbatim (no `.hbs` — none of their
 # text varies by variant or version).
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
-dest = "specs/overview.md"
 
 [[spec]]
 source = "specs/layout.md"
-dest = "specs/layout.md"
 
 [[spec]]
 source = "specs/rules.md"
-dest = "specs/rules.md"
 
 [[spec]]
 source = "specs/flow.md"
-dest = "specs/flow.md"
 
 [[spec]]
 source = "specs/cascade.md"
-dest = "specs/cascade.md"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and the cascade clip) at the exact paths the `[[proof]]` entries below declare.
 # The paths in this spec and in the `[[proof]]` entries must match.
 [[spec]]
 source = "specs/proof.md"
-dest = "specs/proof.md"
-
-# Asset files or directories seeded alongside the specs. Cascade draws every card
-# in code, so it needs none.
-assets = []
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each variant seeds the common specs above plus its own deal-mode spec, and
-# declares its own `title` menu mockup (the menu shows the active deal mode). The
-# two variants differ ONLY in the stock's turn count:
-#   - draw-three — the classic Klondike deal (turns three; the default, listed
-#                  first).
-#   - draw-one   — the gentler deal (turns one; more winnable).
-# The `gameplay` and `victory` views are common to both variants.
-[[variant]]
-slug = "draw-three"
-name = "Draw Three"
-description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
-spec = [{ source = "specs/modes/draw-three.md", dest = "specs/modes/draw-three.md" }]
-reference = [{ view = "title", path = "reference/menu-draw-three.html" }]
-review_item = [
-  { id = "draw-three-count", title = "Draw Three", text = "Clicking the stock turns exactly three cards onto the waste at once (or all that remain if fewer than three), fanned so all three are visible with only the top card playable; recycling the empty stock is unlimited.", weight = 1 },
-]
-
-[[variant]]
-slug = "draw-one"
-name = "Draw One"
-description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
-spec = [{ source = "specs/modes/draw-one.md", dest = "specs/modes/draw-one.md" }]
-reference = [{ view = "title", path = "reference/menu-draw-one.html" }]
-review_item = [
-  { id = "draw-one-count", title = "Draw One", text = "Clicking the stock turns exactly one card onto the waste, which is the playable top card; recycling the empty stock is unlimited, so every stock card is reachable.", weight = 1 },
-]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup; the harness renders it to a screenshot that is seeded into the run as a

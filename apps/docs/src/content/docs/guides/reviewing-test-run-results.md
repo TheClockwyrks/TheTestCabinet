@@ -111,8 +111,9 @@ checklist item is missing its verdict.
 
 The **writeup** is the short prose the site shows before the playable build. The
 **ratings** travel with it in the frontmatter (not in the run record). You rate
-each declared [domain](/terminology/#domain) independently, choosing one of four
-hand-assigned tiers per domain:
+each [domain](/terminology/#domain) in the run variant's **effective** set — the
+case's common domains plus any the run's variant declares in its own file —
+independently, choosing one of four hand-assigned tiers per domain:
 
 - **flawless** — implemented to spec with no noticeable bugs.
 - **great** — to spec; may have minor issues so long as they don't impact

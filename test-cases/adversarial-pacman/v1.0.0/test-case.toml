@@ -60,6 +60,14 @@ workspace = "workspaces/base"
 # their registry deps) so the model's first build is offline-fast.
 init = "cargo fetch"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# v1 ships a single base variant — the shipped `mirror-32x16` map, full
+# observability, the canonical `border-soldier` opponent — declared in its own file
+# under `variants/`. Future variants (a noisy/limited-sensing world, an alternate
+# map, a different opponent) layer on top. This list is a root key, so it must
+# precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
 # How the harness builds the model's submission into a wasm controller module.
 # `install` fetches dependencies; `build` emits the module; `module` names the
 # produced artifact (relative to the run root) the validator loads as Red. The
@@ -122,28 +130,15 @@ renderer = "replay/index.html"
 # `[contract]` table above, so they are not repeated here.
 [[spec]]
 source = "specs/rules.md"
-dest = "specs/rules.md"
 
 [[spec]]
 source = "specs/contract.md"
-dest = "specs/contract.md"
 
 [[spec]]
 source = "specs/sandbox.md"
-dest = "specs/sandbox.md"
 
 [[spec]]
 source = "specs/baselines.md"
-dest = "specs/baselines.md"
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# v1 ships a single base variant — the shipped `mirror-32x16` map, full
-# observability, the canonical `border-soldier` opponent. Future variants (a noisy/
-# limited-sensing world, an alternate map, a different opponent) layer on top.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "The shipped mirror-32x16 maze, fully observable, scored against the border-soldier baseline."
 
 # Scoring domains. An adversarial run's decisive signal is the recorded match, not
 # a reviewer's rating, but a human review may still accompany a published run (see

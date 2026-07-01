@@ -406,6 +406,13 @@
         "description": {
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "The variant's own scoring domains, on top of the case's common\n[`VersionResponse::domains`]. Rated only when this variant is selected.",
+          "items": {
+            "$ref": "#/$defs/DomainOut"
+          },
+          "type": "array"
+        },
         "name": {
           "type": "string"
         },
@@ -454,7 +461,8 @@
         "specs",
         "references",
         "proofs",
-        "reviewItems"
+        "reviewItems",
+        "domains"
       ],
       "type": "object"
     },

@@ -29,15 +29,19 @@ a meaningful run without the scale of the harder cases.
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
 | `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
 | reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `test-case.toml`       | No             | Manifest: specs, variants, checks, review items.   |
+| `test-case.toml`       | No             | Manifest: common specs, references, checks, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).  |
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `mechanics.md`, `flow.md`, and the mode specs under
 `specs/modes/`. The common specs (overview, playfield, mechanics, flow, and
 `modes/standard.md`) are seeded for every variant; each variant adds at most one
-extra mode spec. The case offers four variants — `base` (Classic mode only),
-`wrap` (adds Wrap mode), `maze` (adds Maze mode), and `feast` (adds Feast mode).
+extra mode spec. Each variant is a standalone TOML file under `variants/`, listed
+in order in the manifest's `variants` key. The case offers four variants — `base`
+(Classic mode only), `wrap` (adds Wrap mode), `maze` (adds Maze mode), and `feast`
+(adds Feast mode). The three mode variants each declare their own scoring domain,
+so that mode is rated independently of the common gameplay domain.
 
 This version has **no assets**: Coil is simple enough to leave all visuals to
 the model, guided by the palette and measurements in the specs and by the seeded

@@ -58,6 +58,25 @@ workspace = "workspaces/base"
 # verify immediately against a project-local Playwright.
 init = "npm install && npx playwright install chromium"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own additive
+# specs, supplies its own `title` menu reference (the main menu lists a different
+# set of modes per variant; `gameplay` and `game-over` are common), and — for the
+# three mode variants — declares its own scoring domain and the review item that
+# rolls up to it:
+#   - base  — Classic mode only.
+#   - wrap  — adds Wrap mode, where the board edges become wrapping tunnels (own domain).
+#   - maze  — adds Maze mode, with fixed fatal interior obstacles (own domain).
+#   - feast — adds Feast mode, with a periodic, time-limited bonus orb (own domain).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/base.toml",
+  "variants/wrap.toml",
+  "variants/maze.toml",
+  "variants/feast.toml",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root: dependencies are installed, then the static build is produced
@@ -76,25 +95,22 @@ build = "npm run build"
 # freely; the common specs, in turn, must never reference a mode spec that a
 # given variant does not seed (only `modes/standard.md` is always present). All
 # common specs are plain Markdown and are seeded verbatim.
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
-dest = "specs/overview.md"
 
 [[spec]]
 source = "specs/playfield.md"
-dest = "specs/playfield.md"
 
 [[spec]]
 source = "specs/mechanics.md"
-dest = "specs/mechanics.md"
 
 [[spec]]
 source = "specs/flow.md"
-dest = "specs/flow.md"
 
 [[spec]]
 source = "specs/modes/standard.md"
-dest = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
@@ -102,62 +118,6 @@ dest = "specs/modes/standard.md"
 # the `[[proof]]` entries must match.
 [[spec]]
 source = "specs/proof.md"
-dest = "specs/proof.md"
-
-# Asset files or directories (relative to this folder) seeded alongside the
-# specs. Coil draws everything in code, so it needs none.
-assets = []
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each variant seeds the common specs above plus its own additive specs. The base
-# variant is listed first, so it is the default. The variants differ in which
-# mode spec (if any) they add on top of the always-present Classic mode, and in
-# their `title` reference — the main menu lists a different set of modes per
-# variant, so each variant declares its own menu mockup for the `title` view:
-#   - base  — Classic mode only.
-#   - wrap  — adds Wrap mode, where the board edges become wrapping tunnels.
-#   - maze  — adds Maze mode, with fixed fatal interior obstacles.
-#   - feast — adds Feast mode, with a periodic, time-limited bonus orb.
-#
-# A variant's `reference` array is additive on top of the common references
-# below, exactly like `spec`. Each variant supplies the `title` view; the
-# `gameplay` and `game-over` views are common to every variant. A view slug must
-# not appear both here and among the common references.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "Classic mode only."
-reference = [{ view = "title", path = "reference/menu-base.html" }]
-
-[[variant]]
-slug = "wrap"
-name = "Wrap"
-description = "Classic plus Wrap mode, where the board edges wrap into tunnels."
-spec = [{ source = "specs/modes/wrap.md", dest = "specs/modes/wrap.md" }]
-reference = [{ view = "title", path = "reference/menu-wrap.html" }]
-review_item = [
-  { id = "wrap-tunnels", title = "Wrapping edges", text = "In Wrap the four perimeter edges are open tunnels, not solid walls: a snake that leaves one edge reappears on the opposite edge of the same row or column, there is no wall death, and only the snake's own body can end the round.", weight = 1 },
-]
-
-[[variant]]
-slug = "maze"
-name = "Maze"
-description = "Classic plus Maze mode, with fixed fatal interior obstacles."
-spec = [{ source = "specs/modes/maze.md", dest = "specs/modes/maze.md" }]
-reference = [{ view = "title", path = "reference/menu-maze.html" }]
-review_item = [
-  { id = "maze-obstacles", title = "Fatal obstacles", text = "A Maze match adds fixed interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell.", weight = 1 },
-]
-
-[[variant]]
-slug = "feast"
-name = "Feast"
-description = "Classic plus Feast mode, with a periodic, time-limited bonus orb."
-spec = [{ source = "specs/modes/feast.md", dest = "specs/modes/feast.md" }]
-reference = [{ view = "title", path = "reference/menu-feast.html" }]
-review_item = [
-  { id = "feast-bonus-orb", title = "Bonus orb", text = "A Feast match periodically shows a single time-limited bonus orb alongside the ordinary pellet (first at 8 s, staying 6 s, blinking faster in its final 2 seconds before it despawns). Eating it scores 50 x M and counts as a combo eat, but does not grow the snake or replace the pellet.", weight = 1 },
-]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup; the harness renders it to a screenshot that is seeded into the run as a

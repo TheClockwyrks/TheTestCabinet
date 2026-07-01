@@ -72,6 +72,11 @@ export interface VariantInfo {
   // The reviewer checklist items for this variant (common first, then the
   // variant's own), carrying their point weights. Used to score runs.
   reviewItems: ReviewItem[];
+  // The scoring domains a reviewer rates a run of this variant against (common
+  // first, then the variant's own). This is the variant's EFFECTIVE set — the
+  // case's common domains plus this variant's own additive ones — so a run is
+  // always rated on exactly the domains that apply to its selected variant.
+  domains: Domain[];
 }
 
 export interface VersionInfo {
@@ -87,8 +92,9 @@ export interface VersionInfo {
   // The site-facing Markdown description, when the source carries it.
   description?: string | null;
   variants: VariantInfo[];
-  // The case's scoring domains (case-level). A reviewer rates each independently;
-  // a run's overall rating is the worst across them.
+  // The case's COMMON domains (every variant is rated on these; a variant may add
+  // its own — see VariantInfo.domains). A reviewer rates each independently; a
+  // run's overall rating is the worst across them.
   domains: Domain[];
   // The sprite-sheet frame grid and named sequences a sprite-sheet
   // asset-generation case declares; absent (null) for a single sprite or any

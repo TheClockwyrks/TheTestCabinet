@@ -135,11 +135,15 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
-    /// The variants this case offers. Each seeds the common `specs` plus its own
-    /// additional specs; exactly one variant runs per run. At least one variant
-    /// must be declared.
+    /// The variants this case offers, each as a path to a standalone variant
+    /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
+    /// convention under `variants/`), relative to the version folder. Listed in
+    /// order — the first is the default — and at least one must be declared. Each
+    /// file seeds the common `specs` plus its own additional specs; exactly one
+    /// variant runs per run. Splitting variants into their own files keeps the
+    /// main manifest readable when a case carries several modes.
     #[serde(default)]
-    variant: Vec<ManifestVariant>,
+    variants: Vec<PathBuf>,
     /// Reference views. Each is either an HTML mockup rendered to a screenshot
     /// or a static image/video used as-is, seeded as a visual target; a rendered
     /// reference's source mockup is not seeded.
@@ -392,11 +396,19 @@ impl Eq for ManifestSheetSequence {}
 struct ManifestSpec {
     /// Source path, relative to the version folder.
     source: PathBuf,
-    /// Destination path, relative to the run's workspace root.
-    dest: PathBuf,
+    /// Destination path, relative to the run's workspace root. Optional: when
+    /// omitted it defaults to [`spec_default_dest`] of the `source` (the source
+    /// path with a trailing `.hbs` template extension removed), since the seeded
+    /// path so rarely differs from the source that stating both is just noise.
+    #[serde(default)]
+    dest: Option<PathBuf>,
 }
 
-/// A single `[[variant]]` entry in the manifest.
+/// A standalone variant manifest, parsed from its own file listed in the case
+/// manifest's `variants` array (by convention `variants/<slug>.toml`). Its
+/// top-level tables are this struct's fields; every path it names is resolved
+/// relative to the **version folder**, not the variant file's location, so a
+/// variant references `specs/modes/gyre.md` exactly as the main manifest would.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestVariant {
     /// The stable slug naming this variant (recorded in run records).
@@ -430,12 +442,21 @@ struct ManifestVariant {
     #[serde(default, rename = "proof")]
     proofs: Vec<ManifestProof>,
     /// Reviewer checklist items this variant declares in addition to the common
-    /// items. Declared as a `review_item` array of inline `{ id, text }` tables.
+    /// items. Declared as repeated `[[review_item]]` tables in the variant file.
     /// A variant-specific item lets a mode-only requirement be checked only when
     /// that variant runs; its id must not collide with a common item or another
     /// of this variant's items.
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// Scoring domains this variant declares in addition to the case's common
+    /// [`Manifest::domains`]. Declared as repeated `[[domain]]` tables in the
+    /// variant file. A variant-specific domain lets a mode that introduces a whole
+    /// new axis of judgement (say a Pong "gyre" mode) be rated on its own, rather
+    /// than forcing every domain to be declared case-wide even when it applies to
+    /// one variant. Its id must not collide with a common domain or another of
+    /// this variant's domains; the variant's effective set is common ∪ these.
+    #[serde(default, rename = "domain")]
+    domains: Vec<ManifestDomain>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -1032,6 +1053,13 @@ pub struct Variant {
     /// common items. Surfaced to a reviewer only when this variant is selected, so
     /// a mode-specific check rides along only with the variant that adds the mode.
     pub review_items: Vec<ReviewItem>,
+    /// Scoring domains this variant declares in addition to the case's common
+    /// [`TestCaseVersion::domains`]. Rated by the reviewer only when this variant
+    /// is selected, so a mode that introduces a whole new axis of judgement is
+    /// scored on its own without every other variant carrying an unused domain.
+    /// The effective domain set for a run of this variant is
+    /// [`TestCaseVersion::domains_for`].
+    pub domains: Vec<Domain>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -1328,10 +1356,12 @@ pub struct TestCaseVersion {
     /// [`Self::review_items_for`]. **Not** seeded — reporter-side material a
     /// reviewer works through after playing a build.
     pub common_review_items: Vec<ReviewItem>,
-    /// The scoring domains this case declares, in declared order. A reviewer
-    /// rates each independently; the run's overall rating is the worst across
-    /// them. At least one is always present. Unlike review items, domains are
-    /// case-level rather than variant-scoped.
+    /// The **common** scoring domains this case declares, in declared order —
+    /// those every variant is rated on. A reviewer rates each independently; the
+    /// run's overall rating is the worst across the run variant's effective set.
+    /// At least one common domain is always present. A variant may declare
+    /// additional domains of its own (see [`Variant::domains`]); the effective set
+    /// for a variant is [`Self::domains_for`].
     pub domains: Vec<Domain>,
     /// The held-out input cases a performance case's engine is scored against, in
     /// declared order. Non-empty for a performance case, empty for every other
@@ -1408,6 +1438,19 @@ impl TestCaseVersion {
         self.common_review_items
             .iter()
             .chain(variant.review_items.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The full set of scoring domains a run of this variant is rated on: the
+    /// case's common domains followed by the variant's own. This is the domain set
+    /// the reviewer must rate and the overall rating is the worst across.
+    /// Resolution forbids two domains sharing an `id`, so the order is stable and
+    /// each id is unambiguous.
+    pub fn domains_for(&self, variant: &Variant) -> Vec<Domain> {
+        self.domains
+            .iter()
+            .chain(variant.domains.iter())
             .cloned()
             .collect()
     }
@@ -1597,17 +1640,43 @@ impl TestCaseCatalog {
             }
         };
 
-        // Scoring domains: a reviewer rates each independently and the run's
-        // overall rating is the worst across them, so a case must declare at least
-        // one. Ids must be unique (each keys a recorded per-domain rating) and a
-        // description is required so the reviewer knows what they are rating.
-        if manifest.domains.is_empty() {
+        // Variants live in their own files (by convention `variants/<slug>.toml`),
+        // listed in order by the `variants` array — the first is the default — and
+        // a case must offer at least one. Each file is a standalone
+        // `ManifestVariant` whose paths resolve against the version folder exactly
+        // like the main manifest's. They are loaded up front so the resolved set is
+        // available both to the per-type guards below (an asset-generation case,
+        // for instance, forbids any variant reference) and to the variant loop.
+        if manifest.variants.is_empty() {
             return Err(invalid(
-                "at least one [[domain]] must be declared".to_string(),
+                "at least one variant must be listed in `variants`".to_string(),
             ));
         }
-        let mut domains: Vec<Domain> = Vec::with_capacity(manifest.domains.len());
-        for domain in &manifest.domains {
+        let mut variant_manifests: Vec<ManifestVariant> =
+            Vec::with_capacity(manifest.variants.len());
+        for rel in &manifest.variants {
+            let path = resolve_inside(rel, "variant")?;
+            if !path.is_file() {
+                return Err(invalid(format!(
+                    "variant `{}` does not exist",
+                    rel.display()
+                )));
+            }
+            let raw = fs::read_to_string(&path).map_err(|err| {
+                invalid(format!("could not read variant `{}`: {err}", rel.display()))
+            })?;
+            let variant: ManifestVariant = toml::from_str(&raw)
+                .map_err(|err| invalid(format!("invalid variant `{}`: {err}", rel.display())))?;
+            variant_manifests.push(variant);
+        }
+
+        // Resolve one scoring domain: a reviewer rates each independently and the
+        // run's overall rating is the worst across them. The id keys a recorded
+        // per-domain rating, so it must be non-empty and unique against `taken`
+        // (the domains already accepted — the common set, plus a variant's own
+        // when resolving that variant); a description is required so the reviewer
+        // knows what they are rating.
+        let resolve_domain = |domain: &ManifestDomain, taken: &[Domain]| -> Result<Domain> {
             if domain.id.trim().is_empty() {
                 return Err(invalid("domain `id` must not be empty".to_string()));
             }
@@ -1617,15 +1686,29 @@ impl TestCaseCatalog {
                     domain.id
                 )));
             }
-            if domains.iter().any(|resolved| resolved.id == domain.id) {
+            if taken.iter().any(|resolved| resolved.id == domain.id) {
                 return Err(invalid(format!("duplicate domain id `{}`", domain.id)));
             }
             let name = domain.name.clone().unwrap_or_else(|| humanize(&domain.id));
-            domains.push(Domain {
+            Ok(Domain {
                 id: domain.id.clone(),
                 name,
                 description: domain.description.clone(),
-            });
+            })
+        };
+
+        // The common domains every variant is rated on. A case must declare at
+        // least one, so every variant's effective set (common ∪ its own) is
+        // non-empty; a variant may add more of its own in the loop below.
+        if manifest.domains.is_empty() {
+            return Err(invalid(
+                "at least one common [[domain]] must be declared".to_string(),
+            ));
+        }
+        let mut domains: Vec<Domain> = Vec::with_capacity(manifest.domains.len());
+        for domain in &manifest.domains {
+            let resolved = resolve_domain(domain, &domains)?;
+            domains.push(resolved);
         }
 
         // Resolve one spec mapping: the source must exist inside the version
@@ -1639,16 +1722,20 @@ impl TestCaseCatalog {
                     spec.source.display()
                 )));
             }
-            if escapes_folder(&spec.dest) {
+            // A spec's seeded path so rarely differs from its source that `dest`
+            // is optional: when omitted it defaults to the source with a trailing
+            // `.hbs` template extension stripped (see [`spec_default_dest`]).
+            let dest = spec
+                .dest
+                .clone()
+                .unwrap_or_else(|| spec_default_dest(&spec.source));
+            if escapes_folder(&dest) {
                 return Err(invalid(format!(
                     "spec dest `{}` escapes the run workspace",
-                    spec.dest.display()
+                    dest.display()
                 )));
             }
-            Ok(SpecFile {
-                source_path,
-                dest: spec.dest.clone(),
-            })
+            Ok(SpecFile { source_path, dest })
         };
 
         let mut common_specs = Vec::with_capacity(manifest.specs.len());
@@ -2294,8 +2381,7 @@ impl TestCaseCatalog {
                 ));
             }
             if !manifest.reference.is_empty()
-                || manifest
-                    .variant
+                || variant_manifests
                     .iter()
                     .any(|variant| !variant.references.is_empty())
             {
@@ -2309,8 +2395,7 @@ impl TestCaseCatalog {
                 .review_items
                 .iter()
                 .chain(
-                    manifest
-                        .variant
+                    variant_manifests
                         .iter()
                         .flat_map(|variant| &variant.review_items),
                 )
@@ -2333,90 +2418,98 @@ impl TestCaseCatalog {
         // non-empty, since the id keys a recorded verdict, the title heads the item
         // in the reviewer UI, and the text is what the reviewer reads. Shared by the
         // common items and each variant's own.
-        let resolve_review_item = |item: &ManifestReviewItem| -> Result<ReviewItem> {
-            if item.id.trim().is_empty() {
-                return Err(invalid("review_item `id` must not be empty".to_string()));
-            }
-            if item.title.trim().is_empty() {
-                return Err(invalid(format!(
-                    "review_item `{}` has empty `title`",
-                    item.id
-                )));
-            }
-            if item.text.trim().is_empty() {
-                return Err(invalid(format!(
-                    "review_item `{}` has empty `text`",
-                    item.id
-                )));
-            }
-            // The weight is the item's point value toward the score; a zero-weight
-            // item could never affect the score, which is never intended, so it is
-            // rejected rather than silently scored as nothing.
-            if item.weight == 0 {
-                return Err(invalid(format!(
-                    "review_item `{}` must have a `weight` greater than zero",
-                    item.id
-                )));
-            }
-            // An item's domain, when declared, must name a domain the case
-            // declares so its points roll up to a real per-domain score.
-            if let Some(domain) = &item.domain
-                && !domains.iter().any(|resolved| &resolved.id == domain)
-            {
-                return Err(invalid(format!(
-                    "review_item `{}` names domain `{}`, which is not declared",
-                    item.id, domain
-                )));
-            }
-            // The sprite-sheet references — the sequences and frames an item is
-            // about — are only meaningful for a sprite-sheet case, and every one
-            // must name something the sheet declares so the reviewer UI can always
-            // resolve it. A single sprite (or any non-asset case) has no sheet, so
-            // declaring either is a manifest error rather than a silently dropped
-            // reference.
-            if !item.sequences.is_empty() || !item.frames.is_empty() {
-                let Some(sheet) = &sheet else {
+        let resolve_review_item =
+            |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
+                if item.id.trim().is_empty() {
+                    return Err(invalid("review_item `id` must not be empty".to_string()));
+                }
+                if item.title.trim().is_empty() {
                     return Err(invalid(format!(
-                        "review_item `{}` declares `sequences`/`frames`, which are only \
-                         valid for a sprite-sheet case (asset_kind = \"sprite-sheet\")",
+                        "review_item `{}` has empty `title`",
                         item.id
                     )));
-                };
-                for slug in &item.sequences {
-                    if !sheet.sequences.iter().any(|s| &s.slug == slug) {
+                }
+                if item.text.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review_item `{}` has empty `text`",
+                        item.id
+                    )));
+                }
+                // The weight is the item's point value toward the score; a zero-weight
+                // item could never affect the score, which is never intended, so it is
+                // rejected rather than silently scored as nothing.
+                if item.weight == 0 {
+                    return Err(invalid(format!(
+                        "review_item `{}` must have a `weight` greater than zero",
+                        item.id
+                    )));
+                }
+                // An item's domain, when declared, must name a domain in the item's
+                // allowed set so its points roll up to a real per-domain score. For a
+                // common item that set is the case's common domains; for a variant item
+                // it also includes that variant's own domains (a common item cannot
+                // name a variant-only domain, since it is rated on every variant).
+                if let Some(domain) = &item.domain
+                    && !allowed_domains
+                        .iter()
+                        .any(|resolved| &resolved.id == domain)
+                {
+                    return Err(invalid(format!(
+                        "review_item `{}` names domain `{}`, which is not declared",
+                        item.id, domain
+                    )));
+                }
+                // The sprite-sheet references — the sequences and frames an item is
+                // about — are only meaningful for a sprite-sheet case, and every one
+                // must name something the sheet declares so the reviewer UI can always
+                // resolve it. A single sprite (or any non-asset case) has no sheet, so
+                // declaring either is a manifest error rather than a silently dropped
+                // reference.
+                if !item.sequences.is_empty() || !item.frames.is_empty() {
+                    let Some(sheet) = &sheet else {
                         return Err(invalid(format!(
-                            "review_item `{}` names sequence `{}`, which the [sheet] does \
+                            "review_item `{}` declares `sequences`/`frames`, which are only \
+                         valid for a sprite-sheet case (asset_kind = \"sprite-sheet\")",
+                            item.id
+                        )));
+                    };
+                    for slug in &item.sequences {
+                        if !sheet.sequences.iter().any(|s| &s.slug == slug) {
+                            return Err(invalid(format!(
+                                "review_item `{}` names sequence `{}`, which the [sheet] does \
                              not declare",
-                            item.id, slug
-                        )));
+                                item.id, slug
+                            )));
+                        }
                     }
-                }
-                for index in &item.frames {
-                    if !sheet.frames.contains(index) {
-                        return Err(invalid(format!(
-                            "review_item `{}` names frame `{}`, which the [sheet] does not \
+                    for index in &item.frames {
+                        if !sheet.frames.contains(index) {
+                            return Err(invalid(format!(
+                                "review_item `{}` names frame `{}`, which the [sheet] does not \
                              declare",
-                            item.id, index
-                        )));
+                                item.id, index
+                            )));
+                        }
                     }
                 }
-            }
-            Ok(ReviewItem {
-                id: item.id.clone(),
-                title: item.title.clone(),
-                text: item.text.clone(),
-                reference: item.reference.clone(),
-                proof: item.proof.clone(),
-                sequences: item.sequences.clone(),
-                frames: item.frames.clone(),
-                weight: item.weight,
-                domain: item.domain.clone(),
-            })
-        };
+                Ok(ReviewItem {
+                    id: item.id.clone(),
+                    title: item.title.clone(),
+                    text: item.text.clone(),
+                    reference: item.reference.clone(),
+                    proof: item.proof.clone(),
+                    sequences: item.sequences.clone(),
+                    frames: item.frames.clone(),
+                    weight: item.weight,
+                    domain: item.domain.clone(),
+                })
+            };
 
+        // Common items are rated on every variant, so they may only name a common
+        // domain — the variant-specific domains are not in scope here.
         let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
         for item in &manifest.review_items {
-            common_review_items.push(resolve_review_item(item)?);
+            common_review_items.push(resolve_review_item(item, &domains)?);
         }
 
         let mut common_proofs = Vec::with_capacity(manifest.proof.len());
@@ -2424,16 +2517,10 @@ impl TestCaseCatalog {
             common_proofs.push(resolve_proof(proof)?);
         }
 
-        // A case must offer at least one variant; a run always selects exactly
-        // one. Variant slugs must be unique so a run records an unambiguous
-        // choice.
-        if manifest.variant.is_empty() {
-            return Err(invalid(
-                "at least one [[variant]] must be declared".to_string(),
-            ));
-        }
-        let mut variants: Vec<Variant> = Vec::with_capacity(manifest.variant.len());
-        for variant in &manifest.variant {
+        // A run always selects exactly one variant (loaded from its file above).
+        // Variant slugs must be unique so a run records an unambiguous choice.
+        let mut variants: Vec<Variant> = Vec::with_capacity(variant_manifests.len());
+        for variant in &variant_manifests {
             if variants
                 .iter()
                 .any(|resolved| resolved.slug == variant.slug)
@@ -2447,6 +2534,18 @@ impl TestCaseCatalog {
             for spec in &variant.specs {
                 specs.push(resolve_spec(spec)?);
             }
+
+            // The variant's own scoring domains, on top of the case's common ones.
+            // `effective_domains` is common ∪ this variant's, so it is both the
+            // uniqueness set each new domain is checked against and the set a
+            // variant review item may name; the tail past the common domains is the
+            // variant's own, recorded on the resolved `Variant`.
+            let mut effective_domains = domains.clone();
+            for domain in &variant.domains {
+                let resolved = resolve_domain(domain, &effective_domains)?;
+                effective_domains.push(resolved);
+            }
+            let variant_domains: Vec<Domain> = effective_domains[domains.len()..].to_vec();
             // A variant's workspace, when declared, replaces the common workspace
             // for this variant rather than layering on top of it.
             let workspace = match &variant.workspace {
@@ -2564,9 +2663,11 @@ impl TestCaseCatalog {
                 claim(PathBuf::from(ASSET_CONFIG_DEST), "canvas config")?;
             }
 
+            // A variant item may name a common domain or one of this variant's
+            // own, so it is resolved against the effective set.
             let mut review_items = Vec::with_capacity(variant.review_items.len());
             for item in &variant.review_items {
-                review_items.push(resolve_review_item(item)?);
+                review_items.push(resolve_review_item(item, &effective_domains)?);
             }
             // The common items and the variant's own are recorded under one id
             // each; two items sharing an id would make a recorded verdict
@@ -2622,6 +2723,7 @@ impl TestCaseCatalog {
                 references,
                 proofs,
                 review_items,
+                domains: variant_domains,
             });
         }
 
@@ -2778,6 +2880,19 @@ fn default_max_runtime_hours() -> f64 {
 /// omits it: a fully transparent canvas.
 fn default_background() -> String {
     "transparent".to_string()
+}
+
+/// The default seeded `dest` for a `[[spec]]` that omits one: the `source` with a
+/// trailing `.hbs` template extension removed (so `specs/x.md.hbs` renders to
+/// `specs/x.md`), or the `source` unchanged when it is not a template. A spec's
+/// seeded path so rarely differs from its source that most `[[spec]]` entries need
+/// only a `source`.
+fn spec_default_dest(source: &Path) -> PathBuf {
+    if source.extension().and_then(|ext| ext.to_str()) == Some("hbs") {
+        source.with_extension("")
+    } else {
+        source.to_path_buf()
+    }
 }
 
 /// Resolve and validate a sprite-sheet case's `[sheet]` table.

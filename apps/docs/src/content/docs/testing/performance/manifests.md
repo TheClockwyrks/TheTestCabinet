@@ -22,6 +22,12 @@ max_runtime_hours = 0.5      # cap on the harness session before it's stopped (d
 workspace = "workspaces/base" # starter project the model fills in (seeds the run root)
 init = "cargo fetch"         # optional command run in the container after seeding, before the harness
 
+# Variants: an ORDERED list of paths to standalone variant files (first = default).
+# A root key, so it must precede the first table header (`[build]`). Each is a
+# self-contained TOML document (top-level keys are the variant's fields), by
+# convention under `variants/`, with every path resolving against the version folder.
+variants = ["variants/base.toml"]
+
 # How the harness builds the model's submission into a wasm solution module.
 # Required: the case states the commands and the artifact path explicitly.
 [build]
@@ -51,23 +57,30 @@ expected = "cases/large.out"
 fuel_limit       = 5_000_000_000 # wasmtime fuel ceiling per input; exceeding it fails that input
 max_memory_bytes = 268_435_456   # 256 MiB linear-memory cap
 
-# Variants. As with every test type, a case offers one or more and exactly one
-# runs per run — here typically a different problem size or constraint.
-[[variant]]
+# Common specs, seeded for EVERY variant (the problem statement and contract docs).
+# `dest` defaults to `source` with a trailing `.hbs` removed.
+[[spec]]
+source = "specs/problem.md"  # dest defaults to "specs/problem.md"
+```
+
+Each `variants` entry names a standalone variant file (the first is the default) —
+a TOML document whose top-level keys are the variant's fields, exactly as for an
+[end-to-end case](/testing/end-to-end/manifests/). Here a variant typically varies
+the seeded specs — a different problem size or constraint:
+
+```toml
+# test-cases/<slug>/<version>/variants/base.toml
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 spec = []                    # ADDITIVE specs on top of the common specs
-
-# Common specs, seeded for EVERY variant (the problem statement and contract docs).
-[[spec]]
-source = "specs/problem.hbs"
-dest   = "specs/problem.md"
 ```
 
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_hours`, `workspace`, `init`, and the
-  `[[spec]]` / `[[variant]]` seeding rules behave exactly as they do for an
-  [end-to-end case](/testing/end-to-end/manifests/).
+  `[[spec]]` and `variants` seeding rules behave exactly as they do for an
+  [end-to-end case](/testing/end-to-end/manifests/) — variants are standalone
+  files listed in order (the first the default), and each `[[spec]]` `dest`
+  defaults to its `source`.
 - The `[build]` table is **required** and, as with an
   [adversarial case](/testing/adversarial/manifests/), emits a **wasm module**
   rather than a static site: `install` and `build` produce it and `module` names

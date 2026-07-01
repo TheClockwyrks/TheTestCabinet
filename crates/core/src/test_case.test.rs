@@ -12,14 +12,18 @@ use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
 fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("demo/v1.0.0");
-    fs::create_dir_all(&version).expect("create version dir");
+    fs::create_dir_all(version.join("variants")).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
+    // Variants live in their own files; the manifest lists one `base` variant. The
+    // `variants` list is a root key, so it precedes `manifest_extra` (which usually
+    // opens with a `[build]`/`[canvas]` table header).
     let manifest = format!(
-        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n{manifest_extra}\n\
-         [[variant]]\nslug = \"base\"\n\
+        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\"]\n{manifest_extra}\n\
          [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     );
     fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
+    fs::write(version.join("variants/base.toml"), "slug = \"base\"\n").expect("write variant");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
 }
@@ -77,23 +81,26 @@ difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
 type = \"asset-generation\"\n\
+variants = [\"variants/base.toml\"]\n\
 [canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
 [tool]\nbinary = \"draw\"\npreview = \"canvas.png\"\n\
 [output]\nactions = \"actions.json\"\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
-[[variant]]\nslug = \"base\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the sprite is to the brief.\"\n";
 
 /// Write an asset-generation version with all the files a valid one needs
-/// (prompt, seeded brief) and the given manifest, then return the catalog. An
-/// asset-generation case has no target image, so none is written. No operations
-/// schema is written either — the binary's `--help` is the contract.
+/// (prompt, seeded brief, the `base` variant file) and the given manifest, then
+/// return the catalog. An asset-generation case has no target image, so none is
+/// written. No operations schema is written either — the binary's `--help` is the
+/// contract.
 fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
+    fs::create_dir_all(version.join("variants")).expect("variants dir");
     fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
     fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
+    fs::write(version.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
     fs::write(version.join("test-case.toml"), manifest).expect("manifest");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
@@ -202,6 +209,7 @@ tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
 type = \"asset-generation\"\n\
 asset_kind = \"sprite-sheet\"\n\
+variants = [\"variants/base.toml\"]\n\
 [canvas]\nwidth = 32\nheight = 32\nbackground = \"transparent\"\n\
 [tool]\nbinary = \"draw-sheet\"\npreview = \"frames/{frame}.png\"\n\
 [output]\nactions = \"frames/{frame}.actions.json\"\n\
@@ -210,7 +218,6 @@ asset_kind = \"sprite-sheet\"\n\
 [[sheet.frame]]\nindex = 1\n\
 [[sheet.sequence]]\nslug = \"walk-right\"\nframes = [0, 1]\nfps = 4.0\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
-[[variant]]\nslug = \"base\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the sheet is to the brief.\"\n";
 
 /// The `[sheet]` block of [`VALID_SHEET_MANIFEST`], for tests that delete it.
@@ -478,13 +485,13 @@ difficulty = \"hard\"\n\
 tags = [\"adversarial\"]\n\
 prompt = \"prompt.hbs\"\n\
 type = \"adversarial\"\n\
+variants = [\"variants/base.toml\"]\n\
 [build]\ninstall = \"cargo fetch\"\nbuild = \"cargo build --release --target wasm32-unknown-unknown\"\nmodule = \"target/wasm32-unknown-unknown/release/controller.wasm\"\n\
 [contract]\nentry = \"tick\"\nworld = \"schemas/world.json\"\naction = \"schemas/action.json\"\n\
 [sandbox]\nfuel_per_tick = 50000000\nmax_memory_bytes = 67108864\n\
 [simulation]\ntimestep_ms = 16\nmax_ticks = 37500\n\
 [match]\nparticipants = 2\nstructure = \"round-robin\"\nrounds = 1\n\
 [replay]\nrenderer = \"replay/index.html\"\n\
-[[variant]]\nslug = \"base\"\n\
 [[domain]]\nid = \"play\"\ndescription = \"How well the controller plays.\"\n";
 
 /// Write an adversarial version with all the files a valid one needs (prompt,
@@ -495,10 +502,12 @@ fn adversarial_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let version = dir.path().join("foray/v1.0.0");
     fs::create_dir_all(version.join("schemas")).expect("schemas dir");
     fs::create_dir_all(version.join("replay")).expect("replay dir");
+    fs::create_dir_all(version.join("variants")).expect("variants dir");
     fs::write(version.join("prompt.hbs"), "Write a controller.").expect("prompt");
     fs::write(version.join("schemas/world.json"), "{}").expect("world schema");
     fs::write(version.join("schemas/action.json"), "{}").expect("action schema");
     fs::write(version.join("replay/index.html"), "<html></html>").expect("renderer");
+    fs::write(version.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
     fs::write(version.join("test-case.toml"), manifest).expect("manifest");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
@@ -684,24 +693,31 @@ fn empty_build_command_is_rejected() {
     );
 }
 
-/// A `[build]` table plus the given trailing TOML, for review-item tests that
-/// also declare their own `[[variant]]` (the helper still appends a `base`).
+/// A `[build]` table plus the given trailing TOML, for review-item tests whose
+/// manifest needs only the default `base` variant (which [`catalog_with_manifest`]
+/// lists and writes).
 fn build_and(extra: &str) -> String {
     format!("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n{extra}")
 }
 
 #[test]
 fn resolves_common_and_variant_review_items() {
-    let (_dir, catalog) = catalog_with_manifest(&build_and(
-        "[[review_item]]\n\
-         id = \"ball-spin\"\n\
-         title = \"Paddle spin\"\n\
-         text = \"Swinging a paddle imparts spin on the ball.\"\n\
-         weight = 1\n\n\
-         [[variant]]\n\
-         slug = \"frenzy\"\n\
-         review_item = [{ id = \"frenzy-escalation\", title = \"Frenzy escalation\", text = \"Ball speed escalates uncapped.\", weight = 1 }]",
-    ));
+    // A common item plus a `frenzy` variant (in its own file) that adds its own.
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[review_item]]\nid = \"ball-spin\"\ntitle = \"Paddle spin\"\n\
+         text = \"Swinging a paddle imparts spin on the ball.\"\nweight = 1\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "variants/frenzy.toml",
+            "slug = \"frenzy\"\n[[review_item]]\nid = \"frenzy-escalation\"\n\
+             title = \"Frenzy escalation\"\ntext = \"Ball speed escalates uncapped.\"\nweight = 1\n",
+        )],
+    );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
 
     // The common item ships to every variant; the variant's own is additive.
@@ -720,16 +736,20 @@ fn resolves_common_and_variant_review_items() {
 
 #[test]
 fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
-    let (_dir, catalog) = catalog_with_manifest(&build_and(
-        "[[review_item]]\n\
-         id = \"dup\"\n\
-         title = \"A common item\"\n\
-         text = \"A common item.\"\n\
-         weight = 1\n\n\
-         [[variant]]\n\
-         slug = \"frenzy\"\n\
-         review_item = [{ id = \"dup\", title = \"Collides\", text = \"Collides with the common id.\", weight = 1 }]",
-    ));
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[review_item]]\nid = \"dup\"\ntitle = \"A common item\"\ntext = \"A common item.\"\nweight = 1\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "variants/frenzy.toml",
+            "slug = \"frenzy\"\n[[review_item]]\nid = \"dup\"\ntitle = \"Collides\"\n\
+             text = \"Collides with the common id.\"\nweight = 1\n",
+        )],
+    );
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a colliding review-item id is rejected");
@@ -797,17 +817,18 @@ fn a_review_item_naming_an_undeclared_domain_is_rejected() {
 
 #[test]
 fn a_case_with_no_domains_is_rejected() {
-    // `catalog_with_files` supplies the whole manifest, so we can omit domains.
+    // `catalog_with_files` supplies the whole manifest (and a default base variant
+    // file), so we can omit domains.
     let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
-         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
-         [[variant]]\nslug = \"base\"\n"
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n"
         .to_string();
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a case with no domains is rejected");
     assert!(
-        format!("{err}").contains("at least one [[domain]]"),
+        format!("{err}").contains("at least one common [[domain]]"),
         "unexpected error: {err}"
     );
 }
@@ -815,8 +836,8 @@ fn a_case_with_no_domains_is_rejected() {
 #[test]
 fn resolves_domains_with_humanized_default_names() {
     let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
-         [[variant]]\nslug = \"base\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n\
          [[domain]]\nid = \"versus\"\nname = \"Versus Mode\"\ndescription = \"Two-player play.\"\n"
         .to_string();
@@ -828,6 +849,130 @@ fn resolves_domains_with_humanized_default_names() {
     assert_eq!(version.domains[0].name, "Single Player");
     // The second supplies an explicit name.
     assert_eq!(version.domains[1].name, "Versus Mode");
+}
+
+/// The common-domain manifest head plus a `gyre` variant that declares its own
+/// domain and a review item rolling up to it. Shared by the per-variant-domain
+/// tests below; `override_gyre` replaces the gyre variant file's body.
+fn per_variant_domain_catalog(gyre_body: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n"
+        .to_string();
+    catalog_with_files(&manifest, &[("variants/gyre.toml", gyre_body)])
+}
+
+#[test]
+fn a_variant_declares_its_own_domain_added_to_the_common_ones() {
+    // The case declares one common domain; the `gyre` variant adds its own, which
+    // a variant review item rolls up to.
+    let (_dir, catalog) = per_variant_domain_catalog(
+        "slug = \"gyre\"\n\
+         [[domain]]\nid = \"gyre\"\ndescription = \"Oriented-face bounces.\"\n\
+         [[review_item]]\nid = \"gyre-bounce\"\ntitle = \"Oriented bounces\"\n\
+         text = \"The ball bounces off tilted faces.\"\nweight = 1\ndomain = \"gyre\"\n",
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    // The case-level `domains` are only the common ones; the variant's is on the
+    // variant, and `domains_for` chains them.
+    assert_eq!(
+        version
+            .domains
+            .iter()
+            .map(|d| d.id.as_str())
+            .collect::<Vec<_>>(),
+        ["single-player"]
+    );
+    let gyre = version.variant("gyre").expect("gyre variant");
+    assert_eq!(
+        gyre.domains
+            .iter()
+            .map(|d| d.id.as_str())
+            .collect::<Vec<_>>(),
+        ["gyre"]
+    );
+    // The gyre variant's own domain name is humanized from its id.
+    assert_eq!(gyre.domains[0].name, "Gyre");
+    let effective: Vec<String> = version
+        .domains_for(gyre)
+        .into_iter()
+        .map(|d| d.id)
+        .collect();
+    assert_eq!(effective, ["single-player", "gyre"]);
+    // The default `base` variant has only the common domain.
+    let base = version.variant("base").expect("base");
+    assert_eq!(version.domains_for(base).len(), 1);
+}
+
+#[test]
+fn a_variant_domain_colliding_with_a_common_domain_is_rejected() {
+    let (_dir, catalog) = per_variant_domain_catalog(
+        "slug = \"gyre\"\n\
+         [[domain]]\nid = \"single-player\"\ndescription = \"Collides with the common domain.\"\n",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a variant domain colliding with a common one is rejected");
+    assert!(
+        format!("{err}").contains("duplicate domain id `single-player`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_common_review_item_cannot_name_a_variant_only_domain() {
+    // A common item is rated on every variant, so it may not roll up to a domain
+    // only one variant declares.
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"Prose.\"\nweight = 1\ndomain = \"gyre\"\n\
+         [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "variants/gyre.toml",
+            "slug = \"gyre\"\n[[domain]]\nid = \"gyre\"\ndescription = \"Gyre mode.\"\n",
+        )],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a common item naming a variant-only domain is rejected");
+    assert!(
+        format!("{err}").contains("names domain `gyre`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_spec_dest_defaults_to_its_source() {
+    // A spec with no `dest` seeds at its `source`; a `.hbs` source drops that one
+    // extension (so `x.md.hbs` renders to `x.md`); an explicit `dest` still wins.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest_with(
+            "",
+            "[[spec]]\nsource = \"specs/plain.md\"\n\
+             [[spec]]\nsource = \"specs/tpl.md.hbs\"\n\
+             [[spec]]\nsource = \"specs/renamed.md\"\ndest = \"specs/final.md\"\n",
+        ),
+        &[
+            ("specs/plain.md", "# plain"),
+            ("specs/tpl.md.hbs", "# {{tpl}}"),
+            ("specs/renamed.md", "# renamed"),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let dests: Vec<String> = version
+        .common_specs
+        .iter()
+        .map(|s| s.dest.display().to_string())
+        .collect();
+    assert!(dests.contains(&"specs/plain.md".to_string()), "{dests:?}");
+    assert!(dests.contains(&"specs/tpl.md".to_string()), "{dests:?}");
+    assert!(dests.contains(&"specs/final.md".to_string()), "{dests:?}");
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
@@ -851,17 +996,29 @@ fn catalog_with_files(
         }
         fs::write(full, contents).expect("write file");
     }
+    // Provide a default `variants/base.toml` unless the caller supplied its own, so
+    // a manifest's `variants = ["variants/base.toml"]` resolves without every test
+    // spelling the file out. A test declaring extra variants adds their files via
+    // `files`.
+    let base_variant = version.join("variants/base.toml");
+    if !base_variant.exists() {
+        fs::create_dir_all(base_variant.parent().unwrap()).expect("variants dir");
+        fs::write(base_variant, "slug = \"base\"\n").expect("write base variant");
+    }
     fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
     let catalog = TestCaseCatalog::new(dir.path());
     (dir, catalog)
 }
 
-/// The required header plus a `[build]` table, with `body` (top-level keys and
-/// tables) spliced in between so a test can declare `workspace`/`init` before the
-/// build table and append variants/specs after it.
+/// The required header (including a single `base` variant, whose file
+/// [`catalog_with_files`] provides) plus a `[build]` table, with `body` (top-level
+/// keys and tables) spliced in between so a test can declare `workspace`/`init`
+/// before the build table and append specs/tables after it. A test needing more
+/// than the one `base` variant builds its manifest directly instead.
 fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
         "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\"]\n\
          {body}\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          {after_build}\n\
@@ -873,7 +1030,7 @@ fn manifest_with(body: &str, after_build: &str) -> String {
 fn workspace_files_resolve_with_run_relative_dests_and_init() {
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\ninit = \"npm install\"\n",
-        "[[variant]]\nslug = \"base\"\n",
+        "",
     );
     let (_dir, catalog) = catalog_with_files(
         &manifest,
@@ -907,10 +1064,7 @@ fn workspace_dotfiles_are_not_seeded_except_the_allowlist() {
     // except the allowlist a case may ship: `.gitignore` (so the published repo
     // can exclude build artifacts) and `.cargo` (Cargo build config a Rust case
     // needs). A `.cargo` directory is descended into and its contents seeded.
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\n",
-        "[[variant]]\nslug = \"base\"\n",
-    );
+    let manifest = manifest_with("workspace = \"workspaces/base\"\n", "");
     let (_dir, catalog) = catalog_with_files(
         &manifest,
         &[
@@ -946,14 +1100,22 @@ fn only_the_allowlisted_dotfiles_are_seeded() {
 
 #[test]
 fn a_variant_workspace_overrides_the_common_one() {
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\n",
-        "[[variant]]\nslug = \"base\"\n\
-         [[variant]]\nslug = \"special\"\nworkspace = \"workspaces/special\"\n",
-    );
+    // Two variants: the default `base` (inheriting the common workspace) and
+    // `special`, whose own file overrides the workspace. `base.toml` is provided by
+    // `catalog_with_files`; `special.toml` is supplied here.
+    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         variants = [\"variants/base.toml\", \"variants/special.toml\"]\n\
+         workspace = \"workspaces/base\"\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
     let (_dir, catalog) = catalog_with_files(
         &manifest,
         &[
+            (
+                "variants/special.toml",
+                "slug = \"special\"\nworkspace = \"workspaces/special\"\n",
+            ),
             ("workspaces/base/package.json", "{\"name\":\"base\"}"),
             ("workspaces/special/package.json", "{\"name\":\"special\"}"),
             ("workspaces/special/extra.txt", "x"),
@@ -983,8 +1145,7 @@ fn a_workspace_file_colliding_with_a_spec_dest_is_rejected() {
     // clobber each other, so resolution rejects it.
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\n",
-        "[[spec]]\nsource = \"overview.md\"\ndest = \"specs/overview.md\"\n\
-         [[variant]]\nslug = \"base\"\n",
+        "[[spec]]\nsource = \"overview.md\"\ndest = \"specs/overview.md\"\n",
     );
     let (_dir, catalog) = catalog_with_files(
         &manifest,
@@ -1004,7 +1165,7 @@ fn a_workspace_file_colliding_with_a_spec_dest_is_rejected() {
 
 #[test]
 fn a_blank_init_command_is_rejected() {
-    let manifest = manifest_with("init = \"   \"\n", "[[variant]]\nslug = \"base\"\n");
+    let manifest = manifest_with("init = \"   \"\n", "");
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let err = catalog
         .resolve("demo", "v1.0.0")
@@ -1017,10 +1178,7 @@ fn a_blank_init_command_is_rejected() {
 
 #[test]
 fn a_missing_workspace_directory_is_rejected() {
-    let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\n",
-        "[[variant]]\nslug = \"base\"\n",
-    );
+    let manifest = manifest_with("workspace = \"workspaces/base\"\n", "");
     // The manifest points at a workspace dir that was never created.
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);
     let err = catalog

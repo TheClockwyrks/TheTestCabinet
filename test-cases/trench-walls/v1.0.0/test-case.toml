@@ -13,6 +13,11 @@ max_runtime_hours = 1.5
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
 # Each frame is its own 32x32 canvas (a separate file). These are TILES: every
 # frame fills the whole cell edge-to-edge and butts seamlessly against its
 # neighbors — not a centered sprite with margin. 32x32 matches the trench's tile
@@ -128,11 +133,6 @@ fps = 2
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
-dest = "specs/brief.md"
-
-[[variant]]
-slug = "base"
-name = "Base"
 
 [[domain]]
 id = "fidelity"

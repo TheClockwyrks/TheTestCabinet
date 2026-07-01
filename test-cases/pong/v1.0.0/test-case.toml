@@ -56,6 +56,26 @@ workspace = "workspaces/base"
 # verify immediately against a project-local Playwright.
 init = "npm install && npx playwright install chromium"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own additive
+# specs, supplies its own `title` menu reference (the main menu lists a different
+# set of modes per variant; `gameplay` and `game-over` are common), and — for the
+# three mode variants — declares its own scoring domain and the review item that
+# rolls up to it:
+#   - base   — standard modes only (Solo and Versus); no extra mode.
+#   - frenzy — adds the escalating, uncapped-speed Frenzy mode (own domain).
+#   - multi  — adds a three-ball mode with ball-to-ball collisions (own domain).
+#   - gyre   — adds a mode whose obstacles sway and spin, so the ball bounces off
+#              tilted, oriented faces instead of axis-aligned ones (own domain).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/base.toml",
+  "variants/frenzy.toml",
+  "variants/multi.toml",
+  "variants/gyre.toml",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root: dependencies are installed, then the static build is produced
@@ -77,25 +97,22 @@ build = "npm run build"
 # Every common spec is plain Markdown, seeded verbatim. (A `.hbs` source would be
 # rendered with the selected variant before landing at its `dest`; no common spec
 # needs that here, since none of their text varies by variant or version.)
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
-dest = "specs/overview.md"
 
 [[spec]]
 source = "specs/playfield.md"
-dest = "specs/playfield.md"
 
 [[spec]]
 source = "specs/physics.md"
-dest = "specs/physics.md"
 
 [[spec]]
 source = "specs/flow.md"
-dest = "specs/flow.md"
 
 [[spec]]
 source = "specs/modes/standard.md"
-dest = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
@@ -103,63 +120,6 @@ dest = "specs/modes/standard.md"
 # the `[[proof]]` entries must match.
 [[spec]]
 source = "specs/proof.md"
-dest = "specs/proof.md"
-
-# Asset files or directories (relative to this folder) seeded alongside the
-# specs. Carom is simple enough to need none.
-assets = []
-
-# Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each variant seeds the common specs above plus its own additive specs. The base
-# variant is listed first, so it is the default. The three variants differ in
-# which mode spec (if any) they add on top of the always-present standard mode,
-# and in their `title` reference — the main menu lists a different set of modes
-# per variant, so each variant declares its own menu mockup for the `title` view:
-#   - base   — standard modes only (Solo and Versus).
-#   - frenzy — adds the escalating, uncapped-speed Frenzy mode.
-#   - multi  — adds a three-ball mode with ball-to-ball collisions.
-#   - gyre   — adds a mode whose obstacles sway and spin, so the ball bounces off
-#              tilted, oriented faces instead of axis-aligned ones.
-#
-# A variant's `reference` array is additive on top of the common references
-# below, exactly like `spec`. Each variant supplies the `title` view; the
-# `gameplay` and `game-over` views are common to every variant. A view slug must
-# not appear both here and among the common references.
-[[variant]]
-slug = "base"
-name = "Base"
-description = "Standard game mode only."
-reference = [{ view = "title", path = "reference/menu-base.html" }]
-
-[[variant]]
-slug = "frenzy"
-name = "Frenzy"
-description = "Standard plus the escalating Frenzy mode."
-spec = [{ source = "specs/modes/frenzy.md", dest = "specs/modes/frenzy.md" }]
-reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
-review_item = [
-  { id = "frenzy-escalation", title = "Frenzy escalation", text = "In a Frenzy match each paddle hit multiplies ball speed by 1.08 with no cap, so the rally visibly escalates well past the normal pace and ends quickly — clearly faster than Solo.", weight = 1 },
-]
-
-[[variant]]
-slug = "multi"
-name = "Multi-ball"
-description = "Standard plus a three-ball mode with ball-to-ball collisions."
-spec = [{ source = "specs/modes/multi.md", dest = "specs/modes/multi.md" }]
-reference = [{ view = "title", path = "reference/menu-multi.html" }]
-review_item = [
-  { id = "multi-three-balls", title = "Three balls in play", text = "A Multi-ball match keeps three balls in play at once, each carrying its own velocity and spin; all three spawn at center and serve together after every point.", weight = 1 },
-]
-
-[[variant]]
-slug = "gyre"
-name = "Gyre"
-description = "Standard plus a mode whose obstacles oscillate and rotate, forcing collision against tilted, oriented faces."
-spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
-reference = [{ view = "title", path = "reference/menu-gyre.html" }]
-review_item = [
-  { id = "gyre-oriented-bounce", title = "Oriented bounces", text = "In Gyre the two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not the axis-aligned reflections the other modes use.", weight = 1 },
-]
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup; the harness renders it to a screenshot that is seeded into the run as a

@@ -23,35 +23,34 @@ workspace = "workspaces/base" # optional starter directory; its files seed the r
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 
+# Variants: an ORDERED list of paths to standalone variant files (the first is the
+# default). Exactly one variant runs per run, and its slug is recorded in the run
+# record. Each path is relative to the version folder; by convention the files
+# live under `variants/`, and each is a self-contained TOML document (see "Variant
+# files" below). Because `variants` is a ROOT key, it must appear BEFORE the first
+# table header (`[build]`, `[[spec]]`, …) in this file.
+variants = [
+  "variants/base.toml",      # first entry = the default variant
+  "variants/frenzy.toml",
+]
+
 # How validation builds the produced implementation into a served static site.
 # Required: a case must state both commands explicitly; there are no defaults.
 [build]
 install = "npm ci"           # dependency install command (required)
 build = "npm run build"      # static-build command (required)
 
-# Common specs, seeded for EVERY variant. Each maps a `source` inside the
-# version folder to a `dest` in the run's workspace. A `.hbs` source is rendered
-# (see Spec templates); any other source is seeded verbatim.
+# Common specs, seeded for EVERY variant. Each maps a `source` inside the version
+# folder to a `dest` in the run's workspace. A `.hbs` source is rendered (see Spec
+# templates); any other source is seeded verbatim. `dest` is OPTIONAL and defaults
+# to `source` with a trailing `.hbs` extension removed — so `specs/overview.md`
+# seeds to `specs/overview.md`, and `specs/overview.md.hbs` renders to
+# `specs/overview.md`. Give an explicit `dest` only to remap the seeded path.
 [[spec]]
-source = "specs/overview.hbs" # source path (relative to this folder); .hbs = rendered
-dest   = "specs/overview.md"  # destination in the run workspace (relative)
+source = "specs/overview.md" # source path (relative to this folder); dest defaults to it
 
-# Variants. A case offers one or more; exactly one runs per run. Each seeds the
-# common specs above plus its own additional specs, and may declare its own
-# variant-specific references on top of the common ones.
-[[variant]]
-slug = "base"                # stable slug, recorded in the run record
-name = "Base"                # display name (optional; default humanizes the slug)
-description = "..."          # optional inline prose (site-facing)
-spec = []                    # ADDITIVE specs on top of the common specs
-workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
-# ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
-# `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
-reference = [{ view = "title", path = "reference/menu-base.html" }]
-# ADDITIVE reviewer checklist items on top of the common ones (see below); same
-# `{ id, title, text, weight }` shape as a `[[review_item]]`. Lets a mode-only item be
-# checked only when this variant runs.
-review_item = []
+[[spec]]
+source = "specs/mode.md.hbs" # .hbs source is rendered; dest defaults to "specs/mode.md"
 
 # Common reference views, seeded for EVERY variant. A reference is EITHER an HTML
 # mockup rendered to a screenshot (`path`) OR a static image/video served as-is
@@ -81,9 +80,9 @@ name = "Title"               # display name (optional; default humanizes the vie
 reference = "title"          # baseline: the rendered screenshot of this reference
 actions = []                 # actions to drive the build into the view (empty = on load)
 
-# Reviewer checklist items, common to every variant. Reporter-side material (NOT
-# seeded): each names something a reviewer must explicitly check after playing
-# the build. A variant may add its own (see the variant's `review_item` above).
+# COMMON reviewer checklist items, checked for EVERY variant. Reporter-side
+# material (NOT seeded): each names something a reviewer must explicitly check
+# after playing the build. A variant may add its own in its variant file.
 [[review_item]]
 id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
 title = "Paddle spin"        # short heading shown above the item (numbered) in the reviewer UI
@@ -91,14 +90,55 @@ text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
 weight = 1                   # points this item is worth toward the score (required, > 0)
 reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
 proof = "title"              # optional: a proof id whose SUBMITTED media is shown
-domain = "single-player"     # optional: the scoring domain this item rolls up to
+domain = "single-player"     # optional: a COMMON item may name only a COMMON domain
 
-# Scoring domains. The reviewer rates each independently while playing the build,
-# and the run's OVERALL rating is the WORST across them. At least one is required.
+# COMMON scoring domains, rated for EVERY variant. The reviewer rates each
+# independently while playing the build; the run's OVERALL rating is the WORST
+# across the run variant's EFFECTIVE domain set (these common domains plus any the
+# run's variant declares in its own file). At least one common domain is required.
 [[domain]]
 id = "single-player"         # stable slug, recorded with the per-domain rating
 name = "Single Player"       # display name (optional; default humanizes the id)
 description = "Solo play against the AI opponent." # what the reviewer is rating (required)
+```
+
+Each `variants` entry points at a standalone variant file — a TOML document whose
+**top-level keys are the variant's own fields**. Every path inside it is relative
+to the **version folder** (not the variant file's location), exactly as an inline
+variant was. A variant seeds the common specs plus its own additive specs, may
+supply variant-specific references, review items, and workspace, and may declare
+**additional scoring domains** rated only when it runs:
+
+```toml
+# test-cases/<slug>/<version>/variants/frenzy.toml
+slug = "frenzy"              # stable slug, recorded in the run record
+name = "Frenzy"             # display name (optional; default humanizes the slug)
+description = "..."          # optional inline prose (site-facing)
+workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
+# ADDITIVE specs on top of the common specs; same `{ source, dest }` shape as a
+# `[[spec]]`, and `dest` likewise defaults to `source` (trailing `.hbs` stripped).
+spec = [{ source = "specs/modes/frenzy.md" }]
+# ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
+# `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
+reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
+
+# ADDITIVE reviewer checklist items on top of the common ones; same shape as a
+# `[[review_item]]`. A variant item may name a COMMON domain OR one of this
+# variant's OWN domains (below).
+[[review_item]]
+id = "frenzy-escalation"     # unique within the variant's effective set (common + own)
+title = "Frenzy escalation"
+text = "Each hit multiplies ball speed with no cap, so the rally visibly escalates."
+weight = 1
+domain = "frenzy"
+
+# ADDITIONAL scoring domains, rated ONLY when this variant runs — layered on top of
+# the case's common domains. A domain id must be unique across the common domains
+# and this variant's own.
+[[domain]]
+id = "frenzy"
+name = "Frenzy"
+description = "The escalating Frenzy mode: uncapped speed that visibly ramps every hit."
 ```
 
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
@@ -146,14 +186,21 @@ description = "Solo play against the AI opponent." # what the reviewer is rating
   [Evaluation](/testing/end-to-end/evaluation/#load-check).
 - Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
   mapping a `source` file inside the version folder onto a `dest` path in the
-  run workspace. A `source` ending in `.hbs` is a Handlebars template rendered
+  run workspace. `dest` is **optional**: it defaults to `source` with a trailing
+  `.hbs` extension removed, so `specs/x.md` seeds to `specs/x.md` and
+  `specs/x.md.hbs` renders to `specs/x.md`; give an explicit `dest` only to remap
+  the seeded path. A `source` ending in `.hbs` is a Handlebars template rendered
   into its `dest` (see [Spec templates](/testing/end-to-end/overview/#spec-templates));
   any other `source` is
   seeded verbatim. The rendered reference screenshots are seeded too. Asset
   entries may be files or directories; a directory is seeded recursively.
-- Each `[[variant]]` declares a build the case offers. A run selects exactly one
-  variant, which seeds the common specs plus the variant's own `spec` entries;
-  see [Variants](/testing/end-to-end/overview/#variants).
+- The `variants` list names the builds the case offers, in order, as paths to
+  standalone **variant files** (the first is the default). It is a root key, so it
+  must precede the first table header. A run selects exactly one variant, which
+  seeds the common specs plus the variant's own `spec` entries; each variant file
+  is a self-contained TOML document whose top-level keys are the variant's fields,
+  and every path inside it resolves against the version folder. See
+  [Variants](/testing/end-to-end/overview/#variants).
 - Each `[[reference]]` declares a **common** reference view, seeded as a visual
   target for **every** variant. A reference is **either** an HTML mockup rendered
   to a screenshot (`path`, whose source is never seeded) **or** a static image or
@@ -202,8 +249,10 @@ description = "Solo play against the AI opponent." # what the reviewer is rating
   be greater than zero — a `pass` verdict earns the item's weight and a `fail`
   earns none, and the run's score is the earned weight over the total declared
   weight (verdicts are binary; there is no "not applicable"). An item may also
-  carry an optional `domain` naming the scoring domain it rolls up to (it must be
-  a declared `[[domain]]`); a general item that applies to every mode omits it.
+  carry an optional `domain` naming the scoring domain it rolls up to; a common
+  item may name only a **common** domain, while a variant's own item may name a
+  common domain **or** one of that variant's own domains. A general item that
+  applies to every mode omits it.
   An item may also pair an expected reference and the submitted proof with its
   check: the optional `reference` names a reference view (shown as the
   **expected** target) and the optional `proof` names a proof id (whose
@@ -218,9 +267,12 @@ description = "Solo play against the AI opponent." # what the reviewer is rating
   independently — for example a game's `single-player` and `versus` modes — by a
   stable `id` (recorded with the per-domain rating), an optional `name`
   (defaulting to a humanized `id`), and a required `description` telling the
-  reviewer what they are rating. At least one domain is **required**. The run's
-  **overall rating** is the *worst* rating across all of a case's domains, so a
-  flawless mode cannot mask a broken one. Domains are case-level (not
-  variant-scoped); review items may roll up to one through their optional
-  `domain`. See
+  reviewer what they are rating. A case declares its **common** domains with
+  `[[domain]]` in `test-case.toml` (at least one is **required**), and every
+  variant is rated on those. A variant may declare **additional** `[[domain]]`
+  tables in its own file; the **effective** set a reviewer rates for a run is the
+  common domains plus that run's variant's own. Domain ids must be unique across
+  the common domains and any given variant's own. The run's **overall rating** is
+  the *worst* rating across its effective domains, so a flawless mode cannot mask a
+  broken one. Review items roll up to a domain through their optional `domain`. See
   [Evaluation](/testing/end-to-end/evaluation/#scoring).

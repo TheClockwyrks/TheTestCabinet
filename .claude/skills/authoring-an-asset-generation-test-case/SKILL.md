@@ -63,7 +63,8 @@ should look like it.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml          # manifest: type, canvas, tool, output, variants, domains, review items
+  test-case.toml          # manifest: type, canvas, tool, output, domains, review items
+  variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
   description.md          # site-facing prose (NOT seeded)
   README.md               # human overview (NOT seeded)
@@ -138,6 +139,11 @@ Author `test-case.toml` per the
   **authoritative output** the scored image is regenerated from. A sheet records
   one log per frame, so its path is a `{frame}` template (e.g.
   `frames/{frame}.actions.json`).
+- A **`variants`** list — an ordered array of paths to standalone variant files
+  under `variants/` (the first the default — usually `base`; at least one
+  required), each a self-contained TOML document whose top-level keys are the
+  variant's fields. It is a **root key**, so it must precede the first table
+  header, and each `[[spec]]` `dest` defaults to its `source`.
 - **`[sheet]`** — **sprite sheets only.** The case's frames as **`[[sheet.frame]]`**
   entries — each just the `index` it is written to (passed as `draw-sheet --frame`)
   — plus one or more **`[[sheet.sequence]]`** entries: each a `slug`, optional
@@ -148,8 +154,7 @@ Author `test-case.toml` per the
 - **No targets** — an asset-generation case declares **no `[[reference]]`** at all
   (common *or* per-variant); resolution rejects any reference. The case is reviewed
   against its brief, with no goal image to score the regenerated asset against.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); to
-  add more, see
+- The variant files listed in `variants` (above) — to add more, see
   [`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) (single sprite)
   or
   [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md)
