@@ -12,7 +12,7 @@ use crate::test_case::{
 
 /// The committed Foray case folder, where the baseline `references/*.wasm` live.
 fn case_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/adversarial-pacman/v1.0.0")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/foray/v1.0.0")
 }
 
 /// A Foray version rooted at the real case, with a low `max_ticks` so a match

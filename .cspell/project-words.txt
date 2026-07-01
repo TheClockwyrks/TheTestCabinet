@@ -14,8 +14,10 @@ autotile
 autotiled
 autotiles
 deadzone
+defence
 despawn
 despawns
+keybinds
 letterboxed
 playfield
 tileable
@@ -26,7 +28,7 @@ WASD
 # Tooling.
 tcab
 
-# Fathom (pacman) reference mockup class names.
+# Fathom (fathom) reference mockup class names.
 bioluminescent
 cooldown
 Flarefish
@@ -38,11 +40,11 @@ teleporting
 dodgeable
 Capturable
 
-# Spectra (galaga) reference mockup class names.
+# Spectra (spectra) reference mockup class names.
 pbullet
 ebullet
 
-# Meltdown (desktop-td) domain terms.
+# Meltdown (meltdown) domain terms.
 chokepoint
 cryo
 pathfinds
@@ -53,7 +55,7 @@ targetable
 unbuildable
 unitless
 
-# Meltdown (desktop-td) reference mockup class names.
+# Meltdown (meltdown) reference mockup class names.
 heatbar
 heatlabel
 heatmeter
@@ -74,12 +76,12 @@ rgba
 rrggbb
 rrggbbaa
 
-# Asset-generation: Foray (adversarial-pacman) colony sprites.
+# Asset-generation: Foray (foray) colony sprites.
 recolorable
 mandibled
 scorable
 
-# Lattice (performance-factorio) renderer asset sprites.
+# Lattice (lattice) renderer asset sprites.
 Lattice
 Factorio
 splitter
@@ -94,7 +96,7 @@ sideload
 sideloaded
 sideloading
 
-# Lattice (performance-factorio) simulation & spec vocabulary.
+# Lattice (lattice) simulation & spec vocabulary.
 desync
 sandboxed
 varint

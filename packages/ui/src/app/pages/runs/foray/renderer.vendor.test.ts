@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 // The UI bundles its own copy of the case's replay engine + sprite assets (see
 // `renderer.ts` and `AdversarialReplaySection.tsx`) so every host draws a match
 // identically without fetching the case bundle. That copy is a vendored snapshot
-// of the adversarial-pacman bundle, and the two silently drifting is exactly how
+// of the foray bundle, and the two silently drifting is exactly how
 // the interpolation rework shipped a teleporting player: the bundle's renderer +
 // sheet changed, the UI's vendored copy did not.
 //
@@ -25,7 +25,7 @@ const repoRoot = join(here, "..", "..", "..", "..", "..", "..", "..");
 
 const BUNDLE = join(
   repoRoot,
-  "test-cases/adversarial-pacman/v1.0.0/replay/assets",
+  "test-cases/foray/v1.0.0/replay/assets",
 );
 const VENDORED = here + "/assets";
 

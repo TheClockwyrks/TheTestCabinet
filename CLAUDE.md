@@ -53,7 +53,7 @@ to).
 **Adversarial (Foray) crates:** the [adversarial](apps/docs/src/content/docs/testing/adversarial/)
 test type's engine and host live in their own crates under `crates/`, documented
 in the case's
-[architecture doc](apps/docs/src/content/docs/testing/adversarial/adversarial-pacman/architecture.md):
+[architecture doc](apps/docs/src/content/docs/testing/adversarial/foray/architecture.md):
 `foray-core/` (the authoritative rules engine; compiles natively *and* to
 `wasm32-unknown-unknown` for browser replay playback), `foray-host/` (the reusable
 `wasmtime` host — the per-tick controller loop + fuel/memory sandbox — reused by
@@ -117,7 +117,7 @@ authoring conventions:
 ## Definitions & assets
 
 - **Test cases:** [`test-cases/`](test-cases/) — each case is versioned
-  (e.g. `test-cases/pong/v1.0.0/`) with its `test-case.toml` manifest, specs,
+  (e.g. `test-cases/carom/v1.0.0/`) with its `test-case.toml` manifest, specs,
   prompt, and reference mockups. The test types and their manifest formats are
   documented under
   [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the

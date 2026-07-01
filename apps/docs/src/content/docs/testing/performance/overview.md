@@ -56,7 +56,7 @@ contract, inputs, and limits, and [Evaluation](/testing/performance/evaluation/)
 for how correctness and fuel combine into a result.
 
 The first performance case is
-[**Lattice**](/testing/performance/performance-factorio/overview/), a deterministic
+[**Lattice**](/testing/performance/lattice/overview/), a deterministic
 Factorio-style factory simulation: the model writes the simulation **engine** —
 two-lane belts, item compaction, splitters, inserters, assemblers — and is scored on
 how little fuel it spends reproducing a reference engine's exact, bit-for-bit output.

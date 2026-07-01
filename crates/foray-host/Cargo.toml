@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 # The native wasm host for the Foray adversarial test case (on-disk slug
-# `adversarial-pacman`). It loads two competing controller modules, drives a
+# `foray`). It loads two competing controller modules, drives a
 # single match through `foray-core`'s authoritative rules, meters each per-tick
 # controller invocation with a wasmtime fuel ceiling and a linear-memory cap, and
 # returns the published `Replay`.

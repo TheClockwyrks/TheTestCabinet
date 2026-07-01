@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 # The authoritative game engine for the Foray adversarial test case (on-disk slug
-# `adversarial-pacman`). This crate owns the board model, agent state, the tick
+# `foray`). This crate owns the board model, agent state, the tick
 # advance (movement/eating/tagging/banking/jelly with carry-weight cadence),
 # scoring, and the replay (de)serialization + reconstruction. It has NO I/O and
 # NO wasm-host dependency — pure rules plus data types — so the exact same crate

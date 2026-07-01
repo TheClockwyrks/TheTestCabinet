@@ -21,7 +21,7 @@ export type DriverState = "running" | "succeeded" | "failed";
  */
 export type LaunchBody = {
   /**
-   * Test-case slug to run (e.g. `pong`).
+   * Test-case slug to run (e.g. `carom`).
    */
   testCase: string;
   /**
@@ -117,7 +117,7 @@ export type JobState =
  */
 export type JobSummary = {
   /**
-   * The test-case slug being run (e.g. `pong`).
+   * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
   /**
@@ -148,7 +148,7 @@ export type ActiveJobOut = {
    */
   state: JobState;
   /**
-   * The test-case slug being run (e.g. `pong`).
+   * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
   /**
@@ -249,7 +249,7 @@ export type Notification = {
    */
   message?: string;
   /**
-   * The test-case slug being run (e.g. `pong`).
+   * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
   /**

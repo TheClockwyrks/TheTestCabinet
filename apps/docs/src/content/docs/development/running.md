@@ -149,7 +149,7 @@ logging in with an account. There are two ways to reach a remote backend:
   export TCAB_BACKEND_URL=https://api.tcab.testcabinet.ai
   export TCAB_AUTH_URL=https://auth.tcab.testcabinet.ai
   tcab login --username <name>     # authenticate against the auth service
-  tcab run --test-case pong --version v1.0.0 --variant base \
+  tcab run --test-case carom --version v1.0.0 --variant base \
     --harness claude --model claude-opus-4-8   # enqueue + watch, exactly as locally
   ```
 
@@ -168,7 +168,7 @@ logging in with an account. There are two ways to reach a remote backend:
   export TCAB_BACKEND_URL=http://127.0.0.1:8787
   export TCAB_AUTH_URL=http://127.0.0.1:8789
   tcab login --username <name>
-  tcab run --test-case pong --version v1.0.0 --variant base \
+  tcab run --test-case carom --version v1.0.0 --variant base \
     --harness claude --model claude-opus-4-8
   ```
 
@@ -240,7 +240,7 @@ per-case progress (a full re-render takes a minute or more):
 
 ```sh
 scripts/reingest.sh             # force re-ingest every case
-scripts/reingest.sh pong        # scope to the case you touched
+scripts/reingest.sh carom        # scope to the case you touched
 ```
 
 It is a thin wrapper over the endpoint's streamed (`Accept: application/x-ndjson`)
@@ -249,7 +249,7 @@ progress feed; the raw call is:
 ```sh
 curl -X POST http://127.0.0.1:8787/ingest \
   -H 'content-type: application/json' \
-  -d '{"testCases": ["pong"], "force": true}'
+  -d '{"testCases": ["carom"], "force": true}'
 ```
 
 Backend-driven runs (the desktop and web consoles) resolve their definition from

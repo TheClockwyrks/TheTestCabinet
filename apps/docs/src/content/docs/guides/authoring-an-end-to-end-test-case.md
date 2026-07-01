@@ -16,8 +16,8 @@ the model draws a sprite with a drawing tool rather than building a game — is 
 different test type with its own manifest; see
 [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/).
 
-The worked example throughout the project is the `pong` case
-(`test-cases/pong/v1.0.0/`), whose in-game title is **Carom**. Read its files
+The worked example throughout the project is the **Carom** case
+(`test-cases/carom/v1.0.0/`). Read its files
 alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
@@ -64,8 +64,8 @@ Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-
   building the game, never producing its art (generating an asset is its own
   [test type](/testing/asset-generation/overview/)).
 
-Pick a catalog **slug** for the lineage (e.g. `pong`) and a separate original
-**in-game title** for the build (e.g. `Carom`), then a `version` (`vX.Y.Z`).
+Pick an original **in-game title** for the build (e.g. `Carom`); its catalog
+**slug** is the kebab-cased title (e.g. `carom`). Then pick a `version` (`vX.Y.Z`).
 
 ### 2. Lay the foundations before the detail
 

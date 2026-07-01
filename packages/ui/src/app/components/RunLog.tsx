@@ -6,11 +6,8 @@ import { UnpublishedTag } from "./UnpublishedTag";
 import { type Rating, worstRating } from "../data/ratings";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
-import {
-  formatSlug,
-  formatTokenTotal,
-  formatUsd,
-} from "../format";
+import { useTestCaseName } from "../data/useTestCaseName";
+import { formatTokenTotal, formatUsd } from "../format";
 import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
 
@@ -111,6 +108,7 @@ function ActiveRow({
   showCase: boolean;
   showModel: boolean;
 }) {
+  const testCaseName = useTestCaseName();
   const failed = run.state === "failed";
   return (
     <Link
@@ -122,7 +120,9 @@ function ActiveRow({
       <span className={styles.spinner} aria-hidden="true" />
       {showCase && (
         <span className={styles.test}>
-          <span className={styles.testName}>{formatSlug(run.testCaseSlug)}</span>
+          <span className={styles.testName}>
+            {testCaseName(run.testCaseSlug)}
+          </span>
         </span>
       )}
       <span className={styles.harness} data-label="Harness">
@@ -165,6 +165,7 @@ function RunRow({
   showModel: boolean;
 }) {
   const { subject, metrics } = run;
+  const testCaseName = useTestCaseName();
   // A failed run (any non-completed tier) is listed inline so the failure can be
   // inspected, marked with the same negative styling an active row uses. It
   // carries no rating — its tier is shown in the rating cell instead.
@@ -180,7 +181,7 @@ function RunRow({
       {showCase && (
         <span className={styles.test}>
           <span className={styles.testName}>
-            {formatSlug(subject.testCaseSlug)}
+            {testCaseName(subject.testCaseSlug)}
           </span>
           {local && <UnpublishedTag className={styles.tag} />}
         </span>

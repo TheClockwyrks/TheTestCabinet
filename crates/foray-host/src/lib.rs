@@ -1,5 +1,5 @@
 //! The native wasm host for the **Foray** adversarial test case (on-disk slug
-//! `adversarial-pacman`).
+//! `foray`).
 //!
 //! This crate loads two competing controller wasm modules, drives a single match
 //! through [`foray-core`](foray_core)'s authoritative rules, meters each per-tick

@@ -64,17 +64,17 @@ fn every_catalog_case_and_variant_resolves() {
 }
 
 #[test]
-fn resolves_pong_from_its_manifest() {
+fn resolves_carom_from_its_manifest() {
     let catalog = TestCaseCatalog::new(catalog_root());
 
     let cases = catalog.list().expect("list catalog");
     assert!(
-        cases.iter().any(|c| c.slug == "pong"),
-        "pong should be listed"
+        cases.iter().any(|c| c.slug == "carom"),
+        "carom should be listed"
     );
 
-    let version = catalog.resolve_latest("pong").expect("resolve latest pong");
-    assert_eq!(version.slug, "pong");
+    let version = catalog.resolve_latest("carom").expect("resolve latest carom");
+    assert_eq!(version.slug, "carom");
     // The prompt template and the decomposed common specs are resolved from the
     // manifest. Every variant seeds the overview spec and the standard mode.
     assert!(version.prompt_path.ends_with("prompt.hbs"));
@@ -163,8 +163,8 @@ fn resolves_pong_from_its_manifest() {
 fn seeding_includes_spec_and_reference_images_but_not_source() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let version = catalog
-        .resolve("pong", "v1.0.0")
-        .expect("resolve pong v1.0.0");
+        .resolve("carom", "v1.0.0")
+        .expect("resolve carom v1.0.0");
 
     // Seed the base variant: the common specs and nothing mode-specific beyond
     // the standard mode.
@@ -194,7 +194,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             references: &references,
             live_preview: None,
         })
-        .expect("seed pong");
+        .expect("seed carom");
 
     // The run directory is named `{slug}-{version}-{timestamp}` so the newest
     // run sorts last in a listing.
@@ -204,7 +204,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         .and_then(|name| name.to_str())
         .expect("seeded run directory has a name");
     assert!(
-        dir_name.starts_with("pong-v1.0.0-"),
+        dir_name.starts_with("carom-v1.0.0-"),
         "run directory is named for the test case and version: {dir_name}"
     );
 
@@ -428,8 +428,8 @@ reference = \"title\"
 }
 
 #[test]
-fn resolves_adversarial_pacman_from_its_manifest() {
-    // Foray (on-disk slug `adversarial-pacman`) is the first ADVERSARIAL case. It
+fn resolves_foray_from_its_manifest() {
+    // Foray is the first ADVERSARIAL case. It
     // must resolve through the real catalog under the adversarial validation: the
     // type discriminator selects the adversarial tables, and each
     // ([build].module / [contract] / [sandbox] / [simulation] / [match] / [replay])
@@ -441,19 +441,18 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     let cases = catalog.list().expect("list catalog");
     let listed = cases
         .iter()
-        .find(|c| c.slug == "adversarial-pacman")
-        .expect("adversarial-pacman should be listed");
+        .find(|c| c.slug == "foray")
+        .expect("foray should be listed");
     assert!(
         listed.versions.iter().any(|v| v == "v1.0.0"),
-        "adversarial-pacman should list its v1.0.0 version"
+        "foray should list its v1.0.0 version"
     );
 
     let version = catalog
-        .resolve("adversarial-pacman", "v1.0.0")
-        .expect("resolve adversarial-pacman v1.0.0");
-    assert_eq!(version.slug, "adversarial-pacman");
-    // The in-fiction title is "Foray" while the on-disk slug stays
-    // `adversarial-pacman`.
+        .resolve("foray", "v1.0.0")
+        .expect("resolve foray v1.0.0");
+    assert_eq!(version.slug, "foray");
+    // The on-disk slug matches the in-fiction title "Foray".
     assert_eq!(version.name, "Foray");
     assert_eq!(version.test_type, TestType::Adversarial);
     assert_eq!(version.difficulty, "hard");
@@ -542,7 +541,7 @@ fn resolves_adversarial_pacman_from_its_manifest() {
 
 #[test]
 fn resolves_lattice_performance_from_its_manifest() {
-    // Lattice (on-disk slug `performance-factorio`) is the first PERFORMANCE case.
+    // Lattice is the first PERFORMANCE case.
     // It must resolve through the real catalog under the performance validation:
     // the type discriminator selects the performance tables ([build].module /
     // [contract] input+output / [sandbox] fuel_limit / the [[case]] scored set) and
@@ -553,19 +552,18 @@ fn resolves_lattice_performance_from_its_manifest() {
     let cases = catalog.list().expect("list catalog");
     let listed = cases
         .iter()
-        .find(|c| c.slug == "performance-factorio")
-        .expect("performance-factorio should be listed");
+        .find(|c| c.slug == "lattice")
+        .expect("lattice should be listed");
     assert!(
         listed.versions.iter().any(|v| v == "v1.0.0"),
-        "performance-factorio should list its v1.0.0 version"
+        "lattice should list its v1.0.0 version"
     );
 
     let version = catalog
-        .resolve("performance-factorio", "v1.0.0")
-        .expect("resolve performance-factorio v1.0.0");
-    assert_eq!(version.slug, "performance-factorio");
-    // The in-fiction title is "Lattice" while the on-disk slug stays
-    // `performance-factorio`.
+        .resolve("lattice", "v1.0.0")
+        .expect("resolve lattice v1.0.0");
+    assert_eq!(version.slug, "lattice");
+    // The on-disk slug matches the in-fiction title "Lattice".
     assert_eq!(version.name, "Lattice");
     assert_eq!(version.test_type, TestType::Performance);
     assert_eq!(version.difficulty, "hard");

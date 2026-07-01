@@ -1,5 +1,5 @@
 //! The native wasm host for the **Lattice** performance test case (on-disk slug
-//! `performance-factorio`).
+//! `lattice`).
 //!
 //! This crate loads a single submission engine wasm module, hands it the
 //! `scenario` JSON, runs it **once** under a wasmtime fuel ceiling and a

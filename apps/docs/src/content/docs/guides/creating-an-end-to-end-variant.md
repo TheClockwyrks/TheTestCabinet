@@ -15,7 +15,7 @@ end-to-end version. The authoritative rules live in
 [End-to-End Tests](/testing/end-to-end/overview/) (see its *Variants* and
 *Self-Contained Specifications* sections); read them first. While doing the work,
 follow the `adding-an-end-to-end-variant` skill. The worked example is the
-**Gyre** variant of the `pong` case, in which the obstacles oscillate and rotate
+**Gyre** variant of the `carom` case, in which the obstacles oscillate and rotate
 — read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this guide.
 
 To author a brand-new case rather than add a mode to one, see
@@ -133,7 +133,7 @@ domain = "gyre"
 ```
 
 ```toml
-# test-cases/pong/v1.0.0/test-case.toml — add the new file to the ordered list
+# test-cases/carom/v1.0.0/test-case.toml — add the new file to the ordered list
 variants = [
   "variants/base.toml",
   "variants/frenzy.toml",
@@ -152,7 +152,7 @@ Rules enforced at resolution:
   domains; a domain id must be unique across the common domains and this variant's
   own. A variant's review item may name a common domain or one of its own.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
-  variant — for `pong`, every variant provides its own `title`, which is what the
+  variant — for `carom`, every variant provides its own `title`, which is what the
   `title` check baselines against.
 
 Also update the human-readable comment in the manifest that enumerates the

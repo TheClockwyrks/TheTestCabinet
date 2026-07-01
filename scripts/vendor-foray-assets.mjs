@@ -1,5 +1,5 @@
 // Re-vendor the Foray replay assets the UI bundles from their single source of
-// truth, the adversarial-pacman case's replay bundle.
+// truth, the foray case's replay bundle.
 //
 // The shared gallery app (`@test-cabinet/ui`) draws match replays on a <canvas>
 // with its own copy of the renderer + sprite assets, so the public site, web
@@ -23,7 +23,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SRC = join(
   repoRoot,
-  "test-cases/adversarial-pacman/v1.0.0/replay/assets",
+  "test-cases/foray/v1.0.0/replay/assets",
 );
 const DST = join(repoRoot, "packages/ui/src/app/pages/runs/foray/assets");
 

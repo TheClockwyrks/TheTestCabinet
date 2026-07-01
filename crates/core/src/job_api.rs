@@ -38,7 +38,7 @@ use crate::run_record::{HarnessSlug, RunRecord};
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LaunchBody {
-    /// Test-case slug to run (e.g. `pong`).
+    /// Test-case slug to run (e.g. `carom`).
     pub test_case: String,
     /// Exact, immutable test-case version (e.g. `v1.0.0`).
     pub version: String,
@@ -175,7 +175,7 @@ impl JobState {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct JobSummary {
-    /// The test-case slug being run (e.g. `pong`).
+    /// The test-case slug being run (e.g. `carom`).
     pub test_case_slug: String,
     /// The variant being run (e.g. `base`).
     pub variant: String,

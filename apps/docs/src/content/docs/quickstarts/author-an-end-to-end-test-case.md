@@ -29,9 +29,9 @@ test-cases/<slug>/<version>/
 
 ## Steps
 
-1. Pick a catalog **slug** (e.g. `pong`) and a separate original **in-game
-   title** (e.g. `Carom`). The case must be inspired by but **not a clone** of
-   its source, and must need no API keys and no backend to play.
+1. Pick an original **in-game title** (e.g. `Carom`); its catalog **slug** is
+   the kebab-cased title (e.g. `carom`). The case must be inspired by but **not a
+   clone** of its source, and must need no API keys and no backend to play.
 2. In the overview spec, fix the **coordinate system**, **palette/type**, and
    **screens** every other spec leans on.
 3. Decompose the spec into focused, seeded files that cross-reference each other
@@ -50,8 +50,8 @@ test-cases/<slug>/<version>/
    `[[check]]`. A spec's `dest` defaults to its `source`.
 
 The `authoring-an-end-to-end-test-case` skill is the practical procedure to
-follow while doing this; read it before you start. The `pong` case
-(`test-cases/pong/v1.0.0/`) is the worked example a new case should resemble.
+follow while doing this; read it before you start. The `carom` case
+(`test-cases/carom/v1.0.0/`) is the worked example a new case should resemble.
 
 ## Validate
 

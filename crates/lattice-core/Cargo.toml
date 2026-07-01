@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 # The authoritative simulation engine for the Lattice performance test case
-# (on-disk slug `performance-factorio`). This crate owns the prototype table
+# (on-disk slug `lattice`). This crate owns the prototype table
 # (belt/inserter tiers, recipes, the `TILE`/`SPACING`/`SPEED`/`SWING`/`CRAFT`
 # constants), the fixed-point world, the per-tick advance (belt movement and
 # compaction, side-loading, splitter balancing, inserter swings, assembler

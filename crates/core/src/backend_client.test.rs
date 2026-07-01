@@ -78,7 +78,7 @@ impl BackendClient for StubBackend {
                 view: "title".to_string(),
                 kind: crate::test_case::ReferenceKind::Rendered,
                 source_path: std::path::PathBuf::from(
-                    "/test-cases/pong/v1.0.0/references/_common/title.png",
+                    "/test-cases/carom/v1.0.0/references/_common/title.png",
                 ),
             }],
             common_proofs: vec![],

@@ -28,15 +28,15 @@ The authoritative schema for variants lives in
 *Self-Contained Specifications* sections). Read it before starting; this skill is
 the practical procedure that sits on top of it.
 
-The worked example throughout is the **Gyre** variant of the `pong` case
-(`test-cases/pong/v1.0.0/`), in which the obstacles oscillate and rotate. Read
+The worked example throughout is the **Gyre** variant of the `carom` case
+(`test-cases/carom/v1.0.0/`), in which the obstacles oscillate and rotate. Read
 the existing `frenzy`, `multi`, and `gyre` mode specs alongside this skill — a
 new variant should look like them.
 
 ## Anatomy of a test case version
 
 ```text
-test-cases/pong/v1.0.0/
+test-cases/carom/v1.0.0/
   test-case.toml         # manifest: common specs, references, proofs, checks, domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
     base.toml            #   the default (first in the `variants` list)
@@ -167,7 +167,7 @@ domain = "gyre"
 ```
 
 ```toml
-# test-cases/pong/v1.0.0/test-case.toml — add the new file to the ordered list
+# test-cases/carom/v1.0.0/test-case.toml — add the new file to the ordered list
 variants = [
   "variants/base.toml",
   "variants/frenzy.toml",
@@ -203,7 +203,7 @@ Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/tes
   seeded file, and (as with common proofs) the seeded mode spec must instruct the
   build to write the file at that same `dest`.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
-  variant — for `pong`, every variant provides its own `title`, which is what the
+  variant — for `carom`, every variant provides its own `title`, which is what the
   `title` check baselines against.
 
 Also update the human-readable comment in the manifest that enumerates the

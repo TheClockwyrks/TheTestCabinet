@@ -3,7 +3,7 @@ title: Overview
 ---
 
 An **end-to-end** test case is a single game that a model is asked to build from
-scratch. End-to-end cases range from simple ones such as Pong through to highly
+scratch. End-to-end cases range from simple ones such as Carom through to highly
 complex ones that require significant assistance from a coding harness for even
 the best models to complete. They are intentionally designed to exceed the
 capabilities of current state-of-the-art models so that they remain relevant as
@@ -338,7 +338,7 @@ assets a model should use. (Generating the assets themselves is the job of an
 [asset-generation](/testing/asset-generation/overview/) test case, a separate
 test type.)
 
-- Simple cases such as Pong need no assets and may leave all visuals to the
+- Simple cases such as Carom need no assets and may leave all visuals to the
   model.
 - More involved cases must provide a set of assets so that each run does not
   have to produce its own, which would make runs less comparable.

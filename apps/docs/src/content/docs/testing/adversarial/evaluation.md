@@ -41,7 +41,7 @@ reached the same result for less work. A match is only a true **draw** when the
 banked scores *and* the total fuel are level (or both controllers forfeit on the
 same tick) — a vanishing case between two distinct controllers. The fuel a
 tie-break compares is the whole-match total, not the per-tick peak the sandbox caps
-(see [Game code & replay](/testing/adversarial/adversarial-pacman/architecture/)).
+(see [Game code & replay](/testing/adversarial/foray/architecture/)).
 
 The match [`structure`](/testing/adversarial/manifests/) declared by the case (for
 example round-robin or a bracket) decides how the field is paired, and a model's
@@ -55,7 +55,7 @@ it.
 Field-wide round-robin / bracket standings are the **design target**, but they are
 not what the first adversarial case does today. In v1, a run is scored on a
 **single canonical match** against a baseline opponent the case commits — for
-[Foray](/testing/adversarial/adversarial-pacman/references/#the-canonical-opponent-v1-scoring)
+[Foray](/testing/adversarial/foray/references/#the-canonical-opponent-v1-scoring)
 that is `border-soldier`. The manifest's `[match]` structure is still recorded
 faithfully; cross-model tournaments are a planned later step.
 :::
@@ -64,7 +64,7 @@ faithfully; cross-model tournaments are a planned later step.
 
 On completion, a run is auto-replayed against **every committed reference
 opponent**, not just the canonical one, and each match's replay is published as a
-run asset. For [Foray](/testing/adversarial/adversarial-pacman/references/) that
+run asset. For [Foray](/testing/adversarial/foray/references/) that
 is the three baselines — `border-soldier`, `greedy-raider`, and `random` — plus a
 **hidden** stronger reference, `fuel-probe`, that is never given to the model.
 `border-soldier`'s match is the canonical scored one (mirrored to the run's

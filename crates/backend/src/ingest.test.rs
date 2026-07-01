@@ -154,12 +154,12 @@ fn stored_manifest_carries_adversarial_specs() {
     // An adversarial case's `[contract]`, `[sandbox]`, `[simulation]`, `[match]`,
     // `[replay]`, and `build.module` must survive into the stored manifest — they
     // are what the arena's `canonical_match_setup` needs. Resolving the real
-    // adversarial-pacman case and building its manifest guards the full path
+    // Foray case and building its manifest guards the full path
     // (regression: these fields were dropped, so a quick match 500'd with
     // "an adversarial match requires [contract], [sandbox], and [simulation]").
     let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
-    let resolved = catalog.resolve("adversarial-pacman", "v1.0.0").unwrap();
+    let resolved = catalog.resolve("foray", "v1.0.0").unwrap();
 
     let manifest = build_stored_manifest(&resolved).unwrap();
 
@@ -193,7 +193,7 @@ fn stored_manifest_carries_performance_specs() {
     // field, mirroring the adversarial regression guard above.
     let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
-    let resolved = catalog.resolve("performance-factorio", "v1.0.0").unwrap();
+    let resolved = catalog.resolve("lattice", "v1.0.0").unwrap();
 
     let manifest = build_stored_manifest(&resolved).unwrap();
 
