@@ -58,9 +58,13 @@ transforms for a given pose:
 poseRig(rig, { caller, time }) -> PosedPart[]
 ```
 
-Each part's world transform is its parent's world composed with a translate to the
-part's pivot and each joint's contribution — `parentWorld ∘ translate(pivot) ∘
-joint(param)`. A joint's parameter comes from one of two sources, by its `drive`:
+Each part's world transform is its parent's world composed with each joint's
+contribution — `parentWorld ∘ joint(param)`. Parts are sculpted in the shared
+volume's world coordinates (each part's voxels already sit where the part belongs
+on the assembled model), so a part contributes no placement translation of its
+own: its `pivot` is the world-space anchor its joints rotate about, not an offset
+that re-places the part, and at rest a part stays exactly where it was sculpted. A
+joint's parameter comes from one of two sources, by its `drive`:
 
 - **caller-driven** joints take their value from the `caller` map the consumer
   supplies (a game setting `turret_yaw`), **clamped** to the joint's `[min, max]`

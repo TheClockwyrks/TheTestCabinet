@@ -122,9 +122,13 @@ function jointMatrix(joint: JointSpec, value: number): Float32Array {
 /**
  * Pose a rig into per-part world matrices.
  *
- * For each part `world = parentWorld ∘ translate(part.pivot) ∘ joint₀ ∘ joint₁ …`
- * where the joint transforms are those declared on the part, composed in
- * declared order. Caller-driven joints read {@link PoseInput.caller} (clamped to
+ * For each part `world = parentWorld ∘ joint₀ ∘ joint₁ …` where the joint
+ * transforms are those declared on the part, composed in declared order. Parts
+ * are sculpted in the shared volume's world coordinates (already positioned
+ * where they sit on the assembled model), so a part contributes no placement
+ * translation of its own — its `pivot` is the anchor its joints rotate about,
+ * applied inside each joint. At rest a part stays exactly where it was sculpted.
+ * Caller-driven joints read {@link PoseInput.caller} (clamped to
  * range, falling back to `rest`); auto-play joints are sampled from their
  * {@link AutoPlaySpec} at {@link PoseInput.timeMs}.
  *
@@ -148,7 +152,14 @@ export function poseRig(rig: ModelSpec, input: PoseInput): PosedPart[] {
     if (cached) return cached;
 
     const part = partByName.get(name)!;
-    let local = translation([part.pivot[0], part.pivot[1], part.pivot[2]]);
+    // Parts are sculpted in the shared volume's world coordinates — each part's
+    // voxels already sit where the part belongs on the assembled model — so a
+    // part contributes no placement translation of its own. Its `pivot` is the
+    // world-space anchor its joints rotate about (applied inside `jointMatrix`),
+    // not an offset that re-places the part. At rest a part therefore stays
+    // exactly where it was sculpted; translating by `pivot` here would shift it
+    // a second time on top of its already-world-positioned voxels.
+    let local = identity();
     for (const joint of jointsByPart.get(name) ?? []) {
       local = multiply(local, jointMatrix(joint, jointValue(joint, input)));
     }
