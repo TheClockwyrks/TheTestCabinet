@@ -139,13 +139,19 @@ Schema: [`snapshot/run.schema.json`](https://docs.testcabinet.ai/schema/snapshot
 
 The site-facing slice of a [test case version](/testing/end-to-end/overview/):
 what the gallery shows to frame a run — name, difficulty, tags,
-summary/description, variant labels, the declared checks (without their action
-lists), and a `references` array naming each rendered reference baseline by its
+summary/description, variant labels, the rendered prompt, the seeded spec files
+(bodies inlined), the declared checks (without their action lists), and a
+`references` array naming each rendered reference baseline by its
 snapshot-relative key (with a `variant` of `null` for a common reference or the
 variant slug for a variant-scoped one), which the site resolves to absolute URLs
-to show baselines. It carries **no** spec bodies, **no** mockup HTML, and **no**
-host paths. The backend emits every ingested version (simpler than tracking which
-have runs, and equally valid). The site keys lookups by `(slug, version)` from
-each run's subject.
+to show baselines. The seeded specs are inlined in `commonSeededInputs` (shared by
+every variant) and each variant's `seededInputs` (its own), in seed order, so the
+fully static site shows the same specs a run is seeded with without a live
+backend. It carries **no** mockup HTML and **no** host paths.
+
+Only a version that **at least one published run built** is emitted — the gallery
+is a gallery of published runs, so a case with no run has nothing to show. The
+site keys lookups by `(slug, version)` from each run's subject, so it fetches
+exactly the case files that are present.
 
 Schema: [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).

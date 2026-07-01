@@ -384,9 +384,31 @@ async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
 }
 
 #[tokio::test]
-async fn case_metadata_omits_specs_and_inlines_description() {
+async fn case_metadata_inlines_specs_and_description() {
+    // A case with a common spec (`spec/rules.md`, seeded into every variant) and a
+    // variant-scoped one (`spec/base.md` on `base`). Write their source bytes into
+    // the store so the snapshot can inline them.
+    let mut m = manifest();
+    m.common_specs = vec![crate::store::StoredSpec {
+        source: "spec/rules.md".to_string(),
+        dest: "spec/rules.md".to_string(),
+        template: false,
+    }];
+    m.variants[0].specs = vec![crate::store::StoredSpec {
+        source: "spec/base.md".to_string(),
+        dest: "spec/base.md".to_string(),
+        template: false,
+    }];
+
     let (_tmp, store) = empty_store();
-    let snapshot = SnapshotBuilder::new(vec![], vec![manifest()], store)
+    for (key, body) in [("spec/rules.md", "# Rules"), ("spec/base.md", "# Base")] {
+        let path = store.version_dir(&m.slug, &m.version).join(key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, body).unwrap();
+    }
+
+    // The case is only emitted when a published run built it.
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
         .build(now())
         .await
         .unwrap();
@@ -401,9 +423,37 @@ async fn case_metadata_omits_specs_and_inlines_description() {
     assert_eq!(parsed["description"], "## Carom");
     assert_eq!(parsed["variants"][0]["slug"], "base");
     assert_eq!(parsed["checks"][0]["referenceView"], "title");
-    // No spec bodies or prompt template leak into case metadata.
-    assert!(parsed.get("commonSpecs").is_none());
+    // The prompt template itself never leaks (only its rendered prompt does).
     assert!(parsed.get("promptTemplate").is_none());
+    // The seeded spec bodies are inlined: common ones at the case level, the
+    // variant's own on the variant, each carrying its dest path and text.
+    assert_eq!(parsed["commonSeededInputs"][0]["path"], "spec/rules.md");
+    assert_eq!(parsed["commonSeededInputs"][0]["text"], "# Rules");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["path"], "spec/base.md");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# Base");
+}
+
+#[tokio::test]
+async fn only_cases_with_a_published_run_are_emitted() {
+    // Two ingested versions, but only `pong@v1.0.0` has a published run. The
+    // gallery shows only cases with a published run, so the runless version's case
+    // file (and its references) must not be emitted.
+    let mut other = manifest();
+    other.version = "v2.0.0".to_string();
+
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "t")],
+        vec![manifest(), other],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let keys: Vec<&str> = snapshot.objects.iter().map(|o| o.key.as_str()).collect();
+    assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));
+    assert!(!keys.contains(&format!("{prefix}/cases/pong/v2.0.0.json").as_str()));
 }
 
 #[tokio::test]
@@ -424,7 +474,8 @@ async fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
         std::fs::write(&path, format!("png:{scope}/{view}").into_bytes()).unwrap();
     }
 
-    let snapshot = SnapshotBuilder::new(vec![], vec![m], store)
+    // The case is only emitted when a published run built it.
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
         .build(now())
         .await
         .unwrap();

@@ -190,13 +190,32 @@ impl SnapshotBuilder {
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
         // reference baselines (PNGs) exported under the case prefix and named by
         // snapshot-relative key in the metadata, so the site can show baselines.
-        // Every ingested version is emitted (simpler than tracking which have
-        // runs, and valid per §3).
+        //
+        // Only a version that at least one published run built is emitted. The
+        // gallery is a gallery of published runs, so a case with no published run
+        // has nothing to show, and the site only ever fetches the case files its
+        // runs reference. Emitting exactly those makes the "only cases with a
+        // published run appear" behavior explicit at the source — rather than
+        // shipping every ingested version and relying on the site to ignore the
+        // unreferenced ones — and keeps the snapshot small.
+        let versions_with_runs: std::collections::HashSet<(&str, &str)> = self
+            .runs
+            .iter()
+            .map(|run| {
+                (
+                    run.record.subject.test_case_slug.as_str(),
+                    run.record.subject.test_case_version.as_str(),
+                )
+            })
+            .collect();
         for manifest in &self.cases {
+            if !versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str())) {
+                continue;
+            }
             let (references, reference_objects) = self.case_references(manifest, &prefix);
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(manifest, references)?,
+                &case_metadata(&self.store, manifest, references)?,
             )?);
             objects.extend(reference_objects);
         }
@@ -743,6 +762,11 @@ pub struct CaseMetadata {
     pub summary: Option<String>,
     pub description: Option<String>,
     pub variants: Vec<CaseVariantOut>,
+    /// The seeded spec files shared by every variant, with their bodies inlined so
+    /// the static gallery's Inputs tab can show them without a live backend. A
+    /// variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
+    /// site concatenates the two (common first) exactly as a run is seeded.
+    pub common_seeded_inputs: Vec<CaseSeededInputOut>,
     pub checks: Vec<CaseCheckOut>,
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
@@ -781,9 +805,28 @@ pub struct CaseVariantOut {
     /// The variant's prompt, rendered as a real run receives it, so the public
     /// gallery's Specifications tab shows the instruction the model was handed.
     pub prompt: String,
+    /// The variant's own seeded spec files (additive to the common ones), with
+    /// their bodies inlined so the static gallery shows the exact specs a run of
+    /// this variant is seeded with.
+    pub seeded_inputs: Vec<CaseSeededInputOut>,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
     pub review_items: Vec<CaseReviewItemOut>,
+}
+
+/// A seeded spec file exposed in case metadata: the run-workspace path it lands at
+/// and its inlined text body. This is the same set the console's Specifications tab
+/// fetches per file — the common specs then the variant's own, in seed order — but
+/// inlined here so the fully static site needs no backend to show them. Only text
+/// specs are carried; a spec whose bytes are missing or not valid UTF-8 is omitted.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseSeededInputOut {
+    /// The run-workspace-relative path the spec is seeded to (its `dest`).
+    pub path: String,
+    /// The spec's inlined text body.
+    pub text: String,
 }
 
 /// A reviewer checklist item exposed in case metadata, carrying its point weight
@@ -823,15 +866,42 @@ pub struct CaseCheckOut {
     pub reference_view: String,
 }
 
-/// Build the case-metadata document for one ingested version (no spec bodies, no
-/// mockup HTML, no host paths — only the site-facing slice). Each variant's
-/// prompt is rendered exactly as a run receives it, so the public gallery shows
-/// the same instruction the consoles do; the spec bodies and seeded inputs it
-/// references are still resolved from the backend, not inlined here.
+/// Read a set of seeded specs' inlined bodies from the store, in order. Each spec's
+/// `source` (a store-relative artifact key) is read and decoded as UTF-8 text; a
+/// spec whose bytes are missing (e.g. an ephemeral store not yet re-ingested) or
+/// not valid UTF-8 is skipped rather than failing the whole snapshot, mirroring how
+/// a missing reference baseline is skipped.
+fn seeded_inputs(
+    store: &DefinitionStore,
+    slug: &str,
+    version: &str,
+    specs: &[crate::store::StoredSpec],
+) -> Vec<CaseSeededInputOut> {
+    specs
+        .iter()
+        .filter_map(|spec| {
+            let bytes = store.read_artifact(slug, version, &spec.source).ok()?;
+            let text = String::from_utf8(bytes).ok()?;
+            Some(CaseSeededInputOut {
+                path: spec.dest.clone(),
+                text,
+            })
+        })
+        .collect()
+}
+
+/// Build the case-metadata document for one ingested version (no mockup HTML, no
+/// host paths — only the site-facing slice). Each variant's prompt is rendered
+/// exactly as a run receives it, so the public gallery shows the same instruction
+/// the consoles do, and the seeded spec files it references are inlined (bodies
+/// read from `store`) so the fully static site can show them without a backend.
 fn case_metadata(
+    store: &DefinitionStore,
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
 ) -> Result<CaseMetadata, BackendError> {
+    let common_seeded_inputs =
+        seeded_inputs(store, &manifest.slug, &manifest.version, &manifest.common_specs);
     let variants = manifest
         .variants
         .iter()
@@ -862,6 +932,7 @@ fn case_metadata(
                 name: v.name.clone(),
                 description: v.description.clone(),
                 prompt,
+                seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
             })
         })
@@ -877,6 +948,7 @@ fn case_metadata(
         summary: manifest.summary.clone(),
         description: manifest.description.clone(),
         variants,
+        common_seeded_inputs,
         checks: manifest
             .checks
             .iter()

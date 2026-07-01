@@ -95,6 +95,21 @@
       "required": ["id", "title", "text", "sequences", "frames", "weight"],
       "type": "object"
     },
+    "CaseSeededInputOut": {
+      "description": "A seeded spec file exposed in case metadata: the run-workspace path it lands at\nand its inlined text body. This is the same set the console's Specifications tab\nfetches per file — the common specs then the variant's own, in seed order — but\ninlined here so the fully static site needs no backend to show them. Only text\nspecs are carried; a spec whose bytes are missing or not valid UTF-8 is omitted.",
+      "properties": {
+        "path": {
+          "description": "The run-workspace-relative path the spec is seeded to (its `dest`).",
+          "type": "string"
+        },
+        "text": {
+          "description": "The spec's inlined text body.",
+          "type": "string"
+        }
+      },
+      "required": ["path", "text"],
+      "type": "object"
+    },
     "CaseVariantOut": {
       "description": "One variant of a case as the gallery shows it.",
       "properties": {
@@ -115,11 +130,18 @@
           },
           "type": "array"
         },
+        "seededInputs": {
+          "description": "The variant's own seeded spec files (additive to the common ones), with\ntheir bodies inlined so the static gallery shows the exact specs a run of\nthis variant is seeded with.",
+          "items": {
+            "$ref": "#/$defs/CaseSeededInputOut"
+          },
+          "type": "array"
+        },
         "slug": {
           "type": "string"
         }
       },
-      "required": ["slug", "name", "prompt", "reviewItems"],
+      "required": ["slug", "name", "prompt", "seededInputs", "reviewItems"],
       "type": "object"
     },
     "ReferenceKind": {
@@ -157,6 +179,13 @@
       "description": "Reviewer checklist items shared by every variant, carrying their point\nweights so the site can compute run scores. A variant's own items ride on\n[`CaseVariantOut::review_items`].",
       "items": {
         "$ref": "#/$defs/CaseReviewItemOut"
+      },
+      "type": "array"
+    },
+    "commonSeededInputs": {
+      "description": "The seeded spec files shared by every variant, with their bodies inlined so\nthe static gallery's Inputs tab can show them without a live backend. A\nvariant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the\nsite concatenates the two (common first) exactly as a run is seeded.",
+      "items": {
+        "$ref": "#/$defs/CaseSeededInputOut"
       },
       "type": "array"
     },
@@ -218,6 +247,7 @@
     "difficulty",
     "tags",
     "variants",
+    "commonSeededInputs",
     "checks",
     "references",
     "commonReviewItems",
