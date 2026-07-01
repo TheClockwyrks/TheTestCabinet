@@ -1,5 +1,5 @@
 **Ironward Siege Tank** is a heavy tracked tank with a swiveling turret. This
-asset-generation case asks a model to sculpt *and rig* it as a 24×16×32
+asset-generation case asks a model to sculpt *and rig* it as a 60×40×80
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 chassis on tracks (the fixed root), a turret mounted on top, and a barrel
 projecting from the turret. The rig's required, game-facing contract is a

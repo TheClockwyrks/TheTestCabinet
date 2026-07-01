@@ -7,15 +7,15 @@ below.
 
 ## The volume and coordinate system
 
-- The volume is **24 wide (x) x 8 tall (y) x 32 deep (z)**, in opaque voxels. It
+- The volume is **60 wide (x) x 20 tall (y) x 80 deep (z)**, in opaque voxels. It
   starts **empty**.
-- **x** runs across the wingspan, `0`-`23`. **y** runs up, `0` (bottom) to `7`
-  (top). **z** runs front-to-back, `0`-`31`.
-- **Forward is +z:** the nose points toward `z = 31` (the front) and the tail
+- **x** runs across the wingspan, `0`-`59`. **y** runs up, `0` (bottom) to `19`
+  (top). **z** runs front-to-back, `0`-`79`.
+- **Forward is +z:** the nose points toward `z = 79` (the front) and the tail
   sits toward `z = 0` (the rear). Up is +y.
 - Build the jet **symmetric about the lengthwise vertical centerplane between
-  `x = 11` and `x = 12`** — the left and right halves mirror each other. If the
-  tool offers a mirror operation, sculpt one half and mirror it across `x = 12`
+  `x = 29` and `x = 30`** — the left and right halves mirror each other. If the
+  tool offers a mirror operation, sculpt one half and mirror it across `x = 30`
   to guarantee symmetry.
 - **Fill most of the volume:** the fuselage should run nearly the full depth, the
   wingtips should reach close to the left and right faces, and the model should
@@ -44,7 +44,7 @@ along +z**:
   along `z`, a few voxels wide about the centerplane and a few voxels tall,
   sitting in the middle of the height. Its underside is the dark-steel color.
 - **Nose:** the fuselage **tapers to a pointed nose at the front** (toward
-  `z = 31`), narrowing in both width and height so the silhouette clearly leads
+  `z = 79`), narrowing in both width and height so the silhouette clearly leads
   with a point. A band of the warm accent wraps the nose tip.
 - **Canopy:** a small **cyan-glass canopy** set into the **top** of the fuselage
   just behind the nose, reading as a cockpit.
@@ -63,7 +63,7 @@ along +z**:
 Build the model up in sensible layers — lay down the fuselage spine, taper the
 nose, add the canopy, then the forward-swept wings, then the tail fins and the
 exhaust glow. Because the jet is symmetric, you may sculpt the left half and
-mirror it across `x = 12` to complete the right. Run `voxel --help` for the
+mirror it across `x = 30` to complete the right. Run `voxel --help` for the
 available operations (setting and clearing single voxels, filling and stroking
 boxes, 3D lines, spheres, and a mirror plane) and `voxel <operation> --help` for
 each one's exact flags. Call `voxel` once per operation and read `model.png`

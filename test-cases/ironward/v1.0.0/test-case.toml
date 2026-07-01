@@ -2,7 +2,7 @@ name = "Ironward Siege Tank"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
 summary = """
-Sculpt and rig the Ironward Siege Tank: a 24x16x32 opaque-voxel tank whose turret \
+Sculpt and rig the Ironward Siege Tank: a 60x40x80 opaque-voxel tank whose turret \
 swivels on a caller-driven turret_yaw joint, built and rigged one recorded \
 operation at a time."""
 description = "description.md"
@@ -22,9 +22,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 24
-height = 16
-depth = 32
+width = 60
+height = 40
+depth = 80
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
@@ -57,13 +57,13 @@ pivot = [0, 0, 0]
 [[model.part]]
 name = "turret"
 parent = "chassis"
-pivot = [12, 8, 16]
+pivot = [30, 20, 40]
 
 # The main gun: mounted at the front of the turret, so it swings with the turret.
 [[model.part]]
 name = "barrel"
 parent = "turret"
-pivot = [12, 11, 20]
+pivot = [30, 28, 50]
 
 # The required caller-driven joint: a game addresses `turret_yaw` by name to swing
 # the turret (and the barrel with it) left and right about its vertical mount, a
@@ -73,7 +73,7 @@ name = "turret_yaw"
 part = "turret"
 kind = "rotation"
 axis = "y"
-pivot = [12, 8, 16]
+pivot = [30, 20, 40]
 min = -3.14159265
 max = 3.14159265
 rest = 0.0
