@@ -122,3 +122,4 @@ FreeCell
 frontmost
 redeals
 peekable
+Devstral

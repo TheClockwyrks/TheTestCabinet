@@ -131,6 +131,20 @@
     "releasedAt": "2026-04-24T03:17:59Z"
   },
   {
+    "slug": "devstral-2512",
+    "name": "Devstral 2512",
+    "provider": "Mistral",
+    "openrouterUrl": "https://openrouter.ai/mistralai/devstral-2512",
+    "description": "**Devstral 2512** is Mistral's coding-specialized model — tuned specifically for\nsoftware-engineering agents rather than general chat, with an emphasis on\nnavigating a real repository, editing across files, and driving an agentic loop\nto completion. The `2512` tag marks its release snapshot. In The Test Cabinet it\nis reached through OpenRouter and driven by one of the suite's OpenRouter-routed\nharnesses against a benchmark case in a fresh, isolated repository.\n\nA purpose-built coding model is a useful data point for the suite precisely\nbecause it optimizes for the task the cases measure: it shows what a model\ntrained for agentic software work — rather than a broad generalist — can do on\nthe same front-end build, and where that specialization helps or falls short\nagainst the frontier subjects. Pricing shown on its page is the comparable\nper-token cost reported by OpenRouter, which is what The Test Cabinet uses for\nthe canonical, provider-stable cost of a run.\n",
+    "modelIds": [
+      "mistralai/devstral-2512",
+      "openrouter/mistralai/devstral-2512"
+    ],
+    "prices": null,
+    "contextLength": null,
+    "releasedAt": null
+  },
+  {
     "slug": "gemini-3.1-flash-lite",
     "name": "Gemini 3.1 Flash Lite",
     "provider": "Google",
@@ -367,6 +381,20 @@
     },
     "contextLength": 1048576,
     "releasedAt": "2026-05-31T16:36:14Z"
+  },
+  {
+    "slug": "mistral-medium-3-5",
+    "name": "Mistral Medium 3.5",
+    "provider": "Mistral",
+    "openrouterUrl": "https://openrouter.ai/mistralai/mistral-medium-3-5",
+    "description": "**Mistral Medium 3.5** is Mistral's mid-tier generalist — the balanced,\neveryday member of the family, positioned below the flagship tier but well above\nthe small models on capability. It is the one to reach for when a case wants a\ncompetent all-rounder at a moderate price rather than the most powerful engine\navailable. In The Test Cabinet it is reached through OpenRouter and driven by one\nof the suite's OpenRouter-routed harnesses against a benchmark case in a fresh,\nisolated repository.\n\nA European frontier lab's mid-tier model is a useful contrast for the catalog:\nit shows how a capable, cost-conscious generalist lands against the specialist\nand flagship subjects on the same case, without the pricing of the top tier.\nPricing shown on its page is the comparable per-token cost reported by\nOpenRouter, which is what The Test Cabinet uses for the canonical,\nprovider-stable cost of a run.\n",
+    "modelIds": [
+      "mistralai/mistral-medium-3-5",
+      "openrouter/mistralai/mistral-medium-3-5"
+    ],
+    "prices": null,
+    "contextLength": null,
+    "releasedAt": null
   },
   {
     "slug": "pareto-code",
