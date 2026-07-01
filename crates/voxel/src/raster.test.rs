@@ -123,6 +123,43 @@ fn a_color_background_fills_the_empty_area() {
     );
 }
 
+#[test]
+fn scene_views_are_deterministic_and_sized_by_dims() {
+    let dims = Dims {
+        width: 8,
+        height: 6,
+        depth: 10,
+    };
+    for view in [
+        SceneView::Iso,
+        SceneView::Front,
+        SceneView::Side,
+        SceneView::Top,
+    ] {
+        let a = rasterize_scene(&known_model(), view, PreviewBackground::Transparent);
+        let b = rasterize_scene(&known_model(), view, PreviewBackground::Transparent);
+        assert_eq!(
+            a, b,
+            "the same model renders byte-identical PNGs for {view:?}"
+        );
+
+        // Empty and occupied volumes of the same dims share the derived size.
+        let (w, h) = view.image_size(&dims);
+        let empty = rasterize_scene(&VoxelSet::empty(dims), view, PreviewBackground::Transparent);
+        assert_eq!(
+            decode_size(&empty),
+            (w, h),
+            "size is dims-derived for {view:?}"
+        );
+    }
+
+    // The orthographic elevations size to their two spanned axes at ORTHO_TILE=6
+    // plus a 2px margin each side: front = w x h, side = d x h, top = w x d.
+    assert_eq!(SceneView::Front.image_size(&dims), (8 * 6 + 4, 6 * 6 + 4));
+    assert_eq!(SceneView::Side.image_size(&dims), (10 * 6 + 4, 6 * 6 + 4));
+    assert_eq!(SceneView::Top.image_size(&dims), (8 * 6 + 4, 10 * 6 + 4));
+}
+
 fn decode_size(bytes: &[u8]) -> (u32, u32) {
     let decoder = png::Decoder::new(bytes);
     let reader = decoder.read_info().expect("valid PNG");

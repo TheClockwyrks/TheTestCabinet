@@ -19,7 +19,10 @@ use clap::{Args, Subcommand};
 use serde::Deserialize;
 
 use crate::color::Rgb;
-use crate::{Axis, Camera, Dims, Operation, PreviewBackground, VoxelSet, rasterize, render};
+use crate::{
+    Axis, Camera, Dims, Operation, PreviewBackground, SceneView, VoxelSet, rasterize,
+    rasterize_scene, render,
+};
 
 /// A single sculpting operation, expressed as a `clap` subcommand.
 ///
@@ -429,6 +432,13 @@ pub struct AnimConfig {
     /// name (for example `parts/{part}.png`).
     #[serde(default = "default_anim_preview")]
     pub preview: String,
+    /// Template for the **assembled-scene** preview path, with `{view}` replaced by
+    /// the view name (`iso`, `front`, `side`, `top`). The whole rig composed at rest
+    /// and re-rendered after every operation, so the model can check how its
+    /// separately sculpted parts fit together on the finished model. Not a scored
+    /// artifact (the per-part previews are); defaults to `scene/{view}.png`.
+    #[serde(default = "default_anim_scene")]
+    pub scene: String,
     /// Run-workspace-relative path of the rig structure (`rig.json`).
     #[serde(default = "default_rig")]
     pub rig: PathBuf,
@@ -464,6 +474,11 @@ impl AnimConfig {
         PathBuf::from(self.preview.replace("{part}", part))
     }
 
+    /// The assembled-scene preview path for `view` (`iso`, `front`, `side`, `top`).
+    pub fn scene_for(&self, view: &str) -> PathBuf {
+        PathBuf::from(self.scene.replace("{view}", view))
+    }
+
     /// Whether `part` is one of the declared parts.
     pub fn has_part(&self, part: &str) -> bool {
         self.parts.iter().any(|p| p == part)
@@ -488,6 +503,10 @@ fn default_anim_actions() -> String {
 
 fn default_anim_preview() -> String {
     "parts/{part}.png".to_string()
+}
+
+fn default_anim_scene() -> String {
+    "scene/{view}.png".to_string()
 }
 
 fn default_rig() -> PathBuf {
@@ -575,6 +594,58 @@ pub fn apply(
 /// validator produce, exposed for callers holding a set directly.
 pub fn preview_bytes(set: &VoxelSet, background: PreviewBackground) -> Vec<u8> {
     rasterize(set, &Camera::PREVIEW, background)
+}
+
+/// The assembled-scene views the animated tool renders, as `(name, view)` pairs in
+/// output order. The name substitutes the `{view}` token of `AnimConfig::scene`.
+pub const SCENE_VIEWS: [(&str, SceneView); 4] = [
+    ("iso", SceneView::Iso),
+    ("front", SceneView::Front),
+    ("side", SceneView::Side),
+    ("top", SceneView::Top),
+];
+
+/// Compose every part's action log into one assembled volume, posed at **rest**.
+///
+/// Each part is rendered from its own log in the shared volume's coordinates (where
+/// the model sculpted it) and unioned in `part_logs` order, so a later part's
+/// voxels overpaint an earlier part's where they coincide. At rest the rig applies
+/// no per-part transform (parts are sculpted in place), so this union *is* the
+/// assembled model; joint motion is not applied here (rotating voxels in the grid
+/// is lossy), which for the required rest pose is exact.
+pub fn compose_scene(dims: &Dims, part_logs: &[Vec<Operation>]) -> VoxelSet {
+    let mut set = VoxelSet::empty(*dims);
+    for operations in part_logs {
+        let part = render(dims, operations);
+        for (cell, part_cell) in set.cells.iter_mut().zip(part.cells.iter()) {
+            if let Some(color) = part_cell {
+                *cell = Some(*color);
+            }
+        }
+    }
+    set
+}
+
+/// Re-render the assembled scene from the current per-part logs: compose every
+/// declared part and write one PNG per [`SCENE_VIEWS`] entry to the config's
+/// `scene` path. Returns the composed volume so a caller can reuse it. A scene view
+/// is a non-scored aid — the per-part previews remain the scored artifacts.
+pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
+    let dims = config.dims();
+    let background = config.background()?;
+    let mut logs = Vec::with_capacity(config.parts.len());
+    for part in &config.parts {
+        logs.push(read_actions(&config.actions_for(part))?);
+    }
+    let set = compose_scene(&dims, &logs);
+    for (name, view) in SCENE_VIEWS {
+        let path = config.scene_for(name);
+        ensure_parent(&path)?;
+        let bytes = rasterize_scene(&set, view, background);
+        fs::write(&path, &bytes)
+            .map_err(|err| format!("writing scene {}: {err}", path.display()))?;
+    }
+    Ok(set)
 }
 
 /// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.

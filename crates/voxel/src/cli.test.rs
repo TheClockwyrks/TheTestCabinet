@@ -117,6 +117,7 @@ fn anim_config_templates_per_part_paths() {
         parts: vec!["chassis".to_string(), "turret".to_string()],
         actions: default_anim_actions(),
         preview: default_anim_preview(),
+        scene: default_anim_scene(),
         rig: default_rig(),
         live: None,
     };
@@ -128,8 +129,80 @@ fn anim_config_templates_per_part_paths() {
         config.preview_for("chassis"),
         PathBuf::from("parts/chassis.png")
     );
+    assert_eq!(config.scene_for("front"), PathBuf::from("scene/front.png"));
     assert!(config.has_part("chassis"));
     assert!(!config.has_part("barrel"));
+}
+
+#[test]
+fn compose_scene_unions_parts_in_order() {
+    let dims = Dims {
+        width: 4,
+        height: 4,
+        depth: 4,
+    };
+    let base = vec![Operation::FillBox {
+        x: 0,
+        y: 0,
+        z: 0,
+        width: 4,
+        height: 1,
+        depth: 4,
+        color: Rgb([1, 1, 1]),
+    }];
+    // A second part that overlaps one cell of the first — the later part wins there.
+    let top = vec![Operation::SetVoxel {
+        x: 0,
+        y: 0,
+        z: 0,
+        color: Rgb([9, 9, 9]),
+    }];
+    let scene = compose_scene(&dims, &[base, top]);
+    // 16 floor cells, and the overlapping cell carries the later part's color.
+    assert_eq!(scene.occupied_count(), 16);
+    assert_eq!(scene.get(0, 0, 0), Some(Rgb([9, 9, 9])));
+    assert_eq!(scene.get(3, 0, 3), Some(Rgb([1, 1, 1])));
+}
+
+#[test]
+fn render_scene_writes_every_view() {
+    let dir = tempdir();
+    let config = AnimConfig {
+        width: 6,
+        height: 6,
+        depth: 6,
+        background: "transparent".to_string(),
+        parts: vec!["chassis".to_string()],
+        actions: dir
+            .join("parts/{part}.actions.json")
+            .to_string_lossy()
+            .into(),
+        preview: dir.join("parts/{part}.png").to_string_lossy().into(),
+        scene: dir.join("scene/{view}.png").to_string_lossy().into(),
+        rig: dir.join("rig.json"),
+        live: None,
+    };
+    write_actions(
+        &config.actions_for("chassis"),
+        &[Operation::FillBox {
+            x: 0,
+            y: 0,
+            z: 0,
+            width: 6,
+            height: 1,
+            depth: 6,
+            color: Rgb([0x5d, 0x6b, 0x3a]),
+        }],
+    )
+    .expect("seed part log");
+
+    render_scene(&config).expect("render scene");
+    for (name, _) in SCENE_VIEWS {
+        assert!(
+            config.scene_for(name).is_file(),
+            "scene view {name} is written"
+        );
+    }
 }
 
 #[test]

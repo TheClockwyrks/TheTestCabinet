@@ -168,6 +168,119 @@ pub fn rasterize(set: &VoxelSet, camera: &Camera, bg: PreviewBackground) -> Vec<
     image.to_png_bytes()
 }
 
+/// A viewpoint for rendering an **assembled** model — the whole rig composed at
+/// rest — as a non-scored aid the animated binary writes alongside the per-part
+/// previews (see [`rasterize_scene`]).
+///
+/// [`SceneView::Iso`] reuses the same isometric projection as the per-part
+/// preview ([`Camera::PREVIEW`]) for a 3D read of the whole model. The three
+/// orthographic elevations are flat, straight-on projections — one voxel is one
+/// filled [`ORTHO_TILE`]-pixel square, and the voxel nearest the camera along the
+/// view axis wins — which read cleanly for checking that a part is centered and
+/// aligned (a turret shoved sideways or a barrel that misses the turret front is
+/// obvious head-on). Every step is integer and every constant fixed, so a scene
+/// view renders deterministically, like the isometric preview; unlike it, the
+/// scene render is not a scored artifact, so it is free to use its own cameras.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SceneView {
+    /// The fixed isometric view, from the front-top-right (as the per-part preview).
+    Iso,
+    /// The front elevation: looking along `-z` at the front face — the `x` (across,
+    /// `+x` to the right) by `y` (up) plane.
+    Front,
+    /// The side elevation: looking along `-x` — the `z` (depth, `+z`/front to the
+    /// right) by `y` (up) plane.
+    Side,
+    /// The plan (top) view: looking straight down `-y` — the `x` (across, `+x` to the
+    /// right) by `z` (depth, `+z`/front toward the top) plane.
+    Top,
+}
+
+/// The edge length, in pixels, of one voxel's square in an orthographic scene view.
+const ORTHO_TILE: i64 = 6;
+/// Transparent border kept around an orthographic scene view, in pixels.
+const ORTHO_MARGIN: i64 = 2;
+
+impl SceneView {
+    /// The `(u, v)` grid extents (in voxels) an orthographic view spans. Panics for
+    /// [`SceneView::Iso`], which uses the isometric [`Camera`] instead.
+    fn ortho_extent(self, dims: &Dims) -> (i64, i64) {
+        let (w, h, d) = (dims.width as i64, dims.height as i64, dims.depth as i64);
+        match self {
+            SceneView::Iso => unreachable!("Iso uses the isometric camera"),
+            SceneView::Front => (w, h),
+            SceneView::Side => (d, h),
+            SceneView::Top => (w, d),
+        }
+    }
+
+    /// Map a voxel to `(screen u, screen v, depth)` for an orthographic view: `u`/`v`
+    /// are grid columns/rows (`v` grows downward) and `depth` grows toward the
+    /// camera, so painting by ascending `depth` lets nearer voxels overpaint farther
+    /// ones. Panics for [`SceneView::Iso`].
+    fn ortho_map(self, dims: &Dims, x: i64, y: i64, z: i64) -> (i64, i64, i64) {
+        let (h, d) = (dims.height as i64, dims.depth as i64);
+        match self {
+            SceneView::Iso => unreachable!("Iso uses the isometric camera"),
+            SceneView::Front => (x, h - 1 - y, z),
+            SceneView::Side => (z, h - 1 - y, x),
+            SceneView::Top => (x, d - 1 - z, y),
+        }
+    }
+
+    /// The output PNG dimensions `(width, height)` for this view of a volume,
+    /// derived only from the extents so the canvas size never depends on the
+    /// occupied voxels.
+    pub fn image_size(self, dims: &Dims) -> (u32, u32) {
+        if self == SceneView::Iso {
+            return Camera::PREVIEW.image_size(dims);
+        }
+        let (u, v) = self.ortho_extent(dims);
+        (
+            (u * ORTHO_TILE + 2 * ORTHO_MARGIN).max(1) as u32,
+            (v * ORTHO_TILE + 2 * ORTHO_MARGIN).max(1) as u32,
+        )
+    }
+}
+
+/// Rasterize an assembled voxel set from one of the scene [`SceneView`]s to PNG
+/// bytes. [`SceneView::Iso`] defers to [`rasterize`] with [`Camera::PREVIEW`]; the
+/// orthographic views paint each occupied voxel as a solid square, back-to-front
+/// along the view axis so nearer voxels overpaint farther ones. Deterministic and
+/// integer-only, like [`rasterize`].
+pub fn rasterize_scene(set: &VoxelSet, view: SceneView, bg: PreviewBackground) -> Vec<u8> {
+    if view == SceneView::Iso {
+        return rasterize(set, &Camera::PREVIEW, bg);
+    }
+    let (img_w, img_h) = view.image_size(&set.dims);
+    let mut image = Rgba8::cleared(img_w, img_h, bg.fill());
+
+    let (w, h) = (set.dims.width as i64, set.dims.height as i64);
+    // Each entry is (u, v, depth, color) in screen/depth space for this view.
+    let mut voxels: Vec<(i64, i64, i64, Rgb)> = Vec::with_capacity(set.occupied_count());
+    for (index, cell) in set.cells.iter().enumerate() {
+        if let Some(color) = cell {
+            let i = index as i64;
+            let (x, y, z) = (i % w, (i / w) % h, i / (w * h));
+            let (u, v, depth) = view.ortho_map(&set.dims, x, y, z);
+            voxels.push((u, v, depth, *color));
+        }
+    }
+    // Nearer voxels last so they overpaint; ties break on (v, u) for determinism.
+    voxels.sort_by_key(|&(u, v, depth, _)| (depth, v, u));
+
+    for (u, v, _, color) in voxels {
+        let [r, g, b] = color.0;
+        let (x0, y0) = (ORTHO_MARGIN + u * ORTHO_TILE, ORTHO_MARGIN + v * ORTHO_TILE);
+        for dy in 0..ORTHO_TILE {
+            for dx in 0..ORTHO_TILE {
+                image.set(x0 + dx, y0 + dy, [r, g, b, 0xff]);
+            }
+        }
+    }
+    image.to_png_bytes()
+}
+
 /// Fixed integer shading, as a percentage, applied per visible face so the three
 /// faces of a solid-colored cube read as distinct planes: the top is brightest,
 /// then the left face, then the right face.

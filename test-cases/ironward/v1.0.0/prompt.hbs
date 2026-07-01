@@ -28,8 +28,14 @@ voxel-anim fill-box --part chassis --x0 3 --y0 0 --z0 2 --x1 20 --y1 7 --z1 29 -
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
 (defining parts, setting pivots, defining joints and clips), and `voxel-anim
 <operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see your
-progress and decide what to do next.
+authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+part's progress, **and read the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
+whole tank composed from all your parts, re-rendered after every operation. The
+scene views are how you confirm the parts actually fit together: that the turret
+sits centered on the chassis and the barrel meets the turret's front. Because each
+part is sculpted in the shared volume's coordinates, position each part where it
+belongs on the finished tank; the scene simply composes them there.
 
 ## What to read first
 
@@ -48,9 +54,10 @@ contract.
 ## What to deliver
 
 Build and rig the tank up operation by operation until each `parts/<part>.png`
-matches the brief and the rig is complete: a chassis on tracks, a turret on top,
-and a barrel projecting from the turret, with a caller-driven **`turret_yaw`**
-joint that swings the turret about its mount. Produce **every** required part and
+matches the brief, the assembled `scene/` previews show the parts fitting together
+correctly, and the rig is complete: a chassis on tracks, a turret on top, and a
+barrel projecting from the turret, with a caller-driven **`turret_yaw`** joint that
+swings the turret about its mount. Produce **every** required part and
 the required joint; you may add your own extra parts, joints, or auto-play clips on
 top, but do not drop or contradict the required interface. When you are satisfied,
 stop: the recorded per-part logs and `rig.json` are your finished submission.
