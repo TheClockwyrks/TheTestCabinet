@@ -577,7 +577,7 @@ pub fn apply(
     actions: &Path,
     preview: &Path,
     operation: Operation,
-) -> Result<(usize, Vec<u8>), String> {
+) -> Result<ApplyResult, String> {
     let mut operations = read_actions(actions)?;
     operations.push(operation);
     write_actions(actions, &operations)?;
@@ -586,7 +586,25 @@ pub fn apply(
     ensure_parent(preview)?;
     fs::write(preview, &bytes)
         .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
-    Ok((operations.len(), bytes))
+    Ok(ApplyResult {
+        count: operations.len(),
+        image: bytes,
+        voxels: set.to_voxels_json(),
+    })
+}
+
+/// The outcome of applying one operation: the running operation count, the
+/// re-rendered isometric preview PNG, and the current sparse `voxels.json` — the
+/// last of these fed to the live viewer so it can rebuild the 3D model as it takes
+/// shape (see [`send_live_preview`]).
+pub struct ApplyResult {
+    /// How many operations the part's action log now holds.
+    pub count: usize,
+    /// The re-rendered isometric preview PNG.
+    pub image: Vec<u8>,
+    /// The current occupied voxels in the sparse `voxels.json` shape core's
+    /// `VoxelsFile` reads.
+    pub voxels: String,
 }
 
 /// Rasterize an arbitrary voxel set to PNG bytes with the preview camera and the
@@ -654,17 +672,20 @@ pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
 /// every error here is swallowed — the recorded action log remains the run's
 /// authoritative output regardless of whether a frame reaches a viewer. The wire
 /// form is one JSON header line (`{ token, frame, operation, operationCount,
-/// length }`) followed by exactly `length` raw PNG bytes; the listener validates
-/// the token before accepting the frame. `frame` carries the part index (0 for a
-/// single static model).
+/// length, voxelLength }`) followed by exactly `length` raw PNG bytes and then
+/// `voxelLength` bytes of the sparse `voxels.json` text; the listener validates the
+/// token before accepting the frame. `frame` carries the part index (0 for a single
+/// static model). The voxel body lets the live viewer rebuild the model in 3D — a
+/// PNG-only viewer simply ignores it.
 pub fn send_live_preview(
     live: &LiveConfig,
     frame: u32,
     operation: &str,
     operation_count: usize,
     image: &[u8],
+    voxels: &str,
 ) {
-    let _ = try_send_live_preview(live, frame, operation, operation_count, image);
+    let _ = try_send_live_preview(live, frame, operation, operation_count, image, voxels);
 }
 
 fn try_send_live_preview(
@@ -673,6 +694,7 @@ fn try_send_live_preview(
     operation: &str,
     operation_count: usize,
     image: &[u8],
+    voxels: &str,
 ) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind, Write};
     use std::net::{TcpStream, ToSocketAddrs};
@@ -687,16 +709,19 @@ fn try_send_live_preview(
         })?;
     let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
     stream.set_write_timeout(Some(TIMEOUT))?;
+    let voxel_bytes = voxels.as_bytes();
     let mut header = serde_json::to_vec(&serde_json::json!({
         "token": live.token,
         "frame": frame,
         "operation": operation,
         "operationCount": operation_count,
         "length": image.len(),
+        "voxelLength": voxel_bytes.len(),
     }))?;
     header.push(b'\n');
     stream.write_all(&header)?;
     stream.write_all(image)?;
+    stream.write_all(voxel_bytes)?;
     stream.flush()
 }
 

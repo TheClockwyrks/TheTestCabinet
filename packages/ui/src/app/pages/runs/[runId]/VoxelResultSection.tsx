@@ -1,18 +1,14 @@
-import { Suspense, lazy, useEffect, useState } from "react";
-import type { JointSpec, ModelSpec } from "@test-cabinet/run-record";
+import { useEffect, useState } from "react";
+import type { AnimationSpec, JointSpec, ModelSpec } from "@test-cabinet/run-record";
 import {
   useVoxelArtifacts,
   type VoxelPartView,
   type VoxelResultView,
 } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
+import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
-
-// `three` (and the drei/runtime bindings) are heavy, so the WebGL viewer is split
-// into its own chunk and only fetched when a WebGL-capable browser actually mounts
-// it (see the guard in `VoxelCanvas`).
-const VoxelViewer = lazy(() => import("./VoxelViewer"));
 
 // Divergence at or above this fraction reads as "drew outside the tool" — the same
 // threshold the sprite results use.
@@ -61,10 +57,10 @@ function VoxelFallback({
 }
 
 /**
- * The guarded 3D viewer: mounts the lazy {@link VoxelViewer} only on a
- * WebGL-capable browser whose user hasn't asked for reduced motion, and only once
- * the part voxel data has been fetched; otherwise (or while loading) it shows the
- * static PNG fallback. Fetching is skipped entirely when disabled.
+ * The post-run 3D viewer for a part set: fetches each part's `voxels.json` (only on
+ * a WebGL-capable browser whose user hasn't asked for reduced motion) and hands the
+ * resolved data to {@link GuardedVoxelViewer}, which mounts the lazy 3D viewer with
+ * an expand-to-fullscreen affordance (and falls back to the static PNG otherwise).
  */
 function VoxelCanvas({
   parts,
@@ -72,6 +68,7 @@ function VoxelCanvas({
   mode,
   autoPlayClip,
   callerJoints,
+  animation,
   fallbackUrl,
   label,
   height,
@@ -81,36 +78,35 @@ function VoxelCanvas({
   mode: VoxelViewMode;
   autoPlayClip?: string | null;
   callerJoints?: Record<string, number>;
+  animation?: AnimationSpec | null;
   fallbackUrl: string | null;
   label: string;
   height?: number;
 }) {
   // Start disabled so the first paint never blocks on capability checks (and SSR
-  // never touches WebGL); promote from an effect (client-only).
+  // never touches WebGL), and so the heavy `voxels.json` fetch is skipped for a
+  // browser that will only ever show the static fallback; promote from an effect
+  // (client-only). `GuardedVoxelViewer` re-checks the same capability before it
+  // mounts three.
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     setEnabled(supportsWebGL() && !prefersReducedMotion());
   }, []);
 
   const artifacts = useVoxelArtifacts(enabled ? parts : []);
-  const fallback = (
-    <VoxelFallback url={fallbackUrl} label={label} height={height} />
-  );
-
-  if (!enabled || artifacts.loading || !artifacts.voxelsByPart) return fallback;
 
   return (
-    <Suspense fallback={fallback}>
-      <VoxelViewer
-        voxels={artifacts.voxelsByPart}
-        rig={rig}
-        mode={mode}
-        autoPlayClip={autoPlayClip}
-        callerJoints={callerJoints}
-        height={height}
-        label={label}
-      />
-    </Suspense>
+    <GuardedVoxelViewer
+      voxels={artifacts.voxelsByPart}
+      rig={rig}
+      mode={mode}
+      autoPlayClip={autoPlayClip}
+      callerJoints={callerJoints}
+      animation={animation}
+      fallbackUrl={fallbackUrl}
+      label={label}
+      height={height}
+    />
   );
 }
 
@@ -316,6 +312,50 @@ function AutoJointRow({
   );
 }
 
+/**
+ * One predetermined animation: a still, drag-to-inspect 3D view playing that
+ * animation's choreographed tracks, laid out as a row mirroring the joint rows. The
+ * case authors these so a reviewer can watch the rig perform a motion without
+ * driving its joints by hand.
+ */
+function AnimationRow({
+  animation,
+  rig,
+  parts,
+  fallbackUrl,
+}: {
+  animation: AnimationSpec;
+  rig: ModelSpec;
+  parts: VoxelPartView[];
+  fallbackUrl: string | null;
+}) {
+  const trackCount = animation.tracks.length;
+  return (
+    <div className={styles.sequenceRow}>
+      <div className={styles.sequenceMeta}>
+        <span className={styles.sequenceName}>{animation.name}</span>
+        <span className={styles.sequenceSub}>
+          animation · {trackCount} joint{trackCount === 1 ? "" : "s"} ·{" "}
+          {animation.periodMs}ms {animation.looping ? "loop" : "once"}
+        </span>
+      </div>
+      <div className={styles.sequencePlayer}>
+        <div style={CANVAS_BOX}>
+          <VoxelCanvas
+            parts={parts}
+            rig={rig}
+            mode="orbit"
+            animation={animation}
+            fallbackUrl={fallbackUrl}
+            label={`${animation.name} animation`}
+            height={240}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The per-part breakdown as a grid — the voxel analog of the sprite results'
  * `FrameGrid`: each part's voxel count, operation count, cheat divergence, and
  * action-log link. */
@@ -393,9 +433,35 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
     view.parts[0]?.regeneratedUrl ?? view.parts[0]?.previewUrl ?? null;
   const callerJoints = rig.joints.filter((j) => j.drive === "caller");
   const autoJoints = rig.joints.filter((j) => j.drive === "auto");
+  // Predetermined animations are authored on the case's declared model spec (they
+  // are not produced into the rig), so read them from there, falling back to the
+  // produced rig for safety.
+  const animations = view.model?.animations ?? view.rig?.animations ?? [];
 
   return (
     <>
+      {animations.length > 0 ? (
+        <>
+          <h3 className={`${styles.section} ${styles.leadHeading}`}>Animations</h3>
+          <p className={styles.secondary}>
+            Predetermined motions the case authored — press-play choreographies that
+            drive the rig's joints so you can watch it perform without posing it by
+            hand. Drag the model to orbit it while it plays.
+          </p>
+          <div className={styles.sequenceGrid}>
+            {animations.map((animation) => (
+              <AnimationRow
+                key={animation.name}
+                animation={animation}
+                rig={rig}
+                parts={view.parts}
+                fallbackUrl={fallbackUrl}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+
       {callerJoints.length > 0 ? (
         <>
           <h3 className={`${styles.section} ${styles.leadHeading}`}>

@@ -79,6 +79,20 @@ max = 3.14159265
 rest = 0.0
 drive = "caller"
 
+# A predetermined animation the review viewer offers as a play button, so a reviewer
+# can watch the turret sweep through its range without dragging the joint slider by
+# hand. Each `[[model.animation.track]]` drives one joint over the shared
+# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians here).
+# `turret_sweep` swings the turret center → left → center → right → center and loops.
+[[model.animation]]
+name = "turret_sweep"
+period_ms = 4000
+loop = true
+
+[[model.animation.track]]
+joint = "turret_yaw"
+keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]]
+
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"

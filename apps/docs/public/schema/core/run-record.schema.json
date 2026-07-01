@@ -188,6 +188,52 @@
         }
       ]
     },
+    "AnimationSpec": {
+      "description": "A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the\ncase authors so a reviewer can watch the rig perform a motion (a turret sweep, a\nrecoil, a walk cycle) without driving its joints by hand.\n\nAn animation drives one or more of the rig's **caller** joints over a shared\ntimeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,\nand together they play as a single loop. This is distinct from a joint's own\n[`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself\ndefined): an animation is authored by the case, spans several joints, and is\noffered in the viewer as a play button alongside the manual joint sliders.",
+      "properties": {
+        "looping": {
+          "description": "Whether the animation loops (true) or plays once and holds the last pose.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Stable, unique name shown in the viewer (for example `turret_sweep`).",
+          "type": "string"
+        },
+        "periodMs": {
+          "description": "The period in milliseconds — one full loop across every track.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tracks": {
+          "description": "The per-joint tracks, one per joint the animation drives. At least one.",
+          "items": {
+            "$ref": "#/$defs/AnimationTrackSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["name", "periodMs", "looping", "tracks"],
+      "type": "object"
+    },
+    "AnimationTrackSpec": {
+      "description": "One track of an [`AnimationSpec`]: the keyframes that drive a single joint over\nthe animation's timeline.",
+      "properties": {
+        "joint": {
+          "description": "The joint this track drives (a declared [`JointSpec::name`]).",
+          "type": "string"
+        },
+        "keyframes": {
+          "description": "The keyframes, in time order, sampled over the animation's period.",
+          "items": {
+            "$ref": "#/$defs/KeyframeSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["joint", "keyframes"],
+      "type": "object"
+    },
     "AssetFrameResult": {
       "description": "The regenerate result for one frame of an asset-generation run.\n\nFor a single sprite this is the whole run's one frame (index 0); for a sprite\nsheet there is one per declared frame, each a completely separate file. One\nsignal comes out of each, recorded rather than gated (the same stance as\nend-to-end [checks](CheckResult)): the [divergence](Self::cheat_divergence)\nbetween the regenerated image and the pixels the model left on disk — a high\ndivergence means the model drew outside the tool. There is no target image and\nno fidelity score; the regenerated image is reviewed against the brief.",
       "properties": {
@@ -617,6 +663,13 @@
     "ModelSpec": {
       "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required** contract\n(the scoring targets and the stable, game-facing joint interface); at run time\nthe model may add further parts and joints of its own, which are recorded in\nthe produced `rig.json` but are not required here. Carried into the run record\n(see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know\nthe joint interface without a separate catalog lookup.",
       "properties": {
+        "animations": {
+          "description": "The predetermined, named animations the case authors so a reviewer can watch\nthe rig perform a motion without driving its joints by hand. Empty when the\ncase declares none. These are authored playback aids — not part of the rig\nthe model produces — so they ride only on the declared model spec, never on\nthe produced `rig.json`.",
+          "items": {
+            "$ref": "#/$defs/AnimationSpec"
+          },
+          "type": "array"
+        },
         "joints": {
           "description": "The declared joints, in declared order. Each names a declared part.",
           "items": {

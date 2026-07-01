@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import type { JointSpec, ModelSpec, VoxelsFile } from "../contract";
+import type { AnimationSpec, JointSpec, ModelSpec, VoxelsFile } from "../contract";
+import { sampleAnimation } from "../clips";
 import { poseRig } from "../hierarchy";
 import { buildPartGeometry } from "./buildMesh";
 
@@ -43,6 +44,12 @@ export class VoxelRig {
   private timeMs: number;
   /** Which auto-play joint animates; `null` plays every auto-play joint. */
   private activeClip: string | null = null;
+  /**
+   * The named animation playing, or `null`. When set, each of its tracks poses its
+   * joint from the animation sampled at {@link timeMs} (overriding caller values and
+   * any auto clip on that joint), so `update` walks the animation forward.
+   */
+  private activeAnimation: AnimationSpec | null = null;
 
   constructor(
     rig: ModelSpec,
@@ -107,6 +114,18 @@ export class VoxelRig {
     this.applyPose();
   }
 
+  /**
+   * Play a named, predetermined {@link AnimationSpec} (or `null` to stop): each of
+   * its tracks poses its joint from the animation sampled at the current clock, so
+   * driving {@link update} walks the whole animation forward. This is independent of
+   * the caller values set by {@link pose} — the animation overrides only the joints
+   * it drives — and of the auto clip chosen by {@link play}.
+   */
+  playAnimation(animation: AnimationSpec | null): void {
+    this.activeAnimation = animation;
+    this.applyPose();
+  }
+
   /** Advance the playback clock by `dtSeconds` and re-pose. */
   update(dtSeconds: number): void {
     this.timeMs += dtSeconds * 1000;
@@ -136,22 +155,42 @@ export class VoxelRig {
     this.root.removeFromParent();
   }
 
-  /** Rig posed for the current frame given `activeClip`, holding others at rest. */
+  /**
+   * Rig posed for the current frame. An isolated `activeClip` holds every other
+   * auto joint at rest, and every joint an `activeAnimation` drives is forced to
+   * caller so its sampled value (applied in {@link applyPose}) poses the rig even if
+   * the joint would otherwise auto-play. With neither active, the rig is unchanged.
+   */
   private posableRig(): ModelSpec {
-    if (this.activeClip === null) return this.rig;
+    const animated = this.activeAnimation
+      ? new Set(this.activeAnimation.tracks.map((t) => t.joint))
+      : null;
     const active = this.activeClip;
+    if (active === null && animated === null) return this.rig;
     return {
       parts: this.rig.parts,
-      joints: this.rig.joints.map((j): JointSpec =>
-        j.drive === "auto" && j.name !== active
-          ? { ...j, drive: "caller", auto: undefined }
-          : j,
-      ),
+      joints: this.rig.joints.map((j): JointSpec => {
+        // A joint the animation drives is posed from the sampled caller value.
+        if (animated?.has(j.name) && j.drive === "auto") {
+          return { ...j, drive: "caller", auto: undefined };
+        }
+        // Isolate the active clip: every other auto joint holds at rest.
+        if (active !== null && j.drive === "auto" && j.name !== active) {
+          return { ...j, drive: "caller", auto: undefined };
+        }
+        return j;
+      }),
+      animations: this.rig.animations,
     };
   }
 
   private applyPose(): void {
-    const posed = poseRig(this.posableRig(), { caller: this.caller, timeMs: this.timeMs });
+    // Overlay the active animation's sampled joint values on the caller values, so
+    // an animation drives its joints while any others stay at their caller pose.
+    const caller = this.activeAnimation
+      ? { ...this.caller, ...sampleAnimation(this.activeAnimation, this.timeMs) }
+      : this.caller;
+    const posed = poseRig(this.posableRig(), { caller, timeMs: this.timeMs });
     for (const part of posed) {
       const group = this.groups.get(part.name);
       if (group) group.matrix.fromArray(part.worldMatrix);

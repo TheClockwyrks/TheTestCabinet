@@ -315,6 +315,21 @@ keyframes = [              # >=1, in time order over [0, period_ms]
   { t_ms = 2000, value = 3.14159 },
   { t_ms = 4000, value = 0.0 },
 ]
+
+# A predetermined animation: a named, case-authored choreography the review viewer
+# offers as a play button, so a reviewer can watch the rig perform without driving
+# its joints by hand. Unlike a clip (one `auto` joint the *model* defines), an
+# animation is authored by the *case*, spans one or more joints, and plays the rig's
+# *caller* joints. Declare as many as you like.
+[[model.animation]]
+name      = "turret_sweep" # stable, unique name shown in the viewer
+period_ms = 4000           # one full loop across every track, in milliseconds
+loop      = true           # loop (true) or play once and hold the last pose (false)
+
+[[model.animation.track]]  # one track per joint the animation drives
+joint     = "turret_yaw"   # a declared joint
+keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]]
+                           # inline [t_ms, value] pairs, in time order over [0, period_ms]
 ```
 
 - The **`[voxel]`** table fixes the bounding volume: its `width`, `height` (up),
@@ -333,12 +348,26 @@ keyframes = [              # >=1, in time order over [0, period_ms]
 - The **`[model]`** table is **required for — and only for — `asset_kind =
   "voxel-animation"`**. It declares the rig's `[[model.part]]` hierarchy and
   `[[model.joint]]` degrees of freedom (and any `[[model.clip]]` auto-play
-  timelines). Resolution validates that part names are unique, the **first** part
-  is the root (no `parent`), every other `parent` names a declared part, the
-  parents form a **tree** (no cycles), every joint's `part` names a declared part,
-  every joint's `kind`/`axis`/`drive` parse, `min <= rest <= max`, and every
-  `[[model.clip]]` names a declared `drive = "auto"` joint with in-order keyframes
-  over `[0, period_ms]`. A caller-driven joint takes **no** clip.
+  timelines and `[[model.animation]]` choreographies). Resolution validates that
+  part names are unique, the **first** part is the root (no `parent`), every other
+  `parent` names a declared part, the parents form a **tree** (no cycles), every
+  joint's `part` names a declared part, every joint's `kind`/`axis`/`drive` parse,
+  `min <= rest <= max`, and every `[[model.clip]]` names a declared `drive = "auto"`
+  joint with in-order keyframes over `[0, period_ms]`. A caller-driven joint takes
+  **no** clip.
+- **`[[model.animation]]`** entries are **predetermined, case-authored animations**
+  the review viewer plays back on demand (as a play button beside the manual joint
+  sliders), so a reviewer can watch the finished rig perform a motion — a turret
+  sweep, a recoil, a walk cycle — without posing its joints by hand. Each has a
+  unique `name`, a `period_ms`, a `loop` flag, and one or more
+  `[[model.animation.track]]` tables (each an existing joint plus its inline
+  `[t_ms, value]` keyframes over `[0, period_ms]`); an animation typically drives
+  the rig's **caller** joints. This is distinct from a `[[model.clip]]` — a clip is
+  one `auto` joint's own looping motion that the *model* defines, whereas an
+  animation is authored by the *case*, may span several joints, and is offered as a
+  named playback. Animations are authored playback aids only: they ride on the
+  case's declared model spec and are **not** part of the `rig.json` the model
+  produces, so the model neither adds nor removes them.
 - **The rig is the *required* contract, not the whole model.** `[model]` fixes the
   parts and joints the model **must** produce — the stable, game-facing joint
   interface a consuming game drives and the targets a reviewer scores. At run time

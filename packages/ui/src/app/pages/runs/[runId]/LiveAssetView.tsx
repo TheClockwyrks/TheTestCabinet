@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
-import type { AssetSheet, ModelSpec } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec, VoxelsFile } from "@test-cabinet/run-record";
 import type { AssetPreview } from "../../../../client/types";
+import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
 import styles from "./RunDetailPages.module.scss";
 
 // The model's sprites are tiny; scale them up with crisp (nearest-neighbor)
@@ -143,6 +144,259 @@ function SlotImage({
   );
 }
 
+/** A trivial single-part rig whose one part carries the whole model's voxels — used
+ * for a static voxel model and for each per-part live view. */
+function staticRig(partName: string): ModelSpec {
+  return { parts: [{ name: partName, pivot: [0, 0, 0] }], joints: [] };
+}
+
+/** Whether any streamed preview carries voxel geometry — the signal that this is a
+ * voxel run (a voxel-animation case also declares a `model` up front). */
+function isVoxelRun(
+  previews: Map<number, AssetPreview>,
+  model: ModelSpec | null,
+): boolean {
+  if (model) return true;
+  for (const preview of previews.values()) if (preview.voxels) return true;
+  return false;
+}
+
+/**
+ * The live 3D view for an in-progress voxel run. As the model sculpts, each
+ * operation streams the part's current voxels (alongside its isometric PNG); this
+ * rebuilds the model in 3D and rotates it, exactly as the finished-run view does —
+ * no need to wait for the run to complete.
+ *
+ * Two views are offered for a rigged (animated) model:
+ * - **Scene** assembles every part whose mount location is known — i.e. every part
+ *   the case declared, posed at rest into the shape the finished instance will
+ *   take. A part the model added of its own (a preview beyond the declared parts,
+ *   whose mount the scene can't yet place) is left out of the scene until then; it
+ *   still appears in the per-part Model view.
+ * - **Model** shows one part at a time (the one being sculpted, or a part picked
+ *   from the rail), so a single component can be inspected as it takes shape.
+ *
+ * A static (single-part) model has just the one rotating view. When WebGL is
+ * unavailable or the user prefers reduced motion, each view falls back to the
+ * streamed isometric PNG so the run stays watchable.
+ */
+function LiveVoxelView({
+  previews,
+  activeFrame,
+  model,
+}: {
+  previews: Map<number, AssetPreview>;
+  activeFrame: number | null;
+  model: ModelSpec | null;
+}) {
+  const animated = model !== null;
+  const [view, setView] = useState<"scene" | "model">("scene");
+  // The user can pin the per-part view to a slot; until then it follows the part
+  // being sculpted.
+  const [picked, setPicked] = useState<number | null>(null);
+
+  // A content signature so the voxel objects (and the meshes built from them) are
+  // rebuilt only when a new operation arrives, not on every render.
+  const signature = [...previews.entries()]
+    .map(([index, p]) => `${index}:${p.operationCount}:${p.voxels ? 1 : 0}`)
+    .sort()
+    .join(",");
+
+  // The streamed voxels for each part, keyed by its preview (part) index.
+  const voxelsByIndex = useMemo(() => {
+    const map = new Map<number, VoxelsFile>();
+    for (const [index, preview] of previews) {
+      if (preview.voxels) map.set(index, preview.voxels);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
+  // Frame the camera from the fixed volume so it holds steady as the model grows;
+  // every part shares the same declared volume, so any streamed part's dims serve.
+  const frameDims = useMemo(() => {
+    for (const file of voxelsByIndex.values()) return file.dims;
+    return null;
+  }, [voxelsByIndex]);
+
+  // The slots the case will fill: one per declared part (a rig), or the single model
+  // (a static voxel case), unioned with any streamed index beyond them.
+  const slots = useMemo(
+    () => buildSlots(null, model, previews, "Model"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, signature],
+  );
+
+  // The assembled scene: every part whose mount location is known (a declared rig
+  // part), keyed by part name for the rig. A model-added part beyond the declared
+  // set has no known mount yet, so it is left out of the scene.
+  const sceneRig = useMemo<ModelSpec>(() => model ?? staticRig("model"), [model]);
+  const sceneVoxels = useMemo(() => {
+    const byPart: Record<string, VoxelsFile> = {};
+    if (model) {
+      model.parts.forEach((part, index) => {
+        const file = voxelsByIndex.get(index);
+        if (file) byPart[part.name] = file;
+      });
+    } else {
+      const file = voxelsByIndex.get(0);
+      if (file) byPart.model = file;
+    }
+    return byPart;
+  }, [model, voxelsByIndex]);
+
+  // The per-part Model view's selected part: the user's pick, else the part being
+  // sculpted, else the first slot.
+  const selectedIndex = picked ?? activeFrame ?? slots[0]?.index ?? 0;
+  const selectedSlot =
+    slots.find((s) => s.index === selectedIndex) ?? slots[0] ?? null;
+  const selectedName = selectedSlot?.name ?? "model";
+  const selectedVoxels = voxelsByIndex.get(selectedIndex) ?? null;
+  const partRig = useMemo(() => staticRig(selectedName), [selectedName]);
+  const fallbackFor = (index: number): string | null => {
+    const preview = previews.get(index);
+    return preview ? dataUrl(preview.image) : null;
+  };
+
+  // The scene assembles declared parts; the per-part view is only meaningful for a
+  // multi-part rig, so a static model always shows the single scene view.
+  const showModel = view === "model" && animated;
+
+  return (
+    <Panel>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>Live model</h2>
+      <p className={styles.secondary}>
+        The model's in-progress geometry, rebuilt in 3D after each sculpting
+        operation and rotated so you can read it from every side. The recorded action
+        log is the run's authoritative output; this preview is just a live look at
+        it.
+      </p>
+
+      {animated && (
+        <div className={styles.viewToggle} role="tablist" aria-label="Live 3D view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "scene"}
+            className={`${styles.viewToggleButton}${
+              view === "scene" ? ` ${styles.viewToggleActive}` : ""
+            }`}
+            onClick={() => setView("scene")}
+          >
+            Scene
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "model"}
+            className={`${styles.viewToggleButton}${
+              view === "model" ? ` ${styles.viewToggleActive}` : ""
+            }`}
+            onClick={() => setView("model")}
+          >
+            Model
+          </button>
+        </div>
+      )}
+
+      {showModel ? (
+        <div className={styles.liveLayout}>
+          <nav className={styles.slotRail} aria-label="Model parts">
+            <p className={styles.slotRailLabel}>
+              {voxelsByIndex.size}/{slots.length} sculpted
+            </p>
+            <ul className={styles.slotList}>
+              {slots.map((slot) => {
+                const preview = previews.get(slot.index);
+                const isDrawing = slot.index === activeFrame;
+                const isSelected = slot.index === selectedIndex;
+                return (
+                  <li key={slot.index}>
+                    <button
+                      type="button"
+                      className={`${styles.slotButton}${
+                        isSelected ? ` ${styles.slotButtonSelected}` : ""
+                      }`}
+                      aria-current={isSelected ? "true" : undefined}
+                      onClick={() => setPicked(slot.index)}
+                    >
+                      <SlotImage
+                        preview={preview}
+                        style={SPRITE_THUMB}
+                        alt={slot.name}
+                      />
+                      <span className={styles.slotMeta}>
+                        <span className={styles.slotName}>{slot.name}</span>
+                        <span className={styles.slotSub}>
+                          {preview
+                            ? `${preview.operationCount} ${
+                                preview.operationCount === 1 ? "op" : "ops"
+                              }`
+                            : "—"}
+                          {isDrawing ? " · sculpting" : ""}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+          <figure className={styles.liveMain}>
+            <div className={styles.liveVoxelCanvas}>
+              <GuardedVoxelViewer
+                voxels={selectedVoxels}
+                rig={partRig}
+                mode="auto-rotate"
+                frameDims={frameDims}
+                fallbackUrl={fallbackFor(selectedIndex)}
+                label={`${selectedName} (in progress)`}
+                height={340}
+                fullscreenable={false}
+              />
+            </div>
+            <figcaption className={styles.liveCaption}>
+              <strong>{selectedName}</strong>
+              {selectedSlot && previews.get(selectedIndex) ? (
+                <span className={styles.secondary}>
+                  {" · "}
+                  {previews.get(selectedIndex)!.operationCount} operations
+                </span>
+              ) : (
+                <span className={styles.secondary}> · not started</span>
+              )}
+            </figcaption>
+          </figure>
+        </div>
+      ) : (
+        <figure className={styles.liveMain}>
+          <div className={styles.liveVoxelCanvas}>
+            <GuardedVoxelViewer
+              voxels={animated ? sceneVoxels : (voxelsByIndex.get(0) ?? null)}
+              rig={sceneRig}
+              mode="auto-rotate"
+              frameDims={frameDims}
+              fallbackUrl={fallbackFor(activeFrame ?? 0)}
+              label={animated ? "Assembled scene (in progress)" : "Model (in progress)"}
+              height={340}
+              fullscreenable={false}
+            />
+          </div>
+          <figcaption className={styles.liveCaption}>
+            <strong>{animated ? "Assembled scene" : "Model"}</strong>
+            <span className={styles.secondary}>
+              {" · "}
+              {animated
+                ? `${Object.keys(sceneVoxels).length}/${model!.parts.length} parts placed`
+                : `${voxelsByIndex.get(0)?.voxels.length.toLocaleString() ?? 0} voxels`}
+            </span>
+          </figcaption>
+        </figure>
+      )}
+    </Panel>
+  );
+}
+
 /**
  * The live drawing view for an in-progress asset-generation run. As the model
  * issues drawing operations, each re-rendered frame is streamed here (out of band
@@ -184,6 +438,14 @@ export function LiveAssetView({
 
   // Nothing to show for a non-asset run that has streamed no previews.
   if (!sheet && !model && previews.size === 0) return null;
+
+  // A voxel run (a declared rig, or any streamed voxel geometry) renders its
+  // in-progress model in 3D rather than as a flat sprite canvas.
+  if (isVoxelRun(previews, model)) {
+    return (
+      <LiveVoxelView previews={previews} activeFrame={activeFrame} model={model} />
+    );
+  }
 
   const slots = buildSlots(sheet, model, previews, assetLabel);
   const showRail = slots.length > 1;

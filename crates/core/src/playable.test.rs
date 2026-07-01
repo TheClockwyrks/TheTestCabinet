@@ -143,6 +143,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
         model: Some(crate::test_case::ModelSpec {
             parts: vec![],
             joints: vec![],
+            animations: vec![],
         }),
         rig: None,
         detail: None,

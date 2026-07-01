@@ -828,7 +828,14 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
             }
         })
         .collect();
-    ModelSpec { parts, joints }
+    // Animations are authored playback aids carried only on the case's declared
+    // model spec, never produced into `rig.json`, so the rig reconstructed here has
+    // none.
+    ModelSpec {
+        parts,
+        joints,
+        animations: Vec::new(),
+    }
 }
 
 /// Reconcile the produced rig against the required one, noting any required part or

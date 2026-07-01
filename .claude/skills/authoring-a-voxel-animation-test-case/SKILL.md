@@ -166,6 +166,16 @@ Author `test-case.toml` per the
   - `[[model.clip]]` entries (optional) — an auto-play timeline for a `drive =
     "auto"` joint: the `joint` it drives, `period_ms`, `loop`, and in-order
     `keyframes` over `[0, period_ms]`. A `caller` joint takes **no** clip.
+  - `[[model.animation]]` entries (optional) — **predetermined, case-authored
+    animations** the review viewer plays on demand (a play button beside the manual
+    joint sliders), so a reviewer can watch the finished rig perform a motion without
+    posing it by hand. Each has a unique `name`, a `period_ms`, a `loop` flag, and
+    one or more `[[model.animation.track]]` tables — each a declared `joint` plus its
+    inline `[t_ms, value]` `keyframes` over `[0, period_ms]`. An animation usually
+    drives the rig's **caller** joints and may span several at once (e.g. a
+    `turret_sweep` that swings the turret while dipping the barrel). Unlike a clip
+    (one `auto` joint the *model* defines), an animation is authored by the *case*,
+    is a pure playback aid, and is **not** part of the produced `rig.json`.
 - A **`variants`** list (root key, before the first table) — the first entry the
   default.
 - **No targets** — declare **no `[[reference]]`**; resolution rejects any.

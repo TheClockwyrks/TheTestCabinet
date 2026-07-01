@@ -218,7 +218,11 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     let bg = PreviewBackground::Transparent;
 
     cli_init(&dims, bg, &actions, &preview);
-    let (count, returned) = apply(
+    let ApplyResult {
+        count,
+        image: returned,
+        voxels,
+    } = apply(
         &dims,
         bg,
         &actions,
@@ -242,6 +246,10 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     let on_disk = std::fs::read(&preview).expect("preview written");
     assert_eq!(on_disk, expected);
     assert_eq!(returned, expected);
+
+    // The returned voxels are the same sparse `voxels.json` the set regenerates to,
+    // so a live viewer can rebuild the model in 3D from the stream.
+    assert_eq!(voxels, render(&dims, &logged).to_voxels_json());
 }
 
 #[test]

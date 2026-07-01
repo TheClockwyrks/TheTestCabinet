@@ -19,6 +19,9 @@ export type {
   DriveKindSpec,
   AutoPlaySpec,
   KeyframeSpec,
+  // Predetermined, case-authored animations (the viewer's play buttons).
+  AnimationSpec,
+  AnimationTrackSpec,
 } from "@test-cabinet/run-record";
 
 /** An integer or real 3-vector `[x, y, z]`. */

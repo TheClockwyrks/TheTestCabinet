@@ -314,18 +314,23 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             let dims = config.dims();
             let name = op.name();
-            let (count, image) = cli::apply(
+            let cli::ApplyResult {
+                count,
+                image,
+                voxels,
+            } = cli::apply(
                 &dims,
                 config.background()?,
                 &config.actions_for(&part),
                 &config.preview_for(&part),
                 op.into_operation(),
             )?;
-            // Stream this part's re-rendered preview to the live viewer, keyed by
-            // its part index. Best-effort; a no-op for an unobserved run.
+            // Stream this part's re-rendered preview and current voxels to the live
+            // viewer, keyed by its part index. Best-effort; a no-op for an
+            // unobserved run.
             if let Some(live) = &config.live {
                 let index = config.parts.iter().position(|p| *p == part).unwrap_or(0) as u32;
-                cli::send_live_preview(live, index, name, count, &image);
+                cli::send_live_preview(live, index, name, count, &image, &voxels);
             }
             // Refresh the assembled scene so its views reflect this operation.
             cli::render_scene(&config)?;

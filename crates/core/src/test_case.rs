@@ -435,6 +435,10 @@ struct ManifestModel {
     /// auto-driven joint.
     #[serde(default, rename = "clip")]
     clip: Vec<ManifestClip>,
+    /// The predetermined, named animations, as repeated `[[model.animation]]`
+    /// tables — authored playback aids the viewer offers as play buttons.
+    #[serde(default, rename = "animation")]
+    animation: Vec<ManifestAnimation>,
 }
 
 // `ManifestModel` owns joints and clips that carry `f64` fields, so it takes a
@@ -504,6 +508,40 @@ struct ManifestClip {
 // `ManifestClip` carries `f64` keyframe values, so it takes a manual `Eq` for the
 // same reason as `ManifestSheetSequence` above.
 impl Eq for ManifestClip {}
+
+/// A single `[[model.animation]]` entry: one named, predetermined animation and its
+/// per-joint tracks (each a nested `[[model.animation.track]]` table).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestAnimation {
+    /// Stable, unique name shown in the viewer.
+    name: String,
+    /// The period in milliseconds (one full loop across every track).
+    period_ms: u32,
+    /// Whether the animation loops (true) or holds the last pose (false). `loop` is
+    /// a Rust keyword, so the field is `r#loop`.
+    r#loop: bool,
+    /// The per-joint tracks, as repeated `[[model.animation.track]]` tables.
+    #[serde(default, rename = "track")]
+    track: Vec<ManifestAnimationTrack>,
+}
+
+// `ManifestAnimation` bottoms out in `f64` keyframe values, so it takes a manual
+// `Eq` for the same reason as `ManifestClip` above.
+impl Eq for ManifestAnimation {}
+
+/// A single `[[model.animation.track]]` entry: the keyframes that drive one joint
+/// over its animation's timeline. Each keyframe is an inline `[t_ms, value]` pair,
+/// mirroring `[[model.clip]]`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestAnimationTrack {
+    /// The joint this track drives (a declared `[[model.joint]]` name).
+    joint: String,
+    /// The keyframes, each an inline `[t_ms, value]` pair, in time order.
+    keyframes: Vec<[f64; 2]>,
+}
+
+// `ManifestAnimationTrack` carries `f64` keyframe values, so it takes a manual `Eq`.
+impl Eq for ManifestAnimationTrack {}
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
 /// array): a `source` file inside the version folder seeded to a `dest` path in
@@ -1235,6 +1273,13 @@ pub struct ModelSpec {
     pub parts: Vec<PartSpec>,
     /// The declared joints, in declared order. Each names a declared part.
     pub joints: Vec<JointSpec>,
+    /// The predetermined, named animations the case authors so a reviewer can watch
+    /// the rig perform a motion without driving its joints by hand. Empty when the
+    /// case declares none. These are authored playback aids — not part of the rig
+    /// the model produces — so they ride only on the declared model spec, never on
+    /// the produced `rig.json`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub animations: Vec<AnimationSpec>,
 }
 
 /// A resolved part of a [`ModelSpec`]: one named voxel component of the rig.
@@ -1362,6 +1407,48 @@ pub struct KeyframeSpec {
 // `JointSpec` above.
 impl Eq for AutoPlaySpec {}
 impl Eq for KeyframeSpec {}
+
+/// A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the
+/// case authors so a reviewer can watch the rig perform a motion (a turret sweep, a
+/// recoil, a walk cycle) without driving its joints by hand.
+///
+/// An animation drives one or more of the rig's **caller** joints over a shared
+/// timeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,
+/// and together they play as a single loop. This is distinct from a joint's own
+/// [`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself
+/// defined): an animation is authored by the case, spans several joints, and is
+/// offered in the viewer as a play button alongside the manual joint sliders.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AnimationSpec {
+    /// Stable, unique name shown in the viewer (for example `turret_sweep`).
+    pub name: String,
+    /// The period in milliseconds — one full loop across every track.
+    pub period_ms: u32,
+    /// Whether the animation loops (true) or plays once and holds the last pose.
+    pub looping: bool,
+    /// The per-joint tracks, one per joint the animation drives. At least one.
+    pub tracks: Vec<AnimationTrackSpec>,
+}
+
+/// One track of an [`AnimationSpec`]: the keyframes that drive a single joint over
+/// the animation's timeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AnimationTrackSpec {
+    /// The joint this track drives (a declared [`JointSpec::name`]).
+    pub joint: String,
+    /// The keyframes, in time order, sampled over the animation's period.
+    pub keyframes: Vec<KeyframeSpec>,
+}
+
+// Manual `Eq` for the two animation types: both bottom out in `KeyframeSpec`'s
+// `f64` value, so — like the rig types above — they derive `PartialEq` and take a
+// hand-written `Eq`.
+impl Eq for AnimationSpec {}
+impl Eq for AnimationTrackSpec {}
 
 /// A named build target of a test case.
 ///
@@ -3722,7 +3809,93 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
         )));
     }
 
-    Ok(ModelSpec { parts, joints })
+    // Animations: each is a named, predetermined clip spanning one or more of the
+    // rig's joints. Validate the name, period, and every track's joint reference and
+    // keyframe timeline, then build the resolved [`AnimationSpec`]s.
+    let mut animations: Vec<AnimationSpec> = Vec::with_capacity(model.animation.len());
+    for animation in &model.animation {
+        if animation.name.trim().is_empty() {
+            return Err(invalid(
+                "model animation `name` must not be empty".to_string(),
+            ));
+        }
+        if animations.iter().any(|a| a.name == animation.name) {
+            return Err(invalid(format!(
+                "duplicate model animation name `{}`",
+                animation.name
+            )));
+        }
+        if animation.period_ms == 0 {
+            return Err(invalid(format!(
+                "model animation `{}` must declare a `period_ms` greater than zero",
+                animation.name
+            )));
+        }
+        if animation.track.is_empty() {
+            return Err(invalid(format!(
+                "model animation `{}` declares no [[model.animation.track]]",
+                animation.name
+            )));
+        }
+        let mut tracks: Vec<AnimationTrackSpec> = Vec::with_capacity(animation.track.len());
+        for track in &animation.track {
+            if !joints.iter().any(|j| j.name == track.joint) {
+                return Err(invalid(format!(
+                    "model animation `{}` has a track for joint `{}`, which is not a declared \
+                     joint",
+                    animation.name, track.joint
+                )));
+            }
+            if tracks.iter().any(|t| t.joint == track.joint) {
+                return Err(invalid(format!(
+                    "model animation `{}` declares more than one track for joint `{}`",
+                    animation.name, track.joint
+                )));
+            }
+            if track.keyframes.is_empty() {
+                return Err(invalid(format!(
+                    "model animation `{}` track for joint `{}` declares no keyframes",
+                    animation.name, track.joint
+                )));
+            }
+            let mut keyframes = Vec::with_capacity(track.keyframes.len());
+            for [t_ms, value] in &track.keyframes {
+                if !(t_ms.is_finite() && value.is_finite()) {
+                    return Err(invalid(format!(
+                        "model animation `{}` track for joint `{}` has a non-finite keyframe",
+                        animation.name, track.joint
+                    )));
+                }
+                if *t_ms < 0.0 || *t_ms > f64::from(animation.period_ms) {
+                    return Err(invalid(format!(
+                        "model animation `{}` track for joint `{}` has a keyframe `t_ms` outside \
+                         `0..=period_ms`",
+                        animation.name, track.joint
+                    )));
+                }
+                keyframes.push(KeyframeSpec {
+                    t_ms: *t_ms as u32,
+                    value: *value,
+                });
+            }
+            tracks.push(AnimationTrackSpec {
+                joint: track.joint.clone(),
+                keyframes,
+            });
+        }
+        animations.push(AnimationSpec {
+            name: animation.name.clone(),
+            period_ms: animation.period_ms,
+            looping: animation.r#loop,
+            tracks,
+        });
+    }
+
+    Ok(ModelSpec {
+        parts,
+        joints,
+        animations,
+    })
 }
 
 /// Recursively enumerate the files under a workspace directory into

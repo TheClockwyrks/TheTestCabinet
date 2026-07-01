@@ -79,7 +79,11 @@ fn run(cli: Cli) -> Result<(), String> {
             let config: Config = cli::read_config(&cli.config)?;
             let dims = config.dims();
             let name = op.name();
-            let (count, image) = cli::apply(
+            let cli::ApplyResult {
+                count,
+                image,
+                voxels,
+            } = cli::apply(
                 &dims,
                 config.background()?,
                 &config.actions,
@@ -89,7 +93,7 @@ fn run(cli: Cli) -> Result<(), String> {
             // A single static model is part 0. Streaming is best-effort and a no-op
             // when the run has no live viewer (no `live` in the seeded config).
             if let Some(live) = &config.live {
-                cli::send_live_preview(live, 0, name, count, &image);
+                cli::send_live_preview(live, 0, name, count, &image, &voxels);
             }
             println!(
                 "applied {name} ({count} operation{} recorded)",

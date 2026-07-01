@@ -61,9 +61,16 @@ interfaces. A host imports only what it needs.
   component — a lazy-loaded React Three Fiber canvas that mounts the
   [voxel-runtime](/components/voxel-runtime/overview/)'s `VoxelRig` (a `voxel-model`
   auto-rotating; a `voxel-animation` orbit-drag with a range control per caller
-  joint, e.g. `turret_yaw`, and playback of each auto-play joint), falling back to
-  the regenerated preview PNG where WebGL is unavailable or reduced motion is
-  requested so the run stays reviewable. (Both
+  joint, e.g. `turret_yaw`, playback of each auto-play joint, and a play button per
+  case-authored **predetermined animation**), falling back to the regenerated
+  preview PNG where WebGL is unavailable or reduced motion is requested so the run
+  stays reviewable. Each 3D view carries an **expand-to-fullscreen** button: inline,
+  scroll-to-zoom is disabled (the model rotates but does not zoom); expanded, both
+  scroll-to-zoom and grab-to-rotate are enabled. The **live monitor** renders a
+  voxel run's in-progress model the same way — rebuilding it in 3D from the streamed
+  `voxels.json` after each operation (a **Scene** view assembling every part whose
+  mount location is known, and a **Model** view for one part at a time) instead of
+  the flat isometric PNG. (Both
   consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
   desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks

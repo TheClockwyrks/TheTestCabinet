@@ -588,6 +588,14 @@ export type ModelSpec = {
    * The declared joints, in declared order. Each names a declared part.
    */
   joints: Array<JointSpec>;
+  /**
+   * The predetermined, named animations the case authors so a reviewer can watch
+   * the rig perform a motion without driving its joints by hand. Empty when the
+   * case declares none. These are authored playback aids — not part of the rig
+   * the model produces — so they ride only on the declared model spec, never on
+   * the produced `rig.json`.
+   */
+  animations?: Array<AnimationSpec>;
 };
 
 /**
@@ -710,6 +718,52 @@ export type KeyframeSpec = {
    * The joint value at this time.
    */
   value: number;
+};
+
+/**
+ * A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the
+ * case authors so a reviewer can watch the rig perform a motion (a turret sweep, a
+ * recoil, a walk cycle) without driving its joints by hand.
+ *
+ * An animation drives one or more of the rig's **caller** joints over a shared
+ * timeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,
+ * and together they play as a single loop. This is distinct from a joint's own
+ * [`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself
+ * defined): an animation is authored by the case, spans several joints, and is
+ * offered in the viewer as a play button alongside the manual joint sliders.
+ */
+export type AnimationSpec = {
+  /**
+   * Stable, unique name shown in the viewer (for example `turret_sweep`).
+   */
+  name: string;
+  /**
+   * The period in milliseconds — one full loop across every track.
+   */
+  periodMs: number;
+  /**
+   * Whether the animation loops (true) or plays once and holds the last pose.
+   */
+  looping: boolean;
+  /**
+   * The per-joint tracks, one per joint the animation drives. At least one.
+   */
+  tracks: Array<AnimationTrackSpec>;
+};
+
+/**
+ * One track of an [`AnimationSpec`]: the keyframes that drive a single joint over
+ * the animation's timeline.
+ */
+export type AnimationTrackSpec = {
+  /**
+   * The joint this track drives (a declared [`JointSpec::name`]).
+   */
+  joint: string;
+  /**
+   * The keyframes, in time order, sampled over the animation's period.
+   */
+  keyframes: Array<KeyframeSpec>;
 };
 
 /**

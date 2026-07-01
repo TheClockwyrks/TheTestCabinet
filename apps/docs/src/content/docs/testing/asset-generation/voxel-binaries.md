@@ -101,14 +101,18 @@ the model's sculpting can be streamed to the viewer in real time, exactly as for
 the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
 orchestrator adds a `live` block to the seeded config, and after each operation the
 binary connects back to the run host and streams a one-line JSON header
-(`{ token, frame, operationCount, operation, length }`) followed by the freshly
-rendered isometric PNG's raw bytes. For an animated model the `frame` field carries
-the **part index**, so the viewer can show the most-recently-sculpted part and the
-status of every part at once (a static model uses part index `0`). Streaming is
-**best-effort and non-essential** — absent for an unwatched run, never fails an
-operation, and never recorded; the recorded **operation log** remains the run's
-authoritative output, and the reviewed voxels and preview are always
-[regenerated](/testing/asset-generation/evaluation/) from it.
+(`{ token, frame, operationCount, operation, length, voxelLength }`) followed by the
+freshly rendered isometric PNG's raw bytes and then the part's current `voxels.json`
+text (`voxelLength` bytes). The voxel body lets the viewer rebuild the model **in
+3D** as it is sculpted — rotating it and assembling the scene exactly as the
+finished-run view does — rather than showing only the flat isometric PNG; a
+PNG-only viewer simply ignores it. For an animated model the `frame` field carries
+the **part index**, so the viewer can show the most-recently-sculpted part, the
+status of every part, and the assembled scene at once (a static model uses part
+index `0`). Streaming is **best-effort and non-essential** — absent for an unwatched
+run, never fails an operation, and never recorded; the recorded **operation log**
+remains the run's authoritative output, and the reviewed voxels and preview are
+always [regenerated](/testing/asset-generation/evaluation/) from it.
 
 ## `voxel-anim`: one volume per part, plus the rig
 
