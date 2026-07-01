@@ -1,5 +1,13 @@
 # syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 # Auth-service image for the Kubernetes deployment (and the local compose stack).
+#
+# The check=skip above silences a false positive: BuildKit's SecretsUsedInArgOrEnv
+# lint flags any ENV whose *name* contains "AUTH" (also TOKEN/KEY/SECRET/PASSWORD).
+# The only such ENV here is TCAB_AUTH_BIND — the socket the Axum server listens on
+# (0.0.0.0:8789), a network bind address, not a credential. The same value is
+# already committed in plaintext in the compose file, k8s manifests, and the
+# .env.example files. No secret is baked into the image.
 #
 # The auth service does no reference rendering, so — unlike the backend image —
 # it ships no Chromium and no fonts. It needs only a CA bundle for outbound
