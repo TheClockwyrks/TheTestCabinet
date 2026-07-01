@@ -49,6 +49,7 @@ chokepoint
 cryo
 pathfinds
 pathing
+slingshotting
 slowable
 strobing
 targetable

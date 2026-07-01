@@ -1,0 +1,11 @@
+# The default (and only) Shatter variant: the standard endless arcade game. Listed
+# first in the case manifest's `variants`, so it is the default. Every path here
+# resolves against the version folder, exactly like the main manifest.
+#
+# Shatter ships a single mode, so this variant adds no specs, references, review
+# items, or domains beyond the case's common set — the title, gameplay, and
+# game-over references and the sole `arcade` domain are all declared as common in
+# `../test-case.toml`. The variant exists because a case must declare at least one.
+slug = "base"
+name = "Base"
+description = "The standard endless arcade game."
