@@ -34,6 +34,9 @@ guide when you are doing the task for the first time, or when you need to know
 - [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
+- [Adding or Updating a Model](/guides/adding-or-updating-a-model/) — add a model
+  to the catalog (its `.toml`, description, and `model_ids`) or refresh the
+  bundled prices, context windows, and release dates.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — play a
   finished run, read its validation signals, and write the required review.
 - [Publishing a Test Run Result](/guides/publishing-a-test-run-result/) — release

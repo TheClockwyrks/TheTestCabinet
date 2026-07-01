@@ -82,6 +82,7 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         store,
         None,
         None,
+        None,
         Duration::from_millis(10),
     );
     (dir, publisher, db)

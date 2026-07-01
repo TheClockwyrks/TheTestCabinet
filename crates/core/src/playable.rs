@@ -115,6 +115,24 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
     })
 }
 
+/// The file extension a proof is served under, derived from its `dest` path: the
+/// lowercased extension of the dest's final path segment, defaulting to `png` when
+/// there is none usable (a leading- or trailing-dot segment, or no dot at all).
+///
+/// A proof is addressed everywhere as `<proof-id>.<ext>` — this computes the `<ext>`
+/// from the recorded `dest` so the served name lines up across the producers and
+/// consumers of that name: the driver's backend-store mirror, the backend snapshot
+/// builder, and the gallery's `extensionFor` (`packages/ui/.../proofMedia.ts`). The
+/// extension is cosmetic (the file is resolved by its proof-id stem), but it must
+/// agree on all sides or a snapshot key misses the URL the UI requests.
+pub fn proof_served_extension(dest: &str) -> String {
+    let base = dest.rsplit('/').next().unwrap_or(dest);
+    match base.rfind('.') {
+        Some(dot) if dot > 0 && dot + 1 < base.len() => base[dot + 1..].to_ascii_lowercase(),
+        _ => "png".to_string(),
+    }
+}
+
 /// An asset-generation media file resolved from a run, ready to write to an HTTP
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]

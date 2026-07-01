@@ -125,7 +125,11 @@ authoring conventions:
   manifest format is at
   [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
 - **Models:** [`models/`](models/) — one `<model>.toml` + `<model>.md` per
-  model. Add with `scripts/add-model.mjs`.
+  model. Add or refresh with `scripts/add-model.mjs` + `tcab catalog`; the steps
+  are documented in
+  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/add-or-update-a-model.md)
+  (and the fuller
+  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/adding-or-updating-a-model.md)).
 - **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness
   (`harnesses/<slug>/`) declaring its name, CLI binary, and the command that
   installs the CLI into the run container at run time. See

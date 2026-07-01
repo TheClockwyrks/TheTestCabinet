@@ -18,7 +18,8 @@ A drone diving to the bottom turns back before `y = 656` (see Dives in
 
 - The ship is a small fighter about **40 px** wide and **28 px** tall, drawn in
   the hull color with a glowing core in its **current band's** color (see
-  `specs/polarity.md`).
+  `specs/polarity.md`). It is rendered from the provided fighter sprite, re-tinted
+  to the ship's current band (see `specs/assets.md`).
 - It travels along a **fixed horizontal lane** near the bottom: its center stays
   at **`y = 600`** at all times. It only moves left and right.
 - Its center `x` is clamped to **`[40, 1240]`** so the whole ship stays on screen.

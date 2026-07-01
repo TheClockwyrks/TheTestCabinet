@@ -175,6 +175,24 @@ export type CaseReferenceOut = {
 };
 
 /**
+ * A seeded spec file exposed in case metadata: the run-workspace path it lands at
+ * and its inlined text body. This is the same set the console's Specifications tab
+ * fetches per file — the common specs then the variant's own, in seed order — but
+ * inlined here so the fully static site needs no backend to show them. Only text
+ * specs are carried; a spec whose bytes are missing or not valid UTF-8 is omitted.
+ */
+export type CaseSeededInputOut = {
+  /**
+   * The run-workspace-relative path the spec is seeded to (its `dest`).
+   */
+  path: string;
+  /**
+   * The spec's inlined text body.
+   */
+  text: string;
+};
+
+/**
  * One variant of a case as the gallery shows it.
  */
 export type CaseVariantOut = {
@@ -186,6 +204,12 @@ export type CaseVariantOut = {
    * gallery's Specifications tab shows the instruction the model was handed.
    */
   prompt: string;
+  /**
+   * The variant's own seeded spec files (additive to the common ones), with
+   * their bodies inlined so the static gallery shows the exact specs a run of
+   * this variant is seeded with.
+   */
+  seededInputs: Array<CaseSeededInputOut>;
   /**
    * Reviewer checklist items additive to the common ones, with their point
    * weights, surfaced only when this variant is selected.
@@ -208,6 +232,13 @@ export type CaseMetadata = {
   summary: string | null;
   description: string | null;
   variants: Array<CaseVariantOut>;
+  /**
+   * The seeded spec files shared by every variant, with their bodies inlined so
+   * the static gallery's Inputs tab can show them without a live backend. A
+   * variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
+   * site concatenates the two (common first) exactly as a run is seeded.
+   */
+  commonSeededInputs: Array<CaseSeededInputOut>;
   checks: Array<CaseCheckOut>;
   /**
    * Rendered reference baselines, named by snapshot-relative key. The site

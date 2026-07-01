@@ -32,8 +32,8 @@ const INPUT_KIND_LABELS: Record<InputKind, string> = {
 // collapses every panel again when the variant changes.
 export function VariantInputsView({ variant }: { variant: VariantSummary }) {
   const entries: AccordionEntry[] = [
-    // The prompt is always carried (the public snapshot omits seeded inputs but
-    // not the prompt), but guard against an empty one anyway.
+    // The prompt is always carried (every host provides it), but guard against an
+    // empty one anyway.
     ...(variant.prompt
       ? [
           {
@@ -44,8 +44,8 @@ export function VariantInputsView({ variant }: { variant: VariantSummary }) {
         ]
       : []),
     // The exact files a run of the variant is seeded with — the same set
-    // `tcab seed --variant <slug>` materializes. The public snapshot omits these,
-    // so on the static site only the prompt and references show.
+    // `tcab seed --variant <slug>` materializes. The public snapshot inlines these
+    // spec bodies, so they show on the static site too.
     ...variant.seededInputs.map((input) => ({
       path: input.path,
       kind: INPUT_KIND_LABELS.spec,

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<!--
+  Cascade — win screen reference mockup (victory cascade under way).
+  Canonical view slug: victory
+  Render at a 1280x720 viewport. See ../specs/cascade.md.
+
+  This still represents a mid-cascade frame: foundation cards have been launched
+  and are bouncing across the table, each leaving a permanent painted trail of
+  overlapping card images, with the YOU WIN banner over the top. Runtime frames
+  vary; this is a representative layout for a soft palette/layout comparison. The
+  cards bounce off the table floor (card top at y=580, bottom at y=720).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cascade — You Win</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Emptying foundations at the top: two still hold a card, two are spent. -->
+      <div class="slot" style="left: 224px; top: 24px"><div class="hint">↻</div></div>
+      <div class="slot" style="left: 346px; top: 24px"></div>
+      <div class="card red" style="left: 590px; top: 24px"><div class="corner"><div class="rank">3</div><div class="suit">♦</div></div><div class="center-pip">♦</div></div>
+      <div class="card black" style="left: 712px; top: 24px"><div class="corner"><div class="rank">2</div><div class="suit">♣</div></div><div class="center-pip">♣</div></div>
+      <div class="slot" style="left: 834px; top: 24px"><div class="hint">♦</div></div>
+      <div class="slot" style="left: 956px; top: 24px"><div class="hint">♣</div></div>
+
+      <!-- Trail R: a card thrown rightward, arcing then bouncing lower and lower. -->
+      <div class="card red" style="left: -10px; top: 300px"><div class="corner"><div class="rank">K</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 67px; top: 210px"><div class="corner"><div class="rank">Q</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 144px; top: 170px"><div class="corner"><div class="rank">J</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 221px; top: 200px"><div class="corner"><div class="rank">10</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 298px; top: 290px"><div class="corner"><div class="rank">9</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 375px; top: 410px"><div class="corner"><div class="rank">8</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 452px; top: 540px"><div class="corner"><div class="rank">7</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 529px; top: 505px"><div class="corner"><div class="rank">6</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 606px; top: 555px"><div class="corner"><div class="rank">5</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 683px; top: 528px"><div class="corner"><div class="rank">4</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 760px; top: 568px"><div class="corner"><div class="rank">3</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 837px; top: 545px"><div class="corner"><div class="rank">2</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 914px; top: 575px"><div class="corner"><div class="rank">A</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 991px; top: 558px"><div class="corner"><div class="rank">K</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 1068px; top: 578px"><div class="corner"><div class="rank">Q</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 1145px; top: 564px"><div class="corner"><div class="rank">J</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 1222px; top: 580px"><div class="corner"><div class="rank">10</div><div class="suit">♦</div></div></div>
+
+      <!-- Trail L: a card thrown leftward, crossing the first trail. -->
+      <div class="card black" style="left: 1290px; top: 150px"><div class="corner"><div class="rank">K</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 1213px; top: 120px"><div class="corner"><div class="rank">Q</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 1136px; top: 150px"><div class="corner"><div class="rank">J</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 1059px; top: 225px"><div class="corner"><div class="rank">10</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 982px; top: 345px"><div class="corner"><div class="rank">9</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 905px; top: 480px"><div class="corner"><div class="rank">8</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 828px; top: 565px"><div class="corner"><div class="rank">7</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 751px; top: 532px"><div class="corner"><div class="rank">6</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 674px; top: 566px"><div class="corner"><div class="rank">5</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 597px; top: 548px"><div class="corner"><div class="rank">4</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 520px; top: 574px"><div class="corner"><div class="rank">3</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 443px; top: 558px"><div class="corner"><div class="rank">2</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 366px; top: 578px"><div class="corner"><div class="rank">A</div><div class="suit">♣</div></div></div>
+      <div class="card red" style="left: 289px; top: 562px"><div class="corner"><div class="rank">K</div><div class="suit">♥</div></div></div>
+      <div class="card black" style="left: 212px; top: 580px"><div class="corner"><div class="rank">Q</div><div class="suit">♠</div></div></div>
+      <div class="card red" style="left: 135px; top: 568px"><div class="corner"><div class="rank">J</div><div class="suit">♦</div></div></div>
+      <div class="card black" style="left: 58px; top: 578px"><div class="corner"><div class="rank">10</div><div class="suit">♠</div></div></div>
+
+      <!-- The win banner over the painted cascade. -->
+      <div class="win-banner">
+        <div class="word">YOU WIN</div>
+        <div class="sub">Click for a new game</div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -35,6 +35,8 @@ API key.
 - [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
+- [Add or Update a Model](/quickstarts/add-or-update-a-model/) — add a model to
+  the catalog, or refresh the committed prices with `tcab catalog`.
 - [Review a Run](/quickstarts/review-a-run/) — submit a review (one per account)
   for a pushed run.
 - [Publish a Run](/quickstarts/publish-a-run/) — push, review, and publish a run

@@ -68,6 +68,28 @@ play and inspect the run afterward. When the artifacts URL is unset — the loca
 CLI/desktop path, where nothing serves a worker disk — the upload is skipped and
 behavior is otherwise unchanged.
 
+The artifact service, however, only serves the run to the console session that
+produced it. So the driver **also mirrors** a backend-driven run's servable media
+into the [backend](/components/backend/overview/) store — an adversarial run's
+controller wasm and proof replays, every run's proof-of-implementation media
+(`POST /runs/{id}/proof/<proof-id>.<ext>`), and an asset-generation run's
+regenerated/preview images and action log (`POST /runs/{id}/asset/<file>`) —
+because that store, not the artifact service, is what the backend exports the public
+[snapshot](/components/backend/overview/) from. Without this mirror a published
+run's proof never reaches the static site (which renders "Proof media is not
+available here." for each declared proof) and an asset-generation run's result view
+has no media to show. Each mirror is best-effort: a failure is logged, never fatal,
+and the run's record still reports.
+
+The store is only the fast path, though: it is an ephemeral volume in production, so
+it can be empty for a run published before a backend restart. The
+[snapshot builder](/components/backend/overview/) therefore **falls back to the
+artifact service** for any run media missing from the store, re-exporting it to
+durable R2 — so a store wipe self-heals on the next refresh and the mirror above is
+an optimization, not a correctness requirement. `scripts/backfill-run-media-prod.sh`
+is the one-shot operator backfill that populates the store and triggers a refresh
+immediately, rather than waiting for the next publish.
+
 ## RBAC
 
 Under the Kubernetes runtime the driver runs under the `tcab-driver`

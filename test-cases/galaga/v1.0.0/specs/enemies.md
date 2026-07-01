@@ -79,7 +79,8 @@ The Shard is the basic drone and the bulk of every formation.
 - **Destroying it.** **One matching shot** (a bullet of the Shard's band)
   destroys it; an opposite-band shot is wasted (`specs/polarity.md`).
 - **Look.** A small crystalline drone (about `28 px`) in its band's color and
-  glyph.
+  glyph, rendered from the provided Shard sprite re-tinted to its band
+  (`specs/assets.md`).
 
 ## The Flux — the oscillating-band drone
 
@@ -98,7 +99,9 @@ must shoot it on the right beat.
 - **Firing.** While diving, a Flux fires shots of its **currently held** band; it
   does not fire during a shimmer.
 - **Look.** A drone (about `30 px`) drawn in its current held band's color and
-  glyph, visibly shimmering between both during the `0.4 s` telegraph.
+  glyph, visibly shimmering between both during the `0.4 s` telegraph. It is
+  rendered from the provided Flux sprite — the mid-shimmer art during the
+  telegraph, collapsed to the single held band otherwise (`specs/assets.md`).
 
 ## The Prism — the two-band boss drone
 
@@ -121,7 +124,9 @@ The Prism is the large anchor of a wave: a layered drone that must be broken in
   magenta** — so it threatens you whichever band you are shielded as; mind both.
 - **Look.** A large drone (about `56 px`): an outer ring/shell in the shell band's
   color and glyph around an inner core in the core band's, so its two bands read
-  at a glance. Once the shell is gone, only the core remains.
+  at a glance. Once the shell is gone, only the core remains. It is rendered from
+  the provided Prism sprite, with the shell and core bands re-tinted to whichever
+  bands this Prism carries (`specs/assets.md`).
 
 ### Spectral inversion — the Prism's threat
 

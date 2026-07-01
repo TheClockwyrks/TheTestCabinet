@@ -121,10 +121,16 @@ interface SnapshotCaseFile {
     description: string | null;
     // The variant's prompt, rendered by the backend as a real run receives it.
     prompt: string;
+    // The variant's own seeded spec files (additive to the common ones), bodies
+    // inlined. Optional for snapshots written before specs were inlined.
+    seededInputs?: SnapshotSeededInput[];
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
+  // Seeded spec files shared by every variant, bodies inlined. Optional for
+  // snapshots written before specs were inlined.
+  commonSeededInputs?: SnapshotSeededInput[];
   // Reviewer checklist items shared by every variant, with point weights.
   commonReviewItems?: SnapshotReviewItem[];
   // The case's scoring domains.
@@ -140,6 +146,14 @@ interface SnapshotCaseFile {
     kind?: "rendered" | "image" | "video";
     key: string; // snapshot-relative object key
   }>;
+}
+
+// One seeded spec file inlined in case metadata: the run-workspace path it lands
+// at and its text body. The public snapshot inlines these (bodies and all) so the
+// fully static site can show the exact specs a run is seeded with.
+interface SnapshotSeededInput {
+  path: string;
+  text: string;
 }
 
 interface SnapshotReviewItem {
@@ -219,12 +233,20 @@ interface AssembledDomain {
   description: string;
 }
 
+// A seeded input the app consumes (mirrors `SeededInput` in the UI's testCases).
+// The public snapshot only carries text specs, so `kind` is always "text" here.
+interface AssembledSeededInput {
+  path: string;
+  kind: "text";
+  text: string;
+}
+
 interface AssembledVariant {
   slug: string;
   name: string;
   description: string | null;
   prompt: string;
-  seededInputs: never[];
+  seededInputs: AssembledSeededInput[];
   referenceScreenshots: AssembledReference[];
   reviewItems: AssembledReviewItem[];
 }
@@ -350,15 +372,16 @@ function toAssembledReview(review: SnapshotReview): AssembledReview {
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   // Reference screenshots are optional in the snapshot. Common references
   // (variant null / `_common`) apply to every variant; variant-scoped ones only
-  // to their variant. The variant prompt is carried (rendered at ingest); spec
-  // bodies and seeded inputs are deliberately NOT in the public snapshot — those
-  // resolve from the backend — so the Specifications tab shows the prompt but no
-  // seeded files here.
+  // to their variant. The variant prompt is carried (rendered at ingest), and the
+  // seeded spec files are inlined (common ones plus the variant's own), so the
+  // static site's Inputs tab shows the prompt, the specs, and the references — the
+  // same inputs the backend-connected consoles resolve live.
   const refs = file.references ?? [];
   const commonRefs = refs.filter(
     (r) => r.variant == null || r.variant === "_common",
   );
   const commonItems = file.commonReviewItems ?? [];
+  const commonSeeded = file.commonSeededInputs ?? [];
   const variants: AssembledVariant[] = file.variants.map((variant) => {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
@@ -366,6 +389,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       kind: (r.kind === "video" ? "video" : "image") as "image" | "video",
       url: joinUrl(base, r.key),
     }));
+    // The common specs seed first, then the variant's own — the same order a run
+    // is seeded and the consoles present. Only text specs are inlined.
+    const seededInputs: AssembledSeededInput[] = [
+      ...commonSeeded,
+      ...(variant.seededInputs ?? []),
+    ].map((s) => ({ path: s.path, kind: "text", text: s.text }));
     // The common checklist items apply to every variant; the variant's own
     // follow. Each carries the point weight used to score runs.
     const reviewItems: AssembledReviewItem[] = [
@@ -387,7 +416,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       name: variant.name,
       description: variant.description,
       prompt: variant.prompt,
-      seededInputs: [],
+      seededInputs,
       referenceScreenshots,
       reviewItems,
     };
@@ -516,9 +545,7 @@ async function loadSnapshot(
       emitEvents(summary.id, JSON.stringify(runFile.events));
     }
     const { testCaseSlug, testCaseVersion } = summary.subject;
-    caseKeys.add(
-      `${index.casesPrefix}${testCaseSlug}/${testCaseVersion}.json`,
-    );
+    caseKeys.add(`${index.casesPrefix}${testCaseSlug}/${testCaseVersion}.json`);
   }
 
   // Per-case-version metadata for every case a published run references.

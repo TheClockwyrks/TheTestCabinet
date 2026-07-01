@@ -49,6 +49,10 @@ struct PublisherInner {
     r2: Option<R2Client>,
     deploy_hook_url: Option<String>,
     http: reqwest::Client,
+    /// The artifact service's public base URL, passed to the snapshot builder so it
+    /// can fall back for run media missing from the (ephemeral) store. `None` in a
+    /// dev/single-box setup with no separate artifact service.
+    artifacts_url: Option<String>,
     coalesce: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
@@ -63,6 +67,7 @@ impl Publisher {
         store: DefinitionStore,
         r2: Option<R2Client>,
         deploy_hook_url: Option<String>,
+        artifacts_url: Option<String>,
         coalesce: Duration,
     ) -> Self {
         Self {
@@ -72,6 +77,7 @@ impl Publisher {
                 r2,
                 deploy_hook_url,
                 http: reqwest::Client::new(),
+                artifacts_url,
                 coalesce,
                 wake: Notify::new(),
             }),
@@ -172,7 +178,10 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
-    let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone()).build(generated_at)?;
+    let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
+        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+        .build(generated_at)
+        .await?;
     let run_count = snapshot.run_count;
     tracing::Span::current().record("run_count", run_count);
 

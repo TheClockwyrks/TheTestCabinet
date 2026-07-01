@@ -3,11 +3,12 @@ import type { AssetSheet, TestType } from "@test-cabinet/run-record";
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
 // the static site maps the public R2 snapshot's case slice, the consoles map the
-// backend catalog. The prompt and reference screenshots come through everywhere
-// (the backend renders the prompt at ingest and serves it in the snapshot too).
-// Spec bodies and seeded inputs resolve from the backend, not the public site, so
-// `seededInputs` comes through empty on the static site and the Specifications
-// tab there shows the prompt but no seeded files.
+// backend catalog. The prompt, seeded specs, and reference screenshots come
+// through everywhere: the backend renders the prompt at ingest and inlines the
+// seeded spec bodies into the snapshot too, so the static site's Inputs tab shows
+// the same prompt, specs, and references the backend-connected consoles resolve
+// live (the consoles fetch spec bodies per file; the snapshot carries them
+// inlined).
 
 /** A single input seeded into a run's fresh repository, as the catalog records it. */
 export interface SeededInput {

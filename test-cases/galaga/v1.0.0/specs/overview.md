@@ -44,6 +44,10 @@ start; they cross-reference each other by name and form one specification.
   dives, how each behaves with polarity, and the Prism's spectral inversion.
 - `specs/flow.md` — waves and stages, challenge stages, scoring, lives, stage
   scaling, the game states, the HUD, audio, and what is out of scope.
+- `specs/assets.md` — the **provided art assets** (seeded under `assets/`): the
+  ship and drone sprites you must render from, how to load them under any base
+  path, how each entity's second band is derived at runtime, and what is left to
+  draw in code. **Read this carefully.**
 - the mode specs under `specs/modes/` — the playable mode(s) and the main-menu
   entry for each. Read every mode spec present and implement the modes they
   define. The main menu lists those modes, then `HOW TO PLAY`.
@@ -73,8 +77,13 @@ would actually want to play — tense and readable — not a tech demo.
   static site, with no further manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory
   as the entry point. That output directory must run correctly when served as-is
-  at the root of any static file server, since it is deployed to static hosting
-  exactly that way. You choose the language, framework, bundler, and rendering
+  from a static file server **at any base path, not only the server root** — when
+  it is played back it is mounted under a per-run sub-path (a path like
+  `/runs/<id>/build/`), so every URL the build requests must resolve relative to
+  the page rather than the origin root. `specs/assets.md` states the loading rule
+  in full (no root-absolute `/…` URLs; a relative bundler base such as Vite's
+  `base: './'`); it governs the seeded sprites and the bundled JS/CSS alike. You
+  choose the language, framework, bundler, and rendering
   approach behind this interface; only the `npm ci` and `npm run build` commands
   and where the build output lands are fixed.
 - **Documentation.** Include a `README.md` in the produced repository explaining
@@ -148,6 +157,12 @@ match them.
   indicator and echoed on drones and bullets, so a colorblind player can still
   tell the bands apart. Pick one convention and use it consistently everywhere a
   band appears.
+- **The ship and the drones are provided as pre-drawn sprites** seeded under
+  `assets/`, and you must render them from that art rather than drawing your own
+  fighter or drones — see `specs/assets.md`, which is the contract for the sprites,
+  their per-band derivation (the ring/diamond convention above applied to the art),
+  and how to load them. Bullets, effects, the starfield, and the HUD have no sprite
+  and you draw them in code in this palette.
 - The three canonical screens — the title screen, the in-wave view, and the
   game-over screen — are described in full under Game states in `specs/flow.md`.
   Implement each as described, in this palette and type.

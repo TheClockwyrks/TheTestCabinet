@@ -106,7 +106,7 @@ pub use orchestrator::{
 pub use performance_validator::PerformanceValidator;
 pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
-    serve_asset_file, serve_build_file, serve_proof_file,
+    proof_served_extension, serve_asset_file, serve_build_file, serve_proof_file,
 };
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
