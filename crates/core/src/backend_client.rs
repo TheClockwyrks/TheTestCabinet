@@ -1462,6 +1462,10 @@ impl VersionBody {
             }),
             asset_kind: self.asset_kind,
             sheet: self.sheet,
+            // Remote resolution does not carry voxel specs yet; a resolved voxel
+            // case is materialized from the store on disk.
+            voxel: None,
+            model: None,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,

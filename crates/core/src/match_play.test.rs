@@ -60,6 +60,8 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         replay: None,
         asset_kind: AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

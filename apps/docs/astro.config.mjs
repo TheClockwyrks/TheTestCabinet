@@ -171,6 +171,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.4.0",
             "changelogs/v0.3.3",
             "changelogs/v0.3.2",
             "changelogs/v0.3.1",
@@ -256,6 +257,11 @@ export default defineConfig({
               label: "UI",
               collapsed: true,
               items: ["components/ui/overview"],
+            },
+            {
+              label: "Voxel Runtime",
+              collapsed: true,
+              items: ["components/voxel-runtime/overview"],
             },
             {
               label: "Documentation",
@@ -442,6 +448,7 @@ export default defineConfig({
               items: [
                 "testing/asset-generation/overview",
                 "testing/asset-generation/binaries",
+                "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/manifests",
                 "testing/asset-generation/evaluation",
               ],

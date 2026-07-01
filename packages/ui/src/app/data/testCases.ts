@@ -1,4 +1,4 @@
-import type { AssetSheet, TestType } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -124,4 +124,10 @@ export interface TestCaseSummary {
    * Lets the live monitor show one stable slot per declared frame, named from
    * the sequences. */
   sheet?: AssetSheet | null;
+  /** The rig (parts + joints) a voxel-animation asset-generation case declares;
+   * null for a static voxel model, a 2D sprite/sheet, or any non-asset case (and
+   * absent on hosts that don't carry it, e.g. the static snapshot). Lets the live
+   * monitor show one stable slot per declared part, named from the parts, before
+   * the model has sculpted anything — the 3D analog of {@link sheet}. */
+  model?: ModelSpec | null;
 }

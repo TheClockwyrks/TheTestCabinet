@@ -136,14 +136,20 @@ impl RepoSeeder for FsRepoSeeder {
                 .map_err(seed_err)?;
         }
 
-        // An asset-generation run draws through the `draw` binary. Seed the canvas
-        // config it reads, plus an empty action log and a blank starting preview,
-        // so the model can read the empty canvas before its first operation and
-        // its calls need no flags. Rendering the blank preview uses the same
-        // drawing library the binary and the validator use, so the starting state
-        // is exactly what an empty log regenerates to.
+        // An asset-generation run draws/sculpts through a fixed tool binary. Seed
+        // the tool config it reads, plus an empty action log and a blank starting
+        // preview per target, so the model can read the empty surface before its
+        // first operation and its calls need no flags. Rendering the blank preview
+        // uses the same library the binary and the validator use, so the starting
+        // state is exactly what an empty log regenerates to. The two voxel kinds
+        // sculpt through the `voxel`/`voxel-anim` binary and use their own config
+        // and (for animation) a pre-seeded `rig.json`.
         if test_case.test_type == crate::test_case::TestType::AssetGeneration {
-            seed_asset_tool(test_case, &repo, request.live_preview)?;
+            if test_case.asset_kind.is_voxel() {
+                seed_voxel_tool(test_case, &repo, request.live_preview)?;
+            } else {
+                seed_asset_tool(test_case, &repo, request.live_preview)?;
+            }
         }
 
         // An adversarial run's scaffolding is entirely declarative: the starter
@@ -263,6 +269,192 @@ fn seed_asset_tool(
             .map_err(seed_err)?;
     }
     Ok(())
+}
+
+/// Seed a voxel asset-generation run's sculpting scaffold into `repo`: the volume
+/// config the `voxel`/`voxel-anim` binary reads, an empty action log and blank
+/// isometric preview per target, and — for an animated model — the `rig.json`
+/// pre-populated from the manifest's required rig so the game-facing contract
+/// exists from the first operation.
+fn seed_voxel_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
+    let voxel_spec = test_case
+        .voxel
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("voxel case has no [voxel]".to_string()))?;
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("voxel case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("voxel case has no [output]".to_string()))?;
+
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let actions = output.actions.to_string_lossy().replace('\\', "/");
+
+    let background = test_cabinet_voxel::PreviewBackground::parse(&voxel_spec.background)
+        .map_err(|err| Error::Seeding(format!("invalid voxel background: {err}")))?;
+    let dims = test_cabinet_voxel::Dims {
+        width: voxel_spec.width,
+        height: voxel_spec.height,
+        depth: voxel_spec.depth,
+    };
+
+    // The config the binary reads. For an animated model the `actions`/`preview`
+    // values are `{part}` templates and the config lists the declared parts (plus
+    // the `rig.json` path), so `voxel-anim init` and every operation resolve each
+    // part's separate files; for a static model they are plain paths.
+    let mut config = serde_json::json!({
+        "width": voxel_spec.width,
+        "height": voxel_spec.height,
+        "depth": voxel_spec.depth,
+        "background": voxel_spec.background,
+        "actions": actions,
+        "preview": preview,
+    });
+    if let Some(model) = &test_case.model {
+        let part_names: Vec<&str> = model.parts.iter().map(|p| p.name.as_str()).collect();
+        config["parts"] = serde_json::json!(part_names);
+        config["rig"] = serde_json::json!(crate::test_case::VOXEL_RIG_DEST);
+    }
+    // When a viewer is observing the run, seed the live-preview endpoint so the
+    // sculpting binary streams each re-rendered frame back to the host. Absent for
+    // an unobserved run (a plain `tcab run`/`tcab validate`), which seeds no `live`.
+    if let Some(live) = live_preview {
+        config["live"] = serde_json::json!({
+            "endpoint": live.endpoint,
+            "token": live.token,
+        });
+    }
+    write_file(
+        &repo.join(test_case.asset_kind.config_dest()),
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&config)
+                .map_err(|err| { Error::Seeding(format!("serializing voxel config: {err}")) })?
+        ),
+    )?;
+
+    // Seed each target's empty action log and blank starting preview, rendered from
+    // the empty volume through the same rasterizer the binary and validator use, so
+    // the run starts from a known, empty state. A static model is one target; an
+    // animated model is one per declared part, at its `{part}`-resolved paths.
+    let targets: Vec<(PathBuf, PathBuf)> = match &test_case.model {
+        Some(model) => model
+            .parts
+            .iter()
+            .map(|part| {
+                (
+                    crate::test_case::part_path(&output.actions, &part.name),
+                    crate::test_case::part_path(&tool.preview, &part.name),
+                )
+            })
+            .collect(),
+        None => vec![(output.actions.clone(), tool.preview.clone())],
+    };
+    let empty_preview = test_cabinet_voxel::rasterize(
+        &test_cabinet_voxel::VoxelSet::empty(dims),
+        &test_cabinet_voxel::Camera::PREVIEW,
+        background,
+    );
+    for (actions_rel, preview_rel) in targets {
+        let actions_path = repo.join(&actions_rel);
+        if let Some(parent) = actions_path.parent() {
+            fs::create_dir_all(parent).map_err(seed_err)?;
+        }
+        write_file(&actions_path, "[]\n")?;
+
+        let preview_path = repo.join(&preview_rel);
+        if let Some(parent) = preview_path.parent() {
+            fs::create_dir_all(parent).map_err(seed_err)?;
+        }
+        fs::write(&preview_path, &empty_preview).map_err(seed_err)?;
+    }
+
+    // Pre-seed `rig.json` from the required rig so the game-facing contract (the
+    // parts and joints the model must produce) exists from t=0; the `voxel-anim`
+    // binary rewrites it as the model refines pivots and adds parts/joints.
+    if let Some(model) = &test_case.model {
+        let rig = model_to_rig(model);
+        let mut json = serde_json::to_string_pretty(&rig)
+            .map_err(|err| Error::Seeding(format!("serializing rig: {err}")))?;
+        json.push('\n');
+        write_file(&repo.join(crate::test_case::VOXEL_RIG_DEST), &json)?;
+    }
+
+    Ok(())
+}
+
+/// Build the `voxel-anim` binary's on-disk [`Rig`](test_cabinet_voxel::Rig) from a
+/// resolved [`ModelSpec`](crate::test_case::ModelSpec), so the seeded `rig.json`
+/// carries exactly the required parts and joints (and any auto-play clips).
+fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig {
+    use crate::test_case::{AxisSpec, DriveKindSpec, JointKindSpec};
+
+    let parts = model
+        .parts
+        .iter()
+        .map(|part| test_cabinet_voxel::Part {
+            name: part.name.clone(),
+            parent: part.parent.clone(),
+            pivot: part.pivot,
+        })
+        .collect();
+    let joints = model
+        .joints
+        .iter()
+        .map(|joint| {
+            let kind = match joint.kind {
+                JointKindSpec::Rotation => test_cabinet_voxel::JointKind::Rotation,
+                JointKindSpec::Translation => test_cabinet_voxel::JointKind::Translation,
+            };
+            let axis = match joint.axis {
+                AxisSpec::X => test_cabinet_voxel::Axis::X,
+                AxisSpec::Y => test_cabinet_voxel::Axis::Y,
+                AxisSpec::Z => test_cabinet_voxel::Axis::Z,
+            };
+            let drive = match joint.drive {
+                DriveKindSpec::Caller => test_cabinet_voxel::Drive::Caller,
+                DriveKindSpec::Auto => {
+                    // A resolved `auto` joint always carries its clip (resolution
+                    // rejects one without); fall back to an empty clip defensively.
+                    let auto = joint.auto.as_ref();
+                    test_cabinet_voxel::Drive::AutoPlay {
+                        keyframes: auto
+                            .map(|a| {
+                                a.keyframes
+                                    .iter()
+                                    .map(|k| test_cabinet_voxel::Keyframe {
+                                        t_ms: k.t_ms,
+                                        value: k.value,
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        period_ms: auto.map(|a| a.period_ms).unwrap_or_default(),
+                        r#loop: auto.map(|a| a.looping).unwrap_or_default(),
+                    }
+                }
+            };
+            test_cabinet_voxel::Joint {
+                name: joint.name.clone(),
+                part: joint.part.clone(),
+                kind,
+                axis,
+                pivot: joint.pivot,
+                min: joint.min,
+                max: joint.max,
+                rest: joint.rest,
+                drive,
+            }
+        })
+        .collect();
+    test_cabinet_voxel::Rig { parts, joints }
 }
 
 /// Seed an adversarial run's scaffolding into `repo`.

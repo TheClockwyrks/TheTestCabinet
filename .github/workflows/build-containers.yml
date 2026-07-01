@@ -5,7 +5,11 @@ name: Build containers
 #   - the sprite image (the base plus the baked-in `draw` binary), used by every
 #     single-sprite asset-generation run;
 #   - the sprite-sheet image (the base plus the baked-in `draw-sheet` binary),
-#     used by every sprite-sheet asset-generation run; and
+#     used by every sprite-sheet asset-generation run;
+#   - the voxel image (the base plus the baked-in `voxel` binary), used by every
+#     static voxel-model asset-generation run;
+#   - the voxel-animation image (the base plus the baked-in `voxel-anim` binary),
+#     used by every animated voxel-animation asset-generation run; and
 #   - the adversarial image (the base plus the wasm toolchain and the Foray tooling
 #     compiled from crates/ — the `foray` CLI, the controller buildkit, and the
 #     reference modules + map), used by every adversarial run.
@@ -40,18 +44,20 @@ name: Build containers
 #
 # One-time setup: after the first successful push, set each published package's
 # visibility (test-cabinet-base, test-cabinet-sprite, test-cabinet-sprite-sheet,
-# and test-cabinet-adversarial) to Public in the org's GHCR package settings so
-# unauthenticated runners can pull them.
+# test-cabinet-voxel, test-cabinet-voxel-animation, and test-cabinet-adversarial)
+# to Public in the org's GHCR package settings so unauthenticated runners can pull
+# them.
 on:
   push:
     branches: [master]
     # The asset-generation and adversarial images bake binaries compiled from
-    # `crates/` (the `draw`/`draw-sheet` tools, and the Foray CLI + buildkit +
-    # reference modules), so a change to those crates must rebuild the images too —
-    # not just a change under `containers/`.
+    # `crates/` (the `draw`/`draw-sheet` tools, the `voxel`/`voxel-anim` tools, and
+    # the Foray CLI + buildkit + reference modules), so a change to those crates
+    # must rebuild the images too — not just a change under `containers/`.
     paths:
       - "containers/**"
       - "crates/draw/**"
+      - "crates/voxel/**"
       - "crates/foray-core/**"
       - "crates/foray-controller-sdk/**"
       - "crates/foray-cli/**"
@@ -150,7 +156,7 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          for name in base sprite sprite-sheet adversarial performance; do
+          for name in base sprite sprite-sheet voxel voxel-animation adversarial performance; do
             repo="$registry/test-cabinet-$name"
             echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
             docker buildx imagetools create \

@@ -53,6 +53,8 @@ impl BackendClient for StubBackend {
             replay: None,
             asset_kind: crate::test_case::AssetKind::Sprite,
             sheet: None,
+            voxel: None,
+            model: None,
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
@@ -378,6 +380,7 @@ fn sample_record(id: &str) -> RunRecord {
             checks: vec![],
             proofs: vec![],
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: None,
         },

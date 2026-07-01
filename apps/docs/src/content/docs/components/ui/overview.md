@@ -51,10 +51,19 @@ interfaces. A host imports only what it needs.
   site from snapshot assets), which the reworked review flow and the run **Proof**
   tab display beside the expected references. It resolves an
   [asset-generation](/testing/asset-generation/overview/) run's media — the
-  regenerated, target, and preview images plus the action log — the same way (a
+  regenerated, target, and preview images plus the action log, and for a
+  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
+  regenerated `voxels.json` and `rig.json` — the same way (a
   published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
   run from the artifact service's matching endpoint; the site from snapshot
-  assets), which the **Verdict** tab's result view shows side by side. (Both
+  assets), which the **Verdict** tab's result view shows side by side. A voxel run
+  additionally renders an **interactive 3D model** through the `VoxelViewer`
+  component — a lazy-loaded React Three Fiber canvas that mounts the
+  [voxel-runtime](/components/voxel-runtime/overview/)'s `VoxelRig` (a `voxel-model`
+  auto-rotating; a `voxel-animation` orbit-drag with a range control per caller
+  joint, e.g. `turret_yaw`, and playback of each auto-play joint), falling back to
+  the regenerated preview PNG where WebGL is unavailable or reduced motion is
+  requested so the run stays reviewable. (Both
   consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
   desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks

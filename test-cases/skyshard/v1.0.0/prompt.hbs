@@ -1,0 +1,47 @@
+Sculpt the **Skyshard Interceptor**, a symmetric forward-swept fighter jet, as a
+24x8x32 opaque-voxel model using only the voxel tool.
+
+## How sculpting works
+
+The only way to place a voxel is the `voxel` binary already on your `PATH`. It is
+the sole channel: you build the model by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the voxels on disk. A model produced
+any other way (writing `voxels.json` directly, editing `model.png` by hand) is
+discarded and flagged; only the recorded operations count.
+
+The volume starts **empty**. Voxels are **opaque** `#rrggbb` colors — there is no
+transparency. After each call the binary re-renders the current model to an
+isometric preview at `model.png` and appends the operation to `actions.json`. A
+blank starting preview and an empty log are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+voxel fill-box --x0 10 --y0 2 --z0 4 --x1 13 --y1 5 --z1 28 --color "#8a94a6"
+```
+
+Run `voxel --help` to list every operation and `voxel <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`model.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the
+form of the interceptor, and how to work the tool. Run `voxel --help` for the
+exact operation contract.
+
+## What to deliver
+
+Build the interceptor up operation by operation until the model in `model.png`
+matches the brief — a long fuselage tapering to a pointed nose at the front, a
+cockpit canopy, forward-swept wings, and tail fins, cleanly symmetric about its
+centerplane. When you are satisfied, stop: the recorded `actions.json` is your
+finished submission.

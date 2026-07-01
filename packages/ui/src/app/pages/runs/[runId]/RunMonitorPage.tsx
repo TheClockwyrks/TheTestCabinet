@@ -67,6 +67,7 @@ export function RunMonitorPage() {
   const isAssetRun =
     caseSummary?.testType === "asset-generation" || previews.size > 0;
   const sheet = caseSummary?.sheet ?? null;
+  const model = caseSummary?.model ?? null;
   const assetLabel = caseSummary?.name ?? "Sprite";
 
   const [tab, setTab] = useState<MonitorTab>("assets");
@@ -236,6 +237,7 @@ export function RunMonitorPage() {
               previews={previews}
               activeFrame={activeFrame}
               sheet={sheet}
+              model={model}
               assetLabel={assetLabel}
             />
           ) : (

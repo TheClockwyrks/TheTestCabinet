@@ -116,6 +116,11 @@ wasmtime
 schemars
 wasip
 
+# Voxel asset-generation test cases (Skyshard interceptor, Ironward siege tank).
+skyshard
+ironward
+centerplane
+
 # Klondike solitaire (Cascade) test case vocabulary.
 untimed
 FreeCell

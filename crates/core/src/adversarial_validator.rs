@@ -213,6 +213,7 @@ impl Validator for AdversarialValidator {
             checks: Vec::new(),
             proofs: proof_results,
             asset: None,
+            voxel: None,
             adversarial: Some(result),
             performance: None,
         })
@@ -289,6 +290,7 @@ fn failed(detail: &str, proofs: Vec<crate::validation::ProofResult>) -> Validati
         checks: Vec::new(),
         proofs,
         asset: None,
+        voxel: None,
         adversarial: None,
         performance: None,
     }
@@ -312,6 +314,7 @@ fn forfeit_loss(
         checks: Vec::new(),
         proofs,
         asset: None,
+        voxel: None,
         adversarial: Some(AdversarialResult {
             replay_json: String::new(),
             opponent: CANONICAL_OPPONENT_ID.to_string(),

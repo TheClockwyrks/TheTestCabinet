@@ -7,6 +7,7 @@ import {
   type AssetResultView,
 } from "../../../data/galleryContext";
 import { SpriteSheetPlayer } from "./SpriteSheetPlayer";
+import { VoxelResultSection } from "./VoxelResultSection";
 import styles from "./RunDetailPages.module.scss";
 
 // Small sprites are tiny; scale them up with crisp (nearest-neighbor) sampling so
@@ -382,6 +383,24 @@ function SheetResult({
  */
 export function AssetResultSection({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
+  // A 3D voxel run leads with the interactive voxel viewer; a 2D sprite/sheet run
+  // with the pixel result. The two are mutually exclusive (a run carries either
+  // `validation.voxel` or `validation.asset`), so voxel takes precedence here.
+  const voxel = gallery.voxelResultFor(run);
+  if (voxel) {
+    return (
+      <Panel>
+        <h2 className={`${styles.section} ${styles.leadHeading}`}>
+          Generated asset
+        </h2>
+        <VoxelResultSection view={voxel} />
+        {voxel.detail ? (
+          <p className={styles.secondary}>{voxel.detail}</p>
+        ) : null}
+      </Panel>
+    );
+  }
+
   const asset = gallery.assetResultFor(run);
   if (!asset) return null;
 

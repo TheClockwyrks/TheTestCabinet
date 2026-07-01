@@ -207,6 +207,8 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         replay: None,
         asset_kind: crate::test_case::AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

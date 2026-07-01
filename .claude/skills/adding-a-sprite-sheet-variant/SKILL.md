@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant to an existing SPRITE-SHEET asset-generation test case (asset_kind = "sprite-sheet") — a brief variation (tighter palette, operation budget, drawing technique, cross-frame consistency) the model draws toward the brief across the case's fixed [sheet] frames and sequences, registered in a version's test-case.toml. For a variant of a single-sprite case (asset_kind = "sprite") use adding-a-sprite-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+description: Read this skill before adding a new variant to an existing SPRITE-SHEET asset-generation test case (asset_kind = "sprite-sheet") — a brief variation (tighter palette, operation budget, drawing technique, cross-frame consistency) the model draws toward the brief across the case's fixed [sheet] frames and sequences, registered in a version's test-case.toml. For a variant of a single-sprite case (asset_kind = "sprite") use adding-a-sprite-variant; for a voxel-model case use adding-a-voxel-model-variant; for a voxel-animation case use adding-a-voxel-animation-variant; for an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
 name: adding-a-sprite-sheet-variant
 ---
 
@@ -20,6 +20,11 @@ This skill covers variants of **sprite-sheet** asset-generation cases. For a var
 of a **single-sprite** case — one sprite drawn onto the whole canvas, with no
 `[sheet]` table — use the
 [`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) skill. For a variant
+of a **3D voxel** case use
+[`adding-a-voxel-model-variant`](../adding-a-voxel-model-variant/SKILL.md) (a static
+model) or
+[`adding-a-voxel-animation-variant`](../adding-a-voxel-animation-variant/SKILL.md) (a
+rigged, animated model). For a variant
 of an **end-to-end** case — a playable mode with its own menu and rules — use the
 [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
 author a brand-new case, use

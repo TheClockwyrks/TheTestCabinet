@@ -1,5 +1,5 @@
 ---
-description: Read this skill before creating a new asset-generation test case or version (a sprite the model draws with the `draw` or `draw-sheet` tool, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, or manifest under test-cases/. For an end-to-end case (building a playable game) use authoring-an-end-to-end-test-case instead.
+description: Read this skill before creating a new 2D asset-generation test case or version (a sprite or sprite sheet the model draws with the `draw` or `draw-sheet` tool, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, or manifest under test-cases/. For a 3D voxel case use authoring-a-voxel-model-test-case (static) or authoring-a-voxel-animation-test-case (rigged/animated); for an end-to-end case (building a playable game) use authoring-an-end-to-end-test-case instead.
 name: authoring-an-asset-generation-test-case
 ---
 
@@ -30,15 +30,24 @@ them as the authority:
   automated similarity score) and how cheat-divergence (vs. the on-disk preview)
   flags drawing outside the tool.
 
-This skill covers the **asset-generation** test type only. For an **end-to-end**
-case — building a playable game from a spec — use the
+This skill covers the **2D** asset-generation kinds (`sprite` and `sprite-sheet`).
+For a **3D voxel** case use
+[`authoring-a-voxel-model-test-case`](../authoring-a-voxel-model-test-case/SKILL.md)
+(a static model) or
+[`authoring-a-voxel-animation-test-case`](../authoring-a-voxel-animation-test-case/SKILL.md)
+(a rigged, animated model). For an **end-to-end** case — building a playable game
+from a spec — use the
 [`authoring-an-end-to-end-test-case`](../authoring-an-end-to-end-test-case/SKILL.md)
 skill. To add a variant to an existing asset-generation version, use the skill
 matching its `asset_kind`:
 [`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) for a
-single-sprite case or
+single-sprite case,
 [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) for a
-sprite-sheet case.
+sprite-sheet case,
+[`adding-a-voxel-model-variant`](../adding-a-voxel-model-variant/SKILL.md) for a
+static-voxel case, or
+[`adding-a-voxel-animation-variant`](../adding-a-voxel-animation-variant/SKILL.md)
+for a voxel-animation case.
 
 An asset-generation case draws **either a single sprite or a sprite sheet** (a set
 of animation frames, each its own separate file), chosen by the manifest's

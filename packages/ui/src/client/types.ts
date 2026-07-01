@@ -5,6 +5,7 @@
 import type {
   AssetSheet,
   MediaKind,
+  ModelSpec,
   RunRecord,
   TestType,
 } from "@test-cabinet/run-record";
@@ -101,6 +102,11 @@ export interface VersionInfo {
   // non-asset case. Carried so the live monitor can show one stable slot per
   // declared frame as the model draws, named from the sequences.
   sheet?: AssetSheet | null;
+  // The rig (parts + joints) a voxel-animation asset-generation case declares;
+  // absent (null) for a static voxel model, a 2D sprite/sheet, or any non-asset
+  // case. The 3D analog of `sheet`: carried so the live monitor can show one
+  // stable slot per declared part as the model sculpts, named from the parts.
+  model?: ModelSpec | null;
   maxRuntimeSeconds: number;
 }
 

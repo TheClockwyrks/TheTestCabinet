@@ -36,6 +36,7 @@ Read the doc first; the code location is where the implementation lives.
 | Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |
 | Site (public static gallery) | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md) | `apps/site/` |
 | UI library (`@test-cabinet/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
+| Voxel runtime (`@test-cabinet/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
 | Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
 
 **Naming gotcha:** the docs call the desktop app the **Tauri app** and the
@@ -102,17 +103,26 @@ authoring conventions:
 - **Writing code:** [`coding`](.claude/skills/coding/SKILL.md).
 - **Creating/revising a test case** (pick by [test type](apps/docs/src/content/docs/testing/)):
   [`authoring-an-end-to-end-test-case`](.claude/skills/authoring-an-end-to-end-test-case/SKILL.md)
-  for a playable game, or
+  for a playable game, or — for an asset-generation case, picked by its
+  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md) —
   [`authoring-an-asset-generation-test-case`](.claude/skills/authoring-an-asset-generation-test-case/SKILL.md)
-  for a sprite drawn with the `draw` tool.
+  for a 2D sprite or sprite sheet drawn with the `draw`/`draw-sheet` tool,
+  [`authoring-a-voxel-model-test-case`](.claude/skills/authoring-a-voxel-model-test-case/SKILL.md)
+  for a static 3D voxel model, or
+  [`authoring-a-voxel-animation-test-case`](.claude/skills/authoring-a-voxel-animation-test-case/SKILL.md)
+  for a rigged, animated 3D voxel model.
 - **Adding a variant to an existing case:**
   [`adding-an-end-to-end-variant`](.claude/skills/adding-an-end-to-end-variant/SKILL.md)
   (a playable mode), or — for an asset-generation case, picked by its
   [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md) —
   [`adding-a-sprite-variant`](.claude/skills/adding-a-sprite-variant/SKILL.md)
-  (a single-sprite case) or
+  (a single-sprite case),
   [`adding-a-sprite-sheet-variant`](.claude/skills/adding-a-sprite-sheet-variant/SKILL.md)
-  (a sprite-sheet case); both are a brief variation against the shared target.
+  (a sprite-sheet case),
+  [`adding-a-voxel-model-variant`](.claude/skills/adding-a-voxel-model-variant/SKILL.md)
+  (a static-voxel case), or
+  [`adding-a-voxel-animation-variant`](.claude/skills/adding-a-voxel-animation-variant/SKILL.md)
+  (a voxel-animation case); each is a brief variation against the shared target.
 
 ## Definitions & assets
 

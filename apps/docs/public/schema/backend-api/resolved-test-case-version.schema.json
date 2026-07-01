@@ -1,7 +1,7 @@
 {
   "$defs": {
     "AssetKind": {
-      "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is **either** a single sprite or a sprite sheet — never both, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences). Defaults to\n[`Self::Sprite`] so a manifest that predates the discriminator — and every\nnon-asset-generation case — resolves unchanged.",
+      "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D\nvoxel model, or a rigged/animatable 3D voxel model — never a mix, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences); the two\nvoxel kinds declare a `[voxel]` table (the bounding volume), and\n[`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,\njoints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that\npredates the discriminator — and every non-asset-generation case — resolves\nunchanged.",
       "oneOf": [
         {
           "const": "sprite",
@@ -11,6 +11,16 @@
         {
           "const": "sprite-sheet",
           "description": "A grid of animation frames drawn onto the canvas, sliced into the named\nsequences the `[sheet]` table declares.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-model",
+          "description": "A single static 3D voxel model, drawn one voxel operation at a time with the\n`voxel` binary. Declares a `[voxel]` table (the bounding volume). Rendered as\nan auto-rotating 3D model.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-animation",
+          "description": "A rigged, animatable 3D voxel model: named parts in a parent/child hierarchy\nwith named joints a consuming game drives at runtime (for example a tank's\n`turret_yaw`), drawn with the `voxel-anim` binary. Declares a `[voxel]` table\nand a `[model]` table (the required parts and joints the model must produce,\non top of which it may add its own).",
           "type": "string"
         }
       ]

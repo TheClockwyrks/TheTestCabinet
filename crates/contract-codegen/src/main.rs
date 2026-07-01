@@ -69,6 +69,16 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "AssetFrameResult",
     "AssetSheet",
     "AssetSheetSequence",
+    "VoxelGenResult",
+    "VoxelPartResult",
+    "ModelSpec",
+    "PartSpec",
+    "JointSpec",
+    "JointKindSpec",
+    "AxisSpec",
+    "DriveKindSpec",
+    "AutoPlaySpec",
+    "KeyframeSpec",
     "AdversarialResult",
     "AdversarialReplay",
     "AdversarialTeam",
@@ -107,6 +117,9 @@ fn main() -> Result<()> {
                 tc::TestType, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
+                val::VoxelGenResult, val::VoxelPartResult, tc::ModelSpec, tc::PartSpec,
+                tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
+                tc::AutoPlaySpec, tc::KeyframeSpec, val::VoxelsFile, val::VoxelDims, val::VoxelCell,
                 val::AdversarialTeam, val::AdversarialOutcome, val::AdversarialReplay,
                 val::AdversarialResult, val::PerformanceCaseResult, val::PerformanceResult,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
@@ -198,6 +211,14 @@ fn main() -> Result<()> {
             owns: TOURNAMENT_DEFS,
             schema: root_schema::<mp::TournamentRecord>(),
         },
+        // The client-facing voxel data file a voxel run's validator regenerates from
+        // each part's operation log (`voxels.json`). Not part of the run-record tree
+        // (it is a produced artifact the 3D viewer loads directly), so it stands as
+        // its own document with its subtypes inline.
+        anon(
+            "core/voxels-file.schema.json",
+            root_schema::<val::VoxelsFile>(),
+        ),
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to

@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the brief, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the brief, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant; for a voxel-model case use adding-a-voxel-model-variant; for a voxel-animation case use adding-a-voxel-animation-variant; for an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
 name: adding-a-sprite-variant
 ---
 
@@ -19,7 +19,11 @@ variant of a **sprite-sheet** case — one whose `[sheet]` table declares a set 
 animation frames, each a separate file — use the
 [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) skill,
 where a variant draws toward the brief across the version's fixed frames and named
-sequences. For a variant of an
+sequences. For a variant of a **3D voxel** case use
+[`adding-a-voxel-model-variant`](../adding-a-voxel-model-variant/SKILL.md) (a static
+model) or
+[`adding-a-voxel-animation-variant`](../adding-a-voxel-animation-variant/SKILL.md) (a
+rigged, animated model). For a variant of an
 **end-to-end** case — a playable mode with its own menu and rules — use the
 [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
 author a brand-new case, use

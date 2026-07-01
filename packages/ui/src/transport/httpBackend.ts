@@ -40,7 +40,7 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec, RunRecord } from "@test-cabinet/run-record";
 import {
   delJson,
   getJson,
@@ -117,6 +117,10 @@ interface ResolvedVersion {
   // present only for a sprite-sheet case. Its shape matches the run-record
   // `AssetSheet`, so it is carried through verbatim.
   sheet?: AssetSheet | null;
+  // The rig (parts + joints) a voxel-animation case declares (camelCase
+  // `ModelSpec`), present only for a voxel-animation case. Carried through
+  // verbatim, the 3D analog of `sheet`.
+  model?: ModelSpec | null;
   variants: {
     slug: string;
     name: string;
@@ -226,6 +230,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         testType: r.testType,
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
+        model: r.model ?? null,
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,

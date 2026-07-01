@@ -34,6 +34,14 @@ const SPRITE_IMAGE_NAME: &str = "test-cabinet-sprite";
 /// asset-generation run (`asset_kind = "sprite-sheet"`). It is the base image
 /// plus the baked-in `draw-sheet` binary (see `containers/sprite-sheet/Dockerfile`).
 const SPRITE_SHEET_IMAGE_NAME: &str = "test-cabinet-sprite-sheet";
+/// The name of the static-voxel run-container image, used by every static voxel
+/// asset-generation run (`asset_kind = "voxel-model"`). It is the base image plus
+/// the baked-in `voxel` binary (see `containers/voxel/Dockerfile`).
+const VOXEL_IMAGE_NAME: &str = "test-cabinet-voxel";
+/// The name of the animated-voxel run-container image, used by every voxel-animation
+/// asset-generation run (`asset_kind = "voxel-animation"`). It is the base image
+/// plus the baked-in `voxel-anim` binary (see `containers/voxel-animation/Dockerfile`).
+const VOXEL_ANIMATION_IMAGE_NAME: &str = "test-cabinet-voxel-animation";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
 /// (so a model's controller builds to wasm in-container) and the baked-in Foray
@@ -55,6 +63,10 @@ const SPRITE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE";
 /// The environment variable that pins a verbatim override for the sprite-sheet
 /// image.
 const SPRITE_SHEET_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE_SHEET";
+/// The environment variable that pins a verbatim override for the static-voxel image.
+const VOXEL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL";
+/// The environment variable that pins a verbatim override for the animated-voxel image.
+const VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION";
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
@@ -100,6 +112,14 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
             AssetKind::SpriteSheet => ImageSpec {
                 name: SPRITE_SHEET_IMAGE_NAME,
                 override_env: SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::VoxelModel => ImageSpec {
+                name: VOXEL_IMAGE_NAME,
+                override_env: VOXEL_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::VoxelAnimation => ImageSpec {
+                name: VOXEL_ANIMATION_IMAGE_NAME,
+                override_env: VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
             },
         },
         TestType::Adversarial => ImageSpec {

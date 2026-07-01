@@ -27,10 +27,17 @@ asset-generation — must be released as its **own** public git repository.
   that a user needs to clone the repository and run it locally. Requiring this
   documentation is part of every code-writing test case.
 - **Asset-generation runs are the exception**: their authoritative output is the
-  recorded sequence of drawing operations (uploaded to the backend as the run's
-  assets), not a source tree, so **no per-run repository is created** and the run
-  carries no source link. The run folder is still a git repo (seeded like any
-  other), but publishing one never creates a repository on GitHub.
+  recorded sequence of operations (uploaded to the backend as the run's assets),
+  not a source tree, so **no per-run repository is created** and the run carries no
+  source link. The run folder is still a git repo (seeded like any other), but
+  publishing one never creates a repository on GitHub. This covers all four
+  [asset kinds](/testing/asset-generation/overview/#asset-kinds) — a sprite or
+  sprite-sheet run uploads its regenerated images, and a
+  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run additionally
+  uploads its regenerated `voxels.json` and (for an animated model) `rig.json`, so
+  the review UI can render an interactive 3D model: a `voxel-model` auto-rotates and
+  a `voxel-animation` gives one orbit-drag viewer per animation with a control per
+  caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-regeneration).
 
 ## Run Record
 

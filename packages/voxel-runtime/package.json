@@ -1,0 +1,40 @@
+{
+  "name": "@test-cabinet/voxel-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Framework-agnostic voxel rig posing/clip playback plus an optional three.js binding, consumed by the in-repo viewer and real games.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@test-cabinet/run-record": "*"
+  },
+  "peerDependencies": {
+    "three": "~0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "~0.182.0",
+    "three": "~0.182.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

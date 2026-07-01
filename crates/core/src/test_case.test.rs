@@ -2,7 +2,9 @@
 
 use std::fs;
 
-use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
+use super::{
+    AssetKind, AxisSpec, BuildCommands, DriveKindSpec, JointKindSpec, TestCaseCatalog, TestType,
+};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -471,6 +473,282 @@ fn end_to_end_rejects_asset_tables() {
         .expect_err("asset tables on an e2e case are rejected");
     assert!(
         format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
+}
+
+// --- voxel resolution ------------------------------------------------------
+
+/// A complete, valid static voxel (`voxel-model`) manifest: a bounding volume and
+/// the `voxel` tool with plain (non-`{part}`) preview/action paths. Tests clone
+/// this and mutate one thing.
+const VALID_VOXEL_MODEL_MANIFEST: &str = "\
+name = \"Jet\"\n\
+difficulty = \"medium\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n\
+asset_kind = \"voxel-model\"\n\
+variants = [\"variants/base.toml\"]\n\
+[voxel]\nwidth = 24\nheight = 16\ndepth = 32\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"voxel\"\npreview = \"model.png\"\n\
+[output]\nactions = \"actions.json\"\n\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the model is to the brief.\"\n";
+
+/// A complete, valid animated voxel (`voxel-animation`) manifest: a `chassis` root,
+/// a `turret` child, and a caller-driven `turret_yaw` rotation joint. The
+/// preview/action paths are `{part}` templates since every part is a separate file.
+const VALID_VOXEL_ANIM_MANIFEST: &str = "\
+name = \"Tank\"\n\
+difficulty = \"hard\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n\
+asset_kind = \"voxel-animation\"\n\
+variants = [\"variants/base.toml\"]\n\
+[voxel]\nwidth = 24\nheight = 16\ndepth = 24\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"voxel-anim\"\npreview = \"parts/{part}.png\"\n\
+[output]\nactions = \"parts/{part}.actions.json\"\n\
+[[model.part]]\nname = \"chassis\"\npivot = [0, 0, 0]\n\
+[[model.part]]\nname = \"turret\"\nparent = \"chassis\"\npivot = [12, 8, 12]\n\
+[[model.joint]]\nname = \"turret_yaw\"\npart = \"turret\"\nkind = \"rotation\"\n\
+axis = \"y\"\npivot = [12, 8, 12]\nmin = -3.14159\nmax = 3.14159\nrest = 0.0\ndrive = \"caller\"\n\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the tank is to the brief.\"\n";
+
+#[test]
+fn voxel_model_resolves_its_voxel_table() {
+    let (_dir, catalog) = asset_catalog(VALID_VOXEL_MODEL_MANIFEST);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    assert_eq!(version.test_type, TestType::AssetGeneration);
+    assert_eq!(version.asset_kind, AssetKind::VoxelModel);
+    assert!(version.canvas.is_none(), "a voxel case has no [canvas]");
+    let voxel = version.voxel.as_ref().expect("voxel");
+    assert_eq!((voxel.width, voxel.height, voxel.depth), (24, 16, 32));
+    assert_eq!(version.tool.as_ref().expect("tool").binary, "voxel");
+    // A static model declares no rig.
+    assert!(version.model.is_none(), "a voxel-model has no [model]");
+    // An asset-generation case has no target image, so it synthesizes no references.
+    assert!(version.common_references.is_empty());
+}
+
+#[test]
+fn voxel_model_rejects_a_canvas_table() {
+    let manifest = format!("{VALID_VOXEL_MODEL_MANIFEST}[canvas]\nwidth = 8\nheight = 8\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [canvas] on a voxel case is rejected");
+    assert!(format!("{err}").contains("not [canvas]"), "got: {err}");
+}
+
+#[test]
+fn voxel_model_rejects_a_part_token() {
+    // A static model writes one file, so a `{part}` template is a mistake.
+    let manifest = VALID_VOXEL_MODEL_MANIFEST
+        .replace("preview = \"model.png\"", "preview = \"parts/{part}.png\"");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a {part} token on a voxel-model case is rejected");
+    assert!(
+        format!("{err}").contains("must not contain `{part}`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_model_rejects_a_model_table() {
+    let manifest =
+        format!("{VALID_VOXEL_MODEL_MANIFEST}[[model.part]]\nname = \"body\"\npivot = [0, 0, 0]\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [model] on a voxel-model case is rejected");
+    assert!(
+        format!("{err}").contains("declares no [model] table"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_resolves_its_model() {
+    let (_dir, catalog) = asset_catalog(VALID_VOXEL_ANIM_MANIFEST);
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::VoxelAnimation);
+    let voxel = version.voxel.as_ref().expect("voxel");
+    assert_eq!((voxel.width, voxel.height, voxel.depth), (24, 16, 24));
+    let model = version.model.as_ref().expect("model");
+    // Parts resolve in declared order; the first is the root (no parent).
+    assert_eq!(model.parts.len(), 2);
+    assert_eq!(model.parts[0].name, "chassis");
+    assert!(model.parts[0].parent.is_none());
+    assert_eq!(model.parts[0].pivot, [0, 0, 0]);
+    assert_eq!(model.parts[1].name, "turret");
+    assert_eq!(model.parts[1].parent.as_deref(), Some("chassis"));
+    // The required caller joint the game drives.
+    assert_eq!(model.joints.len(), 1);
+    let joint = &model.joints[0];
+    assert_eq!(joint.name, "turret_yaw");
+    assert_eq!(joint.part, "turret");
+    assert_eq!(joint.kind, JointKindSpec::Rotation);
+    assert_eq!(joint.axis, AxisSpec::Y);
+    assert_eq!(joint.drive, DriveKindSpec::Caller);
+    assert!(joint.auto.is_none(), "a caller joint carries no clip");
+    assert_eq!(joint.rest, 0.0);
+}
+
+#[test]
+fn voxel_animation_resolves_an_auto_clip() {
+    // An `auto` joint folds its `[[model.clip]]` into the resolved joint's clip.
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace(
+        "drive = \"caller\"\n",
+        "drive = \"auto\"\n[[model.clip]]\njoint = \"turret_yaw\"\nperiod_ms = 2000\n\
+         loop = true\nkeyframes = [[0.0, 0.0], [1000.0, 1.5], [2000.0, 0.0]]\n",
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    let joint = &version.model.as_ref().expect("model").joints[0];
+    assert_eq!(joint.drive, DriveKindSpec::Auto);
+    let auto = joint.auto.as_ref().expect("auto clip");
+    assert_eq!(auto.period_ms, 2000);
+    assert!(auto.looping);
+    assert_eq!(auto.keyframes.len(), 3);
+    assert_eq!(auto.keyframes[1].t_ms, 1000);
+    assert_eq!(auto.keyframes[1].value, 1.5);
+}
+
+#[test]
+fn voxel_animation_requires_a_model_table() {
+    // Drop the whole [model] block (both parts, the joint).
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace(
+        "[[model.part]]\nname = \"chassis\"\npivot = [0, 0, 0]\n\
+[[model.part]]\nname = \"turret\"\nparent = \"chassis\"\npivot = [12, 8, 12]\n\
+[[model.joint]]\nname = \"turret_yaw\"\npart = \"turret\"\nkind = \"rotation\"\n\
+axis = \"y\"\npivot = [12, 8, 12]\nmin = -3.14159\nmax = 3.14159\nrest = 0.0\ndrive = \"caller\"\n",
+        "",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a voxel-animation case without a [model] is rejected");
+    assert!(
+        format!("{err}").contains("requires a [model] table"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_requires_a_part_token() {
+    // An animated model writes one file per part, so a plain path is a mistake.
+    let manifest = VALID_VOXEL_ANIM_MANIFEST
+        .replace("preview = \"parts/{part}.png\"", "preview = \"model.png\"");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a plain preview path on a voxel-animation case is rejected");
+    assert!(
+        format!("{err}").contains("must contain `{part}`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_rejects_a_dangling_parent() {
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("parent = \"chassis\"", "parent = \"nope\"");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a part naming an undeclared parent is rejected");
+    assert!(
+        format!("{err}").contains("names parent `nope`, which is not a declared part"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_rejects_a_dangling_joint_part() {
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("part = \"turret\"", "part = \"ghost\"");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a joint naming an undeclared part is rejected");
+    assert!(
+        format!("{err}").contains("names part `ghost`, which is not a declared part"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_rejects_rest_out_of_range() {
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("rest = 0.0", "rest = 9.0");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a rest outside [min, max] is rejected");
+    assert!(
+        format!("{err}").contains("min <= rest <= max"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn voxel_animation_rejects_a_parent_cycle() {
+    // Three parts: a root plus two that name each other as parents. The root has no
+    // parent (so the root check passes) and every parent reference is declared, but
+    // `b` and `c` form a cycle.
+    let manifest = "\
+name = \"Cycle\"\n\
+difficulty = \"hard\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n\
+asset_kind = \"voxel-animation\"\n\
+variants = [\"variants/base.toml\"]\n\
+[voxel]\nwidth = 8\nheight = 8\ndepth = 8\nbackground = \"transparent\"\n\
+[tool]\nbinary = \"voxel-anim\"\npreview = \"parts/{part}.png\"\n\
+[output]\nactions = \"parts/{part}.actions.json\"\n\
+[[model.part]]\nname = \"root\"\npivot = [0, 0, 0]\n\
+[[model.part]]\nname = \"b\"\nparent = \"c\"\npivot = [0, 0, 0]\n\
+[[model.part]]\nname = \"c\"\nparent = \"b\"\npivot = [0, 0, 0]\n\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"x\"\n";
+    let err = asset_catalog(manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a parent cycle is rejected");
+    assert!(format!("{err}").contains("parent cycle"), "got: {err}");
+}
+
+#[test]
+fn sprite_rejects_a_voxel_table() {
+    // A 2D sprite case that declares a [voxel] table is a mistake.
+    let manifest = format!("{VALID_ASSET_MANIFEST}[voxel]\nwidth = 8\nheight = 8\ndepth = 8\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [voxel] table on a sprite case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for a voxel asset-generation case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn end_to_end_rejects_voxel_tables() {
+    // An end-to-end case that declares a [voxel] table is a mistake.
+    let (_dir, catalog) = catalog_with_manifest(
+        "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [voxel]\nwidth = 8\nheight = 8\ndepth = 8",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("voxel tables on an e2e case are rejected");
+    assert!(
+        format!("{err}").contains("only valid for a voxel asset-generation case"),
         "got: {err}"
     );
 }
