@@ -11,33 +11,39 @@ layout. All positions and sizes are in the logical-pixel coordinate system from
 
 ## Tile Grid
 
-The reactor floor is a grid of 40 x 40 logical-pixel tiles, **25 columns**
-(`c = 0..24`) by **18 rows** (`r = 0..17`). Tile `(c, r)` spans `x` in `[40c,
-40c + 40]` and `y` in `[40r, 40r + 40]`; its **center** is at `(40c + 20, 40r +
-20)`. Every tower occupies exactly one tile, snapped to the grid, and the
+The reactor floor is a grid of 20 x 20 logical-pixel tiles, **50 columns**
+(`c = 0..49`) by **36 rows** (`r = 0..35`). Tile `(c, r)` spans `x` in `[20c,
+20c + 20]` and `y` in `[20r, 20r + 20]`; its **center** is at `(20c + 10, 20r +
+10)`. Every tower occupies a snapped **2 x 2 tile footprint** centered on a
+grid intersection, so the player's cursor feels like it is placing the center
+of the tower. A tower centered on intersection `(i, j)` occupies the four tiles
+that meet there: `(i - 1, j - 1)`, `(i, j - 1)`, `(i - 1, j)`, and `(i, j)`,
+with `i = 1..49` and `j = 1..35`; its tower center is at `(20i, 20j)`. The
 surge walks between tile centers. The faint grid (`#23272e`) is drawn over the
 floor (`#15181d`) at all times so the player can read tiles.
 
 Each tile is in one of these states:
 
-- **Open** — empty floor the surge can walk and a tower can be built on.
-- **Blocked** — occupied by a tower (it is now a wall; see Mazing below).
+- **Open** — empty floor the surge can walk on. A tower can be built only where
+  all four tiles in its 2 x 2 footprint are open.
+- **Blocked** — occupied by part of a tower footprint (it is now a wall; see
+  Mazing below).
 - **Intake** or **exhaust** — a fixed edge portal (below). The surge walks
   *through* these; no tower may be built on them.
 
 ## Intakes and Exhausts
 
 The surge enters at two intakes and leaves at two exhausts, each a
-**two-tile** opening at the middle of an edge:
+**four-tile** opening at the middle of an edge:
 
-- **Left intake** — the left edge, rows `r = 8` and `r = 9` (tiles `(0, 8)` and
-  `(0, 9)`). The surge appears here moving right onto the floor.
-- **Top intake** — the top edge, columns `c = 12` and `c = 13` (tiles `(12, 0)`
-  and `(13, 0)`). The surge appears here moving down onto the floor.
-- **Right exhaust** — the right edge, rows `r = 8` and `r = 9` (tiles `(24, 8)`
-  and `(24, 9)`). Reaching here leaks the surge (see `specs/flow.md`).
-- **Bottom exhaust** — the bottom edge, columns `c = 12` and `c = 13` (tiles
-  `(12, 17)` and `(13, 17)`).
+- **Left intake** — the left edge, rows `r = 16..19` (tiles `(0, 16)` through
+  `(0, 19)`). The surge appears here moving right onto the floor.
+- **Top intake** — the top edge, columns `c = 24..27` (tiles `(24, 0)` through
+  `(27, 0)`). The surge appears here moving down onto the floor.
+- **Right exhaust** — the right edge, rows `r = 16..19` (tiles `(49, 16)`
+  through `(49, 19)`). Reaching here leaks the surge (see `specs/flow.md`).
+- **Bottom exhaust** — the bottom edge, columns `c = 24..27` (tiles `(24, 35)`
+  through `(27, 35)`).
 
 Because the floor is a wide rectangle and the intakes and exhausts sit at the
 edge midpoints, the routes are **asymmetric**: an intruder entering at the top
@@ -52,21 +58,23 @@ dangerous (`#ff5a3c`).
 ## Tower Construction and Mazing
 
 There is no fixed path. The surge pathfinds across the open floor, and
-every tower is *also* a wall: building one blocks its tile, so you lengthen
-the surge's route by building structures it must walk around. This is the core
-of the game — you build the maze.
+every tower is *also* a wall: building one blocks its 2 x 2 footprint, so you
+lengthen the surge's route by building structures it must walk around. This is
+the core of the game — you build the maze.
 
-- A tower may be built only on an **open** tile. It may not be built on an
-  intake, an exhaust, a tile already holding a tower, or a tile a surge unit is
-  currently standing on.
+- A tower may be built only where its full **2 x 2 footprint** is open. No tile
+  in that footprint may be an intake, an exhaust, already occupied by another
+  tower, or currently occupied by a surge unit. The placement preview snaps the
+  cursor to the nearest valid interior grid intersection and shows the four
+  tiles surrounding that intersection.
 - **You can never seal the floor.** A placement is rejected if, after it would
   be placed, any intake would have no path to **any** exhaust, or if it would
   trap a surge unit already on the floor with no remaining route out. The build
   UI must show a blocked placement as invalid (`#ff4d4d`) and refuse it, rather
   than letting the player wall the surge in. There must always be at least one
   open route from each intake to an exhaust.
-- Selling a tower (see `specs/towers.md`) reopens its tile immediately and the
-  surge re-paths.
+- Selling a tower (see `specs/towers.md`) reopens all four tiles in its
+  footprint immediately and the surge re-paths.
 
 ## Surge Movement
 
@@ -105,10 +113,10 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   Selecting a shop entry arms placement (see `specs/controls.md`).
 - **The selected-tower inspector** — when a placed tower is selected, this area
   shows its type and level, its current stats (range, damage or effect, fire
-  rate), its live heat read (the same heat value drawn on the tile, shown
-  here as a labeled bar from `0%` to redline), and **Upgrade** (with its cost)
-  and **Sell** (with its refund) actions. When nothing is selected it shows a
-  brief hint or the next-wave preview.
+  rate), its live heat read (the same heat value drawn on the tower footprint,
+  shown here as a labeled bar from `0%` to redline), and **Upgrade** (with its
+  cost) and **Sell** (with its refund) actions. When nothing is selected it
+  shows a brief hint or the next-wave preview.
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
   see `specs/flow.md`), a game-speed toggle (`1x` / `2x`), and **Pause**.
 

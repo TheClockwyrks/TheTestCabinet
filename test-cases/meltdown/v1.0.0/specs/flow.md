@@ -142,8 +142,8 @@ targets:
   accelerating curve, and a tower that reaches the redline trips offline for `3
   s` (`specs/heat.md`).
 - The **Forge** pours heat into adjacent emitters (asset in a lull, liability in
-  a push) and the **Vent** draws it out, both only on orthogonal neighbors
-  (`specs/heat.md`).
+  a push) and the **Vent** draws it out, both only across orthogonal footprint
+  edge contact, scaled by tower alignment (`specs/heat.md`).
 - The **Rime** is **heat-averse** — it slows hardest when cold and degrades as
   it heats (`specs/towers.md`).
 - **Flyers ignore the maze** and only **Flak** can hit them (`specs/creeps.md`,

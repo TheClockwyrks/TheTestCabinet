@@ -22,16 +22,18 @@ of the simulation, only how fast it plays.
 
 1. **Arm placement** — click a tower in the shop (`specs/playfield.md`), or
    press its hotkey (below). The cursor enters placement mode for that type.
-2. **Preview** — as the cursor moves over the floor in placement mode, the tile
-   under it shows a placement preview: the tower's **range** ring and a
-   **valid/invalid** tile highlight (`#46d07a` valid, `#ff4d4d` invalid). A
-   tile is invalid if it is an intake/exhaust, already occupied, under a surge
-   unit, unaffordable, or would
+2. **Preview** — as the cursor moves over the floor in placement mode, it snaps
+   to the nearest interior grid intersection. That intersection is the center
+   of the tower and the shared corner of the four tiles in its **2 x 2
+   footprint**. The preview shows the tower's **range** ring from that center
+   and a **valid/invalid** footprint highlight (`#46d07a` valid, `#ff4d4d`
+   invalid). A footprint is invalid if any tile in it is outside the floor, an
+   intake/exhaust, already occupied, under a surge unit, unaffordable, or would
    seal the floor (`specs/playfield.md`).
-3. **Place** — left-click a valid tile while in placement mode to build there,
-   deducting the tower cost from the current money. With a modifier or a sticky
-   toggle you may keep placing the same type for repeated builds; otherwise
-   placement disarms after one build.
+3. **Place** — left-click a valid footprint while in placement mode to build
+   there, deducting the tower cost from the current money. With a modifier or a
+   sticky toggle you may keep placing the same type for repeated builds;
+   otherwise placement disarms after one build.
 4. **Cancel** — right-click or press `Esc` to leave placement mode without
    building.
 
@@ -47,9 +49,9 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
   upgrade hotkey) to raise the selected tower a level if you can currently
   afford it (`specs/towers.md`).
 - **Sell** — click the **Sell** action (or press the sell hotkey) in the
-  inspector to sell the selected tower for its refund; its tile reopens and the
-  surge re-paths based
-  on the new tile availability (`specs/towers.md`, `specs/playfield.md`).
+  inspector to sell the selected tower for its refund; all four tiles in its
+  footprint reopen and the surge re-paths based on the new tile availability
+  (`specs/towers.md`, `specs/playfield.md`).
 - **Deselect** — click empty floor or press `Esc` to deselect a selected tower.
 
 ## Running Waves

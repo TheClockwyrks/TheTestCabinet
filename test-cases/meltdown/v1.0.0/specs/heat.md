@@ -13,9 +13,9 @@ all built on.
 
 Each emitter (every tower that fires — the six in `specs/towers.md`; the Forge
 and Vent do not fire and have no heat of their own) carries a heat value `H`, a
-number from `0` (stone cold) to `100` (the redline). Heat is shown on the tile
-and in the inspector (see `specs/playfield.md`), and it changes continuously as
-the tower runs:
+number from `0` (stone cold) to `100` (the redline). Heat is shown on its
+footprint and in the inspector (see `specs/playfield.md`), and it changes
+continuously as the tower runs:
 
 - **Firing heats it.** Each shot a tower fires adds its `heatPerShot` to
   `H`. A fast-firing or heavy-hitting tower piles on heat quickly; a slow one
@@ -84,27 +84,43 @@ locally.
 ## Thermal Modulation - Forge and Vent
 
 Two structures do not fire at all; their entire job is to **move heat** to and
-from the emitters next to them. "Next to" means the **four orthogonally adjacent
-tiles** (up, down, left, right — not diagonals).
+from the emitters next to them. Because every tower occupies a **2 x 2 tile
+footprint** (`specs/playfield.md`), "next to" means two tower footprints touch
+orthogonally along an edge. Diagonal corner contact does not couple heat.
+
+Thermal coupling scales by how much of the two-tile edge is shared:
+
+- **Fully aligned edge contact: 100% transfer.** For left/right neighbors, the
+  towers have the same top and bottom rows, so their full vertical edges touch.
+  For above/below neighbors, they have the same left and right columns, so their
+  full horizontal edges touch.
+- **Slightly staggered edge contact: 50% transfer.** The footprints touch along
+  exactly one tile of edge. For left/right neighbors, this means the top row of
+  one tower is the bottom row of the other; for above/below neighbors, the left
+  column of one tower is the right column of the other.
+- **No shared edge: 0% transfer.** Towers that only touch at a corner, overlap
+  no edge tiles, or are separated by at least one tile do not exchange heat.
 
 - **The Forge** *adds* heat to each adjacent emitter, continuously, every
-  second it stands — its `forgeHeat` is poured into every orthogonal neighbor's
-  `H`. This is the double-edged structure: in a lull, a Forge keeps a neighbor
-  warm and strong when it would otherwise cool to feeble; in a heavy push, that
-  same constant heat stacks on top of the neighbor's own firing heat and can
-  inadvertently push it over the redline, tripping it.
+  second it stands — its `forgeHeat` is multiplied by the coupling percentage
+  above and poured into every orthogonal neighboring emitter's `H`. This is the
+  double-edged structure: in a lull, a Forge keeps a neighbor warm and strong
+  when it would otherwise cool to feeble; in a heavy push, that same constant
+  heat stacks on top of the neighbor's own firing heat and can inadvertently
+  push it over the redline, tripping it.
 - **The Vent** *removes* heat from each adjacent emitter, continuously — its
-  `ventCool` is subtracted from every orthogonal neighbor's `H` each second, on
-  top of that tower's own cooling. A Vent lets a tower that would otherwise
-  trip be run **flat out** without tipping over: park a redline-prone emitter
-  beside a Vent and it can fire continuously and stay online.
+  `ventCool` is multiplied by the coupling percentage above and subtracted from
+  every orthogonal neighboring emitter's `H` each second, on top of that tower's
+  own cooling. A Vent lets a tower that would otherwise trip be run **flat out**
+  without tipping over: park a redline-prone emitter beside a Vent and it can
+  fire continuously and stay online.
 
 The exact `forgeHeat` and `ventCool` values, and how upgrading these structures
 changes them, are in `specs/towers.md`. Coupling is **local** — only orthogonal
-neighbors are affected — so where you place a Forge or a Vent on the floor is as
-much a part of the puzzle as where you place the guns. Heat does not otherwise
-spread between emitters: an ordinary emitter does not heat or cool its
-neighbors, only the Forge and Vent do.
+neighboring footprints with shared edge contact are affected — so where you
+place a Forge or a Vent on the floor is as much a part of the puzzle as where
+you place the guns. Heat does not otherwise spread between emitters: an ordinary
+emitter does not heat or cool its neighbors, only the Forge and Vent do.
 
 ## Tower Heat Relationships
 
