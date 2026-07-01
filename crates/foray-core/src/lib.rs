@@ -1,5 +1,5 @@
 //! The authoritative game engine for **Foray** (on-disk slug
-//! `adversarial-pacman`), the first adversarial test case.
+//! `foray`), the first adversarial test case.
 //!
 //! This crate is the single source of truth for the game's rules, world state,
 //! scoring, and replay handling. It compiles two ways from one implementation —
@@ -11,7 +11,7 @@
 //!
 //! The authoritative narrative lives in the design docs:
 //! `apps/docs/src/content/docs/testing/adversarial/` (the test-type framing) and
-//! `.../adversarial-pacman/` (Foray's rules, architecture, and replay format).
+//! `.../foray/` (Foray's rules, architecture, and replay format).
 //!
 //! ## Map of the crate
 //!

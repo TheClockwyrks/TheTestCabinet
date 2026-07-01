@@ -153,6 +153,14 @@ async function toTestCaseSummary(
         weight: item.weight,
         domain: item.domain ?? null,
       })),
+      // The variant's effective scoring domains (common + its own), already
+      // merged on the resolved VariantInfo — the set a run of this variant is
+      // rated against.
+      domains: v.domains.map((d) => ({
+        id: d.id,
+        name: d.name,
+        description: d.description,
+      })),
     })),
   );
   return {
@@ -175,6 +183,10 @@ async function toTestCaseSummary(
     // live monitor can render one stable slot per declared frame. Null for a
     // single sprite or any non-asset case.
     sheet: info.sheet ?? null,
+    // Case-level: the voxel rig (parts + joints), so the live monitor can render
+    // one stable slot per declared part. Null for a static voxel model, a 2D
+    // sprite/sheet, or any non-asset case.
+    model: info.model ?? null,
   };
 }
 

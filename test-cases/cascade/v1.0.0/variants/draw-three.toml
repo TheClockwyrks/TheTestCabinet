@@ -1,0 +1,16 @@
+# The classic Klondike deal (stock turns three) — the default, listed first in
+# the case manifest's `variants`. Adds its deal-mode spec, its own `title` menu,
+# and the review item for the turn count. Every path resolves against the version
+# folder, exactly like the main manifest.
+slug = "draw-three"
+name = "Draw Three"
+description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
+
+spec = [{ source = "specs/modes/draw-three.md" }]
+reference = [{ view = "title", path = "reference/menu-draw-three.html" }]
+
+[[review_item]]
+id = "draw-three-count"
+title = "Draw Three"
+text = "Clicking the stock turns exactly three cards onto the waste at once (or all that remain if fewer than three), fanned so all three are visible with only the top card playable; recycling the empty stock is unlimited."
+weight = 1

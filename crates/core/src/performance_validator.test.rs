@@ -114,6 +114,8 @@ fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -
         replay: None,
         asset_kind: AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,

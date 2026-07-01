@@ -155,7 +155,11 @@ pub struct ServedAssetFile {
 /// - a single sprite uses `regenerated.png`, `preview.png`, or `actions.json`
 ///   (its one frame, index 0);
 /// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`, or
-///   `actions-<index>.json` (one per declared frame).
+///   `actions-<index>.json` (one per declared frame);
+/// - a static voxel model uses `regenerated.png`, `preview.png`, `actions.json`,
+///   or `voxels.json` (its one part); an animated voxel model suffixes each with
+///   the part's `-<index>` in declared order (`voxels-<index>.json`, etc.). The
+///   extra `voxels` kind is the regenerated `voxels.json` the 3D client renders.
 ///
 /// The flat `<kind>-<index>` spelling keeps each artifact a single path segment so
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
@@ -185,6 +189,23 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             "regenerated" => &frame_result.regenerated_image,
             "preview" => &frame_result.preview_image,
             "actions" => &frame_result.actions_log,
+            _ => return None,
+        }
+    } else if let Some(voxel) = record.validation.voxel.as_ref() {
+        // A voxel run addresses its parts the same flat way a sprite sheet
+        // addresses its frames: a static model serves under bare names (its one
+        // part), an animated model suffixes each part with its `-<index>` in
+        // declared order. The extra `voxels` kind is the regenerated `voxels.json`
+        // the 3D client renders; `regenerated`/`preview` are the isometric PNGs.
+        let part = match frame {
+            Some(index) => voxel.parts.get(index as usize)?,
+            None => voxel.parts.first()?,
+        };
+        match kind {
+            "regenerated" => &part.regenerated_image,
+            "preview" => &part.preview_image,
+            "actions" => &part.ops_log,
+            "voxels" => &part.regenerated_voxels,
             _ => return None,
         }
     } else if let Some(adversarial) = record.validation.adversarial.as_ref() {

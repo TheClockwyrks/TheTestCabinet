@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Panel } from "@test-cabinet/ui";
-import type { AssetSheet } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec } from "@test-cabinet/run-record";
 import type { AssetPreview } from "../../../../client/types";
 import styles from "./RunDetailPages.module.scss";
 
@@ -61,31 +61,59 @@ function sheetSlotName(sheet: AssetSheet, index: number): Slot {
 }
 
 /**
- * Build one slot per frame the run will fill, so the sidebar is stable from the
- * first render — before the model has drawn into any of them. The slots are the
+ * Build one slot per part a voxel-animation run will fill, named from the declared
+ * parts (whose declared order is the live preview's `frame` index). Includes any
+ * preview index beyond the declared parts, so an unresolved catalog still shows
+ * every part a preview arrived for.
+ */
+function modelSlots(
+  model: ModelSpec,
+  previews: Map<number, AssetPreview>,
+): Slot[] {
+  const slots: Slot[] = model.parts.map((part, index) => ({
+    index,
+    name: part.name,
+    sub: null,
+  }));
+  for (const index of previews.keys()) {
+    if (!slots.some((s) => s.index === index)) {
+      slots.push({ index, name: `Part ${index}`, sub: null });
+    }
+  }
+  return slots.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Build one slot per frame/part the run will fill, so the sidebar is stable from
+ * the first render — before the model has drawn into any of them. The slots are the
  * union of the case's declared frames (when the catalog resolved a sprite sheet)
- * and any frame a preview has already arrived for (so a sheet run still shows
- * every frame even when the catalog couldn't be resolved). A sheet's frames are
- * named from its sequences; a lone frame with no sheet is the single sprite,
- * named after the case.
+ * or parts (a voxel-animation rig) and any index a preview has already arrived for
+ * (so a run still shows every slot even when the catalog couldn't be resolved). A
+ * sheet's frames are named from its sequences, a rig's from its parts; a lone frame
+ * with neither is the single sprite or static voxel model, named after the case.
  */
 function buildSlots(
   sheet: AssetSheet | null,
+  model: ModelSpec | null,
   previews: Map<number, AssetPreview>,
   assetLabel: string,
 ): Slot[] {
+  // A voxel-animation rig maps preview slots to its declared parts.
+  if (model) return modelSlots(model, previews);
+
   const indices = new Set<number>();
   if (sheet) for (const frame of sheet.frames) indices.add(frame);
   for (const frame of previews.keys()) indices.add(frame);
   const sorted = [...indices].sort((a, b) => a - b);
-  // A single frame with no declared sheet is the single-sprite case.
-  const isSingleSprite = !sheet && sorted.length <= 1;
+  // A single frame with no declared sheet is the single-sprite (or static voxel
+  // model) case.
+  const isSingle = !sheet && sorted.length <= 1;
   if (sorted.length === 0) return [{ index: 0, name: assetLabel, sub: null }];
   return sorted.map((index) => {
     if (sheet) return sheetSlotName(sheet, index);
     return {
       index,
-      name: isSingleSprite ? assetLabel : `Frame ${index}`,
+      name: isSingle ? assetLabel : `Frame ${index}`,
       sub: null,
     };
   });
@@ -134,6 +162,7 @@ export function LiveAssetView({
   previews,
   activeFrame,
   sheet,
+  model,
   assetLabel,
 }: {
   previews: Map<number, AssetPreview>;
@@ -141,8 +170,12 @@ export function LiveAssetView({
   /** The case's declared sprite sheet, when known; null for a single sprite or
    * when the host couldn't resolve the catalog. */
   sheet: AssetSheet | null;
-  /** What the single-sprite slot is named after (the case name); unused for a
-   * sheet. */
+  /** The case's declared voxel-animation rig, when known; null for a static voxel
+   * model, a 2D sprite/sheet, or when the host couldn't resolve the catalog. Its
+   * parts name the live slots (a part's declared order is its preview index). */
+  model: ModelSpec | null;
+  /** What the single slot is named after (the case name); unused for a sheet or
+   * rig. */
   assetLabel: string;
 }) {
   // The user can pin the large view to a slot; until then it follows the frame
@@ -150,9 +183,9 @@ export function LiveAssetView({
   const [picked, setPicked] = useState<number | null>(null);
 
   // Nothing to show for a non-asset run that has streamed no previews.
-  if (!sheet && previews.size === 0) return null;
+  if (!sheet && !model && previews.size === 0) return null;
 
-  const slots = buildSlots(sheet, previews, assetLabel);
+  const slots = buildSlots(sheet, model, previews, assetLabel);
   const showRail = slots.length > 1;
   // The slot shown large: the user's pick, else the frame being drawn, else the
   // first declared slot.

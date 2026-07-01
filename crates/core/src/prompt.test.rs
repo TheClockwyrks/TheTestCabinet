@@ -33,6 +33,8 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         replay: None,
         asset_kind: crate::test_case::AssetKind::Sprite,
         sheet: None,
+        voxel: None,
+        model: None,
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),
@@ -63,6 +65,7 @@ fn frenzy() -> Variant {
         references: vec![],
         proofs: vec![],
         review_items: vec![],
+        domains: vec![],
     }
 }
 
@@ -104,6 +107,7 @@ fn strict_mode_rejects_unknown_variables() {
         references: vec![],
         proofs: vec![],
         review_items: vec![],
+        domains: vec![],
     };
     assert!(
         render_prompt(&version, &variant).is_err(),

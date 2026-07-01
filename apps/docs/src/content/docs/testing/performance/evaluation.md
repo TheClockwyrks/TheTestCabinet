@@ -37,13 +37,13 @@ could be. A published run may still carry a human
 took, but the decisive signal here is correctness plus the fuel number.
 
 :::note[How the first case applies this]
-[Lattice](/testing/performance/performance-factorio/overview/), the first
+[Lattice](/testing/performance/lattice/overview/), the first
 performance case, makes the correctness gate **bit-exact**: a submission's factory
 state must match a reference engine's at every snapshot, compared by
-[checksum](/testing/performance/performance-factorio/architecture/#determinism-and-the-canonical-state)
+[checksum](/testing/performance/lattice/architecture/#determinism-and-the-canonical-state)
 (Factorio's own desync-detection model). Correctness is graded on a **held-out** set
 of scenarios the model never trained on, and only a correct engine's fuel becomes its
 result — where a transport-line engine and a move-every-item-every-tick engine post
 the same checksums for
-[wildly different fuel](/testing/performance/performance-factorio/architecture/#why-this-is-a-performance-case).
+[wildly different fuel](/testing/performance/lattice/architecture/#why-this-is-a-performance-case).
 :::

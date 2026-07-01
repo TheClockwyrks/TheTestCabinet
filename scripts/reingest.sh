@@ -10,13 +10,18 @@
 # (`Accept: application/x-ndjson`) and print a line per case as it completes,
 # instead of one silent blocking POST that looks like a hang.
 #
+# Ingest ADDS and OVERWRITES; it never PRUNES. A case's identity is its folder slug
+# under test-cases/, so after you RENAME a case's folder (or delete a version) a
+# re-ingest leaves the OLD slug still served alongside the new one. To drop the stale
+# slug, start the backend from an empty definition store, then re-ingest.
+#
 # Usage:
 #   scripts/reingest.sh                 # force re-ingest every case
-#   scripts/reingest.sh pong            # scope to one case slug
-#   scripts/reingest.sh pong snake      # scope to several
+#   scripts/reingest.sh carom            # scope to one case slug
+#   scripts/reingest.sh carom coil      # scope to several
 #
 # Override the target with BACKEND_URL (default http://127.0.0.1:8787):
-#   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh pong
+#   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh carom
 set -euo pipefail
 
 backend="${BACKEND_URL:-http://127.0.0.1:8787}"
@@ -27,7 +32,7 @@ if [[ $# -eq 0 ]]; then
   body='{"force": true}'
   scope="every case"
 else
-  # Join the slug args into a JSON string array: pong snake -> "pong","snake"
+  # Join the slug args into a JSON string array: carom coil -> "carom","coil"
   cases=""
   for slug in "$@"; do
     cases+="\"${slug}\","
@@ -37,7 +42,7 @@ else
 fi
 
 # Pull a JSON key's value out of one (non-nested) JSON line. Handles both string
-# (`"slug":"pong"`) and scalar (`"index":1`) values, is order independent, and
+# (`"slug":"carom"`) and scalar (`"index":1`) values, is order independent, and
 # tolerates whitespace around the colon — so it reads both the compact NDJSON the
 # stream emits and a pretty-printed error body. Returns empty when the key is absent;
 # never fails under `set -e`.

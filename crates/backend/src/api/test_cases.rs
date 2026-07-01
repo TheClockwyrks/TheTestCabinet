@@ -197,6 +197,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
                     .collect(),
                 proofs: v.proofs.iter().map(proof_out).collect(),
                 review_items: v.review_items.iter().map(review_item_out).collect(),
+                domains: v.domains.iter().map(domain_out).collect(),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -535,6 +536,9 @@ struct VariantOut {
     references: Vec<ReferenceOut>,
     proofs: Vec<ProofOut>,
     review_items: Vec<ReviewItemOut>,
+    /// The variant's own scoring domains, on top of the case's common
+    /// [`VersionResponse::domains`]. Rated only when this variant is selected.
+    domains: Vec<DomainOut>,
 }
 
 #[derive(Serialize)]

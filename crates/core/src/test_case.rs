@@ -71,6 +71,16 @@ struct Manifest {
     /// "sprite-sheet"`; forbidden otherwise.
     #[serde(default)]
     sheet: Option<ManifestSheet>,
+    /// The bounding volume of a voxel case (the `[voxel]` table). Required for —
+    /// and only for — the two voxel kinds (`asset_kind = "voxel-model"` /
+    /// `"voxel-animation"`); forbidden otherwise.
+    #[serde(default)]
+    voxel: Option<ManifestVoxel>,
+    /// The required rig — parts, joints, and clips — of a voxel-animation case (the
+    /// `[model]` table). Required for — and only for — `asset_kind =
+    /// "voxel-animation"`; forbidden otherwise.
+    #[serde(default)]
+    model: Option<ManifestModel>,
     /// The commands the validator runs to build the produced implementation as a
     /// static site (the `[build]` table). **Required for an end-to-end case** and
     /// **forbidden for any other type**, so its presence is validated against
@@ -135,11 +145,15 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
-    /// The variants this case offers. Each seeds the common `specs` plus its own
-    /// additional specs; exactly one variant runs per run. At least one variant
-    /// must be declared.
+    /// The variants this case offers, each as a path to a standalone variant
+    /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
+    /// convention under `variants/`), relative to the version folder. Listed in
+    /// order — the first is the default — and at least one must be declared. Each
+    /// file seeds the common `specs` plus its own additional specs; exactly one
+    /// variant runs per run. Splitting variants into their own files keeps the
+    /// main manifest readable when a case carries several modes.
     #[serde(default)]
-    variant: Vec<ManifestVariant>,
+    variants: Vec<PathBuf>,
     /// Reference views. Each is either an HTML mockup rendered to a screenshot
     /// or a static image/video used as-is, seeded as a visual target; a rendered
     /// reference's source mockup is not seeded.
@@ -385,6 +399,112 @@ struct ManifestSheetSequence {
 // float coordinates.
 impl Eq for ManifestSheetSequence {}
 
+/// The `[voxel]` table of a voxel asset-generation case: the bounding volume the
+/// model sculpts into — the 3D analog of [`ManifestCanvas`]. `background` is the
+/// clear color behind the rasterized isometric preview PNG (the voxel volume
+/// itself always starts empty).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestVoxel {
+    /// Volume extent along x, in voxels.
+    width: u32,
+    /// Volume extent along y (up), in voxels.
+    height: u32,
+    /// Volume extent along z, in voxels.
+    depth: u32,
+    /// Preview clear color: `transparent` or a hex color.
+    #[serde(default = "default_background")]
+    background: String,
+}
+
+/// The `[model]` table of a voxel-animation case: the **required** rig the model
+/// must produce — named parts in a parent/child hierarchy, the named joints a
+/// consuming game (or an auto-play clip) drives, and the auto-play clips that
+/// animate any auto-driven joints. These are the stable, game-facing contract and
+/// the scoring targets; at run time the model may add further parts, joints, and
+/// clips of its own (recorded in `rig.json`) beyond what this table requires.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestModel {
+    /// The declared parts, as repeated `[[model.part]]` tables. At least one is
+    /// required; the first is the root.
+    #[serde(default, rename = "part")]
+    part: Vec<ManifestPart>,
+    /// The declared joints, as repeated `[[model.joint]]` tables.
+    #[serde(default, rename = "joint")]
+    joint: Vec<ManifestJoint>,
+    /// The declared auto-play clips, as repeated `[[model.clip]]` tables — one per
+    /// auto-driven joint.
+    #[serde(default, rename = "clip")]
+    clip: Vec<ManifestClip>,
+}
+
+// `ManifestModel` owns joints and clips that carry `f64` fields, so it takes a
+// manual `Eq` for the same reason as `ManifestSheetSequence` above.
+impl Eq for ManifestModel {}
+
+/// A single `[[model.part]]` entry: one named voxel component of the rig and its
+/// attachment point in its parent's local coordinates.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestPart {
+    /// Stable name of this part (for example `chassis`, `turret`).
+    name: String,
+    /// The parent part this one is attached to, or omitted for the root part.
+    #[serde(default)]
+    parent: Option<String>,
+    /// The attachment point in the parent's local voxel coordinates (`[x, y, z]`).
+    /// Defaults to the origin `[0, 0, 0]` when omitted.
+    #[serde(default)]
+    pivot: Option<[i64; 3]>,
+}
+
+/// A single `[[model.joint]]` entry: one named degree of freedom on a part. `kind`
+/// (`rotation`/`translation`), `axis` (`x`/`y`/`z`), and `drive` (`caller`/`auto`)
+/// are kept as strings here and parsed at resolution.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestJoint {
+    /// Stable name of this joint; the parameter a game addresses.
+    name: String,
+    /// The part this joint moves (a declared `[[model.part]]` name).
+    part: String,
+    /// Whether this joint rotates or translates the part (`rotation`/`translation`).
+    kind: String,
+    /// The axis the joint acts about (rotation) or along (translation): `x`/`y`/`z`.
+    axis: String,
+    /// The joint origin in the part's local voxel coordinates (`[x, y, z]`).
+    pivot: [i64; 3],
+    /// Minimum value: radians for a rotation, voxel units for a translation.
+    min: f64,
+    /// Maximum value.
+    max: f64,
+    /// The rest/default value, within `[min, max]`.
+    rest: f64,
+    /// Who drives this joint: `caller` (a game) or `auto` (an auto-play clip).
+    drive: String,
+}
+
+// `ManifestJoint` carries `f64` range fields, so it takes a manual `Eq` for the
+// same reason as `ManifestSheetSequence` above.
+impl Eq for ManifestJoint {}
+
+/// A single `[[model.clip]]` entry: the looping auto-play timeline for one
+/// auto-driven joint. Each keyframe is an inline `[t_ms, value]` pair.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestClip {
+    /// The joint this clip animates (a declared `[[model.joint]]` name whose
+    /// `drive` is `auto`).
+    joint: String,
+    /// The clip period in milliseconds (one full loop).
+    period_ms: u32,
+    /// Whether the clip loops (true) or holds the last keyframe (false). `loop` is
+    /// a Rust keyword, so the field is `r#loop`.
+    r#loop: bool,
+    /// The keyframes, each an inline `[t_ms, value]` pair, in time order.
+    keyframes: Vec<[f64; 2]>,
+}
+
+// `ManifestClip` carries `f64` keyframe values, so it takes a manual `Eq` for the
+// same reason as `ManifestSheetSequence` above.
+impl Eq for ManifestClip {}
+
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
 /// array): a `source` file inside the version folder seeded to a `dest` path in
 /// the run's workspace.
@@ -392,11 +512,19 @@ impl Eq for ManifestSheetSequence {}
 struct ManifestSpec {
     /// Source path, relative to the version folder.
     source: PathBuf,
-    /// Destination path, relative to the run's workspace root.
-    dest: PathBuf,
+    /// Destination path, relative to the run's workspace root. Optional: when
+    /// omitted it defaults to [`spec_default_dest`] of the `source` (the source
+    /// path with a trailing `.hbs` template extension removed), since the seeded
+    /// path so rarely differs from the source that stating both is just noise.
+    #[serde(default)]
+    dest: Option<PathBuf>,
 }
 
-/// A single `[[variant]]` entry in the manifest.
+/// A standalone variant manifest, parsed from its own file listed in the case
+/// manifest's `variants` array (by convention `variants/<slug>.toml`). Its
+/// top-level tables are this struct's fields; every path it names is resolved
+/// relative to the **version folder**, not the variant file's location, so a
+/// variant references `specs/modes/gyre.md` exactly as the main manifest would.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestVariant {
     /// The stable slug naming this variant (recorded in run records).
@@ -430,12 +558,21 @@ struct ManifestVariant {
     #[serde(default, rename = "proof")]
     proofs: Vec<ManifestProof>,
     /// Reviewer checklist items this variant declares in addition to the common
-    /// items. Declared as a `review_item` array of inline `{ id, text }` tables.
+    /// items. Declared as repeated `[[review_item]]` tables in the variant file.
     /// A variant-specific item lets a mode-only requirement be checked only when
     /// that variant runs; its id must not collide with a common item or another
     /// of this variant's items.
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// Scoring domains this variant declares in addition to the case's common
+    /// [`Manifest::domains`]. Declared as repeated `[[domain]]` tables in the
+    /// variant file. A variant-specific domain lets a mode that introduces a whole
+    /// new axis of judgement (say a Pong "gyre" mode) be rated on its own, rather
+    /// than forcing every domain to be declared case-wide even when it applies to
+    /// one variant. Its id must not collide with a common domain or another of
+    /// this variant's domains; the variant's effective set is common ∪ these.
+    #[serde(default, rename = "domain")]
+    domains: Vec<ManifestDomain>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -551,6 +688,22 @@ const MANIFEST_FILE: &str = "test-case.toml";
 /// default, so a model's drawing operations need no canvas flags.
 pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
 
+/// The run-workspace-relative path the orchestrator seeds a static voxel
+/// (`asset_kind = "voxel-model"`) run's volume configuration to. The `voxel`
+/// binary reads it from here by default.
+pub const VOXEL_CONFIG_DEST: &str = "voxel.config.json";
+
+/// The run-workspace-relative path the orchestrator seeds an animated voxel
+/// (`asset_kind = "voxel-animation"`) run's rig/volume configuration to. The
+/// `voxel-anim` binary reads it from here by default.
+pub const VOXEL_ANIM_CONFIG_DEST: &str = "voxel-anim.config.json";
+
+/// The run-workspace-relative path a voxel-animation run's rig structure
+/// (`rig.json`) is seeded to and produced at. Seeding pre-populates it from the
+/// manifest's required [`ModelSpec`]; the `voxel-anim` binary rewrites it as the
+/// model adds parts/joints, and the validator reads it back.
+pub const VOXEL_RIG_DEST: &str = "rig.json";
+
 /// The placeholder a sprite-sheet case's preview and action-log paths must carry,
 /// replaced by the frame index to give every frame its own separate file (for
 /// example `frames/{frame}.png` → `frames/3.png`). Shared by manifest validation,
@@ -565,6 +718,19 @@ pub fn frame_path(template: &Path, index: u32) -> PathBuf {
             .to_string_lossy()
             .replace(FRAME_TOKEN, &index.to_string()),
     )
+}
+
+/// The placeholder a voxel-animation case's preview and action-log paths must
+/// carry, replaced by the part name to give every part its own separate file (for
+/// example `parts/{part}.png` → `parts/turret.png`). The 3D analog of
+/// [`FRAME_TOKEN`]; shared by manifest validation, seeding, and the validator so
+/// they resolve the same per-part paths.
+pub const PART_TOKEN: &str = "{part}";
+
+/// Substitute the [`PART_TOKEN`] in a voxel-animation path template with a part
+/// name, yielding that part's concrete run-relative path.
+pub fn part_path(template: &Path, part: &str) -> PathBuf {
+    PathBuf::from(template.to_string_lossy().replace(PART_TOKEN, part))
 }
 
 /// A test case: a single game a model is asked to build, identified by a stable
@@ -647,12 +813,16 @@ impl std::fmt::Display for TestType {
 
 /// Within an asset-generation case, the shape of the asset the model draws.
 ///
-/// A case is **either** a single sprite or a sprite sheet — never both, and not a
+/// A case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D
+/// voxel model, or a rigged/animatable 3D voxel model — never a mix, and not a
 /// per-variant choice: it is a property of the whole version, chosen by the
 /// `asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a
-/// `[sheet]` table (the frame grid and the named animation sequences). Defaults to
-/// [`Self::Sprite`] so a manifest that predates the discriminator — and every
-/// non-asset-generation case — resolves unchanged.
+/// `[sheet]` table (the frame grid and the named animation sequences); the two
+/// voxel kinds declare a `[voxel]` table (the bounding volume), and
+/// [`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,
+/// joints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that
+/// predates the discriminator — and every non-asset-generation case — resolves
+/// unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -663,6 +833,36 @@ pub enum AssetKind {
     /// A grid of animation frames drawn onto the canvas, sliced into the named
     /// sequences the `[sheet]` table declares.
     SpriteSheet,
+    /// A single static 3D voxel model, drawn one voxel operation at a time with the
+    /// `voxel` binary. Declares a `[voxel]` table (the bounding volume). Rendered as
+    /// an auto-rotating 3D model.
+    VoxelModel,
+    /// A rigged, animatable 3D voxel model: named parts in a parent/child hierarchy
+    /// with named joints a consuming game drives at runtime (for example a tank's
+    /// `turret_yaw`), drawn with the `voxel-anim` binary. Declares a `[voxel]` table
+    /// and a `[model]` table (the required parts and joints the model must produce,
+    /// on top of which it may add its own).
+    VoxelAnimation,
+}
+
+impl AssetKind {
+    /// Whether this kind is one of the two 3D voxel kinds (as opposed to a 2D
+    /// sprite kind). Voxel kinds declare a `[voxel]` table instead of `[canvas]`.
+    pub fn is_voxel(self) -> bool {
+        matches!(self, Self::VoxelModel | Self::VoxelAnimation)
+    }
+
+    /// The run-workspace-relative path the orchestrator seeds this kind's tool
+    /// configuration to: [`ASSET_CONFIG_DEST`] for the 2D `draw`/`draw-sheet`
+    /// kinds, [`VOXEL_CONFIG_DEST`] / [`VOXEL_ANIM_CONFIG_DEST`] for the two voxel
+    /// kinds. Shared by manifest path-claiming and seeding so they agree.
+    pub fn config_dest(self) -> &'static str {
+        match self {
+            Self::Sprite | Self::SpriteSheet => ASSET_CONFIG_DEST,
+            Self::VoxelModel => VOXEL_CONFIG_DEST,
+            Self::VoxelAnimation => VOXEL_ANIM_CONFIG_DEST,
+        }
+    }
 }
 
 /// The kind of a piece of media — used for both reference media and proof
@@ -998,6 +1198,170 @@ pub struct SheetSequence {
 // treats its float coordinates above.
 impl Eq for SheetSequence {}
 
+/// The resolved `[voxel]` of a voxel asset-generation case: the bounding volume
+/// the model draws into, the 3D analog of [`CanvasSpec`]. `background` is the
+/// clear color behind the rasterized isometric preview PNG (the voxel volume
+/// itself always starts empty); it is kept as the manifest string — validated to
+/// parse — so the resolved version stays serializable without depending on the
+/// voxel library's color type, and the validator re-parses it when it regenerates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoxelSpec {
+    /// Volume extent along x, in voxels.
+    pub width: u32,
+    /// Volume extent along y (up), in voxels.
+    pub height: u32,
+    /// Volume extent along z, in voxels.
+    pub depth: u32,
+    /// Preview clear color: `transparent` or a hex color.
+    pub background: String,
+}
+
+/// The resolved `[model]` of a voxel-animation case: the rig the model must
+/// produce — named parts in a parent/child hierarchy and the named joints a
+/// consuming game (or an auto-play clip) drives. This is the **required** contract
+/// (the scoring targets and the stable, game-facing joint interface); at run time
+/// the model may add further parts and joints of its own, which are recorded in
+/// the produced `rig.json` but are not required here. Carried into the run record
+/// (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
+/// the joint interface without a separate catalog lookup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ModelSpec {
+    /// The declared parts, in declared order. The first is the root (its `parent`
+    /// is `None`); every other part names a declared parent.
+    pub parts: Vec<PartSpec>,
+    /// The declared joints, in declared order. Each names a declared part.
+    pub joints: Vec<JointSpec>,
+}
+
+/// A resolved part of a [`ModelSpec`]: one named voxel component of the rig.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PartSpec {
+    /// Stable name of this part (for example `chassis`, `turret`). The `voxel-anim`
+    /// binary targets a part's voxel operations with `--part <name>`.
+    pub name: String,
+    /// The parent part this one is attached to, or `None` for the root part. A
+    /// part inherits its parent's world transform, so posing a parent moves it too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub parent: Option<String>,
+    /// The attachment point of this part in the parent's local voxel coordinates
+    /// (`[x, y, z]`). For the root part this is its origin in world space.
+    pub pivot: [i64; 3],
+}
+
+/// A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.
+///
+/// A joint is either **caller-driven** (a consuming game supplies its value at
+/// runtime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a
+/// looping set of keyframes). Rotations are in radians about [`Self::axis`] through
+/// [`Self::pivot`]; translations are in voxel units along the axis.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct JointSpec {
+    /// Stable name of this joint; the parameter a game addresses (for example
+    /// `turret_yaw`).
+    pub name: String,
+    /// The part this joint moves (a declared [`PartSpec::name`]).
+    pub part: String,
+    /// Whether this joint rotates or translates the part.
+    pub kind: JointKindSpec,
+    /// The axis the joint acts about (rotation) or along (translation).
+    pub axis: AxisSpec,
+    /// The joint origin in the part's local voxel coordinates (`[x, y, z]`).
+    pub pivot: [i64; 3],
+    /// Minimum value: radians for a rotation, voxel units for a translation.
+    pub min: f64,
+    /// Maximum value.
+    pub max: f64,
+    /// The rest/default value, within `[min, max]`.
+    pub rest: f64,
+    /// Who drives this joint: a caller (a game) or an auto-play clip.
+    pub drive: DriveKindSpec,
+    /// The auto-play clip, present only when [`Self::drive`] is
+    /// [`DriveKindSpec::Auto`]; `None` for a caller-driven joint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub auto: Option<AutoPlaySpec>,
+}
+
+// `JointSpec` carries `f64` range fields, so it cannot derive `Eq` (and neither can
+// the `ModelSpec` that owns it). Those values originate as exact TOML literals
+// validated to be finite at resolution and are only ever compared or rendered,
+// never used as a hash key, so a manual `Eq` is sound — matching how `SheetSequence`
+// treats its `fps` above.
+impl Eq for JointSpec {}
+
+/// Whether a [`JointSpec`] rotates or translates its part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum JointKindSpec {
+    /// Rotate the part about [`JointSpec::axis`] through [`JointSpec::pivot`].
+    Rotation,
+    /// Translate the part along [`JointSpec::axis`].
+    Translation,
+}
+
+/// A principal axis a [`JointSpec`] acts about or along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum AxisSpec {
+    /// The x axis.
+    X,
+    /// The y (up) axis.
+    Y,
+    /// The z axis.
+    Z,
+}
+
+/// Who drives a [`JointSpec`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum DriveKindSpec {
+    /// A consuming game supplies the joint's value at runtime.
+    Caller,
+    /// The joint animates itself from a looping [`AutoPlaySpec`] clip.
+    Auto,
+}
+
+/// The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of
+/// keyframes the viewer (and a consuming game) plays back automatically.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AutoPlaySpec {
+    /// The keyframes, in time order, sampled over one period.
+    pub keyframes: Vec<KeyframeSpec>,
+    /// The clip period in milliseconds (one full loop).
+    pub period_ms: u32,
+    /// Whether the clip loops (true) or holds the last keyframe (false).
+    pub looping: bool,
+}
+
+/// A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct KeyframeSpec {
+    /// Time offset from the start of the clip, in milliseconds (`0..=period_ms`).
+    pub t_ms: u32,
+    /// The joint value at this time.
+    pub value: f64,
+}
+
+// Manual `Eq` for the two float-bearing rig types, for the same reason as
+// `JointSpec` above.
+impl Eq for AutoPlaySpec {}
+impl Eq for KeyframeSpec {}
+
 /// A named build target of a test case.
 ///
 /// A variant seeds the case's common specs plus its own additional specs, so one
@@ -1032,6 +1396,13 @@ pub struct Variant {
     /// common items. Surfaced to a reviewer only when this variant is selected, so
     /// a mode-specific check rides along only with the variant that adds the mode.
     pub review_items: Vec<ReviewItem>,
+    /// Scoring domains this variant declares in addition to the case's common
+    /// [`TestCaseVersion::domains`]. Rated by the reviewer only when this variant
+    /// is selected, so a mode that introduces a whole new axis of judgement is
+    /// scored on its own without every other variant carrying an unused domain.
+    /// The effective domain set for a run of this variant is
+    /// [`TestCaseVersion::domains_for`].
+    pub domains: Vec<Domain>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -1294,6 +1665,15 @@ pub struct TestCaseVersion {
     /// [`Self::asset_kind`] is [`AssetKind::SpriteSheet`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<SheetSpec>,
+    /// The bounding volume a voxel asset-generation case's model draws into. `Some`
+    /// only for the two voxel kinds ([`AssetKind::VoxelModel`] /
+    /// [`AssetKind::VoxelAnimation`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voxel: Option<VoxelSpec>,
+    /// The required rig (parts + joints) of a voxel-animation case. `Some` only
+    /// when [`Self::asset_kind`] is [`AssetKind::VoxelAnimation`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelSpec>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -1328,10 +1708,12 @@ pub struct TestCaseVersion {
     /// [`Self::review_items_for`]. **Not** seeded — reporter-side material a
     /// reviewer works through after playing a build.
     pub common_review_items: Vec<ReviewItem>,
-    /// The scoring domains this case declares, in declared order. A reviewer
-    /// rates each independently; the run's overall rating is the worst across
-    /// them. At least one is always present. Unlike review items, domains are
-    /// case-level rather than variant-scoped.
+    /// The **common** scoring domains this case declares, in declared order —
+    /// those every variant is rated on. A reviewer rates each independently; the
+    /// run's overall rating is the worst across the run variant's effective set.
+    /// At least one common domain is always present. A variant may declare
+    /// additional domains of its own (see [`Variant::domains`]); the effective set
+    /// for a variant is [`Self::domains_for`].
     pub domains: Vec<Domain>,
     /// The held-out input cases a performance case's engine is scored against, in
     /// declared order. Non-empty for a performance case, empty for every other
@@ -1408,6 +1790,19 @@ impl TestCaseVersion {
         self.common_review_items
             .iter()
             .chain(variant.review_items.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The full set of scoring domains a run of this variant is rated on: the
+    /// case's common domains followed by the variant's own. This is the domain set
+    /// the reviewer must rate and the overall rating is the worst across.
+    /// Resolution forbids two domains sharing an `id`, so the order is stable and
+    /// each id is unambiguous.
+    pub fn domains_for(&self, variant: &Variant) -> Vec<Domain> {
+        self.domains
+            .iter()
+            .chain(variant.domains.iter())
             .cloned()
             .collect()
     }
@@ -1597,17 +1992,43 @@ impl TestCaseCatalog {
             }
         };
 
-        // Scoring domains: a reviewer rates each independently and the run's
-        // overall rating is the worst across them, so a case must declare at least
-        // one. Ids must be unique (each keys a recorded per-domain rating) and a
-        // description is required so the reviewer knows what they are rating.
-        if manifest.domains.is_empty() {
+        // Variants live in their own files (by convention `variants/<slug>.toml`),
+        // listed in order by the `variants` array — the first is the default — and
+        // a case must offer at least one. Each file is a standalone
+        // `ManifestVariant` whose paths resolve against the version folder exactly
+        // like the main manifest's. They are loaded up front so the resolved set is
+        // available both to the per-type guards below (an asset-generation case,
+        // for instance, forbids any variant reference) and to the variant loop.
+        if manifest.variants.is_empty() {
             return Err(invalid(
-                "at least one [[domain]] must be declared".to_string(),
+                "at least one variant must be listed in `variants`".to_string(),
             ));
         }
-        let mut domains: Vec<Domain> = Vec::with_capacity(manifest.domains.len());
-        for domain in &manifest.domains {
+        let mut variant_manifests: Vec<ManifestVariant> =
+            Vec::with_capacity(manifest.variants.len());
+        for rel in &manifest.variants {
+            let path = resolve_inside(rel, "variant")?;
+            if !path.is_file() {
+                return Err(invalid(format!(
+                    "variant `{}` does not exist",
+                    rel.display()
+                )));
+            }
+            let raw = fs::read_to_string(&path).map_err(|err| {
+                invalid(format!("could not read variant `{}`: {err}", rel.display()))
+            })?;
+            let variant: ManifestVariant = toml::from_str(&raw)
+                .map_err(|err| invalid(format!("invalid variant `{}`: {err}", rel.display())))?;
+            variant_manifests.push(variant);
+        }
+
+        // Resolve one scoring domain: a reviewer rates each independently and the
+        // run's overall rating is the worst across them. The id keys a recorded
+        // per-domain rating, so it must be non-empty and unique against `taken`
+        // (the domains already accepted — the common set, plus a variant's own
+        // when resolving that variant); a description is required so the reviewer
+        // knows what they are rating.
+        let resolve_domain = |domain: &ManifestDomain, taken: &[Domain]| -> Result<Domain> {
             if domain.id.trim().is_empty() {
                 return Err(invalid("domain `id` must not be empty".to_string()));
             }
@@ -1617,15 +2038,29 @@ impl TestCaseCatalog {
                     domain.id
                 )));
             }
-            if domains.iter().any(|resolved| resolved.id == domain.id) {
+            if taken.iter().any(|resolved| resolved.id == domain.id) {
                 return Err(invalid(format!("duplicate domain id `{}`", domain.id)));
             }
             let name = domain.name.clone().unwrap_or_else(|| humanize(&domain.id));
-            domains.push(Domain {
+            Ok(Domain {
                 id: domain.id.clone(),
                 name,
                 description: domain.description.clone(),
-            });
+            })
+        };
+
+        // The common domains every variant is rated on. A case must declare at
+        // least one, so every variant's effective set (common ∪ its own) is
+        // non-empty; a variant may add more of its own in the loop below.
+        if manifest.domains.is_empty() {
+            return Err(invalid(
+                "at least one common [[domain]] must be declared".to_string(),
+            ));
+        }
+        let mut domains: Vec<Domain> = Vec::with_capacity(manifest.domains.len());
+        for domain in &manifest.domains {
+            let resolved = resolve_domain(domain, &domains)?;
+            domains.push(resolved);
         }
 
         // Resolve one spec mapping: the source must exist inside the version
@@ -1639,16 +2074,20 @@ impl TestCaseCatalog {
                     spec.source.display()
                 )));
             }
-            if escapes_folder(&spec.dest) {
+            // A spec's seeded path so rarely differs from its source that `dest`
+            // is optional: when omitted it defaults to the source with a trailing
+            // `.hbs` template extension stripped (see [`spec_default_dest`]).
+            let dest = spec
+                .dest
+                .clone()
+                .unwrap_or_else(|| spec_default_dest(&spec.source));
+            if escapes_folder(&dest) {
                 return Err(invalid(format!(
                     "spec dest `{}` escapes the run workspace",
-                    spec.dest.display()
+                    dest.display()
                 )));
             }
-            Ok(SpecFile {
-                source_path,
-                dest: spec.dest.clone(),
-            })
+            Ok(SpecFile { source_path, dest })
         };
 
         let mut common_specs = Vec::with_capacity(manifest.specs.len());
@@ -1665,7 +2104,7 @@ impl TestCaseCatalog {
         // `{frame}` templates, since every frame is a separate file. An
         // asset-generation case has no target image: its output is human-reviewed
         // against the brief, so it declares no references at all.
-        let (canvas, tool, output, sheet) = match test_type {
+        let (canvas, tool, output, sheet, voxel, model) = match test_type {
             TestType::EndToEnd | TestType::Adversarial | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
@@ -1685,9 +2124,151 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                (None, None, None, None)
+                // The voxel tables are likewise asset-generation-only.
+                if manifest.voxel.is_some() || manifest.model.is_some() {
+                    return Err(invalid(
+                        "the [voxel] and [model] tables are only valid for a voxel \
+                         asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                (None, None, None, None, None, None)
+            }
+            TestType::AssetGeneration if manifest.asset_kind.is_voxel() => {
+                // A voxel case declares a `[voxel]` bounding volume instead of a 2D
+                // `[canvas]`/`[sheet]`, sculpted through the `voxel`/`voxel-anim`
+                // binary. The `[tool]`/`[output]` tables are shared with the sprite
+                // kinds; their preview/action-log paths are `{part}` templates for
+                // an animated model (one separate file per declared part) and plain
+                // paths for a static one. A voxel-animation case additionally
+                // declares the required `[model]` rig.
+                if manifest.canvas.is_some() || manifest.sheet.is_some() {
+                    return Err(invalid(
+                        "a voxel case declares a [voxel] table, not [canvas] or [sheet]"
+                            .to_string(),
+                    ));
+                }
+
+                let voxel = manifest
+                    .voxel
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [voxel] table is required".to_string()))?;
+                if voxel.width == 0 || voxel.height == 0 || voxel.depth == 0 {
+                    return Err(invalid(
+                        "voxel width, height, and depth must be greater than zero".to_string(),
+                    ));
+                }
+                test_cabinet_voxel::PreviewBackground::parse(&voxel.background).map_err(|err| {
+                    invalid(format!("voxel background `{}`: {err}", voxel.background))
+                })?;
+
+                let tool = manifest
+                    .tool
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [tool] table is required".to_string()))?;
+                if tool.binary.trim().is_empty() {
+                    return Err(invalid("tool.binary must not be empty".to_string()));
+                }
+                if escapes_folder(&tool.preview) {
+                    return Err(invalid(format!(
+                        "tool preview `{}` escapes the run workspace",
+                        tool.preview.display()
+                    )));
+                }
+
+                let output = manifest
+                    .output
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [output] table is required".to_string()))?;
+                if escapes_folder(&output.actions) {
+                    return Err(invalid(format!(
+                        "output actions `{}` escapes the run workspace",
+                        output.actions.display()
+                    )));
+                }
+
+                // The preview and action-log paths must be `{part}` templates for an
+                // animated model (one file per part) and plain paths for a static
+                // one. Validating this here keeps the seeded config, the binary, and
+                // the validator agreeing on where each part's files live.
+                let is_anim = manifest.asset_kind == AssetKind::VoxelAnimation;
+                for (label, path) in [
+                    ("tool.preview", &tool.preview),
+                    ("output.actions", &output.actions),
+                ] {
+                    let has_token = path.to_string_lossy().contains(PART_TOKEN);
+                    if is_anim && !has_token {
+                        return Err(invalid(format!(
+                            "{label} `{}` must contain `{PART_TOKEN}` for a voxel-animation case \
+                             (one file per part)",
+                            path.display()
+                        )));
+                    }
+                    if !is_anim && has_token {
+                        return Err(invalid(format!(
+                            "{label} `{}` must not contain `{PART_TOKEN}` for a voxel-model case",
+                            path.display()
+                        )));
+                    }
+                }
+
+                // The `[model]` rig is required for — and only for — a
+                // voxel-animation case. A static voxel-model is one unposed volume
+                // and declares no rig.
+                let model = match manifest.asset_kind {
+                    AssetKind::VoxelModel => {
+                        if manifest.model.is_some() {
+                            return Err(invalid(
+                                "a voxel-model case (asset_kind = \"voxel-model\") declares no \
+                                 [model] table"
+                                    .to_string(),
+                            ));
+                        }
+                        None
+                    }
+                    AssetKind::VoxelAnimation => {
+                        let model = manifest.model.as_ref().ok_or_else(|| {
+                            invalid(
+                                "a voxel-animation case (asset_kind = \"voxel-animation\") \
+                                 requires a [model] table"
+                                    .to_string(),
+                            )
+                        })?;
+                        Some(resolve_model(model, &invalid)?)
+                    }
+                    // The outer match guard restricts this arm to the voxel kinds.
+                    AssetKind::Sprite | AssetKind::SpriteSheet => unreachable!(),
+                };
+
+                (
+                    None,
+                    Some(ToolSpec {
+                        binary: tool.binary.clone(),
+                        preview: tool.preview.clone(),
+                    }),
+                    Some(OutputSpec {
+                        actions: output.actions.clone(),
+                    }),
+                    None,
+                    Some(VoxelSpec {
+                        width: voxel.width,
+                        height: voxel.height,
+                        depth: voxel.depth,
+                        background: voxel.background.clone(),
+                    }),
+                    model,
+                )
             }
             TestType::AssetGeneration => {
+                // The voxel tables belong to the voxel kinds (handled by the guarded
+                // arm above); a sprite case must not declare them.
+                if manifest.voxel.is_some() || manifest.model.is_some() {
+                    return Err(invalid(
+                        "the [voxel] and [model] tables are only valid for a voxel \
+                         asset-generation case (asset_kind = \"voxel-model\"/\"voxel-animation\")"
+                            .to_string(),
+                    ));
+                }
                 let canvas = manifest
                     .canvas
                     .as_ref()
@@ -1777,6 +2358,9 @@ impl TestCaseCatalog {
                         })?;
                         Some(resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?)
                     }
+                    // The two voxel kinds are resolved by the guarded voxel arm
+                    // above and never reach this 2D sprite branch.
+                    AssetKind::VoxelModel | AssetKind::VoxelAnimation => unreachable!(),
                 };
 
                 (
@@ -1793,6 +2377,8 @@ impl TestCaseCatalog {
                         actions: output.actions.clone(),
                     }),
                     sheet,
+                    None,
+                    None,
                 )
             }
         };
@@ -2294,8 +2880,7 @@ impl TestCaseCatalog {
                 ));
             }
             if !manifest.reference.is_empty()
-                || manifest
-                    .variant
+                || variant_manifests
                     .iter()
                     .any(|variant| !variant.references.is_empty())
             {
@@ -2309,8 +2894,7 @@ impl TestCaseCatalog {
                 .review_items
                 .iter()
                 .chain(
-                    manifest
-                        .variant
+                    variant_manifests
                         .iter()
                         .flat_map(|variant| &variant.review_items),
                 )
@@ -2333,90 +2917,98 @@ impl TestCaseCatalog {
         // non-empty, since the id keys a recorded verdict, the title heads the item
         // in the reviewer UI, and the text is what the reviewer reads. Shared by the
         // common items and each variant's own.
-        let resolve_review_item = |item: &ManifestReviewItem| -> Result<ReviewItem> {
-            if item.id.trim().is_empty() {
-                return Err(invalid("review_item `id` must not be empty".to_string()));
-            }
-            if item.title.trim().is_empty() {
-                return Err(invalid(format!(
-                    "review_item `{}` has empty `title`",
-                    item.id
-                )));
-            }
-            if item.text.trim().is_empty() {
-                return Err(invalid(format!(
-                    "review_item `{}` has empty `text`",
-                    item.id
-                )));
-            }
-            // The weight is the item's point value toward the score; a zero-weight
-            // item could never affect the score, which is never intended, so it is
-            // rejected rather than silently scored as nothing.
-            if item.weight == 0 {
-                return Err(invalid(format!(
-                    "review_item `{}` must have a `weight` greater than zero",
-                    item.id
-                )));
-            }
-            // An item's domain, when declared, must name a domain the case
-            // declares so its points roll up to a real per-domain score.
-            if let Some(domain) = &item.domain
-                && !domains.iter().any(|resolved| &resolved.id == domain)
-            {
-                return Err(invalid(format!(
-                    "review_item `{}` names domain `{}`, which is not declared",
-                    item.id, domain
-                )));
-            }
-            // The sprite-sheet references — the sequences and frames an item is
-            // about — are only meaningful for a sprite-sheet case, and every one
-            // must name something the sheet declares so the reviewer UI can always
-            // resolve it. A single sprite (or any non-asset case) has no sheet, so
-            // declaring either is a manifest error rather than a silently dropped
-            // reference.
-            if !item.sequences.is_empty() || !item.frames.is_empty() {
-                let Some(sheet) = &sheet else {
+        let resolve_review_item =
+            |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
+                if item.id.trim().is_empty() {
+                    return Err(invalid("review_item `id` must not be empty".to_string()));
+                }
+                if item.title.trim().is_empty() {
                     return Err(invalid(format!(
-                        "review_item `{}` declares `sequences`/`frames`, which are only \
-                         valid for a sprite-sheet case (asset_kind = \"sprite-sheet\")",
+                        "review_item `{}` has empty `title`",
                         item.id
                     )));
-                };
-                for slug in &item.sequences {
-                    if !sheet.sequences.iter().any(|s| &s.slug == slug) {
+                }
+                if item.text.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review_item `{}` has empty `text`",
+                        item.id
+                    )));
+                }
+                // The weight is the item's point value toward the score; a zero-weight
+                // item could never affect the score, which is never intended, so it is
+                // rejected rather than silently scored as nothing.
+                if item.weight == 0 {
+                    return Err(invalid(format!(
+                        "review_item `{}` must have a `weight` greater than zero",
+                        item.id
+                    )));
+                }
+                // An item's domain, when declared, must name a domain in the item's
+                // allowed set so its points roll up to a real per-domain score. For a
+                // common item that set is the case's common domains; for a variant item
+                // it also includes that variant's own domains (a common item cannot
+                // name a variant-only domain, since it is rated on every variant).
+                if let Some(domain) = &item.domain
+                    && !allowed_domains
+                        .iter()
+                        .any(|resolved| &resolved.id == domain)
+                {
+                    return Err(invalid(format!(
+                        "review_item `{}` names domain `{}`, which is not declared",
+                        item.id, domain
+                    )));
+                }
+                // The sprite-sheet references — the sequences and frames an item is
+                // about — are only meaningful for a sprite-sheet case, and every one
+                // must name something the sheet declares so the reviewer UI can always
+                // resolve it. A single sprite (or any non-asset case) has no sheet, so
+                // declaring either is a manifest error rather than a silently dropped
+                // reference.
+                if !item.sequences.is_empty() || !item.frames.is_empty() {
+                    let Some(sheet) = &sheet else {
                         return Err(invalid(format!(
-                            "review_item `{}` names sequence `{}`, which the [sheet] does \
+                            "review_item `{}` declares `sequences`/`frames`, which are only \
+                         valid for a sprite-sheet case (asset_kind = \"sprite-sheet\")",
+                            item.id
+                        )));
+                    };
+                    for slug in &item.sequences {
+                        if !sheet.sequences.iter().any(|s| &s.slug == slug) {
+                            return Err(invalid(format!(
+                                "review_item `{}` names sequence `{}`, which the [sheet] does \
                              not declare",
-                            item.id, slug
-                        )));
+                                item.id, slug
+                            )));
+                        }
                     }
-                }
-                for index in &item.frames {
-                    if !sheet.frames.contains(index) {
-                        return Err(invalid(format!(
-                            "review_item `{}` names frame `{}`, which the [sheet] does not \
+                    for index in &item.frames {
+                        if !sheet.frames.contains(index) {
+                            return Err(invalid(format!(
+                                "review_item `{}` names frame `{}`, which the [sheet] does not \
                              declare",
-                            item.id, index
-                        )));
+                                item.id, index
+                            )));
+                        }
                     }
                 }
-            }
-            Ok(ReviewItem {
-                id: item.id.clone(),
-                title: item.title.clone(),
-                text: item.text.clone(),
-                reference: item.reference.clone(),
-                proof: item.proof.clone(),
-                sequences: item.sequences.clone(),
-                frames: item.frames.clone(),
-                weight: item.weight,
-                domain: item.domain.clone(),
-            })
-        };
+                Ok(ReviewItem {
+                    id: item.id.clone(),
+                    title: item.title.clone(),
+                    text: item.text.clone(),
+                    reference: item.reference.clone(),
+                    proof: item.proof.clone(),
+                    sequences: item.sequences.clone(),
+                    frames: item.frames.clone(),
+                    weight: item.weight,
+                    domain: item.domain.clone(),
+                })
+            };
 
+        // Common items are rated on every variant, so they may only name a common
+        // domain — the variant-specific domains are not in scope here.
         let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
         for item in &manifest.review_items {
-            common_review_items.push(resolve_review_item(item)?);
+            common_review_items.push(resolve_review_item(item, &domains)?);
         }
 
         let mut common_proofs = Vec::with_capacity(manifest.proof.len());
@@ -2424,16 +3016,10 @@ impl TestCaseCatalog {
             common_proofs.push(resolve_proof(proof)?);
         }
 
-        // A case must offer at least one variant; a run always selects exactly
-        // one. Variant slugs must be unique so a run records an unambiguous
-        // choice.
-        if manifest.variant.is_empty() {
-            return Err(invalid(
-                "at least one [[variant]] must be declared".to_string(),
-            ));
-        }
-        let mut variants: Vec<Variant> = Vec::with_capacity(manifest.variant.len());
-        for variant in &manifest.variant {
+        // A run always selects exactly one variant (loaded from its file above).
+        // Variant slugs must be unique so a run records an unambiguous choice.
+        let mut variants: Vec<Variant> = Vec::with_capacity(variant_manifests.len());
+        for variant in &variant_manifests {
             if variants
                 .iter()
                 .any(|resolved| resolved.slug == variant.slug)
@@ -2447,6 +3033,18 @@ impl TestCaseCatalog {
             for spec in &variant.specs {
                 specs.push(resolve_spec(spec)?);
             }
+
+            // The variant's own scoring domains, on top of the case's common ones.
+            // `effective_domains` is common ∪ this variant's, so it is both the
+            // uniqueness set each new domain is checked against and the set a
+            // variant review item may name; the tail past the common domains is the
+            // variant's own, recorded on the resolved `Variant`.
+            let mut effective_domains = domains.clone();
+            for domain in &variant.domains {
+                let resolved = resolve_domain(domain, &effective_domains)?;
+                effective_domains.push(resolved);
+            }
+            let variant_domains: Vec<Domain> = effective_domains[domains.len()..].to_vec();
             // A variant's workspace, when declared, replaces the common workspace
             // for this variant rather than layering on top of it.
             let workspace = match &variant.workspace {
@@ -2541,32 +3139,41 @@ impl TestCaseCatalog {
             for proof in common_proofs.iter().chain(proofs.iter()) {
                 claim(proof.dest.clone(), "proof")?;
             }
-            // For an asset-generation case the drawing binary writes the preview
-            // and the action log, and the orchestrator seeds the canvas config;
-            // none may collide with a seeded file. A sprite sheet writes one
-            // preview and one log per declared frame, so each frame's resolved path
-            // is claimed.
+            // For an asset-generation case the drawing/sculpting binary writes the
+            // preview and the action log, and the orchestrator seeds the tool
+            // config; none may collide with a seeded file. A sprite sheet writes one
+            // preview and one log per declared frame; a voxel-animation model writes
+            // one of each per declared part and additionally produces `rig.json`, so
+            // each resolved path is claimed.
             if let (Some(tool), Some(output)) = (&tool, &output) {
-                match &sheet {
-                    Some(sheet) => {
-                        for &index in &sheet.frames {
-                            claim(frame_path(&tool.preview, index), "tool preview")?;
-                            claim(frame_path(&output.actions, index), "action log")?;
-                        }
+                if let Some(model) = &model {
+                    for part in &model.parts {
+                        claim(part_path(&tool.preview, &part.name), "part preview")?;
+                        claim(part_path(&output.actions, &part.name), "part action log")?;
                     }
-                    None => {
-                        claim(tool.preview.clone(), "tool preview")?;
-                        claim(output.actions.clone(), "action log")?;
+                    claim(PathBuf::from(VOXEL_RIG_DEST), "rig")?;
+                } else if let Some(sheet) = &sheet {
+                    for &index in &sheet.frames {
+                        claim(frame_path(&tool.preview, index), "tool preview")?;
+                        claim(frame_path(&output.actions, index), "action log")?;
                     }
+                } else {
+                    claim(tool.preview.clone(), "tool preview")?;
+                    claim(output.actions.clone(), "action log")?;
                 }
             }
             if test_type == TestType::AssetGeneration {
-                claim(PathBuf::from(ASSET_CONFIG_DEST), "canvas config")?;
+                claim(
+                    PathBuf::from(manifest.asset_kind.config_dest()),
+                    "tool config",
+                )?;
             }
 
+            // A variant item may name a common domain or one of this variant's
+            // own, so it is resolved against the effective set.
             let mut review_items = Vec::with_capacity(variant.review_items.len());
             for item in &variant.review_items {
-                review_items.push(resolve_review_item(item)?);
+                review_items.push(resolve_review_item(item, &effective_domains)?);
             }
             // The common items and the variant's own are recorded under one id
             // each; two items sharing an id would make a recorded verdict
@@ -2622,6 +3229,7 @@ impl TestCaseCatalog {
                 references,
                 proofs,
                 review_items,
+                domains: variant_domains,
             });
         }
 
@@ -2688,6 +3296,8 @@ impl TestCaseCatalog {
             replay,
             asset_kind: manifest.asset_kind,
             sheet,
+            voxel,
+            model,
             common_specs,
             common_workspace,
             init: manifest.init,
@@ -2780,6 +3390,19 @@ fn default_background() -> String {
     "transparent".to_string()
 }
 
+/// The default seeded `dest` for a `[[spec]]` that omits one: the `source` with a
+/// trailing `.hbs` template extension removed (so `specs/x.md.hbs` renders to
+/// `specs/x.md`), or the `source` unchanged when it is not a template. A spec's
+/// seeded path so rarely differs from its source that most `[[spec]]` entries need
+/// only a `source`.
+fn spec_default_dest(source: &Path) -> PathBuf {
+    if source.extension().and_then(|ext| ext.to_str()) == Some("hbs") {
+        source.with_extension("")
+    } else {
+        source.to_path_buf()
+    }
+}
+
 /// Resolve and validate a sprite-sheet case's `[sheet]` table.
 ///
 /// A sheet declares its frames explicitly — each with the index it is written to
@@ -2868,6 +3491,237 @@ fn resolve_sheet(
         frames,
         sequences,
     })
+}
+
+/// Resolve and validate a voxel-animation case's `[model]` table into the required
+/// [`ModelSpec`] — the stable, game-facing rig contract and the scoring targets.
+///
+/// Every declared part must carry a unique, non-empty name; the first part is the
+/// root (no `parent`), and every other part's `parent` must name a declared part
+/// with no cycles. Every joint must carry a unique non-empty name, reference a
+/// declared part, and parse its `kind`/`axis`/`drive` with `min <= rest <= max`. An
+/// `auto` joint must have exactly one matching `[[model.clip]]` (and a `caller`
+/// joint none); every clip must reference a declared `auto` joint. `invalid` is the
+/// resolver's error constructor, threaded in so messages carry the case's slug and
+/// version.
+fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> Result<ModelSpec> {
+    if model.part.is_empty() {
+        return Err(invalid(
+            "a [model] must declare at least one [[model.part]]".to_string(),
+        ));
+    }
+
+    // Parts: unique, non-empty names.
+    let mut parts: Vec<PartSpec> = Vec::with_capacity(model.part.len());
+    for part in &model.part {
+        if part.name.trim().is_empty() {
+            return Err(invalid("model part `name` must not be empty".to_string()));
+        }
+        if parts.iter().any(|p| p.name == part.name) {
+            return Err(invalid(format!(
+                "duplicate model part name `{}`",
+                part.name
+            )));
+        }
+        parts.push(PartSpec {
+            name: part.name.clone(),
+            parent: part.parent.clone(),
+            pivot: part.pivot.unwrap_or([0, 0, 0]),
+        });
+    }
+    // The first declared part is the root, so it must have no parent.
+    if parts[0].parent.is_some() {
+        return Err(invalid(format!(
+            "the first model part `{}` is the root and must declare no `parent`",
+            parts[0].name
+        )));
+    }
+    // Every declared parent must reference a declared part, and no part may be its
+    // own parent.
+    for part in &parts {
+        if let Some(parent) = &part.parent {
+            if parent == &part.name {
+                return Err(invalid(format!(
+                    "model part `{}` is its own parent",
+                    part.name
+                )));
+            }
+            if !parts.iter().any(|p| &p.name == parent) {
+                return Err(invalid(format!(
+                    "model part `{}` names parent `{}`, which is not a declared part",
+                    part.name, parent
+                )));
+            }
+        }
+    }
+    // No cycles: walking any part's parent chain must reach a root within `len`
+    // hops (a longer walk means it revisited a part, i.e. a cycle).
+    for part in &parts {
+        let mut current = part;
+        let mut hops = 0usize;
+        while let Some(parent) = &current.parent {
+            current = parts
+                .iter()
+                .find(|p| &p.name == parent)
+                .expect("parent references validated above");
+            hops += 1;
+            if hops > parts.len() {
+                return Err(invalid(format!(
+                    "model part `{}` is part of a parent cycle",
+                    part.name
+                )));
+            }
+        }
+    }
+
+    // Joints: unique non-empty names referencing declared parts, with parseable
+    // kind/axis/drive and a valid `[min, rest, max]` range.
+    let mut joints: Vec<JointSpec> = Vec::with_capacity(model.joint.len());
+    for joint in &model.joint {
+        if joint.name.trim().is_empty() {
+            return Err(invalid("model joint `name` must not be empty".to_string()));
+        }
+        if joints.iter().any(|j| j.name == joint.name) {
+            return Err(invalid(format!(
+                "duplicate model joint name `{}`",
+                joint.name
+            )));
+        }
+        if !parts.iter().any(|p| p.name == joint.part) {
+            return Err(invalid(format!(
+                "model joint `{}` names part `{}`, which is not a declared part",
+                joint.name, joint.part
+            )));
+        }
+        let kind = match joint.kind.as_str() {
+            "rotation" => JointKindSpec::Rotation,
+            "translation" => JointKindSpec::Translation,
+            other => {
+                return Err(invalid(format!(
+                    "model joint `{}` has invalid kind `{other}` (expected `rotation` or \
+                     `translation`)",
+                    joint.name
+                )));
+            }
+        };
+        let axis = match joint.axis.as_str() {
+            "x" => AxisSpec::X,
+            "y" => AxisSpec::Y,
+            "z" => AxisSpec::Z,
+            other => {
+                return Err(invalid(format!(
+                    "model joint `{}` has invalid axis `{other}` (expected `x`, `y`, or `z`)",
+                    joint.name
+                )));
+            }
+        };
+        let drive = match joint.drive.as_str() {
+            "caller" => DriveKindSpec::Caller,
+            "auto" => DriveKindSpec::Auto,
+            other => {
+                return Err(invalid(format!(
+                    "model joint `{}` has invalid drive `{other}` (expected `caller` or `auto`)",
+                    joint.name
+                )));
+            }
+        };
+        if !(joint.min.is_finite() && joint.max.is_finite() && joint.rest.is_finite()) {
+            return Err(invalid(format!(
+                "model joint `{}` has a non-finite min/max/rest",
+                joint.name
+            )));
+        }
+        if !(joint.min <= joint.rest && joint.rest <= joint.max) {
+            return Err(invalid(format!(
+                "model joint `{}` must satisfy min <= rest <= max",
+                joint.name
+            )));
+        }
+        joints.push(JointSpec {
+            name: joint.name.clone(),
+            part: joint.part.clone(),
+            kind,
+            axis,
+            pivot: joint.pivot,
+            min: joint.min,
+            max: joint.max,
+            rest: joint.rest,
+            drive,
+            auto: None,
+        });
+    }
+
+    // Clips: each attaches an auto-play timeline to an `auto` joint. Validate the
+    // reference and the timeline, then fold it into the joint's `auto` field.
+    for clip in &model.clip {
+        let Some(joint) = joints.iter_mut().find(|j| j.name == clip.joint) else {
+            return Err(invalid(format!(
+                "model clip names joint `{}`, which is not a declared joint",
+                clip.joint
+            )));
+        };
+        if joint.drive != DriveKindSpec::Auto {
+            return Err(invalid(format!(
+                "model clip names joint `{}`, which is not an `auto` joint",
+                clip.joint
+            )));
+        }
+        if joint.auto.is_some() {
+            return Err(invalid(format!(
+                "model joint `{}` declares more than one [[model.clip]]",
+                clip.joint
+            )));
+        }
+        if clip.period_ms == 0 {
+            return Err(invalid(format!(
+                "model clip for joint `{}` must declare a `period_ms` greater than zero",
+                clip.joint
+            )));
+        }
+        if clip.keyframes.is_empty() {
+            return Err(invalid(format!(
+                "model clip for joint `{}` declares no keyframes",
+                clip.joint
+            )));
+        }
+        let mut keyframes = Vec::with_capacity(clip.keyframes.len());
+        for [t_ms, value] in &clip.keyframes {
+            if !(t_ms.is_finite() && value.is_finite()) {
+                return Err(invalid(format!(
+                    "model clip for joint `{}` has a non-finite keyframe",
+                    clip.joint
+                )));
+            }
+            if *t_ms < 0.0 || *t_ms > f64::from(clip.period_ms) {
+                return Err(invalid(format!(
+                    "model clip for joint `{}` has a keyframe `t_ms` outside `0..=period_ms`",
+                    clip.joint
+                )));
+            }
+            keyframes.push(KeyframeSpec {
+                t_ms: *t_ms as u32,
+                value: *value,
+            });
+        }
+        joint.auto = Some(AutoPlaySpec {
+            keyframes,
+            period_ms: clip.period_ms,
+            looping: clip.r#loop,
+        });
+    }
+
+    // Every `auto` joint needs its clip; a `caller` joint never carries one.
+    if let Some(joint) = joints
+        .iter()
+        .find(|j| j.drive == DriveKindSpec::Auto && j.auto.is_none())
+    {
+        return Err(invalid(format!(
+            "model joint `{}` is `auto` but declares no [[model.clip]]",
+            joint.name
+        )));
+    }
+
+    Ok(ModelSpec { parts, joints })
 }
 
 /// Recursively enumerate the files under a workspace directory into

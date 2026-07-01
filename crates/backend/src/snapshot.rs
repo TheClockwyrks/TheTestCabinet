@@ -415,6 +415,31 @@ impl SnapshotBuilder {
                     ]
                 })
                 .collect()
+        } else if let Some(voxel) = run.record.validation.voxel.as_ref() {
+            // A voxel run publishes each part's regenerated `voxels.json` (what the
+            // 3D viewer renders), the isometric regenerated/preview PNGs, and the
+            // op log — a static model under bare names, an animated model suffixing
+            // each part with `-<index>`, matching `playable::serve_asset_file` and
+            // the driver mirror. The rig itself travels inline in the run record.
+            let animated = voxel.model.is_some() || voxel.rig.is_some();
+            voxel
+                .parts
+                .iter()
+                .enumerate()
+                .flat_map(|(index, _)| {
+                    let suffix = if animated {
+                        format!("-{index}")
+                    } else {
+                        String::new()
+                    };
+                    [
+                        format!("regenerated{suffix}.png"),
+                        format!("preview{suffix}.png"),
+                        format!("actions{suffix}.json"),
+                        format!("voxels{suffix}.json"),
+                    ]
+                })
+                .collect()
         } else if run.record.validation.adversarial.is_some() {
             vec!["replay.json".to_string()]
         } else {
@@ -812,6 +837,10 @@ pub struct CaseVariantOut {
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
     pub review_items: Vec<CaseReviewItemOut>,
+    /// Scoring domains additive to the case's common ones, rated only when this
+    /// variant is selected. The site rates and scores a run against the common
+    /// domains plus its variant's own.
+    pub domains: Vec<CaseDomainOut>,
 }
 
 /// A seeded spec file exposed in case metadata: the run-workspace path it lands at
@@ -900,8 +929,12 @@ fn case_metadata(
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
 ) -> Result<CaseMetadata, BackendError> {
-    let common_seeded_inputs =
-        seeded_inputs(store, &manifest.slug, &manifest.version, &manifest.common_specs);
+    let common_seeded_inputs = seeded_inputs(
+        store,
+        &manifest.slug,
+        &manifest.version,
+        &manifest.common_specs,
+    );
     let variants = manifest
         .variants
         .iter()
@@ -934,6 +967,7 @@ fn case_metadata(
                 prompt,
                 seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
+                domains: v.domains.iter().map(case_domain_out).collect(),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;
@@ -964,16 +998,18 @@ fn case_metadata(
             .iter()
             .map(case_review_item_out)
             .collect(),
-        domains: manifest
-            .domains
-            .iter()
-            .map(|domain| CaseDomainOut {
-                id: domain.id.clone(),
-                name: domain.name.clone(),
-                description: domain.description.clone(),
-            })
-            .collect(),
+        domains: manifest.domains.iter().map(case_domain_out).collect(),
     })
+}
+
+/// Map a stored scoring domain to its case-metadata wire shape. Shared by the
+/// case's common domains and each variant's own.
+fn case_domain_out(domain: &crate::store::StoredDomain) -> CaseDomainOut {
+    CaseDomainOut {
+        id: domain.id.clone(),
+        name: domain.name.clone(),
+        description: domain.description.clone(),
+    }
 }
 
 /// Map a stored reviewer checklist item to its case-metadata wire shape, carrying

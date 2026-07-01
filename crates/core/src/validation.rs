@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ProofFile, SheetSpec, TestCaseVersion};
+use crate::test_case::{MediaKind, ModelSpec, ProofFile, SheetSpec, TestCaseVersion};
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,6 +155,122 @@ pub struct AssetFrameResult {
     /// Detail about anything that could not be evaluated for this frame.
     #[serde(default)]
     pub detail: Option<String>,
+}
+
+/// The regenerate result of a voxel asset-generation run — the 3D analog of
+/// [`AssetGenResult`].
+///
+/// A static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one
+/// [part](VoxelPartResult) (the whole model); an animated model
+/// ([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared
+/// part. There is no target model and no automated fidelity score; the regenerated
+/// model is reviewed against the brief. Present only on a voxel run's
+/// [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VoxelGenResult {
+    /// The per-part results: exactly one for a static model (named `model`), one per
+    /// declared part for an animated model, in declared order.
+    pub parts: Vec<VoxelPartResult>,
+    /// The **required** rig (parts + joints) the case declared, for an animated
+    /// model. The stable, game-facing joint interface reviewers score against.
+    /// `None` for a static model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model: Option<ModelSpec>,
+    /// The **full** rig the model actually produced (`rig.json`) — the required
+    /// parts and joints plus any the model added of its own. This is what the
+    /// viewer poses and a consuming game drives. `None` for a static model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub rig: Option<ModelSpec>,
+    /// Detail about anything that could not be evaluated at the run level, or
+    /// `None`. Per-part detail lives on each [`VoxelPartResult`].
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The regenerate result for one part of a voxel-generation run.
+///
+/// For a static model this is the whole model's one part; for an animated model
+/// there is one per declared part. As with [`AssetFrameResult`], the
+/// [divergence](Self::cheat_divergence) between the isometric PNG regenerated from
+/// this part's operation log and the PNG the model left on disk is recorded (not
+/// gated) — a high divergence means the model wrote pixels the tool would not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VoxelPartResult {
+    /// The part name this result records under: `model` for a static model, the
+    /// declared `[[model.part]]` name for an animated model.
+    pub name: String,
+    /// Run-root-relative path to the voxel data ([`VoxelsFile`]) regenerated from
+    /// this part's operation log — what the client renders in 3D.
+    pub regenerated_voxels: String,
+    /// Run-root-relative path to the isometric PNG regenerated from this part's
+    /// operation log — the scored output for this part.
+    pub regenerated_image: String,
+    /// Run-root-relative path to the isometric PNG the model left on disk (this
+    /// part's `preview`), kept for the side-by-side comparison and the divergence.
+    pub preview_image: String,
+    /// Run-root-relative path to this part's recorded operation log.
+    pub ops_log: String,
+    /// How many operations this part's log recorded.
+    pub operation_count: usize,
+    /// How many occupied voxels the regenerated part contains.
+    pub voxel_count: usize,
+    /// Divergence between the regenerated part preview and the model's on-disk
+    /// preview, in `0.0..=1.0` (0.0 is identical). `None` when the model left no
+    /// readable preview to compare.
+    #[serde(default)]
+    pub cheat_divergence: Option<f64>,
+    /// Detail about anything that could not be evaluated for this part.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The client-facing voxel data file (`voxels.json`) the validator regenerates from
+/// a part's operation log. Sparse (only occupied voxels are listed) because a voxel
+/// volume is mostly empty; emitted in x/y/z scan order so it is byte-stable. This
+/// is a produced run artifact, not part of the run record — the 3D viewer and the
+/// reusable `@test-cabinet/voxel-runtime` package load it directly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VoxelsFile {
+    /// The bounding volume the voxels sit within.
+    pub dims: VoxelDims,
+    /// The occupied voxels, in x/y/z scan order.
+    pub voxels: Vec<VoxelCell>,
+}
+
+/// The bounding volume of a [`VoxelsFile`], in voxels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VoxelDims {
+    /// Extent along x.
+    pub width: u32,
+    /// Extent along y (up).
+    pub height: u32,
+    /// Extent along z.
+    pub depth: u32,
+}
+
+/// One occupied voxel in a [`VoxelsFile`]: an integer cell and its opaque color.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VoxelCell {
+    /// Voxel x coordinate.
+    pub x: i64,
+    /// Voxel y coordinate.
+    pub y: i64,
+    /// Voxel z coordinate.
+    pub z: i64,
+    /// The voxel's opaque color as a `#rrggbb` hex string.
+    pub color: String,
 }
 
 /// Which side a match outcome is reported from, for an adversarial run.
@@ -365,6 +481,12 @@ pub struct ValidationSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub asset: Option<AssetGenResult>,
+    /// The regenerate result of a voxel asset-generation run. `None` for every
+    /// other type (and for the 2D sprite kinds, which use [`Self::asset`]), so a
+    /// non-voxel summary serializes with no new field at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub voxel: Option<VoxelGenResult>,
     /// The canonical-match result of an adversarial run. `None` for any other
     /// type, so a non-adversarial summary serializes with no new field at all and
     /// its shape is unchanged.

@@ -1,0 +1,16 @@
+# Trench plus Murk, where passive light bends around corners like sonar. Its
+# review item rolls up to the common `sensing` domain, since Murk changes how the
+# forager perceives the trench rather than adding a new axis of judgement.
+slug = "murk"
+name = "Murk"
+description = "Trench plus Murk, where passive light bends around corners like sonar."
+
+spec = [{ source = "specs/modes/murk.md" }]
+reference = [{ view = "title", path = "reference/menu-murk.html" }]
+
+[[review_item]]
+id = "murk-light-floods"
+title = "Murk light bends"
+text = "In Murk, your passive light uses the same corridor-flood propagation as sonar: it bends around corners, so you can see around the corner you stand next to — unlike the line-of-sight passive light of the standard dive."
+weight = 1
+domain = "sensing"

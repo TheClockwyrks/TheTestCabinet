@@ -29,7 +29,7 @@
           "type": ["string", "null"]
         },
         "testCase": {
-          "description": "Test-case slug to run (e.g. `pong`).",
+          "description": "Test-case slug to run (e.g. `carom`).",
           "type": "string"
         },
         "variant": {

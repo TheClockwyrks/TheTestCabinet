@@ -33,29 +33,36 @@ example by deleting files.
   sink), the container is additionally given a route back to the run host as
   `host.docker.internal` — `--add-host …:host-gateway` under the Docker/Podman
   runtime, a pod `hostAlias` to the driver pod's own IP under the Kubernetes
-  runtime — so the in-container drawing binary can stream its
-  [live preview](/testing/asset-generation/binaries/#live-preview) back to a
+  runtime — so the in-container drawing or
+  [voxel](/testing/asset-generation/voxel-binaries/#live-preview) binary can stream
+  its [live preview](/testing/asset-generation/binaries/#live-preview) back to a
   listener on the run host. No host mapping is added for an unwatched run.
-- A run executes in one of **three run-container images**, selected by the test
+- A run executes in one of **five run-container images**, selected by the test
   case's [test type](/testing/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an
   [end-to-end](/testing/end-to-end/) run uses the **base image**; a single-sprite
   [asset-generation](/testing/asset-generation/overview/) run
   (`asset_kind = "sprite"`) uses the **sprite image** (the base image plus the
-  baked-in `draw` tool); and a sprite-sheet run (`asset_kind = "sprite-sheet"`)
-  uses the **sprite-sheet image** (the base image plus the baked-in `draw-sheet`
-  tool). None is a per-harness image: the selected harness's CLI is installed into
-  the container at run time (see [Harness install](#harness-install) below), not
-  baked into the image. All three are registry images, and a runner resolves the
-  one for the run from its **own registry configuration** —
-  `TCAB_CONTAINER_REGISTRY` (default `ghcr.io/theclockwyrks`) and
-  `TCAB_CONTAINER_TAG` (default `latest`) select the image named for the run
-  (`test-cabinet-base`, `test-cabinet-sprite`, or `test-cabinet-sprite-sheet`),
-  and a **per-image** override pins a verbatim reference for one image without
-  touching the others (`TCAB_CONTAINER_IMAGE_BASE` for end-to-end,
-  `TCAB_CONTAINER_IMAGE_SPRITE` for single-sprite,
-  `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for sprite-sheet; there is no override that
-  spans every image, since they differ) — and pulls it at run start
+  baked-in `draw` tool); a sprite-sheet run (`asset_kind = "sprite-sheet"`) uses
+  the **sprite-sheet image** (the base image plus the baked-in `draw-sheet` tool);
+  a static-voxel run (`asset_kind = "voxel-model"`) uses the **voxel image** (the
+  base image plus the baked-in `voxel` tool); and an animated-voxel run
+  (`asset_kind = "voxel-animation"`) uses the **voxel-animation image** (the base
+  image plus the baked-in `voxel-anim` tool). None is a per-harness image: the
+  selected harness's CLI is installed into the container at run time (see
+  [Harness install](#harness-install) below), not baked into the image. All five
+  are registry images, and a runner resolves the one for the run from its **own
+  registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
+  `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
+  image named for the run (`test-cabinet-base`, `test-cabinet-sprite`,
+  `test-cabinet-sprite-sheet`, `test-cabinet-voxel`, or
+  `test-cabinet-voxel-animation`), and a **per-image** override pins a verbatim
+  reference for one image without touching the others (`TCAB_CONTAINER_IMAGE_BASE`
+  for end-to-end, `TCAB_CONTAINER_IMAGE_SPRITE` for single-sprite,
+  `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for sprite-sheet,
+  `TCAB_CONTAINER_IMAGE_VOXEL` for static-voxel, and
+  `TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION` for animated-voxel; there is no override
+  that spans every image, since they differ) — and pulls it at run start
   (`--pull missing`). No backend is consulted, so a runner
   resolves the image the same way against any backend or none. Whatever image
   actually runs is resolved to its registry digest where it has one and recorded

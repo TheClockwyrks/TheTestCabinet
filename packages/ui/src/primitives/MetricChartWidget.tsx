@@ -35,6 +35,12 @@ interface MetricChartWidgetProps {
   yTickFormat?: string;
   /** How the bar chart aggregates runs. Defaults to one bar per run. */
   barMode?: BarMode;
+  /**
+   * Resolves a run's `modelId` to a bar color (e.g. its provider's brand color).
+   * Return null/undefined for an unknown model and the bar keeps the theme
+   * accent. Omit entirely to color every bar with the accent.
+   */
+  colorForModel?: (modelId: string) => string | null | undefined;
 }
 
 // A self-contained metric chart: a titled, full-width panel that charts one
@@ -48,13 +54,14 @@ export function MetricChartWidget({
   unit,
   yTickFormat,
   barMode = "perRun",
+  colorForModel,
 }: MetricChartWidgetProps) {
   const barPoints = useMemo<BarPoint[]>(
     () =>
       barMode === "meanByModel"
-        ? meanBars(runs, value)
-        : runBars(runs, value),
-    [runs, value, barMode],
+        ? meanBars(runs, value, colorForModel)
+        : runBars(runs, value, colorForModel),
+    [runs, value, barMode, colorForModel],
   );
 
   // Memoized so <Chart> only re-plots when the data or unit change.
@@ -79,6 +86,7 @@ export function MetricChartWidget({
 function runBars(
   runs: RunRecord[],
   value: (run: RunRecord) => number | null,
+  colorForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const counts = new Map<string, number>();
   for (const run of runs) {
@@ -87,13 +95,15 @@ function runBars(
   return runs.flatMap((run) => {
     const v = value(run);
     if (v === null) return [];
+    const modelId = run.subject.modelId;
     return [
       {
         label:
-          (counts.get(run.subject.modelId) ?? 0) > 1
-            ? `${run.subject.modelId} · ${run.subject.harnessSlug}`
-            : run.subject.modelId,
+          (counts.get(modelId) ?? 0) > 1
+            ? `${modelId} · ${run.subject.harnessSlug}`
+            : modelId,
         value: v,
+        color: colorForModel?.(modelId) ?? undefined,
       },
     ];
   });
@@ -106,6 +116,7 @@ function runBars(
 function meanBars(
   runs: RunRecord[],
   value: (run: RunRecord) => number | null,
+  colorForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const totals = new Map<string, { sum: number; count: number }>();
   const order: string[] = [];
@@ -124,6 +135,10 @@ function meanBars(
   }
   return order.map((model) => {
     const { sum, count } = totals.get(model)!;
-    return { label: model, value: sum / count };
+    return {
+      label: model,
+      value: sum / count,
+      color: colorForModel?.(model) ?? undefined,
+    };
   });
 }

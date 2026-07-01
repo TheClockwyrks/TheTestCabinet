@@ -365,6 +365,11 @@ pub struct StoredVariant {
     /// the field existed.
     #[serde(default)]
     pub review_items: Vec<StoredReviewItem>,
+    /// Additive scoring domains this variant declares on top of the case's common
+    /// [`StoredManifest::domains`]. Rated only when this variant is selected.
+    /// Defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub domains: Vec<StoredDomain>,
 }
 
 /// A reference persisted in a [`StoredManifest`]. The served media lives under the

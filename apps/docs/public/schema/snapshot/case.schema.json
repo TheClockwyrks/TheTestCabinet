@@ -116,6 +116,13 @@
         "description": {
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "Scoring domains additive to the case's common ones, rated only when this\nvariant is selected. The site rates and scores a run against the common\ndomains plus its variant's own.",
+          "items": {
+            "$ref": "#/$defs/CaseDomainOut"
+          },
+          "type": "array"
+        },
         "name": {
           "type": "string"
         },
@@ -141,7 +148,14 @@
           "type": "string"
         }
       },
-      "required": ["slug", "name", "prompt", "seededInputs", "reviewItems"],
+      "required": [
+        "slug",
+        "name",
+        "prompt",
+        "seededInputs",
+        "reviewItems",
+        "domains"
+      ],
       "type": "object"
     },
     "ReferenceKind": {

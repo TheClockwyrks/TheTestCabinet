@@ -19,10 +19,13 @@ use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ProofFile, TestCaseVersion, TestType};
+use crate::test_case::{
+    AutoPlaySpec, AxisSpec, DriveKindSpec, JointKindSpec, JointSpec, KeyframeSpec, MediaKind,
+    ModelSpec, PartSpec, ProofFile, TestCaseVersion, TestType,
+};
 use crate::validation::{
     AssetFrameResult, AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary,
-    Validator,
+    Validator, VoxelGenResult, VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -128,6 +131,7 @@ impl Validator for BuildValidator {
             checks,
             proofs: proof_results,
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: None,
         })
@@ -401,6 +405,7 @@ impl Validator for AssetGenValidator {
                 sheet: test_case.sheet.clone(),
                 detail: None,
             }),
+            voxel: None,
             adversarial: None,
             performance: None,
         })
@@ -473,6 +478,382 @@ fn score_frame(
     })
 }
 
+/// A validator for voxel asset-generation runs — the 3D analog of
+/// [`AssetGenValidator`].
+///
+/// It ignores the build pipeline entirely. Instead it reads each recorded
+/// operation log, replays it through the **same** voxel library the in-container
+/// binary used ([`test_cabinet_voxel::render`]) to regenerate the voxel data
+/// (`voxels.json`, what the client renders in 3D) and the isometric preview PNG,
+/// and compares the PNG to the one the model left on disk (cheat divergence). A
+/// voxel run has no target model: the regenerated data is what a human reviews
+/// against the brief, and cheat divergence is the one recorded signal — not a gate.
+/// A static model ([`AssetKind::VoxelModel`](crate::test_case::AssetKind::VoxelModel))
+/// has one target named `model`; an animated model
+/// ([`AssetKind::VoxelAnimation`](crate::test_case::AssetKind::VoxelAnimation)) has
+/// one per declared part. For an animated model it additionally reads the
+/// model-written `rig.json`, records it as the produced rig, and reconciles it
+/// against the manifest's required rig — a missing required part or joint is
+/// recorded in the run-level detail, never a crash.
+#[derive(Debug, Clone, Default)]
+pub struct VoxelGenValidator;
+
+impl VoxelGenValidator {
+    /// A new voxel validator. Like [`AssetGenValidator`] it keeps no state: every
+    /// output is derived from the run's own operation log(s) and written into the
+    /// run's tree.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// The per-part plan the validator regenerates: where this part's recorded log and
+/// preview live, and where its regenerated voxel data and image are written.
+struct PartPlan {
+    name: String,
+    ops_rel: PathBuf,
+    preview_rel: PathBuf,
+    regenerated_png_rel: String,
+    regenerated_voxels_rel: String,
+}
+
+impl Validator for VoxelGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        // A voxel run has no target model, so references — the browser-rendered
+        // baselines other types score against — are unused here.
+        _references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        let proof_results = proof_results(proofs, repo);
+
+        // The orchestrator only routes voxel cases here, so the tables are present;
+        // guard the invariant rather than panicking.
+        let (Some(voxel_spec), Some(tool), Some(output)) = (
+            test_case.voxel.as_ref(),
+            test_case.tool.as_ref(),
+            test_case.output.as_ref(),
+        ) else {
+            return Ok(failed_load(
+                "voxel validation requires [voxel], [tool], and [output]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+
+        let background = match test_cabinet_voxel::PreviewBackground::parse(&voxel_spec.background)
+        {
+            Ok(background) => background,
+            Err(err) => {
+                return Ok(failed_load(
+                    &format!("invalid voxel background: {err}"),
+                    None,
+                    None,
+                    proof_results,
+                ));
+            }
+        };
+        let dims = test_cabinet_voxel::Dims {
+            width: voxel_spec.width,
+            height: voxel_spec.height,
+            depth: voxel_spec.depth,
+        };
+
+        // One target for a static model (named `model`); one per declared part for
+        // an animated model, each with its own log, preview, regenerated data, and
+        // regenerated image.
+        let plans: Vec<PartPlan> = match test_case.model.as_ref() {
+            None => vec![PartPlan {
+                name: "model".to_string(),
+                ops_rel: output.actions.clone(),
+                preview_rel: tool.preview.clone(),
+                regenerated_png_rel: "regenerated.png".to_string(),
+                regenerated_voxels_rel: "voxels.json".to_string(),
+            }],
+            Some(model) => model
+                .parts
+                .iter()
+                .map(|part| PartPlan {
+                    name: part.name.clone(),
+                    ops_rel: crate::test_case::part_path(&output.actions, &part.name),
+                    preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
+                    regenerated_png_rel: format!("regenerated/{}.png", part.name),
+                    regenerated_voxels_rel: format!("voxels/{}.json", part.name),
+                })
+                .collect(),
+        };
+
+        let is_anim = test_case.model.is_some();
+        let mut parts = Vec::with_capacity(plans.len());
+        for plan in &plans {
+            match score_part(repo, dims, background, plan) {
+                Ok(part) => parts.push(part),
+                // A static model with no scorable output is a failed load (mirrors
+                // the sprite validator). For an animated model one bad part must not
+                // sink the whole run: record it zero-scored and carry on, so a
+                // missing required part is a recorded gap rather than a crash.
+                Err(detail) => {
+                    if is_anim {
+                        parts.push(VoxelPartResult {
+                            name: plan.name.clone(),
+                            regenerated_voxels: plan.regenerated_voxels_rel.clone(),
+                            regenerated_image: plan.regenerated_png_rel.clone(),
+                            preview_image: rel_string(&plan.preview_rel),
+                            ops_log: rel_string(&plan.ops_rel),
+                            operation_count: 0,
+                            voxel_count: 0,
+                            cheat_divergence: None,
+                            detail: Some(detail),
+                        });
+                    } else {
+                        return Ok(failed_load(&detail, None, None, proof_results));
+                    }
+                }
+            }
+        }
+
+        // For an animated model, read the produced rig and reconcile it against the
+        // required rig. A missing/unreadable `rig.json`, and any required part or
+        // joint absent from it, is recorded in the run-level detail — not gated.
+        let mut run_notes: Vec<String> = Vec::new();
+        let produced_rig = if is_anim {
+            match read_rig(repo) {
+                Ok(rig) => Some(rig),
+                Err(detail) => {
+                    run_notes.push(detail);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let (Some(required), Some(produced)) = (test_case.model.as_ref(), produced_rig.as_ref())
+        {
+            reconcile_rig(required, produced, &mut run_notes);
+        }
+
+        Ok(ValidationSummary {
+            // The run produced scorable voxel data: the load signal is positive.
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: None,
+            voxel: Some(VoxelGenResult {
+                parts,
+                // The required rig (the scoring targets) for an animated model.
+                model: test_case.model.clone(),
+                // The full rig the model actually produced (`rig.json`).
+                rig: produced_rig,
+                detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
+            }),
+            adversarial: None,
+            performance: None,
+        })
+    }
+}
+
+/// Regenerate one part's voxel data and preview and measure its cheat divergence.
+///
+/// Returns `Err` with a fatal reason when the operation log cannot be parsed or its
+/// outputs cannot be written — the caller maps that to a failed load (static) or a
+/// zero-scored part (animated). A missing log is treated as an empty part (with a
+/// note), and a missing preview leaves the divergence unmeasured (a note), so a
+/// model that simply never sculpted a part is recorded rather than failed.
+fn score_part(
+    repo: &Path,
+    dims: test_cabinet_voxel::Dims,
+    background: test_cabinet_voxel::PreviewBackground,
+    plan: &PartPlan,
+) -> std::result::Result<VoxelPartResult, String> {
+    let ops_path = repo.join(&plan.ops_rel);
+    let (operations, mut notes) = match std::fs::read_to_string(&ops_path) {
+        Ok(raw) => {
+            let operations: Vec<test_cabinet_voxel::Operation> = serde_json::from_str(&raw)
+                .map_err(|err| {
+                    format!(
+                        "operation log `{}` is not a valid operation log: {err}",
+                        plan.ops_rel.display()
+                    )
+                })?;
+            (operations, Vec::new())
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => (
+            Vec::new(),
+            vec!["the model recorded no operations for this part".to_string()],
+        ),
+        Err(err) => {
+            return Err(format!(
+                "could not read operation log `{}`: {err}",
+                plan.ops_rel.display()
+            ));
+        }
+    };
+
+    let set = test_cabinet_voxel::render(&dims, &operations);
+
+    // Write the regenerated voxel data (what the 3D client renders) into the tree.
+    let voxels_path = repo.join(&plan.regenerated_voxels_rel);
+    if let Some(parent) = voxels_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
+    }
+    std::fs::write(&voxels_path, format!("{}\n", set.to_voxels_json()))
+        .map_err(|err| format!("could not write the regenerated voxel data: {err}"))?;
+
+    // Regenerate the isometric preview from the same rasterizer the binary used and
+    // write it into the produced tree so it is collected and served.
+    let regenerated_path = repo.join(&plan.regenerated_png_rel);
+    if let Some(parent) = regenerated_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
+    }
+    let png_bytes =
+        test_cabinet_voxel::rasterize(&set, &test_cabinet_voxel::Camera::PREVIEW, background);
+    std::fs::write(&regenerated_path, &png_bytes)
+        .map_err(|err| format!("could not write the regenerated image: {err}"))?;
+
+    // Cheat divergence: compare the regenerated preview to the model's on-disk one.
+    // A high value means the model wrote pixels the tool would not. Absent or
+    // unreadable preview leaves it unmeasured rather than failing the run.
+    let preview_path = repo.join(&plan.preview_rel);
+    let cheat_divergence = if preview_path.is_file() {
+        match score(&preview_path, &regenerated_path) {
+            Ok(similarity) => Some(1.0 - similarity),
+            Err(err) => {
+                notes.push(format!("could not compare against the preview: {err}"));
+                None
+            }
+        }
+    } else {
+        notes.push("the model left no preview image to compare".to_string());
+        None
+    };
+
+    Ok(VoxelPartResult {
+        name: plan.name.clone(),
+        regenerated_voxels: plan.regenerated_voxels_rel.clone(),
+        regenerated_image: plan.regenerated_png_rel.clone(),
+        preview_image: rel_string(&plan.preview_rel),
+        ops_log: rel_string(&plan.ops_rel),
+        operation_count: operations.len(),
+        voxel_count: set.occupied_count(),
+        cheat_divergence,
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    })
+}
+
+/// Read the model-written `rig.json` and convert it into a [`ModelSpec`] superset
+/// (the full produced rig — required parts/joints plus any the model added).
+fn read_rig(repo: &Path) -> std::result::Result<ModelSpec, String> {
+    let rig_path = repo.join(crate::test_case::VOXEL_RIG_DEST);
+    let raw = std::fs::read_to_string(&rig_path).map_err(|err| {
+        format!(
+            "could not read `{}`: {err}",
+            crate::test_case::VOXEL_RIG_DEST
+        )
+    })?;
+    let rig: test_cabinet_voxel::Rig = serde_json::from_str(&raw).map_err(|err| {
+        format!(
+            "`{}` is not a valid rig: {err}",
+            crate::test_case::VOXEL_RIG_DEST
+        )
+    })?;
+    Ok(rig_to_model_spec(&rig))
+}
+
+/// Convert the voxel binary's on-disk [`Rig`](test_cabinet_voxel::Rig) into the
+/// contract [`ModelSpec`] carried in the run record.
+fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
+    let parts = rig
+        .parts
+        .iter()
+        .map(|part| PartSpec {
+            name: part.name.clone(),
+            parent: part.parent.clone(),
+            pivot: part.pivot,
+        })
+        .collect();
+    let joints = rig
+        .joints
+        .iter()
+        .map(|joint| {
+            let kind = match joint.kind {
+                test_cabinet_voxel::JointKind::Rotation => JointKindSpec::Rotation,
+                test_cabinet_voxel::JointKind::Translation => JointKindSpec::Translation,
+            };
+            let axis = match joint.axis {
+                test_cabinet_voxel::Axis::X => AxisSpec::X,
+                test_cabinet_voxel::Axis::Y => AxisSpec::Y,
+                test_cabinet_voxel::Axis::Z => AxisSpec::Z,
+            };
+            let (drive, auto) = match &joint.drive {
+                test_cabinet_voxel::Drive::Caller => (DriveKindSpec::Caller, None),
+                test_cabinet_voxel::Drive::AutoPlay {
+                    keyframes,
+                    period_ms,
+                    r#loop,
+                } => (
+                    DriveKindSpec::Auto,
+                    Some(AutoPlaySpec {
+                        keyframes: keyframes
+                            .iter()
+                            .map(|k| KeyframeSpec {
+                                t_ms: k.t_ms,
+                                value: k.value,
+                            })
+                            .collect(),
+                        period_ms: *period_ms,
+                        looping: *r#loop,
+                    }),
+                ),
+            };
+            JointSpec {
+                name: joint.name.clone(),
+                part: joint.part.clone(),
+                kind,
+                axis,
+                pivot: joint.pivot,
+                min: joint.min,
+                max: joint.max,
+                rest: joint.rest,
+                drive,
+                auto,
+            }
+        })
+        .collect();
+    ModelSpec { parts, joints }
+}
+
+/// Reconcile the produced rig against the required one, noting any required part or
+/// joint the model did not produce. These are the game-facing contract's scoring
+/// targets, so a missing one is recorded (in the run-level detail) rather than
+/// crashing the validator.
+fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<String>) {
+    for part in &required.parts {
+        if !produced.parts.iter().any(|p| p.name == part.name) {
+            notes.push(format!(
+                "required part `{}` is missing from the produced rig",
+                part.name
+            ));
+        }
+    }
+    for joint in &required.joints {
+        if !produced.joints.iter().any(|j| j.name == joint.name) {
+            notes.push(format!(
+                "required joint `{}` is missing from the produced rig",
+                joint.name
+            ));
+        }
+    }
+}
+
 /// Dispatches validation to the validator for the case's [`TestType`]. The
 /// orchestrator holds one validator, so this composes the per-type validators
 /// behind the single [`Validator`] interface and keeps the run pipeline unaware
@@ -481,18 +862,20 @@ fn score_frame(
 pub struct DispatchValidator {
     build: BuildValidator,
     asset: AssetGenValidator,
+    voxel: VoxelGenValidator,
     adversarial: AdversarialValidator,
     performance: PerformanceValidator,
 }
 
 impl DispatchValidator {
     /// Build the dispatcher, threading the screenshot scratch directory to the
-    /// end-to-end validator (the asset-generation, adversarial, and performance
-    /// validators keep no scratch).
+    /// end-to-end validator (the asset-generation, voxel, adversarial, and
+    /// performance validators keep no scratch).
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             build: BuildValidator::new(screenshot_dir),
             asset: AssetGenValidator::new(),
+            voxel: VoxelGenValidator::new(),
             adversarial: AdversarialValidator::new(),
             performance: PerformanceValidator::new(),
         }
@@ -511,9 +894,17 @@ impl Validator for DispatchValidator {
             TestType::EndToEnd => self
                 .build
                 .validate(test_case, artifacts, references, proofs),
-            TestType::AssetGeneration => self
-                .asset
-                .validate(test_case, artifacts, references, proofs),
+            // The two 2D sprite kinds regenerate through the drawing library; the
+            // two 3D voxel kinds regenerate through the voxel library.
+            TestType::AssetGeneration => {
+                if test_case.asset_kind.is_voxel() {
+                    self.voxel
+                        .validate(test_case, artifacts, references, proofs)
+                } else {
+                    self.asset
+                        .validate(test_case, artifacts, references, proofs)
+                }
+            }
             TestType::Adversarial => self
                 .adversarial
                 .validate(test_case, artifacts, references, proofs),
@@ -547,6 +938,7 @@ fn failed_load(
         checks: Vec::new(),
         proofs,
         asset: None,
+        voxel: None,
         adversarial: None,
         performance: None,
     }

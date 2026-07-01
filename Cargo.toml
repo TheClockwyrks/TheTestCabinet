@@ -5,6 +5,7 @@ members = [
 	"crates/cli",
 	"crates/contract-codegen",
 	"crates/draw",
+	"crates/voxel",
 	"crates/foray-core",
 	"crates/foray-host",
 	"crates/foray-cli",

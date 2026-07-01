@@ -209,6 +209,31 @@ fn pod_carries_image_secrets_labels_and_no_command() {
 }
 
 #[test]
+fn pod_carries_the_job_id_label_so_a_cancel_can_target_it() {
+    let config = KubernetesConfig {
+        job_id: Some("job-42".to_string()),
+        ..KubernetesConfig::default()
+    };
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &config);
+    let labels = pod.metadata.labels.expect("labels");
+    assert_eq!(
+        labels.get("tcab.dev/job-id").map(String::as_str),
+        Some("job-42"),
+        "the run pod is tagged with its job id for cancellation teardown"
+    );
+
+    // Without a job id (e.g. a non-dispatcher run) the label is simply omitted.
+    let anon = build_run_pod("tcab-run-x", &spec("img"), &KubernetesConfig::default());
+    assert!(
+        !anon
+            .metadata
+            .labels
+            .expect("labels")
+            .contains_key("tcab.dev/job-id")
+    );
+}
+
+#[test]
 fn pod_without_secrets_or_resources_omits_them() {
     let pod = build_run_pod("tcab-run-x", &spec("img"), &KubernetesConfig::default());
     let pod_spec = pod.spec.expect("spec");

@@ -141,7 +141,10 @@ impl Config {
         let artifacts_url =
             non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
         let subscription_dir = non_empty("TCAB_DRIVER_SUBSCRIPTION_DIR").map(PathBuf::from);
-        let kubernetes = kubernetes_from_env()?;
+        let mut kubernetes = kubernetes_from_env()?;
+        // Stamp the run's job id onto each sandbox pod (via a label) so a
+        // cancellation can find and tear down exactly this run's pod.
+        kubernetes.job_id = Some(job_id.clone());
         Ok(Self {
             backend_url,
             job_id,
@@ -246,6 +249,9 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         // target.
         pod_ip: non_empty("TCAB_K8S_POD_IP"),
         run_pod_prefix: non_empty("TCAB_K8S_RUN_POD_PREFIX").unwrap_or(defaults.run_pod_prefix),
+        // Filled in by `Config::from_env` from the required `TCAB_JOB_ID`; this
+        // env-only resolver has no job id of its own.
+        job_id: None,
     })
 }
 

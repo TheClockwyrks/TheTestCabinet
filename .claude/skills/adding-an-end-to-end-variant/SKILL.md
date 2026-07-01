@@ -28,16 +28,21 @@ The authoritative schema for variants lives in
 *Self-Contained Specifications* sections). Read it before starting; this skill is
 the practical procedure that sits on top of it.
 
-The worked example throughout is the **Gyre** variant of the `pong` case
-(`test-cases/pong/v1.0.0/`), in which the obstacles oscillate and rotate. Read
+The worked example throughout is the **Gyre** variant of the `carom` case
+(`test-cases/carom/v1.0.0/`), in which the obstacles oscillate and rotate. Read
 the existing `frenzy`, `multi`, and `gyre` mode specs alongside this skill — a
 new variant should look like them.
 
 ## Anatomy of a test case version
 
 ```text
-test-cases/pong/v1.0.0/
-  test-case.toml         # manifest: specs, variants, references, proofs, checks, review items
+test-cases/carom/v1.0.0/
+  test-case.toml         # manifest: common specs, references, proofs, checks, domains, review items
+  variants/              # one standalone TOML file per variant (listed in `variants`)
+    base.toml            #   the default (first in the `variants` list)
+    frenzy.toml          #   a variant + its own additive spec/reference/domain/review items
+    multi.toml
+    gyre.toml
   prompt.hbs             # rendered per run into the model's instruction
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -59,8 +64,9 @@ test-cases/pong/v1.0.0/
     screenshots/         # git-ignored; the harness renders these
 ```
 
-A variant typically adds **one** mode spec and **one** `title` mockup, and
-registers itself in `test-case.toml`. Everything else is shared.
+A variant typically adds **one** mode spec and **one** `title` mockup, lives in
+its **own file** under `variants/`, and is listed in the `variants` array in
+`test-case.toml`. Everything else is shared.
 
 ## Procedure
 
@@ -130,20 +136,43 @@ seeds the *screenshot*, never the HTML. Do not seed mockup source, and do not
 hand-create anything under `reference/screenshots/` — it is git-ignored and
 rendered by the harness per variant.
 
-### 5. Register the variant in `test-case.toml`
+### 5. Create the variant file and list it
 
-Add a `[[variant]]` table (after the existing ones; the first variant is the
-default). For a variant that adds one mode spec and one title mockup:
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Every path inside the variant
+file resolves against the version folder, and `dest` defaults to `source` (a
+trailing `.hbs` stripped), so most specs just name their `source`. For a variant
+that adds one mode spec, one title mockup, and its own scoring domain:
 
 ```toml
-[[variant]]
+# variants/gyre.toml
 slug = "gyre"
 name = "Gyre"
 description = "Standard plus a mode whose obstacles oscillate and rotate."
-spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
+spec = [{ source = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
-review_item = [
-  { id = "gyre-oriented-bounce", title = "Oriented bounces", text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles." },
+
+[[domain]]
+id = "gyre"
+name = "Gyre"
+description = "The Gyre mode: swaying, rotating obstacles the ball bounces off at oriented angles."
+
+[[review_item]]
+id = "gyre-oriented-bounce"
+title = "Oriented bounces"
+text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles."
+weight = 1
+domain = "gyre"
+```
+
+```toml
+# test-cases/carom/v1.0.0/test-case.toml — add the new file to the ordered list
+variants = [
+  "variants/base.toml",
+  "variants/frenzy.toml",
+  "variants/multi.toml",
+  "variants/gyre.toml",
 ]
 ```
 
@@ -153,21 +182,28 @@ Rules to respect (enforced at resolution — see `apps/docs/src/content/docs/tes
   no two seeded specs (common + own) may share a `dest`.
 - `reference` entries are additive on top of the common `[[reference]]` views. A
   view slug must not be declared both commonly and by a variant.
+- A variant may declare its **own `[[domain]]`** tables, rated only when it runs —
+  the effective set for a run is the case's common domains plus the run's
+  variant's own. A domain id must be unique across the common domains and this
+  variant's own; a mode a variant introduces is usually rated on its own domain
+  (Carom's Frenzy, Multi-ball, and Gyre each add one) rather than folded into the
+  shared ones.
 - `review_item` entries are additive on top of the common `[[review_item]]`s. Add
   one for the mode this variant introduces — the observable thing a reviewer must
   check that the standard modes don't have (Gyre's oriented bounce, Frenzy's
-  uncapped speed ramp). An item `id` must be unique within the variant's effective
-  set (common + own). Review items are reporter-side, never seeded. An item may
-  pair an expected reference and the submitted proof via its optional `reference`
-  (a reference view) and `proof` (a proof id) — each must resolve for this variant
-  (a common one or one this variant adds).
+  uncapped speed ramp), and roll it up to the variant's own domain. An item `id`
+  must be unique within the variant's effective set (common + own). Review items
+  are reporter-side, never seeded. An item may name a common domain **or** one of
+  this variant's own, and may pair an expected reference and the submitted proof
+  via its optional `reference` (a reference view) and `proof` (a proof id) — each
+  must resolve for this variant (a common one or one this variant adds).
 - `proof` entries are additive on top of the common `[[proof]]`s — declare one
   only if this variant asks for proof a standard mode doesn't. A proof `id` must
   be unique within the variant's effective set, its `dest` must not collide with a
   seeded file, and (as with common proofs) the seeded mode spec must instruct the
   build to write the file at that same `dest`.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
-  variant — for `pong`, every variant provides its own `title`, which is what the
+  variant — for `carom`, every variant provides its own `title`, which is what the
   `title` check baselines against.
 
 Also update the human-readable comment in the manifest that enumerates the

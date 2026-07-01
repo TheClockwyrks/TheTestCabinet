@@ -126,6 +126,9 @@ interface SnapshotCaseFile {
     seededInputs?: SnapshotSeededInput[];
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
+    // The variant's own scoring domains (additive to the common ones), rated only
+    // when this variant is selected.
+    domains?: SnapshotDomain[];
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // Seeded spec files shared by every variant, bodies inlined. Optional for
@@ -133,7 +136,8 @@ interface SnapshotCaseFile {
   commonSeededInputs?: SnapshotSeededInput[];
   // Reviewer checklist items shared by every variant, with point weights.
   commonReviewItems?: SnapshotReviewItem[];
-  // The case's scoring domains.
+  // The case's common scoring domains (shared by every variant; a variant's own
+  // additive domains ride on each variant's `domains`).
   domains?: SnapshotDomain[];
   // Optional: reference screenshots exposed as snapshot-relative keys. The
   // contract permits emitting these per case; when present we resolve them to
@@ -249,6 +253,9 @@ interface AssembledVariant {
   seededInputs: AssembledSeededInput[];
   referenceScreenshots: AssembledReference[];
   reviewItems: AssembledReviewItem[];
+  // The variant's effective scoring domains (common + its own) — the set a run of
+  // this variant is rated against.
+  domains: AssembledDomain[];
 }
 
 interface AssembledTestCase {
@@ -382,6 +389,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   );
   const commonItems = file.commonReviewItems ?? [];
   const commonSeeded = file.commonSeededInputs ?? [];
+  const commonDomains = file.domains ?? [];
   const variants: AssembledVariant[] = file.variants.map((variant) => {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
@@ -411,6 +419,13 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       weight: item.weight,
       domain: item.domain ?? null,
     }));
+    // The common domains apply to every variant; the variant's own additive
+    // domains follow. This effective set is what a run of this variant is rated
+    // against.
+    const domains: AssembledDomain[] = [
+      ...commonDomains,
+      ...(variant.domains ?? []),
+    ].map((d) => ({ id: d.id, name: d.name, description: d.description }));
     return {
       slug: variant.slug,
       name: variant.name,
@@ -419,6 +434,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       seededInputs,
       referenceScreenshots,
       reviewItems,
+      domains,
     };
   });
   return {

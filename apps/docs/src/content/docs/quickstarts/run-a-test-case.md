@@ -24,7 +24,7 @@ runtime of its own; the cluster supplies the harness credentials to the run. See
 
 ```sh
 tcab run \
-  --test-case pong --version v1.0.0 --variant base \
+  --test-case carom --version v1.0.0 --variant base \
   --harness claude --model claude-opus-4-8
 ```
 
@@ -48,8 +48,8 @@ it (seeding a fresh repository, driving the harness in a sandbox pod, then
 ## Inspect inputs without a run
 
 ```sh
-tcab prompt --test-case pong --version v1.0.0 --variant base   # the rendered prompt
-tcab seed   --test-case pong --version v1.0.0 --variant base   # the seeded repo, on disk
+tcab prompt --test-case carom --version v1.0.0 --variant base   # the rendered prompt
+tcab seed   --test-case carom --version v1.0.0 --variant base   # the seeded repo, on disk
 tcab harnesses                                                 # harness availability
 ```
 

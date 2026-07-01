@@ -1,0 +1,25 @@
+# The Test Cabinet model catalog entry.
+#
+# Site-facing metadata for a single model: how it is named, who provides it, how
+# it maps onto OpenRouter for pricing, and which model IDs identify it in run
+# records. This file has no bearing on how a run is executed; see
+# `docs/testing/end-to-end/overview.md` for the test case catalog it mirrors.
+
+# Human-readable display name.
+name = "Devstral 2512"
+
+# The provider that serves the model.
+provider = "Mistral"
+
+# The slug OpenRouter lists the model under. Used to build the model's OpenRouter
+# page link and to look up comparable per-token pricing.
+openrouter_slug = "mistralai/devstral-2512"
+
+# Site-facing prose, relative to this catalog directory.
+description = "devstral-2512.md"
+
+# The model ID strings as they appear in run records (`subject.modelId`), used
+# to map a run back to this model. The OpenRouter slug is what OpenRouter-routed
+# harnesses report unchanged; OpenCode/Kilo Code prefix it with their
+# `openrouter/` provider id.
+model_ids = ["mistralai/devstral-2512", "openrouter/mistralai/devstral-2512"]

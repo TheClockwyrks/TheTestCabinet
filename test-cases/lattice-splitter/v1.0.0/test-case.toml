@@ -11,6 +11,11 @@ max_runtime_hours = 1
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
 # Each frame is its own 32x64 transparent canvas (a separate file). An East-flowing
 # splitter occupies one tile in the flow direction by two tiles across it, so the
 # frame is 32 wide x 64 tall = two stacked 32x32 tile cells.
@@ -68,11 +73,6 @@ fps = 12
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
-dest = "specs/brief.md"
-
-[[variant]]
-slug = "base"
-name = "Base"
 
 [[domain]]
 id = "fidelity"

@@ -19,7 +19,8 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml     # manifest: specs, variants, references, checks
+  test-case.toml     # manifest: common specs, references, checks, domains
+  variants/          # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs         # rendered into the harness instruction (NOT seeded)
   specs/             # the specification, decomposed by concern — SEEDED
   reference/         # mockup source, rendered to screenshots — NOT seeded
@@ -28,9 +29,9 @@ test-cases/<slug>/<version>/
 
 ## Steps
 
-1. Pick a catalog **slug** (e.g. `pong`) and a separate original **in-game
-   title** (e.g. `Carom`). The case must be inspired by but **not a clone** of
-   its source, and must need no API keys and no backend to play.
+1. Pick an original **in-game title** (e.g. `Carom`); its catalog **slug** is
+   the kebab-cased title (e.g. `carom`). The case must be inspired by but **not a
+   clone** of its source, and must need no API keys and no backend to play.
 2. In the overview spec, fix the **coordinate system**, **palette/type**, and
    **screens** every other spec leans on.
 3. Decompose the spec into focused, seeded files that cross-reference each other
@@ -43,12 +44,14 @@ test-cases/<slug>/<version>/
 5. Author each reference view as self-contained HTML sharing a `theme.css`; the
    harness renders these to screenshots. Never seed the source.
 6. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`), the required
-   `[build]` commands, the common `[[spec]]`/`[[reference]]` lists, at least one
-   `[[variant]]`, and any opt-in `[[check]]`.
+   `[build]` commands, the common `[[spec]]`/`[[reference]]`/`[[domain]]` lists, a
+   `variants` list of paths to standalone variant files under `variants/` (a root
+   key, so it must precede the first table header; first = default), and any opt-in
+   `[[check]]`. A spec's `dest` defaults to its `source`.
 
 The `authoring-an-end-to-end-test-case` skill is the practical procedure to
-follow while doing this; read it before you start. The `pong` case
-(`test-cases/pong/v1.0.0/`) is the worked example a new case should resemble.
+follow while doing this; read it before you start. The `carom` case
+(`test-cases/carom/v1.0.0/`) is the worked example a new case should resemble.
 
 ## Validate
 

@@ -16,18 +16,67 @@ fn catalog_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases")
 }
 
+/// Every bundled case must resolve, and every one of its variants must resolve by
+/// slug — a guard that the whole catalog stays valid as the manifest format
+/// evolves (variants now live in their own `variants/*.toml` files, so a broken
+/// list, a missing variant file, or a bad per-variant domain surfaces here).
 #[test]
-fn resolves_pong_from_its_manifest() {
+fn every_catalog_case_and_variant_resolves() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let cases = catalog.list().expect("list catalog");
+    assert!(!cases.is_empty(), "catalog should not be empty");
+    for case in &cases {
+        for version in &case.versions {
+            let resolved = catalog
+                .resolve(&case.slug, version)
+                .unwrap_or_else(|err| panic!("resolve {}@{}: {err:?}", case.slug, version));
+            assert!(
+                !resolved.variants.is_empty(),
+                "{}@{} declares no variants",
+                case.slug,
+                version
+            );
+            assert!(
+                !resolved.domains.is_empty(),
+                "{}@{} declares no common domains",
+                case.slug,
+                version
+            );
+            for variant in &resolved.variants {
+                resolved.variant(&variant.slug).unwrap_or_else(|err| {
+                    panic!(
+                        "{}@{} variant {}: {err:?}",
+                        case.slug, version, variant.slug
+                    )
+                });
+                // Every variant's effective domain set (common ∪ its own) is what a
+                // reviewer rates, so it must be non-empty.
+                assert!(
+                    !resolved.domains_for(variant).is_empty(),
+                    "{}@{} variant {} has no effective domains",
+                    case.slug,
+                    version,
+                    variant.slug
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn resolves_carom_from_its_manifest() {
     let catalog = TestCaseCatalog::new(catalog_root());
 
     let cases = catalog.list().expect("list catalog");
     assert!(
-        cases.iter().any(|c| c.slug == "pong"),
-        "pong should be listed"
+        cases.iter().any(|c| c.slug == "carom"),
+        "carom should be listed"
     );
 
-    let version = catalog.resolve_latest("pong").expect("resolve latest pong");
-    assert_eq!(version.slug, "pong");
+    let version = catalog
+        .resolve_latest("carom")
+        .expect("resolve latest carom");
+    assert_eq!(version.slug, "carom");
     // The prompt template and the decomposed common specs are resolved from the
     // manifest. Every variant seeds the overview spec and the standard mode.
     assert!(version.prompt_path.ends_with("prompt.hbs"));
@@ -116,8 +165,8 @@ fn resolves_pong_from_its_manifest() {
 fn seeding_includes_spec_and_reference_images_but_not_source() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let version = catalog
-        .resolve("pong", "v1.0.0")
-        .expect("resolve pong v1.0.0");
+        .resolve("carom", "v1.0.0")
+        .expect("resolve carom v1.0.0");
 
     // Seed the base variant: the common specs and nothing mode-specific beyond
     // the standard mode.
@@ -147,7 +196,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             references: &references,
             live_preview: None,
         })
-        .expect("seed pong");
+        .expect("seed carom");
 
     // The run directory is named `{slug}-{version}-{timestamp}` so the newest
     // run sorts last in a listing.
@@ -157,7 +206,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         .and_then(|name| name.to_str())
         .expect("seeded run directory has a name");
     assert!(
-        dir_name.starts_with("pong-v1.0.0-"),
+        dir_name.starts_with("carom-v1.0.0-"),
         "run directory is named for the test case and version: {dir_name}"
     );
 
@@ -201,24 +250,35 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
 
 /// Materialize a throwaway catalog holding a single `demo@v1.0.0` whose manifest
 /// is `manifest`, alongside the handful of source files the manifests below
-/// reference (a prompt, one spec, and three reference mockups). Returns the
-/// tempdir (kept alive by the caller) and a catalog rooted at it.
-fn temp_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+/// reference (a prompt, one spec, and three reference mockups). Each entry in
+/// `variant_files` is written under `variants/` (a `(file_name, body)` pair), so a
+/// manifest's `variants = [...]` list resolves. Returns the tempdir (kept alive by
+/// the caller) and a catalog rooted at it.
+fn temp_catalog(
+    manifest: &str,
+    variant_files: &[(&str, &str)],
+) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("demo").join("v1.0.0");
     std::fs::create_dir_all(version.join("reference")).expect("create version dir");
+    std::fs::create_dir_all(version.join("variants")).expect("create variants dir");
     std::fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
     std::fs::write(version.join("prompt.hbs"), "Build in {{workspace}}.").expect("write prompt");
     std::fs::write(version.join("overview.md"), "# Overview").expect("write spec");
     for name in ["menu-base.html", "menu-frenzy.html", "gameplay.html"] {
         std::fs::write(version.join("reference").join(name), "<html></html>").expect("write ref");
     }
+    for (name, body) in variant_files {
+        std::fs::write(version.join("variants").join(name), body).expect("write variant");
+    }
     let catalog = TestCaseCatalog::new(dir.path().to_path_buf());
     (dir, catalog)
 }
 
 /// The shared head of the demo manifests: metadata, prompt, the required `[build]`
-/// table, and one common spec.
+/// table, one common spec, and one common domain. Variants live in their own
+/// files under `variants/` and are listed by each test's `variants = [...]` key
+/// (which, as a root key, is prepended before this head's `[build]` table).
 const DEMO_HEAD: &str = r#"
 name = "Demo"
 difficulty = "easy"
@@ -235,18 +295,19 @@ id = "gameplay"
 description = "Core gameplay."
 "#;
 
+/// A `variants/base.toml` body declaring a `base` variant with a `title` mockup.
+const VARIANT_BASE_TITLE: &str =
+    "slug = \"base\"\nreference = [{ view = \"title\", path = \"reference/menu-base.html\" }]\n";
+/// A `variants/frenzy.toml` body declaring a `frenzy` variant with a `title` mockup.
+const VARIANT_FRENZY_TITLE: &str = "slug = \"frenzy\"\nreference = [{ view = \"title\", path = \"reference/menu-frenzy.html\" }]\n";
+
 #[test]
 fn resolves_common_and_variant_specific_references() {
     // `gameplay` is common to both variants; `title` is variant-specific, with a
     // different mockup per variant.
     let manifest = format!(
-        "{DEMO_HEAD}
-[[variant]]
-slug = \"base\"
-reference = [{{ view = \"title\", path = \"reference/menu-base.html\" }}]
-[[variant]]
-slug = \"frenzy\"
-reference = [{{ view = \"title\", path = \"reference/menu-frenzy.html\" }}]
+        "variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]
+{DEMO_HEAD}
 [[reference]]
 view = \"gameplay\"
 path = \"reference/gameplay.html\"
@@ -255,7 +316,13 @@ view = \"title\"
 reference = \"title\"
 "
     );
-    let (_dir, catalog) = temp_catalog(&manifest);
+    let (_dir, catalog) = temp_catalog(
+        &manifest,
+        &[
+            ("base.toml", VARIANT_BASE_TITLE),
+            ("frenzy.toml", VARIANT_FRENZY_TITLE),
+        ],
+    );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
 
     // The common references carry only `gameplay`; each variant supplies its own
@@ -287,8 +354,8 @@ reference = \"title\"
 fn defaults_the_runtime_cap_when_the_manifest_omits_it() {
     // `DEMO_HEAD` declares no `max_runtime_hours`, so resolution falls back to
     // the one-hour default rather than leaving the run unbounded.
-    let manifest = format!("{DEMO_HEAD}[[variant]]\nslug = \"base\"\n");
-    let (_dir, catalog) = temp_catalog(&manifest);
+    let manifest = format!("variants = [\"variants/base.toml\"]\n{DEMO_HEAD}");
+    let (_dir, catalog) = temp_catalog(&manifest, &[("base.toml", "slug = \"base\"\n")]);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
     assert_eq!(version.max_runtime_seconds, 3600);
 }
@@ -299,8 +366,9 @@ fn rejects_a_zero_runtime_cap() {
     // silently accepted.
     // The cap key must precede `DEMO_HEAD`'s `[[spec]]` table so it parses as a
     // top-level field rather than an (ignored) key inside that table.
-    let manifest = format!("max_runtime_hours = 0\n{DEMO_HEAD}[[variant]]\nslug = \"base\"\n");
-    let (_dir, catalog) = temp_catalog(&manifest);
+    let manifest =
+        format!("max_runtime_hours = 0\nvariants = [\"variants/base.toml\"]\n{DEMO_HEAD}");
+    let (_dir, catalog) = temp_catalog(&manifest, &[("base.toml", "slug = \"base\"\n")]);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a zero runtime cap must be rejected");
@@ -315,16 +383,14 @@ fn rejects_a_view_declared_both_commonly_and_by_a_variant() {
     // `title` cannot be both a common reference and one a variant declares: the
     // two would clobber each other when rendered and seeded together.
     let manifest = format!(
-        "{DEMO_HEAD}
-[[variant]]
-slug = \"base\"
-reference = [{{ view = \"title\", path = \"reference/menu-base.html\" }}]
+        "variants = [\"variants/base.toml\"]
+{DEMO_HEAD}
 [[reference]]
 view = \"title\"
 path = \"reference/gameplay.html\"
 "
     );
-    let (_dir, catalog) = temp_catalog(&manifest);
+    let (_dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a view both common and variant-specific must be rejected");
@@ -339,18 +405,20 @@ fn rejects_a_check_whose_view_a_variant_does_not_declare() {
     // Only `base` declares `title`; the check's baseline could not be rendered for
     // the `frenzy` variant, so resolution rejects the manifest.
     let manifest = format!(
-        "{DEMO_HEAD}
-[[variant]]
-slug = \"base\"
-reference = [{{ view = \"title\", path = \"reference/menu-base.html\" }}]
-[[variant]]
-slug = \"frenzy\"
+        "variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]
+{DEMO_HEAD}
 [[check]]
 view = \"title\"
 reference = \"title\"
 "
     );
-    let (_dir, catalog) = temp_catalog(&manifest);
+    let (_dir, catalog) = temp_catalog(
+        &manifest,
+        &[
+            ("base.toml", VARIANT_BASE_TITLE),
+            ("frenzy.toml", "slug = \"frenzy\"\n"),
+        ],
+    );
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("a check unsatisfiable for some variant must be rejected");
@@ -362,8 +430,8 @@ reference = \"title\"
 }
 
 #[test]
-fn resolves_adversarial_pacman_from_its_manifest() {
-    // Foray (on-disk slug `adversarial-pacman`) is the first ADVERSARIAL case. It
+fn resolves_foray_from_its_manifest() {
+    // Foray is the first ADVERSARIAL case. It
     // must resolve through the real catalog under the adversarial validation: the
     // type discriminator selects the adversarial tables, and each
     // ([build].module / [contract] / [sandbox] / [simulation] / [match] / [replay])
@@ -375,19 +443,18 @@ fn resolves_adversarial_pacman_from_its_manifest() {
     let cases = catalog.list().expect("list catalog");
     let listed = cases
         .iter()
-        .find(|c| c.slug == "adversarial-pacman")
-        .expect("adversarial-pacman should be listed");
+        .find(|c| c.slug == "foray")
+        .expect("foray should be listed");
     assert!(
         listed.versions.iter().any(|v| v == "v1.0.0"),
-        "adversarial-pacman should list its v1.0.0 version"
+        "foray should list its v1.0.0 version"
     );
 
     let version = catalog
-        .resolve("adversarial-pacman", "v1.0.0")
-        .expect("resolve adversarial-pacman v1.0.0");
-    assert_eq!(version.slug, "adversarial-pacman");
-    // The in-fiction title is "Foray" while the on-disk slug stays
-    // `adversarial-pacman`.
+        .resolve("foray", "v1.0.0")
+        .expect("resolve foray v1.0.0");
+    assert_eq!(version.slug, "foray");
+    // The on-disk slug matches the in-fiction title "Foray".
     assert_eq!(version.name, "Foray");
     assert_eq!(version.test_type, TestType::Adversarial);
     assert_eq!(version.difficulty, "hard");
@@ -476,7 +543,7 @@ fn resolves_adversarial_pacman_from_its_manifest() {
 
 #[test]
 fn resolves_lattice_performance_from_its_manifest() {
-    // Lattice (on-disk slug `performance-factorio`) is the first PERFORMANCE case.
+    // Lattice is the first PERFORMANCE case.
     // It must resolve through the real catalog under the performance validation:
     // the type discriminator selects the performance tables ([build].module /
     // [contract] input+output / [sandbox] fuel_limit / the [[case]] scored set) and
@@ -487,19 +554,18 @@ fn resolves_lattice_performance_from_its_manifest() {
     let cases = catalog.list().expect("list catalog");
     let listed = cases
         .iter()
-        .find(|c| c.slug == "performance-factorio")
-        .expect("performance-factorio should be listed");
+        .find(|c| c.slug == "lattice")
+        .expect("lattice should be listed");
     assert!(
         listed.versions.iter().any(|v| v == "v1.0.0"),
-        "performance-factorio should list its v1.0.0 version"
+        "lattice should list its v1.0.0 version"
     );
 
     let version = catalog
-        .resolve("performance-factorio", "v1.0.0")
-        .expect("resolve performance-factorio v1.0.0");
-    assert_eq!(version.slug, "performance-factorio");
-    // The in-fiction title is "Lattice" while the on-disk slug stays
-    // `performance-factorio`.
+        .resolve("lattice", "v1.0.0")
+        .expect("resolve lattice v1.0.0");
+    assert_eq!(version.slug, "lattice");
+    // The on-disk slug matches the in-fiction title "Lattice".
     assert_eq!(version.name, "Lattice");
     assert_eq!(version.test_type, TestType::Performance);
     assert_eq!(version.difficulty, "hard");

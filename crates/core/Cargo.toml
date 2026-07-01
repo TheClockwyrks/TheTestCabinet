@@ -28,6 +28,12 @@ base64 = { workspace = true }
 # the `cli` feature's clap/serde_json) to regenerate the scored image from a run's
 # recorded action log through the exact same logic the in-container binary used.
 test-cabinet-draw = { path = "../draw", default-features = false }
+# The voxel-sculpting tool for the two 3D asset-generation kinds (voxel-model /
+# voxel-animation). As with `test-cabinet-draw`, core links only the library (not
+# the `cli` feature's clap/serde_json) so it regenerates the scored voxel data and
+# isometric preview from a run's recorded operation log through the exact same
+# logic the in-container `voxel` / `voxel-anim` binaries used.
+test-cabinet-voxel = { path = "../voxel", default-features = false }
 # The Foray adversarial game engine and its wasm host. The `AdversarialValidator`
 # loads a submission and the committed baseline opponent and runs the single
 # canonical match through the **shared** host (`foray-host`), so the validator and

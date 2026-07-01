@@ -16,8 +16,8 @@ the model draws a sprite with a drawing tool rather than building a game — is 
 different test type with its own manifest; see
 [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/).
 
-The worked example throughout the project is the `pong` case
-(`test-cases/pong/v1.0.0/`), whose in-game title is **Carom**. Read its files
+The worked example throughout the project is the **Carom** case
+(`test-cases/carom/v1.0.0/`). Read its files
 alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
@@ -31,7 +31,8 @@ contamination matters less.
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: specs, variants, references, checks, review items
+  test-case.toml         # manifest: common specs, references, checks, domains, review items
+  variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -63,8 +64,8 @@ Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-
   building the game, never producing its art (generating an asset is its own
   [test type](/testing/asset-generation/overview/)).
 
-Pick a catalog **slug** for the lineage (e.g. `pong`) and a separate original
-**in-game title** for the build (e.g. `Carom`), then a `version` (`vX.Y.Z`).
+Pick an original **in-game title** for the build (e.g. `Carom`); its catalog
+**slug** is the kebab-cased title (e.g. `carom`). Then pick a `version` (`vX.Y.Z`).
 
 ### 2. Lay the foundations before the detail
 
@@ -131,8 +132,12 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
   installs exactly what it pins; the build must emit a static site into `dist/`,
   `build/`, or `out/`.
 - **Common `[[spec]]` and `[[reference]]`** lists — seeded for every variant. A
-  `.hbs` source is rendered; anything else is seeded verbatim.
-- At least one **`[[variant]]`** (the first is the default — usually `base`); see
+  `.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
+  defaults to its `source` (a trailing `.hbs` stripped), so most specs just name
+  their `source`.
+- A **`variants`** list — an ordered array of paths to standalone variant files
+  under `variants/` (the first is the default; at least one is required). Because
+  `variants` is a root key, it must appear **before the first table header**. See
   [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/).
 - Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
   view's baseline must resolve for **every** variant.

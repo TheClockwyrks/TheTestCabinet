@@ -1462,6 +1462,10 @@ impl VersionBody {
             }),
             asset_kind: self.asset_kind,
             sheet: self.sheet,
+            // Remote resolution does not carry voxel specs yet; a resolved voxel
+            // case is materialized from the store on disk.
+            voxel: None,
+            model: None,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,
@@ -1488,6 +1492,7 @@ impl VersionBody {
                         .into_iter()
                         .map(review_item_from)
                         .collect(),
+                    domains: variant.domains,
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -1720,6 +1725,12 @@ struct VariantBody {
     proofs: Vec<ProofBody>,
     #[serde(default)]
     review_items: Vec<ReviewItemBody>,
+    /// The variant's own scoring domains, on top of the case's common ones.
+    /// Deserialized straight into [`Domain`] — the wire shape (`id`, `name`,
+    /// `description`) matches it field for field. Absent when the variant adds no
+    /// domain of its own.
+    #[serde(default)]
+    domains: Vec<Domain>,
 }
 
 /// A starter workspace file in the §1.2 wire shape: a store-relative `source`

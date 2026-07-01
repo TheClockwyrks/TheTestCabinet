@@ -1,0 +1,145 @@
+name = "Ironward Siege Tank"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
+summary = """
+Sculpt and rig the Ironward Siege Tank: a 24x16x32 opaque-voxel tank whose turret \
+swivels on a caller-driven turret_yaw joint, built and rigged one recorded \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 24
+height = 16
+depth = 32
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and this joint; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The tank body and tracks: the root part (no parent), fixed to the world.
+[[model.part]]
+name = "chassis"
+pivot = [0, 0, 0]
+
+# The turret: mounted on top-center of the chassis. It swivels on `turret_yaw`.
+[[model.part]]
+name = "turret"
+parent = "chassis"
+pivot = [12, 8, 16]
+
+# The main gun: mounted at the front of the turret, so it swings with the turret.
+[[model.part]]
+name = "barrel"
+parent = "turret"
+pivot = [12, 11, 20]
+
+# The required caller-driven joint: a game addresses `turret_yaw` by name to swing
+# the turret (and the barrel with it) left and right about its vertical mount, a
+# full half-turn each way. `rest = 0` faces straight forward (+z).
+[[model.joint]]
+name = "turret_yaw"
+part = "turret"
+kind = "rotation"
+axis = "y"
+pivot = [12, 8, 16]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "caller"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Ironward siege tank \
+and poses correctly — a body with tracks, a turret that swivels on its mount \
+without detaching while the chassis stays put, a barrel that stays attached to the \
+turret, and the disciplined Ironward palette."""
+
+[[review_item]]
+id = "reads-as-tank"
+title = "Reads as a siege tank"
+text = """
+From more than one angle the model reads unmistakably as a heavy tank: a low, \
+boxy chassis riding on a pair of tracks down its sides, a turret sitting on top, \
+and a long gun barrel projecting forward from the turret. It is a tracked \
+fighting vehicle, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "turret-swivels"
+title = "Turret swivels on its pivot"
+text = """
+Driving the `turret_yaw` joint swings the turret cleanly left and right about its \
+vertical mount at the top-center of the chassis. Across the full range no voxel of \
+the turret tears away from its mount or clips down into the hull — the turret \
+rotates as one solid piece about the correct pivot."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "chassis-fixed"
+title = "Chassis stays fixed"
+text = """
+Only the turret (and the barrel with it) moves when `turret_yaw` is driven. The \
+chassis and its tracks stay put — they are the fixed root of the rig, not carried \
+along by the turret's rotation."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "barrel-attached"
+title = "Barrel stays attached to the turret"
+text = """
+The barrel is a child of the turret: it projects from the front of the turret and \
+swings with it as `turret_yaw` turns, always meeting the turret's front face with \
+no gap and never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Ironward palette discipline"
+text = """
+Uses only the Ironward colors from the brief (olive hull, dark olive underside, \
+dark track, gunmetal barrel, and the warm accent) with no out-of-palette colors \
+and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

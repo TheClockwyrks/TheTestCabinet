@@ -2,6 +2,11 @@ import { useMemo } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { MetricChartWidget, Panel } from "@test-cabinet/ui";
 import { useRuns } from "../../../data/useRuns";
+import { findModelByModelId } from "../../../data/models";
+import {
+  providerColor,
+  UNKNOWN_PROVIDER_COLOR,
+} from "../../../data/providerColor";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { totalTokens } from "../../../format";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
@@ -24,6 +29,14 @@ const tokensValue = (run: RunRecord): number | null => totalTokens(run.metrics);
 // be resolved); such runs are excluded from the cost chart rather than charted
 // as zero.
 const costValue = (run: RunRecord): number | null => run.metrics.cost.comparable;
+
+// Colors each model's bar by its provider's brand color, so a glance groups the
+// roster by provider. Module-level for a stable identity across renders (the
+// widget memoizes its bar data on it). A provider we have no color for (or a
+// model missing from the catalog) falls back to a neutral grey.
+const colorForModel = (modelId: string): string =>
+  providerColor(findModelByModelId(modelId)?.provider ?? "") ??
+  UNKNOWN_PROVIDER_COLOR;
 
 // The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions
 // for the selected variant, grouped by model so the spread across runs is
@@ -89,6 +102,7 @@ function MetricsContent({
           unit="tokens"
           yTickFormat={TOKEN_TICKS}
           barMode="meanByModel"
+          colorForModel={colorForModel}
         />
         <MetricChartWidget
           title="Average cost"
@@ -96,6 +110,7 @@ function MetricsContent({
           value={costValue}
           unit="USD"
           barMode="meanByModel"
+          colorForModel={colorForModel}
         />
       </div>
     </section>

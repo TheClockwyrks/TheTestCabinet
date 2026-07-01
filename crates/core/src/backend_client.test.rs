@@ -53,6 +53,8 @@ impl BackendClient for StubBackend {
             replay: None,
             asset_kind: crate::test_case::AssetKind::Sprite,
             sheet: None,
+            voxel: None,
+            model: None,
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
@@ -72,12 +74,13 @@ impl BackendClient for StubBackend {
                 references: vec![],
                 proofs: vec![],
                 review_items: vec![],
+                domains: vec![],
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
                 kind: crate::test_case::ReferenceKind::Rendered,
                 source_path: std::path::PathBuf::from(
-                    "/test-cases/pong/v1.0.0/references/_common/title.png",
+                    "/test-cases/carom/v1.0.0/references/_common/title.png",
                 ),
             }],
             common_proofs: vec![],
@@ -377,6 +380,7 @@ fn sample_record(id: &str) -> RunRecord {
             checks: vec![],
             proofs: vec![],
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: None,
         },

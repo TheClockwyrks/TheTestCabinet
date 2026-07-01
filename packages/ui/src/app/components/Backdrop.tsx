@@ -1,27 +1,11 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { CssBackdrop } from "./backdrop/CssBackdrop";
+import { prefersReducedMotion, supportsWebGL } from "./webgl";
 import styles from "./Backdrop.module.scss";
 
 // `three` is heavy, so the WebGL scene is split into its own chunk and only
 // fetched when we actually mount it.
 const SynthwaveScene = lazy(() => import("./backdrop/SynthwaveScene"));
-
-function prefersReducedMotion(): boolean {
-  return (
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
-  );
-}
-
-function supportsWebGL(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(
-      canvas.getContext("webgl2") ?? canvas.getContext("webgl"),
-    );
-  } catch {
-    return false;
-  }
-}
 
 // Full-viewport atmosphere behind all page content. A cheap background gradient
 // always renders for an instant first paint; on top of it we mount the animated

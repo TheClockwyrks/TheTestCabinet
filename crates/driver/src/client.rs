@@ -14,7 +14,7 @@
 
 use reqwest::Client;
 use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::job_api::{DriverState, StatusUpdate};
+use test_cabinet_core::job_api::{DriverState, JobState, JobStatusOut, StatusUpdate};
 use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::RunRecord;
 
@@ -125,6 +125,45 @@ impl JobClient {
                 source,
             })?;
         Self::check(response, "preview").await
+    }
+
+    /// Poll this job's current lifecycle state (`GET /jobs/{id}`). This is how the
+    /// driver observes an operator cancellation while it runs: the backend flips the
+    /// job to `canceled`, and the next poll here sees it. Reads are open, so this
+    /// needs no token. `None` means the backend does not know the job (a `404`),
+    /// which the caller treats as "nothing to act on"; a transport, HTTP, or decode
+    /// error is surfaced so the caller can simply retry on its next tick.
+    pub async fn poll_state(&self) -> Result<Option<JobState>, ClientError> {
+        let url = format!("{}/jobs/{}", self.base_url, self.job_id);
+        let response =
+            self.http
+                .get(url)
+                .send()
+                .await
+                .map_err(|source| ClientError::Transport {
+                    what: "status poll",
+                    source,
+                })?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::Status {
+                what: "status poll",
+                status,
+                body,
+            });
+        }
+        let out: JobStatusOut = response
+            .json()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "status poll",
+                source,
+            })?;
+        Ok(Some(out.state))
     }
 
     /// Report success with the produced record (`POST /jobs/{id}/status`,

@@ -16,10 +16,17 @@
 # pushed HEAD and POST a forced ingest over localhost (the NetworkPolicy admits only
 # intra-pod traffic to the backend).
 #
+# Ingest ADDS and OVERWRITES; it never PRUNES. A case's identity is its folder slug
+# under test-cases/, so if you RENAME a case's folder (or delete a version), a plain
+# re-ingest leaves the OLD slug still served alongside the new one — a duplicate. To
+# drop the stale slug, rebuild the store from empty: `kubectl -n "$NAMESPACE" rollout
+# restart deploy/tcab-backend` reschedules the pod, and the ingest sidecar re-ingests
+# the current checkout into a fresh emptyDir on start (only the current slugs remain).
+#
 # Usage:
 #   scripts/reingest-prod.sh                 # force re-ingest every case
-#   scripts/reingest-prod.sh pong            # scope to one case slug
-#   scripts/reingest-prod.sh pong snake      # scope to several
+#   scripts/reingest-prod.sh carom            # scope to one case slug
+#   scripts/reingest-prod.sh carom coil      # scope to several
 #
 # Override the target cluster (defaults match the prod westus2 AKS):
 #   RESOURCE_GROUP=… CLUSTER=… NAMESPACE=… scripts/reingest-prod.sh

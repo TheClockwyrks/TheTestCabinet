@@ -137,12 +137,73 @@ pub async fn status(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
-    Ok(Json(JobStatusOut {
-        id: job.id,
-        state: JobState::from_db(&job.state),
-        record_id: job.record_id,
-        detail: job.detail,
-    }))
+    Ok(Json(job_status_out(&job)))
+}
+
+/// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
+/// bearer token (the launching account, the same gate as `POST /jobs`).
+///
+/// A job still in a non-terminal state (`queued`, `dispatched`, or `running`) is
+/// atomically moved to the terminal `canceled` state and its live stream is closed,
+/// so every watching console's monitor reflects the end at once. The
+/// [driver](crate) polls its own job's state while it runs, so it observes the
+/// cancellation, drops the in-flight harness exec, tears its sandbox down, and
+/// exits — the same both on the local cluster and in production, since both drive a
+/// run through a driver pod. No completion notification is fired: a canceled run is
+/// an operator action, not a failure to alert on.
+///
+/// Canceling an already-`canceled` job is an idempotent no-op (`200`); a job that
+/// already ran to `succeeded`/`failed` cannot be canceled (`409`); an unknown job
+/// is `404`.
+#[tracing::instrument(name = "jobs.cancel", skip(state, _user), fields(job.id = %id), err(Debug))]
+pub async fn cancel(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<JobStatusOut>, ApiError> {
+    let job = state
+        .db
+        .get_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    let current = JobState::from_db(&job.state);
+    if current.is_terminal() {
+        // Already-canceled is an idempotent success; a run that finished on its own
+        // is a conflict — it produced a result the cancel would misrepresent.
+        if current == JobState::Canceled {
+            return Ok(Json(job_status_out(&job)));
+        }
+        return Err(ApiError::conflict(format!(
+            "job `{id}` already finished and cannot be canceled"
+        )));
+    }
+
+    let now = now_rfc3339()?;
+    let detail = "canceled by operator";
+    let Some(canceled) = state
+        .db
+        .cancel_job(&id, &now, detail)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        // The job reached a terminal state between the read above and the atomic
+        // transition (it finished as we were canceling it). Report its now-current
+        // status rather than force a cancel over a completed run.
+        let job = state
+            .db
+            .get_job(&id)
+            .await
+            .map_err(ApiError::from)?
+            .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+        return Ok(Json(job_status_out(&job)));
+    };
+
+    // Close the live stream so every watcher's monitor ends now; the driver's own
+    // teardown proceeds asynchronously. Deliberately not a `finish_and_notify`: a
+    // canceled run raises no completion alert.
+    state.relay.live(&id).finish();
+    Ok(Json(job_status_out(&canceled)))
 }
 
 /// `GET /jobs/{id}/live` — the live harness-event + asset-preview stream as
@@ -255,6 +316,16 @@ pub async fn update_status(
     Json(update): Json<StatusUpdate>,
 ) -> Result<StatusCode, ApiError> {
     let job = authorize_job(&state, &id, &headers).await?;
+
+    // A canceled job is terminal. Ignore any status the in-flight driver posts
+    // before it notices the cancellation, so a late `running`/`succeeded`/`failed`
+    // report cannot resurrect or overwrite the canceled run (nor persist a record
+    // for it). The driver's poll ends it shortly after; this is the belt-and-braces
+    // guard on the backend side.
+    if JobState::from_db(&job.state) == JobState::Canceled {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
     let now = now_rfc3339()?;
 
     match update.state {
@@ -424,6 +495,16 @@ async fn authorize_job(
         return Err(ApiError::unauthorized("invalid job token"));
     }
     Ok(job)
+}
+
+/// Build the `GET /jobs/{id}` status shape from a stored job row.
+fn job_status_out(job: &job::Model) -> JobStatusOut {
+    JobStatusOut {
+        id: job.id.clone(),
+        state: JobState::from_db(&job.state),
+        record_id: job.record_id.clone(),
+        detail: job.detail.clone(),
+    }
 }
 
 /// The run's display identity, lifted from the stored job columns.

@@ -1,0 +1,94 @@
+name = "Skyshard Interceptor"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "ship"]
+summary = """
+Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \
+a 24x8x32 opaque-voxel model, one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "voxel-model"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume the model sculpts into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. The
+# volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 24
+height = 8
+depth = 32
+background = "transparent"
+
+# The sculpting tool. `voxel` is the only way to place a voxel; it records every
+# operation to the action log and re-renders the isometric preview after each
+# call. Run `voxel --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "voxel"
+preview = "model.png"
+
+# The recorded action log — the authoritative output the scored isometric preview
+# and the regenerated voxels.json are rebuilt from.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated model reads as the Skyshard interceptor — a \
+forward-swept fighter jet with a pointed nose leading its flight direction, clean \
+bilateral symmetry, the disciplined Skyshard palette, and a form that fills the \
+volume rather than a small blob floating in it."""
+
+[[review_item]]
+id = "reads-as-jet"
+title = "Forward-swept interceptor, nose leading"
+text = """
+From more than one angle the model reads unmistakably as a fighter jet: a long \
+central fuselage tapering to a pointed NOSE at the front (the direction it flies), \
+a cockpit canopy set into the top near the nose, a pair of forward-swept wings \
+whose tips reach ahead of their roots, and tail fins at the rear. It is a sleek \
+aircraft, not an abstract wedge or a blocky brick."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Bilateral symmetry"
+text = """
+The interceptor is cleanly symmetric about its lengthwise vertical centerplane \
+(between x = 11 and x = 12): the two wings, the two tail fins, and any engine \
+intakes mirror each other, so it reads as a deliberate aircraft rather than a \
+lopsided hull."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Skyshard palette discipline"
+text = """
+Uses only the Skyshard colors from the brief (steel hull, dark underside, cyan \
+canopy glass, a warm nose-and-tail accent, and the afterburner glow) with no \
+out-of-palette colors and no stray voxels drifting outside the hull."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "fills-volume"
+title = "Fills the volume"
+text = """
+The jet uses most of the 24x8x32 volume — long along z, spanning most of the \
+width at the wingtips, a few voxels of margin on every side — neither shrunk into \
+one corner nor clipped where it runs past a face of the volume."""
+weight = 1
+domain = "fidelity"

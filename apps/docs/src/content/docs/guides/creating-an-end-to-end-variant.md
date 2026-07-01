@@ -15,7 +15,7 @@ end-to-end version. The authoritative rules live in
 [End-to-End Tests](/testing/end-to-end/overview/) (see its *Variants* and
 *Self-Contained Specifications* sections); read them first. While doing the work,
 follow the `adding-an-end-to-end-variant` skill. The worked example is the
-**Gyre** variant of the `pong` case, in which the obstacles oscillate and rotate
+**Gyre** variant of the `carom` case, in which the obstacles oscillate and rotate
 — read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this guide.
 
 To author a brand-new case rather than add a mode to one, see
@@ -30,9 +30,11 @@ against a shared target, not a game mode.
 ## What a variant adds
 
 A variant typically adds **one** mode spec and (where the menu differs) **one**
-`title` mockup, and registers itself in `test-case.toml`. Everything else is
-shared. A variant's `spec` and `reference` entries are **additive** — they layer
-on top of the common ones rather than replacing them.
+`title` mockup, lives in its **own file** under `variants/`, and is listed in the
+`variants` array in `test-case.toml`. Everything else is shared. A variant's
+`spec` and `reference` entries are **additive** — they layer on top of the common
+ones rather than replacing them — and a variant may declare its **own scoring
+domain** for the mode it introduces (rated only when it runs).
 
 ## Procedure
 
@@ -99,18 +101,45 @@ These mockups are **source only**: the harness renders them to screenshots and
 seeds the *screenshot*, never the HTML. Do not hand-create anything under the
 git-ignored `reference/screenshots/`.
 
-### 5. Register the variant in `test-case.toml`
+### 5. Create the variant file and list it
 
-Add a `[[variant]]` table after the existing ones (the first variant is the
-default):
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Every path inside the variant
+file resolves against the version folder, and `dest` defaults to `source` (a
+trailing `.hbs` stripped), so most specs just name their `source`:
 
 ```toml
-[[variant]]
+# variants/gyre.toml
 slug = "gyre"
 name = "Gyre"
 description = "Standard plus a mode whose obstacles oscillate and rotate."
-spec = [{ source = "specs/modes/gyre.md", dest = "specs/modes/gyre.md" }]
+spec = [{ source = "specs/modes/gyre.md" }]
 reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+
+# A mode a variant introduces is usually rated on its own domain rather than folded
+# into the common ones. Declare it here, and roll the mode's review item up to it.
+[[domain]]
+id = "gyre"
+name = "Gyre"
+description = "The Gyre mode: swaying, rotating obstacles the ball bounces off at oriented angles."
+
+[[review_item]]
+id = "gyre-oriented-bounce"
+title = "Oriented bounces"
+text = "In Gyre the obstacles sway and rotate, and the ball bounces off their tilted faces at oriented angles."
+weight = 1
+domain = "gyre"
+```
+
+```toml
+# test-cases/carom/v1.0.0/test-case.toml — add the new file to the ordered list
+variants = [
+  "variants/base.toml",
+  "variants/frenzy.toml",
+  "variants/multi.toml",
+  "variants/gyre.toml",
+]
 ```
 
 Rules enforced at resolution:
@@ -119,8 +148,11 @@ Rules enforced at resolution:
   seeded specs (common + own) may share a `dest`.
 - `reference` entries are additive on the common `[[reference]]` views; a view
   slug must not be declared both commonly and by a variant.
+- A variant's own `[[domain]]` tables are **additional** to the case's common
+  domains; a domain id must be unique across the common domains and this variant's
+  own. A variant's review item may name a common domain or one of its own.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
-  variant — for `pong`, every variant provides its own `title`, which is what the
+  variant — for `carom`, every variant provides its own `title`, which is what the
   `title` check baselines against.
 
 Also update the human-readable comment in the manifest that enumerates the

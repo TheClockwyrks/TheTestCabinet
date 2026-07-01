@@ -5,6 +5,7 @@ import type { TournamentRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import styles from "./TournamentsPage.module.scss";
 
@@ -77,6 +78,7 @@ export function TournamentsPage() {
 }
 
 function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
+  const testCaseName = useTestCaseName();
   // The leader: the top-ranked controller (rank 1), labelled where possible.
   const leader = tournament.standings.find((s) => s.rank === 1);
   const leaderRef = leader
@@ -90,7 +92,7 @@ function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
     >
       <div className={styles.cardMain}>
         <span className={styles.cardCase}>
-          {tournament.testCaseSlug} {tournament.testCaseVersion}
+          {testCaseName(tournament.testCaseSlug)} {tournament.testCaseVersion}
         </span>
         <span className={styles.cardMeta}>
           {tournament.participants.length} controllers ·{" "}

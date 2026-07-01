@@ -353,6 +353,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                     .iter()
                     .map(stored_review_item)
                     .collect(),
+                domains: variant.domains.iter().map(stored_domain).collect(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -454,16 +455,18 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             .iter()
             .map(stored_review_item)
             .collect(),
-        domains: resolved
-            .domains
-            .iter()
-            .map(|domain| StoredDomain {
-                id: domain.id.clone(),
-                name: domain.name.clone(),
-                description: domain.description.clone(),
-            })
-            .collect(),
+        domains: resolved.domains.iter().map(stored_domain).collect(),
     })
+}
+
+/// Build a [`StoredDomain`] from a resolved scoring domain (the wire shape matches
+/// field for field). Shared by the case's common domains and each variant's own.
+fn stored_domain(domain: &test_cabinet_core::Domain) -> StoredDomain {
+    StoredDomain {
+        id: domain.id.clone(),
+        name: domain.name.clone(),
+        description: domain.description.clone(),
+    }
 }
 
 /// Build a [`StoredReviewItem`] from a resolved reviewer checklist item.

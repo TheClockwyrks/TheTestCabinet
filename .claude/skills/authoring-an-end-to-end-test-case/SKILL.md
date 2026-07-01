@@ -37,15 +37,17 @@ Scope of this skill vs. its sibling:
   procedure for mode specs, per-variant menu mockups, manifest registration, and
   validation is not repeated here; follow it for variant work.
 
-The worked example throughout is the `pong` case (`test-cases/pong/v1.0.0/`),
-whose in-game title is **Carom**. Read its files alongside this skill — a new
-case should look like it.
+The worked example throughout is the **Carom** case (`test-cases/carom/v1.0.0/`).
+Read its files alongside this skill — a new case should look like it.
 
 ## Anatomy of a test case version
 
 ```text
 test-cases/<slug>/<version>/
-  test-case.toml         # manifest: specs, variants, references, proofs, checks, review items
+  test-case.toml         # manifest: common specs, references, proofs, checks, domains, review items
+  variants/              # one standalone TOML file per variant (listed in `variants`)
+    base.toml            #   the default variant (first in the `variants` list)
+    <other>.toml         #   a variant + its own additive spec/reference/domain/review items
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   README.md              # human overview (NOT seeded)
@@ -102,8 +104,8 @@ Every case must (see *Design Requirements* in
   [`authoring-an-asset-generation-test-case`](../authoring-an-asset-generation-test-case/SKILL.md)
   skill.)
 
-Pick a **catalog slug** for the lineage (e.g. `pong`) and, separately, an
-original **in-game title** for the build (e.g. `Carom`). Pick a `version`
+Pick an original **in-game title** for the build (e.g. `Carom`); its **catalog
+slug** is the kebab-cased title (e.g. `carom`). Pick a `version`
 (`vX.Y.Z`); a version is **immutable** once runs reference it — revise by adding
 a new version, not by editing a published one.
 
@@ -142,18 +144,24 @@ a `theme.css` that is the source of truth for the palette and field furniture
 (the specs reference the same colors). The harness renders these to screenshots
 at the logical viewport, per variant, under the git-ignored
 `reference/screenshots/`. Author the **source**; never seed it, never hand-create
-the screenshots. See [`reference/README.md`](../../../test-cases/pong/v1.0.0/reference/README.md)
+the screenshots. See [`reference/README.md`](../../../test-cases/carom/v1.0.0/reference/README.md)
 and step 4 of [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md).
 
 ### 6. Write the manifest and declare variants
 
 Author `test-case.toml` per the schema in
 [`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md): metadata, the common
-`[[spec]]` and `[[reference]]` lists, at least one `[[variant]]` (the first is
-the default — usually `base`), any opt-in `[[check]]`, the common `[[proof]]`
-list (see step 7), and the common `[[review_item]]` list (see step 8). For
-additional variants follow [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). A
-`.hbs` source is rendered; anything else is seeded verbatim.
+`[[spec]]` and `[[reference]]` lists, the common `[[domain]]` list (at least one),
+a `variants` list of paths to standalone variant files under `variants/` (the
+first is the default — usually `base`), any opt-in `[[check]]`, the common
+`[[proof]]` list (see step 7), and the common `[[review_item]]` list (see step 8).
+`variants` is a **root key**, so it must appear **before the first table header**.
+Each variant file is a self-contained TOML document whose top-level keys are the
+variant's own fields, and it may declare its own additive specs, references,
+review items, and scoring domain(s). For additional variants follow
+[`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). A
+`.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
+defaults to its `source` (a trailing `.hbs` stripped).
 
 ### 7. Declare proof of implementation
 
@@ -279,7 +287,7 @@ assets it requests rather than inlines — must require, in its spec and prompt,
 those URLs resolve relative to the page and never begin with a leading `/` (for a
 bundler, a relative base such as Vite's `base: './'`). A case that draws
 everything in code and bundles all of its code has nothing extra to do here.
-Fathom (`test-cases/pacman/`), which loads a folder of seeded PNG sprites, is the
+Fathom (`test-cases/fathom/`), which loads a folder of seeded PNG sprites, is the
 worked example — its `specs/assets.md` states the rule in full.
 
 ### Use precise, testable numbers

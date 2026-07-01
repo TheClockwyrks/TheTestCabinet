@@ -156,7 +156,7 @@ With the [k3d stack](/development/running/) up and forwarded and
 
 ```sh
 tcab run \
-  --test-case pong --version v1.0.0 --variant base \
+  --test-case carom --version v1.0.0 --variant base \
   --harness claude --model claude-opus-4-8
 ```
 

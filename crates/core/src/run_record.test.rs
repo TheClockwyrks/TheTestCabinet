@@ -73,6 +73,7 @@ fn sample_record() -> RunRecord {
                 detail: None,
             }],
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: None,
         },

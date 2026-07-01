@@ -20,8 +20,10 @@
   },
   "dependencies": {
     "@observablehq/plot": "^0.6.16",
+    "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@test-cabinet/run-record": "*",
+    "@test-cabinet/voxel-runtime": "*",
     "react-markdown": "^10.1.0",
     "react-router": "^7.6.0",
     "react-toastify": "^11.0.5",

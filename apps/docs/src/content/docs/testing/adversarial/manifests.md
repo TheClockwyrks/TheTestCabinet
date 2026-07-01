@@ -24,6 +24,12 @@ max_runtime_hours = 0.5      # cap on the harness session before it's stopped (d
 workspace = "workspaces/base" # starter project the model fills in (seeds the run root)
 init = "cargo fetch"         # optional command run in the container after seeding, before the harness
 
+# Variants: an ORDERED list of paths to standalone variant files (first = default).
+# A root key, so it must precede the first table header (`[build]`). Each is a
+# self-contained TOML document (top-level keys are the variant's fields), by
+# convention under `variants/`, with every path resolving against the version folder.
+variants = ["variants/base.toml"]
+
 # How the harness builds the model's submission into a wasm controller module.
 # Required: the case states the commands and the artifact path explicitly.
 [build]
@@ -60,26 +66,32 @@ rounds       = 1                 # matches played per pairing
 [replay]
 renderer = "replay/index.html"   # browser renderer fed the recorded replay data
 
-# Variants. As with every test type, a case offers one or more and exactly one
-# runs per run — here typically a different map, ruleset, or starting condition.
-[[variant]]
+# Common specs, seeded for EVERY variant (the rules and contract documentation
+# the model builds against). Same `source` → `dest` mapping as end-to-end, and
+# `dest` defaults to `source` with a trailing `.hbs` removed.
+[[spec]]
+source = "specs/overview.md"     # dest defaults to "specs/overview.md"
+```
+
+Each `variants` entry names a standalone variant file (the first is the default) —
+a TOML document whose top-level keys are the variant's fields, exactly as for an
+[end-to-end case](/testing/end-to-end/manifests/). Here a variant typically varies
+the seeded specs — a different map, ruleset, or starting condition:
+
+```toml
+# test-cases/<slug>/<version>/variants/base.toml
 slug = "base"                    # stable slug, recorded in the run record
 name = "Base"                    # display name (optional; default humanizes the slug)
 spec = []                        # ADDITIVE specs on top of the common specs
-
-# Common specs, seeded for EVERY variant (the rules and contract documentation
-# the model builds against). Same `source` → `dest` mapping as end-to-end.
-[[spec]]
-source = "specs/overview.hbs"
-dest   = "specs/overview.md"
 ```
 
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
   `description`), `prompt`, `max_runtime_hours`, `workspace`, `init`, and the
-  `[[spec]]` / `[[variant]]` seeding rules behave exactly as they do for an
+  `[[spec]]` and `variants` seeding rules behave exactly as they do for an
   [end-to-end case](/testing/end-to-end/manifests/) — an adversarial case seeds a
-  starter workspace and specs, renders a prompt, and offers variants the same
-  way.
+  starter workspace and specs, renders a prompt, and lists its variants as
+  standalone files the same way (each `[[spec]]` `dest` defaulting to its
+  `source`).
 - The `[build]` table is **required**. Unlike an end-to-end build, which emits a
   static site, an adversarial build emits a **wasm module**: `install` and
   `build` produce it and `module` names the artifact path the harness loads into

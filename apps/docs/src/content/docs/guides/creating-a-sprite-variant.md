@@ -77,20 +77,28 @@ carries a stable `id` unique within the variant's effective set, and a scoring
 `domain`. It must **not** carry a `reference` field — there is no target to point
 at, and one is rejected.
 
-### 4. Register the variant in `test-case.toml`
+### 4. Create the variant file and list it
 
-Add a `[[variant]]` table after the existing ones (the first variant is the
-default):
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Paths inside resolve against the
+version folder, and `dest` defaults to `source`, so the brief spec just names its
+`source`:
 
 ```toml
-[[variant]]
+# variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
 description = "Same brief, drawn with flat fills only — no gradients or dithering."
-spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
+spec = [{ source = "specs/flat.md" }]
 review_item = [
   { id = "flat-fills", title = "Flat fills only", text = "Every region is a flat color with no gradients or dithering.", domain = "technique" },
 ]
+```
+
+```toml
+# test-case.toml — add the new file to the ordered list (first = default)
+variants = ["variants/base.toml", "variants/flat.toml"]
 ```
 
 Rules enforced at resolution:

@@ -58,6 +58,22 @@ in-container process connects back to a TCP listener on the **driver's own pod I
 (supplied via the downward API as `TCAB_K8S_POD_IP`), and the driver forwards each
 frame to the backend, which relays it to the console.
 
+## Cancellation
+
+A run can be **killed** while it is in progress from the console's live monitor.
+The console asks the backend to cancel the job (`POST /jobs/{id}/cancel`, gated on
+the launching account); the backend moves it to the terminal `canceled` state and
+closes its live stream, so every watching monitor reflects the end at once and the
+queue never claims a canceled-while-queued job. The driver **polls its own job's
+state** while it runs, so it observes the cancellation, drops the in-flight harness
+session (which cancels the container `exec`), and **tears its sandbox down** — under
+the Kubernetes runtime it deletes the run's sandbox pod, which it finds by the
+job-id label it stamped on it — then exits without reporting a terminal status (the
+backend already recorded `canceled`). The path is identical on the local
+[k3d](/development/running/) cluster and in production, since both drive a run
+through a driver pod. A late status the winding-down driver might still post is
+ignored by the backend, so it can never resurrect a canceled run.
+
 ## Artifacts
 
 Because the sandbox pod is ephemeral — its disk is lost on exit — the driver

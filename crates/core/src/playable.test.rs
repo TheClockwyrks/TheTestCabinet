@@ -9,7 +9,7 @@ use crate::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 use crate::test_case::MediaKind;
-use crate::validation::{ProofResult, ValidationSummary};
+use crate::validation::{ProofResult, ValidationSummary, VoxelGenResult, VoxelPartResult};
 
 /// Build a fake implementation directory containing one named build output with
 /// the given files (path within the build → contents).
@@ -122,6 +122,91 @@ fn asset_request_parses_bare_names_and_per_frame_names() {
 }
 
 #[test]
+fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
+    // An animated voxel model addresses its parts by declared index: the served
+    // `regenerated-1.png` / `voxels-1.json` resolve to part 1's recorded tree
+    // paths, which carry slashes the flat one-segment served name flattens away.
+    let part = |name: &str| VoxelPartResult {
+        name: name.to_string(),
+        regenerated_voxels: format!("voxels/{name}.json"),
+        regenerated_image: format!("regenerated/{name}.png"),
+        preview_image: format!("parts/{name}.png"),
+        ops_log: format!("parts/{name}.actions.json"),
+        operation_count: 3,
+        voxel_count: 10,
+        cheat_divergence: None,
+        detail: None,
+    };
+    let voxel = VoxelGenResult {
+        parts: vec![part("chassis"), part("turret")],
+        // A present `model` marks this an animated run (parts addressed by `-<index>`).
+        model: Some(crate::test_case::ModelSpec {
+            parts: vec![],
+            joints: vec![],
+        }),
+        rig: None,
+        detail: None,
+    };
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            voxel: Some(voxel),
+            ..Default::default()
+        },
+        &[
+            ("regenerated/turret.png", b"\x89PNG turret"),
+            ("voxels/turret.json", b"{\"dims\":{}}"),
+            ("parts/chassis.png", b"\x89PNG chassis-preview"),
+        ],
+    );
+    // Part 1 (turret) regenerated PNG and voxels.json; part 0 (chassis) preview.
+    let served = serve_asset_file(dir.path(), "regenerated-1.png").expect("regenerated");
+    assert_eq!(served.content_type, "image/png");
+    assert_eq!(served.body, b"\x89PNG turret");
+    let served = serve_asset_file(dir.path(), "voxels-1.json").expect("voxels");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.body, b"{\"dims\":{}}");
+    let served = serve_asset_file(dir.path(), "preview-0.png").expect("preview");
+    assert_eq!(served.body, b"\x89PNG chassis-preview");
+    // An out-of-range part index is a miss (404), not a panic.
+    assert!(serve_asset_file(dir.path(), "voxels-9.json").is_none());
+}
+
+#[test]
+fn serve_asset_file_resolves_static_voxel_under_bare_names() {
+    // A static model has one part served under bare names (frame `None`).
+    let voxel = VoxelGenResult {
+        parts: vec![VoxelPartResult {
+            name: "model".to_string(),
+            regenerated_voxels: "voxels.json".to_string(),
+            regenerated_image: "regenerated.png".to_string(),
+            preview_image: "model.png".to_string(),
+            ops_log: "actions.json".to_string(),
+            operation_count: 5,
+            voxel_count: 20,
+            cheat_divergence: None,
+            detail: None,
+        }],
+        model: None,
+        rig: None,
+        detail: None,
+    };
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            voxel: Some(voxel),
+            ..Default::default()
+        },
+        &[
+            ("voxels.json", b"{\"dims\":{}}"),
+            ("regenerated.png", b"\x89PNG static"),
+        ],
+    );
+    let served = serve_asset_file(dir.path(), "voxels.json").expect("voxels");
+    assert_eq!(served.body, b"{\"dims\":{}}");
+    let served = serve_asset_file(dir.path(), "regenerated.png").expect("regenerated");
+    assert_eq!(served.body, b"\x89PNG static");
+}
+
+#[test]
 fn missing_file_is_none() {
     let dir = impl_with_build("dist", &[("index.html", "<html></html>")]);
     let build = dir.path().join("implementation").join("dist");
@@ -132,6 +217,26 @@ fn missing_file_is_none() {
 /// declares the given proofs (id, dest), plus the named media files under
 /// `implementation/`.
 fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8])]) -> TempDir {
+    let validation = ValidationSummary {
+        proofs: proofs
+            .iter()
+            .map(|(id, dest, kind)| ProofResult {
+                id: id.to_string(),
+                name: id.to_string(),
+                kind: *kind,
+                dest: dest.to_string(),
+                present: true,
+                detail: None,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    run_dir_with_validation(validation, media)
+}
+
+/// Build a run output directory holding a `run-record.json` with the given
+/// validation summary, plus the named media files under `implementation/`.
+fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])]) -> TempDir {
     let dir = TempDir::new().expect("temp dir");
     let record = RunRecord {
         id: "run-1".to_string(),
@@ -169,20 +274,7 @@ fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8]
                 actual: Some(0.0),
             },
         },
-        validation: ValidationSummary {
-            proofs: proofs
-                .iter()
-                .map(|(id, dest, kind)| ProofResult {
-                    id: id.to_string(),
-                    name: id.to_string(),
-                    kind: *kind,
-                    dest: dest.to_string(),
-                    present: true,
-                    detail: None,
-                })
-                .collect(),
-            ..Default::default()
-        },
+        validation,
         links: RunLinks {
             source_repo: None,
             playable_build: None,

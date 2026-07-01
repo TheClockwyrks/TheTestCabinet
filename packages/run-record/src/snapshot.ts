@@ -215,6 +215,12 @@ export type CaseVariantOut = {
    * weights, surfaced only when this variant is selected.
    */
   reviewItems: Array<CaseReviewItemOut>;
+  /**
+   * Scoring domains additive to the case's common ones, rated only when this
+   * variant is selected. The site rates and scores a run against the common
+   * domains plus its variant's own.
+   */
+  domains: Array<CaseDomainOut>;
 };
 
 /**

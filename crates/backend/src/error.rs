@@ -55,6 +55,12 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, "bad_request", message)
     }
 
+    /// `409 Conflict` with code `conflict`. Used when a request conflicts with the
+    /// resource's current state — e.g. canceling a run that has already finished.
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, "conflict", message)
+    }
+
     /// `422 Unprocessable Entity` with code `unprocessable`. Used for the
     /// publish validation gate (a missing review, an invalid rating).
     pub fn unprocessable(message: impl Into<String>) -> Self {

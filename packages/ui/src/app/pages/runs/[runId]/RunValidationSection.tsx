@@ -29,9 +29,13 @@ function buildStep(label: string, step: StepResult | null): Step {
 export function RunValidationSection({ run }: { run: RunRecord }) {
   const { validation } = run;
   // An asset-generation run has no build or per-view checks; its validation is
-  // the regenerate-and-score result, surfaced as its own table.
+  // the regenerate-and-score result, surfaced as its own table. Sprite/sheet runs
+  // carry `asset`; the two voxel kinds carry `voxel`.
   if (validation.asset) {
     return <AssetValidationTable run={run} />;
+  }
+  if (validation.voxel) {
+    return <VoxelValidationTable run={run} />;
   }
   // The required steps every run performs, in the order they run: install, then
   // build, then the overall load signal that depends on both.
@@ -161,6 +165,73 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
                       }
                     >
                       divergence {(frame.cheatDivergence * 100).toFixed(1)}%
+                      {drewOutsideTool ? " — drew outside the tool" : ""}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Panel>
+  );
+}
+
+// The validation widget for a voxel asset-generation run: the run regenerated
+// model(s) (the load signal), how many voxels each part contains, and whether the
+// model wrote outside the tool (cheat divergence on the isometric preview). A
+// static model is one part; an animated model has one row per declared part. As
+// with the sprite table there is no target model or fidelity score — the
+// regenerated model is reviewed against the brief on the Verdict tab.
+function VoxelValidationTable({ run }: { run: RunRecord }) {
+  const { validation } = run;
+  const voxel = validation.voxel!;
+  const animated = !!voxel.model || !!voxel.rig;
+  return (
+    <Panel>
+      <table className={`${styles.checks} ${styles.section}`}>
+        <tbody>
+          <tr>
+            <th scope="row" className={styles.checkName}>
+              Regenerated
+            </th>
+            <td>
+              <span
+                className={validation.loaded ? styles.loaded : styles.notLoaded}
+              >
+                {validation.loaded ? "Yes" : "No"}
+              </span>
+            </td>
+            <td className={styles.secondary}>
+              {animated
+                ? `${voxel.parts.length} parts`
+                : `${voxel.parts[0]?.operationCount ?? 0} operations`}{" "}
+              · {validation.detail ?? "—"}
+            </td>
+          </tr>
+          {voxel.parts.map((part) => {
+            const drewOutsideTool =
+              part.cheatDivergence !== null && part.cheatDivergence > 0.05;
+            const label = animated ? part.name : "Model";
+            return (
+              <tr key={part.name}>
+                <th scope="row" className={styles.checkName}>
+                  {label}
+                </th>
+                <td>
+                  {part.operationCount} ops · {part.voxelCount} voxels
+                </td>
+                <td className={styles.secondary}>
+                  {part.cheatDivergence === null ? (
+                    part.detail ?? "—"
+                  ) : (
+                    <span
+                      className={
+                        drewOutsideTool ? styles.notLoaded : styles.loaded
+                      }
+                    >
+                      divergence {(part.cheatDivergence * 100).toFixed(1)}%
                       {drewOutsideTool ? " — drew outside the tool" : ""}
                     </span>
                   )}

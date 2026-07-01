@@ -1,13 +1,13 @@
 // The Foray browser replay renderer, vendored into the UI library from the
-// case's replay bundle (`test-cases/adversarial-pacman/v1.0.0/replay/renderer.mjs`).
+// case's replay bundle (`test-cases/foray/v1.0.0/replay/renderer.mjs`).
 //
 // This module holds NO game rules. It loads `foray-core` compiled to wasm (the
 // SAME authoritative engine the CLI ran) through the hand-rolled C ABI
 // (alloc / replay_load / replay_board / replay_step / replay_reset — no
 // wasm-bindgen), steps the engine forward exactly as the CLI did, and draws the
 // reconstructed match to a <canvas> using the committed sprite sheet. See:
-//   testing/adversarial/adversarial-pacman/architecture.md -> "Browser playback"
-//   testing/adversarial/adversarial-pacman/assets.md        -> sheet/atlas/palette format
+//   testing/adversarial/foray/architecture.md -> "Browser playback"
+//   testing/adversarial/foray/assets.md        -> sheet/atlas/palette format
 //
 // It does NOT draw one tick per displayed frame: ticks are the simulation's
 // discrete steps, but agents are drawn at INTERPOLATED positions between the two

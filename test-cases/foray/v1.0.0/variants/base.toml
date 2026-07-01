@@ -1,0 +1,7 @@
+# The default Foray variant: the shipped `mirror-32x16` map, fully observable,
+# scored against the canonical `border-soldier` baseline. Listed first in the case
+# manifest's `variants`, so it is the default. Every path here resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The shipped mirror-32x16 maze, fully observable, scored against the border-soldier baseline."

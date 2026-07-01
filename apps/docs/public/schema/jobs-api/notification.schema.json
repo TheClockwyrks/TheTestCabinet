@@ -59,7 +59,7 @@
       "type": ["string", "null"]
     },
     "testCaseSlug": {
-      "description": "The test-case slug being run (e.g. `pong`).",
+      "description": "The test-case slug being run (e.g. `carom`).",
       "type": "string"
     },
     "variant": {

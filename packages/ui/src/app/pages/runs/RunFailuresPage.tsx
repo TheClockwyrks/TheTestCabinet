@@ -13,6 +13,7 @@ import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { findModelByModelId } from "../../data/models";
 import { formatSlug } from "../../format";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
@@ -141,6 +142,7 @@ function FailureRow({
   const { subject } = run;
   const presentation = describeRunState(run.status.state);
   const model = findModelByModelId(subject.modelId);
+  const testCaseName = useTestCaseName();
 
   // Publishing is asynchronous: enqueue and observe the release over its live
   // stream, surfacing each progress line, and only let the row settle into
@@ -165,7 +167,7 @@ function FailureRow({
     <li className={styles.row}>
       <div className={styles.identity}>
         <Link className={styles.test} to={routes.runDetail(run.id)}>
-          {formatSlug(subject.testCaseSlug)}
+          {testCaseName(subject.testCaseSlug)}
         </Link>
         <span className={styles.meta}>
           {formatSlug(subject.variant)} · {model?.name ?? subject.modelId} ·{" "}

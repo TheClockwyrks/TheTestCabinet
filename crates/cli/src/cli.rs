@@ -114,7 +114,7 @@ impl From<HarnessArg> for HarnessSlug {
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct RunArgs {
-    /// Slug of the test case to run (for example, `pong`).
+    /// Slug of the test case to run (for example, `carom`).
     #[arg(long, value_name = "SLUG")]
     pub test_case: String,
 
@@ -268,7 +268,7 @@ pub struct OrchestratorsArgs {
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct SeedArgs {
-    /// Slug of the test case to seed (for example, `pong`).
+    /// Slug of the test case to seed (for example, `carom`).
     #[arg(long, value_name = "SLUG")]
     pub test_case: String,
 
@@ -294,7 +294,7 @@ pub struct SeedArgs {
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PromptArgs {
-    /// Slug of the test case to render the prompt for (for example, `pong`).
+    /// Slug of the test case to render the prompt for (for example, `carom`).
     #[arg(long, value_name = "SLUG")]
     pub test_case: String,
 

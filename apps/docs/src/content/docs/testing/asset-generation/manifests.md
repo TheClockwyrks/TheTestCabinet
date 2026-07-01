@@ -23,6 +23,13 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (per-frame files)
+                             # | "voxel-model" | "voxel-animation" (3D — see "Voxel cases" below)
+
+# Variants: an ORDERED list of paths to standalone variant files (first = default).
+# Because `variants` is a root key, it must appear BEFORE the first table header
+# (here `[canvas]`). Each path is relative to the version folder; by convention the
+# files live under `variants/`. See the variant-file example below.
+variants = ["variants/base.toml"]
 
 # The image the model draws on. For a single sprite this is the whole canvas; for
 # a sprite sheet it is ONE frame (every frame is a separate file of this size).
@@ -68,20 +75,35 @@ fps    = 4                   # playback rate in frames per second (required, > 0
 # brief, with no target image to score the regenerated asset against. (Declaring
 # one — common or per-variant — is rejected.)
 
-# Variants. As with every test type, a case offers one or more and exactly one
-# runs per run. Here a variant varies the BRIEF (an additive spec) the model
-# draws toward — a tighter palette, an operation budget, a required technique —
-# NOT a different reference (a variant declares no reference; see below).
-[[variant]]
+# Common specs, seeded for EVERY variant (the brief describing what to draw and
+# how the tool behaves). Same `source` → `dest` mapping as end-to-end, and `dest`
+# likewise defaults to `source` with a trailing `.hbs` removed — so most briefs
+# just name the source they seed.
+[[spec]]
+source = "specs/brief.md"    # dest defaults to "specs/brief.md"
+
+# Common scoring domains, rated for EVERY variant (at least one required); a
+# variant may add its own domains in its file.
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = "How faithfully the regenerated asset matches the brief." # required
+```
+
+Each `variants` entry points at a standalone variant file, exactly as for an
+[end-to-end case](/testing/end-to-end/manifests/) — a TOML document whose top-level
+keys are the variant's own fields, with every path resolving against the version
+folder. Here a variant varies the **brief** (an additive spec) the model draws
+toward — a tighter palette, an operation budget, a required technique — **not** a
+different reference (an asset-generation case declares none):
+
+```toml
+# test-cases/<slug>/<version>/variants/base.toml
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
-spec = []                    # ADDITIVE specs on top of the common specs
-
-# Common specs, seeded for EVERY variant (the brief describing what to draw and
-# how the tool behaves). Same `source` → `dest` mapping as end-to-end.
-[[spec]]
-source = "specs/brief.hbs"
-dest   = "specs/brief.md"
+spec = []                    # ADDITIVE specs on top of the common specs (dest defaults to source)
+# review_item = [...]        # ADDITIVE reviewer items; may name a common or this variant's own domain
+# [[domain]]                 # ADDITIONAL scoring domains, rated only when this variant runs
 ```
 
 - `type = "asset-generation"` is the explicit test-type discriminator. It is
@@ -92,12 +114,16 @@ dest   = "specs/brief.md"
   a `[build]` table, any `[[check]]`, or any `[[reference]]` (it has no target to
   score against — declaring one, common or per-variant, is rejected).
 - `asset_kind` chooses the **shape** of the asset within an asset-generation
-  case: `"sprite"` (the default — one sprite drawn onto the whole canvas) or
-  `"sprite-sheet"` (a set of animation frames, each a separate file). It is a
-  property of the whole version, **not** a variant axis — a case is either a single
-  sprite or a sprite sheet, never both, and a variant cannot change it. `asset_kind`
-  (and the `[sheet]` table) are only valid for an asset-generation case; an
-  explicit value on any other type is rejected.
+  case: `"sprite"` (the default — one sprite drawn onto the whole canvas),
+  `"sprite-sheet"` (a set of animation frames, each a separate file),
+  `"voxel-model"` (a static 3D voxel model), or `"voxel-animation"` (a rigged,
+  animated 3D voxel model). It is a property of the whole version, **not** a
+  variant axis — a case is exactly one kind, never a mix, and a variant cannot
+  change it. `asset_kind` (and the `[sheet]`, `[voxel]`, and `[model]` tables) are
+  only valid for an asset-generation case; an explicit value on any other type is
+  rejected. The two 2D kinds declare a `[canvas]`; the two 3D kinds declare a
+  `[voxel]` volume instead (see [Voxel cases](#voxel-cases)) — a voxel case must
+  **not** declare `[canvas]`, and a 2D case must **not** declare `[voxel]`.
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
   each just the `index` it is written to (passed as
@@ -112,10 +138,12 @@ dest   = "specs/brief.md"
   images (the sheet layout travels in the run record so the verdict page can
   animate from the run alone).
 - The site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
-  `description`), `prompt`, `max_runtime_hours`, and the `[[spec]]` /
-  `[[variant]]` seeding rules behave as they do for an
+  `description`), `prompt`, `max_runtime_hours`, and the `[[spec]]` and `variants`
+  seeding rules behave as they do for an
   [end-to-end case](/testing/end-to-end/manifests/): the case seeds a brief,
-  renders a prompt, and may offer variants. The difference is references: an
+  renders a prompt, lists its variants as standalone files (the first the
+  default), and each `[[spec]]` `dest` defaults to its `source`. The difference is
+  references: an
   asset-generation case declares **none** (unlike end-to-end, where the common set
   and each variant may add reference mockups). So a variant here varies only the
   seeded brief — an additive `[[spec]]` — that the model draws toward. There is
@@ -177,9 +205,158 @@ domain = "fidelity"
   "sprite-sheet"`): a single sprite, or any non-asset case, has no sheet, so
   declaring either is rejected.
 
+## Voxel cases
+
+A **voxel** case (`asset_kind = "voxel-model"` or `"voxel-animation"`) produces a
+3D asset instead of a 2D image. It replaces the `[canvas]` table with a `[voxel]`
+table and reuses `[tool]` and `[output]` unchanged in shape; an animated case adds
+a `[model]` table declaring the [rig](/testing/asset-generation/overview/#the-rig-parts-and-joints).
+Everything else on the page — `type`, `variants`, `[[spec]]`, `[[domain]]`,
+`[[review_item]]`, the no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules —
+behaves exactly as above.
+
+```toml
+# A static voxel model (asset_kind = "voxel-model").
+asset_kind = "voxel-model"
+
+# The bounding volume the model sculpts into — the 3D analog of [canvas]. Cells
+# are OPAQUE #rrggbb (no alpha) and the volume starts EMPTY.
+[voxel]
+width      = 32              # extent along x, in voxels (required)
+height     = 32              # extent along y — up — in voxels (required)
+depth      = 32              # extent along z, in voxels (required)
+background = "transparent"   # PNG preview clear color only: transparent | a hex color
+                             # (it never places a voxel; the volume is always empty to start)
+
+# The building binary. `voxel` for a static model, `voxel-anim` for an animated
+# one. `preview` is where the binary rasterizes the isometric PNG after each op.
+[tool]
+binary  = "voxel"            # the voxel binary in the environment (required)
+preview = "model.png"        # where the isometric preview is written (a {part} template for voxel-animation)
+
+# Where the recorded operation log is collected — the authoritative output the
+# voxel data and preview are regenerated from.
+[output]
+actions = "actions.json"     # the ordered op record (a {part} template for voxel-animation)
+```
+
+For an **animated** case, `[tool].preview` and `[output].actions` become
+`{part}` templates (one preview and one log per part, e.g.
+`parts/{part}.png` and `parts/{part}.actions.json`), and the case adds a
+`[model]` table:
+
+```toml
+# A rigged, animated voxel model (asset_kind = "voxel-animation").
+asset_kind = "voxel-animation"
+
+[voxel]
+width = 32
+height = 24
+depth = 32
+background = "transparent"
+
+[tool]
+binary  = "voxel-anim"      # required for voxel-animation
+preview = "parts/{part}.png"   # {part} REQUIRED for voxel-animation
+
+[output]
+actions = "parts/{part}.actions.json"  # {part} REQUIRED for voxel-animation
+
+# The REQUIRED rig: the parts + joints the model must produce. The model may add
+# more of its own; this table fixes the stable, game-facing contract and the
+# scoring targets. Required for — and only for — asset_kind = "voxel-animation".
+[model]
+
+[[model.part]]              # >=1 required; the FIRST is the root (no parent)
+name  = "chassis"          # stable part name, unique (targeted with voxel-anim --part chassis)
+pivot = [16, 0, 16]        # origin in world voxel coords for the root part
+
+[[model.part]]
+name   = "turret"
+parent = "chassis"         # a declared part; parents must form a tree (no cycles)
+pivot  = [16, 8, 16]       # attachment point in the PARENT's local voxel coords
+
+[[model.part]]
+name   = "barrel"
+parent = "turret"
+pivot  = [16, 10, 20]
+
+[[model.joint]]            # a caller-driven degree of freedom — the game-facing control
+name  = "turret_yaw"       # stable joint name; the parameter a game addresses, unique
+part  = "turret"           # the part this joint moves (a declared part)
+kind  = "rotation"         # "rotation" (radians) | "translation" (voxel units)
+axis  = "y"                # "x" | "y" | "z" — acts about (rotation) or along (translation)
+pivot = [16, 8, 16]        # joint origin in the part's local voxel coords
+min   = -3.14159           # minimum value (radians for rotation, voxels for translation)
+max   = 3.14159            # maximum value
+rest  = 0.0                # default value, within [min, max]
+drive = "caller"           # "caller" (a game supplies the value) | "auto" (a clip drives it)
+
+[[model.joint]]
+name  = "barrel_pitch"
+part  = "barrel"
+kind  = "rotation"
+axis  = "x"
+pivot = [16, 10, 20]
+min   = -0.2
+max   = 0.6
+rest  = 0.0
+drive = "caller"
+
+# An auto-play clip: the looping motion an `auto` joint plays back on its own.
+# Only for joints whose drive = "auto"; a caller-driven joint takes no clip.
+[[model.clip]]
+joint     = "turret_yaw"   # a declared drive = "auto" joint (this example's turret is caller-driven,
+                           # so a clip here would be a validation error — shown only for the shape)
+period_ms = 4000           # one full loop, in milliseconds
+loop      = true           # loop (true) or hold the last keyframe (false)
+keyframes = [              # >=1, in time order over [0, period_ms]
+  { t_ms = 0,    value = 0.0 },
+  { t_ms = 2000, value = 3.14159 },
+  { t_ms = 4000, value = 0.0 },
+]
+```
+
+- The **`[voxel]`** table fixes the bounding volume: its `width`, `height` (up),
+  and `depth` in voxels, and the `background` used **only** as the isometric
+  preview PNG's clear color — it never places a voxel, because the volume always
+  starts **empty**. It is required for — and only for — a voxel case, and replaces
+  `[canvas]`: a voxel case declaring `[canvas]`, or a 2D case declaring `[voxel]`,
+  is rejected. Voxel cells are **opaque `#rrggbb`** (there is no alpha).
+- The **`[tool]`** and **`[output]`** tables work exactly as for a sprite, with the
+  voxel binaries: `binary = "voxel"` for a static model, `"voxel-anim"` for an
+  animated one (see
+  [The voxel binaries](/testing/asset-generation/voxel-binaries/)). For
+  `voxel-animation` — where each part is a separate log and preview — `preview` and
+  `actions` **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a
+  static `voxel-model` they name single files and must **not** carry `{part}`.
+- The **`[model]`** table is **required for — and only for — `asset_kind =
+  "voxel-animation"`**. It declares the rig's `[[model.part]]` hierarchy and
+  `[[model.joint]]` degrees of freedom (and any `[[model.clip]]` auto-play
+  timelines). Resolution validates that part names are unique, the **first** part
+  is the root (no `parent`), every other `parent` names a declared part, the
+  parents form a **tree** (no cycles), every joint's `part` names a declared part,
+  every joint's `kind`/`axis`/`drive` parse, `min <= rest <= max`, and every
+  `[[model.clip]]` names a declared `drive = "auto"` joint with in-order keyframes
+  over `[0, period_ms]`. A caller-driven joint takes **no** clip.
+- **The rig is the *required* contract, not the whole model.** `[model]` fixes the
+  parts and joints the model **must** produce — the stable, game-facing joint
+  interface a consuming game drives and the targets a reviewer scores. At run time
+  the model may **add** further parts, joints, and auto-play clips of its own with
+  the [`voxel-anim` rig subcommands](/testing/asset-generation/voxel-binaries/);
+  the produced `rig.json` carries **everything** (required plus model-added). The
+  review UI scores against the required set and surfaces its caller joints as
+  controls; the 3D viewer poses the full rig. See
+  [Evaluation](/testing/asset-generation/evaluation/).
+
+A voxel-animation `[[review_item]]` may name the caller **joints** it is about (the
+analog of a sprite sheet's `sequences`/`frames`), so the review UI surfaces exactly
+that joint's viewer and control beside the item.
+
 :::caution[Re-ingest after editing]
-The test type and the `[canvas]`/`[tool]`/`[output]` tables are stored in the
-backend's immutable def store. Because they are newer fields, editing an
+The test type and the `[canvas]`/`[voxel]`/`[tool]`/`[output]`/`[model]` tables
+are stored in the backend's immutable def store. Because they are newer fields,
+editing an
 already-ingested case (or adding a type to one) requires a **forced re-ingest**
 (`POST /ingest {"force": true}`) — otherwise the backend keeps serving the stale
 definition, in which the new fields default empty and the run is treated as

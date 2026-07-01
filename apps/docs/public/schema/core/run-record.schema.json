@@ -345,6 +345,50 @@
         }
       ]
     },
+    "AutoPlaySpec": {
+      "description": "The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of\nkeyframes the viewer (and a consuming game) plays back automatically.",
+      "properties": {
+        "keyframes": {
+          "description": "The keyframes, in time order, sampled over one period.",
+          "items": {
+            "$ref": "#/$defs/KeyframeSpec"
+          },
+          "type": "array"
+        },
+        "looping": {
+          "description": "Whether the clip loops (true) or holds the last keyframe (false).",
+          "type": "boolean"
+        },
+        "periodMs": {
+          "description": "The clip period in milliseconds (one full loop).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["keyframes", "periodMs", "looping"],
+      "type": "object"
+    },
+    "AxisSpec": {
+      "description": "A principal axis a [`JointSpec`] acts about or along.",
+      "oneOf": [
+        {
+          "const": "x",
+          "description": "The x axis.",
+          "type": "string"
+        },
+        {
+          "const": "y",
+          "description": "The y (up) axis.",
+          "type": "string"
+        },
+        {
+          "const": "z",
+          "description": "The z axis.",
+          "type": "string"
+        }
+      ]
+    },
     "CheckResult": {
       "description": "The result of a single opt-in validation check.",
       "properties": {
@@ -388,6 +432,21 @@
         }
       },
       "type": "object"
+    },
+    "DriveKindSpec": {
+      "description": "Who drives a [`JointSpec`].",
+      "oneOf": [
+        {
+          "const": "caller",
+          "description": "A consuming game supplies the joint's value at runtime.",
+          "type": "string"
+        },
+        {
+          "const": "auto",
+          "description": "The joint animates itself from a looping [`AutoPlaySpec`] clip.",
+          "type": "string"
+        }
+      ]
     },
     "HarnessSlug": {
       "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (all eight happen to be single-word lowercase tokens).",
@@ -434,6 +493,112 @@
         }
       ]
     },
+    "JointKindSpec": {
+      "description": "Whether a [`JointSpec`] rotates or translates its part.",
+      "oneOf": [
+        {
+          "const": "rotation",
+          "description": "Rotate the part about [`JointSpec::axis`] through [`JointSpec::pivot`].",
+          "type": "string"
+        },
+        {
+          "const": "translation",
+          "description": "Translate the part along [`JointSpec::axis`].",
+          "type": "string"
+        }
+      ]
+    },
+    "JointSpec": {
+      "description": "A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.\n\nA joint is either **caller-driven** (a consuming game supplies its value at\nruntime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a\nlooping set of keyframes). Rotations are in radians about [`Self::axis`] through\n[`Self::pivot`]; translations are in voxel units along the axis.",
+      "properties": {
+        "auto": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutoPlaySpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The auto-play clip, present only when [`Self::drive`] is\n[`DriveKindSpec::Auto`]; `None` for a caller-driven joint."
+        },
+        "axis": {
+          "$ref": "#/$defs/AxisSpec",
+          "description": "The axis the joint acts about (rotation) or along (translation)."
+        },
+        "drive": {
+          "$ref": "#/$defs/DriveKindSpec",
+          "description": "Who drives this joint: a caller (a game) or an auto-play clip."
+        },
+        "kind": {
+          "$ref": "#/$defs/JointKindSpec",
+          "description": "Whether this joint rotates or translates the part."
+        },
+        "max": {
+          "description": "Maximum value.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "Minimum value: radians for a rotation, voxel units for a translation.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "description": "Stable name of this joint; the parameter a game addresses (for example\n`turret_yaw`).",
+          "type": "string"
+        },
+        "part": {
+          "description": "The part this joint moves (a declared [`PartSpec::name`]).",
+          "type": "string"
+        },
+        "pivot": {
+          "description": "The joint origin in the part's local voxel coordinates (`[x, y, z]`).",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "rest": {
+          "description": "The rest/default value, within `[min, max]`.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "part",
+        "kind",
+        "axis",
+        "pivot",
+        "min",
+        "max",
+        "rest",
+        "drive"
+      ],
+      "type": "object"
+    },
+    "KeyframeSpec": {
+      "description": "A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.",
+      "properties": {
+        "tMs": {
+          "description": "Time offset from the start of the clip, in milliseconds (`0..=period_ms`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "description": "The joint value at this time.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": ["tMs", "value"],
+      "type": "object"
+    },
     "MediaKind": {
       "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>` or a `<video>`.",
       "oneOf": [
@@ -448,6 +613,52 @@
           "type": "string"
         }
       ]
+    },
+    "ModelSpec": {
+      "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required** contract\n(the scoring targets and the stable, game-facing joint interface); at run time\nthe model may add further parts and joints of its own, which are recorded in\nthe produced `rig.json` but are not required here. Carried into the run record\n(see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know\nthe joint interface without a separate catalog lookup.",
+      "properties": {
+        "joints": {
+          "description": "The declared joints, in declared order. Each names a declared part.",
+          "items": {
+            "$ref": "#/$defs/JointSpec"
+          },
+          "type": "array"
+        },
+        "parts": {
+          "description": "The declared parts, in declared order. The first is the root (its `parent`\nis `None`); every other part names a declared parent.",
+          "items": {
+            "$ref": "#/$defs/PartSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["parts", "joints"],
+      "type": "object"
+    },
+    "PartSpec": {
+      "description": "A resolved part of a [`ModelSpec`]: one named voxel component of the rig.",
+      "properties": {
+        "name": {
+          "description": "Stable name of this part (for example `chassis`, `turret`). The `voxel-anim`\nbinary targets a part's voxel operations with `--part <name>`.",
+          "type": "string"
+        },
+        "parent": {
+          "description": "The parent part this one is attached to, or `None` for the root part. A\npart inherits its parent's world transform, so posing a parent moves it too.",
+          "type": ["string", "null"]
+        },
+        "pivot": {
+          "description": "The attachment point of this part in the parent's local voxel coordinates\n(`[x, y, z]`). For the root part this is its origin in world space.",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": ["name", "pivot"],
+      "type": "object"
     },
     "PerformanceCaseResult": {
       "description": "The result of scoring one held-out input case of a performance run.",
@@ -777,6 +988,17 @@
             "$ref": "#/$defs/ProofResult"
           },
           "type": "array"
+        },
+        "voxel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VoxelGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The regenerate result of a voxel asset-generation run. `None` for every\nother type (and for the 2D sprite kinds, which use [`Self::asset`]), so a\nnon-voxel summary serializes with no new field at all."
         }
       },
       "required": ["loaded", "checks"],
@@ -854,6 +1076,105 @@
           "type": ["integer", "null"]
         }
       },
+      "type": "object"
+    },
+    "VoxelGenResult": {
+      "description": "The regenerate result of a voxel asset-generation run — the 3D analog of\n[`AssetGenResult`].\n\nA static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one\n[part](VoxelPartResult) (the whole model); an animated model\n([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared\npart. There is no target model and no automated fidelity score; the regenerated\nmodel is reviewed against the brief. Present only on a voxel run's\n[`ValidationSummary`].",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated at the run level, or\n`None`. Per-part detail lives on each [`VoxelPartResult`].",
+          "type": ["string", "null"]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The **required** rig (parts + joints) the case declared, for an animated\nmodel. The stable, game-facing joint interface reviewers score against.\n`None` for a static model."
+        },
+        "parts": {
+          "description": "The per-part results: exactly one for a static model (named `model`), one per\ndeclared part for an animated model, in declared order.",
+          "items": {
+            "$ref": "#/$defs/VoxelPartResult"
+          },
+          "type": "array"
+        },
+        "rig": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The **full** rig the model actually produced (`rig.json`) — the required\nparts and joints plus any the model added of its own. This is what the\nviewer poses and a consuming game drives. `None` for a static model."
+        }
+      },
+      "required": ["parts"],
+      "type": "object"
+    },
+    "VoxelPartResult": {
+      "description": "The regenerate result for one part of a voxel-generation run.\n\nFor a static model this is the whole model's one part; for an animated model\nthere is one per declared part. As with [`AssetFrameResult`], the\n[divergence](Self::cheat_divergence) between the isometric PNG regenerated from\nthis part's operation log and the PNG the model left on disk is recorded (not\ngated) — a high divergence means the model wrote pixels the tool would not.",
+      "properties": {
+        "cheatDivergence": {
+          "default": null,
+          "description": "Divergence between the regenerated part preview and the model's on-disk\npreview, in `0.0..=1.0` (0.0 is identical). `None` when the model left no\nreadable preview to compare.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated for this part.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The part name this result records under: `model` for a static model, the\ndeclared `[[model.part]]` name for an animated model.",
+          "type": "string"
+        },
+        "operationCount": {
+          "description": "How many operations this part's log recorded.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "opsLog": {
+          "description": "Run-root-relative path to this part's recorded operation log.",
+          "type": "string"
+        },
+        "previewImage": {
+          "description": "Run-root-relative path to the isometric PNG the model left on disk (this\npart's `preview`), kept for the side-by-side comparison and the divergence.",
+          "type": "string"
+        },
+        "regeneratedImage": {
+          "description": "Run-root-relative path to the isometric PNG regenerated from this part's\noperation log — the scored output for this part.",
+          "type": "string"
+        },
+        "regeneratedVoxels": {
+          "description": "Run-root-relative path to the voxel data ([`VoxelsFile`]) regenerated from\nthis part's operation log — what the client renders in 3D.",
+          "type": "string"
+        },
+        "voxelCount": {
+          "description": "How many occupied voxels the regenerated part contains.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "regeneratedVoxels",
+        "regeneratedImage",
+        "previewImage",
+        "opsLog",
+        "operationCount",
+        "voxelCount"
+      ],
       "type": "object"
     }
   },

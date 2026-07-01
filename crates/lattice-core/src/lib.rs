@@ -1,5 +1,5 @@
 //! The authoritative simulation engine for **Lattice** (on-disk slug
-//! `performance-factorio`), the first [performance](../../../apps/docs/) test
+//! `lattice`), the first [performance](../../../apps/docs/) test
 //! case.
 //!
 //! This crate is the single source of truth for the simulation's rules,
@@ -18,7 +18,7 @@
 //!
 //! The authoritative narrative lives in the design docs:
 //! `apps/docs/src/content/docs/testing/performance/` (the test-type framing) and
-//! `.../performance-factorio/` (Lattice's rules, engine/contract, and reference
+//! `.../lattice/` (Lattice's rules, engine/contract, and reference
 //! material).
 //!
 //! ## Map of the crate

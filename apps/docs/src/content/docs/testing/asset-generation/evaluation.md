@@ -31,6 +31,42 @@ in which case the reviewer is shown exactly those animations and frames beside t
 item — with a toggle between the live animation and the still frames — instead of
 scanning the whole sheet to find them.
 
+## Voxel regeneration
+
+A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run
+regenerates in the same way, one dimension up. The validator replays each part's
+recorded operation log through the **same voxel-and-raster library** the
+[voxel binary](/testing/asset-generation/voxel-binaries/) used and, per part,
+produces two artifacts:
+
+- **`voxels.json`** — the sparse, order-stable voxel data (only occupied cells,
+  each an opaque `#rrggbb`, within the declared `[voxel]` volume). This is what the
+  frontend renders as an interactive 3D model with three.js (see
+  [voxel-runtime](/components/voxel-runtime/overview/)); it is a produced artifact,
+  not part of the run record.
+- **the regenerated isometric preview PNG** — rasterized by the same fixed,
+  integer-only isometric projection the binary previews with. This is the **scored
+  output** for the part.
+
+A **static model** (`voxel-model`) has one part — the whole model — so it
+regenerates one `voxels.json` and one preview. An **animated model**
+(`voxel-animation`) regenerates **one per declared part**, independently, each with
+its own cheat-divergence; there is no assembled-model aggregate. The
+per-part previews are the scored artifacts.
+
+### The rig
+
+For an animated model the validator also reconciles the model-produced **`rig.json`**
+— the full rig it built (required parts and joints plus any it added) — against the
+case's **required** [`[model]`](/testing/asset-generation/manifests/#voxel-cases)
+contract. A missing required part or joint is a **zero-scored contract gap** that
+is recorded (not a crash): the game-facing joint interface a case declares is a
+scoring target, so failing to produce it counts against the run rather than
+aborting evaluation. The run record carries both the required `model` and the
+produced `rig`, so the review UI can surface each caller joint (for example
+`turret_yaw`) as a live control and the 3D viewer can pose the full rig without a
+separate catalog lookup.
+
 ## Cheat detection
 
 Comparing the **regenerated image** against the **final image from the model's
@@ -40,6 +76,13 @@ recorded operations — for instance by writing an image file directly — which
 strong sign it tried to bypass the drawing tool. The divergence is recorded so a
 reviewer sees it; because only the regenerated image is ever scored, a model gains
 nothing from drawing outside the tool, and the mismatch simply marks the attempt.
+
+For a **voxel** run the identical check runs on the **isometric preview PNG**: the
+one fixed rasterizer serves both the binary's in-container preview and the
+validator's regeneration, so a model that placed voxels only through the tool
+regenerates to the same PNG and a model that wrote a preview image directly
+diverges. For an animated model each **part** carries its own cheat-divergence,
+measured against that part's on-disk preview.
 
 ## Review
 

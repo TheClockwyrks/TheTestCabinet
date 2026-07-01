@@ -66,6 +66,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 weight: 1,
                 domain: None,
             }],
+            domains: vec![],
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),

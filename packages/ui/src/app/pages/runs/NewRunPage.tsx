@@ -12,6 +12,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunExec.module.scss";
 
@@ -34,6 +35,7 @@ export function NewRunPage() {
     version: params.get("version"),
     variant: params.get("variant"),
   });
+  const testCaseName = useTestCaseName();
 
   const [models, setModels] = useState<Model[]>([]);
   // Harnesses are a fixed, code-defined catalog (not backend-served): default to
@@ -163,7 +165,7 @@ export function NewRunPage() {
           >
             {sel.cases.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {c.slug}
+                {testCaseName(c.slug)}
               </option>
             ))}
           </select>

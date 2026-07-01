@@ -47,10 +47,10 @@
 !/containers/performance/buildkit/Cargo.toml
 
 # The performance image bakes the committed training scenarios from the
-# performance-factorio case's version folder (see containers/performance/Dockerfile's
+# Lattice case's version folder (see containers/performance/Dockerfile's
 # `COPY test-cases/.../references/training`). It is the one test-case tree a build
 # embeds, so it must survive the allowlist; the path tracks the Dockerfile's COPY.
-!/test-cases/performance-factorio/v1.0.0/references/training
+!/test-cases/lattice/v1.0.0/references/training
 
 # The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
 # service image: it `npm ci`s the npm workspace and `vite build`s the web console
@@ -59,9 +59,12 @@
 #   - the root npm manifests (package.json + the lockfile npm ci validates against),
 #   - EVERY workspace member's package.json (npm ci validates the whole workspace
 #     against the lockfile, so a missing member's manifest aborts the install), and
-#   - the SOURCE of the three packages the console actually bundles: apps/web itself
+#   - the SOURCE of the packages the console actually bundles: apps/web itself
 #     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
-#     Vite resolves to their TypeScript sources (packages/ui exports ./src/*).
+#     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
+#     @test-cabinet/voxel-runtime, whose compiled `./three` subpath the ui library
+#     imports (the Dockerfile builds its dist/ before the console — the sources
+#     ride along here, dist/ is re-excluded below and rebuilt in-image).
 # node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
 # win), so a local install/build never rides along.
 !/package.json
@@ -73,6 +76,7 @@
 !/apps/web
 !/packages/run-record
 !/packages/ui
+!/packages/voxel-runtime
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed

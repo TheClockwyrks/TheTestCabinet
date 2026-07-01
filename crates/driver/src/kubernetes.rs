@@ -36,7 +36,7 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Status};
-use kube::api::{AttachParams, DeleteParams, LogParams, PostParams};
+use kube::api::{AttachParams, DeleteParams, ListParams, LogParams, PostParams};
 use kube::{Api, Client};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{Instant, sleep};
@@ -56,6 +56,12 @@ const WORK_DIR: &str = "/work";
 /// The name of the single container in each run pod. `exec` targets it explicitly
 /// so a future sidecar would not make the target ambiguous.
 const RUN_CONTAINER: &str = "run";
+
+/// The label each run pod carries identifying the job it belongs to (the same key
+/// the dispatcher stamps on the driver `Job`). It lets the driver find and delete
+/// exactly *its* sandbox pod when a run is canceled, without disturbing another
+/// run's pod that shares the `managed-by: tcab-driver` label.
+const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 
 /// How many times to attempt the streaming `tar` artifact collection before giving
 /// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
@@ -102,6 +108,11 @@ pub struct KubernetesConfig {
     pub pod_ip: Option<String>,
     /// Name prefix for run pods (the rest is a uuid).
     pub run_pod_prefix: String,
+    /// The id of the job this driver executes. Stamped onto each run pod as the
+    /// [`JOB_ID_LABEL`] so the driver can find and delete its own sandbox pod on
+    /// cancellation. `None` outside a dispatcher-driven run (e.g. a test), in which
+    /// case the label is omitted and [`Self::delete_run_pods_for_job`] is a no-op.
+    pub job_id: Option<String>,
 }
 
 impl Default for KubernetesConfig {
@@ -118,6 +129,7 @@ impl Default for KubernetesConfig {
             pod_schedule_timeout: None,
             pod_ip: None,
             run_pod_prefix: "tcab-run-".to_string(),
+            job_id: None,
         }
     }
 }
@@ -168,6 +180,49 @@ impl KubernetesContainerRuntime {
     /// The pods API in the run namespace.
     fn pods(&self) -> Api<Pod> {
         Api::namespaced(self.client.clone(), &self.config.namespace)
+    }
+
+    /// Tear down this run's sandbox pod(s) — the teardown path used when a run is
+    /// **canceled** mid-flight. Dropping the run future cancels the in-flight
+    /// harness `exec`, but the sandbox pod the run created outlives it, so it is
+    /// removed here: every pod carrying this job's [`JOB_ID_LABEL`] is deleted with
+    /// a zero grace period (the run is over; there is nothing to drain), matching
+    /// what [`ContainerRuntime::stop`] does at a normal end of run.
+    ///
+    /// Listing-then-deleting (rather than a single `delete_collection`) keeps to the
+    /// `pods` `list`/`delete` verbs the driver already holds — no extra RBAC. A pod
+    /// already gone is not an error (this is also the cleanup path). A no-op when no
+    /// job id is configured (there is no label to select on).
+    pub async fn delete_run_pods_for_job(&self) -> Result<()> {
+        let Some(job_id) = self.config.job_id.as_deref() else {
+            return Ok(());
+        };
+        let selector = format!("{JOB_ID_LABEL}={job_id}");
+        let listed = self
+            .pods()
+            .list(&ListParams::default().labels(&selector))
+            .await
+            .map_err(|err| {
+                Error::ContainerRuntime(format!("listing run pods for job `{job_id}`: {err}"))
+            })?;
+        let params = DeleteParams::default().grace_period(0);
+        for pod in listed {
+            let Some(name) = pod.metadata.name else {
+                continue;
+            };
+            match self.pods().delete(&name, &params).await {
+                Ok(_) => {}
+                // A pod already gone is success — the run may have torn it down on
+                // its own as the future unwound.
+                Err(kube::Error::Api(err)) if err.code == 404 => {}
+                Err(err) => {
+                    return Err(Error::ContainerRuntime(format!(
+                        "deleting run pod `{name}`: {err}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The `Pod` manifest for a run from its [`ContainerSpec`].
@@ -784,7 +839,7 @@ fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) ->
         ..Default::default()
     };
 
-    let labels = BTreeMap::from([
+    let mut labels = BTreeMap::from([
         (
             "app.kubernetes.io/managed-by".to_string(),
             "tcab-driver".to_string(),
@@ -806,6 +861,11 @@ fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) ->
             .to_string(),
         ),
     ]);
+    // Tag the pod with the run's job id so the driver can target exactly this run's
+    // sandbox when a cancellation asks it to tear the pod down.
+    if let Some(job_id) = &config.job_id {
+        labels.insert(JOB_ID_LABEL.to_string(), job_id.clone());
+    }
 
     let image_pull_secrets = (!config.image_pull_secrets.is_empty()).then(|| {
         config

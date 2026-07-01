@@ -40,7 +40,7 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec, RunRecord } from "@test-cabinet/run-record";
 import {
   delJson,
   getJson,
@@ -110,12 +110,17 @@ interface ResolvedVersion {
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
-  // The case's scoring domains (case-level).
+  // The case's COMMON scoring domains (every variant is rated on these; a variant
+  // may add its own — carried on each variant's `domains`).
   domains?: Domain[];
   // The sprite-sheet frame grid and named sequences (camelCase `SheetSpec`),
   // present only for a sprite-sheet case. Its shape matches the run-record
   // `AssetSheet`, so it is carried through verbatim.
   sheet?: AssetSheet | null;
+  // The rig (parts + joints) a voxel-animation case declares (camelCase
+  // `ModelSpec`), present only for a voxel-animation case. Carried through
+  // verbatim, the 3D analog of `sheet`.
+  model?: ModelSpec | null;
   variants: {
     slug: string;
     name: string;
@@ -125,6 +130,9 @@ interface ResolvedVersion {
     specs?: SpecDescriptor[];
     reviewItems?: ReviewItem[];
     references?: ReferenceDescriptor[];
+    // The variant's own additive scoring domains (rated only when this variant is
+    // selected, on top of the case's common ones).
+    domains?: Domain[];
   }[];
 }
 
@@ -222,6 +230,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         testType: r.testType,
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
+        model: r.model ?? null,
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,
@@ -246,6 +255,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             ...(r.commonReviewItems ?? []),
             ...(v.reviewItems ?? []),
           ],
+          // The common scoring domains apply to every variant; the variant's own
+          // additive domains follow. This effective set is what a run of this
+          // variant is rated against.
+          domains: [...(r.domains ?? []), ...(v.domains ?? [])],
         })),
       };
     },
@@ -528,7 +541,10 @@ export function createBackendExec(
       return { url: backendUrl, version: null, backendId: backendUrl };
     },
 
-    async launchRun(config: LaunchConfig, token?: string | null): Promise<string> {
+    async launchRun(
+      config: LaunchConfig,
+      token?: string | null,
+    ): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
       // driver Job. The body is the backend's `LaunchBody` (camelCase). The
       // backend gates `POST /jobs` on the launching account, so the signed-in
@@ -714,6 +730,20 @@ export function createBackendExec(
       );
     },
 
+    async killRun(id: string, token: string): Promise<void> {
+      // `POST /jobs/{id}/cancel` moves an in-flight run to the terminal `canceled`
+      // state and closes its live stream; the driver polls its own state, notices
+      // the cancellation, and tears its sandbox down. The backend gates it on the
+      // launching account, so the signed-in token rides along; it refuses a run
+      // that already finished (`409`).
+      await postJson<JobStatusResponse>(
+        backendUrl,
+        `/jobs/${encodeURIComponent(id)}/cancel`,
+        {},
+        token,
+      );
+    },
+
     // A pre-publish run's proof / asset media is served by the artifact service
     // (the data plane), so resolve those root-relative paths against its base URL
     // rather than the control-plane backend. Null when no artifact service is
@@ -779,6 +809,13 @@ async function streamLive(
         await backend.readRun(status.recordId),
       ).record;
       handlers.onDone({ kind: "completed", record });
+    } else if (status.state === "canceled") {
+      // An operator killed the run. Report it as an intentional stop rather than a
+      // fault, so the monitor shows "canceled" instead of "failed".
+      handlers.onDone({
+        kind: "canceled",
+        message: status.detail ?? "Run canceled.",
+      });
     } else {
       handlers.onDone({
         kind: "failed",

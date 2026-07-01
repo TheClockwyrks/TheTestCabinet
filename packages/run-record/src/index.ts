@@ -479,6 +479,298 @@ export type AssetSheetSequence = {
 };
 
 /**
+ * The regenerate result of a voxel asset-generation run — the 3D analog of
+ * [`AssetGenResult`].
+ *
+ * A static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one
+ * [part](VoxelPartResult) (the whole model); an animated model
+ * ([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared
+ * part. There is no target model and no automated fidelity score; the regenerated
+ * model is reviewed against the brief. Present only on a voxel run's
+ * [`ValidationSummary`].
+ */
+export type VoxelGenResult = {
+  /**
+   * The per-part results: exactly one for a static model (named `model`), one per
+   * declared part for an animated model, in declared order.
+   */
+  parts: Array<VoxelPartResult>;
+  /**
+   * The **required** rig (parts + joints) the case declared, for an animated
+   * model. The stable, game-facing joint interface reviewers score against.
+   * `None` for a static model.
+   */
+  model?: ModelSpec;
+  /**
+   * The **full** rig the model actually produced (`rig.json`) — the required
+   * parts and joints plus any the model added of its own. This is what the
+   * viewer poses and a consuming game drives. `None` for a static model.
+   */
+  rig?: ModelSpec;
+  /**
+   * Detail about anything that could not be evaluated at the run level, or
+   * `None`. Per-part detail lives on each [`VoxelPartResult`].
+   */
+  detail: string | null;
+};
+
+/**
+ * The regenerate result for one part of a voxel-generation run.
+ *
+ * For a static model this is the whole model's one part; for an animated model
+ * there is one per declared part. As with [`AssetFrameResult`], the
+ * [divergence](Self::cheat_divergence) between the isometric PNG regenerated from
+ * this part's operation log and the PNG the model left on disk is recorded (not
+ * gated) — a high divergence means the model wrote pixels the tool would not.
+ */
+export type VoxelPartResult = {
+  /**
+   * The part name this result records under: `model` for a static model, the
+   * declared `[[model.part]]` name for an animated model.
+   */
+  name: string;
+  /**
+   * Run-root-relative path to the voxel data ([`VoxelsFile`]) regenerated from
+   * this part's operation log — what the client renders in 3D.
+   */
+  regeneratedVoxels: string;
+  /**
+   * Run-root-relative path to the isometric PNG regenerated from this part's
+   * operation log — the scored output for this part.
+   */
+  regeneratedImage: string;
+  /**
+   * Run-root-relative path to the isometric PNG the model left on disk (this
+   * part's `preview`), kept for the side-by-side comparison and the divergence.
+   */
+  previewImage: string;
+  /**
+   * Run-root-relative path to this part's recorded operation log.
+   */
+  opsLog: string;
+  /**
+   * How many operations this part's log recorded.
+   */
+  operationCount: number;
+  /**
+   * How many occupied voxels the regenerated part contains.
+   */
+  voxelCount: number;
+  /**
+   * Divergence between the regenerated part preview and the model's on-disk
+   * preview, in `0.0..=1.0` (0.0 is identical). `None` when the model left no
+   * readable preview to compare.
+   */
+  cheatDivergence: number | null;
+  /**
+   * Detail about anything that could not be evaluated for this part.
+   */
+  detail: string | null;
+};
+
+/**
+ * The resolved `[model]` of a voxel-animation case: the rig the model must
+ * produce — named parts in a parent/child hierarchy and the named joints a
+ * consuming game (or an auto-play clip) drives. This is the **required** contract
+ * (the scoring targets and the stable, game-facing joint interface); at run time
+ * the model may add further parts and joints of its own, which are recorded in
+ * the produced `rig.json` but are not required here. Carried into the run record
+ * (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
+ * the joint interface without a separate catalog lookup.
+ */
+export type ModelSpec = {
+  /**
+   * The declared parts, in declared order. The first is the root (its `parent`
+   * is `None`); every other part names a declared parent.
+   */
+  parts: Array<PartSpec>;
+  /**
+   * The declared joints, in declared order. Each names a declared part.
+   */
+  joints: Array<JointSpec>;
+};
+
+/**
+ * A resolved part of a [`ModelSpec`]: one named voxel component of the rig.
+ */
+export type PartSpec = {
+  /**
+   * Stable name of this part (for example `chassis`, `turret`). The `voxel-anim`
+   * binary targets a part's voxel operations with `--part <name>`.
+   */
+  name: string;
+  /**
+   * The parent part this one is attached to, or `None` for the root part. A
+   * part inherits its parent's world transform, so posing a parent moves it too.
+   */
+  parent?: string;
+  /**
+   * The attachment point of this part in the parent's local voxel coordinates
+   * (`[x, y, z]`). For the root part this is its origin in world space.
+   */
+  pivot: [number, number, number];
+};
+
+/**
+ * A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.
+ *
+ * A joint is either **caller-driven** (a consuming game supplies its value at
+ * runtime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a
+ * looping set of keyframes). Rotations are in radians about [`Self::axis`] through
+ * [`Self::pivot`]; translations are in voxel units along the axis.
+ */
+export type JointSpec = {
+  /**
+   * Stable name of this joint; the parameter a game addresses (for example
+   * `turret_yaw`).
+   */
+  name: string;
+  /**
+   * The part this joint moves (a declared [`PartSpec::name`]).
+   */
+  part: string;
+  /**
+   * Whether this joint rotates or translates the part.
+   */
+  kind: JointKindSpec;
+  /**
+   * The axis the joint acts about (rotation) or along (translation).
+   */
+  axis: AxisSpec;
+  /**
+   * The joint origin in the part's local voxel coordinates (`[x, y, z]`).
+   */
+  pivot: [number, number, number];
+  /**
+   * Minimum value: radians for a rotation, voxel units for a translation.
+   */
+  min: number;
+  /**
+   * Maximum value.
+   */
+  max: number;
+  /**
+   * The rest/default value, within `[min, max]`.
+   */
+  rest: number;
+  /**
+   * Who drives this joint: a caller (a game) or an auto-play clip.
+   */
+  drive: DriveKindSpec;
+  /**
+   * The auto-play clip, present only when [`Self::drive`] is
+   * [`DriveKindSpec::Auto`]; `None` for a caller-driven joint.
+   */
+  auto?: AutoPlaySpec;
+};
+
+/**
+ * Whether a [`JointSpec`] rotates or translates its part.
+ */
+export type JointKindSpec = "rotation" | "translation";
+
+/**
+ * A principal axis a [`JointSpec`] acts about or along.
+ */
+export type AxisSpec = "x" | "y" | "z";
+
+/**
+ * Who drives a [`JointSpec`].
+ */
+export type DriveKindSpec = "caller" | "auto";
+
+/**
+ * The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of
+ * keyframes the viewer (and a consuming game) plays back automatically.
+ */
+export type AutoPlaySpec = {
+  /**
+   * The keyframes, in time order, sampled over one period.
+   */
+  keyframes: Array<KeyframeSpec>;
+  /**
+   * The clip period in milliseconds (one full loop).
+   */
+  periodMs: number;
+  /**
+   * Whether the clip loops (true) or holds the last keyframe (false).
+   */
+  looping: boolean;
+};
+
+/**
+ * A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.
+ */
+export type KeyframeSpec = {
+  /**
+   * Time offset from the start of the clip, in milliseconds (`0..=period_ms`).
+   */
+  tMs: number;
+  /**
+   * The joint value at this time.
+   */
+  value: number;
+};
+
+/**
+ * The client-facing voxel data file (`voxels.json`) the validator regenerates from
+ * a part's operation log. Sparse (only occupied voxels are listed) because a voxel
+ * volume is mostly empty; emitted in x/y/z scan order so it is byte-stable. This
+ * is a produced run artifact, not part of the run record — the 3D viewer and the
+ * reusable `@test-cabinet/voxel-runtime` package load it directly.
+ */
+export type VoxelsFile = {
+  /**
+   * The bounding volume the voxels sit within.
+   */
+  dims: VoxelDims;
+  /**
+   * The occupied voxels, in x/y/z scan order.
+   */
+  voxels: Array<VoxelCell>;
+};
+
+/**
+ * The bounding volume of a [`VoxelsFile`], in voxels.
+ */
+export type VoxelDims = {
+  /**
+   * Extent along x.
+   */
+  width: number;
+  /**
+   * Extent along y (up).
+   */
+  height: number;
+  /**
+   * Extent along z.
+   */
+  depth: number;
+};
+
+/**
+ * One occupied voxel in a [`VoxelsFile`]: an integer cell and its opaque color.
+ */
+export type VoxelCell = {
+  /**
+   * Voxel x coordinate.
+   */
+  x: number;
+  /**
+   * Voxel y coordinate.
+   */
+  y: number;
+  /**
+   * Voxel z coordinate.
+   */
+  z: number;
+  /**
+   * The voxel's opaque color as a `#rrggbb` hex string.
+   */
+  color: string;
+};
+
+/**
  * Which side a match outcome is reported from, for an adversarial run.
  *
  * The validator always runs the submission as Red against the committed baseline
@@ -895,6 +1187,12 @@ export type RunValidation = {
    * all and its shape is unchanged.
    */
   asset?: AssetGenResult;
+  /**
+   * The regenerate result of a voxel asset-generation run. `None` for every
+   * other type (and for the 2D sprite kinds, which use [`Self::asset`]), so a
+   * non-voxel summary serializes with no new field at all.
+   */
+  voxel?: VoxelGenResult;
   /**
    * The canonical-match result of an adversarial run. `None` for any other
    * type, so a non-adversarial summary serializes with no new field at all and

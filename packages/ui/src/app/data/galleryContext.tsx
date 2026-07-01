@@ -1,12 +1,21 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   AdversarialResult,
   AssetSheet,
   ControllerRef,
   MatchSummary,
+  ModelSpec,
   RunRecord,
   RunSubject,
   TournamentRecord,
+  VoxelsFile,
 } from "@test-cabinet/run-record";
 import type {
   ProgressCallback,
@@ -31,9 +40,10 @@ import type {
  */
 export type CatalogStatus = "loading" | "ready" | "error";
 
-/** The scoring model for a run: the variant's weighted checklist items and the
- * case's scoring domains, resolved from the catalog. Both empty when the case is
- * not in the catalog this host holds. */
+/** The scoring model for a run: the variant's weighted checklist items and its
+ * effective scoring domains (the case's common domains + the variant's own),
+ * resolved from the catalog. Both empty when the case is not in the catalog this
+ * host holds. */
 export interface ReviewModel {
   items: ReviewItemSummary[];
   domains: DomainSummary[];
@@ -340,6 +350,61 @@ export interface AssetResultView {
 }
 
 /**
+ * One part of a voxel asset-generation run, resolved for display: the regenerated
+ * voxel data the 3D viewer poses, the isometric PNGs (regenerated vs the model's
+ * own preview) reviewed against the brief, and the recorded operation log — each
+ * as a loadable URL (or null when the host cannot serve it) — alongside the
+ * recorded cheat-divergence signal. The 3D analog of {@link AssetFrameView}.
+ */
+export interface VoxelPartView {
+  /** The part name: `model` for a static model, the declared part for animation. */
+  name: string;
+  /** The regenerated `voxels.json` for this part (fed to the 3D viewer). */
+  voxelsUrl: string | null;
+  /** The regenerated isometric PNG (the WebGL/reduced-motion fallback). */
+  regeneratedUrl: string | null;
+  /** The model's own on-disk isometric preview PNG. */
+  previewUrl: string | null;
+  /** The recorded operation log for this part. */
+  actionsUrl: string | null;
+  /** Divergence of the regenerated image from the preview, or null if unmeasured. */
+  cheatDivergence: number | null;
+  /** How many operations the recorded log holds. */
+  operationCount: number;
+  /** How many occupied voxels the regenerated part contains. */
+  voxelCount: number;
+  /** Detail about anything that could not be evaluated, or null. */
+  detail: string | null;
+}
+
+/**
+ * A voxel asset-generation run's result, resolved for display: one part for a
+ * static model, one per declared part for an animated (rigged) model. The rig
+ * structure travels inline in the run record (the {@link ModelSpec}), so the
+ * viewer poses it directly; only each part's `voxels.json` is fetched (see
+ * {@link GalleryData} `useVoxelArtifacts`). The 3D analog of {@link AssetResultView}.
+ */
+export interface VoxelResultView {
+  /** Whether this is an animated (rigged) model versus a static single model. */
+  animated: boolean;
+  /**
+   * The full rig the model produced (`rig.json` — the required parts/joints plus
+   * any the model added), which the viewer poses and a game drives. Null for a
+   * static model (the caller synthesizes a trivial single-part rig).
+   */
+  rig: ModelSpec | null;
+  /**
+   * The required rig the case declared (the game-facing joint interface reviewers
+   * score against). Null for a static model.
+   */
+  model: ModelSpec | null;
+  /** The per-part results, in declared order (exactly one for a static model). */
+  parts: VoxelPartView[];
+  /** Detail about anything that could not be evaluated at the run level, or null. */
+  detail: string | null;
+}
+
+/**
  * An adversarial run's canonical-match result, resolved for display: the
  * loadable URL of the published, browser-playable replay (or null when the host
  * cannot serve it) alongside the recorded match record (opponent, sides, winner,
@@ -418,6 +483,13 @@ export interface GalleryData extends GalleryDataInput {
    */
   assetResultFor(run: RunRecord): AssetResultView | null;
   /**
+   * A voxel asset-generation run's result resolved for display, or null when the
+   * run is not a voxel run (its `validation.voxel` is absent). Media URLs (the
+   * per-part `voxels.json` and isometric PNGs) are resolved via
+   * {@link assetMediaUrl}; the rig structure travels inline in the run record.
+   */
+  voxelResultFor(run: RunRecord): VoxelResultView | null;
+  /**
    * An adversarial run's canonical-match result resolved for display, or null
    * when the run is not adversarial (its `validation.adversarial` is absent). The
    * replay URL is resolved via {@link assetMediaUrl}, the same per-run asset
@@ -426,10 +498,10 @@ export interface GalleryData extends GalleryDataInput {
   replayResultFor(run: RunRecord): ReplayResultView | null;
   /**
    * The scoring model for a run's subject: the effective (common + variant)
-   * weighted checklist items and the case's scoring domains, resolved from the
-   * catalog this host holds. Items and domains are empty when the case is not in
-   * the catalog. Lets the verdict page and the leaderboard score a run from its
-   * review verdicts and per-domain ratings.
+   * weighted checklist items and the effective (common + variant) scoring
+   * domains, resolved from the catalog this host holds. Items and domains are
+   * empty when the case is not in the catalog. Lets the verdict page and the
+   * leaderboard score a run from its review verdicts and per-domain ratings.
    */
   reviewModelFor(subject: RunSubject): ReviewModel;
 }
@@ -462,7 +534,9 @@ export function GalleryDataProvider({
         );
         return {
           items: variant?.reviewItems ?? [],
-          domains: testCase?.domains ?? [],
+          // The variant's effective scoring domains (common + its own). Falls back
+          // to the case's common domains when the variant can't be resolved.
+          domains: variant?.domains ?? testCase?.domains ?? [],
         };
       },
       proofMediaFor(run) {
@@ -501,6 +575,43 @@ export function GalleryDataProvider({
           frames,
           detail: asset.detail,
           sheet: asset.sheet ?? null,
+        };
+      },
+      voxelResultFor(run) {
+        const voxel = run.validation.voxel;
+        if (!voxel) return null;
+        // Parts are addressed by the same flat served names the backend serves and
+        // the snapshot publishes (see `playable::serve_asset_file`): a static model
+        // under bare names (its one part), an animated model suffixing each part
+        // with its `-<index>` in declared order. The recorded per-part paths are
+        // the produced *tree* paths (which carry slashes) — not what the
+        // one-segment `/asset/{file}` endpoint accepts — so they are resolved here
+        // into the flat logical names instead.
+        const animated = !!voxel.model || !!voxel.rig;
+        const url = (path: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, path) : null;
+        const parts: VoxelPartView[] = voxel.parts.map((part, index) => {
+          const suffix = animated ? `-${index}` : "";
+          return {
+            name: part.name,
+            voxelsUrl: url(`voxels${suffix}.json`),
+            regeneratedUrl: url(`regenerated${suffix}.png`),
+            previewUrl: url(`preview${suffix}.png`),
+            actionsUrl: url(`actions${suffix}.json`),
+            cheatDivergence: part.cheatDivergence,
+            operationCount: part.operationCount,
+            voxelCount: part.voxelCount,
+            detail: part.detail,
+          };
+        });
+        return {
+          // A static model declares neither the required nor the produced rig; an
+          // animated one carries both. The produced rig drives the viewer.
+          animated,
+          rig: voxel.rig ?? null,
+          model: voxel.model ?? null,
+          parts,
+          detail: voxel.detail,
         };
       },
       replayResultFor(run) {
@@ -556,4 +667,92 @@ export function useGalleryData(): GalleryData {
     throw new Error("useGalleryData must be used within a GalleryDataProvider");
   }
   return ctx;
+}
+
+// A process-wide cache of fetched `voxels.json` files, keyed by their resolved
+// URL. Voxel data is immutable per published/produced run, so a file fetched once
+// (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.
+const voxelFileCache = new Map<string, VoxelsFile>();
+
+/** The load state of a set of voxel artifacts (see {@link useVoxelArtifacts}). */
+export interface VoxelArtifacts {
+  /**
+   * The fetched voxel data keyed by part name, or null while any part is still
+   * loading (so the viewer waits for a complete set before building its meshes).
+   */
+  voxelsByPart: Record<string, VoxelsFile> | null;
+  /** True while any requested part is still being fetched. */
+  loading: boolean;
+  /** A message when a part could not be fetched or parsed, else null. */
+  error: string | null;
+}
+
+/**
+ * Fetch (and cache) the `voxels.json` data the 3D voxel viewer needs for a run's
+ * parts. Pass the run's {@link VoxelResultView} parts (name + resolved
+ * `voxelsUrl`); the hook fetches each unservable-null URL is skipped, resolves the
+ * lot into a `{ [partName]: VoxelsFile }` map, and reuses the module cache across
+ * mounts. `voxelsByPart` stays null until every servable part has resolved, so the
+ * viewer builds one complete rig rather than flickering part-by-part.
+ */
+export function useVoxelArtifacts(
+  parts: readonly { name: string; voxelsUrl: string | null }[],
+): VoxelArtifacts {
+  // A stable dependency key: the ordered name→url pairs as one string.
+  const key = parts.map((p) => `${p.name}=${p.voxelsUrl ?? ""}`).join("|");
+  const [state, setState] = useState<VoxelArtifacts>({
+    voxelsByPart: null,
+    loading: true,
+    error: null,
+  });
+
+  useEffect(() => {
+    const servable = parts.filter((p) => p.voxelsUrl);
+    if (servable.length === 0) {
+      setState({ voxelsByPart: {}, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ voxelsByPart: null, loading: true, error: null });
+
+    Promise.all(
+      servable.map(async (part) => {
+        const url = part.voxelsUrl!;
+        const cached = voxelFileCache.get(url);
+        if (cached) return [part.name, cached] as const;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`${part.name}: ${response.status}`);
+        }
+        const file = (await response.json()) as VoxelsFile;
+        voxelFileCache.set(url, file);
+        return [part.name, file] as const;
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setState({
+          voxelsByPart: Object.fromEntries(entries),
+          loading: false,
+          error: null,
+        });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setState({
+          voxelsByPart: null,
+          loading: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // `key` captures the parts' names and URLs; `parts` itself may be a fresh
+    // array each render, so we key the effect on the derived string instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return state;
 }

@@ -11,6 +11,15 @@ driver uploads each run's tree to it; a [console](#web-console) reads it from th
 to play and review a run. It is a data-plane peer kept separate from the
 [backend](#backend), so artifact bytes never transit the control plane.
 
+## Attachment Pivot
+
+A [part](#part)'s attachment pivot is the point — in its parent's local voxel
+coordinates — at which it hangs off its parent in a [rig](#rig). Posing the parent
+moves the child about this point, so a `turret`'s pivot is where it sits on the
+`chassis` and a [joint](#joint) that rotates the turret turns it about (a pivot on)
+that attachment. For the root part the pivot is its origin in world space. See
+[Voxel binaries](/testing/asset-generation/voxel-binaries/).
+
 ## Auth Service
 
 The [auth service](/components/auth/overview/) is the standalone private service
@@ -36,10 +45,13 @@ cases.
 
 A scoring domain is a facet of a test case the reviewer rates independently —
 for example a game's single-player and versus modes. A case declares one or more
-domains; the reviewer assigns a [rating](#rating) to each while playing the
-build, and the run's **overall rating** is the *worst* across them, so a flawless
-mode cannot mask a broken one. A [review item](#reviewer-checklist) may roll up
-to a domain, or stay general when it applies to every mode.
+**common** domains that every variant is rated on, and a [variant](#variant) may
+add its own domains, so the effective set a reviewer rates for a run is the common
+domains plus that run's variant's own. The reviewer assigns a [rating](#rating) to
+each while playing the build, and the run's **overall rating** is the *worst*
+across that effective set, so a flawless mode cannot mask a broken one. A
+[review item](#reviewer-checklist) may roll up to a domain, or stay general when
+it applies to every mode.
 
 ## Dispatcher
 
@@ -71,6 +83,19 @@ The Test Cabinet handles running other harnesses. It does not directly hit LLM
 APIs or implement an agentic loop. That responsibility lies entirely with the
 agentic harnesses that The Test Cabinet uses to run the tests.
 
+## Joint
+
+A joint is one named **degree of freedom** on a [rig](#rig) [part](#part): a
+rotation (radians about an axis through a pivot) or a translation (voxel units along
+an axis), bounded by a `min`/`max`/`rest` range. Each joint is one of two kinds by
+who drives it. A **caller-driven** joint takes its value from a consuming game at
+runtime — the stable, game-facing control (for example `turret_yaw`). An
+**auto-play** joint animates itself from a looping keyframe clip the viewer and a
+game play back automatically. A [voxel-animation](#voxel) case declares the
+**required** joints in its `[model]` table (the scoring targets); the model may add
+more of its own. See
+[Voxel models and rigs](/testing/asset-generation/overview/#the-rig-parts-and-joints).
+
 ## Leaderboard
 
 Each test case has a per-variant leaderboard ranking the models that have scored
@@ -92,6 +117,17 @@ agentic harness (which performs the work of a single session) and from the
 Cabinet components that execute and report runs): an orchestrator is selected per
 run, defaults to `one-shot` (a single session), and is harness-agnostic. See
 [Orchestrators](/orchestrators/overview/).
+
+## Part
+
+A part is one named [voxel](#voxel) component of a [rig](#rig) — for example a
+tank's `chassis`, `turret`, or `barrel`. Parts form a **parent/child hierarchy**,
+each attached to its parent at an [attachment pivot](#attachment-pivot), and each is
+sculpted independently (its own operation log and preview, targeted with
+`voxel-anim --part <name>`). Posing a parent moves its children with it. A
+[voxel-animation](#voxel) case declares the **required** parts in its `[model]`
+table; the model may add more. See
+[Voxel models and rigs](/testing/asset-generation/overview/#the-rig-parts-and-joints).
 
 ## Publishing
 
@@ -145,6 +181,18 @@ Each item carries a point **weight**. The [consoles](#web-console) present it as
 guided review with a completeness gate — every item needs a binary verdict (pass
 / fail) before a review can be saved or the run published. The checklist is
 reporter-side and is never seeded, so it never reaches the model.
+
+## Rig
+
+A rig is the posable structure of a [voxel-animation](#voxel) model: its named
+[parts](#part) in a hierarchy plus the named [joints](#joint) a consuming game (or
+an auto-play clip) drives, so a game can pose the model at runtime — "rotate the
+turret to 37°" — rather than replaying a fixed animation. A case's `[model]` table
+declares the **required** rig (the stable, game-facing joint interface and the
+scoring targets); the model may add parts, joints, and clips beyond it, and the
+produced `rig.json` carries everything. The
+[voxel-runtime](/components/voxel-runtime/overview/) poses a produced rig for both
+the review viewer and real games.
 
 ## Run Records
 
@@ -204,6 +252,19 @@ Test cases may define multiple variants, which identify modifications to make to
 the specifications provided as input for the test. These variants may change
 game mechanics, add or remove content, and may noticeably affect the difficulty
 of a test case.
+
+## Voxel
+
+A voxel is a single opaque-`#rrggbb` cell in a 3D grid — the 3D counterpart of a
+pixel (there is no alpha). The two 3D
+[asset-generation](/testing/asset-generation/overview/) kinds sculpt into a fixed
+voxel volume, which always starts empty: `voxel-model` produces a
+static model and `voxel-animation` produces a [rig](#rig) — named [parts](#part)
+posed by named [joints](#joint). A voxel run's authoritative output is its recorded
+operation log; the validator regenerates the sparse `voxels.json` cells and an
+isometric preview from it, and the frontend renders an interactive 3D model with
+three.js. See
+[Voxel models and rigs](/testing/asset-generation/overview/#voxel-models-and-rigs).
 
 ## Web Console
 

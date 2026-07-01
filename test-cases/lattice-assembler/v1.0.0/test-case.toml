@@ -12,6 +12,12 @@ max_runtime_hours = 1
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
 # Each frame is its own 96x96 transparent canvas (a separate file). The assembler
 # covers a 3x3 block of 32px tiles, so one frame is 96x96. Fixing the frame size
 # keeps every run comparable.
@@ -69,11 +75,6 @@ fps = 8
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
-dest = "specs/brief.md"
-
-[[variant]]
-slug = "base"
-name = "Base"
 
 [[domain]]
 id = "fidelity"

@@ -538,6 +538,88 @@ async fn set_job_state_records_terminal_detail_and_record_id() {
 }
 
 #[tokio::test]
+async fn cancel_job_moves_a_non_terminal_job_to_canceled_with_its_reason() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("j1", "running", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap();
+
+    let canceled = db
+        .cancel_job("j1", "2026-06-23T00:02:00Z", "canceled by operator")
+        .await
+        .unwrap()
+        .expect("a running job is cancelable");
+    assert_eq!(canceled.state, "canceled");
+    assert_eq!(canceled.detail.as_deref(), Some("canceled by operator"));
+
+    // A canceled job no longer counts as in flight.
+    assert!(db.active_jobs().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn cancel_job_refuses_a_terminal_or_unknown_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("done", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state(
+        "done",
+        "succeeded",
+        "2026-06-23T00:05:00Z",
+        None,
+        Some("r1"),
+    )
+    .await
+    .unwrap();
+
+    // A finished job cannot be canceled — `cancel_job` transitions only from a
+    // non-terminal state, so it reports no change and leaves the row untouched.
+    assert!(
+        db.cancel_job("done", "2026-06-23T00:06:00Z", "canceled by operator")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let still = db.get_job("done").await.unwrap().expect("the job exists");
+    assert_eq!(still.state, "succeeded");
+
+    // An unknown job is likewise a no-op None rather than an error.
+    assert!(
+        db.cancel_job("missing", "2026-06-23T00:06:00Z", "canceled by operator")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn set_job_state_never_overwrites_a_canceled_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.cancel_job("j1", "2026-06-23T00:01:00Z", "canceled by operator")
+        .await
+        .unwrap()
+        .expect("a queued job is cancelable");
+
+    // A late report from the still-winding-down driver must not resurrect or
+    // overwrite the canceled run: `set_job_state` leaves it untouched (None).
+    assert!(
+        db.set_job_state("j1", "succeeded", "2026-06-23T00:02:00Z", None, Some("r1"))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let still = db.get_job("j1").await.unwrap().expect("the job exists");
+    assert_eq!(still.state, "canceled");
+    assert!(still.record_id.is_none());
+}
+
+#[tokio::test]
 async fn active_jobs_excludes_terminal_jobs_oldest_first() {
     let db = Db::connect_in_memory().await.unwrap();
     db.enqueue_job(new_job("a", "2026-06-23T00:00:00Z"))

@@ -171,6 +171,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.4.0",
             "changelogs/v0.3.3",
             "changelogs/v0.3.2",
             "changelogs/v0.3.1",
@@ -256,6 +257,11 @@ export default defineConfig({
               label: "UI",
               collapsed: true,
               items: ["components/ui/overview"],
+            },
+            {
+              label: "Voxel Runtime",
+              collapsed: true,
+              items: ["components/voxel-runtime/overview"],
             },
             {
               label: "Documentation",
@@ -428,10 +434,10 @@ export default defineConfig({
                   label: "Pacman (Foray)",
                   collapsed: true,
                   items: [
-                    "testing/adversarial/adversarial-pacman/overview",
-                    "testing/adversarial/adversarial-pacman/architecture",
-                    "testing/adversarial/adversarial-pacman/references",
-                    "testing/adversarial/adversarial-pacman/assets",
+                    "testing/adversarial/foray/overview",
+                    "testing/adversarial/foray/architecture",
+                    "testing/adversarial/foray/references",
+                    "testing/adversarial/foray/assets",
                   ],
                 },
               ],
@@ -442,6 +448,7 @@ export default defineConfig({
               items: [
                 "testing/asset-generation/overview",
                 "testing/asset-generation/binaries",
+                "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/manifests",
                 "testing/asset-generation/evaluation",
               ],
@@ -457,9 +464,9 @@ export default defineConfig({
                   label: "Factorio (Lattice)",
                   collapsed: true,
                   items: [
-                    "testing/performance/performance-factorio/overview",
-                    "testing/performance/performance-factorio/architecture",
-                    "testing/performance/performance-factorio/references",
+                    "testing/performance/lattice/overview",
+                    "testing/performance/lattice/architecture",
+                    "testing/performance/lattice/references",
                   ],
                 },
               ],

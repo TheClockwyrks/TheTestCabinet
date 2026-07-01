@@ -6,6 +6,7 @@ import { RatingBadge } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData } from "../../data/galleryContext";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { type ParsedWriteup, worstRating } from "../../data/ratings";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
 import { useRuns } from "../../data/useRuns";
@@ -53,6 +54,7 @@ export function RunDetailLayout({
   const { runs, localIds, localWriteups, loading } = useRuns();
   const { readRun, canExecute } = useGalleryData();
   const findReview = useFindReview();
+  const testCaseName = useTestCaseName();
   const listed = runId
     ? runs.find((candidate) => candidate.id === runId)
     : undefined;
@@ -137,7 +139,7 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
-            {subject.testCaseSlug}
+            {testCaseName(subject.testCaseSlug)}
             {overallRating && <RatingBadge rating={overallRating} />}
             {isLocal && <UnpublishedTag />}
           </h2>

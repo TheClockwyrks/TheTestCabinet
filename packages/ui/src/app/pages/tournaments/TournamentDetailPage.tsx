@@ -5,6 +5,7 @@ import type { MatchSummary, TournamentRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData, type ArenaApi } from "../../data/galleryContext";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { ReplayOverlay } from "../runs/[runId]/AdversarialReplaySection";
 import styles from "./TournamentDetailPage.module.scss";
 
@@ -76,6 +77,7 @@ function TournamentBody({
 }) {
   // The match whose replay overlay is open, by match id (null when none is).
   const [openMatch, setOpenMatch] = useState<MatchSummary | null>(null);
+  const testCaseName = useTestCaseName();
 
   const labelFor = (id: string) =>
     record.participants.find((p) => p.id === id)?.label ?? id;
@@ -88,7 +90,8 @@ function TournamentBody({
   return (
     <>
       <p className={styles.caption}>
-        {record.testCaseSlug} {record.testCaseVersion} · {record.variant}
+        {testCaseName(record.testCaseSlug)} {record.testCaseVersion} ·{" "}
+        {record.variant}
       </p>
 
       <section className={styles.section}>

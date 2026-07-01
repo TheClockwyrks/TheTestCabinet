@@ -73,7 +73,15 @@ function makeWorkers(deliver: (handlers: Handlers) => void) {
   const value = {
     workers: [],
     activeId: "w1",
-    active: { id: "w1", label: "Worker", url: null, local: true, client, identity: null, backendMatch: "unknown" },
+    active: {
+      id: "w1",
+      label: "Worker",
+      url: null,
+      local: true,
+      client,
+      identity: null,
+      backendMatch: "unknown",
+    },
     setActive: () => {},
     addWorker: () => {},
     removeWorker: () => {},
@@ -217,5 +225,19 @@ describe("RunMonitorPage", () => {
     await settle();
 
     expect(subscribeToRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a canceled outcome as an intentional stop, not a failure", async () => {
+    const { value } = makeWorkers((handlers) => {
+      handlers.onDone({ kind: "canceled", message: "canceled by operator" });
+    });
+
+    renderMonitor(value);
+    // The canceled notice reads as a deliberate stop and never as "Run failed".
+    expect(
+      await screen.findByText(/Run canceled: canceled by operator/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Run failed/)).not.toBeInTheDocument();
+    await settle();
   });
 });

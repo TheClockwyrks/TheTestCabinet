@@ -68,7 +68,7 @@ The request body is optional JSON:
 
 ```jsonc
 {
-  "testCases": ["pong"],     // restrict the scan to these slugs (default: all)
+  "testCases": ["carom"],     // restrict the scan to these slugs (default: all)
   "force": true,             // re-ingest even versions already in the store
   "catalogVersion": "a1b2c3" // tag a whole-catalog ingest with its content version
 }
@@ -104,7 +104,7 @@ only the framing differs. The lines are discriminated by an `event` tag:
 ```jsonc
 { "event": "start", "total": 31 }                  // once, before the first version
 { "event": "version", "index": 1, "total": 31,     // one per completed version
-  "slug": "pong", "version": "v1.0.0",
+  "slug": "carom", "version": "v1.0.0",
   "ingested": true, "renderedReferences": 3 }
 { "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary on success
 { "event": "error", "message": "…" }               // closing line if the scan aborts
@@ -134,7 +134,7 @@ The catalog: every ingested case and its available versions, under `testCases`.
 ```jsonc
 {
   "testCases": [
-    { "slug": "pong", "versions": ["v1.0.0", "v1.1.0"] }
+    { "slug": "carom", "versions": ["v1.0.0", "v1.1.0"] }
   ]
 }
 ```
@@ -148,7 +148,7 @@ The available versions for one case, echoing the requested `slug`. `404` if the
 slug is unknown.
 
 ```jsonc
-{ "slug": "pong", "versions": ["v1.0.0", "v1.1.0"] }
+{ "slug": "carom", "versions": ["v1.0.0", "v1.1.0"] }
 ```
 
 Schema:
@@ -172,13 +172,13 @@ A representative response:
 
 ```jsonc
 {
-  "slug": "pong",
+  "slug": "carom",
   "version": "v1.0.0",
-  "name": "Pong",
+  "name": "Carom",
   "difficulty": "easy",
   "tags": ["arcade", "2d"],
   "summary": "A two-paddle rally game.",
-  "description": "## Pong\n…",
+  "description": "## Carom\n…",
   "maxRuntimeSeconds": 1800,
   "build": { "install": "npm ci", "build": "npm run build" },
   "promptTemplate": "…handlebars source…",
@@ -195,7 +195,7 @@ A representative response:
       "description": null,
       "specs": [],
       "references": [
-        { "view": "title", "screenshotUrl": "/test-cases/pong/v1.0.0/references/base/title.png" }
+        { "view": "title", "screenshotUrl": "/test-cases/carom/v1.0.0/references/base/title.png" }
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
       // review (see Reviews). Empty when the variant declares none.
@@ -203,7 +203,7 @@ A representative response:
     }
   ],
   "commonReferences": [
-    { "view": "gameplay", "screenshotUrl": "/test-cases/pong/v1.0.0/references/_common/gameplay.png" }
+    { "view": "gameplay", "screenshotUrl": "/test-cases/carom/v1.0.0/references/_common/gameplay.png" }
   ],
   "checks": [
     { "view": "title", "name": "Title", "referenceView": "title", "actions": [ { "type": "wait", "ms": 500 } ] }

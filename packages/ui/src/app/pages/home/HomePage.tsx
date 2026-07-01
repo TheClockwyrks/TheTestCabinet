@@ -10,13 +10,9 @@ import { findModelByModelId } from "../../data/models";
 import { type Rating, worstRating } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
+import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
-import {
-  formatRunTime,
-  formatSlug,
-  formatTokenTotal,
-  formatUsd,
-} from "../../format";
+import { formatRunTime, formatTokenTotal, formatUsd } from "../../format";
 import styles from "./HomePage.module.scss";
 
 // Home: the most recent runs, newest first, framed as the cabinet's "recent
@@ -99,6 +95,7 @@ function FeaturedRun({
 }) {
   const { subject, metrics } = run;
   const model = findModelByModelId(subject.modelId);
+  const testCaseName = useTestCaseName();
   return (
     <article className={styles.feature}>
       <p className={styles.featureLabel}>
@@ -106,7 +103,7 @@ function FeaturedRun({
       </p>
       <h2 className={styles.featureTest}>
         <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
-          {formatSlug(subject.testCaseSlug)}
+          {testCaseName(subject.testCaseSlug)}
         </Link>
         {local && <UnpublishedTag className={styles.tag} />}
       </h2>

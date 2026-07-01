@@ -149,6 +149,7 @@ fn manifest() -> StoredManifest {
             references: vec![],
             proofs: vec![],
             review_items: vec![],
+            domains: vec![],
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -429,7 +430,10 @@ async fn case_metadata_inlines_specs_and_description() {
     // variant's own on the variant, each carrying its dest path and text.
     assert_eq!(parsed["commonSeededInputs"][0]["path"], "spec/rules.md");
     assert_eq!(parsed["commonSeededInputs"][0]["text"], "# Rules");
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["path"], "spec/base.md");
+    assert_eq!(
+        parsed["variants"][0]["seededInputs"][0]["path"],
+        "spec/base.md"
+    );
     assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# Base");
 }
 
@@ -442,14 +446,11 @@ async fn only_cases_with_a_published_run_are_emitted() {
     other.version = "v2.0.0".to_string();
 
     let (_tmp, store) = empty_store();
-    let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "t")],
-        vec![manifest(), other],
-        store,
-    )
-    .build(now())
-    .await
-    .unwrap();
+    let snapshot =
+        SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest(), other], store)
+            .build(now())
+            .await
+            .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     let keys: Vec<&str> = snapshot.objects.iter().map(|o| o.key.as_str()).collect();
     assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));

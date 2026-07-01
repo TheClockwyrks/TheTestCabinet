@@ -29,14 +29,16 @@ Adding a mode to an [end-to-end](/testing/end-to-end/overview/) case? See
    spec.
 3. Add `[[review_item]]`s for what the variation makes observable, each carrying a
    scoring `domain` (no `reference` — the case has no target image).
-4. Register the variant in `test-case.toml`:
+4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+   the variant's fields; `dest` defaults to `source`) and add its path to the
+   `variants` list in `test-case.toml` (first = default):
 
 ```toml
-[[variant]]
+# variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
 description = "Same brief, drawn with flat fills only — no gradients or dithering."
-spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
+spec = [{ source = "specs/flat.md" }]
 ```
 
 `spec` entries are additive on the common specs; within one variant no two seeded

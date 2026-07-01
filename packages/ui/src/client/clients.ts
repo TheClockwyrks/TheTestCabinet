@@ -256,6 +256,16 @@ export interface WorkerClient {
   deleteRun?(id: string, token: string): Promise<void>;
 
   /**
+   * Kill an in-flight run (`POST /jobs/{id}/cancel`, Bearer): the backend moves it
+   * to the terminal `canceled` state and closes its live stream, and the driver
+   * tears its sandbox down and exits. The backend **refuses a run that already
+   * finished** (`409`), so this only applies to a run still queued, dispatched, or
+   * running. Optional: a transport that cannot cancel simply omits it, and the
+   * console hides the kill affordance where it is absent.
+   */
+  killRun?(id: string, token: string): Promise<void>;
+
+  /**
    * The URL to load one of a produced run's proof-of-implementation media files
    * (`<proof-id>.<ext>`) from, or null when this worker cannot serve it. Optional:
    * a worker reachable over HTTP needs no override — the gallery resolves the file

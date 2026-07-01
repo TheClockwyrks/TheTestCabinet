@@ -1,5 +1,5 @@
 ---
-description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the brief, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant instead; for a variant of an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
+description: Read this skill before adding a new variant to an existing SINGLE-SPRITE asset-generation test case (asset_kind = "sprite") — a brief variation (tighter palette, operation budget, drawing technique) the model draws toward the brief, registered in a version's test-case.toml. For a variant of a sprite-sheet case (asset_kind = "sprite-sheet") use adding-a-sprite-sheet-variant; for a voxel-model case use adding-a-voxel-model-variant; for a voxel-animation case use adding-a-voxel-animation-variant; for an end-to-end case (a playable mode) use adding-an-end-to-end-variant.
 name: adding-a-sprite-variant
 ---
 
@@ -19,7 +19,11 @@ variant of a **sprite-sheet** case — one whose `[sheet]` table declares a set 
 animation frames, each a separate file — use the
 [`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md) skill,
 where a variant draws toward the brief across the version's fixed frames and named
-sequences. For a variant of an
+sequences. For a variant of a **3D voxel** case use
+[`adding-a-voxel-model-variant`](../adding-a-voxel-model-variant/SKILL.md) (a static
+model) or
+[`adding-a-voxel-animation-variant`](../adding-a-voxel-animation-variant/SKILL.md) (a
+rigged, animated model). For a variant of an
 **end-to-end** case — a playable mode with its own menu and rules — use the
 [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md) skill. To
 author a brand-new case, use
@@ -81,20 +85,28 @@ no gradients or dithering"). Each item is reporter-side (never seeded), carries 
 stable `id` unique within the variant's effective set, and carries only a scoring
 `domain` (no `reference` — there is no target to pair with).
 
-### 4. Register the variant in `test-case.toml`
+### 4. Create the variant file and list it
 
-Add a `[[variant]]` table after the existing ones (the first variant is the
-default):
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Paths inside resolve against the
+version folder, and `dest` defaults to `source`, so the brief spec just names its
+`source`:
 
 ```toml
-[[variant]]
+# variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
 description = "Same brief, drawn with flat fills only — no gradients or dithering."
-spec = [{ source = "specs/flat.md", dest = "specs/flat.md" }]
+spec = [{ source = "specs/flat.md" }]
 review_item = [
   { id = "flat-fills", title = "Flat fills only", text = "Every region is a flat color with no gradients or dithering.", domain = "fidelity" },
 ]
+```
+
+```toml
+# test-case.toml — add the new file to the ordered list (first = default)
+variants = ["variants/base.toml", "variants/flat.toml"]
 ```
 
 Rules enforced at resolution:

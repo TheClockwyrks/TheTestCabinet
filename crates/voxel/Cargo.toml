@@ -1,0 +1,53 @@
+[package]
+name = "test-cabinet-voxel"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The voxel-sculpting tool for 3D asset-generation test cases. The library is the
+# single source of the sculpting logic: the `voxel` / `voxel-anim` binaries use it
+# in the run container to turn the model's operations into a voxel volume and an
+# isometric preview, and `crates/core` links the same library to regenerate the
+# scored voxel data and image from the recorded action log. One implementation
+# means the in-container preview and the post-run regeneration can never diverge —
+# which is what makes cheat detection meaningful. This mirrors `crates/draw`, the
+# 2D pixel-drawing analog.
+[lib]
+name = "test_cabinet_voxel"
+path = "src/lib.rs"
+
+# The CLIs the model invokes inside the run container: `voxel` for a single static
+# model, `voxel-anim` for a rigged, animated model (one separate file per part).
+# Both share this crate's library and its `cli` module. Gated behind the `cli`
+# feature (on by default) so that `crates/core`, which depends on this crate with
+# `default-features = false`, links only the pure sculpting library and never pulls
+# in clap or serde_json.
+[[bin]]
+name = "voxel"
+path = "src/bin/voxel.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "voxel-anim"
+path = "src/bin/voxel-anim.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:serde_json"]
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+# Pure-Rust PNG encoder for the rendered isometric preview, matching the decoder
+# the validator already uses so an encoded image round-trips through it cleanly.
+png = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

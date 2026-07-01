@@ -183,6 +183,7 @@ impl Validator for PerformanceValidator {
             checks: Vec::new(),
             proofs: proof_results,
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: Some(result),
         })
@@ -338,6 +339,7 @@ fn failed(detail: &str, proofs: Vec<ProofResult>) -> ValidationSummary {
         checks: Vec::new(),
         proofs,
         asset: None,
+        voxel: None,
         adversarial: None,
         performance: None,
     }
@@ -360,6 +362,7 @@ fn incorrect(
         checks: Vec::new(),
         proofs,
         asset: None,
+        voxel: None,
         adversarial: None,
         performance: Some(PerformanceResult {
             correct: false,

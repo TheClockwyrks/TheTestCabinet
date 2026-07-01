@@ -5700,6 +5700,7 @@ dependencies = [
  "tempfile",
  "test-cabinet-draw",
  "test-cabinet-telemetry",
+ "test-cabinet-voxel",
  "thiserror 2.0.18",
  "time",
  "tokio",
@@ -5812,6 +5813,17 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "test-cabinet-voxel"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "png 0.17.16",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

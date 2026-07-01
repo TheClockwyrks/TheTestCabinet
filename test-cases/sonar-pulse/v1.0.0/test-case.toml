@@ -12,6 +12,11 @@ max_runtime_hours = 0.75
 type = "asset-generation"
 asset_kind = "sprite-sheet"
 
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
 # Each frame is its own 128x128 transparent canvas (a separate file). This is an
 # area EFFECT, not a creature: it covers a wide circle far larger than the 32x32
 # sprites, so it gets a large frame. Fixing the size keeps every run comparable.
@@ -70,11 +75,6 @@ fps = 12
 # The self-contained brief, seeded for the run.
 [[spec]]
 source = "specs/brief.md"
-dest = "specs/brief.md"
-
-[[variant]]
-slug = "base"
-name = "Base"
 
 [[domain]]
 id = "fidelity"

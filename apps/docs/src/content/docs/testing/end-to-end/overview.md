@@ -3,7 +3,7 @@ title: Overview
 ---
 
 An **end-to-end** test case is a single game that a model is asked to build from
-scratch. End-to-end cases range from simple ones such as Pong through to highly
+scratch. End-to-end cases range from simple ones such as Carom through to highly
 complex ones that require significant assistance from a coding harness for even
 the best models to complete. They are intentionally designed to exceed the
 capabilities of current state-of-the-art models so that they remain relevant as
@@ -215,7 +215,17 @@ seeded files on disk without a container; a real run is where it executes. See
 A test case version offers one or more **variants**, and a run selects exactly
 one. The chosen variant is recorded in the run record (see
 [Run Records](/components/core/run-records/#subject)), so every result is
-attributed to a specific build. At least one `[[variant]]` must be declared.
+attributed to a specific build.
+
+Each variant lives in its **own file**, and the manifest lists them: the
+top-level `variants` key is an ordered list of paths to standalone variant files
+(the first is the default), by convention under `variants/`. Because `variants` is
+a root key, it must appear **before the first table header** in `test-case.toml`.
+At least one variant file must be listed. A variant file is a self-contained TOML
+document whose **top-level keys are the variant's fields** — `slug`, `name`,
+`description`, `spec`, `reference`, `proof`, `workspace`, and its own
+`[[review_item]]` / `[[domain]]` tables — and every path inside it resolves
+against the **version folder**, exactly as an inline variant did.
 
 A variant seeds the case's common specs **plus** its own additional specs, so a
 single case can define several builds — for example the same game with or
@@ -275,6 +285,21 @@ with that variant alone. An item `id` must be unique within a variant's
 effective set (the common items plus that variant's own); a collision is
 rejected at resolution.
 
+### Variant-specific scoring domains
+
+Scoring domains are not strictly case-level. The case declares its **common**
+domains with `[[domain]]` in `test-case.toml` — at least one is required, and
+every variant is rated on them. A variant may declare **additional** `[[domain]]`
+tables in its own file, so the **effective** set a reviewer rates for a run is the
+common domains plus that run's variant's own. This lets a mode that only one
+variant introduces be rated on its own domain rather than folded into the shared
+ones — Carom's `frenzy`, `multi`, and `gyre` mode variants each add a domain for
+the mode they bring. A common review item may roll up only to a common domain; a
+variant's own review item may name a common domain or one of that variant's own.
+Domain ids must be unique across the common domains and any given variant's own; a
+collision is rejected at resolution. The run's overall rating is the worst across
+its effective domains.
+
 ## Self-Contained Specifications
 
 A test case's specification is seeded into an isolated run container that does
@@ -313,7 +338,7 @@ assets a model should use. (Generating the assets themselves is the job of an
 [asset-generation](/testing/asset-generation/overview/) test case, a separate
 test type.)
 
-- Simple cases such as Pong need no assets and may leave all visuals to the
+- Simple cases such as Carom need no assets and may leave all visuals to the
   model.
 - More involved cases must provide a set of assets so that each run does not
   have to produce its own, which would make runs less comparable.

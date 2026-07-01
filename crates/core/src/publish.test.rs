@@ -63,6 +63,7 @@ fn sample_record() -> RunRecord {
             checks: vec![],
             proofs: vec![],
             asset: None,
+            voxel: None,
             adversarial: None,
             performance: None,
         },

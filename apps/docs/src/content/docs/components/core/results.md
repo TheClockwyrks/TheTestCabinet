@@ -27,10 +27,17 @@ asset-generation — must be released as its **own** public git repository.
   that a user needs to clone the repository and run it locally. Requiring this
   documentation is part of every code-writing test case.
 - **Asset-generation runs are the exception**: their authoritative output is the
-  recorded sequence of drawing operations (uploaded to the backend as the run's
-  assets), not a source tree, so **no per-run repository is created** and the run
-  carries no source link. The run folder is still a git repo (seeded like any
-  other), but publishing one never creates a repository on GitHub.
+  recorded sequence of operations (uploaded to the backend as the run's assets),
+  not a source tree, so **no per-run repository is created** and the run carries no
+  source link. The run folder is still a git repo (seeded like any other), but
+  publishing one never creates a repository on GitHub. This covers all four
+  [asset kinds](/testing/asset-generation/overview/#asset-kinds) — a sprite or
+  sprite-sheet run uploads its regenerated images, and a
+  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run additionally
+  uploads its regenerated `voxels.json` and (for an animated model) `rig.json`, so
+  the review UI can render an interactive 3D model: a `voxel-model` auto-rotates and
+  a `voxel-animation` gives one orbit-drag viewer per animation with a control per
+  caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-regeneration).
 
 ## Run Record
 
@@ -190,11 +197,13 @@ requirement the case author called out. Each item is worth a **weight** in
 points: a `pass` earns the item's weight and a `fail` earns none, and a review's
 **score** is the earned weight over the total declared weight.
 
-A case declares one or more **scoring domains** (for example a game's
-single-player and versus modes); the reviewer assigns one of four tiers —
-**flawless**, **great**, **scuffed**, or **broken**, in descending order of
-fidelity to the spec — to each. Within one review the **overall rating** is the
-*worst* across its domains, so a flawless mode cannot mask a broken one. What each
+A case declares one or more **common scoring domains** (for example a game's
+single-player and versus modes), and the run's variant may add its own; the
+reviewer assigns one of four tiers — **flawless**, **great**, **scuffed**, or
+**broken**, in descending order of fidelity to the spec — to each domain in the
+run variant's **effective** set (common plus that variant's own). Within one
+review the **overall rating** is the *worst* across those domains, so a flawless
+mode cannot mask a broken one. What each
 tier means is reviewer judgment rather than anything a run emits, so the criteria
 for choosing one live with the review workflow; see
 [Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).
