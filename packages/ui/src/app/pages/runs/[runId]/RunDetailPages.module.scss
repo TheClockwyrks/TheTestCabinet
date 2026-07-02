@@ -419,6 +419,71 @@
   justify-content: flex-start;
 }
 
+// The rig preview's view picker: a grouped, scrollable list of the rig's
+// animations/joints, one of which drives the single shared canvas. Capped in height
+// so a rig with many joints scrolls its list instead of pushing the canvas down.
+.voxelPicker {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.voxelPickerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.voxelPickerGroupLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.voxelPickerButton {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: t.$space-xs t.$space-xs;
+  text-align: left;
+  font-family: var(--ttc-font);
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.voxelPickerButtonActive {
+  border-color: t.$color-accent;
+  background: color-mix(in srgb, t.$color-accent 18%, transparent);
+}
+
+.voxelPickerName {
+  font-weight: 600;
+}
+
+.voxelPickerSub {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The active caller joint's slider, shown beneath the picker so posing a joint sits
+// with the control that selected it.
+.voxelSlider {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
 // The per-frame grid reuses the `.checks` table; this just keeps the image and
 // log columns tight so the divergence column takes the slack.
 .frameGrid {

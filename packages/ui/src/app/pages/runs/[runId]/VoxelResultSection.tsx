@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AnimationSpec, JointSpec, ModelSpec } from "@test-cabinet/run-record";
 import {
   useVoxelArtifacts,
@@ -13,6 +13,10 @@ import styles from "./RunDetailPages.module.scss";
 // Divergence at or above this fraction reads as "drew outside the tool" — the same
 // threshold the sprite results use.
 const OUTSIDE_TOOL = 0.05;
+
+// A stable empty animations list, so a rig with no predetermined animations doesn't
+// hand `buildRigViews`'s memo a fresh array (new identity) every render.
+const EMPTY_ANIMATIONS: AnimationSpec[] = [];
 
 const CANVAS_BOX: React.CSSProperties = {
   width: 240,
@@ -218,140 +222,98 @@ function formatJointValue(joint: JointSpec, value: number): string {
 }
 
 /**
- * One caller-driven joint: a still, drag-to-inspect 3D view with a range slider
- * that poses just this joint (e.g. the tank's `turret_yaw`), laid out as a row
- * mirroring the sprite sheet's `SequenceRow`.
+ * One selectable entry in the shared rig preview: a predetermined animation, a
+ * caller-driven joint (posed by a slider), or an auto-play joint (playing its clip).
+ * Every entry drives the *same* {@link VoxelCanvas}, so the whole rig is reviewed
+ * through a single WebGL context instead of one per joint/animation (which exhausts
+ * the browser's active-context budget and blanks the views — see
+ * {@link VoxelAnimationResult}).
  */
-function CallerJointRow({
-  joint,
-  rig,
-  parts,
-  fallbackUrl,
-}: {
-  joint: JointSpec;
-  rig: ModelSpec;
-  parts: VoxelPartView[];
-  fallbackUrl: string | null;
-}) {
-  const [value, setValue] = useState(joint.rest);
-  const step = (joint.max - joint.min) / 100 || 0.01;
-  return (
-    <div className={styles.sequenceRow}>
-      <div className={styles.sequenceMeta}>
-        <span className={styles.sequenceName}>{joint.name}</span>
-        <span className={styles.sequenceSub}>
-          caller · {joint.kind} · {formatJointValue(joint, value)}
-        </span>
-        <input
-          type="range"
-          min={joint.min}
-          max={joint.max}
-          step={step}
-          value={value}
-          onChange={(e) => setValue(Number(e.target.value))}
-          aria-label={`${joint.name} value`}
-          style={{ marginTop: 8, width: "100%" }}
-        />
-      </div>
-      <div className={styles.sequencePlayer}>
-        <div style={CANVAS_BOX}>
-          <VoxelCanvas
-            parts={parts}
-            rig={rig}
-            mode="orbit"
-            callerJoints={{ [joint.name]: value }}
-            fallbackUrl={fallbackUrl}
-            label={`${joint.name} control`}
-            height={240}
-          />
-        </div>
-      </div>
-    </div>
-  );
+type RigView =
+  | { kind: "animation"; key: string; name: string; sub: string; animation: AnimationSpec }
+  | { kind: "caller"; key: string; name: string; sub: string; joint: JointSpec }
+  | { kind: "auto"; key: string; name: string; sub: string; joint: JointSpec };
+
+// The picker's groups, in display order. Each maps to a `RigView.kind`; a group
+// with no entries is omitted.
+const RIG_VIEW_GROUPS: { kind: RigView["kind"]; label: string }[] = [
+  { kind: "animation", label: "Animations" },
+  { kind: "caller", label: "Caller-driven joints" },
+  { kind: "auto", label: "Auto-play joints" },
+];
+
+/** The selectable views for a rig: its predetermined animations, then its
+ * caller-driven joints, then its auto-play joints — the flattened superset the old
+ * per-section rows rendered, now feeding one shared canvas. */
+function buildRigViews(rig: ModelSpec, animations: AnimationSpec[]): RigView[] {
+  const views: RigView[] = [];
+  for (const animation of animations) {
+    const n = animation.tracks.length;
+    views.push({
+      kind: "animation",
+      key: `animation:${animation.name}`,
+      name: animation.name,
+      sub: `${n} joint${n === 1 ? "" : "s"} · ${animation.periodMs}ms ${animation.looping ? "loop" : "once"}`,
+      animation,
+    });
+  }
+  for (const joint of rig.joints.filter((j) => j.drive === "caller")) {
+    views.push({
+      kind: "caller",
+      key: `caller:${joint.name}`,
+      name: joint.name,
+      sub: joint.kind,
+      joint,
+    });
+  }
+  for (const joint of rig.joints.filter((j) => j.drive === "auto")) {
+    views.push({
+      kind: "auto",
+      key: `auto:${joint.name}`,
+      name: joint.name,
+      sub: `${joint.kind}${joint.auto?.periodMs ? ` · ${joint.auto.periodMs}ms loop` : ""}`,
+      joint,
+    });
+  }
+  return views;
 }
 
-/**
- * One auto-play joint: a still, drag-to-inspect 3D view playing that joint's clip,
- * laid out as a row mirroring the sprite sheet's `SequenceRow`.
- */
-function AutoJointRow({
-  joint,
-  rig,
-  parts,
-  fallbackUrl,
+/** The grouped list of rig views to choose from; the active one drives the shared
+ * canvas. Groups with no entries are dropped. */
+function RigViewPicker({
+  views,
+  selectedKey,
+  onSelect,
 }: {
-  joint: JointSpec;
-  rig: ModelSpec;
-  parts: VoxelPartView[];
-  fallbackUrl: string | null;
+  views: RigView[];
+  selectedKey: string;
+  onSelect: (key: string) => void;
 }) {
-  const period = joint.auto?.periodMs;
   return (
-    <div className={styles.sequenceRow}>
-      <div className={styles.sequenceMeta}>
-        <span className={styles.sequenceName}>{joint.name}</span>
-        <span className={styles.sequenceSub}>
-          auto-play · {joint.kind}
-          {period ? ` · ${period}ms loop` : ""}
-        </span>
-      </div>
-      <div className={styles.sequencePlayer}>
-        <div style={CANVAS_BOX}>
-          <VoxelCanvas
-            parts={parts}
-            rig={rig}
-            mode="orbit"
-            autoPlayClip={joint.name}
-            fallbackUrl={fallbackUrl}
-            label={`${joint.name} animation`}
-            height={240}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * One predetermined animation: a still, drag-to-inspect 3D view playing that
- * animation's choreographed tracks, laid out as a row mirroring the joint rows. The
- * case authors these so a reviewer can watch the rig perform a motion without
- * driving its joints by hand.
- */
-function AnimationRow({
-  animation,
-  rig,
-  parts,
-  fallbackUrl,
-}: {
-  animation: AnimationSpec;
-  rig: ModelSpec;
-  parts: VoxelPartView[];
-  fallbackUrl: string | null;
-}) {
-  const trackCount = animation.tracks.length;
-  return (
-    <div className={styles.sequenceRow}>
-      <div className={styles.sequenceMeta}>
-        <span className={styles.sequenceName}>{animation.name}</span>
-        <span className={styles.sequenceSub}>
-          animation · {trackCount} joint{trackCount === 1 ? "" : "s"} ·{" "}
-          {animation.periodMs}ms {animation.looping ? "loop" : "once"}
-        </span>
-      </div>
-      <div className={styles.sequencePlayer}>
-        <div style={CANVAS_BOX}>
-          <VoxelCanvas
-            parts={parts}
-            rig={rig}
-            mode="orbit"
-            animation={animation}
-            fallbackUrl={fallbackUrl}
-            label={`${animation.name} animation`}
-            height={240}
-          />
-        </div>
-      </div>
+    <div className={styles.voxelPicker}>
+      {RIG_VIEW_GROUPS.map((group) => {
+        const items = views.filter((v) => v.kind === group.kind);
+        if (items.length === 0) return null;
+        return (
+          <div key={group.kind} className={styles.voxelPickerGroup}>
+            <span className={styles.voxelPickerGroupLabel}>{group.label}</span>
+            {items.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                className={`${styles.voxelPickerButton} ${
+                  view.key === selectedKey ? styles.voxelPickerButtonActive : ""
+                }`}
+                aria-pressed={view.key === selectedKey}
+                onClick={() => onSelect(view.key)}
+              >
+                <span className={styles.voxelPickerName}>{view.name}</span>
+                <span className={styles.voxelPickerSub}>{view.sub}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -421,9 +383,17 @@ function PartGrid({ parts }: { parts: VoxelPartView[] }) {
 }
 
 /**
- * An animated (rigged) voxel model: one row per caller-driven joint (a slider that
- * poses the rig) and one per auto-play joint (playing its clip), then the per-part
- * breakdown — the 3D analog of `SheetResult`.
+ * An animated (rigged) voxel model: a single shared 3D view driven by a picker of
+ * the rig's predetermined animations, caller-driven joints (posed by a slider), and
+ * auto-play joints (playing their clip), then the per-part breakdown — the 3D analog
+ * of `SheetResult`.
+ *
+ * A rig can expose many joints and animations; rendering each in its own
+ * {@link VoxelCanvas} spins up one WebGL context apiece, and a rig with a handful of
+ * joints quickly exceeds the browser's active-context budget — at which point the
+ * browser discards the oldest contexts and (since R3F doesn't restore them) those
+ * views blank out a beat after they appear. Funnelling the whole rig through one
+ * shared canvas keeps the page to a single context regardless of joint count.
  */
 function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   // The produced rig drives the viewer; fall back to the required rig, then to a
@@ -431,80 +401,94 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   const rig = view.rig ?? view.model ?? staticRig(view.parts[0]?.name ?? "model");
   const fallbackUrl =
     view.parts[0]?.regeneratedUrl ?? view.parts[0]?.previewUrl ?? null;
-  const callerJoints = rig.joints.filter((j) => j.drive === "caller");
-  const autoJoints = rig.joints.filter((j) => j.drive === "auto");
   // Predetermined animations are authored on the case's declared model spec (they
   // are not produced into the rig), so read them from there, falling back to the
   // produced rig for safety.
-  const animations = view.model?.animations ?? view.rig?.animations ?? [];
+  const animations = view.model?.animations ?? view.rig?.animations ?? EMPTY_ANIMATIONS;
+  const views = useMemo(() => buildRigViews(rig, animations), [rig, animations]);
+
+  const [selectedKey, setSelectedKey] = useState(() => views[0]?.key ?? "");
+  const active = views.find((v) => v.key === selectedKey) ?? views[0] ?? null;
+
+  // Caller-joint slider values, keyed by joint name and defaulting to each joint's
+  // rest, so posing one joint then switching views (and back) preserves where the
+  // reviewer left every slider. The whole map is always fed to the shared canvas, so
+  // an auto/animation view still holds the caller joints at their posed values (and
+  // the played animation overrides only the joints its tracks drive).
+  const [callerValues, setCallerValues] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      rig.joints.filter((j) => j.drive === "caller").map((j) => [j.name, j.rest]),
+    ),
+  );
+
+  // Which clip/animation the shared canvas plays for the active view; caller views
+  // play nothing and are posed purely by `callerValues`.
+  const playback =
+    active?.kind === "animation"
+      ? { animation: active.animation }
+      : active?.kind === "auto"
+        ? { autoPlayClip: active.joint.name }
+        : {};
+
+  const activeCaller = active?.kind === "caller" ? active.joint : null;
+  const activeValue = activeCaller
+    ? callerValues[activeCaller.name] ?? activeCaller.rest
+    : 0;
 
   return (
     <>
-      {animations.length > 0 ? (
-        <>
-          <h3 className={`${styles.section} ${styles.leadHeading}`}>Animations</h3>
-          <p className={styles.secondary}>
-            Predetermined motions the case authored — press-play choreographies that
-            drive the rig's joints so you can watch it perform without posing it by
-            hand. Drag the model to orbit it while it plays.
-          </p>
-          <div className={styles.sequenceGrid}>
-            {animations.map((animation) => (
-              <AnimationRow
-                key={animation.name}
-                animation={animation}
-                rig={rig}
-                parts={view.parts}
-                fallbackUrl={fallbackUrl}
+      <h3 className={`${styles.section} ${styles.leadHeading}`}>Rig preview</h3>
+      <p className={styles.secondary}>
+        Pick an animation or joint to drive the model — the whole rig plays through
+        one shared view. Predetermined animations are the choreographies the case
+        authored; caller-driven joints expose a slider a consuming game would drive;
+        auto-play joints loop the clip the model defined. Drag the model to orbit it.
+      </p>
+      <div className={styles.sequenceRow}>
+        <div className={styles.sequenceMeta}>
+          <RigViewPicker
+            views={views}
+            selectedKey={selectedKey}
+            onSelect={setSelectedKey}
+          />
+          {activeCaller ? (
+            <div className={styles.voxelSlider}>
+              <span className={styles.sequenceSub}>
+                {activeCaller.kind} · {formatJointValue(activeCaller, activeValue)}
+              </span>
+              <input
+                type="range"
+                min={activeCaller.min}
+                max={activeCaller.max}
+                step={(activeCaller.max - activeCaller.min) / 100 || 0.01}
+                value={activeValue}
+                onChange={(e) =>
+                  setCallerValues((prev) => ({
+                    ...prev,
+                    [activeCaller.name]: Number(e.target.value),
+                  }))
+                }
+                aria-label={`${activeCaller.name} value`}
+                style={{ width: "100%" }}
               />
-            ))}
+            </div>
+          ) : null}
+        </div>
+        <div className={styles.sequencePlayer}>
+          <div style={CANVAS_BOX}>
+            <VoxelCanvas
+              parts={view.parts}
+              rig={rig}
+              mode="orbit"
+              callerJoints={callerValues}
+              {...playback}
+              fallbackUrl={fallbackUrl}
+              label={active ? `${active.name} preview` : "Rig preview"}
+              height={240}
+            />
           </div>
-        </>
-      ) : null}
-
-      {callerJoints.length > 0 ? (
-        <>
-          <h3 className={`${styles.section} ${styles.leadHeading}`}>
-            Caller-driven joints
-          </h3>
-          <p className={styles.secondary}>
-            The game-facing controls a consuming game drives at runtime. Drag the
-            slider to pose the rig; drag the model to orbit it.
-          </p>
-          <div className={styles.sequenceGrid}>
-            {callerJoints.map((joint) => (
-              <CallerJointRow
-                key={joint.name}
-                joint={joint}
-                rig={rig}
-                parts={view.parts}
-                fallbackUrl={fallbackUrl}
-              />
-            ))}
-          </div>
-        </>
-      ) : null}
-
-      {autoJoints.length > 0 ? (
-        <>
-          <h3 className={styles.section}>Auto-play joints</h3>
-          <p className={styles.secondary}>
-            Motion the model defined as a looping clip, played from the regenerated
-            rig so it can be reviewed against the brief.
-          </p>
-          <div className={styles.sequenceGrid}>
-            {autoJoints.map((joint) => (
-              <AutoJointRow
-                key={joint.name}
-                joint={joint}
-                rig={rig}
-                parts={view.parts}
-                fallbackUrl={fallbackUrl}
-              />
-            ))}
-          </div>
-        </>
-      ) : null}
+        </div>
+      </div>
 
       <h3 className={styles.section}>Per-part details</h3>
       <p className={styles.secondary}>

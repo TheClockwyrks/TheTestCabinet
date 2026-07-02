@@ -1,7 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AnimationSpec,
   ModelSpec,
@@ -18,6 +17,60 @@ export type VoxelViewMode = "auto-rotate" | "orbit";
 
 /** Column-major-agnostic 3-tuple. */
 type Vec3 = [number, number, number];
+
+/**
+ * Camera framing — the model's center, the camera distance that fits it, and a far
+ * plane — derived from the raw voxel bounds (or a fixed `frameDims` volume when the
+ * caller pins the frame). Computed from the data rather than the built
+ * {@link VoxelRig} so it's correct on the very first render, before the rig is built
+ * in an effect. Each voxel occupies the unit cube `[x, x+1]`, so the far corner is
+ * `max + 1`; the rest pose is representative, so posing a joint doesn't reframe.
+ */
+function framing(
+  voxels: Record<string, VoxelsFile> | VoxelsFile,
+  frameDims: VoxelDims | null | undefined,
+): { center: Vec3; distance: number; far: number } {
+  if (frameDims) {
+    const size = Math.max(frameDims.width, frameDims.height, frameDims.depth, 1);
+    const dist = size * 2.2;
+    return {
+      center: [frameDims.width / 2, frameDims.height / 2, frameDims.depth / 2],
+      distance: dist,
+      far: dist * 20,
+    };
+  }
+  const files = Array.isArray((voxels as VoxelsFile).voxels)
+    ? [voxels as VoxelsFile]
+    : Object.values(voxels as Record<string, VoxelsFile>);
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (const file of files) {
+    for (const v of file.voxels) {
+      if (v.x < minX) minX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.z < minZ) minZ = v.z;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y > maxY) maxY = v.y;
+      if (v.z > maxZ) maxZ = v.z;
+    }
+  }
+  if (minX > maxX) {
+    // No voxels to frame yet — a neutral default.
+    return { center: [0, 0, 0], distance: 32, far: 400 };
+  }
+  const center: Vec3 = [
+    (minX + maxX + 1) / 2,
+    (minY + maxY + 1) / 2,
+    (minZ + maxZ + 1) / 2,
+  ];
+  const size = Math.max(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, 1);
+  const dist = size * 2.2;
+  return { center, distance: dist, far: dist * 20 };
+}
 
 /**
  * The scene contents inside the {@link Canvas}: the posed rig (centered at the
@@ -98,63 +151,46 @@ export default function VoxelViewer({
   /** Accessible name for the canvas. */
   label: string;
 }) {
-  // Build the rig once per (rig, voxels) pair and dispose its GPU resources on
-  // unmount or replacement.
-  const voxelRig = useMemo(() => new VoxelRig(rig, voxels), [rig, voxels]);
-  useEffect(() => () => voxelRig.dispose(), [voxelRig]);
+  // Build the rig inside an effect (not `useMemo`) so its creation and disposal are
+  // balanced: each mount builds a fresh rig and the matching cleanup disposes *that*
+  // rig. React's dev StrictMode double-invokes effects (setup → cleanup → setup); a
+  // rig built in `useMemo` and disposed in a cleanup gets torn down and then reused —
+  // its geometry freed and its part groups detached — so the model appears for one
+  // frame and then vanishes. Building it in the effect makes the second setup produce
+  // a new, live rig instead.
+  const [voxelRig, setVoxelRig] = useState<VoxelRig | null>(null);
+  useEffect(() => {
+    const built = new VoxelRig(rig, voxels);
+    setVoxelRig(built);
+    return () => built.dispose();
+  }, [rig, voxels]);
 
-  // Frame the camera so any size of model fills the view. When `frameDims` is
-  // given (the live view) frame the fixed volume so the camera holds steady as the
-  // model grows; otherwise frame the posed bounding box (the rest pose is
-  // representative — posing a joint doesn't grow the model meaningfully).
-  const { center, distance, far } = useMemo(() => {
-    if (frameDims) {
-      const size = Math.max(frameDims.width, frameDims.height, frameDims.depth, 1);
-      const dist = size * 2.2;
-      return {
-        center: [
-          frameDims.width / 2,
-          frameDims.height / 2,
-          frameDims.depth / 2,
-        ] as Vec3,
-        distance: dist,
-        far: dist * 20,
-      };
-    }
-    voxelRig.root.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(voxelRig.root);
-    if (box.isEmpty()) {
-      return { center: [0, 0, 0] as Vec3, distance: 32, far: 400 };
-    }
-    const c = new THREE.Vector3();
-    const s = new THREE.Vector3();
-    box.getCenter(c);
-    box.getSize(s);
-    const size = Math.max(s.x, s.y, s.z, 1);
-    const dist = size * 2.2;
-    return {
-      center: [c.x, c.y, c.z] as Vec3,
-      distance: dist,
-      far: dist * 20,
-    };
-  }, [voxelRig, frameDims]);
+  // Frame the camera so any size of model fills the view. When `frameDims` is given
+  // (the live view) frame the fixed volume so the camera holds steady as the model
+  // grows; otherwise frame the voxel bounds. Derived from the data, not the rig, so
+  // the camera is correct on the first render even though the rig builds a tick later
+  // in the effect above.
+  const { center, distance, far } = useMemo(
+    () => framing(voxels, frameDims),
+    [voxels, frameDims],
+  );
 
   // Isolate the requested auto-play clip (or play them all with `null`); a
   // caller-posed/static view passes no clip, which holds every auto joint at rest.
   useEffect(() => {
-    voxelRig.play(autoPlayClip ?? null);
+    voxelRig?.play(autoPlayClip ?? null);
   }, [voxelRig, autoPlayClip]);
 
   // Play the requested predetermined animation (or stop it with `null`).
   useEffect(() => {
-    voxelRig.playAnimation(animation ?? null);
+    voxelRig?.playAnimation(animation ?? null);
   }, [voxelRig, animation]);
 
   // Re-pose whenever the caller-driven joint values change. Keyed on the values'
   // JSON so a fresh object of the same values doesn't re-pose needlessly.
   const callerKey = callerJoints ? JSON.stringify(callerJoints) : "";
   useEffect(() => {
-    if (callerJoints) voxelRig.pose(callerJoints);
+    if (callerJoints) voxelRig?.pose(callerJoints);
     // callerKey captures the values; callerJoints identity may change each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voxelRig, callerKey]);
@@ -179,7 +215,9 @@ export default function VoxelViewer({
         <ambientLight intensity={0.7} />
         <directionalLight position={[1, 2, 1]} intensity={1.1} />
         <directionalLight position={[-1, 0.5, -1]} intensity={0.5} />
-        <RigScene rig={voxelRig} center={center} animate={animate} />
+        {voxelRig ? (
+          <RigScene rig={voxelRig} center={center} animate={animate} />
+        ) : null}
         <OrbitControls
           makeDefault
           enablePan={false}
