@@ -594,6 +594,26 @@
           "description": "Stable name of this joint; the parameter a game addresses (for example\n`turret_yaw`).",
           "type": "string"
         },
+        "offset": {
+          "description": "A fixed mount translation `[x, y, z]` (in voxels) this joint applies to the\npart in addition to its driven motion — the translation half of a compound\nattach. Absent (or all-zero) means no offset.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": ["array", "null"]
+        },
+        "orient": {
+          "description": "A fixed mount rotation `[x, y, z]` (radians, applied as Euler X→Y→Z about\n[`Self::pivot`]) this joint applies in addition to its driven motion — the\nrotation half of a compound attach. Absent (or all-zero) means no rotation.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": ["array", "null"]
+        },
         "part": {
           "description": "The part this joint moves (a declared [`PartSpec::name`]).",
           "type": "string"

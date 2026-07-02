@@ -62,6 +62,14 @@ export function translation(t: Vec3): Float32Array {
   return m;
 }
 
+/**
+ * A fixed rotation expressed as intrinsic Euler angles `[x, y, z]` (radians),
+ * applied X→Y→Z, as the matrix `Rz · Ry · Rx`.
+ */
+export function eulerRotation(euler: Vec3): Float32Array {
+  return multiply(rotation("z", euler[2]), multiply(rotation("y", euler[1]), rotation("x", euler[0])));
+}
+
 /** A right-handed rotation of `angle` radians about a principal `axis`. */
 export function rotation(axis: AxisSpec, angle: number): Float32Array {
   const c = Math.cos(angle);
@@ -106,17 +114,44 @@ function jointValue(joint: JointSpec, input: PoseInput): number {
   return clamp(value, joint.min, joint.max);
 }
 
-/** The local transform a single joint contributes at `value`. */
+const nonZero = (v: Vec3 | undefined): v is Vec3 =>
+  v !== undefined && (v[0] !== 0 || v[1] !== 0 || v[2] !== 0);
+
+/**
+ * The local transform a single joint contributes at `value`: its fixed compound
+ * mount (`orient` rotation about the pivot and `offset` translation, applied
+ * regardless of the driven value) composed with its driven single-axis motion,
+ * as `mount · driven`. A joint with no mount contributes only the driven motion
+ * (the common case), so existing rigs are unaffected.
+ */
 function jointMatrix(joint: JointSpec, value: number): Float32Array {
+  const p: Vec3 = [joint.pivot[0], joint.pivot[1], joint.pivot[2]];
+  const negP: Vec3 = [-p[0], -p[1], -p[2]];
+
+  let driven: Float32Array;
   if (joint.kind === "translation") {
     const t: Vec3 = [0, 0, 0];
     t[AXIS_INDEX[joint.axis]] = value;
-    return translation(t);
+    driven = translation(t);
+  } else {
+    // Rotation about the joint's own pivot: T(pivot) * R(axis, value) * T(-pivot).
+    driven = multiply(translation(p), multiply(rotation(joint.axis, value), translation(negP)));
   }
-  // Rotation about the joint's own pivot: T(pivot) * R(axis, value) * T(-pivot).
-  const p: Vec3 = [joint.pivot[0], joint.pivot[1], joint.pivot[2]];
-  const negP: Vec3 = [-p[0], -p[1], -p[2]];
-  return multiply(translation(p), multiply(rotation(joint.axis, value), translation(negP)));
+
+  const offset = joint.offset as Vec3 | undefined;
+  const orient = joint.orient as Vec3 | undefined;
+  if (!nonZero(offset) && !nonZero(orient)) return driven;
+
+  // The fixed mount: a rotation about the pivot, then a translation, applied
+  // outside the driven motion so the component is posed and then mounted.
+  let mount = identity();
+  if (nonZero(orient)) {
+    mount = multiply(translation(p), multiply(eulerRotation(orient), translation(negP)));
+  }
+  if (nonZero(offset)) {
+    mount = multiply(translation(offset), mount);
+  }
+  return multiply(mount, driven);
 }
 
 /**

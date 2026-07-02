@@ -185,6 +185,112 @@ pub enum OpCommand {
         #[arg(long)]
         depth: u32,
     },
+    /// Fill a solid cylinder of radius `r` and length `height` from the base plane
+    /// through `(cx, cy, cz)` along the positive `axis` direction (barrels, legs,
+    /// poles, wheels). The disc is centered on the two off-axis coordinates.
+    FillCylinder {
+        /// Center x of the base disc.
+        #[arg(long)]
+        cx: i64,
+        /// Center y of the base disc.
+        #[arg(long)]
+        cy: i64,
+        /// Center z of the base disc.
+        #[arg(long)]
+        cz: i64,
+        /// Disc radius in voxels (perpendicular to `axis`).
+        #[arg(long)]
+        r: u32,
+        /// Length along `axis`, in voxels.
+        #[arg(long)]
+        height: u32,
+        /// The axis the cylinder extends along.
+        #[arg(long, value_enum)]
+        axis: Axis,
+        /// The fill color, as `#rrggbb`.
+        #[arg(long, value_parser = parse_color)]
+        color: Rgb,
+    },
+    /// Fill a solid ellipsoid centered at `(cx, cy, cz)` with per-axis radii — the
+    /// generalization of `fill-sphere` to unequal radii (domes, eggs, boulders).
+    FillEllipsoid {
+        /// Center x.
+        #[arg(long)]
+        cx: i64,
+        /// Center y.
+        #[arg(long)]
+        cy: i64,
+        /// Center z.
+        #[arg(long)]
+        cz: i64,
+        /// Radius along x, in voxels.
+        #[arg(long)]
+        rx: u32,
+        /// Radius along y, in voxels.
+        #[arg(long)]
+        ry: u32,
+        /// Radius along z, in voxels.
+        #[arg(long)]
+        rz: u32,
+        /// The fill color, as `#rrggbb`.
+        #[arg(long, value_parser = parse_color)]
+        color: Rgb,
+    },
+    /// Recolor every occupied voxel of one color to another, across the whole volume
+    /// — a palette swap or shading pass. Empty cells and other colors are untouched.
+    ReplaceColor {
+        /// The color to match, as `#rrggbb`.
+        #[arg(long, value_parser = parse_color)]
+        from: Rgb,
+        /// The color to write in its place, as `#rrggbb`.
+        #[arg(long, value_parser = parse_color)]
+        to: Rgb,
+    },
+    /// Shift every occupied voxel by `(dx, dy, dz)`, clearing vacated cells; voxels
+    /// pushed outside the volume are dropped. Repositions an entire part.
+    Translate {
+        /// Shift along x, in voxels.
+        #[arg(long)]
+        dx: i64,
+        /// Shift along y, in voxels.
+        #[arg(long)]
+        dy: i64,
+        /// Shift along z, in voxels.
+        #[arg(long)]
+        dz: i64,
+    },
+    /// Copy the occupied voxels in a source box to a destination offset by
+    /// `(dx, dy, dz)`, overwriting the destination (empty source cells do not clear
+    /// it). Source and destination may overlap. `(x, y, z)` is the source min corner.
+    CopyBox {
+        /// Source minimum-corner x.
+        #[arg(long)]
+        x: i64,
+        /// Source minimum-corner y.
+        #[arg(long)]
+        y: i64,
+        /// Source minimum-corner z.
+        #[arg(long)]
+        z: i64,
+        /// Source extent along x, in voxels.
+        #[arg(long)]
+        width: u32,
+        /// Source extent along y, in voxels.
+        #[arg(long)]
+        height: u32,
+        /// Source extent along z, in voxels.
+        #[arg(long)]
+        depth: u32,
+        /// Destination offset along x, in voxels.
+        #[arg(long)]
+        dx: i64,
+        /// Destination offset along y, in voxels.
+        #[arg(long)]
+        dy: i64,
+        /// Destination offset along z, in voxels.
+        #[arg(long)]
+        dz: i64,
+    },
 }
 
 impl OpCommand {
@@ -274,6 +380,63 @@ impl OpCommand {
                 height,
                 depth,
             },
+            OpCommand::FillCylinder {
+                cx,
+                cy,
+                cz,
+                r,
+                height,
+                axis,
+                color,
+            } => Operation::FillCylinder {
+                cx,
+                cy,
+                cz,
+                r,
+                height,
+                axis,
+                color,
+            },
+            OpCommand::FillEllipsoid {
+                cx,
+                cy,
+                cz,
+                rx,
+                ry,
+                rz,
+                color,
+            } => Operation::FillEllipsoid {
+                cx,
+                cy,
+                cz,
+                rx,
+                ry,
+                rz,
+                color,
+            },
+            OpCommand::ReplaceColor { from, to } => Operation::ReplaceColor { from, to },
+            OpCommand::Translate { dx, dy, dz } => Operation::Translate { dx, dy, dz },
+            OpCommand::CopyBox {
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth,
+                dx,
+                dy,
+                dz,
+            } => Operation::CopyBox {
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth,
+                dx,
+                dy,
+                dz,
+            },
         }
     }
 
@@ -289,6 +452,11 @@ impl OpCommand {
             OpCommand::Mirror { .. } => "mirror",
             OpCommand::ClearVoxel { .. } => "clear_voxel",
             OpCommand::ClearBox { .. } => "clear_box",
+            OpCommand::FillCylinder { .. } => "fill_cylinder",
+            OpCommand::FillEllipsoid { .. } => "fill_ellipsoid",
+            OpCommand::ReplaceColor { .. } => "replace_color",
+            OpCommand::Translate { .. } => "translate",
+            OpCommand::CopyBox { .. } => "copy_box",
         }
     }
 }

@@ -149,6 +149,89 @@ pub enum Operation {
         /// Extent along z, in voxels.
         depth: u32,
     },
+    /// Fill a solid cylinder of radius `r` and length `height` extending from the
+    /// base plane through `(cx, cy, cz)` along the positive `axis` direction; the
+    /// disc is centered on the two off-axis coordinates of `(cx, cy, cz)`. Ideal for
+    /// barrels, legs, poles, and wheels.
+    FillCylinder {
+        /// Center x of the base disc (and, for `axis = x`, the base plane).
+        cx: i64,
+        /// Center y of the base disc (and, for `axis = y`, the base plane).
+        cy: i64,
+        /// Center z of the base disc (and, for `axis = z`, the base plane).
+        cz: i64,
+        /// Disc radius in voxels (in the plane perpendicular to `axis`).
+        r: u32,
+        /// Length along `axis` in voxels.
+        height: u32,
+        /// The axis the cylinder extends along.
+        axis: Axis,
+        /// The fill color.
+        color: Rgb,
+    },
+    /// Fill a solid ellipsoid centered at `(cx, cy, cz)` with per-axis radii
+    /// `(rx, ry, rz)` — the generalization of [`Operation::FillSphere`] to unequal
+    /// radii (a dome, an egg, a squashed boulder).
+    FillEllipsoid {
+        /// Center x.
+        cx: i64,
+        /// Center y.
+        cy: i64,
+        /// Center z.
+        cz: i64,
+        /// Radius along x, in voxels.
+        rx: u32,
+        /// Radius along y, in voxels.
+        ry: u32,
+        /// Radius along z, in voxels.
+        rz: u32,
+        /// The fill color.
+        color: Rgb,
+    },
+    /// Recolor every occupied voxel of color `from` to color `to`, across the whole
+    /// volume, leaving empty cells and other colors untouched — a whole-model
+    /// palette swap or shading pass.
+    ReplaceColor {
+        /// The color to match.
+        from: Rgb,
+        /// The color to write in its place.
+        to: Rgb,
+    },
+    /// Shift every occupied voxel by `(dx, dy, dz)`, clearing the cells they vacate;
+    /// voxels pushed outside the volume are dropped. Repositions an entire part.
+    Translate {
+        /// Shift along x, in voxels.
+        dx: i64,
+        /// Shift along y, in voxels.
+        dy: i64,
+        /// Shift along z, in voxels.
+        dz: i64,
+    },
+    /// Copy the occupied voxels in a source box to a destination offset by
+    /// `(dx, dy, dz)`, overwriting the destination cells (empty source cells do not
+    /// clear the destination). Source and destination may overlap. `(x, y, z)` is
+    /// the source box's minimum corner — handy to duplicate a detail (a second
+    /// wheel, a repeated rivet).
+    CopyBox {
+        /// Source minimum-corner x.
+        x: i64,
+        /// Source minimum-corner y.
+        y: i64,
+        /// Source minimum-corner z.
+        z: i64,
+        /// Source extent along x, in voxels.
+        width: u32,
+        /// Source extent along y, in voxels.
+        height: u32,
+        /// Source extent along z, in voxels.
+        depth: u32,
+        /// Destination offset along x, in voxels.
+        dx: i64,
+        /// Destination offset along y, in voxels.
+        dy: i64,
+        /// Destination offset along z, in voxels.
+        dz: i64,
+    },
 }
 
 impl Operation {
@@ -247,6 +330,93 @@ impl Operation {
                     }
                 }
             }
+            Operation::FillCylinder {
+                cx,
+                cy,
+                cz,
+                r,
+                height,
+                axis,
+                color,
+            } => fill_cylinder(set, cx, cy, cz, r, height, axis, color),
+            Operation::FillEllipsoid {
+                cx,
+                cy,
+                cz,
+                rx,
+                ry,
+                rz,
+                color,
+            } => {
+                let (rx, ry, rz) = (rx as i64, ry as i64, rz as i64);
+                // Integer ellipsoid test, cross-multiplied to avoid division (and
+                // division by a zero radius): a cell is inside when
+                //   (dx·ry·rz)² + (dy·rx·rz)² + (dz·rx·ry)² <= (rx·ry·rz)².
+                let bound = rx * rx * ry * ry * rz * rz;
+                for dz in -rz..=rz {
+                    for dy in -ry..=ry {
+                        for dx in -rx..=rx {
+                            let ex = dx * ry * rz;
+                            let ey = dy * rx * rz;
+                            let ez = dz * rx * ry;
+                            if ex * ex + ey * ey + ez * ez <= bound {
+                                set.set(cx + dx, cy + dy, cz + dz, color);
+                            }
+                        }
+                    }
+                }
+            }
+            Operation::ReplaceColor { from, to } => {
+                for cell in set.cells.iter_mut() {
+                    if *cell == Some(from) {
+                        *cell = Some(to);
+                    }
+                }
+            }
+            Operation::Translate { dx, dy, dz } => {
+                // Snapshot the occupied voxels, clear the volume, then rewrite each
+                // at its shifted position (off-volume targets are clipped away).
+                let source = set.clone();
+                for cell in set.cells.iter_mut() {
+                    *cell = None;
+                }
+                let (w, h) = (set.dims.width as i64, set.dims.height as i64);
+                for (index, cell) in source.cells.iter().enumerate() {
+                    let Some(color) = cell else { continue };
+                    let i = index as i64;
+                    let x = i % w;
+                    let y = (i / w) % h;
+                    let z = i / (w * h);
+                    set.set(x + dx, y + dy, z + dz, *color);
+                }
+            }
+            Operation::CopyBox {
+                x,
+                y,
+                z,
+                width,
+                height,
+                depth,
+                dx,
+                dy,
+                dz,
+            } => {
+                // Read the source region first, so an overlapping destination copies
+                // the original voxels rather than ones it just wrote.
+                let mut samples = Vec::new();
+                for sz in 0..depth as i64 {
+                    for sy in 0..height as i64 {
+                        for sx in 0..width as i64 {
+                            if let Some(color) = set.get(x + sx, y + sy, z + sz) {
+                                samples.push((sx, sy, sz, color));
+                            }
+                        }
+                    }
+                }
+                for (sx, sy, sz, color) in samples {
+                    set.set(x + sx + dx, y + sy + dy, z + sz + dz, color);
+                }
+            }
         }
     }
 
@@ -262,6 +432,46 @@ impl Operation {
             Operation::Mirror { .. } => "mirror",
             Operation::ClearVoxel { .. } => "clear_voxel",
             Operation::ClearBox { .. } => "clear_box",
+            Operation::FillCylinder { .. } => "fill_cylinder",
+            Operation::FillEllipsoid { .. } => "fill_ellipsoid",
+            Operation::ReplaceColor { .. } => "replace_color",
+            Operation::Translate { .. } => "translate",
+            Operation::CopyBox { .. } => "copy_box",
+        }
+    }
+}
+
+/// Fill a solid cylinder of radius `r` and length `height` from the base plane
+/// through `(cx, cy, cz)` along the positive `axis` direction. The disc is centered
+/// on the two coordinates of `(cx, cy, cz)` off the extrusion axis; a cell is inside
+/// when its in-plane distance from that center is within `r`. Off-volume cells clip.
+#[allow(clippy::too_many_arguments)]
+fn fill_cylinder(
+    set: &mut VoxelSet,
+    cx: i64,
+    cy: i64,
+    cz: i64,
+    r: u32,
+    height: u32,
+    axis: Axis,
+    color: Rgb,
+) {
+    let r = r as i64;
+    let height = height as i64;
+    for len in 0..height {
+        for a in -r..=r {
+            for b in -r..=r {
+                if a * a + b * b > r * r {
+                    continue;
+                }
+                // `a`/`b` span the plane perpendicular to `axis`; `len` runs along it.
+                let (x, y, z) = match axis {
+                    Axis::X => (cx + len, cy + a, cz + b),
+                    Axis::Y => (cx + a, cy + len, cz + b),
+                    Axis::Z => (cx + a, cy + b, cz + len),
+                };
+                set.set(x, y, z, color);
+            }
         }
     }
 }

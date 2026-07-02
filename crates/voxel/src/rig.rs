@@ -49,9 +49,15 @@ pub struct Part {
 
 /// One named degree of freedom on a part.
 ///
-/// Rotations are in radians about [`Self::axis`] through [`Self::pivot`];
-/// translations are in voxel units along the axis. The valid range is
-/// `[min, max]` and the neutral value is `rest`.
+/// A joint applies a **compound transform**: a fixed mount ([`Self::offset`]
+/// translation and [`Self::orient`] rotation, applied at attach regardless of the
+/// driven value) composed with the **driven** single-axis motion described by
+/// [`Self::kind`]/[`Self::axis`]. Rotations are in radians about [`Self::axis`]
+/// through [`Self::pivot`]; translations are in voxel units along the axis. The
+/// valid range of the driven value is `[min, max]` and the neutral value is `rest`.
+/// A joint whose driven range is empty (`min == max == rest`) but whose mount is
+/// non-zero is a purely static attachment — how a component is mounted at a custom
+/// rotation *and* translation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Joint {
@@ -73,8 +79,24 @@ pub struct Joint {
     pub max: f64,
     /// The rest/default value, within `[min, max]`.
     pub rest: f64,
+    /// A fixed translation `[x, y, z]` (in voxels) this joint applies to the part in
+    /// addition to its driven motion — the translation half of the compound mount.
+    /// All-zero (the default) means no offset.
+    #[serde(default, skip_serializing_if = "is_zero3")]
+    pub offset: [f64; 3],
+    /// A fixed rotation `[x, y, z]` (radians, applied as Euler X→Y→Z about
+    /// [`Self::pivot`]) this joint applies in addition to its driven motion — the
+    /// rotation half of the compound mount. All-zero (the default) means no rotation.
+    #[serde(default, skip_serializing_if = "is_zero3")]
+    pub orient: [f64; 3],
     /// Who drives this joint: a caller (a game) or an auto-play clip.
     pub drive: Drive,
+}
+
+/// Whether a fixed mount vector (`offset`/`orient`) is all zero, so it can be
+/// omitted from `rig.json` for the common no-mount joint.
+fn is_zero3(v: &[f64; 3]) -> bool {
+    v.iter().all(|c| *c == 0.0)
 }
 
 /// Whether a [`Joint`] rotates or translates its part.

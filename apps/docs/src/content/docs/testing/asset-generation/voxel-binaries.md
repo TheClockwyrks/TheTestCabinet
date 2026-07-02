@@ -51,14 +51,24 @@ voxel fill-box --x 6 --y 0 --z 10 --width 20 --height 4 --depth 12 --color "#3a4
 voxel mirror --plane x --at 16
 ```
 
-The operations are: `set-voxel`, `fill-box`, `line` (a 3D Bresenham run of
-voxels), `clear-voxel`, `clear-box`, `mirror` (reflect the volume across a plane,
-handy for a symmetric hull), and the convenience shapes `stroke-box` (a hollow
-box) and `fill-sphere`. Coordinates are **signed** (a shape may be placed
-partially outside the volume; the out-of-bounds portion is **clipped**, never a
-panic); sizes and radii are unsigned. Colors are opaque `#rrggbb`. A set/fill
-operation **replaces** the cells it touches, so the recorded log regenerates to an
-exact, order-only volume.
+The operations are:
+
+- **Placement:** `set-voxel`, `fill-box`, `line` (a 3D Bresenham run of voxels),
+  and the convenience shapes `stroke-box` (a hollow box), `fill-sphere`,
+  `fill-ellipsoid` (a sphere with unequal per-axis radii — domes, eggs, boulders),
+  and `fill-cylinder` (a disc extruded along a chosen axis — barrels, legs, poles,
+  wheels).
+- **Clearing:** `clear-voxel`, `clear-box`.
+- **Whole-volume edits:** `mirror` (reflect the volume across a plane, handy for a
+  symmetric hull), `replace-color` (recolor every voxel of one color to another — a
+  palette swap or shading pass), `translate` (shift every occupied voxel by a
+  vector, clearing what it vacates), and `copy-box` (duplicate a source box's
+  voxels to a destination offset — a second wheel, a repeated rivet).
+
+Coordinates are **signed** (a shape may be placed partially outside the volume; the
+out-of-bounds portion is **clipped**, never a panic); sizes and radii are unsigned.
+Colors are opaque `#rrggbb`. A set/fill operation **replaces** the cells it touches,
+so the recorded log regenerates to an exact, order-only volume.
 
 ## How a call records and previews
 
@@ -176,10 +186,13 @@ subcommands let the model **add its own** parts, joints, and auto-play clips on 
 (the produced `rig.json` carries the required set plus everything the model adds):
 
 ```
-voxel-anim define-part  --name skirt --parent chassis --pivot 16,2,16
-voxel-anim set-pivot    --part turret --pivot 16,9,16
+voxel-anim define-part  --name skirt --parent chassis
+voxel-anim set-pivot    --part turret --x 16 --y 9 --z 16
 voxel-anim define-joint --name recoil --part barrel --kind translation --axis z \
-                        --pivot 16,10,20 --min -2 --max 0 --rest 0 --drive auto
+                        --pivot-x 16 --pivot-y 10 --pivot-z 20 --min=-2 --max 0 --rest 0 --drive auto
+voxel-anim define-joint --name barrel_mount --part barrel --kind rotation --axis x \
+                        --pivot-x 16 --pivot-y 10 --pivot-z 20 --min 0 --max 0 --rest 0 \
+                        --orient-x 0.2 --offset-y 1   # a fixed compound attach: mount tilted + raised
 voxel-anim define-clip  --joint recoil --period-ms 600 --loop false \
                         --keyframe 0:0 --keyframe 100:-2 --keyframe 600:0
 ```
@@ -190,7 +203,13 @@ voxel-anim define-clip  --joint recoil --period-ms 600 --loop false \
   coordinates, its joints rotate about.
 - **`define-joint`** adds a named degree of freedom on a part — its `--kind`
   (`rotation`/`translation`), `--axis`, `--pivot`, `--min`/`--max`/`--rest` range,
-  and `--drive` (`caller` for a game-supplied value, `auto` for a clip).
+  and `--drive` (`caller` for a game-supplied value, `auto` for a clip). A joint may
+  also carry a **fixed compound mount** applied in addition to its driven motion:
+  `--offset-x/y/z` (a fixed translation in voxels) and `--orient-x/y/z` (a fixed
+  rotation in radians, applied as Euler X→Y→Z about the pivot). This is how a
+  component is attached at a custom rotation **and** translation — a joint with an
+  empty driven range (`--min 0 --max 0 --rest 0`) but a non-zero mount is a purely
+  static attachment; a joint with both a range and a mount does both.
 - **`define-clip`** attaches an auto-play timeline to a `--drive auto` joint: a set
   of `--keyframe <t_ms>:<value>` samples over a `--period-ms`, looping or holding.
 

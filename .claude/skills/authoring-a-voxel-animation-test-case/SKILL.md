@@ -166,7 +166,12 @@ Author `test-case.toml` per the
     a declared `parent`; each carries a `pivot` (`[x, y, z]`). Names unique; parents
     form a tree (no cycles).
   - `[[model.joint]]` entries — each a `name`, a `part` (declared), `kind`, `axis`,
-    `pivot`, `min`/`max`/`rest` (with `min <= rest <= max`), and `drive`.
+    `pivot`, `min`/`max`/`rest` (with `min <= rest <= max`), and `drive`. A joint may
+    also carry an optional **fixed compound mount** — `offset` (a translation in
+    voxels) and `orient` (a rotation in radians, Euler X→Y→Z about the pivot) —
+    applied in addition to the driven motion, so a component can be attached at a
+    custom rotation *and* translation (a joint with `min = max = rest = 0` but a
+    non-zero mount is a purely static attach).
   - `[[model.clip]]` entries (optional) — an auto-play timeline for a `drive =
     "auto"` joint: the `joint` it drives, `period_ms`, `loop`, and in-order
     `keyframes` over `[0, period_ms]`. A `caller` joint takes **no** clip.

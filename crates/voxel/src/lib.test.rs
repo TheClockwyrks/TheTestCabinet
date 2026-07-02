@@ -217,6 +217,163 @@ fn mirror_reflects_low_onto_high() {
 }
 
 #[test]
+fn fill_cylinder_extrudes_a_disc_along_its_axis() {
+    let set = render(
+        &Dims {
+            width: 7,
+            height: 7,
+            depth: 7,
+        },
+        &[Operation::FillCylinder {
+            cx: 3,
+            cy: 1,
+            cz: 3,
+            r: 2,
+            height: 4,
+            axis: Axis::Y,
+            color: RED,
+        }],
+    );
+    // The disc is centered on (x=3, z=3); it runs y in [1, 5).
+    assert_eq!(set.get(3, 1, 3), Some(RED), "base center");
+    assert_eq!(set.get(3, 4, 3), Some(RED), "top center (last slice)");
+    assert_eq!(set.get(3, 5, 3), None, "one past the top");
+    assert_eq!(set.get(3, 0, 3), None, "one below the base");
+    assert_eq!(set.get(1, 2, 3), Some(RED), "edge of the disc");
+    assert_eq!(set.get(3, 2, 1), Some(RED), "edge along z");
+    assert_eq!(set.get(1, 2, 1), None, "corner is outside the disc");
+}
+
+#[test]
+fn fill_ellipsoid_is_wider_than_it_is_tall() {
+    let set = render(
+        &Dims {
+            width: 9,
+            height: 9,
+            depth: 9,
+        },
+        &[Operation::FillEllipsoid {
+            cx: 4,
+            cy: 4,
+            cz: 4,
+            rx: 3,
+            ry: 1,
+            rz: 3,
+            color: RED,
+        }],
+    );
+    assert_eq!(set.get(4, 4, 4), Some(RED), "center");
+    assert_eq!(set.get(7, 4, 4), Some(RED), "reaches rx along x");
+    assert_eq!(set.get(4, 5, 4), Some(RED), "reaches ry along y");
+    assert_eq!(set.get(4, 6, 4), None, "beyond ry along y");
+}
+
+#[test]
+fn replace_color_recolors_only_matching_voxels() {
+    let set = render(
+        &dims(),
+        &[
+            Operation::FillBox {
+                x: 0,
+                y: 0,
+                z: 0,
+                width: 2,
+                height: 1,
+                depth: 1,
+                color: RED,
+            },
+            Operation::SetVoxel {
+                x: 4,
+                y: 4,
+                z: 4,
+                color: BLUE,
+            },
+            Operation::ReplaceColor {
+                from: RED,
+                to: BLUE,
+            },
+        ],
+    );
+    assert_eq!(set.get(0, 0, 0), Some(BLUE), "recolored");
+    assert_eq!(set.get(1, 0, 0), Some(BLUE), "recolored");
+    assert_eq!(set.get(4, 4, 4), Some(BLUE), "already blue, untouched");
+    assert_eq!(set.occupied_count(), 3, "no new voxels created");
+}
+
+#[test]
+fn translate_shifts_and_clips() {
+    let set = render(
+        &dims(),
+        &[
+            Operation::SetVoxel {
+                x: 0,
+                y: 0,
+                z: 0,
+                color: RED,
+            },
+            Operation::SetVoxel {
+                x: 4,
+                y: 0,
+                z: 0,
+                color: BLUE,
+            },
+            Operation::Translate {
+                dx: 1,
+                dy: 0,
+                dz: 0,
+            },
+        ],
+    );
+    assert_eq!(set.get(1, 0, 0), Some(RED), "shifted right");
+    assert_eq!(set.get(0, 0, 0), None, "vacated cell cleared");
+    assert_eq!(
+        set.occupied_count(),
+        1,
+        "the voxel pushed off-volume is dropped"
+    );
+}
+
+#[test]
+fn copy_box_duplicates_a_region_with_overlap_safety() {
+    let set = render(
+        &dims(),
+        &[
+            Operation::SetVoxel {
+                x: 0,
+                y: 0,
+                z: 0,
+                color: RED,
+            },
+            Operation::SetVoxel {
+                x: 1,
+                y: 0,
+                z: 0,
+                color: BLUE,
+            },
+            // Copy the 2-wide source onto an overlapping destination one cell right.
+            Operation::CopyBox {
+                x: 0,
+                y: 0,
+                z: 0,
+                width: 2,
+                height: 1,
+                depth: 1,
+                dx: 1,
+                dy: 0,
+                dz: 0,
+            },
+        ],
+    );
+    assert_eq!(set.get(0, 0, 0), Some(RED), "source retained");
+    assert_eq!(
+        set.get(1, 0, 0),
+        Some(RED),
+        "source red copied over old blue"
+    );
+    assert_eq!(set.get(2, 0, 0), Some(BLUE), "source blue copied one right");
+}
+
+#[test]
 fn color_hex_round_trips_and_rejects_alpha() {
     assert_eq!(Rgb::parse_hex("#ff0000"), Ok(RED));
     assert_eq!(RED.to_hex(), "#ff0000");

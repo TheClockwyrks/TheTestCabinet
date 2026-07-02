@@ -116,4 +116,36 @@ describe("poseRig", () => {
     expect(m[12]).toBeCloseTo(4, 6);
     expect(m[14]).toBeCloseTo(0, 6);
   });
+
+  it("applies a joint's fixed mount offset as a static compound attach", () => {
+    // A joint with an empty driven range but a non-zero offset is a purely static
+    // mount: it translates the part by the offset regardless of any caller value.
+    const rig: ModelSpec = {
+      parts: [part("turret")],
+      joints: [yaw({ min: 0, max: 0, rest: 0, offset: [3, -1, 2] })],
+    };
+    const m = world(poseRig(rig, {}), "turret");
+    expect([m[12], m[13], m[14]]).toEqual([3, -1, 2]);
+  });
+
+  it("composes a joint's fixed mount rotation with its driven motion", () => {
+    // The mount pre-rotates 90° about Y; the driven yaw adds another 90°, so the
+    // part ends up rotated 180° about Y (offset shifts it afterward).
+    const rig: ModelSpec = {
+      parts: [part("turret")],
+      joints: [
+        yaw({
+          min: -Math.PI,
+          max: Math.PI,
+          orient: [0, Math.PI / 2, 0],
+          offset: [1, 0, 0],
+        }),
+      ],
+    };
+    const m = world(poseRig(rig, { caller: { turret_yaw: Math.PI / 2 } }), "turret");
+    // R_y(180°): m[0] = cos(π) = -1, m[10] = -1; plus the mount offset on x.
+    expect(m[0]).toBeCloseTo(-1, 6);
+    expect(m[10]).toBeCloseTo(-1, 6);
+    expect(m[12]).toBeCloseTo(1, 6);
+  });
 });

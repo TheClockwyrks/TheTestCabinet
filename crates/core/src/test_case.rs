@@ -481,6 +481,14 @@ struct ManifestJoint {
     max: f64,
     /// The rest/default value, within `[min, max]`.
     rest: f64,
+    /// A fixed mount translation `[x, y, z]` (voxels) applied in addition to the
+    /// driven motion — the translation half of a compound attach. Optional.
+    #[serde(default)]
+    offset: Option<[f64; 3]>,
+    /// A fixed mount rotation `[x, y, z]` (radians, Euler X→Y→Z about `pivot`)
+    /// applied in addition to the driven motion — the rotation half. Optional.
+    #[serde(default)]
+    orient: Option<[f64; 3]>,
     /// Who drives this joint: `caller` (a game) or `auto` (an auto-play clip).
     drive: String,
 }
@@ -1327,6 +1335,18 @@ pub struct JointSpec {
     pub max: f64,
     /// The rest/default value, within `[min, max]`.
     pub rest: f64,
+    /// A fixed mount translation `[x, y, z]` (in voxels) this joint applies to the
+    /// part in addition to its driven motion — the translation half of a compound
+    /// attach. Absent (or all-zero) means no offset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub offset: Option<[f64; 3]>,
+    /// A fixed mount rotation `[x, y, z]` (radians, applied as Euler X→Y→Z about
+    /// [`Self::pivot`]) this joint applies in addition to its driven motion — the
+    /// rotation half of a compound attach. Absent (or all-zero) means no rotation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub orient: Option<[f64; 3]>,
     /// Who drives this joint: a caller (a game) or an auto-play clip.
     pub drive: DriveKindSpec,
     /// The auto-play clip, present only when [`Self::drive`] is
@@ -3725,6 +3745,17 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
                 joint.name
             )));
         }
+        // A declared mount (offset/orient) must be finite; an all-zero mount is
+        // dropped to `None` so it never bloats the seeded `rig.json`.
+        let mount_finite = |v: &Option<[f64; 3]>| v.map(|a| a.iter().all(|c| c.is_finite()));
+        if mount_finite(&joint.offset) == Some(false) || mount_finite(&joint.orient) == Some(false)
+        {
+            return Err(invalid(format!(
+                "model joint `{}` has a non-finite offset/orient",
+                joint.name
+            )));
+        }
+        let nonzero = |v: Option<[f64; 3]>| v.filter(|a| a.iter().any(|c| *c != 0.0));
         joints.push(JointSpec {
             name: joint.name.clone(),
             part: joint.part.clone(),
@@ -3734,6 +3765,8 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
             min: joint.min,
             max: joint.max,
             rest: joint.rest,
+            offset: nonzero(joint.offset),
+            orient: nonzero(joint.orient),
             drive,
             auto: None,
         });

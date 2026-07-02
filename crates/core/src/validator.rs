@@ -814,6 +814,8 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                     }),
                 ),
             };
+            // Carry a compound mount through, dropping an all-zero one to `None`.
+            let nonzero = |v: [f64; 3]| Some(v).filter(|a| a.iter().any(|c| *c != 0.0));
             JointSpec {
                 name: joint.name.clone(),
                 part: joint.part.clone(),
@@ -823,6 +825,8 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 min: joint.min,
                 max: joint.max,
                 rest: joint.rest,
+                offset: nonzero(joint.offset),
+                orient: nonzero(joint.orient),
                 drive,
                 auto,
             }

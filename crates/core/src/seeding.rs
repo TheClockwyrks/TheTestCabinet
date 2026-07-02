@@ -450,6 +450,8 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
                 min: joint.min,
                 max: joint.max,
                 rest: joint.rest,
+                offset: joint.offset.unwrap_or([0.0; 3]),
+                orient: joint.orient.unwrap_or([0.0; 3]),
                 drive,
             }
         })

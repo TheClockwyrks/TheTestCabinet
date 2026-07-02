@@ -662,6 +662,18 @@ export type JointSpec = {
    */
   rest: number;
   /**
+   * A fixed mount translation `[x, y, z]` (in voxels) this joint applies to the
+   * part in addition to its driven motion — the translation half of a compound
+   * attach. Absent (or all-zero) means no offset.
+   */
+  offset?: [number, number, number];
+  /**
+   * A fixed mount rotation `[x, y, z]` (radians, applied as Euler X→Y→Z about
+   * [`Self::pivot`]) this joint applies in addition to its driven motion — the
+   * rotation half of a compound attach. Absent (or all-zero) means no rotation.
+   */
+  orient?: [number, number, number];
+  /**
    * Who drives this joint: a caller (a game) or an auto-play clip.
    */
   drive: DriveKindSpec;

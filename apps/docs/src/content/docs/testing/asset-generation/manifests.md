@@ -297,15 +297,20 @@ rest  = 0.0                # default value, within [min, max]
 drive = "caller"           # "caller" (a game supplies the value) | "auto" (a clip drives it)
 
 [[model.joint]]
-name  = "barrel_pitch"
-part  = "barrel"
-kind  = "rotation"
-axis  = "x"
-pivot = [16, 10, 20]
-min   = -0.2
-max   = 0.6
-rest  = 0.0
-drive = "caller"
+name   = "barrel_pitch"
+part   = "barrel"
+kind   = "rotation"
+axis   = "x"
+pivot  = [16, 10, 20]
+min    = -0.2
+max    = 0.6
+rest   = 0.0
+offset = [0.0, 1.0, 0.0]   # optional: a FIXED mount translation (voxels), applied on top of the
+                           # driven motion — the translation half of a compound attach. All-zero = none.
+orient = [0.2, 0.0, 0.0]   # optional: a FIXED mount rotation (radians, Euler X->Y->Z about pivot) —
+                           # the rotation half. A joint with min=max=rest=0 but a non-zero mount is a
+                           # purely static attach at a custom rotation AND translation.
+drive  = "caller"
 
 # An auto-play clip: the looping motion an `auto` joint plays back on its own.
 # Only for joints whose drive = "auto"; a caller-driven joint takes no clip.
@@ -356,9 +361,12 @@ keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]
   part names are unique, the **first** part is the root (no `parent`), every other
   `parent` names a declared part, the parents form a **tree** (no cycles), every
   joint's `part` names a declared part, every joint's `kind`/`axis`/`drive` parse,
-  `min <= rest <= max`, and every `[[model.clip]]` names a declared `drive = "auto"`
-  joint with in-order keyframes over `[0, period_ms]`. A caller-driven joint takes
-  **no** clip.
+  `min <= rest <= max`, any joint `offset`/`orient` mount is finite, and every
+  `[[model.clip]]` names a declared `drive = "auto"` joint with in-order keyframes
+  over `[0, period_ms]`. A caller-driven joint takes **no** clip. A joint's optional
+  `offset`/`orient` is a **fixed compound mount** (a translation in voxels and a
+  rotation in radians, Euler X→Y→Z about the pivot) applied in addition to its
+  driven motion — how a component is attached at a custom rotation *and* translation.
 - **`[[model.animation]]`** entries are **predetermined, case-authored animations**
   the review viewer plays back on demand (as a play button beside the manual joint
   sliders), so a reviewer can watch the finished rig perform a motion — a turret

@@ -112,6 +112,26 @@ enum Command {
         /// The rest/default value, within `[min, max]`.
         #[arg(long)]
         rest: f64,
+        /// Fixed mount translation along x (voxels), applied in addition to the
+        /// driven motion — the translation half of the compound attach.
+        #[arg(long, default_value_t = 0.0)]
+        offset_x: f64,
+        /// Fixed mount translation along y (voxels).
+        #[arg(long, default_value_t = 0.0)]
+        offset_y: f64,
+        /// Fixed mount translation along z (voxels).
+        #[arg(long, default_value_t = 0.0)]
+        offset_z: f64,
+        /// Fixed mount rotation about x (radians), applied as Euler X→Y→Z about the
+        /// joint pivot — the rotation half of the compound attach.
+        #[arg(long, default_value_t = 0.0)]
+        orient_x: f64,
+        /// Fixed mount rotation about y (radians).
+        #[arg(long, default_value_t = 0.0)]
+        orient_y: f64,
+        /// Fixed mount rotation about z (radians).
+        #[arg(long, default_value_t = 0.0)]
+        orient_z: f64,
         /// Who drives the joint: `caller` (a game) or `auto` (an auto-play clip).
         /// An `auto` joint starts with an empty clip; fill it with `define-clip`.
         #[arg(long, value_enum, default_value = "caller")]
@@ -256,6 +276,12 @@ fn run(cli: Cli) -> Result<(), String> {
             min,
             max,
             rest,
+            offset_x,
+            offset_y,
+            offset_z,
+            orient_x,
+            orient_y,
+            orient_z,
             drive,
         } => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
@@ -269,6 +295,8 @@ fn run(cli: Cli) -> Result<(), String> {
                 min,
                 max,
                 rest,
+                offset: [offset_x, offset_y, offset_z],
+                orient: [orient_x, orient_y, orient_z],
                 drive: drive.into_drive(),
             });
             rig.save(&config.rig)?;

@@ -300,6 +300,8 @@ fn rig_helpers_upsert_and_round_trip() {
         min: -1.5,
         max: 1.5,
         rest: 0.0,
+        offset: [0.0, 0.0, 0.0],
+        orient: [0.0, 0.0, 0.0],
         drive: Drive::Caller,
     });
     assert_eq!(rig.joints.len(), 1);
@@ -309,6 +311,38 @@ fn rig_helpers_upsert_and_round_trip() {
     rig.save(&path).expect("save rig");
     let back = Rig::load(&path).expect("load rig");
     assert_eq!(back, rig);
+}
+
+#[test]
+fn compound_joint_mount_round_trips_and_omits_zero_default() {
+    // A joint with a zero mount omits `offset`/`orient` from the JSON entirely, so
+    // existing rigs stay byte-identical; a non-zero mount serializes and round-trips.
+    let plain = Joint {
+        name: "hinge".to_string(),
+        part: "door".to_string(),
+        kind: JointKind::Rotation,
+        axis: Axis::Y,
+        pivot: [0, 0, 0],
+        min: 0.0,
+        max: 1.0,
+        rest: 0.0,
+        offset: [0.0, 0.0, 0.0],
+        orient: [0.0, 0.0, 0.0],
+        drive: Drive::Caller,
+    };
+    let json = serde_json::to_string(&plain).unwrap();
+    assert!(!json.contains("offset"), "zero offset is omitted: {json}");
+    assert!(!json.contains("orient"), "zero orient is omitted: {json}");
+
+    let mounted = Joint {
+        offset: [2.0, 0.0, -1.5],
+        orient: [0.0, std::f64::consts::FRAC_PI_2, 0.0],
+        ..plain.clone()
+    };
+    let json = serde_json::to_string(&mounted).unwrap();
+    assert!(json.contains("\"offset\":[2.0,0.0,-1.5]"), "{json}");
+    let back: Joint = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, mounted);
 }
 
 #[test]
