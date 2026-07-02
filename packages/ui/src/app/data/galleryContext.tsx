@@ -688,12 +688,42 @@ export interface VoxelArtifacts {
 }
 
 /**
+ * Fetch (and cache) each servable part's `voxels.json`, resolving to a
+ * `{ [partName]: VoxelsFile }` map (parts with no `voxelsUrl` are skipped). The
+ * module cache is keyed by resolved URL and shared with {@link useVoxelArtifacts},
+ * so the 3D viewer and any one-off consumer (e.g. the GIF export, which builds an
+ * offscreen rig outside React) fetch each immutable file at most once. Rejects if
+ * any servable part fails to fetch or parse.
+ */
+export async function fetchVoxelsByPart(
+  parts: readonly { name: string; voxelsUrl: string | null }[],
+): Promise<Record<string, VoxelsFile>> {
+  const servable = parts.filter((p) => p.voxelsUrl);
+  const entries = await Promise.all(
+    servable.map(async (part) => {
+      const url = part.voxelsUrl!;
+      const cached = voxelFileCache.get(url);
+      if (cached) return [part.name, cached] as const;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`${part.name}: ${response.status}`);
+      }
+      const file = (await response.json()) as VoxelsFile;
+      voxelFileCache.set(url, file);
+      return [part.name, file] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+/**
  * Fetch (and cache) the `voxels.json` data the 3D voxel viewer needs for a run's
  * parts. Pass the run's {@link VoxelResultView} parts (name + resolved
- * `voxelsUrl`); the hook fetches each unservable-null URL is skipped, resolves the
- * lot into a `{ [partName]: VoxelsFile }` map, and reuses the module cache across
- * mounts. `voxelsByPart` stays null until every servable part has resolved, so the
- * viewer builds one complete rig rather than flickering part-by-part.
+ * `voxelsUrl`); the hook fetches each (an unservable-null URL is skipped),
+ * resolves the lot into a `{ [partName]: VoxelsFile }` map, and reuses the module
+ * cache across mounts. `voxelsByPart` stays null until every servable part has
+ * resolved, so the viewer builds one complete rig rather than flickering
+ * part-by-part.
  */
 export function useVoxelArtifacts(
   parts: readonly { name: string; voxelsUrl: string | null }[],
@@ -715,27 +745,10 @@ export function useVoxelArtifacts(
     let cancelled = false;
     setState({ voxelsByPart: null, loading: true, error: null });
 
-    Promise.all(
-      servable.map(async (part) => {
-        const url = part.voxelsUrl!;
-        const cached = voxelFileCache.get(url);
-        if (cached) return [part.name, cached] as const;
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`${part.name}: ${response.status}`);
-        }
-        const file = (await response.json()) as VoxelsFile;
-        voxelFileCache.set(url, file);
-        return [part.name, file] as const;
-      }),
-    )
-      .then((entries) => {
+    fetchVoxelsByPart(servable)
+      .then((voxelsByPart) => {
         if (cancelled) return;
-        setState({
-          voxelsByPart: Object.fromEntries(entries),
-          loading: false,
-          error: null,
-        });
+        setState({ voxelsByPart, loading: false, error: null });
       })
       .catch((cause: unknown) => {
         if (cancelled) return;

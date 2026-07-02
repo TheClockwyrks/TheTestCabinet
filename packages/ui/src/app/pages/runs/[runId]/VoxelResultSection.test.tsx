@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ModelSpec } from "@test-cabinet/run-record";
 import { describe, expect, it, vi } from "vitest";
 import type { VoxelResultView } from "../../../data/galleryContext";
@@ -14,10 +14,15 @@ vi.mock("../../../components/webgl", () => ({
 // viewer a ready part map so it mounts immediately.
 vi.mock("../../../data/galleryContext", () => ({
   useVoxelArtifacts: () => ({
-    voxelsByPart: { chassis: { dims: { width: 1, height: 1, depth: 1 }, voxels: [] } },
+    voxelsByPart: {
+      chassis: { dims: { width: 1, height: 1, depth: 1 }, voxels: [] },
+    },
     loading: false,
     error: null,
   }),
+  // Referenced by the GIF-export button's encode closure (only on click, which
+  // these tests don't trigger); present so the named import resolves.
+  fetchVoxelsByPart: vi.fn(),
 }));
 
 // Stand in for the real (WebGL) viewer with a counter marker, so the test can
@@ -40,13 +45,82 @@ const RIG: ModelSpec = {
     { name: "turret", parent: "chassis", pivot: [0, 0, 0] },
   ],
   joints: [
-    { name: "turret_yaw", part: "turret", kind: "rotation", axis: "y", pivot: [0, 0, 0], min: -1, max: 1, rest: 0, drive: "caller" },
-    { name: "gun_pitch", part: "turret", kind: "rotation", axis: "x", pivot: [0, 0, 0], min: -1, max: 1, rest: 0, drive: "caller" },
-    { name: "radar_spin", part: "turret", kind: "rotation", axis: "y", pivot: [0, 0, 0], min: 0, max: 6, rest: 0, drive: "auto", auto: { periodMs: 2000, looping: true, keyframes: [{ tMs: 0, value: 0 }, { tMs: 2000, value: 6 }] } },
-    { name: "tread_l", part: "chassis", kind: "translation", axis: "x", pivot: [0, 0, 0], min: 0, max: 1, rest: 0, drive: "auto", auto: { periodMs: 1000, looping: true, keyframes: [{ tMs: 0, value: 0 }, { tMs: 1000, value: 1 }] } },
+    {
+      name: "turret_yaw",
+      part: "turret",
+      kind: "rotation",
+      axis: "y",
+      pivot: [0, 0, 0],
+      min: -1,
+      max: 1,
+      rest: 0,
+      drive: "caller",
+    },
+    {
+      name: "gun_pitch",
+      part: "turret",
+      kind: "rotation",
+      axis: "x",
+      pivot: [0, 0, 0],
+      min: -1,
+      max: 1,
+      rest: 0,
+      drive: "caller",
+    },
+    {
+      name: "radar_spin",
+      part: "turret",
+      kind: "rotation",
+      axis: "y",
+      pivot: [0, 0, 0],
+      min: 0,
+      max: 6,
+      rest: 0,
+      drive: "auto",
+      auto: {
+        periodMs: 2000,
+        looping: true,
+        keyframes: [
+          { tMs: 0, value: 0 },
+          { tMs: 2000, value: 6 },
+        ],
+      },
+    },
+    {
+      name: "tread_l",
+      part: "chassis",
+      kind: "translation",
+      axis: "x",
+      pivot: [0, 0, 0],
+      min: 0,
+      max: 1,
+      rest: 0,
+      drive: "auto",
+      auto: {
+        periodMs: 1000,
+        looping: true,
+        keyframes: [
+          { tMs: 0, value: 0 },
+          { tMs: 1000, value: 1 },
+        ],
+      },
+    },
   ],
   animations: [
-    { name: "bombardment", periodMs: 4000, looping: true, tracks: [{ joint: "turret_yaw", keyframes: [{ tMs: 0, value: -1 }, { tMs: 4000, value: 1 }] }] },
+    {
+      name: "bombardment",
+      periodMs: 4000,
+      looping: true,
+      tracks: [
+        {
+          joint: "turret_yaw",
+          keyframes: [
+            { tMs: 0, value: -1 },
+            { tMs: 4000, value: 1 },
+          ],
+        },
+      ],
+    },
   ],
 };
 
@@ -92,8 +166,38 @@ describe("VoxelResultSection (animated)", () => {
 
     // Each animation/joint remains individually selectable; only the render surface
     // is shared.
-    for (const name of ["bombardment", "turret_yaw", "gun_pitch", "radar_spin", "tread_l"]) {
-      expect(screen.getByRole("button", { name: new RegExp(name) })).toBeInTheDocument();
+    for (const name of [
+      "bombardment",
+      "turret_yaw",
+      "gun_pitch",
+      "radar_spin",
+      "tread_l",
+    ]) {
+      expect(
+        screen.getByRole("button", { name: new RegExp(name) }),
+      ).toBeInTheDocument();
     }
+  });
+
+  it("offers a GIF download for autoplaying clips but not caller joints", async () => {
+    await act(async () => {
+      render(<VoxelResultSection view={VIEW} />);
+    });
+
+    // The first view (a predetermined animation) is selected by default; it loops
+    // over a period, so it can be baked to a GIF.
+    expect(
+      screen.getByRole("button", { name: "Download GIF" }),
+    ).toBeInTheDocument();
+
+    // A caller-driven joint is posed by a slider, not time — nothing to capture.
+    fireEvent.click(screen.getByRole("button", { name: /turret_yaw/ }));
+    expect(screen.queryByRole("button", { name: "Download GIF" })).toBeNull();
+
+    // An auto-play joint loops over its own period, so the download returns.
+    fireEvent.click(screen.getByRole("button", { name: /radar_spin/ }));
+    expect(
+      screen.getByRole("button", { name: "Download GIF" }),
+    ).toBeInTheDocument();
   });
 });

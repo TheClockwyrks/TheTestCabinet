@@ -1,14 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AnimationSpec, JointSpec, ModelSpec } from "@test-cabinet/run-record";
+import type {
+  AnimationSpec,
+  JointSpec,
+  ModelSpec,
+} from "@test-cabinet/run-record";
 import {
+  fetchVoxelsByPart,
   useVoxelArtifacts,
   type VoxelPartView,
   type VoxelResultView,
 } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
+import { GifDownloadButton } from "./GifDownloadButton";
+import { encodeVoxelGif } from "./voxelGif";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
+
+/** The preview panel's background, resolved from the theme so a baked GIF's solid
+ * backdrop matches the on-screen preview box (which uses the same var). */
+function panelBackground(): string {
+  if (typeof document === "undefined") return "#1c1c1c";
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue("--tc-panel-2")
+    .trim();
+  return value || "#1c1c1c";
+}
+
+/** A filesystem-friendly `<name>.gif` for a downloaded clip. */
+function voxelGifFilename(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${slug || "animation"}.gif`;
+}
 
 // Divergence at or above this fraction reads as "drew outside the tool" — the same
 // threshold the sprite results use.
@@ -244,7 +271,13 @@ function formatJointValue(joint: JointSpec, value: number): string {
  * {@link VoxelAnimationResult}).
  */
 type RigView =
-  | { kind: "animation"; key: string; name: string; sub: string; animation: AnimationSpec }
+  | {
+      kind: "animation";
+      key: string;
+      name: string;
+      sub: string;
+      animation: AnimationSpec;
+    }
   | { kind: "caller"; key: string; name: string; sub: string; joint: JointSpec }
   | { kind: "auto"; key: string; name: string; sub: string; joint: JointSpec };
 
@@ -412,14 +445,19 @@ function PartGrid({ parts }: { parts: VoxelPartView[] }) {
 function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   // The produced rig drives the viewer; fall back to the required rig, then to a
   // trivial single-part rig, so the parts at least render even if no rig resolved.
-  const rig = view.rig ?? view.model ?? staticRig(view.parts[0]?.name ?? "model");
+  const rig =
+    view.rig ?? view.model ?? staticRig(view.parts[0]?.name ?? "model");
   const fallbackUrl =
     view.parts[0]?.regeneratedUrl ?? view.parts[0]?.previewUrl ?? null;
   // Predetermined animations are authored on the case's declared model spec (they
   // are not produced into the rig), so read them from there, falling back to the
   // produced rig for safety.
-  const animations = view.model?.animations ?? view.rig?.animations ?? EMPTY_ANIMATIONS;
-  const views = useMemo(() => buildRigViews(rig, animations), [rig, animations]);
+  const animations =
+    view.model?.animations ?? view.rig?.animations ?? EMPTY_ANIMATIONS;
+  const views = useMemo(
+    () => buildRigViews(rig, animations),
+    [rig, animations],
+  );
 
   const [selectedKey, setSelectedKey] = useState(() => views[0]?.key ?? "");
   const active = views.find((v) => v.key === selectedKey) ?? views[0] ?? null;
@@ -431,7 +469,9 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   // the played animation overrides only the joints its tracks drive).
   const [callerValues, setCallerValues] = useState<Record<string, number>>(() =>
     Object.fromEntries(
-      rig.joints.filter((j) => j.drive === "caller").map((j) => [j.name, j.rest]),
+      rig.joints
+        .filter((j) => j.drive === "caller")
+        .map((j) => [j.name, j.rest]),
     ),
   );
 
@@ -446,17 +486,44 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
 
   const activeCaller = active?.kind === "caller" ? active.joint : null;
   const activeValue = activeCaller
-    ? callerValues[activeCaller.name] ?? activeCaller.rest
+    ? (callerValues[activeCaller.name] ?? activeCaller.rest)
     : 0;
+
+  // Only an autoplaying clip — a predetermined animation or an auto-play joint,
+  // both of which loop over a period — can be baked to a GIF; a caller-driven
+  // joint is posed by a slider, not time, so it has no motion to capture.
+  const downloadable =
+    active?.kind === "animation" && active.animation.periodMs > 0
+      ? {
+          name: active.name,
+          periodMs: active.animation.periodMs,
+          animation: active.animation,
+          autoPlayClip: null,
+        }
+      : active?.kind === "auto" && (active.joint.auto?.periodMs ?? 0) > 0
+        ? {
+            name: active.name,
+            periodMs: active.joint.auto!.periodMs,
+            animation: null,
+            autoPlayClip: active.joint.name,
+          }
+        : null;
+
+  // Baking a GIF renders offscreen with WebGL, so only offer it where WebGL is
+  // available (the same capability the preview itself needs). Promote from an
+  // effect so the first paint and SSR never touch WebGL.
+  const [webglOk, setWebglOk] = useState(false);
+  useEffect(() => setWebglOk(supportsWebGL()), []);
 
   return (
     <>
       <h3 className={`${styles.section} ${styles.leadHeading}`}>Rig preview</h3>
       <p className={styles.secondary}>
-        Pick an animation or joint to drive the model — the whole rig plays through
-        one shared view. Predetermined animations are the choreographies the case
-        authored; caller-driven joints expose a slider a consuming game would drive;
-        auto-play joints loop the clip the model defined. Drag the model to orbit it.
+        Pick an animation or joint to drive the model — the whole rig plays
+        through one shared view. Predetermined animations are the choreographies
+        the case authored; caller-driven joints expose a slider a consuming game
+        would drive; auto-play joints loop the clip the model defined. Drag the
+        model to orbit it.
       </p>
       <div className={styles.rigPreview}>
         <div className={styles.rigPreviewSidebar}>
@@ -468,7 +535,8 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
           {activeCaller ? (
             <div className={styles.voxelSlider}>
               <span className={styles.sequenceSub}>
-                {activeCaller.kind} · {formatJointValue(activeCaller, activeValue)}
+                {activeCaller.kind} ·{" "}
+                {formatJointValue(activeCaller, activeValue)}
               </span>
               <input
                 type="range"
@@ -492,6 +560,23 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                 style={{ width: "100%" }}
               />
             </div>
+          ) : null}
+          {downloadable && webglOk ? (
+            <GifDownloadButton
+              filename={voxelGifFilename(downloadable.name)}
+              encode={async () => {
+                const voxels = await fetchVoxelsByPart(view.parts);
+                return encodeVoxelGif({
+                  voxels,
+                  rig,
+                  animation: downloadable.animation,
+                  autoPlayClip: downloadable.autoPlayClip,
+                  callerJoints: callerValues,
+                  periodMs: downloadable.periodMs,
+                  background: panelBackground(),
+                });
+              }}
+            />
           ) : null}
         </div>
         <div className={styles.rigPreviewStage}>

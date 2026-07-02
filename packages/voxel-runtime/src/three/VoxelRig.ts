@@ -1,5 +1,10 @@
 import * as THREE from "three";
-import type { AnimationSpec, JointSpec, ModelSpec, VoxelsFile } from "../contract";
+import type {
+  AnimationSpec,
+  JointSpec,
+  ModelSpec,
+  VoxelsFile,
+} from "../contract";
 import { sampleAnimation } from "../clips";
 import { poseRig } from "../hierarchy";
 import { buildPartGeometry } from "./buildMesh";
@@ -17,7 +22,9 @@ export interface VoxelRigOptions {
   timeMs?: number;
 }
 
-const isVoxelsFile = (v: Record<string, VoxelsFile> | VoxelsFile): v is VoxelsFile =>
+const isVoxelsFile = (
+  v: Record<string, VoxelsFile> | VoxelsFile,
+): v is VoxelsFile =>
   Array.isArray((v as VoxelsFile).voxels) &&
   typeof (v as VoxelsFile).dims === "object";
 
@@ -132,9 +139,23 @@ export class VoxelRig {
     this.applyPose();
   }
 
+  /**
+   * Seek the playback clock to an absolute time (in milliseconds) and re-pose.
+   * Unlike {@link update}, which advances by a delta driven off a wall clock,
+   * this poses the rig at an exact time — so a caller can sample deterministic,
+   * evenly-spaced frames of a clip (e.g. baking an animation to a GIF or glTF)
+   * independent of real time.
+   */
+  seek(timeMs: number): void {
+    this.timeMs = timeMs;
+    this.applyPose();
+  }
+
   /** The joint names, optionally filtered to a single drive kind. */
   jointNames(drive?: "caller" | "auto"): string[] {
-    const joints = drive ? this.rig.joints.filter((j) => j.drive === drive) : this.rig.joints;
+    const joints = drive
+      ? this.rig.joints.filter((j) => j.drive === drive)
+      : this.rig.joints;
     return joints.map((j) => j.name);
   }
 
@@ -188,7 +209,10 @@ export class VoxelRig {
     // Overlay the active animation's sampled joint values on the caller values, so
     // an animation drives its joints while any others stay at their caller pose.
     const caller = this.activeAnimation
-      ? { ...this.caller, ...sampleAnimation(this.activeAnimation, this.timeMs) }
+      ? {
+          ...this.caller,
+          ...sampleAnimation(this.activeAnimation, this.timeMs),
+        }
       : this.caller;
     const posed = poseRig(this.posableRig(), { caller, timeMs: this.timeMs });
     for (const part of posed) {

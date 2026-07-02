@@ -8,69 +8,21 @@ import type {
   VoxelsFile,
 } from "@test-cabinet/run-record";
 import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
+import {
+  AMBIENT_INTENSITY,
+  CAMERA_FOV,
+  FILL_LIGHT,
+  KEY_LIGHT,
+  cameraPosition,
+  framing,
+  type Vec3,
+} from "./voxelScene";
 
 // How the viewer presents the model: `auto-rotate` slowly orbits the camera on
 // its own (the static-model gallery view); `orbit` is a still, drag-to-inspect
 // view (used beside a caller-joint slider or an auto-play clip, where the motion
 // under review is the model's, not the camera's).
 export type VoxelViewMode = "auto-rotate" | "orbit";
-
-/** Column-major-agnostic 3-tuple. */
-type Vec3 = [number, number, number];
-
-/**
- * Camera framing — the model's center, the camera distance that fits it, and a far
- * plane — derived from the raw voxel bounds (or a fixed `frameDims` volume when the
- * caller pins the frame). Computed from the data rather than the built
- * {@link VoxelRig} so it's correct on the very first render, before the rig is built
- * in an effect. Each voxel occupies the unit cube `[x, x+1]`, so the far corner is
- * `max + 1`; the rest pose is representative, so posing a joint doesn't reframe.
- */
-function framing(
-  voxels: Record<string, VoxelsFile> | VoxelsFile,
-  frameDims: VoxelDims | null | undefined,
-): { center: Vec3; distance: number; far: number } {
-  if (frameDims) {
-    const size = Math.max(frameDims.width, frameDims.height, frameDims.depth, 1);
-    const dist = size * 2.2;
-    return {
-      center: [frameDims.width / 2, frameDims.height / 2, frameDims.depth / 2],
-      distance: dist,
-      far: dist * 20,
-    };
-  }
-  const files = Array.isArray((voxels as VoxelsFile).voxels)
-    ? [voxels as VoxelsFile]
-    : Object.values(voxels as Record<string, VoxelsFile>);
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-  for (const file of files) {
-    for (const v of file.voxels) {
-      if (v.x < minX) minX = v.x;
-      if (v.y < minY) minY = v.y;
-      if (v.z < minZ) minZ = v.z;
-      if (v.x > maxX) maxX = v.x;
-      if (v.y > maxY) maxY = v.y;
-      if (v.z > maxZ) maxZ = v.z;
-    }
-  }
-  if (minX > maxX) {
-    // No voxels to frame yet — a neutral default.
-    return { center: [0, 0, 0], distance: 32, far: 400 };
-  }
-  const center: Vec3 = [
-    (minX + maxX + 1) / 2,
-    (minY + maxY + 1) / 2,
-    (minZ + maxZ + 1) / 2,
-  ];
-  const size = Math.max(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, 1);
-  const dist = size * 2.2;
-  return { center, distance: dist, far: dist * 20 };
-}
 
 /**
  * The scene contents inside the {@link Canvas}: the posed rig (centered at the
@@ -206,15 +158,21 @@ export default function VoxelViewer({
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: true }}
         camera={{
-          position: [distance, distance * 0.8, distance],
-          fov: 45,
+          position: cameraPosition(distance),
+          fov: CAMERA_FOV,
           near: 0.1,
           far,
         }}
       >
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[1, 2, 1]} intensity={1.1} />
-        <directionalLight position={[-1, 0.5, -1]} intensity={0.5} />
+        <ambientLight intensity={AMBIENT_INTENSITY} />
+        <directionalLight
+          position={KEY_LIGHT.position}
+          intensity={KEY_LIGHT.intensity}
+        />
+        <directionalLight
+          position={FILL_LIGHT.position}
+          intensity={FILL_LIGHT.intensity}
+        />
         {voxelRig ? (
           <RigScene rig={voxelRig} center={center} animate={animate} />
         ) : null}
