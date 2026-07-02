@@ -2,9 +2,12 @@
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 
+// The type switcher sits on its own row (left-aligned, its natural width) above
+// the full-width search field.
 .controls {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
 }
@@ -30,72 +33,6 @@
   }
 }
 
-.filterRow {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: t.$space-sm t.$space-md;
-}
-
-.filterLabel {
-  font-size: t.$font-sm;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: t.$color-text-muted;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm;
-  align-items: center;
-}
-
-// A pill-shaped facet toggle; lights up with the accent glow when active. Unlike
-// the card badges it sits directly on the page, so it carries the panel
-// background to stay legible where the row crosses the backdrop's sun rather
-// than washing out against it.
-.chip {
-  padding: t.$space-xs t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-text;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-lg;
-  cursor: pointer;
-
-  &:hover {
-    border-color: t.$color-accent;
-  }
-}
-
-.chipActive {
-  color: t.$color-accent;
-  border-color: t.$color-accent;
-  box-shadow: 0 0 0.6rem color-mix(in srgb, t.$color-accent 45%, transparent);
-  text-shadow: var(--ttc-glow);
-}
-
-// The reset control for a facet row. It shares the chip's pill shape but is
-// given the panel background and an accent-2 outline so it stays legible over
-// the backdrop's sun rather than vanishing into it like a bare text button did.
-.clear {
-  padding: t.$space-xs t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-accent-2;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-accent-2;
-  border-radius: t.$radius-lg;
-  cursor: pointer;
-
-  &:hover {
-    box-shadow: 0 0 0.6rem color-mix(in srgb, t.$color-accent-2 45%, transparent);
-    text-shadow: var(--ttc-glow);
-  }
-}
-
 .grid {
   list-style: none;
   margin: 0;
@@ -116,7 +53,8 @@
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
-  box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 8%, transparent);
+  box-shadow: inset 0 0 1.5rem
+    color-mix(in srgb, t.$color-accent 8%, transparent);
 
   &:hover {
     text-decoration: none;

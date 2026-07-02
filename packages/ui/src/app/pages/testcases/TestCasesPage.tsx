@@ -1,37 +1,40 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
+import type { TestType } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { SegmentedControl } from "../../../primitives/SegmentedControl";
+import type { SegmentedOption } from "../../../primitives/SegmentedControl";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import styles from "./TestCasesPage.module.scss";
 
-// The test-case catalog: every case as a neon card showing its title and
-// difficulty on one row, a short summary, and its tags, with a client-side
-// search (title/tag) and difficulty/tag filters. Cards link to the per-slug
-// detail page. The catalog is not a leaderboard — cases are listed, never ranked.
+// The test-type switcher: one segment per test type, always shown in this order
+// so the control's shape is stable regardless of which types the catalog
+// currently holds. The catalog shows exactly one type at a time.
+const TYPE_OPTIONS: ReadonlyArray<SegmentedOption<TestType>> = [
+  { value: "end-to-end", label: "E2E" },
+  { value: "asset-generation", label: "Asset" },
+  { value: "adversarial", label: "Adversarial" },
+  { value: "performance", label: "Performance" },
+];
+
+// The test-case catalog: every case as a neon card showing its title and a
+// short summary. A sliding type switcher scopes the grid to a single test type,
+// and a client-side search narrows by title within it. Cards link to the
+// per-slug detail page and are listed alphabetically — never ranked.
 export function TestCasesPage() {
   const { testCases, status } = useTestCases();
   const [query, setQuery] = useState("");
-  const [difficulty, setDifficulty] = useState<string | null>(null);
-  const [tag, setTag] = useState<string | null>(null);
-
-  // The filter vocabularies, derived once from the catalog so the controls
-  // only ever offer values that actually appear.
-  const difficulties = useMemo(
-    () => unique(testCases.map((testCase) => testCase.difficulty)),
-    [testCases],
-  );
-  const tags = useMemo(
-    () => unique(testCases.flatMap((testCase) => testCase.tags)),
-    [testCases],
-  );
+  const [testType, setTestType] = useState<TestType>("end-to-end");
 
   const shown = useMemo(
     () =>
-      testCases.filter((testCase) => matches(testCase, query, difficulty, tag)),
-    [testCases, query, difficulty, tag],
+      testCases
+        .filter((testCase) => matches(testCase, query, testType))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [testCases, query, testType],
   );
 
   return (
@@ -54,44 +57,24 @@ export function TestCasesPage() {
       {status === "ready" && (
         <>
           <div className={styles.controls}>
+            <SegmentedControl
+              options={TYPE_OPTIONS}
+              value={testType}
+              onChange={setTestType}
+              ariaLabel="Test type"
+            />
             <input
               className={styles.search}
               type="search"
-              placeholder="Search by title or tag…"
+              placeholder="Search by title, tag, or difficulty…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               aria-label="Search test cases"
             />
-            <FilterRow
-              label="Difficulty"
-              active={difficulty}
-              onClear={() => setDifficulty(null)}
-            >
-              {difficulties.map((value) => (
-                <FilterChip
-                  key={value}
-                  label={value}
-                  active={difficulty === value}
-                  onClick={() =>
-                    setDifficulty(difficulty === value ? null : value)
-                  }
-                />
-              ))}
-            </FilterRow>
-            <FilterRow label="Tags" active={tag} onClear={() => setTag(null)}>
-              {tags.map((value) => (
-                <FilterChip
-                  key={value}
-                  label={value}
-                  active={tag === value}
-                  onClick={() => setTag(tag === value ? null : value)}
-                />
-              ))}
-            </FilterRow>
           </div>
 
           {shown.length === 0 ? (
-            <p className={styles.empty}>No test cases match those filters.</p>
+            <p className={styles.empty}>No test cases match.</p>
           ) : (
             <ul className={styles.grid}>
               {shown.map((testCase) => (
@@ -132,64 +115,19 @@ export function TestCasesPage() {
   );
 }
 
-// Case-insensitive search over title + tags, AND'd with the active
-// difficulty/tag facets.
+// Scope to the selected test type, then a case-insensitive search over the
+// title, tags, and difficulty — so tags and difficulty are usable as filters
+// even though the type switcher is the only faceted control.
 function matches(
   testCase: TestCaseSummary,
   query: string,
-  difficulty: string | null,
-  tag: string | null,
+  testType: TestType,
 ): boolean {
-  if (difficulty && testCase.difficulty !== difficulty) return false;
-  if (tag && !testCase.tags.includes(tag)) return false;
+  if (testCase.testType !== testType) return false;
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  const haystack = [testCase.name, ...testCase.tags].join(" ").toLowerCase();
+  const haystack = [testCase.name, testCase.difficulty, ...testCase.tags]
+    .join(" ")
+    .toLowerCase();
   return haystack.includes(needle);
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)].sort();
-}
-
-interface FilterRowProps {
-  label: string;
-  active: string | null;
-  onClear: () => void;
-  children: React.ReactNode;
-}
-
-function FilterRow({ label, active, onClear, children }: FilterRowProps) {
-  return (
-    <div className={styles.filterRow}>
-      <span className={styles.filterLabel}>{label}</span>
-      <div className={styles.chips}>
-        {children}
-        {active && (
-          <button type="button" className={styles.clear} onClick={onClear}>
-            clear
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface FilterChipProps {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}
-
-function FilterChip({ label, active, onClick }: FilterChipProps) {
-  return (
-    <button
-      type="button"
-      className={`${styles.chip}${active ? ` ${styles.chipActive}` : ""}`}
-      aria-pressed={active}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
 }
