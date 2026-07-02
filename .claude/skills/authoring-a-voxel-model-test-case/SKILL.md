@@ -108,7 +108,11 @@ A short instruction that points the model at the seeded brief, tells it to read 
 (sculpt only through the tool; read the preview between calls; return when
 finished). It renders in **strict mode**, so use only the documented template
 variables (`{{variant.*}}`, `{{#each specs}}`) — any other reference is an error.
-Model it on `skyshard`'s `prompt.hbs`.
+Model it on `skyshard`'s `prompt.hbs`. A shared **quality directive** (the brief is
+the floor, not the goal; produce the best-looking asset you can within its
+constraints) is prepended to *every* asset-generation prompt automatically at
+render time (`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`), so keep your
+`prompt.hbs` factual and do not restate that "aim high" framing yourself.
 
 ### 4. Write the manifest
 

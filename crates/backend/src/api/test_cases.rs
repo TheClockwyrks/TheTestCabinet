@@ -301,6 +301,7 @@ fn render_variant_prompt(
         &variant.name,
         variant.description.as_deref(),
         &spec_dests,
+        manifest.test_type,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }

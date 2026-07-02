@@ -953,6 +953,7 @@ fn case_metadata(
                 &v.name,
                 v.description.as_deref(),
                 &spec_dests,
+                manifest.test_type,
             )
             .map_err(|e| {
                 BackendError::Snapshot(format!(

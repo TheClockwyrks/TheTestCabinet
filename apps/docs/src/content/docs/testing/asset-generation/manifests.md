@@ -148,7 +148,11 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   and each variant may add reference mockups). So a variant here varies only the
   seeded brief — an additive `[[spec]]` — that the model draws toward. There is
   **no `[build]` table** — an asset-generation run produces a recorded action log,
-  not a static site.
+  not a static site. One rendering difference from end-to-end: a shared **quality
+  directive** — the brief is the floor, not the goal; produce the best-looking asset
+  you can within its constraints — is prepended to every asset-generation prompt at
+  render time (the same wording for every case; it is *not* added for other test
+  types), so a case's own `prompt.hbs` stays factual and need not restate it.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. For a single sprite this is the
   whole canvas; for a sprite sheet it is one frame. Fixing it keeps runs

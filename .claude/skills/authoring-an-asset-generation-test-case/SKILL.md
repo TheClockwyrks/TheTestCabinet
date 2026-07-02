@@ -123,7 +123,11 @@ through the tool; return when finished). It renders in **strict mode**, so use o
 the documented template variables (`{{variant.*}}`, `{{#each specs}}`) — any other
 reference is an error. Model it on an existing case's `prompt.hbs` (e.g.
 `spectra-shard` for a single sprite, `gloamfin` for a sheet — a sheet's prompt also
-explains the per-frame `--frame` model).
+explains the per-frame `--frame` model). A shared **quality directive** (the brief
+is the floor, not the goal; produce the best-looking asset you can within its
+constraints) is prepended to *every* asset-generation prompt automatically at
+render time (`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`), so keep your
+`prompt.hbs` factual and do not restate that "aim high" framing yourself.
 
 ### 4. Write the manifest
 

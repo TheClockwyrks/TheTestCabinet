@@ -1,11 +1,18 @@
 use std::path::PathBuf;
 
-use super::{render_prompt, render_spec};
+use super::{ASSET_QUALITY_PREAMBLE, render_prompt, render_spec};
 use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
-/// spec so rendered prompts have something to list.
+/// spec so rendered prompts have something to list. Defaults to an end-to-end
+/// case; use [`version_with_prompt_typed`] to render as another test type.
 fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
+    version_with_prompt_typed(prompt_path, TestType::EndToEnd)
+}
+
+/// As [`version_with_prompt`], but with an explicit test type — the discriminator
+/// that decides whether the asset-generation quality preamble is prepended.
+fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestCaseVersion {
     TestCaseVersion {
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
@@ -17,7 +24,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
         root: PathBuf::from("/tmp/pong"),
         prompt_path,
         max_runtime_seconds: 1800,
-        test_type: TestType::EndToEnd,
+        test_type,
         build: Some(BuildCommands {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
@@ -89,6 +96,38 @@ fn renders_workspace_variant_and_spec_paths() {
     // in-container paths, in seed order (common first).
     assert!(out.contains("- /work/specs/overview.md [overview]"));
     assert!(out.contains("- /work/specs/modes/frenzy.md [frenzy]"));
+}
+
+#[test]
+fn asset_generation_prompts_open_with_the_quality_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Sculpt in {{workspace}}.").expect("write prompt");
+
+    let version = version_with_prompt_typed(prompt, TestType::AssetGeneration);
+    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+
+    // The shared directive is prepended verbatim, ahead of the case's own text,
+    // and the authored template still renders after it.
+    assert!(
+        out.starts_with(ASSET_QUALITY_PREAMBLE),
+        "an asset-generation prompt must open with the quality preamble",
+    );
+    assert!(out.contains("Sculpt in /work."));
+}
+
+#[test]
+fn non_asset_prompts_have_no_quality_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // An end-to-end case renders exactly its template, with nothing prepended.
+    let version = version_with_prompt_typed(prompt, TestType::EndToEnd);
+    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+
+    assert_eq!(out, "Build in /work.");
+    assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
 }
 
 #[test]

@@ -139,7 +139,11 @@ separately sculpted parts fit together (a part centered and seated, a child meet
 its parent). Restate the hard requirements (sculpt/rig only through the tool;
 `--part` on every op; produce every required part and joint; return when finished).
 Strict mode — only `{{variant.*}}` and `{{#each specs}}`. Model it on `ironward`'s
-`prompt.hbs`.
+`prompt.hbs`. A shared **quality directive** (the brief is the floor, not the goal;
+produce the best-looking asset you can within its constraints) is prepended to
+*every* asset-generation prompt automatically at render time
+(`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`), so keep your `prompt.hbs`
+factual and do not restate that "aim high" framing yourself.
 
 ### 4. Write the manifest
 

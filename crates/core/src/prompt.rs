@@ -9,6 +9,11 @@
 //! authored spec — and lets a case word its own instruction. See
 //! `docs/testing/end-to-end/overview.md#prompt-template`.
 //!
+//! One piece is *not* authored per case: asset-generation cases have the shared
+//! [`ASSET_QUALITY_PREAMBLE`] prepended to their rendered prompt, so every such
+//! case opens with the same standing quality directive rather than repeating it
+//! in each `prompt.hbs`. Other test types render exactly their template.
+//!
 //! A spec whose source is a Handlebars template (a `.hbs` extension) is rendered
 //! the same way at seed time, so a spec can state facts that depend on the
 //! selected variant — for example which configuration this build is — without
@@ -21,7 +26,21 @@ use serde::Serialize;
 
 use crate::error::{Error, Result};
 use crate::execution::WORKSPACE_DIR;
-use crate::test_case::{TestCaseVersion, Variant};
+use crate::test_case::{TestCaseVersion, TestType, Variant};
+
+/// A standing quality directive prepended to every asset-generation case's
+/// rendered prompt.
+///
+/// An asset-generation `prompt.hbs` otherwise sets a "match the brief, then
+/// stop" bar, which invites a bare-minimum result. This block reframes the brief
+/// as the floor and asks for the best-looking asset the model can produce within
+/// the brief's constraints. It lives here — the single point every case's prompt
+/// is rendered through — rather than being duplicated across every case's
+/// `prompt.hbs`, so all asset-generation cases share one wording. It is
+/// deliberately generic: no per-subject or per-asset-kind detail, and — by
+/// design — no comparison, ranking, or benchmark framing. It is prepended only
+/// for [`TestType::AssetGeneration`]; every other test type renders unchanged.
+const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality asset — treat this as work you would be proud to ship, not a rough draft. The brief below is the floor, not the goal: satisfying it is only the minimum for a passing result, and a plain asset that merely ticks its boxes is a weak one. Aim for the best-looking, most convincing result you can make within the brief's constraints — a clean, readable silhouette, believable proportions and form, and deliberate, purposeful use of the palette — and make every operation you spend count toward that. Push for the genuine ceiling of what you can produce here, not the least that passes.";
 
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
 ///
@@ -121,6 +140,7 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
         &variant.name,
         variant.description.as_deref(),
         &dests,
+        test_case.test_type,
     )
 }
 
@@ -134,9 +154,13 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
 /// Specifications tab from stored manifest fields rather than a disk checkout.
 /// `spec_dests` are the seeded specs' workspace-relative destination paths in
 /// seed order (the common specs first, then the variant's own), exactly as
-/// [`TestCaseVersion::seeded_specs`] orders them. Rendering uses the same strict,
-/// no-escape engine as a real run, so the output matches what the harness
-/// receives.
+/// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects whether the
+/// shared [`ASSET_QUALITY_PREAMBLE`] is prepended: it is, and only is, for
+/// [`TestType::AssetGeneration`], so every asset-generation case's rendered
+/// prompt opens with the same quality directive while other types render bare.
+/// Rendering uses the same strict, no-escape engine as a real run, so the output
+/// matches what the harness receives.
+#[allow(clippy::too_many_arguments)]
 pub fn render_prompt_from_template(
     slug: &str,
     version: &str,
@@ -145,6 +169,7 @@ pub fn render_prompt_from_template(
     variant_name: &str,
     variant_description: Option<&str>,
     spec_dests: &[String],
+    test_type: TestType,
 ) -> Result<String> {
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
@@ -156,13 +181,22 @@ pub fn render_prompt_from_template(
         specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
     };
 
-    template_engine()
+    let body = template_engine()
         .render_template(template, &context)
         .map_err(|err| Error::PromptRender {
             slug: slug.to_string(),
             version: version.to_string(),
             detail: err.to_string(),
-        })
+        })?;
+
+    // The quality preamble is a standing directive, not part of any case's
+    // authored template, so prepend it to the rendered body only for
+    // asset-generation cases. It is intentionally not run through the template
+    // engine (it holds no `{{...}}`), keeping it out of strict-mode resolution.
+    Ok(match test_type {
+        TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
+        _ => body,
+    })
 }
 
 /// Render a `.hbs` spec into the text seeded into the run for the selected
