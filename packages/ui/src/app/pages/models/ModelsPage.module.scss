@@ -24,7 +24,9 @@
 .row {
   display: grid;
   align-items: center;
-  grid-template-columns: 1.2rem 1.6fr 8rem 7rem 7rem 6rem;
+  // Resizable: `--ttc-cols` (set on the table by useResizableColumns as the user
+  // drags header boundaries) overrides the resting template below.
+  grid-template-columns: var(--ttc-cols, 1.2rem 1.6fr 8rem 7rem 7rem 6rem);
   gap: t.$space-md;
   min-width: 42rem;
   padding: t.$space-sm t.$space-md;
@@ -47,6 +49,12 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
+
+  // Positioning context so each column's resize handle can pin to the cell's
+  // right edge.
+  > span {
+    position: relative;
+  }
 }
 
 .rowCaret {

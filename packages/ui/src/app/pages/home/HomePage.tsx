@@ -62,6 +62,7 @@ export function HomePage() {
                 runs={rest}
                 localIds={localIds}
                 localWriteups={localWriteups}
+                resizable
               />
             )}
           </>

@@ -109,6 +109,7 @@ export function RunsPage() {
             active={showActive ? activeRuns : []}
             localIds={localIds}
             localWriteups={localWriteups}
+            resizable
           />
           <Pagination
             page={current}

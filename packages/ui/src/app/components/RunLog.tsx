@@ -3,6 +3,10 @@ import { Link } from "react-router";
 import { RatingBadge } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { UnpublishedTag } from "./UnpublishedTag";
+import {
+  useResizableColumns,
+  type ResizableColumn,
+} from "./useResizableColumns";
 import { type Rating, worstRating } from "../data/ratings";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
@@ -38,7 +42,27 @@ interface RunLogProps {
   active?: InProgressRun[];
   /** Column set to render. Defaults to the full cross-case layout. */
   scope?: RunLogScope;
+  /**
+   * Opt this instance into user-resizable columns (drag the header boundaries;
+   * widths persist locally). Only honored for the full `"global"` layout — the
+   * scoped variants drop columns and aren't wired for it. Defaults to off.
+   */
+  resizable?: boolean;
 }
+
+// The tracks of the full cross-case ("global") layout, matching the header/row
+// grid in RunLog.module.scss: caret · test · harness · variant · model · tokens ·
+// cost · rating. The caret gutter isn't resizable; the rest drag to a minimum.
+const GLOBAL_COLUMNS: ResizableColumn[] = [
+  { default: "1.2rem", min: 20, resizable: false },
+  { default: "1fr", min: 96 },
+  { default: "7rem", min: 64 },
+  { default: "6rem", min: 56 },
+  { default: "1.6fr", min: 96 },
+  { default: "5rem", min: 56 },
+  { default: "5rem", min: 56 },
+  { default: "6rem", min: 56 },
+];
 
 // The dense, column-aligned run log shared by the home gallery and the per-case
 // Runs tab. It is not a leaderboard and shows no ranking — rows appear in the
@@ -50,23 +74,35 @@ export function RunLog({
   localWriteups,
   active = [],
   scope = "global",
+  resizable = false,
 }: RunLogProps) {
   // The test/variant columns are constant on a variant-scoped log; the model
   // column is constant on a model-scoped one. Each is dropped where redundant.
   const showCase = scope !== "variant";
   const showModel = scope !== "model";
   const findReview = useFindReview();
+  // Resizing is wired for the full column set only, so the handle indices line
+  // up with the header cells; scoped layouts render exactly as before.
+  const table = useResizableColumns({
+    storageKey: "ttc:cols:runlog",
+    columns: GLOBAL_COLUMNS,
+    enabled: resizable && scope === "global",
+  });
   return (
-    <div className={styles.log} data-scope={scope}>
-      <div className={`${styles.row} ${styles.head}`} aria-hidden="true">
-        <span />
-        {showCase && <span>TEST</span>}
-        <span>HARNESS</span>
-        {showCase && <span>VARIANT</span>}
-        {showModel && <span>MODEL</span>}
-        <span className={styles.num}>TOKENS</span>
-        <span className={styles.num}>COST</span>
-        <span>RATING</span>
+    <div className={styles.log} data-scope={scope} ref={table.containerRef}>
+      <div
+        className={`${styles.row} ${styles.head}`}
+        data-ttc-head
+        aria-hidden="true"
+      >
+        <span>{table.handle(0)}</span>
+        {showCase && <span>TEST{table.handle(1)}</span>}
+        <span>HARNESS{table.handle(2)}</span>
+        {showCase && <span>VARIANT{table.handle(3)}</span>}
+        {showModel && <span>MODEL{table.handle(4)}</span>}
+        <span className={styles.num}>TOKENS{table.handle(5)}</span>
+        <span className={styles.num}>COST{table.handle(6)}</span>
+        <span>RATING{table.handle(7)}</span>
       </div>
       {active.map((run) => (
         <ActiveRow

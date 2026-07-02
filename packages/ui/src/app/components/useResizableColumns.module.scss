@@ -1,0 +1,40 @@
+@use "../styles/tokens" as t;
+
+// A thin, pointer-only grab strip straddling the boundary on the right of a
+// header cell. The cell is positioned (see each table's `.head` rule), so this
+// sits at the cell's right edge and reaches into the row gap. It carries no
+// paint of its own until hovered — just a faint hairline echoing the panel edge.
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -0.5rem;
+  width: 1rem;
+  z-index: 1;
+  cursor: col-resize;
+  // Let a pointer drag begin without the browser hijacking it for scrolling.
+  touch-action: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0.35rem;
+    bottom: 0.35rem;
+    left: 50%;
+    width: t.$border-hairline;
+    transform: translateX(-50%);
+    background: color-mix(in srgb, t.$color-accent 35%, transparent);
+    transition:
+      background 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+
+  &:hover::before,
+  &:active::before {
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: t.$color-accent;
+    box-shadow: 0 0 0.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
+  }
+}
