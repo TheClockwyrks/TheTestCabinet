@@ -27,6 +27,20 @@ const CANVAS_BOX: React.CSSProperties = {
   overflow: "hidden",
 };
 
+// The animated rig's shared preview is the section's single interactive view, so it
+// is shown at twice the inline canvas size (which also gives the sidebar of joints
+// beside it more height to fill).
+const RIG_PREVIEW_SIZE = 480;
+const RIG_PREVIEW_BOX: React.CSSProperties = {
+  width: RIG_PREVIEW_SIZE,
+  maxWidth: "100%",
+  height: RIG_PREVIEW_SIZE,
+  background: "var(--tc-panel-2, #1c1c1c)",
+  border: "1px solid var(--tc-border, #444)",
+  borderRadius: 4,
+  overflow: "hidden",
+};
+
 const PREVIEW_IMG: React.CSSProperties = {
   width: 240,
   height: 240,
@@ -444,8 +458,8 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
         authored; caller-driven joints expose a slider a consuming game would drive;
         auto-play joints loop the clip the model defined. Drag the model to orbit it.
       </p>
-      <div className={styles.sequenceRow}>
-        <div className={styles.sequenceMeta}>
+      <div className={styles.rigPreview}>
+        <div className={styles.rigPreviewSidebar}>
           <RigViewPicker
             views={views}
             selectedKey={selectedKey}
@@ -474,8 +488,8 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
             </div>
           ) : null}
         </div>
-        <div className={styles.sequencePlayer}>
-          <div style={CANVAS_BOX}>
+        <div className={styles.rigPreviewStage}>
+          <div style={RIG_PREVIEW_BOX}>
             <VoxelCanvas
               parts={view.parts}
               rig={rig}
@@ -484,7 +498,7 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
               {...playback}
               fallbackUrl={fallbackUrl}
               label={active ? `${active.name} preview` : "Rig preview"}
-              height={240}
+              height={RIG_PREVIEW_SIZE}
             />
           </div>
         </div>

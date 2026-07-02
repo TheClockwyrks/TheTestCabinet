@@ -419,14 +419,61 @@
   justify-content: flex-start;
 }
 
+// The rig preview: a sidebar of selectable views (animations / joints) beside the
+// single shared 3D canvas, split by a divider. The columns stretch to a common
+// height so the sidebar gets the full height of the (tall) preview rather than
+// collapsing to its own content.
+.rigPreview {
+  display: grid;
+  grid-template-columns: minmax(10rem, 18rem) 1fr;
+  align-items: stretch;
+  margin-bottom: t.$space-xl;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+
+  // On a narrow viewport the side-by-side split gets cramped; stack the sidebar
+  // above the preview.
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rigPreviewSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  min-width: 0;
+  min-height: 0;
+}
+
+// The preview column, set off from the sidebar by a divider — which becomes a top
+// rule once the columns stack.
+.rigPreviewStage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-md;
+  min-width: 0;
+  border-left: t.$border-hairline solid t.$color-border;
+
+  @include bp.below(t.$bp-sm) {
+    border-left: 0;
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+}
+
 // The rig preview's view picker: a grouped, scrollable list of the rig's
-// animations/joints, one of which drives the single shared canvas. Capped in height
-// so a rig with many joints scrolls its list instead of pushing the canvas down.
+// animations/joints, one of which drives the single shared canvas. It fills the
+// sidebar and scrolls a long list within it, rather than pushing the slider or the
+// preview out of view.
 .voxelPicker {
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
-  max-height: 15rem;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
