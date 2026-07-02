@@ -214,6 +214,12 @@ The brief is the test case. The rules that make one good:
   part's footprint and pivot in voxel coordinates; state each caller joint's axis
   and range. Name what must read from the rig, e.g. "the turret rotates a full
   half-turn each way about its mount without any voxel of it leaving the chassis."
+- **Match the rotation-direction convention** when you label a range's ends. The
+  runtime poses a **positive pitch (`axis = "x"`) as elevation** — it lifts a
+  forward (+z) part **up** toward +y, so `max` aims **high** and `min` aims **low**
+  (a `barrel_pitch` of `min = -0.2` depressed → `max = 0.8` lobbing high grows
+  upward). Yaw (`y`) and roll (`z`) are right-handed. Don't invert these labels —
+  a brief that calls `max` "depressed" contradicts what the model will see.
 - **Design a minimal, stable joint interface.** A game will drive the required
   joints by name — keep them few, well-named (`turret_yaw`, `barrel_pitch`), and
   ranged sensibly. Extra motion belongs in model-added parts/joints, not the

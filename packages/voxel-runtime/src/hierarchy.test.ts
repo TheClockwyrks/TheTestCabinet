@@ -21,6 +21,19 @@ const yaw = (over: Partial<JointSpec> = {}): JointSpec => ({
   ...over,
 });
 
+const pitch = (over: Partial<JointSpec> = {}): JointSpec => ({
+  name: "gun_pitch",
+  part: "turret",
+  kind: "rotation",
+  axis: "x",
+  pivot: [0, 0, 0],
+  min: -1,
+  max: 1,
+  rest: 0,
+  drive: "caller",
+  ...over,
+});
+
 const world = (posed: ReturnType<typeof poseRig>, name: string): Float32Array =>
   posed.find((p) => p.name === name)!.worldMatrix;
 
@@ -115,6 +128,23 @@ describe("poseRig", () => {
     const m = world(poseRig(rig, { caller: { turret_yaw: Math.PI } }), "turret");
     expect(m[12]).toBeCloseTo(4, 6);
     expect(m[14]).toBeCloseTo(0, 6);
+  });
+
+  it("pitches a forward-pointing part UP for a positive angle (positive pitch elevates)", () => {
+    // Convention: a positive rotation about x lifts a part that points forward
+    // (+z) up toward +y — what every rig brief promises by `max = barrel high`.
+    // A muzzle voxel out front at (0,0,1), posed through the world matrix, must
+    // rise. With the pivot at the origin its transformed y is m[9]·1 = sin(θ).
+    const rig: ModelSpec = { parts: [part("turret")], joints: [pitch()] };
+    const m = world(poseRig(rig, { caller: { gun_pitch: 0.5 } }), "turret");
+    const yOfForwardPoint = m[9]! * 1; // world · (0,0,1) → y component
+    expect(yOfForwardPoint).toBeCloseTo(Math.sin(0.5), 6);
+    expect(yOfForwardPoint).toBeGreaterThan(0); // up, not down
+    // It tips forward-and-up, staying in front (z' = cos θ > 0), not flipping back.
+    expect(m[10]).toBeCloseTo(Math.cos(0.5), 6);
+    // A negative pitch depresses the same part below the mount.
+    const down = world(poseRig(rig, { caller: { gun_pitch: -0.5 } }), "turret");
+    expect(down[9]).toBeLessThan(0);
   });
 
   it("applies a joint's fixed mount offset as a static compound attach", () => {

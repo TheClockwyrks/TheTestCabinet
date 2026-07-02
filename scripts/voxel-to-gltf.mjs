@@ -169,11 +169,14 @@ function translation(t) {
   return m;
 }
 
+// Keep in sync with `rotation` in packages/voxel-runtime/src/hierarchy.ts: x
+// (pitch) is negated relative to a right-handed rotation so a positive pitch
+// lifts a forward (+z) part up toward +y; y (yaw) and z (roll) are right-handed.
 function rotation(axis, angle) {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   const m = identity();
-  if (axis === "x") { m[5] = c; m[6] = s; m[9] = -s; m[10] = c; }
+  if (axis === "x") { m[5] = c; m[6] = -s; m[9] = s; m[10] = c; }
   else if (axis === "y") { m[0] = c; m[2] = -s; m[8] = s; m[10] = c; }
   else { m[0] = c; m[1] = s; m[4] = -s; m[5] = c; }
   return m;

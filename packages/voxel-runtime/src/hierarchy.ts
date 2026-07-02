@@ -70,16 +70,31 @@ export function eulerRotation(euler: Vec3): Float32Array {
   return multiply(rotation("z", euler[2]), multiply(rotation("y", euler[1]), rotation("x", euler[0])));
 }
 
-/** A right-handed rotation of `angle` radians about a principal `axis`. */
+/**
+ * Rotation of `angle` radians about a principal `axis`, as a column-major matrix.
+ *
+ * `y` (yaw) and `z` (roll) are right-handed. `x` (**pitch**) is deliberately the
+ * mirror of the right-handed rotation, so a positive angle lifts a part that
+ * points forward (+z) **up** toward +y — the "positive pitch elevates" convention
+ * every rig brief, the `voxel-anim` docs, and the `define-joint` help promise. A
+ * plain right-handed +x rotation would instead tip a +z-forward barrel *down*,
+ * which is the opposite of what authors and models mean by `max = barrel high`.
+ * See `docs/testing/asset-generation/voxel-binaries.md` (Rotation direction).
+ *
+ * The glTF exporter (`scripts/voxel-to-gltf.mjs`) carries an identical `rotation`
+ * and MUST be kept in sync with this one so replay and export pose the same way.
+ */
 export function rotation(axis: AxisSpec, angle: number): Float32Array {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   const m = identity();
   switch (axis) {
     case "x":
+      // Pitch: negated relative to a right-handed x-rotation so +angle lifts a
+      // forward (+z) part up toward +y (see the convention note above).
       m[5] = c;
-      m[6] = s;
-      m[9] = -s;
+      m[6] = -s;
+      m[9] = s;
       m[10] = c;
       break;
     case "y":

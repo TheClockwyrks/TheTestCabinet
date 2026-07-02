@@ -90,7 +90,10 @@ enum Command {
         /// Whether the joint rotates or translates the part.
         #[arg(long, value_enum)]
         kind: JointKind,
-        /// The axis the joint acts about (rotation) or along (translation).
+        /// The axis the joint acts about (rotation) or along (translation). For a
+        /// rotation, a positive `x` (pitch) value elevates a forward (+z) part up
+        /// toward +y (negative depresses it down); `y` (yaw) and `z` (roll) are
+        /// right-handed about the axis.
         #[arg(long, value_enum)]
         axis: Axis,
         /// Joint-origin x, in the shared volume's coordinates (the same coordinates

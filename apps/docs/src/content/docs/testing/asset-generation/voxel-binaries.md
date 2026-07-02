@@ -213,6 +213,22 @@ voxel-anim define-clip  --joint recoil --period-ms 600 --loop false \
 - **`define-clip`** attaches an auto-play timeline to a `--drive auto` joint: a set
   of `--keyframe <t_ms>:<value>` samples over a `--period-ms`, looping or holding.
 
+#### Rotation direction
+
+The volume is **y-up** with **forward at +z** (a part points toward higher `z`).
+For a **rotation** joint, the sign of a value follows this convention:
+
+- **Pitch (`--axis x`)** — a **positive** value **elevates**: it lifts a
+  forward-pointing (+z) part **up** toward +y, and a **negative** value depresses
+  it **down**. So for a gun that points forward, `max` aims **high** and `min`
+  aims **low** — e.g. a `barrel_pitch` with `min = -0.2` (barrel depressed) and
+  `max = 0.8` (barrel lobbing high) raises the barrel as the value grows.
+- **Yaw (`--axis y`)** and **roll (`--axis z`)** are right-handed rotations about
+  their axis through the pivot.
+
+Rotation happens about the joint's `--pivot`, so place the pivot at the hinge the
+part should swing on (the shoulder, the turret ring, the barrel mount).
+
 A model **cannot** remove or contradict the case's required parts and joints — the
 required interface is the game-facing contract a reviewer scores against. The rig
 subcommands load, mutate, and rewrite `rig.json` in place, so it stays the single
