@@ -412,6 +412,32 @@
   color: t.$color-text-muted;
 }
 
+// A quiet "save this sequence as a GIF" action under the sequence's name/fps
+// line: hairline-bordered and muted so it sits beside the meta rather than
+// competing with it, echoing the `.viewToggleButton` treatment.
+.gifDownloadButton {
+  align-self: flex-start;
+  margin-top: t.$space-xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: transparent;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-text;
+    border-color: t.$color-text-muted;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+}
+
 // The animation sits at the start of its cell so rows align regardless of how
 // large each sequence's frame renders.
 .sequencePlayer {

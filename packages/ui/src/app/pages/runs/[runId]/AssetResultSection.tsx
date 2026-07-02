@@ -7,6 +7,8 @@ import {
   type AssetResultView,
 } from "../../../data/galleryContext";
 import { SpriteSheetPlayer } from "./SpriteSheetPlayer";
+import { GifDownloadButton } from "./GifDownloadButton";
+import { encodeSpriteGif } from "./spriteGif";
 import { VoxelResultSection } from "./VoxelResultSection";
 import styles from "./RunDetailPages.module.scss";
 
@@ -126,6 +128,9 @@ export function SequenceRow({
   const frameUrls = sequence.frames.map(
     (i) => frameByIndex.get(i)?.regeneratedUrl ?? null,
   );
+  // Only a genuine multi-frame animation (with at least one servable frame) is
+  // worth a GIF; a single-frame sequence is a still, better saved as its PNG.
+  const canDownload = frameUrls.length > 1 && frameUrls.some(Boolean);
   return (
     <div className={styles.sequenceRow}>
       <div className={styles.sequenceMeta}>
@@ -135,6 +140,19 @@ export function SequenceRow({
           {sequence.frames.length === 1 ? "frame" : "frames"} @ {sequence.fps}{" "}
           fps
         </span>
+        {canDownload && (
+          <GifDownloadButton
+            filename={`${sequence.slug}.gif`}
+            encode={() =>
+              encodeSpriteGif({
+                frameUrls,
+                frameWidth: sheet.frameWidth,
+                frameHeight: sheet.frameHeight,
+                fps: sequence.fps,
+              })
+            }
+          />
+        )}
       </div>
       <div className={styles.sequencePlayer}>
         <SpriteSheetPlayer
@@ -212,7 +230,9 @@ export function FrameGrid({ frames }: { frames: AssetFrameView[] }) {
                   <span className={styles.secondary}>unmeasured</span>
                 ) : (
                   <span
-                    className={drewOutsideTool ? styles.notLoaded : styles.loaded}
+                    className={
+                      drewOutsideTool ? styles.notLoaded : styles.loaded
+                    }
                     title={
                       drewOutsideTool
                         ? "drew outside the tool"
@@ -346,8 +366,8 @@ function SheetResult({
         Animated sequences
       </h3>
       <p className={styles.secondary}>
-        Each named animation, played from the regenerated frames so the motion can
-        be reviewed against the brief.
+        Each named animation, played from the regenerated frames so the motion
+        can be reviewed against the brief.
       </p>
       <div className={styles.sequenceGrid}>
         {sheet.sequences.map((sequence) => (
