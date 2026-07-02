@@ -1,11 +1,11 @@
 name = "Sunfront Aegis"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
 summary = """
-Sculpt and rig the Sunfront Aegis: a 64x76x56 opaque-voxel two-legged guardian \
-mech that raises a huge left tower-shield on a caller-driven weapon_pitch joint \
-while its two legs walk on their own, built and rigged one recorded operation at \
-a time."""
+Sculpt and rig the Sunfront Aegis: a 72x52x88 opaque-voxel siege fortress on \
+treads — a great tracked hull bristling with guns, whose central main turret \
+traverses and elevates its cannon on caller-driven joints while two side batteries \
+sweep on their own, built and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -23,9 +23,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 64
-height = 76
-depth = 56
+width = 72
+height = 52
+depth = 88
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
@@ -49,101 +49,126 @@ actions = "parts/{part}.actions.json"
 # pre-seeded from this table so the contract exists from the first operation.
 [model]
 
-# The guardian's armored torso and head: the root part (no parent), fixed to the
-# world.
+# The tracked fortress hull and its two side treads: the root part (no parent),
+# fixed to the world.
 [[model.part]]
-name = "torso"
+name = "chassis"
 pivot = [0, 0, 0]
 
-# The left leg, mounted low under the torso. It walks on `leg_left_stride`.
+# The big central main turret, mounted on top-center of the hull. It traverses on
+# the caller-driven `main_turret_yaw`.
 [[model.part]]
-name = "leg_left"
-parent = "torso"
-pivot = [20, 32, 28]
+name = "main_turret"
+parent = "chassis"
+pivot = [36, 32, 44]
 
-# The right leg, mirroring the left. It walks on `leg_right_stride` in opposite
-# phase.
+# The main cannon, mounted at the front of the main turret so it swings with it. It
+# elevates on the caller-driven `main_gun_pitch`.
 [[model.part]]
-name = "leg_right"
-parent = "torso"
-pivot = [44, 32, 28]
+name = "main_gun"
+parent = "main_turret"
+pivot = [36, 38, 58]
 
-# The huge left tower-shield arm. It raises and lowers on the caller-driven
-# `weapon_pitch`.
+# The left side battery: a secondary gun on a sponson off the left flank of the
+# hull. It sweeps up and down on its own via the auto `left_battery_pitch`.
 [[model.part]]
-name = "weapon"
-parent = "torso"
-pivot = [18, 46, 30]
+name = "left_battery"
+parent = "chassis"
+pivot = [12, 30, 40]
 
-# The required caller-driven joint: a game addresses `weapon_pitch` by name to
-# raise and lower the tower-shield about its shoulder mount. `rest = 0` holds the
-# shield forward at guard; `max = 0.8` raises it high, `min = -0.4` drops it low.
-# Only the shield arm moves on this joint.
+# The right side battery, mirroring the left on the right flank. It sweeps on its
+# own via the auto `right_battery_pitch`, in opposite phase.
+[[model.part]]
+name = "right_battery"
+parent = "chassis"
+pivot = [60, 30, 40]
+
+# The required caller-driven turret traverse: a game addresses `main_turret_yaw` by
+# name to swing the main turret (and its cannon with it) about its vertical mount, a
+# full half-turn each way. `rest = 0` faces straight forward (+z).
 [[model.joint]]
-name = "weapon_pitch"
-part = "weapon"
+name = "main_turret_yaw"
+part = "main_turret"
 kind = "rotation"
-axis = "x"
-pivot = [18, 46, 30]
-min = -0.4
-max = 0.8
+axis = "y"
+pivot = [36, 32, 44]
+min = -3.14159265
+max = 3.14159265
 rest = 0.0
 drive = "caller"
 
-# The left leg's own looping stride. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the legs walk on their own without a caller.
+# The required caller-driven main-gun elevation: a game addresses `main_gun_pitch`
+# by name to raise and lower the main cannon. `rest = 0.1` is a slight combat
+# elevation; `max = 0.8` lobs high, `min = -0.2` depresses the barrel.
 [[model.joint]]
-name = "leg_left_stride"
-part = "leg_left"
+name = "main_gun_pitch"
+part = "main_gun"
 kind = "rotation"
 axis = "x"
-pivot = [20, 32, 28]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
+pivot = [36, 38, 58]
+min = -0.2
+max = 0.8
+rest = 0.1
+drive = "caller"
 
-# The right leg's stride, in opposite phase to the left.
+# The left battery's own looping sweep. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the side gun tracks up and down on its own without a caller.
 [[model.joint]]
-name = "leg_right_stride"
-part = "leg_right"
+name = "left_battery_pitch"
+part = "left_battery"
 kind = "rotation"
 axis = "x"
-pivot = [44, 32, 28]
-min = -0.5
-max = 0.5
-rest = 0.0
+pivot = [12, 30, 40]
+min = 0.0
+max = 0.9
+rest = 0.3
 drive = "auto"
 
-# The auto-play stride clips — one per leg, in opposite phase, so the guardian
-# marches on its own. Only `auto` joints take a clip; the caller-driven
-# `weapon_pitch` takes none. Keyframes are inline `[t_ms, value]` pairs (radians).
+# The right battery's own looping sweep, in opposite phase to the left.
+[[model.joint]]
+name = "right_battery_pitch"
+part = "right_battery"
+kind = "rotation"
+axis = "x"
+pivot = [60, 30, 40]
+min = 0.0
+max = 0.9
+rest = 0.3
+drive = "auto"
+
+# The auto-play sweep clips — one per side battery, in opposite phase, so the two
+# secondary guns rove on their own. Only `auto` joints take a clip; the caller
+# `main_turret_yaw` and `main_gun_pitch` take none. Keyframes are inline
+# `[t_ms, value]` pairs (radians).
 [[model.clip]]
-joint = "leg_left_stride"
-period_ms = 1000
+joint = "left_battery_pitch"
+period_ms = 2000
 loop = true
-keyframes = [[0, 0.0], [250, 0.5], [500, 0.0], [750, -0.5], [1000, 0.0]]
+keyframes = [[0, 0.1], [1000, 0.8], [2000, 0.1]]
 
 [[model.clip]]
-joint = "leg_right_stride"
-period_ms = 1000
+joint = "right_battery_pitch"
+period_ms = 2200
 loop = true
-keyframes = [[0, 0.0], [250, -0.5], [500, 0.0], [750, 0.5], [1000, 0.0]]
+keyframes = [[0, 0.8], [1100, 0.1], [2200, 0.8]]
 
 # A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the shield raise through its range without dragging the joint
-# slider by hand. Each `[[model.animation.track]]` drives one joint over the
+# reviewer can watch the main turret bombard through its range without dragging the
+# joint sliders by hand. Each `[[model.animation.track]]` drives one joint over the
 # shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `guard` raises the tower-shield high, holds it there, then lowers it before
-# looping.
+# `bombardment` sweeps the turret left and right while the main gun lobs and recovers.
 [[model.animation]]
-name = "guard"
-period_ms = 1200
+name = "bombardment"
+period_ms = 4000
 loop = true
 
 [[model.animation.track]]
-joint = "weapon_pitch"
-keyframes = [[0, 0.0], [300, 0.8], [900, 0.8], [1200, 0.0]]
+joint = "main_turret_yaw"
+keyframes = [[0, -1.2], [2000, 1.2], [4000, -1.2]]
+
+[[model.animation.track]]
+joint = "main_gun_pitch"
+keyframes = [[0, 0.1], [1000, 0.6], [2000, 0.1], [3000, 0.6], [4000, 0.1]]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -154,52 +179,63 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
-poses correctly — a tall, broad two-legged guardian mech that raises and holds a \
-huge left tower-shield on its shoulder mount while the two legs walk on their own \
-and the torso stays put, with clear solar-amber ward-glyphs on the shield and the \
-disciplined Duneforged palette."""
+poses correctly — a great multi-gun siege fortress riding on two tracks, whose \
+central main turret traverses and whose cannon elevates on their caller joints \
+without detaching while the two side batteries sweep on their own and the tracked \
+hull stays put, with a clear solar-amber accent and the disciplined Duneforged \
+palette."""
 
 [[review_item]]
-id = "reads-as-guardian"
-title = "Reads as a shield-bearing guardian mech"
+id = "reads-as-fortress"
+title = "Reads as a fortress on treads"
 text = """
-From more than one angle the model reads unmistakably as a heavy two-legged \
-guardian automaton: a tall, broad armored torso and head standing on two thick \
-legs, carrying a huge tower-shield on its left arm. It is a walking bulwark, not \
-an abstract stack of boxes."""
+From more than one angle the model reads unmistakably as a giant siege fortress on \
+tracks: a low, broad armored hull riding on a pair of heavy treads down its sides, \
+a big main turret with a long cannon on top, and a secondary gun battery out on \
+each flank. It is a bristling multi-gun war machine, not an abstract stack of \
+boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "weapon-pitch-moves"
-title = "Shield raises and legs walk"
+id = "turret-traverses"
+title = "Main turret traverses and gun elevates"
 text = """
-Driving the `weapon_pitch` joint raises and lowers the left tower-shield cleanly \
-about its shoulder mount, with no voxel of the shield arm tearing away from the \
-torso or clipping into it across the full range. The two legs walk on their own \
-through the `leg_left_stride` and `leg_right_stride` auto joints, stepping in \
-opposite phase."""
+Driving `main_turret_yaw` swings the whole main turret — and its cannon with it — \
+cleanly about its vertical mount, and driving `main_gun_pitch` raises and lowers \
+the cannon, with no voxel tearing away from the mount or clipping into the hull \
+across either joint's range."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "torso-fixed"
-title = "Torso stays fixed"
+id = "batteries-sweep"
+title = "Side batteries sweep on their own"
 text = """
-Only the moving parts move: the tower-shield when `weapon_pitch` is driven and \
-the legs as they walk. The armored torso stays put — it is the fixed root of the \
-rig, not carried along by the shield arm or the legs."""
+The two side batteries rove up and down on their own through the auto \
+`left_battery_pitch` and `right_battery_pitch` joints, in opposite phase, each \
+swinging about its own sponson mount without detaching from the hull."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "weapon-attached"
-title = "Legs and shield stay attached"
+id = "chassis-fixed"
+title = "Tracked hull stays fixed"
 text = """
-Each child stays attached to the torso across its joint's range: the two legs \
-meet the torso's underside at their hips and the tower-shield meets the left \
-shoulder at its mount, with no gap and never floating free or detaching as the \
-legs stride and the shield raises."""
+Only the turret, cannon, and side batteries move. The tracked hull stays put — it \
+is the fixed root of the rig, not carried along by the turret's traverse or the \
+batteries' sweep."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "guns-attached"
+title = "Guns stay attached"
+text = """
+Each child stays attached to its parent across its joint's range: the cannon meets \
+the front of the main turret, the main turret meets the top of the hull, and each \
+side battery meets its sponson — with no gap and never floating free as they \
+traverse, elevate, and sweep."""
 weight = 2
 domain = "fidelity"
 
@@ -207,8 +243,8 @@ domain = "fidelity"
 id = "palette"
 title = "Duneforged palette discipline"
 text = """
-Uses only the Duneforged colors from the brief (sandstone and brass armor, iron \
-joints, and the solar-amber accent) with clear amber ward-glyphs on the shield, \
-no out-of-palette colors, and no stray voxels drifting off the parts."""
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron treads \
+and gun barrels, and the solar-amber accent) with a clear amber accent, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
 weight = 1
 domain = "fidelity"

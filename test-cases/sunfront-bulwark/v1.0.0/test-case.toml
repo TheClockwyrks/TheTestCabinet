@@ -2,10 +2,11 @@ name = "Sunfront Bulwark"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Bulwark: a 56x68x48 opaque-voxel heavy bipedal \
-shield-mech whose broad left tower-shield arm raises and smashes on a caller-driven \
-weapon_pitch joint while its two legs walk on their own, built and rigged one \
-recorded operation at a time."""
+Sculpt and rig the Sunfront Bulwark: a 56x68x48 opaque-voxel heavy bipedal mech \
+that braces a tower shield on its left arm and swings a heavy siege maul on its \
+right arm — the maul arm raising and smashing on a caller-driven weapon_pitch joint \
+while its two legs walk on their own, built and rigged one recorded operation at a \
+time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -68,26 +69,28 @@ name = "leg_right"
 parent = "torso"
 pivot = [38, 28, 24]
 
-# The broad left tower-shield arm, mounted at the left shoulder. It raises and
-# smashes on the caller-driven `weapon_pitch`.
+# The right arm gripping the heavy siege maul, mounted at the right shoulder. It
+# winds up and smashes on the caller-driven `weapon_pitch`. (The left arm and its
+# tower shield are sculpted as part of the fixed `torso`.)
 [[model.part]]
 name = "weapon"
 parent = "torso"
-pivot = [16, 42, 26]
+pivot = [40, 44, 26]
 
-# The required caller-driven joint: a game addresses `weapon_pitch` by name to
-# raise and smash the left tower-shield arm about its shoulder mount. `rest = 0`
-# levels the shield straight forward (+z); `min` dips it low to brace, `max` raises
-# it for the overhead smash. Only the weapon moves on this joint.
+# The required caller-driven joint: a game addresses `weapon_pitch` by name to wind
+# the right maul arm up over the head and smash it down about its shoulder mount.
+# `rest = 0.2` holds the maul up and ready; `max = 1.1` raises it high overhead;
+# `min = -0.5` swings it down and forward to strike. Only the weapon moves on this
+# joint.
 [[model.joint]]
 name = "weapon_pitch"
 part = "weapon"
 kind = "rotation"
 axis = "x"
-pivot = [16, 42, 26]
+pivot = [40, 44, 26]
 min = -0.5
-max = 0.7
-rest = 0.0
+max = 1.1
+rest = 0.2
 drive = "caller"
 
 # The left leg's own looping stride. An `auto` joint the case drives with a
@@ -131,18 +134,19 @@ loop = true
 keyframes = [[0, 0.0], [225, -0.5], [450, 0.0], [675, 0.5], [900, 0.0]]
 
 # A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the shield smash through its range without dragging the joint
+# reviewer can watch the maul smash through its range without dragging the joint
 # slider by hand. Each `[[model.animation.track]]` drives one joint over the shared
 # `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `fire` swings the tower shield up into an overhead smash then settles back level.
+# `smash` winds the maul up overhead, slams it down and forward, then recovers to
+# the ready pose.
 [[model.animation]]
-name = "fire"
-period_ms = 600
+name = "smash"
+period_ms = 700
 loop = true
 
 [[model.animation.track]]
 joint = "weapon_pitch"
-keyframes = [[0, 0.0], [120, 0.7], [400, 0.0]]
+keyframes = [[0, 0.2], [150, 1.1], [400, -0.5], [700, 0.2]]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -153,31 +157,33 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bulwark and \
-poses correctly — a heavy bipedal shield-mech whose broad left tower-shield arm \
-raises and smashes on its shoulder mount without detaching while the two legs walk \
-on their own and the torso stays put, with a clear solar-amber chest-core accent \
-and the disciplined Duneforged palette."""
+poses correctly — a heavy bipedal mech with two arms, a tower shield braced on the \
+left and a siege maul in the right, whose right maul arm winds up and smashes on \
+its shoulder mount without detaching while the two legs walk on their own and the \
+torso stays put, with a clear solar-amber chest-core accent and the disciplined \
+Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-mech"
-title = "Reads as a heavy shield-mech"
+title = "Reads as a heavy shield-and-maul mech"
 text = """
-From more than one angle the model reads unmistakably as a heavy walking war-mech: \
-a broad, armored torso with a head on top, a pair of thick legs planted beneath the \
-hips, and a wide tower shield carried on the left arm. It is a bulky bipedal \
-fighting machine, not an abstract stack of boxes."""
+From more than one angle the model reads unmistakably as a heavy walking war-mech \
+with two arms: a broad, armored torso with a head on top, a pair of thick legs \
+planted beneath the hips, a wide tower shield braced on a visible left arm, and a \
+heavy siege maul gripped in a visible right arm. It is a bulky bipedal fighting \
+machine, not an abstract stack of boxes, and it is plainly armed — not armless."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "weapon-pitches"
-title = "Shield raises and legs walk"
+title = "Maul smashes and legs walk"
 text = """
-Driving the `weapon_pitch` joint swings the left tower-shield arm cleanly up and \
-down about its shoulder mount, with no voxel of the shield tearing away from the arm \
-or clipping into the torso across the full range. The two legs walk on their own \
-through the `leg_left_stride` and `leg_right_stride` auto joints, striding in \
-opposite phase."""
+Driving the `weapon_pitch` joint swings the right maul arm cleanly up over the head \
+and down in a smash about its shoulder mount, with no voxel of the arm or maul \
+tearing away or clipping into the torso across the full range. The two legs walk on \
+their own through the `leg_left_stride` and `leg_right_stride` auto joints, striding \
+in opposite phase."""
 weight = 3
 domain = "fidelity"
 
@@ -193,11 +199,12 @@ domain = "fidelity"
 
 [[review_item]]
 id = "parts-attached"
-title = "Legs and shield stay attached"
+title = "Legs and maul arm stay attached"
 text = """
 Each child stays attached to the torso across its joint's range: the two legs meet \
-the hips at their mounts and the tower shield meets the left shoulder, with no gap \
-and never floating free or detaching as the legs stride and the shield swings."""
+the hips at their mounts and the right maul arm meets the right shoulder, with no \
+gap and never floating free or detaching as the legs stride and the maul swings. \
+The left shield arm stays fixed to the torso."""
 weight = 2
 domain = "fidelity"
 
@@ -206,7 +213,7 @@ id = "palette"
 title = "Duneforged palette discipline"
 text = """
 Uses only the Duneforged colors from the brief (heavy brass and bronze armor, iron \
-joints, and the solar-amber core accent) with a clear amber chest-core, no \
-out-of-palette colors, and no stray voxels drifting off the parts."""
+joints and maul head, and the solar-amber core accent) with a clear amber \
+chest-core, no out-of-palette colors, and no stray voxels drifting off the parts."""
 weight = 1
 domain = "fidelity"

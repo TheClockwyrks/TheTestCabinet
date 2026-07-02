@@ -2,11 +2,12 @@
 
 This is version `v1.0.0` of the **Sunfront Aegis** test case: an asset-generation
 case (`asset_kind = "voxel-animation"`) that asks a model to sculpt *and rig* a
-tall, broad two-legged Duneforged guardian mech as a 64×76×56 opaque-voxel model
-using only the `voxel-anim` tool, one recorded operation at a time.
+giant Duneforged **siege fortress on treads** — a multi-gun tracked
+war-fortress — as a 72×52×88 opaque-voxel model using only the `voxel-anim`
+tool, one recorded operation at a time.
 
 `sunfront-aegis` is the catalog slug for this case. It is one of the `sunfront-*`
-Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
+Duneforged voxel roster and shares the faction's brass-and-bronze palette and
 solar-amber team accent. There is no target model — the model builds toward the
 seeded brief and is reviewed subjectively against it.
 
@@ -16,21 +17,24 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
-| `torso` | *(root)* | `[0, 0, 0]` | The armored torso and head |
-| `leg_left` | `torso` | `[20, 32, 28]` | The left leg |
-| `leg_right` | `torso` | `[44, 32, 28]` | The right leg |
-| `weapon` | `torso` | `[18, 46, 30]` | The left tower-shield arm |
+| `chassis` | *(root)* | `[0, 0, 0]` | The tracked hull and its two treads |
+| `main_turret` | `chassis` | `[36, 32, 44]` | The big central turret |
+| `main_gun` | `main_turret` | `[36, 38, 58]` | The main cannon on the turret front |
+| `left_battery` | `chassis` | `[12, 30, 40]` | The left-flank secondary gun |
+| `right_battery` | `chassis` | `[60, 30, 40]` | The right-flank secondary gun |
 
-- **`weapon_pitch`** (caller, rotation about `x`, `-0.4..0.8`) — the game-facing
-  control: raises and lowers the huge left tower-shield about its shoulder mount.
-- **`leg_left_stride`** / **`leg_right_stride`** (auto, rotation about `x`,
-  `-0.5..0.5`) — the two legs walk on their own via their `walk_left` / `walk_right`
-  clips, driven in opposite phase.
+- **`main_turret_yaw`** (caller, rotation about `y`, `-π..π`) — traverses the whole
+  main turret and its cannon about the vertical mount.
+- **`main_gun_pitch`** (caller, rotation about `x`, `-0.2..0.8`) — elevates the
+  main cannon about its mount.
+- **`left_battery_pitch`** / **`right_battery_pitch`** (auto, rotation about `x`,
+  `0.0..0.9`) — the two side batteries sweep on their own via their clips, in
+  opposite phase.
 
-The case also authors a **`guard`** review animation that drives `weapon_pitch`
-so a reviewer can watch the shield raise and hold without dragging the slider. The
-model may add its own extra parts, joints, and clips on top, but must not drop or
-contradict the required interface.
+The case also authors a **`bombardment`** review animation that drives both caller
+joints so a reviewer can watch the turret sweep and the gun lob without dragging
+the sliders. The model may add its own extra parts, joints, and clips on top, but
+must not drop or contradict the required interface.
 
 ## Contents
 

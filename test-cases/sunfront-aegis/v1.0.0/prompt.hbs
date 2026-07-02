@@ -1,5 +1,5 @@
-Sculpt and rig the **Sunfront Aegis**, a tall, broad two-legged guardian mech
-that raises a huge left tower-shield while its legs walk, as a 64x76x56
+Sculpt and rig the **Sunfront Aegis**, a giant multi-gun siege fortress on treads
+whose main turret traverses and whose side batteries sweep, as a 72x52x88
 opaque-voxel model using only the voxel-anim tool.
 
 ## How sculpting and rigging works
@@ -23,7 +23,7 @@ in place at `{{workspace}}`.
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part torso --x0 18 --y0 40 --z0 16 --x1 45 --y1 68 --z1 40 --color "#d9c48c"
+voxel-anim fill-box --part chassis --x0 8 --y0 0 --z0 6 --x1 63 --y1 26 --z1 82 --color "#c69a4b"
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
@@ -32,11 +32,12 @@ Run `voxel-anim --help` to list every operation **and** the rig subcommands
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole guardian composed from all your parts, re-rendered after every operation.
-The scene views are how you confirm the parts actually fit together: that the legs
-seat under the torso and the tower-shield meets the left shoulder. Because each
-part is sculpted in the shared volume's coordinates, position each part where it
-belongs on the finished guardian; the scene simply composes them there.
+whole fortress composed from all your parts, re-rendered after every operation. The
+scene views are how you confirm the parts actually fit together: that the main
+turret sits centered on the hull, the cannon meets the turret front, and each side
+battery seats on its sponson. Because each part is sculpted in the shared volume's
+coordinates, position each part where it belongs on the finished fortress; the
+scene simply composes them there.
 
 ## What to read first
 
@@ -48,20 +49,20 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the guardian, the required parts and their pivots, the required caller
-`weapon_pitch` joint, and the two auto stride joints. Run `voxel-anim --help` for
-the exact operation and rig contract.
+form of the fortress, the required parts and their pivots, the two required caller
+joints (`main_turret_yaw`, `main_gun_pitch`), and the two auto battery joints. Run
+`voxel-anim --help` for the exact operation and rig contract.
 
 ## What to deliver
 
-Build and rig the guardian up operation by operation until each `parts/<part>.png`
+Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an armored torso and head on two walking legs,
-carrying a huge tower-shield on the left arm. The required interface is a
-caller-driven **`weapon_pitch`** joint that raises and lowers the tower-shield
-about its shoulder mount, plus the two auto **`leg_left_stride`** and
-**`leg_right_stride`** joints that walk the legs in opposite phase. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+correctly, and the rig is complete: a tracked hull carrying a big main turret and
+cannon, with a secondary gun battery on each flank. The required interface is two
+caller joints — **`main_turret_yaw`** (traverse the main turret) and
+**`main_gun_pitch`** (elevate the main cannon) — plus the two auto
+**`left_battery_pitch`** and **`right_battery_pitch`** joints that sweep the side
+guns in opposite phase. Produce **every** required part and joint; you may add your
+own extra parts, joints, or auto-play clips on top, but do not drop or contradict
+the required interface. When you are satisfied, stop: the recorded per-part logs
+and `rig.json` are your finished submission.

@@ -2,8 +2,9 @@
 
 This is version `v1.0.0` of the **Sunfront Bulwark** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a heavy bipedal Duneforged shield-mech as a 56×68×48 opaque-voxel
-model using only the `voxel-anim` tool, one recorded operation at a time.
+sculpt *and rig* a heavy bipedal Duneforged war-mech — a tower shield braced on
+its left arm and a siege maul in its right — as a 56×68×48 opaque-voxel model
+using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-bulwark` is the catalog slug for this case. It is one of the `sunfront-*`
 Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
@@ -16,20 +17,22 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
-| `torso` | *(root)* | `[0, 0, 0]` | The armored upper body and head |
+| `torso` | *(root)* | `[0, 0, 0]` | Body, head, both shoulders, and the left shield arm |
 | `leg_left` | `torso` | `[18, 28, 24]` | The left leg |
 | `leg_right` | `torso` | `[38, 28, 24]` | The right leg |
-| `weapon` | `torso` | `[16, 42, 26]` | The left tower-shield arm |
+| `weapon` | `torso` | `[40, 44, 26]` | The right arm gripping the siege maul |
 
-- **`weapon_pitch`** (caller, rotation about `x`, `-0.5..0.7`) — the game-facing
-  control: raises and smashes the left tower-shield arm about its shoulder hinge.
+- **`weapon_pitch`** (caller, rotation about `x`, `-0.5..1.1`) — the game-facing
+  control: winds the right maul arm up over the head and smashes it down about its
+  shoulder hinge. (The left arm and its braced tower shield are part of the fixed
+  `torso`.)
 - **`leg_left_stride`** / **`leg_right_stride`** (auto, rotation about `x`,
   `-0.5..0.5`) — the two legs walk on their own via their `walk_left` / `walk_right`
   clips, driven in opposite phase.
 
-The case also authors a **`fire`** review animation that drives `weapon_pitch` so
-a reviewer can watch the shield smash without dragging the slider. The model may
-add its own extra parts, joints, and clips on top, but must not drop or
+The case also authors a **`smash`** review animation that drives `weapon_pitch`
+so a reviewer can watch the maul smash without dragging the slider. The model
+may add its own extra parts, joints, and clips on top, but must not drop or
 contradict the required interface.
 
 ## Contents

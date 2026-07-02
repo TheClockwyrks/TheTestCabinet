@@ -59,8 +59,8 @@ The **Aegis** is **not buildable** and appears only this way:
 
 - Stats (`specs/units.md` roster notes): `1400 HP`, **Heavy** armor, **Splash**
   attack `34` (radius `50`), cadence `1.3 s`, range `70`, speed `42`. It advances
-  and fights like any other unit, but toward the enemy — it is a heavy sweeper
-  that walks *out* from the base it defends.
+  and fights like any other unit, but toward the enemy — it is a heavy multi-gun
+  siege fortress that grinds *out* on its treads from the base it defends.
 - It is **temporary**: it loses **`40 HP/s`** continuously from the moment it
   spawns (so, undamaged, it expires in about `35 s`), and it can also be killed
   outright. When it reaches `0 HP` it is removed with no bounty.
