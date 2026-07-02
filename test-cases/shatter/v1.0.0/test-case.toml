@@ -23,9 +23,9 @@ tags = ["arcade", "2d", "space", "shooter", "physics"]
 # Like `description`, this is NOT seeded into a run.
 summary = """
 A neon top-down rock shooter built around a central gravity well: the star at the \
-middle of the field pulls your ship, your bullets, and every rock, so you \
-slingshot for speed and bend shots around it — and rocks it swallows recycle back \
-in from the edge."""
+middle of the field pulls your bullets and every rock — so shots bend around it and \
+rocks churn on curved paths — while your ship flies free of the pull and the rocks \
+it swallows recycle back in from the edge."""
 
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
@@ -190,15 +190,15 @@ weight = 1
 [[review_item]]
 id = "gravity-well"
 title = "Gravity well"
-text = "The star pulls the ship, bullets, and rocks toward the center: a bullet fired past the star visibly curves, the ship can slingshot around it, and rocks travel on curved rather than straight paths. The saucer is never pulled."
+text = "The star pulls bullets and rocks toward the center: a bullet fired past the star visibly curves and rocks travel on curved rather than straight paths. The ship and the saucer are powered craft and are never pulled — the ship flies exactly where the player steers it, unaffected by the well."
 weight = 1
 reference = "gameplay"
 proof = "gravity"
 
 [[review_item]]
-id = "star-lethal"
-title = "Lethal star core"
-text = "Flying the ship into the star's core destroys it (costs a life); a bullet that reaches the core is absorbed and removed rather than passing through."
+id = "star-core"
+title = "Solid star core"
+text = "The star's core is solid but not lethal to the ship: flying into it costs no life and does not destroy the ship — the ship slides along the core rather than through it. A bullet that reaches the core is absorbed and removed, and a rock is destroyed and recycled, rather than passing through."
 weight = 1
 
 [[review_item]]
@@ -236,7 +236,7 @@ weight = 1
 [[review_item]]
 id = "lives-respawn"
 title = "Lives and respawn"
-text = "The game starts with 3 ships; losing one respawns the next at the safe point below the star with a brief invulnerability (during which it is not dragged into the core), an extra ship is granted at each 10,000-point threshold, and the game ends at zero lives."
+text = "The game starts with 3 ships; losing one respawns the next at the safe point below the star with a brief invulnerability (during which it ignores all collisions), an extra ship is granted at each 10,000-point threshold, and the game ends at zero lives."
 weight = 1
 
 [[review_item]]

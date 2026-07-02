@@ -13,8 +13,8 @@ reproducible and testable; do not tie physics to the rendering frame rate.
 Each step, for every dynamic body (the ship, each bullet, each rock, the saucer):
 
 1. Apply the body's own control forces (ship thrust; saucer steering — see below).
-2. Apply the **gravity acceleration** from the star (all bodies except the
-   saucer).
+2. Apply the **gravity acceleration** from the star (every bullet and every rock
+   — not the ship or the saucer, both of which are powered craft).
 3. Advance velocity, then position, by `dt`.
 4. Wrap position across the field edges (`specs/playfield.md`).
 5. Resolve collisions (below).
@@ -33,15 +33,16 @@ The ship flies under momentum — this is the feel of the game, so get it right.
   half its speed roughly every 3 seconds of coasting). Drag is deliberately
   weak — the ship is meant to glide, not stop on a dime.
 - **Speed cap.** Clamp the ship's speed to a maximum of **680 px/s** (apply after
-  thrust and gravity each step). Momentum and the gravity slingshot can push the
-  ship to this cap, but never past it.
+  thrust each step). Thrust and carried momentum can push the ship to this cap,
+  but never past it.
 
 The ship carries its velocity through wraps and across states as normal.
 
 ## The gravity well (signature mechanic)
 
-The star at `(640, 360)` pulls on the **ship, every bullet, and every rock**. The
-saucer is the only exception — it is a powered craft and is never pulled.
+The star at `(640, 360)` pulls on **every bullet and every rock**. The ship and
+the saucer are the two exceptions — both are powered craft with their own
+thrusters, and neither is ever pulled (see "Why the ship is not pulled" below).
 
 For each affected body, every step, add an acceleration toward the star:
 
@@ -53,27 +54,38 @@ a      = a_mag toward the star center   # along the unit vector body -> star
 ```
 
 - `MU = 3_000_000`. With the softening radius of `90`, the acceleration is
-  **capped at about 370 px/s^2** (reached at `d <= 90`) — below the ship's own
-  `480 px/s^2` thrust, so a piloted ship can always climb out of the well. Sample
-  magnitudes: about `75 px/s^2` at `d = 200`, `208` at `d = 120`, `370` (the cap)
-  at `d <= 90`.
-- The softening only bounds the math near the center; it does not make the core
-  safe. The core (radius `30`, `specs/playfield.md`) is still solid and lethal.
+  **capped at about 370 px/s^2** (reached at `d <= 90`). Sample magnitudes: about
+  `75 px/s^2` at `d = 200`, `208` at `d = 120`, `370` (the cap) at `d <= 90`. The
+  softening only bounds the math near the center — it keeps the pull finite as a
+  body nears the core rather than letting it blow up.
+- The core (radius `30`, `specs/playfield.md`) is solid and impassable, but it is
+  **not** lethal to the ship: a ship that reaches it slides along its surface
+  rather than being destroyed (see Collision below).
 - Gravity uses the body's **direct** vector to the star center, not a
   wrapped one: the star is a single physical point at the middle of the field,
   so a body near a corner is genuinely far from it and barely pulled.
 
+### Why the ship is not pulled
+
+Gravity acts only on bodies flying **ballistically** — bullets and rocks. The ship
+and the saucer are powered craft whose thrusters hold them against the star, so
+they fly where they are steered, unaffected by the well. This keeps flight under
+the player's full control: the star shapes the *board* — curving your shots and
+the rocks' paths — without ever wresting the ship out of your hands.
+
 What the pull produces, and why it is the heart of the game:
 
-- **The ship must respect the well.** Drift too close with too little speed and
-  the star reels you into its core. You can **slingshot** — dive past the star to
-  trade a curved path for speed — but you must thrust to escape it.
-- **Shots curve.** Because bullets are pulled too, a shot fired near the star
-  bends; a skilled player can **bend a bullet around the star** to hit a rock on
-  the far side, or must lead a target whose path the star is curving.
+- **Shots curve.** Because bullets are pulled, a shot fired near the star bends;
+  a skilled player can **bend a bullet around the star** to hit a rock on the far
+  side, or must lead a target whose path the star is curving. Firing across the
+  center is a different problem than firing out near the edge.
 - **Rocks orbit.** Rocks swing through the field on curved, wrapping paths rather
   than straight lines, so the board is always churning. A rock drawn into the core
   is recycled to the edge (`specs/playfield.md`), keeping the field populated.
+- **The center stays busy.** The ship flies through the well freely, but the
+  space around the star is the most crowded part of the board — rocks constantly
+  curving through it and recycling from the edges — so diving into the middle to
+  line up a shot is a real risk-versus-reward choice, just not a lethal one.
 
 ## Bullets
 
@@ -113,11 +125,17 @@ Resolve these interactions:
 - **Bullet ↔ star core.** The bullet is absorbed and removed.
 - **Rock ↔ star core.** The rock is destroyed and recycled per `specs/playfield.md`
   (a same-size replacement re-enters from off-screen; no score, count unchanged).
-- **Ship ↔ rock, ship ↔ saucer, ship ↔ saucer bullet, ship ↔ star core.** The ship
-  is destroyed and the player loses a life (`specs/flow.md`), unless the ship is
-  currently in its post-respawn invulnerability window, in which case it passes
-  through unharmed (and, during that window only, is also unaffected by
-  gravity — see `specs/flow.md`).
+- **Ship ↔ rock, ship ↔ saucer, ship ↔ saucer bullet.** The ship is destroyed and
+  the player loses a life (`specs/flow.md`), unless the ship is currently in its
+  post-respawn invulnerability window, in which case it passes through unharmed
+  (see `specs/flow.md`).
+- **Ship ↔ star core.** The core is a **solid but non-lethal** obstacle for the
+  ship: touching it never costs a life and never destroys the ship. Instead the
+  ship **slides along the core** — on contact, push the ship's center back out to
+  a distance of `core radius + ship radius` (= `44`) from the star center along
+  the star→ship direction, and remove the component of its velocity into the
+  core while keeping the tangential component, so it grazes around the surface and
+  slides free. Facing is unchanged and the player keeps full control throughout.
 - **Rock ↔ rock.** Rocks do **not** collide with each other; they pass through one
   another freely. Only bullets and the star destroy rocks.
 - **Saucer ↔ rock.** The saucer is unaffected by rocks and passes through

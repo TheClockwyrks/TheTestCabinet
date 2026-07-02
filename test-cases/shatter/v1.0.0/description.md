@@ -8,12 +8,14 @@ wink out — and every cleared field is answered by a denser wave, with an enemy
 saucer wandering in to hunt you.
 
 What makes Shatter its own game is the **gravity well**. A star fixed at the center
-of the field pulls on everything that flies ballistically — your ship, every
-bullet, and every rock. Flight becomes a constant negotiation with that tug: you
-can slingshot around the star for speed, and you can bend a shot around it to
-hit a rock on the far side, but drift into its core and you die. Rocks the star
-swallows are recycled straight back in from the edge, so the well churns the
-entire board without ever emptying it.
+of the field pulls on everything that flies ballistically — every bullet and every
+rock. Your ship is a powered craft that flies free of the pull, so the star never
+wrests it from your hands; instead it shapes the board. Shots bend as they cross
+the center, so you can curve a bullet around the star to hit a rock on its far
+side, and rocks travel on curved, wrapping paths that keep the field churning. The
+core is solid — the ship slides along it rather than through it — and rocks the
+star swallows recycle straight back in from the edge, so the well stirs the board
+without ever emptying it.
 
 ## Why it is a benchmark
 
@@ -21,7 +23,7 @@ Shatter reads like a familiar arcade classic, but a version a person would actua
 enjoy is a real front-end build. It asks for smooth inertial flight, a live gravity
 field integrated across many bodies every frame, rocks that split and scatter by
 the angle of your shot, escalating waves, an enemy that weaves and fires aimed
-shots, lives and safe respawns around a lethal hazard, and the menus and state
+shots, lives and safe respawns amid the drifting hazards, and the menus and state
 transitions that tie a title screen, live play, and a game-over screen
 together — all on a seamless wrap-around field. That places it in the middle of
 the suite: a substantial but tightly specified task whose signature mechanic

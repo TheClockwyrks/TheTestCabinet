@@ -16,16 +16,17 @@ behaviors that make good test targets. It refers to the geometry in
 - **Extra life.** The player earns one extra ship each time the score crosses a
   multiple of **10,000** points (at 10,000, 20,000, …). Show a brief indication
   when it is awarded.
-- **Death.** A ship is destroyed when it collides with a rock, the saucer, a
-  saucer bullet, or the star's core (`specs/physics.md`) — unless it is in the
-  respawn invulnerability window below.
+- **Death.** A ship is destroyed when it collides with a rock, the saucer, or a
+  saucer bullet (`specs/physics.md`) — unless it is in the respawn invulnerability
+  window below. The star's core does **not** destroy the ship; the ship slides
+  along it (`specs/physics.md`).
 - **Respawn and invulnerability.** After a death, if any lives remain, the next
   ship appears at rest at the **safe point** `(640, 560)` facing up, and is
   **invulnerable for 2.5 seconds**, shown by a visible blink. During this window
-  the ship is fully controllable but ignores **all** collisions **and is not pulled
-  by the star's gravity**, so it cannot be dragged into the core before the player
-  takes control; gravity and collisions both resume the instant the window ends.
-  Use the grace period to fly clear.
+  the ship is fully controllable but ignores **all** collisions, so a rock or the
+  saucer drifting over the spawn point cannot kill it before the player takes
+  control; collisions resume the instant the window ends. Use the grace period to
+  fly clear.
 
 ## Waves
 
@@ -115,11 +116,12 @@ The game must exhibit these behaviors. They make good targets for review:
 - Thrust accelerates the ship along its facing and it **coasts** afterward under
   momentum; turning does not change velocity, only facing.
 - The ship, bullets, and rocks all **wrap** at every edge; the saucer wraps too.
-- The star **curves** the ship, bullets, and rocks toward the center: a bullet
-  fired past the star visibly bends, and the ship can slingshot around it. The
-  saucer is never pulled.
-- Flying the ship into the star core destroys it; a bullet that reaches the core
-  is absorbed.
+- The star **curves** bullets and rocks toward the center: a bullet fired past the
+  star visibly bends, and rocks travel on curved rather than straight paths. The
+  ship and the saucer are powered craft and are never pulled.
+- Flying the ship into the star core does **not** destroy it — the core is solid
+  and the ship slides along it — while a bullet that reaches the core is absorbed
+  and a rock is recycled.
 - A rock pulled into the star is destroyed and a **same-size** rock re-enters from
   off-screen, so the number of rocks on the field is conserved.
 - Shooting a Large rock yields two Medium, a Medium yields two Small, and a Small

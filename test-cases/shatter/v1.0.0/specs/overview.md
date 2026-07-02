@@ -10,12 +10,14 @@ the last fragments wink out. Clear the field and a new, denser wave arrives; an
 enemy saucer wanders in to hunt you.
 
 Shatter's defining feature is the **gravity well**: a star fixed at the center of
-the field pulls on everything that flies ballistically — your ship, every bullet,
-and every rock. Flight is therefore a constant negotiation with the star's tug:
-you can slingshot around it for speed, and you can bend a shot around it to strike
-a rock on the far side, but fly into its core and you die. Rocks caught by the
-star are swallowed and reappear from the edge of the field, so the well churns the
-whole board without ever emptying it.
+the field pulls on everything that flies ballistically — every bullet and every
+rock. Your ship and the enemy saucer are powered craft that fly free of the pull,
+so the star never wrests the ship out of your hands; instead it **shapes the
+board**. Shots bend as they cross the center, so you can curve a bullet around the
+star to strike a rock on its far side, and rocks travel on curved, wrapping paths
+that keep the whole field churning. The core is solid — the ship slides along it
+rather than through it — and any rock the star swallows reappears from the edge
+of the field, so the well stirs the board without ever emptying it.
 
 Shatter is inspired by classic asteroid-shooting arcade games but is its own game,
 with an original name, look, and its central **gravity-well** mechanic. Do not

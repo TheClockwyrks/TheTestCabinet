@@ -3,8 +3,9 @@
 This is version `v1.0.0` of the **Shatter** test case. The implemented game is an
 original space-rock shooter titled **Shatter**: inertial flight on a wrap-around
 field, rocks that split when shot, escalating waves, and an enemy saucer — all
-built around a **gravity well**, a central star that pulls the ship, the bullets,
-and the rocks, and that recycles any rock it swallows back in from the field edge.
+built around a **gravity well**, a central star that pulls the bullets and the
+rocks (the ship flies free of the pull), and that recycles any rock it swallows
+back in from the field edge.
 
 `shatter` is the catalog slug for this case, and the game's in-fiction title. The
 case is inspired by classic asteroid-shooting arcade games but is not a clone of

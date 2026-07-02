@@ -24,13 +24,14 @@ objects move and collide is defined in `specs/physics.md`.
 A single **star** is fixed at the center of the field, `(640, 360)`, for the
 entire game. It never moves and is present in every state that shows the field.
 
-- The star has a **solid core** of radius **30**. The core is lethal and
-  impassable: the ship is destroyed if it touches the core (see `specs/flow.md`),
-  a bullet that reaches the core is absorbed and removed, and a rock that reaches
-  the core is destroyed and recycled (see Rocks below and `specs/physics.md`).
-- Around the core, the star exerts a **gravitational pull** on the ship, all
-  bullets, and all rocks — the signature mechanic, defined in full in
-  `specs/physics.md`. The saucer is the sole exception and is never pulled.
+- The star has a **solid core** of radius **30**. The core is **impassable but not
+  lethal to the ship**: a ship that reaches it slides along its surface rather than
+  being destroyed (see `specs/physics.md`), a bullet that reaches the core is
+  absorbed and removed, and a rock that reaches the core is destroyed and recycled
+  (see Rocks below and `specs/physics.md`).
+- Around the core, the star exerts a **gravitational pull** on all bullets and all
+  rocks — the signature mechanic, defined in full in `specs/physics.md`. The ship
+  and the saucer are the exceptions: both are powered craft and are never pulled.
 - Draw the star as a bright core (radius `30`, color `#ffd27a`) inside a larger,
   softer halo (color `#ff7b3d`) that fades outward to nothing by roughly radius
   `120`, hinting at the region of strongest pull. The halo is decorative; only the

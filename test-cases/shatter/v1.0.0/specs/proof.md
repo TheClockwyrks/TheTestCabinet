@@ -17,7 +17,7 @@ Playwright that `package.json` pins and `init` installs; do not hand-edit images
 | `proof/title.png` | The title screen on load, with the title, tagline, and every menu item visible. |
 | `proof/gameplay.png` | A live in-game frame: the ship, the star with its halo, several rocks mid-field, at least one bullet, and the HUD (score and remaining lives). |
 | `proof/game-over.png` | The game-over screen after a finished game, with `GAME OVER`, the final score, and the wave reached. |
-| `proof/gravity.mp4` | A short (a few seconds) screen recording that shows the gravity well at work: the ship slingshotting around the star and/or a bullet's path visibly bending near it. |
+| `proof/gravity.mp4` | A short (a few seconds) screen recording that shows the gravity well at work: a bullet's path visibly bending as it passes near the star, and/or rocks curving on their paths past it. |
 
 Notes:
 
