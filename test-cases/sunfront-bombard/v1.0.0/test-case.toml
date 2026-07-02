@@ -1,11 +1,12 @@
 name = "Sunfront Bombard"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
+tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Bombard: a 56x44x80 opaque-voxel tracked siege \
-mortar whose turret swivels on a caller-driven turret_yaw joint and whose long \
-mortar barrel lobs high on a caller-driven barrel_pitch joint, built and rigged \
-one recorded operation at a time."""
+Sculpt and rig the Sunfront Bombard: a 56x52x80 opaque-voxel four-legged siege \
+mortar walker whose turret swivels on a caller-driven turret_yaw joint and whose \
+long mortar barrel lobs high on a caller-driven barrel_pitch joint while its two \
+leg groups scuttle on their own, built and rigged one recorded operation at a \
+time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -24,7 +25,7 @@ variants = ["variants/base.toml"]
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
 width = 56
-height = 44
+height = 52
 depth = 80
 background = "transparent"
 
@@ -49,52 +50,108 @@ actions = "parts/{part}.actions.json"
 # pre-seeded from this table so the contract exists from the first operation.
 [model]
 
-# The tracked hull: the root part (no parent), fixed to the world. Tracked, not
-# legged — it slides along the ground, so there is no walk joint.
+# The walker's armored hull: the root part (no parent), fixed to the world. It
+# carries the turret ring and the four leg-hips.
 [[model.part]]
-name = "chassis"
+name = "body"
 pivot = [0, 0, 0]
 
-# The turret: mounted on top-center of the chassis. It swivels on `turret_yaw`.
+# The left group of legs (front and rear), mounted low on the left flank. It
+# scuttles on `legs_left_scuttle`.
+[[model.part]]
+name = "legs_left"
+parent = "body"
+pivot = [13, 14, 40]
+
+# The right group of legs (front and rear), mirroring the left. It scuttles on
+# `legs_right_scuttle` in opposite phase.
+[[model.part]]
+name = "legs_right"
+parent = "body"
+pivot = [43, 14, 40]
+
+# The turret: mounted on top-center of the body. It swivels on `turret_yaw`.
 [[model.part]]
 name = "turret"
-parent = "chassis"
-pivot = [28, 22, 36]
+parent = "body"
+pivot = [28, 30, 44]
 
 # The long mortar barrel: mounted at the front of the turret, so it swings with
 # the turret and lobs up and down on `barrel_pitch`.
 [[model.part]]
 name = "barrel"
 parent = "turret"
-pivot = [28, 30, 48]
+pivot = [28, 38, 56]
 
-# The first required caller-driven joint: a game addresses `turret_yaw` by name to
-# swing the turret (and the barrel with it) left and right about its vertical
+# The required caller-driven turret swivel: a game addresses `turret_yaw` by name
+# to swing the turret (and the barrel with it) left and right about its vertical
 # mount, a full half-turn each way. `rest = 0` faces straight forward (+z).
 [[model.joint]]
 name = "turret_yaw"
 part = "turret"
 kind = "rotation"
 axis = "y"
-pivot = [28, 22, 36]
+pivot = [28, 30, 44]
 min = -3.14159265
 max = 3.14159265
 rest = 0.0
 drive = "caller"
 
-# The second required caller-driven joint: `barrel_pitch` elevates and depresses
-# the mortar barrel about its horizontal mount so it can lob high. `rest = 0.4` is
-# a raised siege elevation; `max = 1.0` is a steep lob, `min = -0.2` a shallow aim.
+# The required caller-driven barrel elevation: `barrel_pitch` elevates and
+# depresses the mortar barrel about its horizontal mount so it can lob high.
+# `rest = 0.4` is a raised siege elevation; `max = 1.0` is a steep lob, `min = -0.2`
+# a shallow aim.
 [[model.joint]]
 name = "barrel_pitch"
 part = "barrel"
 kind = "rotation"
 axis = "x"
-pivot = [28, 30, 48]
+pivot = [28, 38, 56]
 min = -0.2
 max = 1.0
 rest = 0.4
 drive = "caller"
+
+# The left leg group's own looping scuttle. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the legs walk on their own without a caller.
+[[model.joint]]
+name = "legs_left_scuttle"
+part = "legs_left"
+kind = "rotation"
+axis = "x"
+pivot = [13, 14, 40]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The right leg group's scuttle, in opposite phase to the left.
+[[model.joint]]
+name = "legs_right_scuttle"
+part = "legs_right"
+kind = "rotation"
+axis = "x"
+pivot = [43, 14, 40]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The auto-play scuttle clips — one per leg group, in opposite phase, so the walker
+# strides on its own. Only `auto` joints take a clip; the caller-driven
+# `turret_yaw` and `barrel_pitch` take none. Keyframes are inline `[t_ms, value]`
+# pairs (radians).
+[[model.clip]]
+joint = "legs_left_scuttle"
+period_ms = 550
+loop = true
+keyframes = [[0, 0.0], [137, 0.6], [275, 0.0], [412, -0.6], [550, 0.0]]
+
+[[model.clip]]
+joint = "legs_right_scuttle"
+period_ms = 550
+loop = true
+keyframes = [[0, 0.0], [137, -0.6], [275, 0.0], [412, 0.6], [550, 0.0]]
 
 # A predetermined animation the review viewer offers as a play button, so a
 # reviewer can watch the mortar recoil and lob without dragging the joint slider by
@@ -119,52 +176,58 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bombard and \
-poses correctly — a low, tracked siege hull, a turret that swivels on its mount \
-without detaching while the chassis stays put, and a long mortar barrel that stays \
-attached to the turret and lobs up and down, with a clear solar-amber muzzle glow \
-and the disciplined Duneforged palette."""
+poses correctly — a four-legged siege-mortar walker: a low hull carried on four \
+legs, a turret that swivels on its mount without detaching while the body stays \
+put, and a long mortar barrel that stays attached to the turret and lobs up and \
+down, while the two leg groups scuttle on their own, with a clear solar-amber \
+muzzle glow and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-bombard"
-title = "Reads as a tracked siege mortar"
+title = "Reads as a four-legged siege-mortar walker"
 text = """
-From more than one angle the model reads unmistakably as a heavy tracked siege \
-vehicle: a low, boxy hull riding on a pair of tracks down its sides, a turret \
-sitting on top, and a long mortar barrel projecting forward from the turret. It is \
-a tracked artillery machine, not an abstract stack of boxes."""
+From more than one angle the model reads unmistakably as a four-legged siege \
+mortar walker: a low, boxy hull carried on four legs splayed out in two groups \
+down its sides, a turret sitting on top, and a long mortar barrel projecting \
+forward from the turret. It is a striding artillery walker, not an abstract stack \
+of boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "joints-move"
-title = "Turret swivels and barrel lobs"
+title = "Turret swivels, barrel lobs, legs scuttle"
 text = """
 Driving the `turret_yaw` joint swings the turret cleanly left and right about its \
-vertical mount at the top-center of the chassis, and driving the `barrel_pitch` \
-joint raises and lowers the mortar barrel about its horizontal mount. Across both \
-joints' full ranges no voxel tears away from its mount or clips into the hull — \
-each part rotates as one solid piece about the correct pivot."""
+vertical mount at the top-center of the body, and driving the `barrel_pitch` joint \
+raises and lowers the mortar barrel about its horizontal mount. Across both joints' \
+full ranges no voxel tears away from its mount or clips into the hull — each part \
+rotates as one solid piece about the correct pivot. The four legs scuttle on their \
+own through the `legs_left_scuttle` and `legs_right_scuttle` auto joints, stepping \
+in opposite phase."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "chassis-fixed"
-title = "Chassis stays fixed"
+id = "body-fixed"
+title = "Body stays fixed"
 text = """
-Only the turret (and the barrel with it) moves when the joints are driven. The \
-chassis and its tracks stay put — they are the fixed root of the rig, not carried \
-along by the turret's swing or the barrel's lob."""
+Only the moving parts move: the turret (and the barrel with it) when the joints \
+are driven, and the legs as they scuttle. The body stays put — it is the fixed \
+root of the rig, not carried along by the turret's swing, the barrel's lob, or the \
+legs' stride."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "barrel-attached"
-title = "Barrel stays attached to the turret"
+id = "parts-attached"
+title = "Barrel and legs stay attached"
 text = """
-The barrel is a child of the turret: it projects from the front of the turret, \
-swings with it as `turret_yaw` turns, and pitches about its own mount as \
-`barrel_pitch` drives, always meeting the turret's front face with no gap and \
-never floating free or detaching."""
+Each child stays attached across its joint's range: the barrel is a child of the \
+turret, so it projects from the turret's front, swings with it as `turret_yaw` \
+turns, and pitches about its own mount as `barrel_pitch` drives, always meeting the \
+turret's front face with no gap and never floating free. The two leg groups meet \
+the body's flanks at their mounts and never detach as they scuttle."""
 weight = 2
 domain = "fidelity"
 
@@ -172,7 +235,7 @@ domain = "fidelity"
 id = "palette"
 title = "Duneforged palette discipline"
 text = """
-Uses only the Duneforged colors from the brief (brass and bronze hull, iron tracks \
+Uses only the Duneforged colors from the brief (brass and bronze hull, iron legs \
 and barrel, and the solar-amber muzzle accent) with a clear amber muzzle glow at \
 the barrel's mouth, no out-of-palette colors, and no stray voxels drifting off the \
 parts."""

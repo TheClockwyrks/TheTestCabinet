@@ -1,7 +1,7 @@
-Sculpt and rig the **Sunfront Aegis**, a colossal multi-gun siege fortress on
-treads whose main cannon aims forward and whose two side turrets each traverse to
-cover their own flank, as an 88x60x104 opaque-voxel model using only the voxel-anim
-tool.
+Sculpt and rig the **Sunfront Aegis**, a colossal multi-gun walking fortress that
+strides on six heavy legs, whose main cannon aims forward and whose two side turrets
+each traverse to cover their own flank, as an 88x80x104 opaque-voxel model using
+only the voxel-anim tool.
 
 ## How sculpting and rigging works
 
@@ -24,7 +24,7 @@ in place at `{{workspace}}`.
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part chassis --x0 8 --y0 0 --z0 8 --x1 79 --y1 30 --z1 96 --color "#c69a4b"
+voxel-anim fill-box --part chassis --x0 8 --y0 24 --z0 8 --x1 79 --y1 60 --z1 96 --color "#c69a4b"
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
@@ -50,22 +50,24 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, and the four required
+form of the fortress, the required parts and their pivots, the four required
 caller joints — `main_turret_yaw` and `main_gun_pitch` for the main turret and
 cannon, and `left_turret_yaw` / `right_turret_yaw` for the two independently
-traversing side turrets. Run `voxel-anim --help` for the exact operation and rig
-contract.
+traversing side turrets — and the two auto `legs_left_stride` / `legs_right_stride`
+joints that walk the six legs on their own. Run `voxel-anim --help` for the exact
+operation and rig contract.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a tracked hull carrying a big main turret and
-cannon, with a rotating secondary gun turret on each flank. The required interface
-is four caller joints — **`main_turret_yaw`** (fine-aim the main turret within a
-narrow forward cone) and **`main_gun_pitch`** (elevate the main cannon), plus
-**`left_turret_yaw`** and **`right_turret_yaw`**, which traverse the two side
-turrets so each covers its own flank arc. Produce **every** required part and joint; you may add your
-own extra parts, joints, or auto-play clips on top, but do not drop or contradict
-the required interface. When you are satisfied, stop: the recorded per-part logs
+correctly, and the rig is complete: an armored hull raised on six heavy legs
+carrying a big main turret and cannon, with a rotating secondary gun turret on each
+flank. The required interface is four caller joints — **`main_turret_yaw`** (fine-aim
+the main turret within a narrow forward cone) and **`main_gun_pitch`** (elevate the
+main cannon), plus **`left_turret_yaw`** and **`right_turret_yaw`**, which traverse
+the two side turrets so each covers its own flank arc — and the two auto stride
+joints **`legs_left_stride`** / **`legs_right_stride`** that walk the six legs.
+Produce **every** required part and joint; you may add your own extra parts, joints,
+or auto-play clips on top, but do not drop or contradict the required interface. When you are satisfied, stop: the recorded per-part logs
 and `rig.json` are your finished submission.

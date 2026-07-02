@@ -1,6 +1,6 @@
-Sculpt and rig the **Sunfront Bombard**, a low tracked siege mortar whose turret
-swivels and whose long barrel lobs high, as a 56x44x80 opaque-voxel model using
-only the voxel-anim tool.
+Sculpt and rig the **Sunfront Bombard**, a four-legged siege mortar walker whose
+turret swivels and whose long barrel lobs high while its legs scuttle, as a
+56x52x80 opaque-voxel model using only the voxel-anim tool.
 
 ## How sculpting and rigging works
 
@@ -23,7 +23,7 @@ in place at `{{workspace}}`.
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part chassis --x0 8 --y0 0 --z0 5 --x1 47 --y1 20 --z1 74 --color "#c69a4b"
+voxel-anim fill-box --part body --x0 8 --y0 20 --z0 6 --x1 47 --y1 34 --z1 73 --color "#c69a4b"
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
@@ -32,11 +32,12 @@ Run `voxel-anim --help` to list every operation **and** the rig subcommands
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole vehicle composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the turret
-sits centered on the chassis and the barrel meets the turret's front. Because each
-part is sculpted in the shared volume's coordinates, position each part where it
-belongs on the finished vehicle; the scene simply composes them there.
+whole walker composed from all your parts, re-rendered after every operation. The
+scene views are how you confirm the parts actually fit together: that the leg
+groups seat under the body's flanks, the turret sits centered on the hull, and the
+barrel meets the turret's front. Because each part is sculpted in the shared
+volume's coordinates, position each part where it belongs on the finished walker;
+the scene simply composes them there.
 
 ## What to read first
 
@@ -48,19 +49,20 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the vehicle, the required parts and their pivots, and the two required
-caller joints `turret_yaw` and `barrel_pitch`. Run `voxel-anim --help` for the
-exact operation and rig contract.
+form of the walker, the required parts and their pivots, the required caller
+`turret_yaw` and `barrel_pitch` joints, and the two auto scuttle joints. Run
+`voxel-anim --help` for the exact operation and rig contract.
 
 ## What to deliver
 
-Build and rig the vehicle up operation by operation until each `parts/<part>.png`
+Build and rig the walker up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a tracked hull, a turret on top, and a long
-mortar barrel projecting from the turret. The required interface is a
-caller-driven **`turret_yaw`** joint that swings the turret about its mount and a
-caller-driven **`barrel_pitch`** joint that lobs the barrel up and down. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+correctly, and the rig is complete: a low hull on four scuttling legs, a turret on
+top, and a long mortar barrel projecting from the turret. The required interface is
+a caller-driven **`turret_yaw`** joint that swings the turret about its mount and a
+caller-driven **`barrel_pitch`** joint that lobs the barrel up and down, plus the
+two auto **`legs_left_scuttle`** and **`legs_right_scuttle`** joints that walk the
+legs in opposite phase. Produce **every** required part and joint; you may add your
+own extra parts, joints, or auto-play clips on top, but do not drop or contradict
+the required interface. When you are satisfied, stop: the recorded per-part logs
+and `rig.json` are your finished submission.

@@ -2,9 +2,10 @@
 
 This is version `v1.0.0` of the **Sunfront Aegis** test case: an asset-generation
 case (`asset_kind = "voxel-animation"`) that asks a model to sculpt *and rig* a
-colossal Duneforged **siege fortress on treads** — a multi-gun tracked
-war-fortress that dwarfs every buildable unit — as an 88×60×104 opaque-voxel model
-using only the `voxel-anim` tool, one recorded operation at a time.
+colossal Duneforged **six-legged walking fortress** — a multi-gun war-fortress that
+dwarfs every buildable unit and strides on six heavy legs — as an 88×80×104
+opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
+time.
 
 `sunfront-aegis` is the catalog slug for this case. It is one of the `sunfront-*`
 Duneforged voxel roster and shares the faction's brass-and-bronze palette and
@@ -17,11 +18,13 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
-| `chassis` | *(root)* | `[0, 0, 0]` | The tracked hull and its two treads |
-| `main_turret` | `chassis` | `[44, 40, 56]` | The big central turret |
-| `main_gun` | `main_turret` | `[44, 46, 74]` | The main cannon on the turret front |
-| `left_turret` | `chassis` | `[14, 36, 52]` | The rotating left-flank side turret |
-| `right_turret` | `chassis` | `[73, 36, 52]` | The rotating right-flank side turret |
+| `chassis` | *(root)* | `[0, 0, 0]` | The armored hull, raised on legs |
+| `legs_left` | `chassis` | `[18, 16, 52]` | The three left legs, as one part |
+| `legs_right` | `chassis` | `[70, 16, 52]` | The three right legs, as one part |
+| `main_turret` | `chassis` | `[44, 60, 56]` | The big central turret |
+| `main_gun` | `main_turret` | `[44, 66, 74]` | The main cannon on the turret front |
+| `left_turret` | `chassis` | `[16, 56, 52]` | The rotating left-flank side turret |
+| `right_turret` | `chassis` | `[71, 56, 52]` | The rotating right-flank side turret |
 
 - **`main_turret_yaw`** (caller, rotation about `y`, `-0.35..0.35`) — a narrow
   forward cone that makes only fine corrections keeping the main cannon pointed
@@ -31,6 +34,9 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 - **`left_turret_yaw`** (caller, rotation about `y`, `-1.6..0.0`) /
   **`right_turret_yaw`** (caller, rotation about `y`, `0.0..1.6`) — traverse the
   two side turrets so each swings independently to cover its own flank arc.
+- **`legs_left_stride`** / **`legs_right_stride`** (auto, rotation about `x`,
+  `-0.5..0.5`) — walk the six heavy legs in opposite phase on their own via
+  looping clips.
 
 The case also authors a **`bombardment`** review animation that drives all four
 caller joints so a reviewer can watch the main cannon lob forward while the two

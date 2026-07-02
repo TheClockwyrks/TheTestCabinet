@@ -2,8 +2,9 @@
 
 This is version `v1.0.0` of the **Sunfront Bombard** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a low, tracked Duneforged siege mortar as a 56×44×80 opaque-voxel
-model using only the `voxel-anim` tool, one recorded operation at a time.
+sculpt *and rig* a four-legged Duneforged siege mortar walker as a 56×52×80
+opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
+time.
 
 `sunfront-bombard` is the catalog slug for this case. It is one of the `sunfront-*`
 Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
@@ -16,9 +17,11 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
-| `chassis` | *(root)* | `[0, 0, 0]` | The tracked hull and its two tracks |
-| `turret` | `chassis` | `[28, 22, 36]` | The rotating turret on top |
-| `barrel` | `turret` | `[28, 30, 48]` | The long mortar barrel, on the turret front |
+| `body` | *(root)* | `[0, 0, 0]` | The armored hull |
+| `legs_left` | `body` | `[13, 14, 40]` | The left group of legs |
+| `legs_right` | `body` | `[43, 14, 40]` | The right group of legs |
+| `turret` | `body` | `[28, 30, 44]` | The rotating turret on top |
+| `barrel` | `turret` | `[28, 38, 56]` | The long mortar barrel, on the turret front |
 
 - **`turret_yaw`** (caller, rotation about `y`, `-π..π`) — the game-facing
   control: swings the turret, and the barrel with it, a full half-turn each way
@@ -26,6 +29,9 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 - **`barrel_pitch`** (caller, rotation about `x`, `-0.2..1.0`, rest `0.4`) — the
   second game-facing control: elevates and depresses the mortar barrel so it can
   lob high.
+- **`legs_left_scuttle`** / **`legs_right_scuttle`** (auto, rotation about `x`,
+  `-0.6..0.6`) — the two leg groups scuttle on their own via their looping clips,
+  driven in opposite phase.
 
 The case also authors a **`bombard_fire`** review animation that drives
 `barrel_pitch` in a quick recoil-lob so a reviewer can watch the mortar fire

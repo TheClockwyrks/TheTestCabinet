@@ -1,13 +1,13 @@
 name = "Sunfront Aegis"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
+tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Aegis: an 88x60x104 opaque-voxel siege fortress on \
-treads — a colossal tracked hull that dwarfs every buildable unit, bristling with \
-guns, whose central main turret makes only fine corrections within a narrow \
-forward cone and elevates its cannon on caller-driven joints while two \
-independently-traversing side turrets each swing to cover their own flank, built \
-and rigged one recorded operation at a time."""
+Sculpt and rig the Sunfront Aegis: an 88x80x104 opaque-voxel colossal six-legged \
+walking fortress that dwarfs every buildable unit, bristling with guns, whose \
+central main turret makes only fine corrections within a narrow forward cone and \
+elevates its cannon on caller-driven joints while two independently-traversing \
+side turrets each swing to cover their own flank and the fortress strides on six \
+heavy legs, built and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -21,14 +21,15 @@ variants = ["variants/base.toml"]
 
 # The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
-# voxels. The Aegis is deliberately huge — a rolling fortress with a far larger
-# footprint than any buildable unit — so its volume is broad and deep. Each part
-# is sculpted separately in this shared volume's coordinates. The volume always
-# starts EMPTY; `background` is only the clear color behind the rasterized
-# isometric preview PNG. A voxel case must NOT declare [canvas].
+# voxels. The Aegis is deliberately huge — a walking fortress with a far larger
+# footprint than any buildable unit, riding raised on legs — so its volume is
+# broad, deep, and tall. Each part is sculpted separately in this shared volume's
+# coordinates. The volume always starts EMPTY; `background` is only the clear color
+# behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
 [voxel]
 width = 88
-height = 60
+height = 80
 depth = 104
 background = "transparent"
 
@@ -53,11 +54,25 @@ actions = "parts/{part}.actions.json"
 # pre-seeded from this table so the contract exists from the first operation.
 [model]
 
-# The tracked fortress hull and its two side treads: the root part (no parent),
-# fixed to the world.
+# The armored fortress hull, raised up on six legs: the root part (no parent),
+# fixed to the world. It carries all four turrets and the six leg-hips.
 [[model.part]]
 name = "chassis"
 pivot = [0, 0, 0]
+
+# The left bank of legs — three heavy legs sculpted as one part, mounted low on the
+# left flank of the hull. It strides on `legs_left_stride`.
+[[model.part]]
+name = "legs_left"
+parent = "chassis"
+pivot = [18, 16, 52]
+
+# The right bank of legs — three heavy legs as one part, mirroring the left. It
+# strides on `legs_right_stride` in opposite phase.
+[[model.part]]
+name = "legs_right"
+parent = "chassis"
+pivot = [70, 16, 52]
 
 # The big central main turret, mounted on top-center of the hull. It makes only
 # fine corrections about its vertical mount via the caller-driven `main_turret_yaw`
@@ -66,14 +81,14 @@ pivot = [0, 0, 0]
 [[model.part]]
 name = "main_turret"
 parent = "chassis"
-pivot = [44, 40, 56]
+pivot = [44, 60, 56]
 
 # The main cannon, mounted at the front of the main turret so it swings with it. It
 # elevates on the caller-driven `main_gun_pitch`.
 [[model.part]]
 name = "main_gun"
 parent = "main_turret"
-pivot = [44, 46, 74]
+pivot = [44, 66, 74]
 
 # The left side turret: a rotating secondary gun on a sponson off the left flank of
 # the hull. It traverses on its own via the caller-driven `left_turret_yaw`,
@@ -81,7 +96,7 @@ pivot = [44, 46, 74]
 [[model.part]]
 name = "left_turret"
 parent = "chassis"
-pivot = [14, 36, 52]
+pivot = [16, 56, 52]
 
 # The right side turret, mirroring the left on the right flank. It traverses on its
 # own via the caller-driven `right_turret_yaw`, sweeping an arc that covers the
@@ -89,7 +104,32 @@ pivot = [14, 36, 52]
 [[model.part]]
 name = "right_turret"
 parent = "chassis"
-pivot = [73, 36, 52]
+pivot = [71, 56, 52]
+
+# The left leg bank's own looping stride. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the fortress walks on its own without a caller.
+[[model.joint]]
+name = "legs_left_stride"
+part = "legs_left"
+kind = "rotation"
+axis = "x"
+pivot = [18, 16, 52]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+# The right leg bank's stride, in opposite phase to the left.
+[[model.joint]]
+name = "legs_right_stride"
+part = "legs_right"
+kind = "rotation"
+axis = "x"
+pivot = [70, 16, 52]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 # The required caller-driven main-turret traverse: a game addresses `main_turret_yaw`
 # by name to make FINE corrections that keep the main cannon pointed forward. It is
@@ -101,7 +141,7 @@ name = "main_turret_yaw"
 part = "main_turret"
 kind = "rotation"
 axis = "y"
-pivot = [44, 40, 56]
+pivot = [44, 60, 56]
 min = -0.35
 max = 0.35
 rest = 0.0
@@ -115,7 +155,7 @@ name = "main_gun_pitch"
 part = "main_gun"
 kind = "rotation"
 axis = "x"
-pivot = [44, 46, 74]
+pivot = [44, 66, 74]
 min = -0.2
 max = 0.8
 rest = 0.1
@@ -130,7 +170,7 @@ name = "left_turret_yaw"
 part = "left_turret"
 kind = "rotation"
 axis = "y"
-pivot = [14, 36, 52]
+pivot = [16, 56, 52]
 min = -1.6
 max = 0.0
 rest = -0.8
@@ -144,11 +184,26 @@ name = "right_turret_yaw"
 part = "right_turret"
 kind = "rotation"
 axis = "y"
-pivot = [73, 36, 52]
+pivot = [71, 56, 52]
 min = 0.0
 max = 1.6
 rest = 0.8
 drive = "caller"
+
+# The auto-play stride clips — one per leg bank, in opposite phase, so the fortress
+# walks on its own. Only `auto` joints take a clip; the caller-driven turret and gun
+# joints take none. Keyframes are inline `[t_ms, value]` pairs (radians).
+[[model.clip]]
+joint = "legs_left_stride"
+period_ms = 1200
+loop = true
+keyframes = [[0, 0.0], [300, 0.5], [600, 0.0], [900, -0.5], [1200, 0.0]]
+
+[[model.clip]]
+joint = "legs_right_stride"
+period_ms = 1200
+loop = true
+keyframes = [[0, 0.0], [300, -0.5], [600, 0.0], [900, 0.5], [1200, 0.0]]
 
 # A predetermined animation the review viewer offers as a play button, so a
 # reviewer can watch the fortress fight without dragging the joint sliders by hand.
@@ -186,23 +241,23 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
-poses correctly — a great multi-gun siege fortress, far larger than any buildable \
-unit, riding on two tracks, whose central main turret fine-traverses within a \
-narrow forward cone and whose cannon elevates on their caller joints without \
-detaching while the two side turrets independently swing to cover their own flanks \
-and the tracked hull stays put, with a clear solar-amber accent and the \
-disciplined Duneforged palette."""
+poses correctly — a colossal six-legged walking fortress, far larger than any \
+buildable unit, striding on six heavy legs, whose central main turret \
+fine-traverses within a narrow forward cone and whose cannon elevates on their \
+caller joints without detaching while the two side turrets independently swing to \
+cover their own flanks, the six legs stride on their own, and the hull stays put, \
+with a clear solar-amber accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-fortress"
-title = "Reads as a giant fortress on treads"
+title = "Reads as a giant six-legged walking fortress"
 text = """
-From more than one angle the model reads unmistakably as a giant siege fortress on \
-tracks — plainly far bigger and broader than an ordinary war machine, a colossal \
-rolling stronghold: a low, immense, heavily armored hull riding on a pair of heavy \
-treads down its sides, a big main turret with a long forward cannon on top, and a \
-rotating secondary gun turret out on each flank. It is a bristling multi-gun war \
-machine, not an abstract stack of boxes."""
+From more than one angle the model reads unmistakably as a giant six-legged walking \
+fortress — plainly far bigger and broader than an ordinary war machine, a colossal \
+striding stronghold that dwarfs every buildable unit: an immense, heavily armored \
+hull riding raised on six heavy legs (three down each side), a big main turret with \
+a long forward cannon on top, and a rotating secondary gun turret out on each \
+flank. It is a bristling multi-gun war machine, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 
@@ -229,23 +284,27 @@ weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "chassis-fixed"
-title = "Tracked hull stays fixed"
+id = "hull-fixed"
+title = "Hull stays put while the legs stride"
 text = """
-Only the turrets and the cannon move. The tracked hull stays put — it is the fixed \
-root of the rig, not carried along by the main turret's traverse or the side \
-turrets' swings."""
+Only the moving parts move: the turrets and the cannon when their caller joints are \
+driven, and the six legs as they stride. The armored hull stays put — it is the \
+fixed root of the rig, not carried along by the turrets' motion or the legs. The \
+two leg banks stride on their own through the `legs_left_stride` and \
+`legs_right_stride` auto joints, stepping in opposite phase without dragging the \
+hull with them."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "guns-attached"
-title = "Guns stay attached"
+title = "Guns and legs stay attached"
 text = """
 Each child stays attached to its parent across its joint's range: the cannon meets \
-the front of the main turret, the main turret meets the top of the hull, and each \
-side turret meets its sponson — with no gap and never floating free as they \
-traverse and swing."""
+the front of the main turret, the main turret meets the top of the hull, each side \
+turret meets its sponson, and each leg bank meets the hull's flank at its mount — \
+with no gap and never floating free as the turrets traverse and swing and the legs \
+stride."""
 weight = 2
 domain = "fidelity"
 
@@ -253,7 +312,7 @@ domain = "fidelity"
 id = "palette"
 title = "Duneforged palette discipline"
 text = """
-Uses only the Duneforged colors from the brief (brass and bronze armor, iron treads \
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
 and gun barrels, and the solar-amber accent) with a clear amber accent, no \
 out-of-palette colors, and no stray voxels drifting off the parts."""
 weight = 1
