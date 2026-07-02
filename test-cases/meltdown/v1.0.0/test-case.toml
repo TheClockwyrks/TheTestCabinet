@@ -11,9 +11,11 @@ name = "Meltdown"
 # for grid-based tower placement with live maze re-pathing, eight tower types each
 # with distinct thermal behavior, a heat-to-damage model with a redline trip,
 # upgrade and economy systems, several surge types including maze-ignoring flyers,
-# a 20-wave progression with win and loss, and multiple states — a heavy build, so
-# it sits at hard.
-difficulty = "hard"
+# a 20-wave progression with win and loss, and multiple states. Those are several
+# systems that want to be split out behind interfaces — real planning — but it is
+# still a bounded, single-screen build, well short of the package-scale simulation
+# games (SimCity and the like) that define hard, so it sits at medium.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["strategy", "2d", "tower-defense"]
@@ -38,7 +40,7 @@ prompt = "prompt.hbs"
 # Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Meltdown is a substantial build (grid maze and live pathing, eight
 # towers, the heat/redline model, economy and upgrades, a 20-wave progression,
-# multiple states), so as a hard case it gets a full five hours.
+# multiple states), so it gets a full five hours.
 max_runtime_hours = 5
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins

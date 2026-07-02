@@ -8,9 +8,9 @@
 # Human-readable display name for this test case.
 name = "Carom"
 
-# Relative difficulty of this case, surfaced on the site. Carom's mechanics are
-# simple, but a polished, playable build with spin, an AI opponent, and multiple
-# states is a real front-end task — so it sits at the easy end of medium.
+# Relative difficulty of this case, surfaced on the site. Carom is one
+# self-contained real-time loop — ball, paddles, spin, two obstacles, a light AI —
+# with no subsystem big enough to need splitting out behind an interface, so easy.
 difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.

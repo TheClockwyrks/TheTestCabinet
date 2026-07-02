@@ -1,5 +1,5 @@
 name = "Skyshard Interceptor"
-difficulty = "medium"
+difficulty = "easy"
 tags = ["asset-generation", "3d", "voxel", "ship"]
 summary = """
 Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \

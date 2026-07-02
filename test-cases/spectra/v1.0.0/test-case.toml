@@ -10,9 +10,11 @@ name = "Spectra"
 # Relative difficulty (easy | medium | hard), surfaced on the site. Spectra asks
 # for choreographed entrance and dive paths, a swaying formation, two-band
 # polarity combat with a dual-use shield, three distinct drone behaviors, the
-# resonance/discharge economy, challenge stages, and several states — a heavier
-# build than the medium maze/grid cases, so it sits at hard.
-difficulty = "hard"
+# resonance/discharge economy, challenge stages, and several states — several
+# systems that want encapsulating behind interfaces, but a bounded arcade shooter,
+# well short of the package-scale simulation games (SimCity and the like) that
+# define hard, so it sits at medium.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "shooter", "space"]
@@ -36,8 +38,8 @@ prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. Spectra is a substantial build (choreographed paths, a formation,
-# three drone AIs, two-band combat, multiple states), so as a hard case it gets a
-# full five hours — comfortably more than a healthy build needs while still
+# three drone AIs, two-band combat, multiple states), so it gets a full five
+# hours — comfortably more than a healthy build needs while still
 # bounding a runaway session.
 max_runtime_hours = 5
 # Starter workspace seeded into the root of every run before the specs. It gives

@@ -1,5 +1,5 @@
 name = "Flarefish"
-difficulty = "hard"
+difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
 Draw the Flarefish, a deep-sea predator that hunts in the light of its own \

@@ -1,5 +1,5 @@
 name = "Glimmerfin"
-difficulty = "hard"
+difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "player"]
 summary = """
 Draw the Glimmerfin: the player's bioluminescent forager in a deep-sea maze \

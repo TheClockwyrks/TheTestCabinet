@@ -1,5 +1,5 @@
 name = "Ironward Siege Tank"
-difficulty = "hard"
+difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
 summary = """
 Sculpt and rig the Ironward Siege Tank: a 60x40x80 opaque-voxel tank whose turret \

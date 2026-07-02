@@ -1,5 +1,5 @@
 name = "Gloamfin"
-difficulty = "hard"
+difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
 Draw the Gloamfin: the Listener, an eyeless deep-sea predator that hunts by \
