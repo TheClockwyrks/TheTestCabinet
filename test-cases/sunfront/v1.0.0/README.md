@@ -16,8 +16,9 @@ fogged staging yard; every wave (first at 20 s, then every 45 s) each spawner
 emits one unit that auto-marches and auto-fights toward the enemy base. Units
 follow an armor/attack **counter matrix** (Normal / Piercing / Splash / Flak /
 Support × Light / Heavy / Air), a strict **fog of war** hides the enemy's build,
-and a mid-map **Reliquary** funds whoever razes it but spawns a temporary
-**Aegis** defender. Raze the enemy base to win. The opponent is an adaptive,
+and a mid-map **Reliquary** funds whoever razes it but spawns a lone
+**Aegis** defender for the losing side. Raze the enemy base to win. The opponent
+is an adaptive,
 non-cheating, beatable AI.
 
 ## Layout

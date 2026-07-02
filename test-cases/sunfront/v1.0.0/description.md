@@ -11,8 +11,9 @@ strategy only from the units that crest the horizon, then answer with counters:
 piercing marksmen gut heavies, splash artillery erases swarms, flak is the only
 thing that touches the airborne gunships, and every choice has a hard counter.
 Partway down each side stands a **Reliquary**, a fortified objective that floods
-its destroyer with resources but summons a lone, temporary **Aegis** guardian to
-punish the very push that felled it — the built-in comeback valve. Win by grinding
+its destroyer with resources but summons a lone **Aegis** guardian to defend the
+losing side's half and punish the very push that felled it — the built-in comeback
+valve. Win by grinding
 a hole through the enemy line and levelling their base.
 
 Sunfront is a hard build: a real-time simulation of dozens of units, a resource

@@ -235,7 +235,7 @@ proof = "gameplay"
 [[review_item]]
 id = "reliquary-aegis"
 title = "Reliquary and Aegis"
-text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian; the Aegis is temporary (it decays and expires) and only one per side ever appears. A destroyed Reliquary does not end the match."
+text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing midfield) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
 weight = 2
 domain = "combat"
 
