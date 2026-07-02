@@ -235,13 +235,20 @@ Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
 After you **edit a test case**, re-ingest so the backend serves the change.
 A plain scan skips any version it already holds (the store is immutable per
 `(slug, version)`), so force the overwrite — optionally scoping it to the case
-you touched. The `scripts/reingest.sh` helper forces the scan and streams its
-per-case progress (a full re-render takes a minute or more):
+you touched. The `scripts/reingest.sh` helper forces the overwrite and streams
+its per-case progress (a full re-render takes a minute or more). By default it
+only re-ingests cases whose files changed since its last successful run — it
+records that baseline in a gitignored `.reingest-timestamp` marker — so a repeat
+call after touching one case renders just that case:
 
 ```sh
-scripts/reingest.sh             # force re-ingest every case
-scripts/reingest.sh carom        # scope to the case you touched
+scripts/reingest.sh             # re-ingest only cases changed since the last run
+scripts/reingest.sh carom        # scope to one case (still skipped if unchanged)
+scripts/reingest.sh --force      # re-ingest every case, ignoring change detection
 ```
+
+The first run (or after `rm .reingest-timestamp`) has no baseline and re-ingests
+everything. Use `--force` to re-render regardless of what changed.
 
 It is a thin wrapper over the endpoint's streamed (`Accept: application/x-ndjson`)
 progress feed; the raw call is:

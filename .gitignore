@@ -284,5 +284,9 @@ tcab-backend.sqlite*
 /.tcab-driver/
 /tcab-artifacts/
 
+# scripts/reingest.sh change-detection baseline (its mtime = last successful
+# re-ingest). Per-checkout local state, not source. Anchored to the repo root.
+/.reingest-timestamp
+
 # Claude memories — host-mounted for container-rebuild persistence, not committed
 .claude/memories/

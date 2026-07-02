@@ -10,15 +10,33 @@
 # (`Accept: application/x-ndjson`) and print a line per case as it completes,
 # instead of one silent blocking POST that looks like a hang.
 #
+# CHANGE DETECTION. Rendering all 50+ cases on every edit is wasteful, so by
+# default this only re-ingests cases whose files changed since the last successful
+# run. We keep a marker file (its mtime is the last-ingest baseline) and, for each
+# candidate case, ask `find` whether any file under test-cases/<slug>/ is newer than
+# that baseline. Cases with no newer file are skipped without touching the backend.
+# The baseline is captured BEFORE the scan and only advanced on success, so an edit
+# made while an ingest is in flight is still caught on the next run. Two escape
+# hatches ignore the baseline: `--force` (re-ingest everything regardless), and a
+# missing marker file (a first run, or `rm .reingest-timestamp`, re-ingests all).
+#
+# Note the two distinct meanings of "force": the `--force` FLAG here controls the
+# CLIENT-side change detection (scan everything, skip the mtime filter), while the
+# `"force": true` we always send in the request body is the BACKEND-side overwrite
+# of an already-stored (slug, version) — needed because iterating in place reuses a
+# version string, which the immutable store would otherwise decline to replace.
+#
 # Ingest ADDS and OVERWRITES; it never PRUNES. A case's identity is its folder slug
 # under test-cases/, so after you RENAME a case's folder (or delete a version) a
 # re-ingest leaves the OLD slug still served alongside the new one. To drop the stale
 # slug, start the backend from an empty definition store, then re-ingest.
 #
 # Usage:
-#   scripts/reingest.sh                 # force re-ingest every case
-#   scripts/reingest.sh carom            # scope to one case slug
+#   scripts/reingest.sh                 # re-ingest only cases changed since the last run
+#   scripts/reingest.sh carom            # scope to one slug (still skipped if unchanged)
 #   scripts/reingest.sh carom coil      # scope to several
+#   scripts/reingest.sh --force          # re-ingest EVERY case, ignoring change detection
+#   scripts/reingest.sh --force carom    # force one slug regardless of its mtimes
 #
 # Override the target with BACKEND_URL (default http://127.0.0.1:8787):
 #   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh carom
@@ -26,19 +44,86 @@ set -euo pipefail
 
 backend="${BACKEND_URL:-http://127.0.0.1:8787}"
 
-# Build the JSON body. With no slugs, scan everything; otherwise restrict the
-# scan to the given slugs. Always force so an unchanged version is overwritten.
-if [[ $# -eq 0 ]]; then
-  body='{"force": true}'
-  scope="every case"
+# Resolve the repo root from this script's own location so change detection reads
+# the right test-cases/ tree no matter the caller's working directory.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+cases_dir="${repo_root}/test-cases"
+
+# The change-detection baseline. Gitignored (see .gitignore) — it is per-checkout
+# local state, not source. `rm` it to force a full re-ingest without --force.
+timestamp="${repo_root}/.reingest-timestamp"
+
+# Parse args: --force toggles the flag; anything else is a case slug. Guard unknown
+# options so a typo (`--foce`) is an error, not a slug silently shipped to the backend.
+force=false
+slugs=()
+for arg in "$@"; do
+  case "$arg" in
+    --force) force=true ;;
+    --) : ;;                       # accepted, no-op (POSIX end-of-options)
+    -*) echo "unknown option: $arg (did you mean --force?)" >&2; exit 2 ;;
+    *)  slugs+=("$arg") ;;
+  esac
+done
+
+# Snapshot "now" as the candidate next baseline, captured before we scan so any
+# concurrent edit is caught next time. Promoted onto $timestamp only on success.
+stamp_ref="$(mktemp)"
+trap 'rm -f "$stamp_ref" "${marker:-}"' EXIT
+
+# Candidate set: the named slugs, or every case folder when none were named.
+candidates=()
+if [[ ${#slugs[@]} -gt 0 ]]; then
+  candidates=("${slugs[@]}")
 else
-  # Join the slug args into a JSON string array: carom coil -> "carom","coil"
+  while IFS= read -r d; do
+    candidates+=("$(basename "$d")")
+  done < <(find "$cases_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+fi
+
+# Decide what actually gets ingested.
+#
+# `whole_catalog` (no named slugs AND we are ignoring the mtime filter) sends the
+# original body-less `{"force": true}` scan, letting the backend enumerate the
+# catalog itself — this covers both --force and the first-run/no-baseline case
+# without our having to spell out every slug.
+#
+# Otherwise we hand the backend an explicit, possibly-filtered slug list. When the
+# baseline exists and --force was not given, drop any candidate with no file newer
+# than the baseline (`find -newer … -print -quit` stops at the first hit, so it is
+# cheap even on large cases). An empty result means nothing changed: report and exit
+# cleanly without bothering the backend.
+if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || ! -e "$timestamp" ) ]]; then
+  body='{"force": true}'
+  if [[ "$force" == true ]]; then
+    scope="every case (--force)"
+  else
+    scope="every case (first run — no baseline yet)"
+  fi
+else
+  to_ingest=()
+  for slug in "${candidates[@]}"; do
+    dir="${cases_dir}/${slug}"
+    if [[ "$force" == true || ! -e "$timestamp" || ! -d "$dir" ]]; then
+      # --force / no baseline / a slug with no folder on disk (let the backend judge it).
+      to_ingest+=("$slug")
+    elif [[ -n "$(find "$dir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
+      to_ingest+=("$slug")
+    fi
+  done
+
+  if [[ ${#to_ingest[@]} -eq 0 ]]; then
+    echo "Nothing changed since the last re-ingest — skipping. (Use --force to re-ingest anyway.)"
+    exit 0
+  fi
+
   cases=""
-  for slug in "$@"; do
+  for slug in "${to_ingest[@]}"; do
     cases+="\"${slug}\","
   done
   body="{\"testCases\": [${cases%,}], \"force\": true}"
-  scope="$*"
+  scope="${to_ingest[*]}"
 fi
 
 # Pull a JSON key's value out of one (non-nested) JSON line. Handles both string
@@ -60,7 +145,6 @@ echo "Re-ingesting ${scope} via ${backend}/ingest (force)…"
 # arrived, so a truncated or pre-streaming response is treated as a failure rather
 # than a silent success.
 marker="$(mktemp)"
-trap 'rm -f "$marker"' EXIT
 printf 'incomplete' >"$marker"
 
 # `--fail-with-body` rather than `-f`: a render failure that the backend reports as a
@@ -133,3 +217,7 @@ if [[ -s "$marker" ]]; then
   echo "re-ingest did not complete successfully." >&2
   exit 1
 fi
+
+# Success: advance the change-detection baseline to the pre-scan snapshot, so the
+# next run only re-ingests cases edited from here on.
+touch -r "$stamp_ref" "$timestamp"
