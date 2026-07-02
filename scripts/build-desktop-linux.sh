@@ -99,10 +99,15 @@ fi
 log "npm ci"
 npm ci
 
-# The desktop UI imports the run-record package's compiled types, so build it
-# before the Tauri build runs the UI's own vite build (its beforeBuildCommand).
-log "Building @test-cabinet/run-record"
+# The desktop UI (via @test-cabinet/ui) imports the compiled types of the
+# run-record and voxel-runtime packages, so build them before the Tauri build runs
+# the UI's own tsc/vite build (its beforeBuildCommand). Without a built `dist/`,
+# their package `exports` subpaths (e.g. `@test-cabinet/voxel-runtime/three`)
+# resolve to missing type declarations and tsc fails. (voxel-runtime's `tsc -b`
+# also builds its run-record dependency via a project reference.)
+log "Building UI package dependencies (run-record, voxel-runtime)"
 npm run build -w @test-cabinet/run-record
+npm run build -w @test-cabinet/voxel-runtime
 
 # The shipped app stands up its own k3d cluster, so it bundles k3d and kubectl as
 # Tauri externalBin sidecars. Fetch the host-triple build of each into
