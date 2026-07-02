@@ -118,6 +118,10 @@ a.row:hover .logo {
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  // Keep the right-aligned value (and header label) off the column's right edge,
+  // where the resize handle sits — otherwise the label crowds the handle. Header
+  // and body share the class, so both inset together and stay aligned.
+  padding-right: t.$space-sm;
 }
 
 .muted {
