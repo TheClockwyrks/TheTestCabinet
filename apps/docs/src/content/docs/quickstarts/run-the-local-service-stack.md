@@ -3,7 +3,8 @@ title: Run the Local Service Stack
 ---
 
 Bring up the whole service-driven flow — backend (run queue), auth, dispatcher,
-artifact service, and web console — on a local [k3d](https://k3d.io) cluster, and
+and artifact service — on a local [k3d](https://k3d.io) cluster (the web console
+runs from source, not in-cluster), and
 drive runs the way the [web console](/components/web/overview/) does in the cloud:
 enqueue a run, and an in-cluster [dispatcher](/components/dispatcher/overview/)
 schedules it as a per-run [driver](/components/driver/overview/) Job. This is the
@@ -28,14 +29,15 @@ every service variable, [Running](/development/running/).
 ```sh
 export OPENROUTER_API_KEY=…                   # the harness you'll run
 
-make -C deployments/local local-up            # cluster + images (incl. web console) + secrets + overlay + ingest
-make -C deployments/local local-forward       # console → :1430, backend → :8787, auth → :8789, artifacts → :8790, arena → :8791 (leave running)
+make -C deployments/local local-up            # cluster + images (backend/auth/dispatcher/driver/artifact/arena) + secrets + overlay + ingest
+make -C deployments/local local-forward       # backend → :8787, auth → :8789, artifacts → :8790, arena → :8791 (leave running)
+npm run -w apps/web dev                        # the web console, from source → :1430 (its own terminal)
 ```
 
-The web console runs **in-cluster** (no separate `npm run dev`, no
-`VITE_BACKEND_URL`). Open it at <http://127.0.0.1:1430> — its backend/auth URLs are
-baked into the pod's `/config.js`, so the catalog loads on first visit. Then, in the
-console:
+The web console runs **from source** (not in-cluster), pre-pointed at the forwarded
+backend/auth via the committed `apps/web/.env.development` — no `VITE_BACKEND_URL` to
+set. Open it at <http://127.0.0.1:1430> and the catalog loads on first visit. Then,
+in the console:
 
 1. **Register / log in** (or `tcab register --username dev --display-name "Dev"`)
    so push/review/publish are attributed to you.

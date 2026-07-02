@@ -12,17 +12,19 @@
 # via host.docker.internal (the `cluster`/`kubeconfig` targets wire this up). It
 # also works on a bare host with `docker`/`k3d`/`kubectl` installed directly.
 # Everything runs in the cluster — the backend + auth, the dispatcher, the
-# artifact service, the arena service, the web console, the in-cluster Grafana LGTM
-# observability stack, and one per-run driver Job per enqueued run. There is no
-# worker-on-host wiring; a run enqueued at the backend schedules as a Job here, and an
-# adversarial match/tournament runs on the arena service. The web console runs
-# in-cluster too (the local overlay's `components/web`, the same image prod serves),
-# so `make local-up` brings the whole UI up — there is NO separate `npm run dev` and
-# no VITE_BACKEND_URL/.env.local to set; its backend/auth URLs are baked into the
-# pod's /config.js. Visit it (and the data plane the browser reaches directly) over
-# `make local-forward`. The observability stack (the local overlay's
-# `components/observability`) replaces the LGTM the devcontainer used to ship: every
-# service exports OTLP to it in-cluster — reach Grafana with `make local-grafana`.
+# artifact service, the arena service, the in-cluster Grafana LGTM observability
+# stack, and one per-run driver Job per enqueued run. There is no worker-on-host
+# wiring; a run enqueued at the backend schedules as a Job here, and an adversarial
+# match/tournament runs on the arena service. The web console is the ONE piece that
+# does NOT run in-cluster locally: baking it into a pod forces a full image
+# rebuild+re-import on every UI edit, so instead you run it from source with
+# `npm run -w apps/web dev` (serves 127.0.0.1:1430, pre-pointed at the forwarded
+# backend/auth via apps/web/.env.development — no VITE_BACKEND_URL to set). It reaches
+# the data plane over `make local-forward`, exactly as the in-cluster console did.
+# (Prod still serves the console in-cluster; only the local overlay drops it.) The
+# observability stack (the local overlay's `components/observability`) replaces the
+# LGTM the devcontainer used to ship: every service exports OTLP to it in-cluster —
+# reach Grafana with `make local-grafana`.
 #
 # Secrets come from the host ENVIRONMENT or the gitignored repo-root .env, never a
 # tracked file. Before `local-up`, provide the harness provider API key the run
@@ -43,7 +45,7 @@
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward console→:1430, backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost
+#   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 and the OTLP collector→:4318/:4317 to localhost
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
@@ -92,9 +94,11 @@ DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
 DRIVER_IMG     := $(REGISTRY_PREFIX)/tcab-driver:local
 ARTIFACTS_IMG  := $(REGISTRY_PREFIX)/tcab-artifacts:local
 ARENA_IMG      := $(REGISTRY_PREFIX)/tcab-arena:local
-WEB_IMG        := $(REGISTRY_PREFIX)/tcab-web:local
 
-ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG) $(WEB_IMG)
+# The web console is intentionally absent: it runs from source locally
+# (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
+# image to build or import here (see the header comment and the local overlay).
+ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -131,10 +135,11 @@ BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
 local-up: cluster images apply local-ingest
 	@echo ""
-	@echo "Stack is up in namespace '$(NS)' (including the web console — no separate 'npm run dev')."
-	@echo "Reach it with:  make -C deployments/local local-forward"
-	@echo "  console → http://127.0.0.1:1430   backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791"
-	@echo "  (open the console at http://127.0.0.1:1430 — its backend/auth URLs are already baked into /config.js, so it is configured on first load)"
+	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
+	@echo "Forward the data plane with:  make -C deployments/local local-forward"
+	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791"
+	@echo "Then start the web console from source (a separate terminal):  npm run -w apps/web dev  →  http://127.0.0.1:1430"
+	@echo "  (its backend/auth URLs are baked into apps/web/.env.development — no extra flags; edits hot-reload with no image rebuild)"
 	@echo "  (the backend reports the artifacts + arena URLs at GET /config; the console fetches build/media and matches/tournaments from them)"
 	@echo "Observe it with:  make -C deployments/local local-grafana   →  Grafana at http://127.0.0.1:3000 (anonymous admin)"
 
@@ -214,7 +219,6 @@ images:
 	$(CONTAINER_TOOL) build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
 	$(CONTAINER_TOOL) build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
 	$(CONTAINER_TOOL) build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(WEB_IMG)'        -f '$(REPO)/deployments/images/web.Dockerfile'        '$(REPO)'
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	  i=0; tars=""; \
 	  for img in $(ALL_IMGS); do \
@@ -296,7 +300,6 @@ apply: secrets
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-lgtm      --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
 
 # Ingest (force) the test-case catalog from the repo the backend has mounted.
 # Uses an ephemeral port-forward that is torn down when the recipe exits, then
@@ -334,23 +337,22 @@ local-ingest:
 	  if [ -z "$$ready" ]; then echo "ERROR: backend not reachable on 127.0.0.1:$$port after 30s." >&2; cat "$$pflog" >&2; exit 1; fi; \
 	  BACKEND_URL=http://127.0.0.1:$$port '$(REPO)/scripts/reingest.sh'
 
-# Hold the services open on localhost until interrupted (Ctrl-C). The WEB CONSOLE is
-# forwarded too (127.0.0.1:1430): it runs in-cluster now (the local overlay's
-# components/web), so visiting it is just another port-forward — no separate
-# `npm run dev`. Its /config.js already points the browser at the forwarded backend +
-# auth (overlays/local/patch-web-config.yaml), so the console is configured on first
-# load. The artifact + arena services are forwarded because the console loads a
-# pre-publish run's build and its proof/asset media directly from them (as browser
-# `<img>`/`<iframe>` requests) and POSTs matches/tournaments to the arena — the
-# in-cluster `tcab-artifacts:8790` / `tcab-arena:8791` the backend advertises by
-# default are not resolvable from the host browser (the local backend patch points
-# `TCAB_ARTIFACTS_PUBLIC_URL` / `TCAB_ARENA_PUBLIC_URL` at these forwarded
-# addresses). Everything the browser touches runs outside the cluster, so the forwards
-# are still required even though the console itself now lives in-cluster.
+# Hold the data-plane services open on localhost until interrupted (Ctrl-C). The web
+# console is NOT forwarded here — it runs from source (`npm run -w apps/web dev` on
+# 127.0.0.1:1430), reaching these same forwarded addresses. The backend + auth are
+# forwarded so the console (and the CLI/desktop app) can reach them; auth is separate
+# because the backend no longer proxies it. The artifact + arena services are
+# forwarded because the console loads a pre-publish run's build and its proof/asset
+# media directly from them (as browser `<img>`/`<iframe>` requests) and POSTs
+# matches/tournaments to the arena — the in-cluster `tcab-artifacts:8790` /
+# `tcab-arena:8791` the backend advertises by default are not resolvable from the host
+# browser (the local backend patch points `TCAB_ARTIFACTS_PUBLIC_URL` /
+# `TCAB_ARENA_PUBLIC_URL` at these forwarded addresses). Everything the browser touches
+# runs outside the cluster, so these forwards are required.
 local-forward:
-	@echo "Forwarding console→http://127.0.0.1:1430, backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
-	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-web 1430:80 & \
-	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
+	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
+	@echo "Start the console separately with:  npm run -w apps/web dev  →  http://127.0.0.1:1430"
+	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
@@ -381,13 +383,12 @@ local-grafana:
 # restart below still forces the pods to pick up rebuilt images even when their spec
 # is byte-identical (same :local tag), which apply alone would not trigger.
 local-rebuild: images apply
-	$(KUBECTL) -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher deployment/tcab-web
+	$(KUBECTL) -n '$(NS)' rollout restart statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-artifacts --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-arena      --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-dispatcher --timeout=300s
-	$(KUBECTL) -n '$(NS)' rollout status deployment/tcab-web        --timeout=300s
 
 # Re-apply the overlay ONLY, with no image rebuild or service restart — the fast
 # path after a manifest-only change (RBAC, env, volumes). `kubectl apply -k` is

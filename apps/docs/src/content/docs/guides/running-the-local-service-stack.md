@@ -12,8 +12,10 @@ Where that guide gets you to a single CLI run (the CLI embeds the
 [core](/components/core/overview/) runner directly, so it needs no backend or
 cluster), this one brings up the **backend** (which owns the run queue), the
 [auth service](/components/auth/overview/), the [dispatcher](/components/dispatcher/overview/),
-the [artifact service](/components/artifacts/overview/), and the web console, and
-runs them exactly as staging and prod do.
+and the [artifact service](/components/artifacts/overview/) in the cluster, and runs
+them exactly as staging and prod do. The [web console](/components/web/overview/)
+you drive them with is the exception: locally you run it from source (a Vite dev
+server) rather than in-cluster, so UI edits hot-reload without an image rebuild.
 
 [Running](/development/running/) is the developer reference this guide sits on top
 of — it holds the authoritative list of every variable each service reads. Reach
@@ -115,7 +117,7 @@ make -C deployments/local local-up
 ```
 
 This creates a throwaway k3d cluster, builds the **backend**, **auth**,
-**dispatcher**, **driver**, **artifact**, **arena**, and **web console** images and
+**dispatcher**, **driver**, **artifact**, and **arena** images and
 loads them into the cluster with `k3d image import` (no registry needed), creates the
 cluster Secrets from your environment (the harness key above, plus a fixed dev
 service token the dispatcher claims jobs with), applies the
@@ -123,11 +125,12 @@ service token the dispatcher claims jobs with), applies the
 kustomize overlay, and force-ingests the test-case catalog from a read-only mount
 of the repository. It finishes once every service is rolled out.
 
-The **web console runs in-cluster**, the same way prod serves it (the overlay's
-`components/web`) — so this one command brings the whole UI up too. There is no
-separate `npm run dev` and no `VITE_BACKEND_URL`/`.env.local`: the console's backend
-and auth URLs are baked into the pod's `/config.js`, so it is configured the moment
-you open it (step 3).
+The **web console does not run in-cluster locally** (only prod does — via the
+`internal-ingress` component). Baking it into a pod would force a full image
+rebuild + re-import on every UI edit, so instead you run it from source in step 3 —
+edits hot-reload against the same forwarded backend. There is nothing to configure:
+its backend/auth URLs are pre-set to the forwarded addresses in the committed
+`apps/web/.env.development`.
 
 If you forgot to export a harness key, the bring-up stops before applying with a
 message naming the variables it accepts — export one and re-run.
@@ -144,30 +147,32 @@ The browser runs **outside** the cluster, so reach the in-cluster services over 
 port-forward. Hold them open in their own terminal:
 
 ```sh
-make -C deployments/local local-forward     # console → 127.0.0.1:1430, backend → :8787, auth → :8789, artifacts → :8790, arena → :8791
+make -C deployments/local local-forward     # backend → :8787, auth → :8789, artifacts → :8790, arena → :8791
 ```
 
-Leave this running (Ctrl-C stops it). It forwards the **web console** itself
-(`127.0.0.1:1430`, served from the in-cluster `tcab-web` pod) alongside the data
-plane the browser then talks to directly: the backend (live run stream), the
-**artifact service** (each run's playable build and proof/asset media, as ordinary
+Leave this running (Ctrl-C stops it). It forwards the data plane the browser talks
+to directly: the backend (live run stream), the auth service, the **artifact
+service** (each run's playable build and proof/asset media, as ordinary
 `<img>`/`<iframe>` requests), and the arena (matches/tournaments). The local overlay
 points the artifact and arena URLs the backend advertises (`GET /config`) at these
 forwarded `127.0.0.1` ports; in a real deployment they are the data-plane hosts the
 console reaches over the network instead.
 
-## 3. Open the web console
+## 3. Start the web console
 
-The console is already running in the cluster, so just open the forwarded address:
+The console runs from source, not in-cluster. In its own terminal:
 
-<http://127.0.0.1:1430>
+```sh
+npm run -w apps/web dev
+```
 
-There is **nothing to configure** — its backend and auth URLs are baked into the
-pod's `/config.js` (the overlay's `patch-web-config.yaml` points them at the
-forwarded `127.0.0.1:8787` / `:8789`), so the catalog loads on first visit. The
-backend is the **one** URL the console talks to for runs — there is no worker to
-register. (You can still override the backend URL in the UI's settings if you want
-to point this console at a different stack.)
+Then open <http://127.0.0.1:1430>. There is **nothing to configure** — its backend
+and auth URLs are pre-set to the forwarded `127.0.0.1:8787` / `:8789` in the
+committed `apps/web/.env.development`, so the catalog loads on first visit (the
+backend/auth CORS layers are permissive, so the cross-origin requests are allowed).
+The backend is the **one** URL the console talks to for runs — there is no worker to
+register. (You can still override the backend URL in the UI's settings, or via
+`VITE_BACKEND_URL` in a gitignored `.env.local`, to point at a different stack.)
 
 Now **register an account**. Sign-in is required to **launch a
 run** as well as to push, review, and publish — the backend gates `POST /jobs`

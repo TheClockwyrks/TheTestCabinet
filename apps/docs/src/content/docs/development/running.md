@@ -60,9 +60,11 @@ staging and prod — see [Deployment](/deployment/overview/).
   `cargo build -p test-cabinet-backend`, `cargo build -p tcab-auth-service`,
   `cargo build -p test-cabinet-dispatcher`, `cargo build -p test-cabinet-driver`,
   and `cargo build -p test-cabinet-artifacts` (or the `build-portable-*` aliases
-  for static binaries). The web console is a Vite app under `apps/web`; the k3d
-  flow below builds it into the `tcab-web` image and serves it in-cluster for you,
-  so you only run its Vite dev server by hand for the bare-process path.
+  for static binaries). The web console is a Vite app under `apps/web`; unlike the
+  services, it does **not** run in the local k3d cluster — you run its Vite dev
+  server (`npm run -w apps/web dev`) from source against the forwarded backend, both
+  for the k3d flow and the bare-process path (iterating on the UI this way needs no
+  image rebuild). Only prod/staging serve it in-cluster as the `tcab-web` image.
 - A harness API key for the harness you will run (for example
   `ANTHROPIC_API_KEY` for `claude`).
 
@@ -94,7 +96,7 @@ export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
 
 ```sh
 make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
-make -C deployments/local local-forward   # hold console→:1430, backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 open on localhost
+make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 open on localhost (run the console from source, below)
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
 make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
@@ -104,26 +106,27 @@ make -C deployments/local local-down      # delete the cluster and everything in
 ```
 
 `local-up` creates a throwaway k3d cluster, builds the **backend**, **auth**,
-**dispatcher**, **driver**, **artifact**, **arena**, and **web console** images from
+**dispatcher**, **driver**, **artifact**, and **arena** images from
 [`deployments/images/`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images),
 loads them with `k3d image import` (no registry needed), creates the cluster
 Secrets from your environment (the harness key above plus a dev service token),
 applies the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests
-the catalog from a read-only mount of this repository. The **web console runs
-in-cluster** the same way prod serves it — so `local-up` brings the whole UI up,
-with no separate `npm run dev` and no `VITE_BACKEND_URL`/`.env.local` to set: the
-console's backend + auth URLs are baked into the pod's `/config.js`, so it is
-configured the moment you open it. The dispatcher and driver run
+the catalog from a read-only mount of this repository. The **web console is the one
+piece that does not run in-cluster locally** — you run it from source (below) so a
+UI edit hot-reloads instead of forcing a full image rebuild + re-import (prod still
+serves it in-cluster). The dispatcher and driver run
 in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 **schedules as a Job in this same cluster** — exactly as a cloud deployment runs
 it. The host no longer runs any worker process.
 
-`make local-forward` holds the **web console** open on `127.0.0.1:1430`, the
-backend on `127.0.0.1:8787`, the auth service on `127.0.0.1:8789`, the artifact
-service on `127.0.0.1:8790`, and the arena service on `127.0.0.1:8791`. Open the
-console at <http://127.0.0.1:1430> — it is served from the in-cluster `tcab-web`
-pod with its backend/auth URLs already baked in, so it is configured on first load
-(no `npm run dev`, no `VITE_BACKEND_URL`). The forwards are still needed because the
+`make local-forward` holds the backend on `127.0.0.1:8787`, the auth service on
+`127.0.0.1:8789`, the artifact service on `127.0.0.1:8790`, and the arena service
+on `127.0.0.1:8791`. Then start the console from source in a separate terminal —
+`npm run -w apps/web dev` — and open <http://127.0.0.1:1430>. Its backend/auth URLs
+are pre-set to those forwarded addresses via the committed `apps/web/.env.development`,
+so there is nothing to configure and no `VITE_BACKEND_URL` to pass (the backend/auth
+CORS layers are permissive, so the dev server's cross-origin requests are allowed).
+The forwards are needed because the
 **browser runs outside the cluster**: it loads the console, and reaches the backend
 (which the in-cluster dispatcher and driver drain), the artifact service (each run's
 build + proof/asset media, as `<img>`/`<iframe>` requests), and the arena
@@ -299,11 +302,14 @@ still work but review/publish are rejected `401`.
 Run the console's dev server and open it in a browser:
 
 ```sh
-npm run dev -w @test-cabinet/web
+npm run -w apps/web dev
 ```
 
-In the UI, set the backend to `http://127.0.0.1:8787` — the **one** URL the
-console needs. The console enqueues a run by posting it to the backend's queue;
+The console defaults its backend to `http://127.0.0.1:8787` and its auth service to
+`http://127.0.0.1:8789` — the forwarded local-stack addresses, pre-set in the
+committed `apps/web/.env.development`, so there is nothing to configure. (To aim it
+elsewhere, set the backend in the UI or override `VITE_BACKEND_URL` in a gitignored
+`.env.local`.) The console enqueues a run by posting it to the backend's queue;
 the in-cluster dispatcher claims it, the driver Job executes it, and the console
 watches its [event stream](/components/core/events/) live and reads the produced
 build and media from the [artifact service](/components/artifacts/overview/) (the

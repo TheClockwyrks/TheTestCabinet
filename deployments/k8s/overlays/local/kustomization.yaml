@@ -33,17 +33,17 @@ resources:
 # (and the OTLP port, for host/devcontainer processes) with
 # `make -C deployments/local local-grafana`.
 #
-# Serve the web console IN THE CLUSTER too, the same way prod does (prod gets it via
-# the internal-ingress component; here we take the bare console workload without that
-# component's ingress/cert/NetworkPolicy wiring). This drops the separate
-# `npm run dev` + VITE_BACKEND_URL the local console used to need — patch-web-config
-# below bakes the host-forwarded backend/auth URLs into the pod's /config.js, and the
-# Makefile's `local-forward` serves the console on 127.0.0.1:1430. The browser still
-# reaches the backend/artifacts/arena over those same forwards (it runs outside the
-# cluster), exactly as before.
+# The web console is deliberately NOT served in the cluster locally (prod still is —
+# via the internal-ingress component in the azure-prod overlay). Baking the console
+# into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
+# which makes iterating on the console painfully slow. Locally we run it straight from
+# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430, pre-pointed at
+# the host-forwarded backend/auth (apps/web/.env.development) so no extra flags are
+# needed. The browser reaches the backend/artifacts/arena over `make local-forward`,
+# exactly as the in-cluster console did. (The backend/auth CORS layers are permissive,
+# so the cross-origin dev-server → forwarded-backend requests are allowed.)
 components:
   - ../../components/observability
-  - ../../components/web
 
 # Use the images the Makefile builds and `k3d image import`s into the cluster.
 # A non-`:latest` tag makes the kubelet's default pull policy IfNotPresent, so it
@@ -67,9 +67,6 @@ images:
   - name: REPLACE_REGISTRY/tcab-arena
     newName: tcab-arena
     newTag: local
-  - name: REPLACE_REGISTRY/tcab-web
-    newName: tcab-web
-    newTag: local
 
 # Secrets are deliberately NOT generated here — a secretGenerator would bake the
 # values into this tracked file. The Makefile creates them in-cluster from the host
@@ -92,7 +89,6 @@ patches:
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
   - path: patch-arena.yaml
-  - path: patch-web-config.yaml
 
   # Drop the base resources the local stack does without. The Makefile force-ingests
   # the catalog from the mounted checkout, so the ingest CronJob is redundant; and a
