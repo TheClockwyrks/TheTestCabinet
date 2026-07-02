@@ -155,7 +155,7 @@ local-up: cluster images apply local-ingest
 # pass THAT to k3d. On a bare host the inspect finds no such mount and we fall back
 # to $(REPO), which is already a real host path there.
 cluster:
-	@if k3d cluster list 2>/dev/null | grep -qw '$(CLUSTER)'; then \
+	@if k3d cluster list --no-headers 2>/dev/null | awk '{print $$1}' | grep -Fxq '$(CLUSTER)'; then \
 	  echo "k3d cluster '$(CLUSTER)' already exists."; \
 	else \
 	  host_repo="$$(docker inspect "$$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "$(REPO)"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
