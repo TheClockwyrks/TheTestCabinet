@@ -2,10 +2,12 @@ name = "Sunfront Aegis"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
 summary = """
-Sculpt and rig the Sunfront Aegis: a 72x52x88 opaque-voxel siege fortress on \
-treads — a great tracked hull bristling with guns, whose central main turret \
-traverses and elevates its cannon on caller-driven joints while two side batteries \
-sweep on their own, built and rigged one recorded operation at a time."""
+Sculpt and rig the Sunfront Aegis: an 88x60x104 opaque-voxel siege fortress on \
+treads — a colossal tracked hull that dwarfs every buildable unit, bristling with \
+guns, whose central main turret makes only fine corrections within a narrow \
+forward cone and elevates its cannon on caller-driven joints while two \
+independently-traversing side turrets each swing to cover their own flank, built \
+and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -19,13 +21,15 @@ variants = ["variants/base.toml"]
 
 # The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
-# voxels. Each part is sculpted separately in this shared volume's coordinates.
-# The volume always starts EMPTY; `background` is only the clear color behind the
-# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+# voxels. The Aegis is deliberately huge — a rolling fortress with a far larger
+# footprint than any buildable unit — so its volume is broad and deep. Each part
+# is sculpted separately in this shared volume's coordinates. The volume always
+# starts EMPTY; `background` is only the clear color behind the rasterized
+# isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 72
-height = 52
-depth = 88
+width = 88
+height = 60
+depth = 104
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
@@ -55,45 +59,51 @@ actions = "parts/{part}.actions.json"
 name = "chassis"
 pivot = [0, 0, 0]
 
-# The big central main turret, mounted on top-center of the hull. It traverses on
-# the caller-driven `main_turret_yaw`.
+# The big central main turret, mounted on top-center of the hull. It makes only
+# fine corrections about its vertical mount via the caller-driven `main_turret_yaw`
+# — the main cannon stays pointed forward, and the whole fortress turns its hull to
+# bring a target into that narrow cone.
 [[model.part]]
 name = "main_turret"
 parent = "chassis"
-pivot = [36, 32, 44]
+pivot = [44, 40, 56]
 
 # The main cannon, mounted at the front of the main turret so it swings with it. It
 # elevates on the caller-driven `main_gun_pitch`.
 [[model.part]]
 name = "main_gun"
 parent = "main_turret"
-pivot = [36, 38, 58]
+pivot = [44, 46, 74]
 
-# The left side battery: a secondary gun on a sponson off the left flank of the
-# hull. It sweeps up and down on its own via the auto `left_battery_pitch`.
+# The left side turret: a rotating secondary gun on a sponson off the left flank of
+# the hull. It traverses on its own via the caller-driven `left_turret_yaw`,
+# sweeping an arc that covers the fortress's left side.
 [[model.part]]
-name = "left_battery"
+name = "left_turret"
 parent = "chassis"
-pivot = [12, 30, 40]
+pivot = [14, 36, 52]
 
-# The right side battery, mirroring the left on the right flank. It sweeps on its
-# own via the auto `right_battery_pitch`, in opposite phase.
+# The right side turret, mirroring the left on the right flank. It traverses on its
+# own via the caller-driven `right_turret_yaw`, sweeping an arc that covers the
+# right side.
 [[model.part]]
-name = "right_battery"
+name = "right_turret"
 parent = "chassis"
-pivot = [60, 30, 40]
+pivot = [73, 36, 52]
 
-# The required caller-driven turret traverse: a game addresses `main_turret_yaw` by
-# name to swing the main turret (and its cannon with it) about its vertical mount, a
-# full half-turn each way. `rest = 0` faces straight forward (+z).
+# The required caller-driven main-turret traverse: a game addresses `main_turret_yaw`
+# by name to make FINE corrections that keep the main cannon pointed forward. It is
+# deliberately a NARROW forward cone (about a fifth of a turn each way), not a full
+# swing — the fortress turns its whole hull to aim, and the main gun's target is
+# what drives that facing. `rest = 0` faces straight forward (+z).
 [[model.joint]]
 name = "main_turret_yaw"
 part = "main_turret"
 kind = "rotation"
 axis = "y"
-pivot = [36, 32, 44]
-min = -3.14159265
-max = 3.14159265
+pivot = [44, 40, 56]
+min = -0.35
+max = 0.35
 rest = 0.0
 drive = "caller"
 
@@ -105,58 +115,47 @@ name = "main_gun_pitch"
 part = "main_gun"
 kind = "rotation"
 axis = "x"
-pivot = [36, 38, 58]
+pivot = [44, 46, 74]
 min = -0.2
 max = 0.8
 rest = 0.1
 drive = "caller"
 
-# The left battery's own looping sweep. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the side gun tracks up and down on its own without a caller.
+# The left side turret's own caller-driven traverse. A game aims it independently of
+# the main turret, but only within an arc covering the fortress's LEFT flank — from
+# roughly straight ahead round to straight out to the left (negative yaw turns it
+# toward -x, the left side). `rest = -0.8` sits it pointed forward-left.
 [[model.joint]]
-name = "left_battery_pitch"
-part = "left_battery"
+name = "left_turret_yaw"
+part = "left_turret"
 kind = "rotation"
-axis = "x"
-pivot = [12, 30, 40]
-min = 0.0
-max = 0.9
-rest = 0.3
-drive = "auto"
+axis = "y"
+pivot = [14, 36, 52]
+min = -1.6
+max = 0.0
+rest = -0.8
+drive = "caller"
 
-# The right battery's own looping sweep, in opposite phase to the left.
+# The right side turret's own caller-driven traverse, mirroring the left: an arc
+# covering the RIGHT flank, from straight ahead round to straight out to the right
+# (positive yaw turns it toward +x, the right side).
 [[model.joint]]
-name = "right_battery_pitch"
-part = "right_battery"
+name = "right_turret_yaw"
+part = "right_turret"
 kind = "rotation"
-axis = "x"
-pivot = [60, 30, 40]
+axis = "y"
+pivot = [73, 36, 52]
 min = 0.0
-max = 0.9
-rest = 0.3
-drive = "auto"
-
-# The auto-play sweep clips — one per side battery, in opposite phase, so the two
-# secondary guns rove on their own. Only `auto` joints take a clip; the caller
-# `main_turret_yaw` and `main_gun_pitch` take none. Keyframes are inline
-# `[t_ms, value]` pairs (radians).
-[[model.clip]]
-joint = "left_battery_pitch"
-period_ms = 2000
-loop = true
-keyframes = [[0, 0.1], [1000, 0.8], [2000, 0.1]]
-
-[[model.clip]]
-joint = "right_battery_pitch"
-period_ms = 2200
-loop = true
-keyframes = [[0, 0.8], [1100, 0.1], [2200, 0.8]]
+max = 1.6
+rest = 0.8
+drive = "caller"
 
 # A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the main turret bombard through its range without dragging the
-# joint sliders by hand. Each `[[model.animation.track]]` drives one joint over the
-# shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `bombardment` sweeps the turret left and right while the main gun lobs and recovers.
+# reviewer can watch the fortress fight without dragging the joint sliders by hand.
+# Each `[[model.animation.track]]` drives one joint over the shared `period_ms`
+# timeline; keyframes are inline `[t_ms, value]` pairs (radians). `bombardment` keeps
+# the main cannon lobbing forward within its narrow cone while the two side turrets
+# each sweep their own flank arc independently and out of phase.
 [[model.animation]]
 name = "bombardment"
 period_ms = 4000
@@ -164,11 +163,19 @@ loop = true
 
 [[model.animation.track]]
 joint = "main_turret_yaw"
-keyframes = [[0, -1.2], [2000, 1.2], [4000, -1.2]]
+keyframes = [[0, -0.3], [2000, 0.3], [4000, -0.3]]
 
 [[model.animation.track]]
 joint = "main_gun_pitch"
 keyframes = [[0, 0.1], [1000, 0.6], [2000, 0.1], [3000, 0.6], [4000, 0.1]]
+
+[[model.animation.track]]
+joint = "left_turret_yaw"
+keyframes = [[0, -1.4], [2000, -0.2], [4000, -1.4]]
+
+[[model.animation.track]]
+joint = "right_turret_yaw"
+keyframes = [[0, 0.2], [2000, 1.4], [4000, 0.2]]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -179,42 +186,45 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
-poses correctly — a great multi-gun siege fortress riding on two tracks, whose \
-central main turret traverses and whose cannon elevates on their caller joints \
-without detaching while the two side batteries sweep on their own and the tracked \
-hull stays put, with a clear solar-amber accent and the disciplined Duneforged \
-palette."""
+poses correctly — a great multi-gun siege fortress, far larger than any buildable \
+unit, riding on two tracks, whose central main turret fine-traverses within a \
+narrow forward cone and whose cannon elevates on their caller joints without \
+detaching while the two side turrets independently swing to cover their own flanks \
+and the tracked hull stays put, with a clear solar-amber accent and the \
+disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-fortress"
-title = "Reads as a fortress on treads"
+title = "Reads as a giant fortress on treads"
 text = """
 From more than one angle the model reads unmistakably as a giant siege fortress on \
-tracks: a low, broad armored hull riding on a pair of heavy treads down its sides, \
-a big main turret with a long cannon on top, and a secondary gun battery out on \
-each flank. It is a bristling multi-gun war machine, not an abstract stack of \
-boxes."""
+tracks — plainly far bigger and broader than an ordinary war machine, a colossal \
+rolling stronghold: a low, immense, heavily armored hull riding on a pair of heavy \
+treads down its sides, a big main turret with a long forward cannon on top, and a \
+rotating secondary gun turret out on each flank. It is a bristling multi-gun war \
+machine, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "turret-traverses"
-title = "Main turret traverses and gun elevates"
+id = "main-gun-forward"
+title = "Main cannon aims forward; gun elevates"
 text = """
-Driving `main_turret_yaw` swings the whole main turret — and its cannon with it — \
-cleanly about its vertical mount, and driving `main_gun_pitch` raises and lowers \
-the cannon, with no voxel tearing away from the mount or clipping into the hull \
-across either joint's range."""
+Driving `main_turret_yaw` makes only small corrections that keep the main cannon \
+pointed forward within a narrow cone — it does NOT spin the turret to the sides — \
+and driving `main_gun_pitch` raises and lowers the cannon, with no voxel tearing \
+away from the mount or clipping into the hull across either joint's range."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "batteries-sweep"
-title = "Side batteries sweep on their own"
+id = "side-turrets-traverse"
+title = "Side turrets rotate to aim on their own"
 text = """
-The two side batteries rove up and down on their own through the auto \
-`left_battery_pitch` and `right_battery_pitch` joints, in opposite phase, each \
-swinging about its own sponson mount without detaching from the hull."""
+Each side turret rotates to aim independently through its caller joint — \
+`left_turret_yaw` and `right_turret_yaw` — swinging within an arc that covers its \
+own flank (the left turret sweeping the left side, the right turret the right), \
+each about its own sponson mount without detaching from the hull."""
 weight = 2
 domain = "fidelity"
 
@@ -222,9 +232,9 @@ domain = "fidelity"
 id = "chassis-fixed"
 title = "Tracked hull stays fixed"
 text = """
-Only the turret, cannon, and side batteries move. The tracked hull stays put — it \
-is the fixed root of the rig, not carried along by the turret's traverse or the \
-batteries' sweep."""
+Only the turrets and the cannon move. The tracked hull stays put — it is the fixed \
+root of the rig, not carried along by the main turret's traverse or the side \
+turrets' swings."""
 weight = 2
 domain = "fidelity"
 
@@ -234,8 +244,8 @@ title = "Guns stay attached"
 text = """
 Each child stays attached to its parent across its joint's range: the cannon meets \
 the front of the main turret, the main turret meets the top of the hull, and each \
-side battery meets its sponson — with no gap and never floating free as they \
-traverse, elevate, and sweep."""
+side turret meets its sponson — with no gap and never floating free as they \
+traverse and swing."""
 weight = 2
 domain = "fidelity"
 

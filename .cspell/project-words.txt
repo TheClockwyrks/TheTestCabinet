@@ -143,6 +143,7 @@ Sunhawk
 Lumen
 Monolith
 Aegis
+Aegi
 Reliquary
 Bastion
 Skyworks

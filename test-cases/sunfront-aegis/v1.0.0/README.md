@@ -2,9 +2,9 @@
 
 This is version `v1.0.0` of the **Sunfront Aegis** test case: an asset-generation
 case (`asset_kind = "voxel-animation"`) that asks a model to sculpt *and rig* a
-giant Duneforged **siege fortress on treads** — a multi-gun tracked
-war-fortress — as a 72×52×88 opaque-voxel model using only the `voxel-anim`
-tool, one recorded operation at a time.
+colossal Duneforged **siege fortress on treads** — a multi-gun tracked
+war-fortress that dwarfs every buildable unit — as an 88×60×104 opaque-voxel model
+using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-aegis` is the catalog slug for this case. It is one of the `sunfront-*`
 Duneforged voxel roster and shares the faction's brass-and-bronze palette and
@@ -18,23 +18,25 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
 | `chassis` | *(root)* | `[0, 0, 0]` | The tracked hull and its two treads |
-| `main_turret` | `chassis` | `[36, 32, 44]` | The big central turret |
-| `main_gun` | `main_turret` | `[36, 38, 58]` | The main cannon on the turret front |
-| `left_battery` | `chassis` | `[12, 30, 40]` | The left-flank secondary gun |
-| `right_battery` | `chassis` | `[60, 30, 40]` | The right-flank secondary gun |
+| `main_turret` | `chassis` | `[44, 40, 56]` | The big central turret |
+| `main_gun` | `main_turret` | `[44, 46, 74]` | The main cannon on the turret front |
+| `left_turret` | `chassis` | `[14, 36, 52]` | The rotating left-flank side turret |
+| `right_turret` | `chassis` | `[73, 36, 52]` | The rotating right-flank side turret |
 
-- **`main_turret_yaw`** (caller, rotation about `y`, `-π..π`) — traverses the whole
-  main turret and its cannon about the vertical mount.
+- **`main_turret_yaw`** (caller, rotation about `y`, `-0.35..0.35`) — a narrow
+  forward cone that makes only fine corrections keeping the main cannon pointed
+  forward; the fortress turns its hull to aim.
 - **`main_gun_pitch`** (caller, rotation about `x`, `-0.2..0.8`) — elevates the
   main cannon about its mount.
-- **`left_battery_pitch`** / **`right_battery_pitch`** (auto, rotation about `x`,
-  `0.0..0.9`) — the two side batteries sweep on their own via their clips, in
-  opposite phase.
+- **`left_turret_yaw`** (caller, rotation about `y`, `-1.6..0.0`) /
+  **`right_turret_yaw`** (caller, rotation about `y`, `0.0..1.6`) — traverse the
+  two side turrets so each swings independently to cover its own flank arc.
 
-The case also authors a **`bombardment`** review animation that drives both caller
-joints so a reviewer can watch the turret sweep and the gun lob without dragging
-the sliders. The model may add its own extra parts, joints, and clips on top, but
-must not drop or contradict the required interface.
+The case also authors a **`bombardment`** review animation that drives all four
+caller joints so a reviewer can watch the main cannon lob forward while the two
+side turrets sweep their own flanks, without dragging the sliders. The model may
+add its own extra parts, joints, and clips on top, but must not drop or contradict
+the required interface.
 
 ## Contents
 

@@ -38,9 +38,11 @@ This triangle is the game: read what crosses the sand and build its counter.
 
 ## The roster
 
-Nine buildable units, plus the **Aegis** (not buildable — see `specs/waves.md`).
-Stats are base values at spawner level 1; upgrades scale HP and damage per
-`specs/economy.md`.
+Nine buildable units, plus the **Aegis** — not buildable, far larger and more
+powerful than anything here, and the only unit with **independent per-turret
+targeting**; it defends its own half and never crosses midfield (full definition
+in `specs/waves.md`). Stats are base values at spawner level 1; upgrades scale HP
+and damage per `specs/economy.md`.
 
 | Unit | Cost | HP | Armor | Attack type | Dmg | Cadence | Range | Speed | Targets | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -81,7 +83,10 @@ The simulation advances every frame in logical-pixel space:
   acquire at a distance. A unit with a target in range stops and attacks; a unit
   whose nearest valid target is within the acquisition buffer but not yet in range
   advances to close the gap; a unit with no valid target keeps advancing down the
-  lane toward the enemy base.
+  lane toward the enemy base. The **Aegis is the sole exception**: it holds to its
+  own half of the field (never crossing midfield) and its three turrets each
+  acquire a target independently — the main turret hunting Heavy in a forward cone,
+  each side turret sweeping its own flank for Light — per `specs/waves.md`.
 - **Attacking.** A unit fires once per its **cadence** while a valid target is in
   range, dealing `base damage × upgrade bonus × counter multiplier` (splash as
   above). Attacks are hitscan/instant for simulation purposes; you may draw a

@@ -55,18 +55,48 @@ When a side's Reliquary is **destroyed** (brought to `0 HP` by the enemy):
    defender's-advantage guardian — the game's built-in comeback valve, punishing
    an over-commitment to the push that just felled the Reliquary.
 
-The **Aegis** is **not buildable** and appears only this way:
+The **Aegis** is **not buildable** and appears only this way. It is a giant
+Duneforged **siege fortress on treads** — deliberately **much larger and far more
+powerful than any buildable unit**, and rare enough (at most two ever exist in a
+match, and usually only one) that it can afford this special behavior:
 
-- Stats (`specs/units.md` roster notes): `1400 HP`, **Heavy** armor, **Splash**
-  attack `34` (radius `50`), cadence `1.3 s`, range `70`, speed `42`. It advances
-  and fights like any other unit, but toward the enemy — it is a heavy multi-gun
-  siege fortress that grinds *out* on its treads from the base it defends.
-- It is **temporary**: it loses **`40 HP/s`** continuously from the moment it
-  spawns (so, undamaged, it expires in about `35 s`), and it can also be killed
+- **Bulk and armor.** `2200 HP`, **Heavy** armor, speed `40`. It is a colossal
+  tracked fortress that dwarfs everything else on the field, drawn noticeably
+  larger than any buildable unit.
+- **It defends its own half only — it never crosses midfield.** Unlike every
+  other unit, the Aegis does **not** march toward the enemy base. It patrols and
+  repositions **only on its owner's half of the field** (the owner's side of the
+  vertical centerline `x = 640`) and **must never cross the middle of the map**:
+  it hunts the enemy units that have pushed across onto its side, holding the
+  line while its owner recovers. With no enemy in reach on its half, it holds
+  position near the front of its own half rather than advancing over the
+  centerline. This is its defender's-advantage identity — it blunts the very push
+  that felled the Reliquary without becoming an attacker of its own.
+- **Independent multi-turret targeting — the only unit in the game with it.**
+  Every other unit acquires and fires on a single target (`specs/units.md`); the
+  Aegis fights with **three turrets that each acquire and fire on their own
+  target**:
+  - **Main turret** (the long forward cannon): a **Piercing** anti-armor gun,
+    `48` damage, `1.5 s` cadence, range `130`. It targets the **nearest Heavy
+    enemy first** (falling back to the nearest ground enemy if no Heavy is in
+    range). It fires only within a **narrow cone straight ahead**, and **the
+    Aegis rotates its hull to bring that target into the cone** — the main gun's
+    target is what determines which way the whole fortress faces.
+  - **Two side turrets** (one on each flank): each a lighter **Splash** gun,
+    `18` damage (radius `35`), `1.0 s` cadence, range `90`. Each **independently
+    targets the nearest enemy within an arc on its own side** of the fortress (the
+    left turret covers the left flank, the right the right), **prioritizing Light
+    enemies first**. They fire **opportunistically** — each traverses on its own
+    and neither waits for nor steers the hull's facing, so the Aegis can grind its
+    main gun onto a Heavy while both flanks mow down the swarm around it.
+- It is **temporary**: it loses **`45 HP/s`** continuously from the moment it
+  spawns (so, undamaged, it expires in about `49 s`), and it can also be killed
   outright. When it reaches `0 HP` it is removed with no bounty.
-- **At most one Aegis per side exists at a time.** A side whose Reliquary is
-  already destroyed cannot gain another Aegis (there is no second Reliquary to
-  lose), so the comeback valve fires exactly once per side per match.
+- **At most one Aegis per side, at most two in a match.** A side whose Reliquary
+  is already destroyed cannot gain another Aegis (there is no second Reliquary to
+  lose), so the comeback valve fires exactly once per side per match — at most
+  two Aegi exist across the whole match (one per side), and since usually only
+  one Reliquary falls, most matches ever see just a single Aegis active.
 
 A Reliquary destroyed does **not** end the match; only razing the enemy **base**
 does (`specs/flow.md`). But taking the enemy Reliquary — surviving the Aegis it
