@@ -474,7 +474,13 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                 type="range"
                 min={activeCaller.min}
                 max={activeCaller.max}
-                step={(activeCaller.max - activeCaller.min) / 100 || 0.01}
+                // Continuous posing (`any`) rather than a computed numeric step: a
+                // joint's rest or a game-driven value rarely lands on a `(max-min)/100`
+                // grid, and a browser that doesn't silently snap the value (e.g. Safari)
+                // then flags it invalid and pops a "select a valid value" bubble over
+                // the slider. `any` accepts any value in range, so there's no grid to
+                // violate.
+                step="any"
                 value={activeValue}
                 onChange={(e) =>
                   setCallerValues((prev) => ({
