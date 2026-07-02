@@ -1,0 +1,180 @@
+name = "Sunfront Bombard"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
+summary = """
+Sculpt and rig the Sunfront Bombard: a 56x44x80 opaque-voxel tracked siege \
+mortar whose turret swivels on a caller-driven turret_yaw joint and whose long \
+mortar barrel lobs high on a caller-driven barrel_pitch joint, built and rigged \
+one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 56
+height = 44
+depth = 80
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The tracked hull: the root part (no parent), fixed to the world. Tracked, not
+# legged — it slides along the ground, so there is no walk joint.
+[[model.part]]
+name = "chassis"
+pivot = [0, 0, 0]
+
+# The turret: mounted on top-center of the chassis. It swivels on `turret_yaw`.
+[[model.part]]
+name = "turret"
+parent = "chassis"
+pivot = [28, 22, 36]
+
+# The long mortar barrel: mounted at the front of the turret, so it swings with
+# the turret and lobs up and down on `barrel_pitch`.
+[[model.part]]
+name = "barrel"
+parent = "turret"
+pivot = [28, 30, 48]
+
+# The first required caller-driven joint: a game addresses `turret_yaw` by name to
+# swing the turret (and the barrel with it) left and right about its vertical
+# mount, a full half-turn each way. `rest = 0` faces straight forward (+z).
+[[model.joint]]
+name = "turret_yaw"
+part = "turret"
+kind = "rotation"
+axis = "y"
+pivot = [28, 22, 36]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "caller"
+
+# The second required caller-driven joint: `barrel_pitch` elevates and depresses
+# the mortar barrel about its horizontal mount so it can lob high. `rest = 0.4` is
+# a raised siege elevation; `max = 1.0` is a steep lob, `min = -0.2` a shallow aim.
+[[model.joint]]
+name = "barrel_pitch"
+part = "barrel"
+kind = "rotation"
+axis = "x"
+pivot = [28, 30, 48]
+min = -0.2
+max = 1.0
+rest = 0.4
+drive = "caller"
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the mortar recoil and lob without dragging the joint slider by
+# hand. Each `[[model.animation.track]]` drives one joint over the shared
+# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians here).
+# `bombard_fire` kicks the barrel up in a quick recoil-lob then settles and loops.
+[[model.animation]]
+name = "bombard_fire"
+period_ms = 1000
+loop = true
+
+[[model.animation.track]]
+joint = "barrel_pitch"
+keyframes = [[0, 0.4], [80, 0.95], [450, 0.4]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Bombard and \
+poses correctly — a low, tracked siege hull, a turret that swivels on its mount \
+without detaching while the chassis stays put, and a long mortar barrel that stays \
+attached to the turret and lobs up and down, with a clear solar-amber muzzle glow \
+and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-bombard"
+title = "Reads as a tracked siege mortar"
+text = """
+From more than one angle the model reads unmistakably as a heavy tracked siege \
+vehicle: a low, boxy hull riding on a pair of tracks down its sides, a turret \
+sitting on top, and a long mortar barrel projecting forward from the turret. It is \
+a tracked artillery machine, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "joints-move"
+title = "Turret swivels and barrel lobs"
+text = """
+Driving the `turret_yaw` joint swings the turret cleanly left and right about its \
+vertical mount at the top-center of the chassis, and driving the `barrel_pitch` \
+joint raises and lowers the mortar barrel about its horizontal mount. Across both \
+joints' full ranges no voxel tears away from its mount or clips into the hull — \
+each part rotates as one solid piece about the correct pivot."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "chassis-fixed"
+title = "Chassis stays fixed"
+text = """
+Only the turret (and the barrel with it) moves when the joints are driven. The \
+chassis and its tracks stay put — they are the fixed root of the rig, not carried \
+along by the turret's swing or the barrel's lob."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "barrel-attached"
+title = "Barrel stays attached to the turret"
+text = """
+The barrel is a child of the turret: it projects from the front of the turret, \
+swings with it as `turret_yaw` turns, and pitches about its own mount as \
+`barrel_pitch` drives, always meeting the turret's front face with no gap and \
+never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze hull, iron tracks \
+and barrel, and the solar-amber muzzle accent) with a clear amber muzzle glow at \
+the barrel's mouth, no out-of-palette colors, and no stray voxels drifting off the \
+parts."""
+weight = 1
+domain = "fidelity"

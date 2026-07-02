@@ -1,0 +1,216 @@
+name = "Sunfront Reliquary"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Reliquary: a 60x96x60 opaque-voxel monument \
+cradling a glowing solar core, whose orbital ring turns, core rises and falls, \
+and guardian fins counter-rotate on their own auto clips while the base stays \
+fixed, built and rigged one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 60
+height = 96
+depth = 60
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The monument plinth and its cradle: the root part (no parent), fixed to the
+# world.
+[[model.part]]
+name = "base"
+pivot = [0, 0, 0]
+
+# The orbital ring, encircling the core high on the monument. It turns steadily
+# about the vertical axis on the auto-driven `ring_spin`.
+[[model.part]]
+name = "orbital_ring"
+parent = "base"
+pivot = [30, 60, 30]
+
+# The glowing solar core, cradled at the heart of the monument. It rises and falls
+# in a slow breathing pulse on the auto-driven `core_pulse`.
+[[model.part]]
+name = "core"
+parent = "base"
+pivot = [30, 56, 30]
+
+# The guardian fins, crowning the monument above the core. They counter-rotate
+# against the ring on the auto-driven `fins_spin`.
+[[model.part]]
+name = "guardian_fins"
+parent = "base"
+pivot = [30, 78, 30]
+
+# The orbital ring's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, a full rotation about `y` so the ring turns on its own without
+# a caller.
+[[model.joint]]
+name = "ring_spin"
+part = "orbital_ring"
+kind = "rotation"
+axis = "y"
+pivot = [30, 60, 30]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The solar core's own looping rise-and-fall pulse. An `auto` joint the case drives
+# with a `[[model.clip]]`, an upward translation along `y` so the core breathes on
+# its own without a caller. `rest = 0` is the settled height; `max = 6` is the top
+# of the rise.
+[[model.joint]]
+name = "core_pulse"
+part = "core"
+kind = "translation"
+axis = "y"
+pivot = [30, 56, 30]
+min = 0.0
+max = 6.0
+rest = 0.0
+drive = "auto"
+
+# The guardian fins' own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, a full rotation about `y` in the OPPOSITE direction to the ring
+# so the fins counter-rotate on their own without a caller.
+[[model.joint]]
+name = "fins_spin"
+part = "guardian_fins"
+kind = "rotation"
+axis = "y"
+pivot = [30, 78, 30]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The auto-play clips — one per animated part, so the monument runs on its own.
+# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
+# (radians for the two rotation spins, voxels for the translation pulse). The ring
+# turns one full revolution; the core rises then settles back; the fins turn a full
+# revolution the OTHER way (opposite phase to the ring).
+[[model.clip]]
+joint = "ring_spin"
+period_ms = 3000
+loop = true
+keyframes = [[0, -3.14159], [3000, 3.14159]]
+
+[[model.clip]]
+joint = "core_pulse"
+period_ms = 2000
+loop = true
+keyframes = [[0, 0.0], [1000, 6.0], [2000, 0.0]]
+
+[[model.clip]]
+joint = "fins_spin"
+period_ms = 3400
+loop = true
+keyframes = [[0, 3.14159], [3400, -3.14159]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Reliquary \
+and runs correctly — a tall, precious monument cradling a glowing solar core, \
+whose orbital ring turns, core rises and falls, and guardian fins counter-rotate \
+on their own auto clips while the base stays put, with a heavy solar-hot and \
+amber core glow and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-reliquary"
+title = "Reads as a solar reliquary monument"
+text = """
+From more than one angle the model reads unmistakably as a precious, holy \
+Duneforged monument: a tall masonry plinth and cradle holding a glowing solar \
+core at its heart, encircled by an orbital ring and crowned by guardian fins. It \
+looks like a revered reliquary enshrining its core, not an abstract stack of \
+boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Ring turns, core pulses, and fins counter-rotate on their own"
+text = """
+The three animated elements cycle on their own via their auto clips while the \
+`base` stays fixed: the `ring_spin` joint turns the orbital ring a full \
+revolution about the vertical axis, the `core_pulse` joint lifts the solar core \
+up and settles it back in a breathing rise and fall, and the `fins_spin` joint \
+turns the guardian fins a full revolution the opposite way. Across each cycle no \
+voxel of the ring, core, or fins tears away from its mount or clips the monument \
+— each moves as one solid piece about the correct axis."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Base stays fixed"
+text = """
+Only the moving parts move: the orbital ring as it turns, the core as it rises \
+and falls, and the guardian fins as they counter-rotate. The monument plinth and \
+its cradle stay put — they are the fixed root of the rig, not carried along by \
+the ring, core, or fins."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Ring, core, and fins stay attached"
+text = """
+Each child stays attached to the base across its joint's range: the orbital ring \
+stays centered on its pivot as it turns, the core stays cradled in the monument \
+as it rises and falls, and the guardian fins stay seated on their crown as they \
+counter-rotate, with no gap and never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber and solar-hot energy \
+accents) with a clear, heavy amber and solar-hot glow at the core, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

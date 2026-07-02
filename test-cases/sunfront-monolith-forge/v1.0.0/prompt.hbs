@@ -1,0 +1,66 @@
+Sculpt and rig the **Sunfront Monolith Forge**, a towering great forge whose
+massive hammer pounds while its gear crown spins, as a 68x84x68 opaque-voxel
+model using only the voxel-anim tool.
+
+## How sculpting and rigging works
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already
+on your `PATH`. It is the sole channel: you build the model by calling it **one
+operation at a time**, and the ordered operations you issue — recorded per part to
+`parts/<part>.actions.json` — together with the rig you define are the
+**authoritative output that is scored**, not the voxels on disk. Anything produced
+another way (writing files directly, editing a preview by hand) is discarded and
+flagged; only the recorded operations and the rig count.
+
+Every voxel operation targets a **part** with `--part <name>`; each part is
+sculpted **separately** in its own preview and log. The volume starts **empty**.
+Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
+the binary re-renders that part's isometric preview to `parts/<part>.png` and
+appends the operation to that part's log. Blank starting previews, empty per-part
+logs, and a pre-seeded `rig.json` holding the required parts and joints are already
+in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its part, for example:
+
+```
+voxel-anim fill-box --part base --x0 8 --y0 0 --z0 8 --x1 59 --y1 70 --z1 59 --color "#c69a4b"
+```
+
+Run `voxel-anim --help` to list every operation **and** the rig subcommands
+(defining parts, setting pivots, defining joints and clips), and `voxel-anim
+<operation> --help` for one operation's exact flags — that help text is the
+authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+part's progress, **and read the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
+whole forge composed from all your parts, re-rendered after every operation. The
+scene views are how you confirm the parts actually fit together: that the hammer
+rides centered in the forge's throat and the gear crown seats on its crest. Because
+each part is sculpted in the shared volume's coordinates, position each part where
+it belongs on the finished forge; the scene simply composes them there.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the
+form of the forge, the required parts and their pivots, and the two auto
+`hammer_stamp` and `crown_spin` joints. Run `voxel-anim --help` for the exact
+operation and rig contract.
+
+## What to deliver
+
+Build and rig the forge up operation by operation until each `parts/<part>.png`
+matches the brief, the assembled `scene/` previews show the parts fitting together
+correctly, and the rig is complete: a huge masonry forge base, a massive hammer in
+its throat, and a gear crown atop it. The required interface is the two auto
+**`hammer_stamp`** and **`crown_spin`** joints that pound the hammer down and up
+and turn the crown a full revolution on their own, while the `base` stays fixed.
+Produce **every** required part and joint; you may add your own extra parts,
+joints, or auto-play clips on top, but do not drop or contradict the required
+interface. When you are satisfied, stop: the recorded per-part logs and `rig.json`
+are your finished submission.

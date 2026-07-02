@@ -1,0 +1,35 @@
+<!doctype html>
+<!--
+  Sunfront — match-over screen (common across variants).
+  Rendered by the harness at 1280x720 as the `game-over` view target.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- the frozen field behind the end card -->
+      <div class="dim">
+        <div class="lane"></div>
+        <div class="base player"></div>
+        <div class="base enemy" style="opacity: 0.25"></div>
+        <div class="reliquary" style="left: 336px"></div>
+        <div class="unit ember" style="left: 1080px; top: 240px"></div>
+        <div class="unit ember" style="left: 1110px; top: 280px"></div>
+      </div>
+
+      <div class="overlay"></div>
+      <div class="panel">
+        <p class="panel-eyebrow">THE FRONT HOLDS</p>
+        <h2 class="panel-title">VICTORY</h2>
+        <p class="panel-sub">ENEMY BASE RAZED &middot; WAVE 14</p>
+        <nav class="menu">
+          <div class="menu-item selected">PLAY AGAIN</div>
+          <div class="menu-item">MENU</div>
+        </nav>
+      </div>
+    </div>
+  </body>
+</html>

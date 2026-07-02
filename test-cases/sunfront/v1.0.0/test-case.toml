@@ -1,0 +1,283 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, which proofs the
+# build must submit, and which validation checks run. The harness reads this file
+# to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Sunfront"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Sunfront asks
+# for a real-time simulation of dozens of units, a ticking economy with placement
+# and upgrades, a nine-unit roster with an armor/attack counter matrix, strict fog
+# of war, a mid-map Reliquary objective with a comeback unit, an adaptive AI
+# opponent, and multiple states — a heavy build, so it sits at hard.
+difficulty = "hard"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["strategy", "2d", "tug-of-war", "real-time"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A top-down tug-of-war between two legions of solar automatons: spend a ticking \
+income on spawner structures that stamp out waves, read the enemy's build through \
+the fog, counter it, and grind a hole to their base — while a mid-field Reliquary \
+funds whoever razes it but summons a guardian to punish the push."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Sunfront is a substantial build (a real-time unit simulation, economy,
+# placement UI, fog of war, the counter matrix, the Reliquary/Aegis objective, an
+# adaptive AI, and multiple states), so as a hard case it gets a full five hours.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project: a `package.json` that pins `playwright` as a dev
+# dependency, so the browser tooling is a visible, project-local dependency. The
+# seeded files land at the run root (`workspaces/base/package.json` → `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant — the standard Skirmish match on the
+# one fixed front. It supplies the `title` view's menu mockup; `gameplay` and
+# `game-over` are common. Future versions/variants are expected to add rule twists
+# (a larger front, a resource-drought opener, a no-air roster) on top of this base.
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. These are always present,
+# so the mode specs may reference them freely; the common specs must never
+# reference a mode spec a given variant does not seed (only `modes/standard.md` is
+# always present). All common specs are plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/units.md"
+
+[[spec]]
+source = "specs/waves.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant); `gameplay` and
+# `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.mp4` to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind
+# is inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-match"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Match over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "wave"
+name = "Wave march clip"
+dest = "proof/wave.mp4"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation, screenshots it, and compares against the rendered
+# screenshot of `reference`. Only the title screen is deterministic enough to
+# validate for Sunfront: it is whatever the game shows on load, so it needs no
+# actions. Gameplay and game-over depend on live, player-built state, so they are
+# seeded as references but not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. A reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a polished economy
+# cannot mask a broken combat model or a trivial AI. Every case declares at least
+# one. Most checklist items apply across domains; an item may name one when it is
+# specific to that facet.
+[[domain]]
+id = "economy"
+name = "Economy & building"
+description = "The resource clock, spawner placement, upgrades and selling, and the wave loop."
+
+[[domain]]
+id = "combat"
+name = "Combat & counters"
+description = "The unit roster, the armor/attack counter matrix, fog of war, the front-line tug-of-war, and the Reliquary/Aegis objective."
+
+[[domain]]
+id = "opponent"
+name = "AI opponent"
+description = "A competent, adapting, non-cheating, beatable computer opponent."
+
+# Reviewer checklist items, common to every variant. These are the major,
+# observable requirements a reviewer must explicitly check by playing the build —
+# what validation cannot judge and is easy to miss. They are reporter-side: never
+# seeded, so the model never sees the checklist; each restates a requirement the
+# seeded specification already states. Each is worth `weight` points; the reviewer
+# records a pass/fail verdict for each before the run can be published.
+[[review_item]]
+id = "wave-clock"
+title = "Wave clock"
+text = "Waves fire on the clock — the first at 20 s, then every 45 s — and on each wave every spawner a side owns emits exactly one unit of its type at that side's muster line. The countdown is shown and resets each wave."
+weight = 1
+domain = "economy"
+reference = "gameplay"
+proof = "wave"
+
+[[review_item]]
+id = "income"
+title = "Escalating income"
+text = "Sol accrues continuously at the shown rate; the rate starts at 16/s and rises by +3/s at the start of every wave, with no cap, so later waves fund heavier units. Kill and Reliquary bounties are paid."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "building"
+title = "Placing spawners"
+text = "A buildable unit can be armed from the palette (click or number key) and placed on an empty build-grid cell, deducting its cost; an unaffordable or occupied cell is refused. A placed spawner emits its unit from the next wave on."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "upgrade-sell"
+title = "Upgrade and sell"
+text = "A placed spawner can be upgraded (up to level 3, raising the HP and damage of the units it emits, at 75% of build cost per level) and sold (refunding 50% of sol invested and freeing the cell); its level shows on the structure and its units."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "counter-matrix"
+title = "Counter system"
+text = "Damage follows the armor/attack matrix: Piercing tears through Heavy (1.5x), Splash shreds clustered Light in an area (1.5x) but is weak on Heavy, Flak is the only thing that hits Air, and ground attacks (Normal/Piercing/Splash) cannot target Air at all. Composition beats a one-note army."
+weight = 3
+domain = "combat"
+
+[[review_item]]
+id = "front-line"
+title = "Front-line tug-of-war"
+text = "Units advance, acquire the nearest enemy they can damage, and stop to fight; the front line drifts toward the losing side. Two equal armies grind to a rough stalemate near midfield, so advantage comes from economy and counters, not a lopsided default. Units hold a target rather than jittering."
+weight = 2
+domain = "combat"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "fog-of-war"
+title = "Fog of war"
+text = "The enemy staging yard is fully hidden under fog — its structures and placements are never visible. In the lane, enemy units, Reliquary, and base are drawn only while within the vision of a player unit, base, or Reliquary, never as stale ghosts in the fog."
+weight = 3
+domain = "combat"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "reliquary-aegis"
+title = "Reliquary and Aegis"
+text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian; the Aegis is temporary (it decays and expires) and only one per side ever appears. A destroyed Reliquary does not end the match."
+weight = 2
+domain = "combat"
+
+[[review_item]]
+id = "air-and-flak"
+title = "Air and its counter"
+text = "The Sunhawk flies over the ground line and can only be stopped by Flak (the Flakhound), which targets air first; a side with no Flak has no answer to air, and a Flakhound is near-useless against a pure-ground push."
+weight = 1
+domain = "combat"
+
+[[review_item]]
+id = "win-loss"
+title = "Win and loss"
+text = "A base has 1200 HP; the match ends the instant either base is razed, going to a match-over screen that shows VICTORY or DEFEAT and the wave count, with PLAY AGAIN and MENU. Razing the enemy base is the only win condition."
+weight = 2
+domain = "combat"
+reference = "game-over"
+proof = "game-over"
+
+[[review_item]]
+id = "ai-opponent"
+title = "Adaptive, beatable AI"
+text = "The AI builds and upgrades on its own hidden grid from the same economy with no resource cheating, adapts its composition to what it has seen of the player's army (splash vs swarm, piercing vs heavy, flak vs air), presses and defends the Reliquaries — and is clearly beatable by a player who reads the counters."
+weight = 3
+domain = "opponent"
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every state is reachable and behaves correctly: title menu, how-to-play, the live match, pause (resume/restart/quit with the simulation frozen), and match-over (play again/menu)."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "hud-complete"
+title = "HUD"
+text = "The HUD shows the sol balance and income rate, the wave number and countdown, both base health bars, the build palette with costs and affordability, and a selected-spawner panel — all inside the fitted 1280x720 field."
+weight = 1
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 field — both bases, the full lane, the staging yard, every HUD element, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

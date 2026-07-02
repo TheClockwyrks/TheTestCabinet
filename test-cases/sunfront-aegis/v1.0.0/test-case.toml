@@ -1,0 +1,214 @@
+name = "Sunfront Aegis"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+summary = """
+Sculpt and rig the Sunfront Aegis: a 64x76x56 opaque-voxel two-legged guardian \
+mech that raises a huge left tower-shield on a caller-driven weapon_pitch joint \
+while its two legs walk on their own, built and rigged one recorded operation at \
+a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 64
+height = 76
+depth = 56
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The guardian's armored torso and head: the root part (no parent), fixed to the
+# world.
+[[model.part]]
+name = "torso"
+pivot = [0, 0, 0]
+
+# The left leg, mounted low under the torso. It walks on `leg_left_stride`.
+[[model.part]]
+name = "leg_left"
+parent = "torso"
+pivot = [20, 32, 28]
+
+# The right leg, mirroring the left. It walks on `leg_right_stride` in opposite
+# phase.
+[[model.part]]
+name = "leg_right"
+parent = "torso"
+pivot = [44, 32, 28]
+
+# The huge left tower-shield arm. It raises and lowers on the caller-driven
+# `weapon_pitch`.
+[[model.part]]
+name = "weapon"
+parent = "torso"
+pivot = [18, 46, 30]
+
+# The required caller-driven joint: a game addresses `weapon_pitch` by name to
+# raise and lower the tower-shield about its shoulder mount. `rest = 0` holds the
+# shield forward at guard; `max = 0.8` raises it high, `min = -0.4` drops it low.
+# Only the shield arm moves on this joint.
+[[model.joint]]
+name = "weapon_pitch"
+part = "weapon"
+kind = "rotation"
+axis = "x"
+pivot = [18, 46, 30]
+min = -0.4
+max = 0.8
+rest = 0.0
+drive = "caller"
+
+# The left leg's own looping stride. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the legs walk on their own without a caller.
+[[model.joint]]
+name = "leg_left_stride"
+part = "leg_left"
+kind = "rotation"
+axis = "x"
+pivot = [20, 32, 28]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+# The right leg's stride, in opposite phase to the left.
+[[model.joint]]
+name = "leg_right_stride"
+part = "leg_right"
+kind = "rotation"
+axis = "x"
+pivot = [44, 32, 28]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+# The auto-play stride clips — one per leg, in opposite phase, so the guardian
+# marches on its own. Only `auto` joints take a clip; the caller-driven
+# `weapon_pitch` takes none. Keyframes are inline `[t_ms, value]` pairs (radians).
+[[model.clip]]
+joint = "leg_left_stride"
+period_ms = 1000
+loop = true
+keyframes = [[0, 0.0], [250, 0.5], [500, 0.0], [750, -0.5], [1000, 0.0]]
+
+[[model.clip]]
+joint = "leg_right_stride"
+period_ms = 1000
+loop = true
+keyframes = [[0, 0.0], [250, -0.5], [500, 0.0], [750, 0.5], [1000, 0.0]]
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the shield raise through its range without dragging the joint
+# slider by hand. Each `[[model.animation.track]]` drives one joint over the
+# shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
+# `guard` raises the tower-shield high, holds it there, then lowers it before
+# looping.
+[[model.animation]]
+name = "guard"
+period_ms = 1200
+loop = true
+
+[[model.animation.track]]
+joint = "weapon_pitch"
+keyframes = [[0, 0.0], [300, 0.8], [900, 0.8], [1200, 0.0]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
+poses correctly — a tall, broad two-legged guardian mech that raises and holds a \
+huge left tower-shield on its shoulder mount while the two legs walk on their own \
+and the torso stays put, with clear solar-amber ward-glyphs on the shield and the \
+disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-guardian"
+title = "Reads as a shield-bearing guardian mech"
+text = """
+From more than one angle the model reads unmistakably as a heavy two-legged \
+guardian automaton: a tall, broad armored torso and head standing on two thick \
+legs, carrying a huge tower-shield on its left arm. It is a walking bulwark, not \
+an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "weapon-pitch-moves"
+title = "Shield raises and legs walk"
+text = """
+Driving the `weapon_pitch` joint raises and lowers the left tower-shield cleanly \
+about its shoulder mount, with no voxel of the shield arm tearing away from the \
+torso or clipping into it across the full range. The two legs walk on their own \
+through the `leg_left_stride` and `leg_right_stride` auto joints, stepping in \
+opposite phase."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "torso-fixed"
+title = "Torso stays fixed"
+text = """
+Only the moving parts move: the tower-shield when `weapon_pitch` is driven and \
+the legs as they walk. The armored torso stays put — it is the fixed root of the \
+rig, not carried along by the shield arm or the legs."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "weapon-attached"
+title = "Legs and shield stay attached"
+text = """
+Each child stays attached to the torso across its joint's range: the two legs \
+meet the torso's underside at their hips and the tower-shield meets the left \
+shoulder at its mount, with no gap and never floating free or detaching as the \
+legs stride and the shield raises."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (sandstone and brass armor, iron \
+joints, and the solar-amber accent) with clear amber ward-glyphs on the shield, \
+no out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

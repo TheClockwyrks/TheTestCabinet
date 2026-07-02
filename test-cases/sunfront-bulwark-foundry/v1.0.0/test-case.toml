@@ -1,0 +1,182 @@
+name = "Sunfront Bulwark Foundry"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Bulwark Foundry: a 60x72x60 opaque-voxel heavy \
+armored bunker-forge whose blast door raises and whose flywheel turns on their \
+own auto clips while the base stays fixed, built and rigged one recorded \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 60
+height = 72
+depth = 60
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The armored bunker-forge itself: the root part (no parent), fixed to the world.
+[[model.part]]
+name = "base"
+pivot = [0, 0, 0]
+
+# The heavy blast door across the front. It raises and lowers on its own via the
+# auto `blast_door_raise` joint.
+[[model.part]]
+name = "blast_door"
+parent = "base"
+pivot = [30, 24, 58]
+
+# The great drive flywheel on the right flank. It turns on its own via the auto
+# `flywheel_spin` joint.
+[[model.part]]
+name = "flywheel"
+parent = "base"
+pivot = [46, 44, 24]
+
+# The blast door's own looping raise. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the door lifts and drops on its own without a caller. A
+# translation up the `y` axis, `0` (shut, at rest) to `14` (fully raised).
+[[model.joint]]
+name = "blast_door_raise"
+part = "blast_door"
+kind = "translation"
+axis = "y"
+pivot = [30, 24, 58]
+min = 0.0
+max = 14.0
+rest = 0.0
+drive = "auto"
+
+# The flywheel's own slow spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the wheel turns on its own. A rotation about the `z`
+# (front-to-back) axis, a full turn each way, resting at `0`.
+[[model.joint]]
+name = "flywheel_spin"
+part = "flywheel"
+kind = "rotation"
+axis = "z"
+pivot = [46, 44, 24]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The auto-play clips — one per animated part, so the foundry works on its own.
+# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs. The
+# door rises, holds open, then drops (voxels); the flywheel spins a full turn
+# (radians). There are no caller joints and no review animations for this case.
+[[model.clip]]
+joint = "blast_door_raise"
+period_ms = 3200
+loop = true
+keyframes = [[0, 0.0], [960, 14.0], [2240, 14.0], [3200, 0.0]]
+
+[[model.clip]]
+joint = "flywheel_spin"
+period_ms = 2400
+loop = true
+keyframes = [[0, -3.14159], [2400, 3.14159]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Bulwark \
+Foundry and animates correctly — a heavy armored Duneforged bunker-forge whose \
+blast door raises and drops and whose flywheel turns on their own auto clips \
+while the base stays put, with a clear solar-amber forge accent and the \
+disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-bunker-forge"
+title = "Reads as an armored bunker-forge"
+text = """
+From more than one angle the model reads unmistakably as a heavy, armored \
+Duneforged bunker-forge: a squat, thick-walled fortified building with a broad \
+blast door set into its front and a great drive flywheel on its flank. It is a \
+massive fortified forge, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Blast door and flywheel cycle on their own"
+text = """
+The animated elements cycle on their own via their auto clips: the `blast_door` \
+rises straight up, holds open, and drops back shut along its vertical track \
+through the `blast_door_raise` joint, and the `flywheel` turns steadily about \
+its axle through the `flywheel_spin` joint. Across each cycle no voxel of either \
+part tears away from its mount or clips into the base."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Base stays fixed"
+text = """
+Only the moving parts move: the blast door as it raises and the flywheel as it \
+spins. The bunker-forge base stays put — it is the fixed root of the rig, not \
+carried along by the door or the wheel."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Door and flywheel stay attached"
+text = """
+Each child stays attached to the base across its clip's range: the blast door \
+meets its door frame at the front and the flywheel meets its axle housing on the \
+flank, with no gap and never floating free or detaching as the door raises and \
+the wheel turns."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze plating, \
+sandstone masonry, iron mechanisms, and the solar-amber forge accent) with a \
+clear amber accent, no out-of-palette colors, and no stray voxels drifting off \
+the parts."""
+weight = 1
+domain = "fidelity"

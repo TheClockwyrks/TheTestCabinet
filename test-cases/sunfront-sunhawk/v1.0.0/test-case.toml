@@ -1,0 +1,211 @@
+name = "Sunfront Sunhawk"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "aircraft"]
+summary = """
+Sculpt and rig the Sunfront Sunhawk: a 64x36x64 opaque-voxel gunship aircraft \
+whose underslung cannon aims up and down on a caller-driven cannon_pitch joint \
+while its two rotors spin on their own, built and rigged one recorded operation \
+at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 64
+height = 36
+depth = 64
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The wide, flat gunship fuselage: the root part (no parent), fixed to the world.
+[[model.part]]
+name = "hull"
+pivot = [0, 0, 0]
+
+# The left rotor, mounted out on the left wing stub. It spins on `rotor_left_spin`.
+[[model.part]]
+name = "rotor_left"
+parent = "hull"
+pivot = [14, 28, 32]
+
+# The right rotor, mirroring the left. It spins on `rotor_right_spin`.
+[[model.part]]
+name = "rotor_right"
+parent = "hull"
+pivot = [50, 28, 32]
+
+# The underslung forward cannon. It aims up and down on the caller-driven
+# `cannon_pitch`.
+[[model.part]]
+name = "cannon"
+parent = "hull"
+pivot = [32, 10, 44]
+
+# The required caller-driven joint: a game addresses `cannon_pitch` by name to
+# tilt the underslung cannon up and down about its mount. `rest = -0.3` aims a
+# little down at the ground; `min = -0.9` aims further down, `max = 0.3` tips up.
+[[model.joint]]
+name = "cannon_pitch"
+part = "cannon"
+kind = "rotation"
+axis = "x"
+pivot = [32, 10, 44]
+min = -0.9
+max = 0.3
+rest = -0.3
+drive = "caller"
+
+# The left rotor's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the rotor blurs around on its own without a caller.
+[[model.joint]]
+name = "rotor_left_spin"
+part = "rotor_left"
+kind = "rotation"
+axis = "y"
+pivot = [14, 28, 32]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The right rotor's spin, matching the left.
+[[model.joint]]
+name = "rotor_right_spin"
+part = "rotor_right"
+kind = "rotation"
+axis = "y"
+pivot = [50, 28, 32]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The auto-play spin clips — one per rotor, each sweeping a full turn about the
+# vertical axis on a fast period so the blades read as spinning. Only `auto` joints
+# take a clip; the caller-driven `cannon_pitch` takes none. Keyframes are inline
+# `[t_ms, value]` pairs (radians).
+[[model.clip]]
+joint = "rotor_left_spin"
+period_ms = 240
+loop = true
+keyframes = [[0, -3.14159], [240, 3.14159]]
+
+[[model.clip]]
+joint = "rotor_right_spin"
+period_ms = 240
+loop = true
+keyframes = [[0, -3.14159], [240, 3.14159]]
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the cannon strafe through its range without dragging the joint
+# slider by hand. Each `[[model.animation.track]]` drives one joint over the shared
+# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
+# `strafe` sweeps the cannon down and back up as it rakes the ground, then loops.
+[[model.animation]]
+name = "strafe"
+period_ms = 2000
+loop = true
+
+[[model.animation.track]]
+joint = "cannon_pitch"
+keyframes = [[0, -0.3], [1000, -0.8], [2000, -0.3]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Sunhawk and \
+poses correctly — a wide, flat gunship fuselage with two rotors that spin on their \
+own and an underslung cannon that aims up and down about its mount while the hull \
+stays put, with a clear solar-amber intake accent and the disciplined Duneforged \
+palette."""
+
+[[review_item]]
+id = "reads-as-gunship"
+title = "Reads as a gunship aircraft"
+text = """
+From more than one angle the model reads unmistakably as a low, wide gunship: a \
+flat armored fuselage, a rotor out on each side, and an underslung cannon \
+projecting forward beneath the nose. It is an aircraft, not an abstract stack of \
+boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "cannon-aims"
+title = "Cannon aims and rotors spin"
+text = """
+Driving the `cannon_pitch` joint tilts the underslung cannon cleanly up and down \
+about its mount, with no voxel of it tearing away from the hull or clipping into \
+the fuselage across the full range. The two rotors spin on their own through the \
+`rotor_left_spin` and `rotor_right_spin` auto joints, whirling about their vertical \
+axes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "hull-fixed"
+title = "Hull stays fixed"
+text = """
+Only the moving parts move: the cannon when `cannon_pitch` is driven and the \
+rotors as they spin. The fuselage hull stays put — it is the fixed root of the \
+rig, not carried along by the cannon or the rotors."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Rotors and cannon stay attached"
+text = """
+Each child stays attached to the hull across its joint's range: the two rotors \
+meet their wing-stub mounts and the cannon meets the underside of the nose, with \
+no gap and never floating free or detaching as the rotors spin and the cannon \
+aims."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and sandstone hull, iron \
+rotors and cannon, and the solar-amber intake accent) with a clear amber accent, \
+no out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

@@ -1,0 +1,185 @@
+name = "Sunfront Bombard Foundry"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Bombard Foundry: a 60x68x60 opaque-voxel mortar-works \
+whose overhead crane arm swings and loading piston bobs on their own auto clips \
+while the base stays fixed, built and rigged one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 60
+height = 68
+depth = 60
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The mortar-works tower and foundation: the root part (no parent), fixed to the
+# world.
+[[model.part]]
+name = "base"
+pivot = [0, 0, 0]
+
+# The overhead crane arm, cantilevered off the top of the works. It swings back and
+# forth on the auto-driven `crane_swing`.
+[[model.part]]
+name = "crane_arm"
+parent = "base"
+pivot = [30, 52, 30]
+
+# The loading piston, riding in the works' flank. It bobs straight down and back up
+# on the auto-driven `piston_bob`.
+[[model.part]]
+name = "piston"
+parent = "base"
+pivot = [16, 30, 40]
+
+# The crane arm's own looping swing. An `auto` joint the case drives with a
+# `[[model.clip]]`, a rotation about `x` so the arm swings fore and aft on its own
+# without a caller. `rest = 0` is level; it swings between `min = -0.4` and
+# `max = 0.4` radians.
+[[model.joint]]
+name = "crane_swing"
+part = "crane_arm"
+kind = "rotation"
+axis = "x"
+pivot = [30, 52, 30]
+min = -0.4
+max = 0.4
+rest = 0.0
+drive = "auto"
+
+# The loading piston's own looping bob. An `auto` joint the case drives with a
+# `[[model.clip]]`, a downward translation along `y` so the piston stamps on its
+# own without a caller. `rest = 0` is fully raised; `min = -6` is the bottom of the
+# stroke.
+[[model.joint]]
+name = "piston_bob"
+part = "piston"
+kind = "translation"
+axis = "y"
+pivot = [16, 30, 40]
+min = -6.0
+max = 0.0
+rest = 0.0
+drive = "auto"
+
+# The auto-play clips — one per animated part, so the mortar-works runs on its own.
+# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
+# (radians for the crane swing, voxels for the piston bob). The crane arm swings
+# aft, then fore, then back; the piston drops down and rises back and loops.
+[[model.clip]]
+joint = "crane_swing"
+period_ms = 2800
+loop = true
+keyframes = [[0, -0.4], [1400, 0.4], [2800, -0.4]]
+
+[[model.clip]]
+joint = "piston_bob"
+period_ms = 1300
+loop = true
+keyframes = [[0, 0.0], [650, -6.0], [1300, 0.0]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Bombard \
+Foundry and runs correctly — a heavy mortar-works whose overhead crane arm swings \
+fore and aft and whose loading piston bobs down and back up on their own auto \
+clips while the base stays put, with a clear solar-amber energy accent and the \
+disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-foundry"
+title = "Reads as a mortar-works"
+text = """
+From more than one angle the model reads unmistakably as a Duneforged mortar-works: \
+a heavy, blocky masonry works with an overhead crane arm cantilevered off its top \
+and a loading piston riding in its flank. It is a working foundry building, not an \
+abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Crane swings and piston bobs on their own"
+text = """
+The animated elements cycle on their own via their auto clips while the `base` \
+stays fixed: the `crane_swing` joint rocks the crane arm fore and aft about its \
+mount, and the `piston_bob` joint drives the loading piston straight down and back \
+up in its flank. Across each cycle no voxel of the crane arm or piston tears away \
+from its mount or clips into the works — each moves as one solid piece about the \
+correct axis."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Base stays fixed"
+text = """
+Only the moving parts move: the crane arm as it swings and the piston as it bobs. \
+The works base and its foundation stay put — they are the fixed root of the rig, \
+not carried along by the crane arm or the piston."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Crane arm and piston stay attached"
+text = """
+Each child stays attached to the base across its joint's range: the crane arm \
+meets the top of the works at its shoulder as it swings fore and aft, and the \
+piston meets the works' flank at its mount as it bobs up and down, with no gap and \
+never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
+amber accent, no out-of-palette colors, and no stray voxels drifting off the \
+parts."""
+weight = 1
+domain = "fidelity"

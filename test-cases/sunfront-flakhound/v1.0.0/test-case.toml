@@ -1,0 +1,243 @@
+name = "Sunfront Flakhound"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+summary = """
+Sculpt and rig the Sunfront Flakhound: a 52x48x56 opaque-voxel four-legged \
+anti-air walker whose back turret traverses on a caller-driven turret_yaw joint \
+and whose twin flak barrels elevate on a caller-driven barrel_pitch joint while \
+its two leg banks scuttle on their own, built and rigged one recorded operation \
+at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 52
+height = 48
+depth = 56
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The walker's armored body: the root part (no parent), fixed to the world.
+[[model.part]]
+name = "body"
+pivot = [0, 0, 0]
+
+# The left bank of legs, mounted low on the left flank. It scuttles on
+# `legs_left_scuttle`.
+[[model.part]]
+name = "legs_left"
+parent = "body"
+pivot = [12, 10, 28]
+
+# The right bank of legs, mirroring the left. It scuttles on `legs_right_scuttle`
+# in opposite phase.
+[[model.part]]
+name = "legs_right"
+parent = "body"
+pivot = [40, 10, 28]
+
+# The traversing flak turret, mounted on the back of the body. It traverses on the
+# caller-driven `turret_yaw`.
+[[model.part]]
+name = "turret"
+parent = "body"
+pivot = [26, 30, 28]
+
+# The twin flak barrels, mounted on the turret front, so they swing with the
+# turret and elevate on the caller-driven `barrel_pitch`.
+[[model.part]]
+name = "barrel"
+parent = "turret"
+pivot = [26, 36, 34]
+
+# The required caller-driven turret traverse: a game addresses `turret_yaw` by name
+# to swing the turret (and the barrels with it) about its vertical mount, a full
+# half-turn each way. `rest = 0` faces straight forward (+z).
+[[model.joint]]
+name = "turret_yaw"
+part = "turret"
+kind = "rotation"
+axis = "y"
+pivot = [26, 30, 28]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "caller"
+
+# The required caller-driven barrel elevation: a game addresses `barrel_pitch` by
+# name to elevate the twin barrels up toward the air. `rest = 0.5` is a raised idle
+# elevation; `max = 1.3` points them steeply skyward.
+[[model.joint]]
+name = "barrel_pitch"
+part = "barrel"
+kind = "rotation"
+axis = "x"
+pivot = [26, 36, 34]
+min = 0.0
+max = 1.3
+rest = 0.5
+drive = "caller"
+
+# The left leg bank's own looping scuttle. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the legs walk on their own without a caller.
+[[model.joint]]
+name = "legs_left_scuttle"
+part = "legs_left"
+kind = "rotation"
+axis = "x"
+pivot = [12, 10, 28]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The right leg bank's scuttle, in opposite phase to the left.
+[[model.joint]]
+name = "legs_right_scuttle"
+part = "legs_right"
+kind = "rotation"
+axis = "x"
+pivot = [40, 10, 28]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The auto-play scuttle clips — one per leg bank, in opposite phase, so the walker
+# skitters on its own. Only `auto` joints take a clip; the caller-driven
+# `turret_yaw` and `barrel_pitch` take none. Keyframes are inline `[t_ms, value]`
+# pairs (radians).
+[[model.clip]]
+joint = "legs_left_scuttle"
+period_ms = 550
+loop = true
+keyframes = [[0, 0.0], [137, 0.6], [275, 0.0], [412, -0.6], [550, 0.0]]
+
+[[model.clip]]
+joint = "legs_right_scuttle"
+period_ms = 550
+loop = true
+keyframes = [[0, 0.0], [137, -0.6], [275, 0.0], [412, 0.6], [550, 0.0]]
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the turret track a target across the sky without dragging the
+# joint sliders by hand. Each `[[model.animation.track]]` drives one joint over the
+# shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
+# `flak_track` sweeps the turret left→right while raising and lowering the barrels,
+# then loops.
+[[model.animation]]
+name = "flak_track"
+period_ms = 4000
+loop = true
+
+[[model.animation.track]]
+joint = "turret_yaw"
+keyframes = [[0, -1.0], [2000, 1.0], [4000, -1.0]]
+
+[[model.animation.track]]
+joint = "barrel_pitch"
+keyframes = [[0, 0.5], [2000, 1.2], [4000, 0.5]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Flakhound and \
+poses correctly — a four-legged anti-air walker whose back turret traverses on its \
+vertical mount and whose twin flak barrels elevate skyward, without detaching, \
+while the two leg banks scuttle on their own and the body stays put, with a clear \
+solar-amber targeting eye and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-flakhound"
+title = "Reads as an anti-air walker"
+text = """
+From more than one angle the model reads unmistakably as a four-legged anti-air \
+walker: a squat armored body, four legs splayed out in two banks down its sides, \
+and a turret on its back carrying a pair of long flak barrels raked upward. It is \
+a striding flak platform, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "turret-tracks"
+title = "Turret traverses, barrels elevate, legs scuttle"
+text = """
+Driving the `turret_yaw` joint swings the turret cleanly about its vertical mount \
+and driving the `barrel_pitch` joint raises and lowers the twin barrels about \
+their hinge, each across its full range with no voxel tearing off its mount or \
+clipping into the body below. The two leg banks scuttle on their own through the \
+`legs_left_scuttle` and `legs_right_scuttle` auto joints, stepping in opposite \
+phase."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "body-fixed"
+title = "Body stays fixed"
+text = """
+Only the moving parts move: the turret and barrels when `turret_yaw` and \
+`barrel_pitch` are driven and the legs as they scuttle. The armored body stays \
+put — it is the fixed root of the rig, not carried along by the turret or the \
+legs."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Turret, barrels, and legs stay attached"
+text = """
+Each child stays attached across its joint's range: the two leg banks meet the \
+body's flanks at their mounts, the turret meets the back of the body, and the \
+barrels meet the turret's front — with no gap and never floating free or detaching \
+as the turret traverses, the barrels elevate, and the legs scuttle."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze body, iron legs \
+and flak barrels, and the solar-amber eye accent) with a clear amber targeting eye \
+on the turret, no out-of-palette colors, and no stray voxels drifting off the \
+parts."""
+weight = 1
+domain = "fidelity"

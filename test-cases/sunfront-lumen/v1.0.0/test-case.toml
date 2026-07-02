@@ -1,0 +1,213 @@
+name = "Sunfront Lumen"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+summary = """
+Sculpt and rig the Sunfront Lumen: a 40x56x40 opaque-voxel floating beacon drone \
+whose front emitter tilts on a caller-driven emitter_pitch joint while its two \
+counter-rotating rings spin on their own around a solar-hot core, built and rigged \
+one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 40
+height = 56
+depth = 40
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The floating core hull with its solar-hot heart: the root part (no parent),
+# fixed to the world.
+[[model.part]]
+name = "core"
+pivot = [0, 0, 0]
+
+# The left ring, orbiting the core on the left side. It spins on `ring_left_spin`.
+[[model.part]]
+name = "ring_left"
+parent = "core"
+pivot = [10, 34, 20]
+
+# The right ring, mirroring the left. It spins on `ring_right_spin` in the opposite
+# direction.
+[[model.part]]
+name = "ring_right"
+parent = "core"
+pivot = [30, 34, 20]
+
+# The front beam projector, mounted below the core face. It tilts up and down on
+# the caller-driven `emitter_pitch`.
+[[model.part]]
+name = "emitter"
+parent = "core"
+pivot = [20, 26, 30]
+
+# The required caller-driven joint: a game addresses `emitter_pitch` by name to
+# tilt the front beam projector up and down about its mount. `rest = 0` aims level
+# and forward; the range tilts the beam a little each way. Only the emitter moves
+# on this joint.
+[[model.joint]]
+name = "emitter_pitch"
+part = "emitter"
+kind = "rotation"
+axis = "x"
+pivot = [20, 26, 30]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "caller"
+
+# The left ring's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the ring turns on its own without a caller. It rotates about
+# the depth axis (z), like a wheel facing forward.
+[[model.joint]]
+name = "ring_left_spin"
+part = "ring_left"
+kind = "rotation"
+axis = "z"
+pivot = [10, 34, 20]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The right ring's spin, turning in the opposite direction to the left.
+[[model.joint]]
+name = "ring_right_spin"
+part = "ring_right"
+kind = "rotation"
+axis = "z"
+pivot = [30, 34, 20]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The auto-play spin clips — one per ring, counter-rotating, so the two rings turn
+# in opposite directions on their own. Only `auto` joints take a clip; the
+# caller-driven `emitter_pitch` takes none. Keyframes are inline `[t_ms, value]`
+# pairs (radians): the left ring sweeps -pi -> +pi, the right +pi -> -pi.
+[[model.clip]]
+joint = "ring_left_spin"
+period_ms = 1600
+loop = true
+keyframes = [[0, -3.14159], [1600, 3.14159]]
+
+[[model.clip]]
+joint = "ring_right_spin"
+period_ms = 1600
+loop = true
+keyframes = [[0, 3.14159], [1600, -3.14159]]
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the emitter tilt through its range without dragging the joint
+# slider by hand. Each `[[model.animation.track]]` drives one joint over the shared
+# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
+# `pulse` nods the beam up, back to level, down, and level again before looping.
+[[model.animation]]
+name = "pulse"
+period_ms = 2000
+loop = true
+
+[[model.animation.track]]
+joint = "emitter_pitch"
+keyframes = [[0, 0.0], [500, 0.4], [1000, 0.0], [1500, -0.4], [2000, 0.0]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Lumen and \
+poses correctly — a floating beacon drone whose front emitter tilts on its mount \
+while its two rings counter-rotate on their own around a fixed core, with a bright \
+solar-hot core accent and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-lumen"
+title = "Reads as a floating beacon drone"
+text = """
+From more than one angle the model reads unmistakably as a floating beacon drone: \
+a compact hovering core carrying a glowing solar-hot heart, a pair of rings \
+orbiting it on either side, and a beam emitter projecting forward from the core \
+face. It hovers with no legs, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "emitter-tilts"
+title = "Emitter tilts and rings spin"
+text = """
+Driving the `emitter_pitch` joint tilts the front beam projector up and down about \
+its mount cleanly, with no voxel of the emitter tearing away from the core or \
+clipping into it across the full range. The two rings spin on their own through \
+the `ring_left_spin` and `ring_right_spin` auto joints, turning in opposite \
+directions."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "core-fixed"
+title = "Core stays fixed"
+text = """
+Only the moving parts move: the emitter when `emitter_pitch` is driven and the \
+rings as they spin. The core hull stays put — it is the fixed root of the rig, not \
+carried along by the emitter's tilt or the rings' rotation."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Rings and emitter stay attached"
+text = """
+Each child stays attached to the core across its joint's range: the two rings hold \
+their orbit at their mounts as they spin and the emitter meets the core face, with \
+no gap and never floating free or detaching as the rings turn and the beam tilts."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze shell, iron \
+rings, and the solar-hot core with its amber emitter) with a bright solar-hot core \
+accent, no out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

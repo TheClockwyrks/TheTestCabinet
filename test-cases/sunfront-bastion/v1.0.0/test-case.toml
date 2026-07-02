@@ -1,0 +1,212 @@
+name = "Sunfront Bastion"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Bastion: a 72x88x72 opaque-voxel fortified keep \
+whose solar collector crown rotates, whose gate raises, and whose beacon slowly \
+turns on their own auto clips while the base stays fixed, built and rigged one \
+recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 72
+height = 88
+depth = 72
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The fortress keep and its ramparts: the root part (no parent), fixed to the
+# world.
+[[model.part]]
+name = "base"
+pivot = [0, 0, 0]
+
+# The solar collector crown ringing the keep's summit. It rotates on its own on
+# the auto-driven `crown_spin`.
+[[model.part]]
+name = "solar_crown"
+parent = "base"
+pivot = [36, 76, 36]
+
+# The main gate set in the front wall. It raises straight up and back down on the
+# auto-driven `gate_raise`.
+[[model.part]]
+name = "gate"
+parent = "base"
+pivot = [36, 22, 70]
+
+# The signal beacon crowning the central spire. It turns slowly on its own on the
+# auto-driven `beacon_spin`.
+[[model.part]]
+name = "beacon"
+parent = "base"
+pivot = [36, 84, 36]
+
+# The collector crown's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, a full rotation about `y` so the ring turns on its own without a
+# caller.
+[[model.joint]]
+name = "crown_spin"
+part = "solar_crown"
+kind = "rotation"
+axis = "y"
+pivot = [36, 76, 36]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The gate's own looping raise. An `auto` joint the case drives with a
+# `[[model.clip]]`, an upward translation along `y` so the gate lifts and lowers on
+# its own without a caller. `rest = 0` is fully lowered (shut); `max = 16` is the
+# top of the raise.
+[[model.joint]]
+name = "gate_raise"
+part = "gate"
+kind = "translation"
+axis = "y"
+pivot = [36, 22, 70]
+min = 0.0
+max = 16.0
+rest = 0.0
+drive = "auto"
+
+# The beacon's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, a slow full rotation about `y` so the beacon sweeps on its own
+# without a caller.
+[[model.joint]]
+name = "beacon_spin"
+part = "beacon"
+kind = "rotation"
+axis = "y"
+pivot = [36, 84, 36]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The auto-play clips — one per animated part, so the bastion runs on its own. Only
+# `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs (radians for
+# the two rotation spins, voxels for the translation raise). The crown turns a full
+# revolution and loops; the gate lifts, holds, and lowers; the beacon turns slowly.
+[[model.clip]]
+joint = "crown_spin"
+period_ms = 4000
+loop = true
+keyframes = [[0, -3.14159], [4000, 3.14159]]
+
+[[model.clip]]
+joint = "gate_raise"
+period_ms = 3600
+loop = true
+keyframes = [[0, 0.0], [1080, 16.0], [2520, 16.0], [3600, 0.0]]
+
+[[model.clip]]
+joint = "beacon_spin"
+period_ms = 5000
+loop = true
+keyframes = [[0, -3.14159], [5000, 3.14159]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Bastion and \
+runs correctly — a huge, detailed fortified keep whose solar collector crown \
+rotates, whose gate raises and lowers, and whose beacon slowly turns on their own \
+auto clips while the base stays put, with a clear solar-amber energy accent and \
+the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-bastion"
+title = "Reads as a fortified keep"
+text = """
+From more than one angle the model reads unmistakably as a Duneforged home keep: a \
+massive, heavily detailed fortress — thick ramparts and towers rising to a walled \
+summit, a gated front wall, and a central spire — not an abstract stack of boxes. \
+It is the biggest, most detailed building of the roster."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Crown rotates, gate raises, and beacon spins on their own"
+text = """
+The three animated elements cycle on their own via their auto clips while the \
+`base` stays fixed: the `crown_spin` joint turns the solar collector crown a full \
+revolution, the `gate_raise` joint lifts the gate straight up and back down in the \
+front wall, and the `beacon_spin` joint turns the beacon slowly atop the spire. \
+Across each cycle no voxel of the crown, gate, or beacon tears away from its mount \
+or clips into the keep — each moves as one solid piece about the correct axis."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Base stays fixed"
+text = """
+Only the moving parts move: the crown as it rotates, the gate as it raises, and \
+the beacon as it spins. The keep, its ramparts, towers, and spire stay put — they \
+are the fixed root of the rig, not carried along by the crown, gate, or beacon."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Crown, gate, and beacon stay attached"
+text = """
+Each child stays attached to the base across its joint's range: the crown meets \
+the summit at its ring as it turns, the gate meets the front-wall opening at its \
+mount as it lifts and lowers, and the beacon meets the spire top at its base as it \
+turns, with no gap and never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
+amber accent, no out-of-palette colors, and no stray voxels drifting off the \
+parts."""
+weight = 1
+domain = "fidelity"

@@ -129,3 +129,23 @@ frontmost
 redeals
 peekable
 Devstral
+Sunfront
+Duneforged
+
+# Sunfront tug-of-war game + Duneforged voxel asset cases (unit & structure roster).
+Scarab
+Sentinel
+Bulwark
+Lancer
+Bombard
+Flakhound
+Sunhawk
+Lumen
+Monolith
+Aegis
+Reliquary
+Bastion
+Skyworks
+hatchery
+Flak
+hitscan

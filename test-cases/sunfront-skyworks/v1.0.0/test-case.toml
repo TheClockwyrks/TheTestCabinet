@@ -1,0 +1,185 @@
+name = "Sunfront Skyworks"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Skyworks: a 64x64x64 opaque-voxel open launch-pad \
+hangar whose turbine spins fast and launch door raises and lowers on their own \
+auto clips while the base stays fixed, built and rigged one recorded operation \
+at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 64
+height = 64
+depth = 64
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The launch-pad hangar and foundation: the root part (no parent), fixed to the
+# world.
+[[model.part]]
+name = "base"
+pivot = [0, 0, 0]
+
+# The turbine, mounted high over the pad's center mast. It spins on its own on the
+# auto-driven `turbine_spin`.
+[[model.part]]
+name = "turbine"
+parent = "base"
+pivot = [32, 50, 32]
+
+# The launch door, set in the front of the pad. It slides up and back down on its
+# own on the auto-driven `launch_door_raise`.
+[[model.part]]
+name = "launch_door"
+parent = "base"
+pivot = [32, 20, 50]
+
+# The turbine's own looping spin. An `auto` joint the case drives with a
+# `[[model.clip]]`, a full rotation about `y` so the turbine turns on its own
+# without a caller.
+[[model.joint]]
+name = "turbine_spin"
+part = "turbine"
+kind = "rotation"
+axis = "y"
+pivot = [32, 50, 32]
+min = -3.14159265
+max = 3.14159265
+rest = 0.0
+drive = "auto"
+
+# The launch door's own looping raise. An `auto` joint the case drives with a
+# `[[model.clip]]`, an upward translation along `y` so the door lifts and settles
+# on its own without a caller. `rest = 0` is fully closed; `max = 16` is fully
+# raised.
+[[model.joint]]
+name = "launch_door_raise"
+part = "launch_door"
+kind = "translation"
+axis = "y"
+pivot = [32, 20, 50]
+min = 0.0
+max = 16.0
+rest = 0.0
+drive = "auto"
+
+# The auto-play clips — one per animated part, so the Skyworks runs on its own.
+# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
+# (radians for the turbine spin, voxels for the door raise). The turbine turns a
+# full revolution fast and loops; the door rises, holds open, then lowers.
+[[model.clip]]
+joint = "turbine_spin"
+period_ms = 700
+loop = true
+keyframes = [[0, -3.14159], [700, 3.14159]]
+
+[[model.clip]]
+joint = "launch_door_raise"
+period_ms = 3400
+loop = true
+keyframes = [[0, 0.0], [1020, 16.0], [2380, 16.0], [3400, 0.0]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Skyworks \
+and runs correctly — an open launch-pad hangar whose turbine spins fast overhead \
+and launch door raises and lowers on their own auto clips while the base stays \
+put, with a clear solar-amber energy accent and the disciplined Duneforged \
+palette."""
+
+[[review_item]]
+id = "reads-as-skyworks"
+title = "Reads as a launch-pad hangar"
+text = """
+From more than one angle the model reads unmistakably as a Duneforged Skyworks: a \
+broad, open launch-pad hangar with a fast turbine spinning high over its center \
+mast and a launch door set in its front face. It is a working launch-pad \
+building, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Turbine spins and door raises on their own"
+text = """
+The animated elements cycle on their own via their auto clips while the `base` \
+stays fixed: the `turbine_spin` joint turns the turbine a full revolution fast \
+overhead, and the `launch_door_raise` joint slides the launch door up and back \
+down in its front face. Across each cycle no voxel of the turbine or door tears \
+away from its mount or clips into the pad — each moves as one solid piece about \
+the correct axis."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Base stays fixed"
+text = """
+Only the moving parts move: the turbine as it spins and the door as it raises. \
+The pad base and its foundation stay put — they are the fixed root of the rig, \
+not carried along by the turbine or the door."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Turbine and door stay attached"
+text = """
+Each child stays attached to the base across its joint's range: the turbine meets \
+its center mast at the hub as it spins, and the door meets the pad's front face at \
+its runners as it slides up and down, with no gap and never floating free or \
+detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber energy accent) with a \
+clear amber accent, no out-of-palette colors, and no stray voxels drifting off \
+the parts."""
+weight = 1
+domain = "fidelity"

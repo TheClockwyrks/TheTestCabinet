@@ -1,0 +1,211 @@
+name = "Sunfront Scarab"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+summary = """
+Sculpt and rig the Sunfront Scarab: a 48x28x56 opaque-voxel four-legged war-beetle \
+whose front mandibles snap on a caller-driven mandibles_snap joint while its two \
+leg banks scuttle on their own, built and rigged one recorded operation at a \
+time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 48
+height = 28
+depth = 56
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig — the stable, game-facing contract and the scoring targets. The
+# model must produce these parts and these joints; at run time it MAY add further
+# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table so the contract exists from the first operation.
+[model]
+
+# The beetle's carapace body: the root part (no parent), fixed to the world.
+[[model.part]]
+name = "body"
+pivot = [0, 0, 0]
+
+# The left bank of legs, mounted low on the left flank. It scuttles on
+# `legs_left_scuttle`.
+[[model.part]]
+name = "legs_left"
+parent = "body"
+pivot = [10, 8, 28]
+
+# The right bank of legs, mirroring the left. It scuttles on `legs_right_scuttle`
+# in opposite phase.
+[[model.part]]
+name = "legs_right"
+parent = "body"
+pivot = [38, 8, 28]
+
+# The front snapping jaws, mounted at the head. They open and close on the
+# caller-driven `mandibles_snap`.
+[[model.part]]
+name = "mandibles"
+parent = "body"
+pivot = [24, 8, 50]
+
+# The required caller-driven joint: a game addresses `mandibles_snap` by name to
+# open and close the front jaws about their hinge. `rest = 0` is fully closed;
+# `max = 0.9` is the widest gape. Only the mandibles move on this joint.
+[[model.joint]]
+name = "mandibles_snap"
+part = "mandibles"
+kind = "rotation"
+axis = "x"
+pivot = [24, 8, 50]
+min = 0.0
+max = 0.9
+rest = 0.0
+drive = "caller"
+
+# The left leg bank's own looping scuttle. An `auto` joint the case drives with a
+# `[[model.clip]]`, so the legs walk on their own without a caller.
+[[model.joint]]
+name = "legs_left_scuttle"
+part = "legs_left"
+kind = "rotation"
+axis = "x"
+pivot = [10, 8, 28]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The right leg bank's scuttle, in opposite phase to the left.
+[[model.joint]]
+name = "legs_right_scuttle"
+part = "legs_right"
+kind = "rotation"
+axis = "x"
+pivot = [38, 8, 28]
+min = -0.6
+max = 0.6
+rest = 0.0
+drive = "auto"
+
+# The auto-play scuttle clips — one per leg bank, in opposite phase, so the beetle
+# skitters on its own. Only `auto` joints take a clip; the caller-driven
+# `mandibles_snap` takes none. Keyframes are inline `[t_ms, value]` pairs (radians).
+[[model.clip]]
+joint = "legs_left_scuttle"
+period_ms = 500
+loop = true
+keyframes = [[0, 0.0], [125, 0.6], [250, 0.0], [375, -0.6], [500, 0.0]]
+
+[[model.clip]]
+joint = "legs_right_scuttle"
+period_ms = 500
+loop = true
+keyframes = [[0, 0.0], [125, -0.6], [250, 0.0], [375, 0.6], [500, 0.0]]
+
+# A predetermined animation the review viewer offers as a play button, so a
+# reviewer can watch the mandibles bite through their range without dragging the
+# joint slider by hand. Each `[[model.animation.track]]` drives one joint over the
+# shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
+# `bite` snaps the jaws wide open then closed and holds shut before looping.
+[[model.animation]]
+name = "bite"
+period_ms = 500
+loop = true
+
+[[model.animation.track]]
+joint = "mandibles_snap"
+keyframes = [[0, 0.0], [120, 0.9], [300, 0.0], [500, 0.0]]
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Scarab and \
+poses correctly — a low, wide four-legged war-beetle whose front mandibles snap \
+open and shut on their hinge while the two leg banks scuttle on their own and the \
+body stays put, with a clear solar-amber eye accent and the disciplined Duneforged \
+palette."""
+
+[[review_item]]
+id = "reads-as-scarab"
+title = "Reads as a war-beetle"
+text = """
+From more than one angle the model reads unmistakably as a scarab-like war-beetle: \
+a low, wide domed carapace body, four legs splayed out in two banks down its \
+sides, and a pair of snapping mandibles projecting forward from the head. It is a \
+scuttling insect machine, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "mandibles-snap"
+title = "Mandibles snap and legs scuttle"
+text = """
+Driving the `mandibles_snap` joint swings the front jaws open and shut about their \
+hinge cleanly, with no voxel of the mandibles tearing away from the head or \
+clipping into the body across the full range. The two leg banks scuttle on their \
+own through the `legs_left_scuttle` and `legs_right_scuttle` auto joints, stepping \
+in opposite phase."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "body-fixed"
+title = "Body stays fixed"
+text = """
+Only the moving parts move: the mandibles when `mandibles_snap` is driven and the \
+legs as they scuttle. The carapace body stays put — it is the fixed root of the \
+rig, not carried along by the jaws or the legs."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Legs and mandibles stay attached"
+text = """
+Each child stays attached to the body across its joint's range: the two leg banks \
+meet the body's flanks at their mounts and the mandibles meet the head, with no \
+gap and never floating free or detaching as the legs scuttle and the jaws snap."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze shell, iron legs, \
+and the solar-amber eye accent) with a clear amber eye-cluster on the head, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

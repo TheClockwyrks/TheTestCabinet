@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  Sunfront — title screen (base variant).
+  Canonical mockup of the main menu, rendered by the harness at 1280x720 as the
+  `title` view target. Source is never seeded; only the screenshot is.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- a dim slice of the battlefield behind the menu -->
+      <div class="dim">
+        <div class="lane"></div>
+        <div class="base player"></div>
+        <div class="base enemy"></div>
+        <div class="reliquary" style="left: 336px"></div>
+        <div class="reliquary" style="left: 872px"></div>
+        <div class="unit ember" style="left: 520px; top: 210px"></div>
+        <div class="unit azure" style="left: 700px; top: 250px"></div>
+        <div class="unit ember" style="left: 560px; top: 300px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">SUNFRONT</h1>
+        <div class="tagline">TUG-OF-WAR ON THE DUNE FRONT</div>
+        <nav class="menu">
+          <div class="menu-item selected">SKIRMISH</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+      <div class="hint">&uarr;&darr; SELECT &nbsp;&nbsp; ENTER CONFIRM</div>
+    </div>
+  </body>
+</html>
