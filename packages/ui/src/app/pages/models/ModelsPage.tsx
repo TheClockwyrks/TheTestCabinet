@@ -58,8 +58,8 @@ export function ModelsPage() {
               <span>{table.handle(0)}</span>
               <span>MODEL{table.handle(1)}</span>
               <span>PROVIDER{table.handle(2)}</span>
-              <span className={styles.num}>INPUT / MTOK{table.handle(3)}</span>
-              <span className={styles.num}>OUTPUT / MTOK{table.handle(4)}</span>
+              <span className={styles.num}>INPUT{table.handle(3)}</span>
+              <span className={styles.num}>OUTPUT{table.handle(4)}</span>
               <span className={styles.num}>CONTEXT{table.handle(5)}</span>
             </div>
             {models.map((model) => (
@@ -95,11 +95,11 @@ function ModelRow({ model }: { model: ModelSummary }) {
       </span>
       <Price
         value={perMillion(model.prices?.uncachedInput ?? null)}
-        label="Input / Mtok"
+        label="Input"
       />
       <Price
         value={perMillion(model.prices?.output ?? null)}
-        label="Output / Mtok"
+        label="Output"
       />
       <span
         className={`${styles.num}${model.contextLength == null ? ` ${styles.muted}` : ""}`}
