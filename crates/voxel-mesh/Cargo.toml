@@ -1,0 +1,53 @@
+[package]
+name = "test-cabinet-voxel-mesh"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The signed-distance meshing domain shared by the surface-extraction tools
+# (`mc`/`sn`/`dc` and their `-anim` siblings). It owns the scalar SDF `Field`
+# sampled on a uniform grid over the declared volume, the shared CSG-style field
+# `FieldOp` vocabulary (add/subtract primitives with a smooth-blend radius plus the
+# whole-field recolor/mirror/translate/copy/clear ops) and its apply logic, the
+# DC-only sharp-feature tag carried through the field, the per-algorithm
+# resolution/character `GridConfig` (MC coarse, SN medium, DC fine), the `Mesher`
+# trait that turns a field into a `Mesh` (the `PartMesh`-shaped flat arrays the
+# `mesh.json` contract carries), and the `mesh.json` emission. The three real
+# surface-extraction algorithms (marching cubes, surface nets, dual contouring) are
+# separate `Mesher` implementations added on top of this crate; today it ships one
+# trivial bounding-box `StubMesher` so the crate compiles and can be wired now.
+#
+# Previews are drawn by the shared wgpu+Mesa mesh renderer in
+# `test-cabinet-model-core`, which also owns the generic pieces this crate builds on
+# — the opaque-RGB color, the principal axis, and (behind `cli`) the config/record
+# plumbing and the `MeshView` the renderer consumes.
+[lib]
+name = "test_cabinet_voxel_mesh"
+path = "src/lib.rs"
+
+[features]
+# `cli` pulls in `serde_json` (for `mesh.json` emission) and enables
+# `test-cabinet-model-core`'s `cli` feature (the `render::MeshView` a `Mesh` borrows
+# into for the preview renderer). It is on by default for the binaries; a library
+# consumer such as `crates/core` links this crate with `default-features = false` to
+# get only the pure domain types (field, ops, mesher trait + stub) without the
+# renderer stack.
+default = ["cli"]
+cli = ["dep:serde_json", "test-cabinet-model-core/cli"]
+
+[dependencies]
+serde = { workspace = true }
+# The generic voxel-family core: the opaque-RGB `Rgb` color, the principal `Axis`,
+# and (behind its `cli` feature, re-enabled by this crate's `cli`) the `MeshView`
+# the shared renderer consumes. Linked without default features so a
+# `default-features = false` consumer of this crate never pulls in the wgpu preview
+# renderer.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
