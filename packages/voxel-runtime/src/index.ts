@@ -9,3 +9,4 @@
 export * from "./contract";
 export * from "./clips";
 export * from "./hierarchy";
+export { parseGlb } from "./glb";

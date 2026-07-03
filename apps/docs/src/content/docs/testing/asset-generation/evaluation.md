@@ -41,8 +41,8 @@ voxel run's output is the data the
 re-renders any preview. Instead the validator **parses the emitted data**, per part,
 and confirms it is well-formed and readable:
 
-- **the emitted geometry** — the meshed surface as a per-part `mesh.json` (the
-  `PartMesh` shape the runtime and the [glTF
+- **the emitted geometry** — the meshed surface as a per-part `.glb` (a standard
+  glTF 2.0 binary decoded into the `PartMesh` shape the runtime and the [glTF
   exporter](/components/voxel-runtime/overview/#exporting-to-gltf) consume) and, for
   the cube tools (`voxel`/`voxel-anim`), the sparse, order-stable `voxels.json`
   alongside it (only occupied cells, each an opaque `#rrggbb`, within the declared

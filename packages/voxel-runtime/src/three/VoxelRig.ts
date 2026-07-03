@@ -32,7 +32,7 @@ const isPartMesh = (v: Record<string, PartMesh> | PartMesh): v is PartMesh =>
 /**
  * A posable three.js voxel rig: one {@link THREE.Group} per part (all parented
  * under {@link VoxelRig.root}) carrying a single vertex-colored mesh, loaded
- * straight from that part's {@link PartMesh} (`mesh.json`) — the runtime never
+ * straight from that part's {@link PartMesh} (decoded from its `.glb`) — the runtime never
  * re-meshes.
  *
  * `pose`/`update` run {@link poseRig} and write each part's **world** matrix onto
@@ -62,7 +62,7 @@ export class VoxelRig {
 
   /**
    * @param rig the parts, joints, and animations to pose.
-   * @param meshesByPart each part's produced {@link PartMesh} (`mesh.json`), keyed
+   * @param meshesByPart each part's produced {@link PartMesh} (decoded from its `.glb`), keyed
    *   by part name — or a single `PartMesh` for a static model (assigned to the
    *   first part). A part with no entry, or an empty mesh, renders as an empty
    *   group (an attach socket).

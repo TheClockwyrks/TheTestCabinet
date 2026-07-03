@@ -16,7 +16,7 @@ import type {
   RunSubject,
   TournamentRecord,
 } from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import { parseGlb, type PartMesh } from "@test-cabinet/voxel-runtime";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -351,7 +351,7 @@ export interface AssetResultView {
 
 /**
  * One part of a voxel asset-generation run, resolved for display: the
- * `PartMesh`-shaped `mesh.json` the 3D viewer poses, the model's own isometric
+ * `PartMesh`-shaped per-part `.glb` the 3D viewer poses, the model's own isometric
  * preview PNG (reviewed against the brief and used as the WebGL/reduced-motion
  * fallback), and the recorded operation log — each as a loadable URL (or null when
  * the host cannot serve it). Cheat detection is retired for the voxel family, so —
@@ -361,7 +361,7 @@ export interface AssetResultView {
 export interface VoxelPartView {
   /** The part name: `model` for a static model, the declared part for animation. */
   name: string;
-  /** The `mesh.json` for this part (the `PartMesh` geometry fed to the 3D viewer). */
+  /** The per-part `.glb` for this part (the `PartMesh` geometry fed to the 3D viewer). */
   meshUrl: string | null;
   /** The model's own isometric preview PNG (also the WebGL/reduced-motion fallback). */
   previewUrl: string | null;
@@ -379,7 +379,7 @@ export interface VoxelPartView {
  * A voxel asset-generation run's result, resolved for display: one part for a
  * static model, one per declared part for an animated (rigged) model. The rig
  * structure travels inline in the run record (the {@link ModelSpec}), so the
- * viewer poses it directly; only each part's `mesh.json` is fetched (see
+ * viewer poses it directly; only each part's `.glb` is fetched (see
  * {@link GalleryData} `useVoxelArtifacts`). The 3D analog of {@link AssetResultView}.
  */
 export interface VoxelResultView {
@@ -483,7 +483,7 @@ export interface GalleryData extends GalleryDataInput {
   /**
    * A voxel asset-generation run's result resolved for display, or null when the
    * run is not a voxel run (its `validation.voxel` is absent). Media URLs (the
-   * per-part `mesh.json` and isometric PNGs) are resolved via
+   * per-part `.glb` and isometric PNGs) are resolved via
    * {@link assetMediaUrl}; the rig structure travels inline in the run record.
    */
   voxelResultFor(run: RunRecord): VoxelResultView | null;
@@ -592,7 +592,7 @@ export function GalleryDataProvider({
           const suffix = animated ? `-${index}` : "";
           return {
             name: part.name,
-            meshUrl: url(`mesh${suffix}.json`),
+            meshUrl: url(`mesh${suffix}.glb`),
             previewUrl: url(`preview${suffix}.png`),
             actionsUrl: url(`actions${suffix}.json`),
             operationCount: part.operationCount,
@@ -665,7 +665,7 @@ export function useGalleryData(): GalleryData {
   return ctx;
 }
 
-// A process-wide cache of fetched `mesh.json` files, keyed by their resolved URL.
+// A process-wide cache of fetched per-part `.glb` files, keyed by their resolved URL.
 // Mesh geometry is immutable per published/produced run, so a file fetched once
 // (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.
 const meshFileCache = new Map<string, PartMesh>();
@@ -684,7 +684,7 @@ export interface VoxelArtifacts {
 }
 
 /**
- * Fetch (and cache) each servable part's `mesh.json`, resolving to a
+ * Fetch (and cache) each servable part's `.glb`, resolving to a
  * `{ [partName]: PartMesh }` map (parts with no `meshUrl` are skipped). The module
  * cache is keyed by resolved URL and shared with {@link useVoxelArtifacts}, so the
  * 3D viewer and any one-off consumer (e.g. the GIF export, which builds an
@@ -704,7 +704,7 @@ export async function fetchMeshesByPart(
       if (!response.ok) {
         throw new Error(`${part.name}: ${response.status}`);
       }
-      const file = (await response.json()) as PartMesh;
+      const file = parseGlb(await response.arrayBuffer());
       meshFileCache.set(url, file);
       return [part.name, file] as const;
     }),
@@ -713,7 +713,7 @@ export async function fetchMeshesByPart(
 }
 
 /**
- * Fetch (and cache) the `mesh.json` geometry the 3D voxel viewer needs for a run's
+ * Fetch (and cache) the `.glb` geometry the 3D voxel viewer needs for a run's
  * parts. Pass the run's {@link VoxelResultView} parts (name + resolved `meshUrl`);
  * the hook fetches each (an unservable-null URL is skipped), resolves the lot into
  * a `{ [partName]: PartMesh }` map, and reuses the module cache across mounts.

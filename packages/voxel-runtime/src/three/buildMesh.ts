@@ -3,7 +3,7 @@ import type { PartMesh } from "../contract";
 
 /**
  * Wrap one part's {@link PartMesh} — the geometry the Rust meshing binaries already
- * extracted and emitted as `mesh.json` — into a single {@link THREE.BufferGeometry}
+ * extracted and emitted as a per-part binary glTF (`.glb`) — into a single {@link THREE.BufferGeometry}
  * with per-vertex colors (one geometry / one draw call). Use a material with
  * `vertexColors: true`.
  *
@@ -14,8 +14,8 @@ import type { PartMesh } from "../contract";
  * exact same geometry.
  *
  * Each array is copied into the `Float32Array`/`Uint32Array` a
- * {@link THREE.BufferAttribute} requires, so a `mesh.json` decoded to plain
- * `number[]` and an in-memory typed-array mesh are both accepted.
+ * {@link THREE.BufferAttribute} requires, so a `.glb` decoded to typed arrays and an
+ * in-memory `number[]` mesh are both accepted.
  */
 export function buildPartGeometry(mesh: PartMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();

@@ -28,14 +28,14 @@ export type {
 export type Vec3 = [number, number, number];
 
 /**
- * One part's surface mesh, as the meshing binaries' **`mesh.json`** contract: an
- * indexed triangle list with a position, normal, and linear `0..1` RGB color per
- * vertex. This is the geometry the Rust mesher already extracted (cube, marching
- * cubes, surface nets, or dual contouring — all emit the same shape); the runtime
- * **consumes** it and never re-meshes.
+ * One part's surface mesh: an indexed triangle list with a position, normal, and
+ * linear `0..1` RGB color per vertex. This is the geometry the Rust mesher already
+ * extracted (cube, marching cubes, surface nets, or dual contouring — all emit the
+ * same shape) and wrote as a per-part binary glTF (`.glb`); the runtime **consumes**
+ * it — via {@link import("./glb").parseGlb} — and never re-meshes.
  *
- * Fields are {@link ArrayLike} so this type covers both a `mesh.json` decoded with
- * `JSON.parse` (plain `number[]`) and in-memory typed arrays — the three binding's
+ * Fields are {@link ArrayLike} so this type covers both a `.glb` decoded by
+ * `parseGlb` (typed arrays) and plain `number[]` arrays — the three binding's
  * {@link import("./three").buildPartGeometry} copies each into the `Float32Array`/
  * `Uint32Array` a `THREE.BufferAttribute` needs.
  */

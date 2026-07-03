@@ -24,7 +24,7 @@ plumbing, the cube mesher, and the `wgpu` renderer — and each is baked into it
 the **voxel image** (`test-cabinet-voxel`) and `voxel-anim` into the
 **voxel-animation image** (`test-cabinet-voxel-animation`), so a run carries only
 the tool it uses. Nothing is regenerated or re-rendered after the run: the binary
-**emits** the geometry (`voxels.json` and a per-part `mesh.json`) and the rig
+**emits** the geometry (`voxels.json` and a per-part `.glb`) and the rig
 (`rig.json`), and the validator parses those and confirms they are well-formed (see
 [Evaluation](/testing/asset-generation/evaluation/)).
 
@@ -77,8 +77,8 @@ so the recorded log produces an exact, order-only volume.
 ## How a call records and previews
 
 Each operation appends itself to the run's **operation log**, updates the part's
-emitted geometry — the `voxels.json` and a per-part `mesh.json` (the meshed surface
-in the runtime's `PartMesh` shape) — and re-renders the **preview** from that
+emitted geometry — the `voxels.json` and a per-part `.glb` (the meshed surface as a
+standard glTF 2.0 binary, decoded into the runtime's `PartMesh` shape) — and re-renders the **preview** from that
 geometry, so the recorded log documents every operation and the emitted data and
 preview always reflect it. The orchestrator seeds a `voxel.config.json` (static) or
 `voxel-anim.config.json` (animated) next to the workspace giving the volume
@@ -103,7 +103,7 @@ the retired integer-only isometric rasterizer (`crates/voxel/src/raster.rs`); th
 preview no longer needs to be byte-reproducible, because nothing regenerates it
 after the run (see [Evaluation](/testing/asset-generation/evaluation/)). The preview
 is a **still** image; the interactive, rotatable 3D view is the frontend's three.js
-rendering of the emitted `mesh.json`/`voxels.json` (see
+rendering of the emitted `.glb`/`voxels.json` (see
 [voxel-runtime](/components/voxel-runtime/overview/)), not something the binary
 produces.
 

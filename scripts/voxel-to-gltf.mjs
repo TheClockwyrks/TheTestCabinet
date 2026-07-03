@@ -4,13 +4,13 @@
 // end-to-end game (or any engine) as a standard, animated mesh.
 //
 // It reads the artifacts a voxel-family run produces — `rig.json` (the part
-// hierarchy, joints, and model-authored animations) and per-part `mesh.json` (the
-// surface mesh the meshing binary already extracted) — and emits a glTF 2.0 file
-// with:
-//   • one mesh per part, its triangles carried straight from the part's `mesh.json`
+// hierarchy, joints, and model-authored animations) and per-part `<part>.glb` (the
+// surface mesh the meshing binary already extracted, as a standard glTF 2.0 binary) —
+// and emits a single glTF 2.0 file with:
+//   • one mesh per part, its triangles carried straight from the part's `.glb`
 //     (vertex-colored) — the Rust mesher ran once, upstream, so this tool NEVER
 //     re-meshes, and one exporter serves every voxel-family type identically (cube
-//     `voxel`/`voxel-anim` and MC/SN/DC alike all emit the same `mesh.json` shape),
+//     `voxel`/`voxel-anim` and MC/SN/DC alike all emit the same per-part `.glb`),
 //   • a node hierarchy matching the part tree (a game can find a part by node name
 //     and drive its transform, exactly as `voxel-runtime`'s `VoxelRig` does),
 //   • one glTF animation per `rig.animations` entry, with its F-curves DENSE-SAMPLED
@@ -19,28 +19,30 @@
 //   • a `<model>.interface.json` sidecar (mirrored into each driven node's `extras`)
 //     listing every `caller` joint as `{ node, kind, axis, min, max, rest }` — the
 //     procedural drives a game wires up.
-// A part with no geometry (an empty `mesh.json`, or none provided) exports as an
-// empty **attach socket** node (marked `extras.socket`), a muzzle/exhaust a game
-// hangs VFX on.
+// A part with no geometry (an empty-part `.glb` — one with no meshes — or none
+// provided) exports as an empty **attach socket** node (marked `extras.socket`), a
+// muzzle/exhaust a game hangs VFX on.
 //
 // A static model (`voxel-model` / `mc-model` / …) has no rig — pass a single
-// `mesh.json` and it emits a one-mesh, un-rigged glTF.
+// `mesh.glb` and it emits a one-mesh, un-rigged glTF.
 //
 // This is a STANDALONE tool: it has no dependencies and can be copied out of the
 // repo. Its rig-posing math mirrors the tested implementation in
-// `packages/voxel-runtime/src/{hierarchy,clips}.ts`, and it consumes the same
-// `mesh.json` geometry the runtime's `PartMesh` does — keep them in sync.
+// `packages/voxel-runtime/src/{hierarchy,clips}.ts`, and it decodes the same per-part
+// `.glb` geometry the runtime's `parseGlb` does into the `PartMesh` shape — keep them
+// in sync.
 //
 // Usage:
 //   node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb
-//   node scripts/voxel-to-gltf.mjs --meshes mesh.json --out model.glb   # static
+//   node scripts/voxel-to-gltf.mjs --meshes mesh.glb --out model.glb   # static
 //
 // Flags:
 //   --rig <path>          rig.json (omit for a static single-mesh model)
-//   --meshes <path>       a directory of `<part>.json` mesh files (rigged), or a
-//                         single `mesh.json` file (static). Each is the `PartMesh`
-//                         shape `{ positions, normals, colors, indices }`. Default:
-//                         `meshes/` beside --rig.
+//   --meshes <path>       a directory of `<part>.glb` mesh files (rigged), or a
+//                         single `mesh.glb` file (static). Each is a standard glTF
+//                         2.0 binary carrying one part's `PartMesh` geometry
+//                         (`positions`/`normals`/`colors`/`indices` accessors).
+//                         Default: `meshes/` beside --rig.
 //   --out <path>          output; `.glb` (binary, default) or `.gltf` (+ .bin).
 //                         The interface sidecar is written beside it as
 //                         `<model>.interface.json`.
@@ -80,7 +82,7 @@ function printHelp() {
   process.stdout.write(
     "voxel-to-gltf — convert a produced voxel model to glTF/GLB\n\n" +
       "  node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb\n" +
-      "  node scripts/voxel-to-gltf.mjs --meshes mesh.json --out model.glb   # static\n\n" +
+      "  node scripts/voxel-to-gltf.mjs --meshes mesh.glb --out model.glb   # static\n\n" +
       "See the header of this file for every flag.\n",
   );
 }
@@ -98,44 +100,128 @@ function readJson(path) {
   }
 }
 
-// Read a JSON file that may be absent: returns `null` if the file does not exist, but
-// still fails loudly on a malformed one. Used for a rig's optional per-part mesh (a
-// missing mesh becomes an attach socket, but a corrupt mesh is a real error).
-function readJsonIfPresent(path) {
-  let text;
+// ─────────────────────────────────────────────────────────────────────────────
+// Mesh input — the per-part binary glTF (`.glb`) the meshing binaries emit.
+//
+// Every voxel-family binary (cube `voxel`/`voxel-anim` and MC/SN/DC alike) runs its
+// surface extraction once, in Rust, and writes each part's triangles as a standard
+// glTF 2.0 binary `.glb` holding one mesh with one primitive (the `PartMesh` shape:
+// `POSITION`/`NORMAL`/`COLOR_0` VEC3 accessors + a U32 SCALAR index accessor). This
+// tool decodes that geometry into the flat `{ positions, normals, colors, indices }`
+// arrays below — it does NOT re-mesh — so one exporter serves them all identically.
+// The decoder mirrors `parseGlb` in `packages/voxel-runtime/src` and the Rust
+// `glb_to_part_mesh` in `crates/model-core/src/gltf.rs`.
+
+const GLB_MAGIC = 0x46546c67; // 'glTF'
+const CHUNK_JSON = 0x4e4f534a; // 'JSON'
+const CHUNK_BIN = 0x004e4942; // 'BIN\0'
+const COMPONENT_F32 = 5126;
+const COMPONENT_U32 = 5125;
+const COMPONENT_U16 = 5123;
+const TYPE_COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+
+// Read one accessor's values (following its bufferView into the BIN chunk) as a flat
+// JS number array of `count * componentsPer(type)` elements.
+function readAccessor(accessors, bufferViews, bin, index, path) {
+  const acc = accessors[index];
+  if (!acc) fail(`${path}: missing accessor ${index}`);
+  const comps = TYPE_COMPONENTS[acc.type] ?? 1;
+  const n = (acc.count ?? 0) * comps;
+  const view = bufferViews[acc.bufferView];
+  if (!view) fail(`${path}: accessor ${index} has no bufferView`);
+  const base = (view.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+  const out = new Array(n);
+  if (acc.componentType === COMPONENT_F32) {
+    for (let i = 0; i < n; i++) out[i] = bin.readFloatLE(base + i * 4);
+  } else if (acc.componentType === COMPONENT_U32) {
+    for (let i = 0; i < n; i++) out[i] = bin.readUInt32LE(base + i * 4);
+  } else if (acc.componentType === COMPONENT_U16) {
+    for (let i = 0; i < n; i++) out[i] = bin.readUInt16LE(base + i * 2);
+  } else {
+    fail(`${path}: accessor ${index} has unsupported componentType ${acc.componentType}`);
+  }
+  return out;
+}
+
+// Decode a per-part `.glb` (glTF 2.0 binary) into the `PartMesh` shape
+// `{ positions, normals, colors, indices }`. An empty-part glb (no meshes) decodes to
+// all-empty arrays (the part becomes an attach socket).
+function decodeGlb(buffer, path) {
+  if (buffer.length < 12) fail(`${path}: glb too short for a 12-byte header`);
+  if (buffer.readUInt32LE(0) !== GLB_MAGIC) fail(`${path}: not a glb (bad magic)`);
+  const total = buffer.readUInt32LE(8);
+
+  let off = 12;
+  let jsonBytes = null;
+  let bin = Buffer.alloc(0);
+  const end = Math.min(total, buffer.length);
+  while (off + 8 <= end) {
+    const chunkLen = buffer.readUInt32LE(off);
+    const chunkType = buffer.readUInt32LE(off + 4);
+    const dataStart = off + 8;
+    const dataEnd = dataStart + chunkLen;
+    if (dataEnd > buffer.length) fail(`${path}: glb chunk length exceeds file`);
+    const data = buffer.subarray(dataStart, dataEnd);
+    if (chunkType === CHUNK_JSON) jsonBytes = data;
+    else if (chunkType === CHUNK_BIN) bin = data;
+    off = dataEnd;
+  }
+  if (!jsonBytes) fail(`${path}: glb has no JSON chunk`);
+
+  let doc;
   try {
-    text = readFileSync(path, "utf8");
+    doc = JSON.parse(jsonBytes.toString("utf8"));
+  } catch (err) {
+    fail(`${path}: glb JSON chunk is not valid JSON: ${err.message}`);
+  }
+
+  const empty = { positions: [], normals: [], colors: [], indices: [] };
+  const meshes = Array.isArray(doc.meshes) ? doc.meshes : [];
+  if (meshes.length === 0) return empty; // an empty part → attach socket
+
+  const accessors = doc.accessors ?? [];
+  const bufferViews = doc.bufferViews ?? [];
+  const primitive = meshes[0]?.primitives?.[0];
+  if (!primitive) fail(`${path}: glb mesh has no primitive`);
+  const attributes = primitive.attributes ?? {};
+  const attr = (semantic) => {
+    const i = attributes[semantic];
+    if (i === undefined) fail(`${path}: glb primitive has no ${semantic} attribute`);
+    return i;
+  };
+  if (primitive.indices === undefined) fail(`${path}: glb primitive has no indices accessor`);
+
+  return {
+    positions: readAccessor(accessors, bufferViews, bin, attr("POSITION"), path),
+    normals: readAccessor(accessors, bufferViews, bin, attr("NORMAL"), path),
+    colors: readAccessor(accessors, bufferViews, bin, attr("COLOR_0"), path),
+    indices: readAccessor(accessors, bufferViews, bin, primitive.indices, path),
+  };
+}
+
+// Read and decode a per-part `.glb` from disk into a `PartMesh`.
+function readGlb(path) {
+  let buffer;
+  try {
+    buffer = readFileSync(path);
+  } catch (err) {
+    fail(`could not read ${path}: ${err.message}`);
+  }
+  return decodeGlb(buffer, path);
+}
+
+// Read a per-part `.glb` that may be absent: returns `null` if the file does not
+// exist, but still fails loudly on a malformed one. Used for a rig's optional per-part
+// mesh (a missing mesh becomes an attach socket, but a corrupt one is a real error).
+function readGlbIfPresent(path) {
+  let buffer;
+  try {
+    buffer = readFileSync(path);
   } catch (err) {
     if (err.code === "ENOENT") return null;
     fail(`could not read ${path}: ${err.message}`);
   }
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    fail(`could not parse ${path}: ${err.message}`);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mesh input — the `mesh.json` (PartMesh) shape the meshing binaries emit.
-//
-// Every voxel-family binary (cube `voxel`/`voxel-anim` and MC/SN/DC alike) runs its
-// surface extraction once, in Rust, and writes each part's triangles as a `mesh.json`
-// with the flat `{ positions, normals, colors, indices }` arrays below. This tool
-// consumes that geometry verbatim — it does NOT re-mesh — so one exporter serves them
-// all identically.
-
-// Validate a decoded `mesh.json` is the PartMesh shape (flat numeric arrays). Returns
-// the mesh, or fails with a clear message.
-function asPartMesh(mesh, path) {
-  const ok =
-    mesh &&
-    Array.isArray(mesh.positions) &&
-    Array.isArray(mesh.normals) &&
-    Array.isArray(mesh.colors) &&
-    Array.isArray(mesh.indices);
-  if (!ok) fail(`${path} is not a mesh.json (expected positions/normals/colors/indices arrays)`);
-  return mesh;
+  return decodeGlb(buffer, path);
 }
 
 // Whether a mesh carries any triangles (a part with an empty mesh is an attach socket).
@@ -619,8 +705,8 @@ function build({ rig, meshesByPart, name }) {
     if (tr[0] || tr[1] || tr[2]) node.translation = tr;
     if (q[0] || q[1] || q[2] || q[3] !== 1) node.rotation = q;
 
-    // Mesh geometry (the meshing binary's `mesh.json`, verbatim), baked into the
-    // part's rest-local frame.
+    // Mesh geometry (decoded from the meshing binary's per-part `.glb`, verbatim),
+    // baked into the part's rest-local frame.
     const mesh = meshesByPart[part.name];
     if (meshHasGeometry(mesh)) {
       const invRest = invert(restWorld.get(part.name));
@@ -657,7 +743,7 @@ function build({ rig, meshesByPart, name }) {
       });
       node.mesh = gltf.meshes.length - 1;
     } else {
-      // A part with no geometry (an empty mesh.json, or none provided) is an attach
+      // A part with no geometry (an empty-part `.glb`, or none provided) is an attach
       // socket (a muzzle, an exhaust): an empty node a game hangs VFX on or spawns
       // projectiles from.
       node.extras = { ...(node.extras ?? {}), socket: true };
@@ -775,17 +861,17 @@ function main() {
     if (!Array.isArray(rig.parts)) fail(`${args.rig} is not a rig (no parts array)`);
     const meshesDir = args.meshes ?? join(dirname(args.rig), "meshes");
     for (const part of rig.parts) {
-      const path = join(meshesDir, `${part.name}.json`);
-      const raw = readJsonIfPresent(path);
-      if (raw === null) {
+      const path = join(meshesDir, `${part.name}.glb`);
+      const mesh = readGlbIfPresent(path);
+      if (mesh === null) {
         process.stderr.write(`voxel-to-gltf: note: no mesh for part \`${part.name}\` at ${path}; exporting an attach socket\n`);
         continue;
       }
-      meshesByPart[part.name] = asPartMesh(raw, path);
+      meshesByPart[part.name] = mesh;
     }
   } else {
     // Static single-mesh model: one implicit "model" part, no joints.
-    const mesh = asPartMesh(readJson(args.meshes), args.meshes);
+    const mesh = readGlb(args.meshes);
     rig = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [], animations: [] };
     meshesByPart.model = mesh;
   }

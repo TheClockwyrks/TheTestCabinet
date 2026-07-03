@@ -304,8 +304,8 @@ A **meshed** case (`asset_kind` beginning `mc-`, `sn-`, or `dc-`) is identical i
 manifest shape to a cube case — it frames the same `[voxel]` volume, and its
 animated kinds carry the same `[model]` rig — but its `[tool].binary` is the
 corresponding **meshing binary**. Its `[output]` names the **op log** the binary
-records — exactly like a cube case — while the extracted **`mesh.json`** triangle
-geometry the surface extractor produces is emitted to a path core provides
+records — exactly like a cube case — while the extracted **`.glb`** (binary glTF)
+triangle geometry the surface extractor produces is emitted to a path core provides
 automatically (it is not declared in the manifest):
 
 ```toml
@@ -326,7 +326,7 @@ preview = "model.png"        # where the wgpu preview PNG is written (a {part} t
 
 [output]
 actions = "actions.json"     # the recorded op log (as for a cube case); the extracted
-                             # mesh.json geometry is emitted automatically by core
+                             # .glb geometry is emitted automatically by core
 ```
 
 An **animated** meshed case (`mc-animation`, `sn-animation`, `dc-animation`) uses the
@@ -372,7 +372,7 @@ actions = "parts/{part}.actions.json" # {part} REQUIRED for an animated kind
   case names fixes the output's **character** — a cube volume, or an `mc` low-poly,
   `sn` smooth, or `dc` sharp-edged surface — it is **not** a manifest knob. Every
   voxel case's `[output]` names its `actions` op log; for a meshed case core also
-  emits the extracted geometry automatically (`mesh.json`, or `meshes/{part}.json`
+  emits the extracted geometry automatically (`mesh.glb`, or `meshes/{part}.glb`
   per part for an animated kind), so it is not manifest-declared. For an **animated** kind — where each part is
   authored, previewed, and emitted separately — `preview` and the `[output]` path
   **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a **static**

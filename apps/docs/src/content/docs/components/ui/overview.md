@@ -53,7 +53,7 @@ interfaces. A host imports only what it needs.
   [asset-generation](/testing/asset-generation/overview/) run's media — the
   regenerated, target, and preview images plus the action log, and for a
   [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
-  emitted `mesh.json` (plus `voxels.json` for the cube tools) and `rig.json` — the same way (a
+  emitted per-part `.glb` (plus `voxels.json` for the cube tools) and `rig.json` — the same way (a
   published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
   run from the artifact service's matching endpoint; the site from snapshot
   assets), which the **Verdict** tab's result view shows side by side. A voxel run
@@ -68,7 +68,7 @@ interfaces. A host imports only what it needs.
   scroll-to-zoom is disabled (the model rotates but does not zoom); expanded, both
   scroll-to-zoom and grab-to-rotate are enabled. The **live monitor** renders a
   voxel run's in-progress model the same way — rebuilding it in 3D from the streamed
-  `mesh.json` after each operation (a **Scene** view assembling every part whose
+  `.glb` bytes (decoded with the same `parseGlb`) after each operation (a **Scene** view assembling every part whose
   mount location is known, and a **Model** view for one part at a time) instead of
   the emitted preview PNG. (Both
   consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the

@@ -127,7 +127,7 @@ the geometry each emits:
   surface** from a signed-distance field, described in [Meshed voxel
   models](#meshed-voxel-models) below.
 
-Both families emit a **mesh** as their geometry (a per-part `mesh.json`), and both
+Both families emit a **mesh** as their geometry (a per-part `.glb`), and both
 are judged the same way: the recorded **operation log** and the emitted geometry
 (plus the rig, for an animated kind) are the authoritative output, and the
 validator **parses the emitted data**, confirms it is well-formed and readable, and
@@ -225,7 +225,7 @@ never expose individual cells — the volume only **frames the field** the surfa
 extracted from.
 
 Everything else about the voxel family carries over unchanged. The meshed kinds emit
-the same per-part `mesh.json` geometry and preview through the same `wgpu` renderer,
+the same per-part `.glb` geometry and preview through the same `wgpu` renderer,
 and — for the animated kinds (`mc-animation`, `sn-animation`, `dc-animation`) — are
 **rigged and animated exactly as `voxel-animation` is**: the same parts, joints, and
 model-authored F-curve animations described under [The rig](#the-rig-parts-and-joints)

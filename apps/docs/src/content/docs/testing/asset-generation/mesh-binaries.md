@@ -1,6 +1,6 @@
 ---
 title: Mesh binaries
-description: The CSG/signed-distance-field authoring interface and mesh.json output contract for the Marching Cubes, Surface Nets, and Dual Contouring meshing binaries (mc/sn/dc and their -anim variants).
+description: The CSG/signed-distance-field authoring interface and per-part .glb (binary glTF) output contract for the Marching Cubes, Surface Nets, and Dual Contouring meshing binaries (mc/sn/dc and their -anim variants).
 ---
 
 A **mesh** asset-generation run sculpts through a **meshing binary** on its
@@ -170,7 +170,7 @@ Each operation appends itself to the run's **operation log** and re-renders the
 truth and the preview always reflects it. The orchestrator seeds a config next to
 the workspace — `mc.config.json` (static) or `mc-anim.config.json` (animated), and
 likewise for `sn`/`dc` — giving the volume dimensions, background, and the
-log/preview and `mesh.json` paths, and, for the animated tools, the part list and
+log/preview and mesh (`.glb`) paths, and, for the animated tools, the part list and
 the `rig.json` path, so an operation needs no volume flags. A model reads the
 preview between calls to judge its progress.
 
@@ -182,8 +182,8 @@ mc render --actions <log> --out <png>    # rebuild the field from a log and re-r
 This record-and-preview loop exists for **authoring ergonomics only** — it lets the
 model (and a watching human) see the surface take shape operation by operation. It
 is **not** a cheat-detection mechanism. The [validator](/testing/asset-generation/evaluation/)
-does not regenerate or re-render anything: it parses the emitted
-[`mesh.json`](#the-meshjson-output-contract) and `rig.json`, confirms they are
+does not regenerate or re-render anything: it decodes the emitted per-part
+[`.glb`](#the-glb-output-contract) and parses `rig.json`, confirms they are
 well-formed and readable, and checks the **rig contract** (that each required
 animation is present and actually animates). What is judged is the emitted data plus a
 reviewer's read of the rendered previews — not how the data was produced.
@@ -201,7 +201,7 @@ across all algorithms: the same orbit camera and shading over whatever surface t
 binary extracted. Because nothing is regenerated for scoring, the renderer carries
 no determinism requirement. (The still preview is what a model reads and a reviewer
 sees; the interactive, rotatable, posable 3D view is the frontend's rendering — see
-[the mesh.json contract](#the-meshjson-output-contract) and
+[the `.glb` contract](#the-glb-output-contract) and
 [voxel-runtime](/components/voxel-runtime/overview/).)
 
 ## Live preview
@@ -215,8 +215,8 @@ adds a `live` block (a `host.docker.internal` endpoint and an opaque per-run tok
 to the seeded config, and after each operation the binary connects back to the run
 host and streams a one-line JSON header
 (`{ token, frame, operationCount, operation, length, meshLength }`) followed by the
-freshly rendered preview PNG's raw bytes and then the part's current `mesh.json`
-text (`meshLength` bytes). The mesh body lets the viewer rebuild the surface **in
+freshly rendered preview PNG's raw bytes and then the part's current mesh as
+per-part `.glb` bytes (`meshLength` bytes). The mesh body lets the viewer rebuild the surface **in
 3D** as it is sculpted — orbiting it and assembling the scene exactly as the
 finished-run view does — rather than showing only the flat preview PNG; a PNG-only
 viewer simply ignores it. For an animated model the `frame` field carries the
@@ -224,7 +224,7 @@ viewer simply ignores it. For an animated model the `frame` field carries the
 of every part, and the assembled scene at once (a static model uses part index
 `0`). Streaming is **best-effort and non-essential** — absent for an unwatched run,
 never fails an operation, and never recorded; the recorded **operation log** and the
-emitted `mesh.json` remain the run's authoritative output.
+emitted `.glb` remain the run's authoritative output.
 
 ## The animated binaries: one field per part, plus the rig
 
@@ -233,7 +233,7 @@ An animated model is a
 a hierarchy with named joints and model-authored animations. Each animated binary
 (`mc-anim`, `sn-anim`, `dc-anim`) is its static counterpart plus a global required
 `--part <name>` that selects which part an operation sculpts into; **each part is an
-independently-authored field**, meshed on its own into its own `mesh.json`, with its
+independently-authored field**, meshed on its own into its own `.glb`, with its
 own operation log and its own preview (both `{part}` templates the case declares).
 The rig — the parts (each with a pivot), joints, and F-curve animations the model
 **invents** — **composes and poses the per-part meshes**: parts are the pieces that
@@ -271,25 +271,33 @@ model **builds the whole rig** — inventing the parts and joints the subject ne
 authoring each required animation — and may add further animations of its own; the
 **required animations** are the game-facing contract a reviewer scores against.
 
-## The `mesh.json` output contract
+## The `.glb` output contract
 
 Each binary emits, **per part** (a static model is a single implicit part), a
-**`mesh.json`** — the single source of the extracted geometry. It has the same shape
-as the runtime's `PartMesh` (the output of `@test-cabinet/voxel-runtime`'s
-`buildPartMesh`):
+per-part **`.glb`** (a standard **glTF 2.0 binary** container holding one mesh with
+one primitive) — the single source of the extracted geometry. It is written to
+`meshes/{part}.glb` for an animated model and `mesh.glb` for a static one. Its
+primitive carries the same four attributes the runtime's `PartMesh` holds (the
+output of `@test-cabinet/voxel-runtime`'s `buildPartMesh`), as glTF **accessors**:
 
-- **`positions`** — a flat array of float triples (`x, y, z` per vertex),
-- **`normals`** — a flat array of float triples (one per vertex),
-- **`colors`** — a flat array of triples, using the **same normalization the runtime
-  `PartMesh` uses**, and
-- **`indices`** — a flat array of triangle-vertex indices.
+- **`positions`** — the `POSITION` accessor: F32 `VEC3` (`x, y, z` per vertex),
+- **`normals`** — the `NORMAL` accessor: F32 `VEC3` (one per vertex),
+- **`colors`** — the `COLOR_0` accessor: F32 `VEC3`, using the **same normalization
+  the runtime `PartMesh` uses**, and
+- **`indices`** — the index accessor: a U32 `SCALAR` triangle-vertex list.
 
-`mesh.json` is the single source of geometry for every consumer, and the Rust
+A part with **no geometry** (an empty part — an attach socket) is emitted as a valid
+glb with an empty scene and **no meshes**; decoding it yields empty arrays. Because
+the format is standard glTF 2.0, the Rust encoder and the TypeScript / Node decoders
+interoperate through the **glTF spec**, not through each other's code.
+
+The `.glb` is the single source of geometry for every consumer, and the Rust
 mesher runs **once**: the [wgpu preview renderer](#preview-rendering-wgpu--mesa-lavapipe)
-consumes it, the TypeScript [`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/)
-consumes it directly (**no re-meshing in TS**), and `scripts/voxel-to-gltf.mjs`
-packs `mesh.json` + `rig.json` into
+renders the in-memory mesh, the TypeScript [`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/)
+decodes it directly into a `PartMesh` (**no re-meshing in TS**), and
+`scripts/voxel-to-gltf.mjs` decodes each part's `.glb` and packs it with `rig.json`
+into a single whole-rig
 [**glTF**](/components/voxel-runtime/overview/#exporting-to-gltf) — one mesh per part,
 baked animations, and the joint-interface sidecar — for game and WebGL consumption.
-The cube binaries emit `mesh.json` in the same shape, so one glTF exporter and one
+The cube binaries emit the same per-part `.glb`, so one glTF exporter and one
 runtime serve every voxel-family type.

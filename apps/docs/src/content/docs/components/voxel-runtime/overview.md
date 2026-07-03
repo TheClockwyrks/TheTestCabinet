@@ -5,11 +5,12 @@ title: Overview
 The voxel runtime (`@test-cabinet/voxel-runtime`, in `packages/voxel-runtime`) is
 the shared TypeScript library that turns a
 [voxel-animation](/testing/asset-generation/overview/#voxel-models-and-rigs) run's
-produced artifacts — its `rig.json` and per-part `mesh.json` — into a **posable,
+produced artifacts — its `rig.json` and per-part `.glb` — into a **posable,
 renderable 3D model**. The geometry arrives ready-made: the
 [meshing binaries](/testing/asset-generation/voxel-binaries/) run the surface
-extraction once, in Rust, and emit each part's triangles as a `mesh.json`; the
-runtime **consumes** that geometry rather than meshing anything itself. It is
+extraction once, in Rust, and emit each part's triangles as a standard glTF 2.0
+binary `.glb`; the runtime **decodes** that geometry into a `PartMesh` rather than
+meshing anything itself. It is
 consumed by the in-repo [3D viewer](/components/ui/overview/) that reviews voxel
 runs *and* by real games that embed a produced model, so the posing math and the
 mesh loading live in one place rather than being reimplemented per consumer.
@@ -23,7 +24,7 @@ The package ships **two subpath entries** so a consumer takes only what it needs
 
 - **`@test-cabinet/voxel-runtime`** (the root) — the **pure core**: the contract
   types, the framework-agnostic posing math, and the framework-agnostic
-  **`PartMesh`** geometry it loads from a part's `mesh.json` (plain
+  **`PartMesh`** geometry it decodes from a part's `.glb` via `parseGlb` (into plain
   `{ positions, normals, colors, indices }` typed arrays), with **no rendering
   dependency**. A game with its own renderer, a headless consumer (a test, a
   server), or the [glTF exporter](#exporting-to-gltf) uses this alone.
@@ -50,12 +51,15 @@ by the [meshing binaries](/testing/asset-generation/voxel-binaries/):
   [`ModelSpec`/`PartSpec`/`JointSpec`](/components/core/run-records/) contract. The
   parts and joints are entirely **model-invented**; the only rig the case fixed is
   its **required animations** (by name), which this produced rig realizes.
-- **`mesh.json`** — one part's **surface mesh**, as the `PartMesh` shape: flat
-  `positions` and `normals` (float triples), per-vertex `colors` (linear `0..1`
-  RGB triples baked from the field's opaque `#rrggbb`), and triangle `indices`.
-  One per part (or a single `mesh.json` for a static model). This is the geometry
-  the mesher already extracted — the runtime uploads it as-is and **does not
-  re-mesh in TypeScript**; the Rust mesher runs exactly once, upstream.
+- **per-part `.glb`** — one part's **surface mesh**, as a standard glTF 2.0 binary
+  that `parseGlb` decodes into the `PartMesh` shape: flat `positions` and `normals`
+  (from the `POSITION`/`NORMAL` accessors), per-vertex `colors` (the `COLOR_0`
+  accessor, linear `0..1` RGB triples baked from the field's opaque `#rrggbb`), and
+  triangle `indices`. One per part (`meshes/{part}.glb`), or a single `mesh.glb` for
+  a static model. This is the geometry the mesher already extracted — the runtime
+  decodes and uploads it as-is and **does not re-mesh in TypeScript**; the Rust
+  mesher runs exactly once, upstream. An empty-part `.glb` (a socket) decodes to an
+  empty `PartMesh`.
 
 Both are governed by the run-record contract schema, so a consuming game can rely
 on their shapes the same way the review UI does.
@@ -63,7 +67,7 @@ on their shapes the same way the review UI does.
 ### Where the geometry comes from
 
 The runtime never sees voxels or a signed-distance field — only the finished
-triangles in `mesh.json`. Which mesher produced them is chosen upstream by the
+triangles decoded from each part's `.glb`. Which mesher produced them is chosen upstream by the
 binary the case runs, and each binary has a **fixed surface character**:
 
 - **cube** (`voxel` / `voxel-anim`) — the blocky, axis-aligned surface of an
@@ -84,7 +88,7 @@ single load-and-render path serves all of them — the cube path included.
 This library is the **browser/three** renderer. The binaries also render their own
 **preview PNGs** headlessly — a `wgpu` renderer targeting Mesa lavapipe (software
 Vulkan, CPU-only, no GPU in the container) — but that path lives on the binary
-side. Both draw the same `mesh.json`. See the
+side. Both draw the same `.glb` geometry. See the
 [voxel binaries](/testing/asset-generation/voxel-binaries/) for how previews are
 produced.
 :::
@@ -149,8 +153,8 @@ any renderer without pulling in three.
 ## The `VoxelRig` API (for game integrators)
 
 The three binding wraps the core in a scene object a game drives directly.
-`buildPartGeometry` wraps a part's `PartMesh` — loaded straight from its
-`mesh.json` — into one `BufferGeometry` per part with per-vertex colors (one
+`buildPartGeometry` wraps a part's `PartMesh` — decoded straight from its
+`.glb` by `parseGlb` — into one `BufferGeometry` per part with per-vertex colors (one
 geometry, one draw call, regardless of which mesher produced it), and `VoxelRig`
 assembles the parts under the rig hierarchy:
 
@@ -181,23 +185,23 @@ identically.
 
 For embedding a produced voxel model in an **end-to-end game** (or any engine) as a
 ready-made, animated mesh asset — rather than shipping `rig.json` + per-part
-`mesh.json` and posing at runtime — the repo ships a standalone converter,
-`scripts/voxel-to-gltf.mjs`. It **packs** a run's produced artifacts into a
-standard **glTF 2.0 / GLB**: it reads the meshing binaries' `mesh.json` geometry
-directly and never re-meshes, so the same exporter serves every voxel-family type
-(cube and MC/SN/DC alike):
+`.glb` and posing at runtime — the repo ships a standalone converter,
+`scripts/voxel-to-gltf.mjs`. It **packs** a run's produced artifacts into a single
+whole-rig **glTF 2.0 / GLB**: it decodes each part's per-part `.glb` geometry
+directly (with the same `parseGlb` logic, in Node) and never re-meshes, so the same
+exporter serves every voxel-family type (cube and MC/SN/DC alike):
 
 ```sh
 # A rigged, animated model (rig.json carries the parts, joints, and animations):
 node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb
-# A static model (one mesh.json, no rig):
-node scripts/voxel-to-gltf.mjs --meshes mesh.json --out model.glb
+# A static model (one mesh.glb, no rig):
+node scripts/voxel-to-gltf.mjs --meshes mesh.glb --out model.glb
 ```
 
 The output carries **one mesh per part** (its triangles carried straight from the
-part's `mesh.json`, vertex-colored) and a **node hierarchy** matching the part
+part's `.glb`, vertex-colored) and a **node hierarchy** matching the part
 tree (each node named after its part, so a game can find and drive it). A part
-with **no geometry** (an empty `mesh.json`) exports as an empty **attach socket**
+with **no geometry** (an empty-part `.glb`) exports as an empty **attach socket**
 node — a `muzzle` or `exhaust` a game hangs VFX on or spawns projectiles from.
 Each part's geometry is baked into its rest-local frame, so a node's default
 transform reproduces the rest pose.
@@ -222,8 +226,8 @@ Alongside the mesh the exporter emits the two things a game consumes, one per
 
 So a game can play the baked clips *or* drive the caller joints itself by
 transforming the named nodes within their limits, exactly as `VoxelRig` does. The
-tool is dependency-free (its rig-posing math mirrors the tested core, and it packs
-the meshing binaries' `mesh.json` geometry verbatim) and accepts either the raw
+tool is dependency-free (its rig-posing math mirrors the tested core, and it decodes
+the meshing binaries' per-part `.glb` geometry verbatim) and accepts either the raw
 produced `rig.json` or a run record's resolved `ModelSpec` rig. It is
 **not** exposed to voxel test cases — it is an authoring/build step for the games
 that consume the assets. Output is GLB by default, or a `.gltf` + `.bin` pair when
@@ -232,7 +236,7 @@ that consume the assets. Output is GLB by default, or a `.gltf` + `.bin` pair wh
 ## Status
 
 Implemented in `packages/voxel-runtime`. The pure core has no rendering
-dependency (it loads each part's `mesh.json` into the `PartMesh` shape rather than
+dependency (it decodes each part's `.glb` into the `PartMesh` shape rather than
 meshing anything); the three binding takes `three` as a peer dependency. It is
 consumed by the
 [UI library](/components/ui/overview/)'s `VoxelViewer`, is publishable for games

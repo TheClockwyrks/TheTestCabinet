@@ -135,7 +135,7 @@ const RIG: ModelSpec = {
 function part(name: string): VoxelResultView["parts"][number] {
   return {
     name,
-    meshUrl: `meshes/${name}.json`,
+    meshUrl: `meshes/${name}.glb`,
     previewUrl: `parts/${name}.png`,
     actionsUrl: `parts/${name}.actions.json`,
     operationCount: 10,
