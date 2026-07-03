@@ -1,0 +1,201 @@
+---
+description: Read this skill before adding a new variant to an existing ANIMATED meshed asset-generation test case (asset_kind = "mc-animation", "sn-animation", or "dc-animation") — a brief variation (tighter palette, operation budget, CSG technique, or a rig-posing constraint) the model sculpts and rigs toward across the case's fixed [model] parts and joints with the `mc-anim`/`sn-anim`/`dc-anim` meshing binary, registered in a version's test-case.toml. For a variant of a STATIC meshed case (any `-model` kind) use adding-a-mesh-model-variant; for a rigged VOXEL (cube) case use adding-a-voxel-animation-variant; for a 2D sprite/sprite-sheet case use adding-a-sprite-variant / adding-a-sprite-sheet-variant; for an end-to-end case use adding-an-end-to-end-variant.
+name: adding-a-mesh-animation-variant
+---
+
+# Adding a Meshed-Animation (Rigged) Variant
+
+## What a mesh-animation variant is
+
+An animated meshed
+[asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
+test case (`asset_kind = "mc-animation"`, `"sn-animation"`, or `"dc-animation"`)
+sculpts and rigs a 3D model by **compositing per-part signed-distance fields** — a
+CSG paradigm — with a `-anim` meshing binary, which extracts a triangle mesh per
+part. A `[model]` table declares the **required** rig (named `[[model.part]]` entries
+in a hierarchy, `[[model.joint]]` degrees of freedom a game poses, and
+`[[model.animation]]` declarations the model must author as F-curves), each part
+sculpted toward a goal **described in a brief** (there is no target model). Its
+version offers one or more **variants**, and a run selects exactly one. Every variant
+seeds the version's **common specs** (the brief) plus its own **additive** specs. The
+chosen variant's slug is recorded in the run record.
+
+This skill covers variants of **animated meshed** cases. For a variant of a
+**static meshed** case — one model, no rig (any `-model` kind) — use the
+[`adding-a-mesh-model-variant`](../adding-a-mesh-model-variant/SKILL.md) skill. For a
+variant of a **rigged VOXEL (cube)** case use
+[`adding-a-voxel-animation-variant`](../adding-a-voxel-animation-variant/SKILL.md);
+for a **2D** case use
+[`adding-a-sprite-variant`](../adding-a-sprite-variant/SKILL.md) or
+[`adding-a-sprite-sheet-variant`](../adding-a-sprite-sheet-variant/SKILL.md); for an
+**end-to-end** case use
+[`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/SKILL.md). To author
+a brand-new case, use
+[`authoring-a-mesh-animation-test-case`](../authoring-a-mesh-animation-test-case/SKILL.md).
+
+The authoritative schema lives in
+[`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
+(the **Voxel cases** section) and the tool interface in
+[`testing/asset-generation/mesh-binaries.md`](../../../apps/docs/src/content/docs/testing/asset-generation/mesh-binaries.md);
+read them before starting — including the `[model]` rig rules (which are identical to
+`voxel-animation`).
+
+## The defining constraint: a variant varies the brief; the rig is fixed
+
+This is where asset-generation variants differ sharply from end-to-end ones. There
+is **no target model** at all, and resolution **forbids any `[[reference]]`**
+(common *or* per-variant), per-variant `[voxel]` tables, and per-variant `[model]`
+tables. The model is human-reviewed against the brief, so a variant has nothing to
+"change the target" of — there is none.
+
+Three things are fixed at the **version level** and a variant cannot touch them:
+
+- the **`asset_kind`** — a variant cannot turn an animation into a static model, nor
+  switch the meshing binary (the `mc`/`sn`/`dc` surface character is fixed);
+- the **`[voxel]`** volume — the field bounds and preview background;
+- the **`[model]`** rig — the required parts, joints, and animation declarations
+  (the stable, game-facing interface a game drives and plays) are version-level
+  metadata, so every variant produces the **same** required rig with the **same**
+  joint names/ranges and the **same** required animations. (The model may still add
+  its own extra parts/joints/animations at run time, as always.)
+
+What a variant *can* do is vary the **brief** the model sculpts toward across that
+fixed rig, via an additive spec:
+
+- a **tighter palette** (a subset of the base colors), applied across every part;
+- a **stricter operation budget** (fewer primitives / CSG operations across all
+  parts);
+- a **required technique** (symmetric parts via the `mirror` op; hard unions only —
+  no `--blend` — or, for `dc-anim`, mandatory `--sharp` on all armor edges; a
+  per-part primitive cap);
+- a **rig-posing constraint** the joint interface makes observable (e.g. the turret
+  must clear the chassis across the whole `main_turret_yaw` range, or a part must
+  stay within a silhouette envelope when posed).
+
+Review stays exactly the same as the base: each regenerated **part** is reviewed
+against the brief — **per part**, with no assembled aggregate — the required caller
+joints drive the review UI's live controls, and the produced animations play. If you
+need a genuinely different subject, a different rig, a different algorithm, or a
+different volume, that is a new **case** (or a new version), not a variant.
+
+## Procedure
+
+### 1. Choose the variation
+
+Decide the constraint the variant imposes and keep it consistent everywhere:
+
+- **slug** — lowercase, used in `test-case.toml` and the spec filename (e.g.
+  `armored`);
+- **display name** — title case, the variant's `name` (e.g. `Up-Armored`);
+- **description** — one line naming the constraint.
+
+Favor a single constraint a reviewer can observe in the regenerated model — either
+in a still part preview or in the posed 3D viewer (driving a caller joint).
+
+### 2. Write the variant brief
+
+Create `specs/<slug>.md`, stated as a **delta** against the common brief:
+
+- open by stating it builds on the common brief, by name;
+- state the added or tightened constraint with **precise, testable** terms (exact
+  colors, an operation cap, the CSG technique required), and say whether it applies
+  to every part, to a named part, or to a posing behavior of a named joint;
+- reaffirm it sculpts toward the **same** brief with the **same** required parts and
+  joints and the **same** meshing binary — neither the subject, the surface
+  character, nor the rig contract changes, only the added constraint.
+
+A variant spec **may** reference the common specs freely (always seeded) but must
+**not** reference another variant's spec.
+
+### 3. Add review items for what the variation makes observable
+
+In the manifest, add `[[review_item]]`s under the variant for the thing the
+variation makes checkable that the base does not — for a rig this can be something
+the **posed** model reveals (e.g. "the up-armored turret still clears the chassis
+across the full `main_turret_yaw` range"). An item may name the caller **joints** it
+is about, so the review UI surfaces that joint's viewer and control beside it. Each
+item is reporter-side (never seeded), carries a stable `id` unique within the
+variant's effective set, and a scoring `domain` (no `reference`).
+
+### 4. Create the variant file and list it
+
+Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
+are the variant's fields**, then add its path to the `variants` array in
+`test-case.toml` (the first entry is the default). Do **not** add or change a
+`[voxel]`, `[model]`, or `asset_kind` here — all are version-level. Paths inside
+resolve against the version folder, and `dest` defaults to `source`:
+
+```toml
+# variants/armored.toml
+slug = "armored"
+name = "Up-Armored"
+description = "Same subject, rig, and mesher, with heavier chassis and turret plating — still clearing the full main_turret_yaw sweep."
+spec = [{ source = "specs/armored.md" }]
+review_item = [
+  { id = "clears-sweep", title = "Turret clears the chassis", text = "The up-armored main turret does not intersect the chassis across the full main_turret_yaw range.", joints = ["main_turret_yaw"], domain = "fidelity" },
+]
+```
+
+```toml
+# test-case.toml — add the new file to the ordered list (first = default)
+variants = ["variants/base.toml", "variants/armored.toml"]
+```
+
+Rules enforced at resolution:
+
+- `spec` entries are **additive** on the common specs; within one variant, no two
+  seeded specs (common + own) may share a `dest`.
+- **No `reference` entry** — an asset-generation case declares no references at all,
+  so any reference (common or per-variant) is rejected.
+- **No per-variant `[voxel]` / `[model]` / `asset_kind`** — the volume, the rig, and
+  the asset kind (with its meshing binary) are version-level; a variant cannot
+  redeclare them.
+- `review_item` entries are additive on the common ones; an item `id` must be unique
+  within the variant's effective set, any `joints` it names must be declared caller
+  joints, and an item must **not** carry a `reference`.
+
+Also update the human-readable comment in the manifest that enumerates the variants
+so the list stays accurate.
+
+## Validating
+
+From the repository root:
+
+```sh
+npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
+```
+
+- If `cspell` flags a legitimate domain term, add it to
+  [`.cspell/project-words.txt`](../../../.cspell/project-words.txt) — do not reword
+  good prose to dodge the dictionary.
+- Seed and render the **new** variant, and re-check the **existing** ones to confirm
+  nothing else changed:
+
+```sh
+tcab seed   --test-case <slug> --version <version> --variant <new-variant>
+tcab prompt --test-case <slug> --version <version> --variant <new-variant>
+```
+
+Read the seeded output to confirm the new variant's brief is self-contained (no
+target model is seeded), and that it leaves the `[voxel]` volume and the `[model]`
+rig (the pre-seeded `rig.json`) intact.
+
+A backend-driven run resolves its definition from the backend's store, which skips a
+version it already holds — so after adding the variant, **force a re-ingest** or the
+new variant will not appear in a run:
+
+```sh
+curl -X POST http://127.0.0.1:8787/ingest \
+  -H 'content-type: application/json' \
+  -d '{"testCases": ["<slug>"], "force": true}'
+```
+
+Force-re-ingest overwrites the stored version in place and is for **development**
+only. Adding a variant edits an existing version, so do it only while that version
+is unpublished; once a published run references the version it is immutable and a
+variant change requires a **new version** instead. See
+[`development/running.md`](../../../apps/docs/src/content/docs/development/running.md).
+
+Commit on the repository's default branch with a conventional-commit message scoped
+to the case, e.g. `feat(<slug>): add armored variant …`. Do not commit
+`node_modules/` or local seed output.

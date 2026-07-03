@@ -108,9 +108,14 @@ authoring conventions:
   [`authoring-an-asset-generation-test-case`](.claude/skills/authoring-an-asset-generation-test-case/SKILL.md)
   for a 2D sprite or sprite sheet drawn with the `draw`/`draw-sheet` tool,
   [`authoring-a-voxel-model-test-case`](.claude/skills/authoring-a-voxel-model-test-case/SKILL.md)
-  for a static 3D voxel model, or
+  for a static 3D voxel (cube) model,
   [`authoring-a-voxel-animation-test-case`](.claude/skills/authoring-a-voxel-animation-test-case/SKILL.md)
-  for a rigged, animated 3D voxel model.
+  for a rigged, animated 3D voxel (cube) model,
+  [`authoring-a-mesh-model-test-case`](.claude/skills/authoring-a-mesh-model-test-case/SKILL.md)
+  for a static meshed model (the `mc-model`/`sn-model`/`dc-model` SDF/CSG kinds), or
+  [`authoring-a-mesh-animation-test-case`](.claude/skills/authoring-a-mesh-animation-test-case/SKILL.md)
+  for a rigged, animated meshed model (the `mc-animation`/`sn-animation`/`dc-animation`
+  kinds).
 - **Adding a variant to an existing case:**
   [`adding-an-end-to-end-variant`](.claude/skills/adding-an-end-to-end-variant/SKILL.md)
   (a playable mode), or — for an asset-generation case, picked by its
@@ -120,9 +125,14 @@ authoring conventions:
   [`adding-a-sprite-sheet-variant`](.claude/skills/adding-a-sprite-sheet-variant/SKILL.md)
   (a sprite-sheet case),
   [`adding-a-voxel-model-variant`](.claude/skills/adding-a-voxel-model-variant/SKILL.md)
-  (a static-voxel case), or
+  (a static-voxel case),
   [`adding-a-voxel-animation-variant`](.claude/skills/adding-a-voxel-animation-variant/SKILL.md)
-  (a voxel-animation case); each is a brief variation against the shared target.
+  (a voxel-animation case),
+  [`adding-a-mesh-model-variant`](.claude/skills/adding-a-mesh-model-variant/SKILL.md)
+  (a static meshed `mc-model`/`sn-model`/`dc-model` case), or
+  [`adding-a-mesh-animation-variant`](.claude/skills/adding-a-mesh-animation-variant/SKILL.md)
+  (a meshed `mc-animation`/`sn-animation`/`dc-animation` case); each is a brief
+  variation against the shared target.
 
 ## Definitions & assets
 
