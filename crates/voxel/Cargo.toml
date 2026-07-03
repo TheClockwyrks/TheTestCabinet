@@ -13,7 +13,7 @@ publish.workspace = true
 # rig/animation model, color, config, and the record/preview plumbing — that this
 # crate depends on and re-exports. The `voxel` binary uses the library in the run
 # container to turn the model's operations into a volume, a preview, and a
-# `mesh.json`; `crates/core` links the same library to replay the recorded log.
+# per-part `.glb`; `crates/core` links the same library to replay the recorded log.
 # `crates/voxel-anim` is the rigged, animated sibling binary over this same library.
 [lib]
 name = "test_cabinet_voxel"

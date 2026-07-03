@@ -156,10 +156,10 @@ pub struct ServedAssetFile {
 ///   (its one frame, index 0);
 /// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`, or
 ///   `actions-<index>.json` (one per declared frame);
-/// - a static voxel model uses `preview.png`, `actions.json`, `mesh.json`, or
+/// - a static voxel model uses `preview.png`, `actions.json`, `mesh.glb`, or
 ///   `voxels.json` (its one part); an animated voxel model suffixes each with the
-///   part's `-<index>` in declared order (`mesh-<index>.json`, etc.). The `mesh`
-///   kind is the `PartMesh`-shaped `mesh.json` the 3D client renders (emitted by
+///   part's `-<index>` in declared order (`mesh-<index>.glb`, etc.). The `mesh`
+///   kind is the `PartMesh`-shaped `.glb` the 3D client renders (emitted by
 ///   every voxel-family binary); the `voxels` kind is the secondary regenerated
 ///   `voxels.json` (cube kinds). Cheat detection is retired for voxel, so there is
 ///   no regenerated PNG.
@@ -207,7 +207,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         match kind {
             "preview" => &part.preview_image,
             "actions" => &part.ops_log,
-            // The `mesh` kind is the `PartMesh`-shaped `mesh.json` the 3D client
+            // The `mesh` kind is the `PartMesh`-shaped `.glb` the 3D client
             // renders; `voxels` is the secondary sparse `voxels.json` (cube kinds).
             "mesh" => &part.mesh,
             "voxels" => &part.regenerated_voxels,
@@ -265,6 +265,7 @@ fn asset_content_type(file: &str) -> &'static str {
     match ext.as_deref() {
         Some("png") => "image/png",
         Some("json") => "application/json",
+        Some("glb") => "model/gltf-binary",
         _ => "application/octet-stream",
     }
 }

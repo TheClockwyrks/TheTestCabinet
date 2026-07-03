@@ -416,7 +416,7 @@ impl SnapshotBuilder {
                 })
                 .collect()
         } else if let Some(voxel) = run.record.validation.voxel.as_ref() {
-            // A voxel run publishes each part's `mesh.json` (what the 3D viewer
+            // A voxel run publishes each part's per-part `.glb` (what the 3D viewer
             // renders), the secondary regenerated `voxels.json`, the model's own
             // isometric preview PNG, and the op log — a static model under bare names,
             // an animated model suffixing each part with `-<index>`, matching
@@ -437,7 +437,7 @@ impl SnapshotBuilder {
                     [
                         format!("preview{suffix}.png"),
                         format!("actions{suffix}.json"),
-                        format!("mesh{suffix}.json"),
+                        format!("mesh{suffix}.glb"),
                         format!("voxels{suffix}.json"),
                     ]
                 })

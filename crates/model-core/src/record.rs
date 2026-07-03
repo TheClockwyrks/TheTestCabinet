@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The domain-specific half of the record/preview loop: given a target's recorded
-/// operations, render its preview PNG and `mesh.json` to disk and return the PNG
+/// operations, render its preview PNG and per-part `.glb` to disk and return the PNG
 /// bytes plus the live-stream body.
 ///
 /// A concrete tool (the cube tool today; the meshing tools later) implements this

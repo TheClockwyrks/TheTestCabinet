@@ -14,7 +14,8 @@
 //!   honor and ignored by mc/sn;
 //! - the per-algorithm [`GridConfig`] that sets the field's resolution and character
 //!   (MC coarse, SN medium, DC fine) ([`config`]);
-//! - the [`Mesher`] trait (field → [`Mesh`], the `PartMesh`-shaped `mesh.json`) and a
+//! - the [`Mesher`] trait (field → [`Mesh`], the `PartMesh`-shaped geometry encoded
+//!   to `.glb`) and a
 //!   trivial [`StubMesher`] so the crate compiles and can be wired now ([`mesher`]).
 //!
 //! The three real surface-extraction algorithms are separate [`Mesher`]

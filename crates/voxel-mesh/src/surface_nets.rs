@@ -19,7 +19,7 @@
 //! the province of dual contouring). Normals are the central-difference gradient of
 //! the trilinearly sampled distance field, so the smoothed surface is lit by its
 //! true normal; each vertex takes the opaque color of the nearest inside corner of
-//! its cell, normalized to `0..1` for the `mesh.json` contract.
+//! its cell, normalized to `0..1` for the `PartMesh` contract (encoded to `.glb`).
 
 use test_cabinet_model_core::color::Rgb;
 

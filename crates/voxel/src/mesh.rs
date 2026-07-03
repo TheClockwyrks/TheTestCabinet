@@ -16,7 +16,7 @@ use crate::VoxelSet;
 
 /// A part's surface mesh as flat arrays: an indexed triangle list with a position,
 /// normal, and linear `0..1` RGB color per vertex. Matches the runtime's `PartMesh`
-/// so it serializes straight to the `mesh.json` contract (four floats per exposed
+/// so it encodes straight to a per-part `.glb` (four floats per exposed
 /// face vertex, six indices per exposed face).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PartMesh {

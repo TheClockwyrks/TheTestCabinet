@@ -5,7 +5,7 @@
 //! set per part) drive the **same** field vocabulary through `clap`; this module
 //! defines those operation subcommands, the [`FieldBackend`] that composites a
 //! recorded [`FieldOp`] log into a signed-distance field, extracts its surface with the
-//! [`MarchingCubesMesher`], and writes the preview PNG and `mesh.json`, plus the
+//! [`MarchingCubesMesher`], and writes the preview PNG and per-part `.glb`, plus the
 //! field-flavored wrappers over `test-cabinet-model-core`'s generic
 //! [`apply`](record::apply)/[`init_target`](record::init_target) loop. The only
 //! difference between the binaries is whether an operation targets one field or one of
@@ -512,7 +512,7 @@ fn parse_color(value: &str) -> Result<Rgb, String> {
 
 /// The marching-cubes [`SculptBackend`](record::SculptBackend): composites a
 /// [`FieldOp`] log into a signed-distance [`Field`] and renders it to the preview PNG
-/// and the extracted `mesh.json`.
+/// and the extracted per-part `.glb`.
 pub struct FieldBackend {
     /// The world-space volume the field is sampled over.
     pub bounds: Dims,
@@ -565,7 +565,7 @@ pub fn bounds(extents: (u32, u32, u32)) -> Dims {
 }
 
 /// Append one operation to `actions` and re-render the target's preview PNG and
-/// `mesh.json` from the whole log through the field backend.
+/// per-part `.glb` from the whole log through the field backend.
 pub fn apply(
     bounds: Dims,
     background: PreviewBackground,
@@ -583,7 +583,7 @@ pub fn apply(
 }
 
 /// Initialize one target: write an empty action log and render its blank preview and
-/// `mesh.json`.
+/// per-part `.glb`.
 pub fn init_target(
     bounds: Dims,
     background: PreviewBackground,

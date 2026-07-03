@@ -228,7 +228,7 @@ pub async fn upload_proofs_to_backend(
 /// — matching `playable::serve_asset_file` and the snapshot exactly so the keys line
 /// up with the UI lookup. A voxel run mirrors the same way but carries no
 /// regenerated PNG (cheat detection is retired for voxel): each part uploads its
-/// `preview.png`/`actions.json`, the `mesh.json` the 3D client renders, and the
+/// `preview.png`/`actions.json`, the per-part `.glb` the 3D client renders, and the
 /// secondary `voxels.json` (bare for a static model, `mesh-<index>.json` /
 /// `voxels-<index>.json` per part for an animated one).
 ///
@@ -271,7 +271,7 @@ pub async fn upload_assets_to_backend(
         // A voxel run mirrors its parts the same flat way: a static model under
         // bare names (its one part), an animated model suffixing each part with its
         // `-<index>` in declared order — matching `playable::serve_asset_file` and
-        // the snapshot. The `mesh.json` is the geometry the 3D client renders; the
+        // the snapshot. The per-part `.glb` is the geometry the 3D client renders; the
         // `voxels.json` is a secondary artifact.
         let animated = voxel.model.is_some() || voxel.rig.is_some();
         for (index, part) in voxel.parts.iter().enumerate() {
@@ -283,7 +283,7 @@ pub async fn upload_assets_to_backend(
             let artifacts = [
                 (format!("preview{suffix}.png"), &part.preview_image),
                 (format!("actions{suffix}.json"), &part.ops_log),
-                (format!("mesh{suffix}.json"), &part.mesh),
+                (format!("mesh{suffix}.glb"), &part.mesh),
                 (format!("voxels{suffix}.json"), &part.regenerated_voxels),
             ];
             for (served, rel) in artifacts {

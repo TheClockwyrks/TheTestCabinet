@@ -3,7 +3,7 @@
 //!
 //! This binary extends [`sn`](../sn.rs) with a required `--part <name>`: the field
 //! operations and how each composites are **identical**, but each part has its **own
-//! action log, preview, and `mesh.json`** — separate files — though every part is
+//! action log, preview, and per-part `.glb`** — separate files — though every part is
 //! composited in the **same shared volume's coordinates**, in place where it sits on
 //! the assembled model. On top of the per-part fields it maintains the rig structure in
 //! `rig.json`: the parts' hierarchy, the named joints a consuming game or an animation

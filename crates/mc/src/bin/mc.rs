@@ -4,7 +4,7 @@
 //! The model calls this binary once per operation — `mc add-sphere --cx 8 …` — and
 //! each call appends the [`FieldOp`](test_cabinet_voxel_mesh::FieldOp) to the run's
 //! `actions.json` and re-composites the **whole** field, re-extracting its surface with
-//! marching cubes into a `mesh.json` and re-rendering the preview PNG, so the recorded
+//! marching cubes into a `.glb` and re-rendering the preview PNG, so the recorded
 //! log is always the single source of truth and the preview always reflects it. The
 //! operation subcommands' `--help` is the contract; no operations schema is seeded.
 //!

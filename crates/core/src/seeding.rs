@@ -318,7 +318,7 @@ fn seed_voxel_tool(
         config["rig"] = serde_json::json!(crate::test_case::VOXEL_RIG_DEST);
     }
     // Every voxel-family kind — the two cube kinds and the six surface-meshed kinds —
-    // emits its client-facing geometry as a `PartMesh`-shaped `mesh.json`: a single
+    // emits its client-facing geometry as a `PartMesh`-shaped `.glb`: a single
     // file for a static model, a `{part}` template for an animated one. Thread that
     // path into the config the binary reads so the mesh lands at the canonical
     // location the validator (and the served/published artifact set) expect.

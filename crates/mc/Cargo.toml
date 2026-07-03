@@ -10,7 +10,7 @@ publish.workspace = true
 # distance `Field`, the shared CSG `FieldOp` vocabulary, and the `MarchingCubesMesher`)
 # and `test-cabinet-model-core` (the record/preview plumbing and the wgpu+Mesa mesh
 # renderer): each recorded operation composites a primitive into the field, then the
-# marching-cubes mesher re-extracts the surface to a `mesh.json` and the renderer draws
+# marching-cubes mesher re-extracts the surface to a `.glb` and the renderer draws
 # the preview PNG. Marching cubes samples the field on a coarse grid, giving a chunky,
 # faceted **low-poly** surface. The rigged, animated sibling binary is `mc-anim`.
 [lib]
@@ -31,7 +31,7 @@ default = ["cli"]
 cli = ["dep:clap", "test-cabinet-voxel-mesh/cli", "test-cabinet-model-core/cli"]
 
 [dependencies]
-# The signed-distance meshing domain (field, ops, meshers, grid presets, `mesh.json`).
+# The signed-distance meshing domain (field, ops, meshers, grid presets, `.glb` emission).
 # Linked without default features so a `default-features = false` consumer of this
 # crate never pulls in the wgpu preview renderer; the `cli` feature re-enables it.
 test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }

@@ -9,7 +9,7 @@ publish.workspace = true
 # asset-generation cases. It is a thin CLI over `test-cabinet-mc` (the marching-cubes
 # field domain — the field-op subcommands, the field backend, and the scene composer)
 # and `test-cabinet-model-core` (the rig/animation model and the record/preview
-# plumbing): each part has its own action log, preview, and `mesh.json`, all in the
+# plumbing): each part has its own action log, preview, and per-part `.glb`, all in the
 # shared volume's coordinates, and the binary additionally maintains the rig structure
 # in `rig.json`. The static sibling `mc` binary lives in `crates/mc`.
 [[bin]]

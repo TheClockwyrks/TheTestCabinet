@@ -128,7 +128,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     // paths, which carry slashes the flat one-segment served name flattens away.
     let part = |name: &str| VoxelPartResult {
         name: name.to_string(),
-        mesh: format!("meshes/{name}.json"),
+        mesh: format!("meshes/{name}.glb"),
         regenerated_voxels: format!("voxels/{name}.json"),
         preview_image: format!("parts/{name}.png"),
         ops_log: format!("parts/{name}.actions.json"),
@@ -154,7 +154,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
         },
         &[
             ("voxels/turret.json", b"{\"dims\":{}}"),
-            ("meshes/chassis.json", b"{\"positions\":[]}"),
+            ("meshes/chassis.glb", b"glTF chassis-mesh-bytes"),
             ("parts/chassis.png", b"\x89PNG chassis-preview"),
         ],
     );
@@ -163,10 +163,10 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     let served = serve_asset_file(dir.path(), "voxels-1.json").expect("voxels");
     assert_eq!(served.content_type, "application/json");
     assert_eq!(served.body, b"{\"dims\":{}}");
-    // Part 0 (chassis) mesh.json — the geometry the 3D client renders.
-    let served = serve_asset_file(dir.path(), "mesh-0.json").expect("mesh");
-    assert_eq!(served.content_type, "application/json");
-    assert_eq!(served.body, b"{\"positions\":[]}");
+    // Part 0 (chassis) mesh.glb — the geometry the 3D client renders.
+    let served = serve_asset_file(dir.path(), "mesh-0.glb").expect("mesh");
+    assert_eq!(served.content_type, "model/gltf-binary");
+    assert_eq!(served.body, b"glTF chassis-mesh-bytes");
     let served = serve_asset_file(dir.path(), "preview-0.png").expect("preview");
     assert_eq!(served.content_type, "image/png");
     assert_eq!(served.body, b"\x89PNG chassis-preview");
@@ -182,7 +182,7 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     let voxel = VoxelGenResult {
         parts: vec![VoxelPartResult {
             name: "model".to_string(),
-            mesh: "mesh.json".to_string(),
+            mesh: "mesh.glb".to_string(),
             regenerated_voxels: "voxels.json".to_string(),
             preview_image: "model.png".to_string(),
             ops_log: "actions.json".to_string(),
@@ -201,14 +201,14 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
         },
         &[
             ("voxels.json", b"{\"dims\":{}}"),
-            ("mesh.json", b"{\"positions\":[]}"),
+            ("mesh.glb", b"glTF static-mesh-bytes"),
             ("model.png", b"\x89PNG static-preview"),
         ],
     );
     let served = serve_asset_file(dir.path(), "voxels.json").expect("voxels");
     assert_eq!(served.body, b"{\"dims\":{}}");
-    let served = serve_asset_file(dir.path(), "mesh.json").expect("mesh");
-    assert_eq!(served.body, b"{\"positions\":[]}");
+    let served = serve_asset_file(dir.path(), "mesh.glb").expect("mesh");
+    assert_eq!(served.body, b"glTF static-mesh-bytes");
     let served = serve_asset_file(dir.path(), "preview.png").expect("preview");
     assert_eq!(served.body, b"\x89PNG static-preview");
 }

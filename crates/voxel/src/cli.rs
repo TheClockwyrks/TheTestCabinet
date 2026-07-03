@@ -4,7 +4,7 @@
 //! Both `voxel` (a single static model) and `voxel-anim` (a rigged model, one
 //! separate file set per part) drive the **same** cube sculpting operations through
 //! `clap`; this module defines those operation subcommands, the [`CubeBackend`] that
-//! turns a recorded log into a preview PNG and a `mesh.json`, and the cube-flavored
+//! turns a recorded log into a preview PNG and a per-part `.glb`, and the cube-flavored
 //! wrappers over `test-cabinet-model-core`'s generic
 //! [`apply`](test_cabinet_model_core::record::apply)/[`init_target`](test_cabinet_model_core::record::init_target)
 //! loop. The only difference between the binaries is whether an operation targets
@@ -479,7 +479,7 @@ fn parse_color(value: &str) -> Result<Rgb, String> {
 
 /// The cube [`SculptBackend`](record::SculptBackend): replays an [`Operation`] log
 /// into a [`VoxelSet`] and renders it to the isometric preview PNG and the
-/// face-culled `mesh.json`.
+/// face-culled per-part `.glb`.
 pub struct CubeBackend {
     /// The volume the operations sculpt within.
     pub dims: Dims,
@@ -552,7 +552,7 @@ pub fn dims(extents: (u32, u32, u32)) -> Dims {
 }
 
 /// Append one operation to `actions` and re-render the target's preview PNG and
-/// `mesh.json` from the whole log through the cube backend.
+/// per-part `.glb` from the whole log through the cube backend.
 pub fn apply(
     dims: &Dims,
     background: PreviewBackground,
@@ -569,7 +569,7 @@ pub fn apply(
 }
 
 /// Initialize one target: write an empty action log and render its blank preview
-/// and `mesh.json`.
+/// and per-part `.glb`.
 pub fn init_target(
     dims: &Dims,
     background: PreviewBackground,

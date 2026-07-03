@@ -40,7 +40,7 @@ test-cabinet-voxel = { path = "../voxel", default-features = false }
 # The signed-distance meshing domain for the six surface-meshed kinds
 # (mc/sn/dc + `-anim`). Core links only the pure library (not the `cli` feature's
 # serde_json/renderer) to deserialize and well-formedness-check the `Mesh`
-# (`PartMesh`) each meshing binary emits to `mesh.json`; it never re-meshes.
+# (`PartMesh`) each meshing binary emits to a per-part `.glb`; it never re-meshes.
 test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
 # The generic voxel-family model core: the rig/animation model and the opaque-RGB
 # color type core reads the produced `rig.json` and `[voxel] background` through.

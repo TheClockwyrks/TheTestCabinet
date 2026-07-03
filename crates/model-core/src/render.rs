@@ -2,7 +2,7 @@
 //!
 //! This is the generic replacement for the retired integer isometric rasterizer:
 //! it takes one or more surface meshes (the flat `positions`/`normals`/`colors`/
-//! `indices` arrays each tool's `mesh.json` already carries), an [orbit/iso
+//! `indices` arrays each tool's per-part `.glb` already carries), an [orbit/iso
 //! camera][View], and a single fixed directional light, and produces the preview
 //! PNG bytes. It knows nothing about voxels, signed-distance fields, or cubes —
 //! only triangles — so the cube tool and the meshing tools share one preview path
@@ -26,7 +26,7 @@ use crate::color::PreviewBackground;
 /// The default edge length, in pixels, of a square preview or scene image.
 pub const PREVIEW_SIZE: u32 = 512;
 
-/// A borrowed view of one surface mesh: the same flat arrays the `mesh.json`
+/// A borrowed view of one surface mesh: the same flat arrays the `PartMesh`
 /// contract carries. Positions and normals are 3 floats per vertex; colors are 3
 /// floats (linear `0..1`) per vertex; indices are triangle-vertex indices, 3 per
 /// triangle. The renderer reads these directly — no re-meshing.

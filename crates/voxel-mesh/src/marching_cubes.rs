@@ -17,7 +17,8 @@
 //! preserve sharp features. Normals are the central-difference gradient of the
 //! (trilinearly sampled) distance field, so faces are lit by the true surface
 //! normal rather than a flat facet normal; each vertex takes the opaque color of
-//! the inside corner of its edge, normalized to `0..1` for the `mesh.json` contract.
+//! the inside corner of its edge, normalized to `0..1` for the `PartMesh` contract
+//! (encoded to `.glb`).
 
 use std::collections::HashMap;
 

@@ -3,8 +3,8 @@
 //!
 //! A mesher is the surface-extraction half of a meshing tool: it reads the composited
 //! signed-distance field and emits the flat `positions`/`normals`/`colors`/`indices`
-//! arrays the `mesh.json` contract carries (the same shape the runtime's `PartMesh`
-//! and the shared preview renderer's `MeshView` use). The three real algorithms —
+//! arrays the `PartMesh` contract carries (encoded to `.glb`; the same shape the
+//! runtime's `PartMesh` and the shared preview renderer's `MeshView` use). The three real algorithms —
 //! marching cubes, surface nets, and dual contouring — are each a `Mesher`
 //! implementation added on top of this crate; they key off the per-algorithm
 //! [`GridConfig`](crate::config::GridConfig) (the field's resolution, and whether
@@ -19,8 +19,8 @@ use test_cabinet_model_core::color::Rgb;
 use crate::field::Field;
 
 /// A part's surface mesh as flat arrays: an indexed triangle list with a position,
-/// normal, and linear `0..1` RGB color per vertex. This is the `PartMesh` shape the
-/// `mesh.json` contract carries, so it serializes straight to `mesh.json` and every
+/// normal, and linear `0..1` RGB color per vertex. This is the `PartMesh` shape,
+/// so it encodes straight to a per-part `.glb` (a binary glTF) and every
 /// consumer (the wgpu preview, the TypeScript runtime, the glTF exporter) reads the
 /// mesh the Rust mesher emitted once.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

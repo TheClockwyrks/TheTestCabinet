@@ -12,8 +12,8 @@ publish.workspace = true
 # whole-field recolor/mirror/translate/copy/clear ops) and its apply logic, the
 # DC-only sharp-feature tag carried through the field, the per-algorithm
 # resolution/character `GridConfig` (MC coarse, SN medium, DC fine), the `Mesher`
-# trait that turns a field into a `Mesh` (the `PartMesh`-shaped flat arrays the
-# `mesh.json` contract carries), and the `mesh.json` emission. The three real
+# trait that turns a field into a `Mesh` (the `PartMesh`-shaped flat arrays,
+# encoded to a per-part `.glb`), and the `.glb` emission. The three real
 # surface-extraction algorithms (marching cubes, surface nets, dual contouring) are
 # separate `Mesher` implementations added on top of this crate; today it ships one
 # trivial bounding-box `StubMesher` so the crate compiles and can be wired now.
@@ -27,7 +27,7 @@ name = "test_cabinet_voxel_mesh"
 path = "src/lib.rs"
 
 [features]
-# `cli` pulls in `serde_json` (for `mesh.json` emission) and enables
+# `cli` pulls in `serde_json` (for the per-part `.glb` JSON chunk) and enables
 # `test-cabinet-model-core`'s `cli` feature (the `render::MeshView` a `Mesh` borrows
 # into for the preview renderer). It is on by default for the binaries; a library
 # consumer such as `crates/core` links this crate with `default-features = false` to
