@@ -401,8 +401,8 @@ impl Eq for ManifestSheetSequence {}
 
 /// The `[voxel]` table of a voxel asset-generation case: the bounding volume the
 /// model sculpts into — the 3D analog of [`ManifestCanvas`]. `background` is the
-/// clear color behind the rasterized isometric preview PNG (the voxel volume
-/// itself always starts empty).
+/// clear color behind the rendered preview PNG (the voxel volume itself always
+/// starts empty).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestVoxel {
     /// Volume extent along x, in voxels.
@@ -713,6 +713,32 @@ pub const VOXEL_CONFIG_DEST: &str = "voxel.config.json";
 /// `voxel-anim` binary reads it from here by default.
 pub const VOXEL_ANIM_CONFIG_DEST: &str = "voxel-anim.config.json";
 
+/// The run-workspace-relative config path each of the six surface-meshing binaries
+/// (`mc`/`mc-anim`, `sn`/`sn-anim`, `dc`/`dc-anim`) reads by default — one per
+/// binary so a run seeds exactly the config its tool consumes.
+pub const MC_CONFIG_DEST: &str = "mc.config.json";
+/// The config path the `mc-anim` binary reads (marching cubes, animated).
+pub const MC_ANIM_CONFIG_DEST: &str = "mc-anim.config.json";
+/// The config path the `sn` binary reads (surface nets, static).
+pub const SN_CONFIG_DEST: &str = "sn.config.json";
+/// The config path the `sn-anim` binary reads (surface nets, animated).
+pub const SN_ANIM_CONFIG_DEST: &str = "sn-anim.config.json";
+/// The config path the `dc` binary reads (dual contouring, static).
+pub const DC_CONFIG_DEST: &str = "dc.config.json";
+/// The config path the `dc-anim` binary reads (dual contouring, animated).
+pub const DC_ANIM_CONFIG_DEST: &str = "dc-anim.config.json";
+
+/// The run-workspace-relative path a **static** surface-meshed run emits its single
+/// `PartMesh`-shaped geometry file to (the `mc`/`sn`/`dc` binaries). The seeded
+/// config threads this path to the binary and the validator parses the emitted file
+/// from it.
+pub const MESH_DEST: &str = "mesh.json";
+/// The run-workspace-relative `{part}` template an **animated** surface-meshed run
+/// emits one `PartMesh`-shaped geometry file per declared part to (the `mc-anim`/
+/// `sn-anim`/`dc-anim` binaries), the mesh analog of the per-part preview/action-log
+/// templates.
+pub const MESH_PART_DEST: &str = "meshes/{part}.json";
+
 /// The run-workspace-relative path a voxel-animation run's rig structure
 /// (`rig.json`) is seeded to and produced at. Seeding pre-populates it from the
 /// manifest's required [`ModelSpec`]; the `voxel-anim` binary rewrites it as the
@@ -858,24 +884,117 @@ pub enum AssetKind {
     /// and a `[model]` table (the required parts and joints the model must produce,
     /// on top of which it may add its own).
     VoxelAnimation,
+    /// A static surface-meshed 3D model built with the **marching cubes** `mc`
+    /// binary: the model composites a signed-distance field of CSG primitives, which
+    /// the mesher extracts to a per-model `mesh.json`. Declares a `[voxel]` table
+    /// (the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted
+    /// **low-poly** surface.
+    McModel,
+    /// A rigged, animatable surface-meshed 3D model built with the **marching cubes**
+    /// `mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed
+    /// field extracted to its own `mesh.json`; declares a `[voxel]` and a `[model]`
+    /// table.
+    McAnimation,
+    /// A static surface-meshed 3D model built with the **surface nets** `sn` binary.
+    /// Declares a `[voxel]` table and no `[model]`. Surface nets yields a smooth,
+    /// watertight mid-fidelity surface with uniform triangle density.
+    SnModel,
+    /// A rigged, animatable surface-meshed 3D model built with the **surface nets**
+    /// `sn-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed
+    /// field; declares a `[voxel]` and a `[model]` table.
+    SnAnimation,
+    /// A static surface-meshed 3D model built with the **dual contouring** `dc`
+    /// binary. Declares a `[voxel]` table and no `[model]`. Dual contouring yields a
+    /// high-fidelity surface that preserves sharp edges and corners.
+    DcModel,
+    /// A rigged, animatable surface-meshed 3D model built with the **dual contouring**
+    /// `dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed
+    /// field; declares a `[voxel]` and a `[model]` table.
+    DcAnimation,
 }
 
 impl AssetKind {
-    /// Whether this kind is one of the two 3D voxel kinds (as opposed to a 2D
-    /// sprite kind). Voxel kinds declare a `[voxel]` table instead of `[canvas]`.
+    /// Whether this kind is one of the 3D voxel-family kinds (as opposed to a 2D
+    /// sprite kind): the two cube kinds plus the six surface-meshed kinds. Every
+    /// voxel-family kind declares a `[voxel]` bounding volume instead of `[canvas]`,
+    /// is seeded through [`crate::seeding`]'s voxel path, and is validated by the
+    /// voxel validator.
     pub fn is_voxel(self) -> bool {
-        matches!(self, Self::VoxelModel | Self::VoxelAnimation)
+        matches!(
+            self,
+            Self::VoxelModel
+                | Self::VoxelAnimation
+                | Self::McModel
+                | Self::McAnimation
+                | Self::SnModel
+                | Self::SnAnimation
+                | Self::DcModel
+                | Self::DcAnimation
+        )
+    }
+
+    /// Whether this kind is a **rigged/animated** voxel-family kind — the ones that
+    /// declare and require a `[model]` rig, author per-part fields, and emit a
+    /// `rig.json`: `voxel-animation` and the three `*-animation` meshed kinds. The
+    /// discriminator the resolver, seeder, and validator branch on for the
+    /// per-part (`{part}`) treatment.
+    pub fn is_animated(self) -> bool {
+        matches!(
+            self,
+            Self::VoxelAnimation | Self::McAnimation | Self::SnAnimation | Self::DcAnimation
+        )
+    }
+
+    /// Whether this kind is one of the six **surface-meshed** kinds (`mc`/`sn`/`dc`
+    /// and their `-anim` siblings), which composite a signed-distance field and emit
+    /// a `PartMesh`-shaped `mesh.json` — as opposed to the two cube kinds, which
+    /// regenerate `voxels.json`. Selects the mesh-parsing validation path and the
+    /// per-binary mesh output threading.
+    pub fn is_meshed(self) -> bool {
+        matches!(
+            self,
+            Self::McModel
+                | Self::McAnimation
+                | Self::SnModel
+                | Self::SnAnimation
+                | Self::DcModel
+                | Self::DcAnimation
+        )
+    }
+
+    /// The run-workspace-relative path (or `{part}` template, for an animated kind)
+    /// a **meshed** kind emits its `mesh.json` geometry to — [`MESH_DEST`] for a
+    /// static meshed kind, [`MESH_PART_DEST`] for an animated one. `None` for the
+    /// cube kinds and the 2D sprite kinds, which emit no `mesh.json`. Shared by the
+    /// seeded tool config (so the binary writes here), manifest path-claiming, and
+    /// the validator (so it reads the same path).
+    pub fn mesh_dest(self) -> Option<&'static str> {
+        if !self.is_meshed() {
+            return None;
+        }
+        Some(if self.is_animated() {
+            MESH_PART_DEST
+        } else {
+            MESH_DEST
+        })
     }
 
     /// The run-workspace-relative path the orchestrator seeds this kind's tool
     /// configuration to: [`ASSET_CONFIG_DEST`] for the 2D `draw`/`draw-sheet`
-    /// kinds, [`VOXEL_CONFIG_DEST`] / [`VOXEL_ANIM_CONFIG_DEST`] for the two voxel
-    /// kinds. Shared by manifest path-claiming and seeding so they agree.
+    /// kinds, [`VOXEL_CONFIG_DEST`] / [`VOXEL_ANIM_CONFIG_DEST`] for the two cube
+    /// kinds, and one config per surface-meshing binary. Shared by manifest
+    /// path-claiming and seeding so they agree.
     pub fn config_dest(self) -> &'static str {
         match self {
             Self::Sprite | Self::SpriteSheet => ASSET_CONFIG_DEST,
             Self::VoxelModel => VOXEL_CONFIG_DEST,
             Self::VoxelAnimation => VOXEL_ANIM_CONFIG_DEST,
+            Self::McModel => MC_CONFIG_DEST,
+            Self::McAnimation => MC_ANIM_CONFIG_DEST,
+            Self::SnModel => SN_CONFIG_DEST,
+            Self::SnAnimation => SN_ANIM_CONFIG_DEST,
+            Self::DcModel => DC_CONFIG_DEST,
+            Self::DcAnimation => DC_ANIM_CONFIG_DEST,
         }
     }
 }
@@ -1215,10 +1334,10 @@ impl Eq for SheetSequence {}
 
 /// The resolved `[voxel]` of a voxel asset-generation case: the bounding volume
 /// the model draws into, the 3D analog of [`CanvasSpec`]. `background` is the
-/// clear color behind the rasterized isometric preview PNG (the voxel volume
-/// itself always starts empty); it is kept as the manifest string — validated to
-/// parse — so the resolved version stays serializable without depending on the
-/// voxel library's color type, and the validator re-parses it when it regenerates.
+/// clear color behind the rendered preview PNG (the voxel volume itself always
+/// starts empty); it is kept as the manifest string — validated to parse — so the
+/// resolved version stays serializable without depending on the voxel library's
+/// color type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2256,9 +2375,9 @@ impl TestCaseCatalog {
                         "voxel width, height, and depth must be greater than zero".to_string(),
                     ));
                 }
-                test_cabinet_voxel::PreviewBackground::parse(&voxel.background).map_err(|err| {
-                    invalid(format!("voxel background `{}`: {err}", voxel.background))
-                })?;
+                test_cabinet_model_core::PreviewBackground::parse(&voxel.background).map_err(
+                    |err| invalid(format!("voxel background `{}`: {err}", voxel.background)),
+                )?;
 
                 let tool = manifest
                     .tool
@@ -2288,8 +2407,10 @@ impl TestCaseCatalog {
                 // The preview and action-log paths must be `{part}` templates for an
                 // animated model (one file per part) and plain paths for a static
                 // one. Validating this here keeps the seeded config, the binary, and
-                // the validator agreeing on where each part's files live.
-                let is_anim = manifest.asset_kind == AssetKind::VoxelAnimation;
+                // the validator agreeing on where each part's files live. This holds
+                // for every animated voxel-family kind — the cube `voxel-animation`
+                // and the three meshed `*-animation` kinds alike.
+                let is_anim = manifest.asset_kind.is_animated();
                 for (label, path) in [
                     ("tool.preview", &tool.preview),
                     ("output.actions", &output.actions),
@@ -2310,32 +2431,29 @@ impl TestCaseCatalog {
                     }
                 }
 
-                // The `[model]` rig is required for — and only for — a
-                // voxel-animation case. A static voxel-model is one unposed volume
-                // and declares no rig.
-                let model = match manifest.asset_kind {
-                    AssetKind::VoxelModel => {
-                        if manifest.model.is_some() {
-                            return Err(invalid(
-                                "a voxel-model case (asset_kind = \"voxel-model\") declares no \
-                                 [model] table"
-                                    .to_string(),
-                            ));
-                        }
-                        None
+                // The `[model]` rig is required for — and only for — an animated
+                // voxel-family case (the cube `voxel-animation` and the three meshed
+                // `*-animation` kinds). A static kind (`voxel-model` or a meshed
+                // `*-model`) is one unposed volume/field and declares no rig.
+                let model = if manifest.asset_kind.is_animated() {
+                    let model = manifest.model.as_ref().ok_or_else(|| {
+                        invalid(
+                            "an animated voxel case (asset_kind = \"voxel-animation\"/\
+                             \"mc-animation\"/\"sn-animation\"/\"dc-animation\") requires a \
+                             [model] table"
+                                .to_string(),
+                        )
+                    })?;
+                    Some(resolve_model(model, &invalid)?)
+                } else {
+                    if manifest.model.is_some() {
+                        return Err(invalid(
+                            "a static voxel case (asset_kind = \"voxel-model\"/\"mc-model\"/\
+                             \"sn-model\"/\"dc-model\") declares no [model] table"
+                                .to_string(),
+                        ));
                     }
-                    AssetKind::VoxelAnimation => {
-                        let model = manifest.model.as_ref().ok_or_else(|| {
-                            invalid(
-                                "a voxel-animation case (asset_kind = \"voxel-animation\") \
-                                 requires a [model] table"
-                                    .to_string(),
-                            )
-                        })?;
-                        Some(resolve_model(model, &invalid)?)
-                    }
-                    // The outer match guard restricts this arm to the voxel kinds.
-                    AssetKind::Sprite | AssetKind::SpriteSheet => unreachable!(),
+                    None
                 };
 
                 (
@@ -2456,9 +2574,17 @@ impl TestCaseCatalog {
                         })?;
                         Some(resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?)
                     }
-                    // The two voxel kinds are resolved by the guarded voxel arm
-                    // above and never reach this 2D sprite branch.
-                    AssetKind::VoxelModel | AssetKind::VoxelAnimation => unreachable!(),
+                    // The voxel-family kinds are resolved by the guarded voxel arm
+                    // above (they are `is_voxel()`) and never reach this 2D sprite
+                    // branch.
+                    AssetKind::VoxelModel
+                    | AssetKind::VoxelAnimation
+                    | AssetKind::McModel
+                    | AssetKind::McAnimation
+                    | AssetKind::SnModel
+                    | AssetKind::SnAnimation
+                    | AssetKind::DcModel
+                    | AssetKind::DcAnimation => unreachable!(),
                 };
 
                 (
@@ -3244,10 +3370,17 @@ impl TestCaseCatalog {
             // one of each per declared part and additionally produces `rig.json`, so
             // each resolved path is claimed.
             if let (Some(tool), Some(output)) = (&tool, &output) {
+                // A meshed kind additionally emits a per-part (`{part}`) or single
+                // `mesh.json`; claim it so a spec can never land on the geometry the
+                // binary writes.
+                let mesh_template = manifest.asset_kind.mesh_dest();
                 if let Some(model) = &model {
                     for part in &model.parts {
                         claim(part_path(&tool.preview, &part.name), "part preview")?;
                         claim(part_path(&output.actions, &part.name), "part action log")?;
+                        if let Some(mesh) = mesh_template {
+                            claim(part_path(Path::new(mesh), &part.name), "part mesh")?;
+                        }
                     }
                     claim(PathBuf::from(VOXEL_RIG_DEST), "rig")?;
                 } else if let Some(sheet) = &sheet {
@@ -3258,6 +3391,9 @@ impl TestCaseCatalog {
                 } else {
                     claim(tool.preview.clone(), "tool preview")?;
                     claim(output.actions.clone(), "action log")?;
+                    if let Some(mesh) = mesh_template {
+                        claim(PathBuf::from(mesh), "mesh")?;
+                    }
                 }
             }
             if test_type == TestType::AssetGeneration {

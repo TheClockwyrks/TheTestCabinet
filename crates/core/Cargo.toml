@@ -32,8 +32,20 @@ test-cabinet-draw = { path = "../draw", default-features = false }
 # voxel-animation). As with `test-cabinet-draw`, core links only the library (not
 # the `cli` feature's clap/serde_json) so it regenerates the scored voxel data and
 # isometric preview from a run's recorded operation log through the exact same
-# logic the in-container `voxel` / `voxel-anim` binaries used.
+# logic the in-container `voxel` / `voxel-anim` binaries used. The cube domain
+# (`VoxelSet`, `Operation`, `render`, the rasterizer) lives here; the generic model
+# types (rig, color) live in `test-cabinet-model-core`, which the voxel crate
+# re-exports and core also links directly.
 test-cabinet-voxel = { path = "../voxel", default-features = false }
+# The signed-distance meshing domain for the six surface-meshed kinds
+# (mc/sn/dc + `-anim`). Core links only the pure library (not the `cli` feature's
+# serde_json/renderer) to deserialize and well-formedness-check the `Mesh`
+# (`PartMesh`) each meshing binary emits to `mesh.json`; it never re-meshes.
+test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+# The generic voxel-family model core: the rig/animation model and the opaque-RGB
+# color type core reads the produced `rig.json` and `[voxel] background` through.
+# Linked without the `cli` feature (no clap/serde_json), the same as the voxel dep.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
 # The Foray adversarial game engine and its wasm host. The `AdversarialValidator`
 # loads a submission and the committed baseline opponent and runs the single
 # canonical match through the **shared** host (`foray-host`), so the validator and

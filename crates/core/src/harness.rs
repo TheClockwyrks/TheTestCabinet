@@ -42,6 +42,25 @@ const VOXEL_IMAGE_NAME: &str = "test-cabinet-voxel";
 /// asset-generation run (`asset_kind = "voxel-animation"`). It is the base image
 /// plus the baked-in `voxel-anim` binary (see `containers/voxel-animation/Dockerfile`).
 const VOXEL_ANIMATION_IMAGE_NAME: &str = "test-cabinet-voxel-animation";
+/// The name of the marching-cubes static run-container image, used by every
+/// `mc-model` asset-generation run. It is the base image plus the baked-in `mc`
+/// binary (see `containers/mc/Dockerfile`).
+const MC_IMAGE_NAME: &str = "test-cabinet-mc";
+/// The name of the marching-cubes animated run-container image, used by every
+/// `mc-animation` run. It is the base image plus the baked-in `mc-anim` binary.
+const MC_ANIMATION_IMAGE_NAME: &str = "test-cabinet-mc-animation";
+/// The name of the surface-nets static run-container image, used by every
+/// `sn-model` run. It is the base image plus the baked-in `sn` binary.
+const SN_IMAGE_NAME: &str = "test-cabinet-sn";
+/// The name of the surface-nets animated run-container image, used by every
+/// `sn-animation` run. It is the base image plus the baked-in `sn-anim` binary.
+const SN_ANIMATION_IMAGE_NAME: &str = "test-cabinet-sn-animation";
+/// The name of the dual-contouring static run-container image, used by every
+/// `dc-model` run. It is the base image plus the baked-in `dc` binary.
+const DC_IMAGE_NAME: &str = "test-cabinet-dc";
+/// The name of the dual-contouring animated run-container image, used by every
+/// `dc-animation` run. It is the base image plus the baked-in `dc-anim` binary.
+const DC_ANIMATION_IMAGE_NAME: &str = "test-cabinet-dc-animation";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
 /// (so a model's controller builds to wasm in-container) and the baked-in Foray
@@ -67,6 +86,24 @@ const SPRITE_SHEET_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE_SHEET
 const VOXEL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL";
 /// The environment variable that pins a verbatim override for the animated-voxel image.
 const VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION";
+/// The environment variable that pins a verbatim override for the marching-cubes
+/// static (`mc-model`) image.
+const MC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC";
+/// The environment variable that pins a verbatim override for the marching-cubes
+/// animated (`mc-animation`) image.
+const MC_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC_ANIMATION";
+/// The environment variable that pins a verbatim override for the surface-nets
+/// static (`sn-model`) image.
+const SN_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN";
+/// The environment variable that pins a verbatim override for the surface-nets
+/// animated (`sn-animation`) image.
+const SN_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN_ANIMATION";
+/// The environment variable that pins a verbatim override for the dual-contouring
+/// static (`dc-model`) image.
+const DC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC";
+/// The environment variable that pins a verbatim override for the dual-contouring
+/// animated (`dc-animation`) image.
+const DC_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC_ANIMATION";
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
@@ -120,6 +157,30 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
             AssetKind::VoxelAnimation => ImageSpec {
                 name: VOXEL_ANIMATION_IMAGE_NAME,
                 override_env: VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::McModel => ImageSpec {
+                name: MC_IMAGE_NAME,
+                override_env: MC_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::McAnimation => ImageSpec {
+                name: MC_ANIMATION_IMAGE_NAME,
+                override_env: MC_ANIMATION_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SnModel => ImageSpec {
+                name: SN_IMAGE_NAME,
+                override_env: SN_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SnAnimation => ImageSpec {
+                name: SN_ANIMATION_IMAGE_NAME,
+                override_env: SN_ANIMATION_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::DcModel => ImageSpec {
+                name: DC_IMAGE_NAME,
+                override_env: DC_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::DcAnimation => ImageSpec {
+                name: DC_ANIMATION_IMAGE_NAME,
+                override_env: DC_ANIMATION_IMAGE_OVERRIDE_ENV,
             },
         },
         TestType::Adversarial => ImageSpec {

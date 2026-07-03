@@ -495,6 +495,15 @@ fn score_frame(
 /// model-written `rig.json`, records it as the produced rig, and reconciles it
 /// against the manifest's required rig — a missing required part or joint is
 /// recorded in the run-level detail, never a crash.
+///
+/// The six **surface-meshed** kinds (`mc`/`sn`/`dc` and their `-anim` siblings) take
+/// the same shape but a different geometry path: rather than regenerating
+/// `voxels.json` from the log, the validator **parses the `mesh.json` the binary
+/// emitted** (per model for a static kind, per part for an animated one) and confirms
+/// it is a well-formed `PartMesh` (see [`score_mesh_part`]). It never re-meshes; the
+/// emitted mesh plus reviewer judgment of the model's preview is the scored artifact.
+/// The animated meshed kinds reconcile their `rig.json` against the required
+/// `[model]` exactly as the cube animated kind does.
 #[derive(Debug, Clone, Default)]
 pub struct VoxelGenValidator;
 
@@ -507,14 +516,20 @@ impl VoxelGenValidator {
     }
 }
 
-/// The per-part plan the validator regenerates: where this part's recorded log and
-/// preview live, and where its regenerated voxel data and image are written.
+/// The per-part plan the validator evaluates: where this part's recorded log and
+/// preview live, and where its geometry lives. For a **cube** kind the geometry is
+/// the sparse `voxels.json` the validator regenerates from the log at
+/// [`Self::regenerated_voxels_rel`]; for a **meshed** kind it is the `mesh.json` the
+/// binary *emitted*, read (not regenerated) from [`Self::mesh_rel`], and
+/// `regenerated_voxels_rel` records that same emitted mesh path.
 struct PartPlan {
     name: String,
     ops_rel: PathBuf,
     preview_rel: PathBuf,
-    regenerated_png_rel: String,
     regenerated_voxels_rel: String,
+    /// The run-relative path of the emitted `mesh.json` for a meshed kind; `None`
+    /// for a cube kind (which regenerates `voxels.json` instead).
+    mesh_rel: Option<PathBuf>,
 }
 
 impl Validator for VoxelGenValidator {
@@ -545,44 +560,66 @@ impl Validator for VoxelGenValidator {
             ));
         };
 
-        let background = match test_cabinet_voxel::PreviewBackground::parse(&voxel_spec.background)
+        // Validate the declared background even though core no longer renders a
+        // preview from it: a malformed value is still a manifest error.
+        if let Err(err) = test_cabinet_model_core::PreviewBackground::parse(&voxel_spec.background)
         {
-            Ok(background) => background,
-            Err(err) => {
-                return Ok(failed_load(
-                    &format!("invalid voxel background: {err}"),
-                    None,
-                    None,
-                    proof_results,
-                ));
-            }
-        };
+            return Ok(failed_load(
+                &format!("invalid voxel background: {err}"),
+                None,
+                None,
+                proof_results,
+            ));
+        }
         let dims = test_cabinet_voxel::Dims {
             width: voxel_spec.width,
             height: voxel_spec.height,
             depth: voxel_spec.depth,
         };
 
+        // A meshed kind (mc/sn/dc + `-anim`) reads the `mesh.json` its binary
+        // emitted; a cube kind regenerates `voxels.json` from the log. The mesh
+        // template is a single file for a static kind and a `{part}` template for an
+        // animated one.
+        let mesh_template = test_case.asset_kind.mesh_dest();
+        let is_meshed = mesh_template.is_some();
+
         // One target for a static model (named `model`); one per declared part for
-        // an animated model, each with its own log, preview, regenerated data, and
-        // regenerated image.
+        // an animated model, each with its own log, preview, and geometry (the
+        // regenerated `voxels.json` for a cube kind, or the emitted `mesh.json` for a
+        // meshed kind).
         let plans: Vec<PartPlan> = match test_case.model.as_ref() {
-            None => vec![PartPlan {
-                name: "model".to_string(),
-                ops_rel: output.actions.clone(),
-                preview_rel: tool.preview.clone(),
-                regenerated_png_rel: "regenerated.png".to_string(),
-                regenerated_voxels_rel: "voxels.json".to_string(),
-            }],
+            None => {
+                let mesh_rel = mesh_template.map(PathBuf::from);
+                let geometry_rel = mesh_rel
+                    .as_ref()
+                    .map(|p| rel_string(p))
+                    .unwrap_or_else(|| "voxels.json".to_string());
+                vec![PartPlan {
+                    name: "model".to_string(),
+                    ops_rel: output.actions.clone(),
+                    preview_rel: tool.preview.clone(),
+                    regenerated_voxels_rel: geometry_rel,
+                    mesh_rel,
+                }]
+            }
             Some(model) => model
                 .parts
                 .iter()
-                .map(|part| PartPlan {
-                    name: part.name.clone(),
-                    ops_rel: crate::test_case::part_path(&output.actions, &part.name),
-                    preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
-                    regenerated_png_rel: format!("regenerated/{}.png", part.name),
-                    regenerated_voxels_rel: format!("voxels/{}.json", part.name),
+                .map(|part| {
+                    let mesh_rel = mesh_template
+                        .map(|t| crate::test_case::part_path(Path::new(t), &part.name));
+                    let geometry_rel = mesh_rel
+                        .as_ref()
+                        .map(|p| rel_string(p))
+                        .unwrap_or_else(|| format!("voxels/{}.json", part.name));
+                    PartPlan {
+                        name: part.name.clone(),
+                        ops_rel: crate::test_case::part_path(&output.actions, &part.name),
+                        preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
+                        regenerated_voxels_rel: geometry_rel,
+                        mesh_rel,
+                    }
                 })
                 .collect(),
         };
@@ -590,7 +627,14 @@ impl Validator for VoxelGenValidator {
         let is_anim = test_case.model.is_some();
         let mut parts = Vec::with_capacity(plans.len());
         for plan in &plans {
-            match score_part(repo, dims, background, plan) {
+            // A meshed kind parses the emitted `mesh.json` (never re-meshing); a cube
+            // kind regenerates `voxels.json` from the recorded log.
+            let scored = if is_meshed {
+                score_mesh_part(repo, plan)
+            } else {
+                score_part(repo, dims, plan)
+            };
+            match scored {
                 Ok(part) => parts.push(part),
                 // A static model with no scorable output is a failed load (mirrors
                 // the sprite validator). For an animated model one bad part must not
@@ -601,7 +645,7 @@ impl Validator for VoxelGenValidator {
                         parts.push(VoxelPartResult {
                             name: plan.name.clone(),
                             regenerated_voxels: plan.regenerated_voxels_rel.clone(),
-                            regenerated_image: plan.regenerated_png_rel.clone(),
+                            regenerated_image: rel_string(&plan.preview_rel),
                             preview_image: rel_string(&plan.preview_rel),
                             ops_log: rel_string(&plan.ops_rel),
                             operation_count: 0,
@@ -659,21 +703,21 @@ impl Validator for VoxelGenValidator {
     }
 }
 
-/// Regenerate one part's voxel data and preview and measure its cheat divergence.
+/// Regenerate one part's voxel data from its operation log and record the part.
 ///
 /// Returns `Err` with a fatal reason when the operation log cannot be parsed or its
-/// outputs cannot be written — the caller maps that to a failed load (static) or a
-/// zero-scored part (animated). A missing log is treated as an empty part (with a
-/// note), and a missing preview leaves the divergence unmeasured (a note), so a
-/// model that simply never sculpted a part is recorded rather than failed.
+/// voxel data cannot be written — the caller maps that to a failed load (static) or
+/// a zero-scored part (animated). A missing log is treated as an empty part (with a
+/// note), so a model that simply never sculpted a part is recorded rather than
+/// failed. Preview regeneration and cheat divergence are retired: the served
+/// "regenerated" image is the model's own rendered preview and divergence is `None`.
 fn score_part(
     repo: &Path,
     dims: test_cabinet_voxel::Dims,
-    background: test_cabinet_voxel::PreviewBackground,
     plan: &PartPlan,
 ) -> std::result::Result<VoxelPartResult, String> {
     let ops_path = repo.join(&plan.ops_rel);
-    let (operations, mut notes) = match std::fs::read_to_string(&ops_path) {
+    let (operations, notes) = match std::fs::read_to_string(&ops_path) {
         Ok(raw) => {
             let operations: Vec<test_cabinet_voxel::Operation> = serde_json::from_str(&raw)
                 .map_err(|err| {
@@ -698,7 +742,7 @@ fn score_part(
 
     let set = test_cabinet_voxel::render(&dims, &operations);
 
-    // Write the regenerated voxel data (what the 3D client renders) into the tree.
+    // Write the regenerated voxel data (a sparse readback of the log) into the tree.
     let voxels_path = repo.join(&plan.regenerated_voxels_rel);
     if let Some(parent) = voxels_path.parent() {
         std::fs::create_dir_all(parent)
@@ -707,46 +751,157 @@ fn score_part(
     std::fs::write(&voxels_path, format!("{}\n", set.to_voxels_json()))
         .map_err(|err| format!("could not write the regenerated voxel data: {err}"))?;
 
-    // Regenerate the isometric preview from the same rasterizer the binary used and
-    // write it into the produced tree so it is collected and served.
-    let regenerated_path = repo.join(&plan.regenerated_png_rel);
-    if let Some(parent) = regenerated_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
-    }
-    let png_bytes =
-        test_cabinet_voxel::rasterize(&set, &test_cabinet_voxel::Camera::PREVIEW, background);
-    std::fs::write(&regenerated_path, &png_bytes)
-        .map_err(|err| format!("could not write the regenerated image: {err}"))?;
-
-    // Cheat divergence: compare the regenerated preview to the model's on-disk one.
-    // A high value means the model wrote pixels the tool would not. Absent or
-    // unreadable preview leaves it unmeasured rather than failing the run.
-    let preview_path = repo.join(&plan.preview_rel);
-    let cheat_divergence = if preview_path.is_file() {
-        match score(&preview_path, &regenerated_path) {
-            Ok(similarity) => Some(1.0 - similarity),
-            Err(err) => {
-                notes.push(format!("could not compare against the preview: {err}"));
-                None
-            }
-        }
-    } else {
-        notes.push("the model left no preview image to compare".to_string());
-        None
-    };
+    // Preview regeneration and cheat divergence are retired for the voxel family:
+    // the scored artifact is the emitted mesh/rig plus reviewer judgment of the
+    // model's own rendered preview, so core no longer re-renders a preview here.
+    // The served "regenerated" image is the model's preview (the wgpu+Mesa render
+    // the binary produced), and divergence goes unmeasured.
+    let preview_rel = rel_string(&plan.preview_rel);
 
     Ok(VoxelPartResult {
         name: plan.name.clone(),
         regenerated_voxels: plan.regenerated_voxels_rel.clone(),
-        regenerated_image: plan.regenerated_png_rel.clone(),
-        preview_image: rel_string(&plan.preview_rel),
+        regenerated_image: preview_rel.clone(),
+        preview_image: preview_rel,
         ops_log: rel_string(&plan.ops_rel),
         operation_count: operations.len(),
         voxel_count: set.occupied_count(),
-        cheat_divergence,
+        cheat_divergence: None,
         detail: (!notes.is_empty()).then(|| notes.join("; ")),
     })
+}
+
+/// Evaluate one part of a **surface-meshed** run: parse the `mesh.json` the binary
+/// emitted and confirm it is a well-formed `PartMesh`. Unlike [`score_part`], this
+/// regenerates **no** geometry — the emitted mesh is the scored artifact, so the
+/// validator only reads and validates it.
+///
+/// Returns `Err` with a fatal reason only when the emitted mesh is present but
+/// malformed (the caller maps that to a failed load for a static kind, or a
+/// zero-scored part for an animated one), or when a file is unreadable for a reason
+/// other than absence. A **missing** log or a **missing** mesh is a recorded gap
+/// (an empty part with a note), so a model that simply never meshed a part is
+/// recorded rather than failing the run — mirroring [`score_part`].
+fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPartResult, String> {
+    let mesh_rel = plan
+        .mesh_rel
+        .as_ref()
+        .expect("a meshed part plan carries a mesh path");
+    let mut notes: Vec<String> = Vec::new();
+
+    // Read the recorded operation log only for its op count — the geometry is the
+    // emitted mesh, not a replay of the log. A missing log is an empty part; a
+    // present-but-unparseable log is fatal (as in the cube path).
+    let ops_path = repo.join(&plan.ops_rel);
+    let operation_count = match std::fs::read_to_string(&ops_path) {
+        Ok(raw) => {
+            let ops: Vec<serde_json::Value> = serde_json::from_str(&raw).map_err(|err| {
+                format!(
+                    "operation log `{}` is not a valid operation log: {err}",
+                    plan.ops_rel.display()
+                )
+            })?;
+            ops.len()
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            notes.push("the model recorded no operations for this part".to_string());
+            0
+        }
+        Err(err) => {
+            return Err(format!(
+                "could not read operation log `{}`: {err}",
+                plan.ops_rel.display()
+            ));
+        }
+    };
+
+    // Parse and well-formedness-check the emitted `mesh.json` (the `PartMesh` shape:
+    // positions/normals/colors/indices). Its vertex count is recorded in place of a
+    // voxel count. A missing mesh is a recorded gap; a malformed one is fatal.
+    let mesh_path = repo.join(mesh_rel);
+    let vertex_count = match std::fs::read_to_string(&mesh_path) {
+        Ok(raw) => {
+            let mesh: test_cabinet_voxel_mesh::Mesh =
+                serde_json::from_str(&raw).map_err(|err| {
+                    format!(
+                        "emitted mesh `{}` is not a well-formed PartMesh: {err}",
+                        rel_string(mesh_rel)
+                    )
+                })?;
+            validate_mesh(&mesh)
+                .map_err(|err| format!("emitted mesh `{}` {err}", rel_string(mesh_rel)))?;
+            mesh.positions.len() / 3
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            notes.push("the model emitted no mesh for this part".to_string());
+            0
+        }
+        Err(err) => {
+            return Err(format!(
+                "could not read emitted mesh `{}`: {err}",
+                rel_string(mesh_rel)
+            ));
+        }
+    };
+
+    // As in the cube path, the served "regenerated" image is the model's own rendered
+    // preview and divergence is retired.
+    let preview_rel = rel_string(&plan.preview_rel);
+
+    Ok(VoxelPartResult {
+        name: plan.name.clone(),
+        // The emitted `mesh.json` is what the client renders in 3D.
+        regenerated_voxels: plan.regenerated_voxels_rel.clone(),
+        regenerated_image: preview_rel.clone(),
+        preview_image: preview_rel,
+        ops_log: rel_string(&plan.ops_rel),
+        operation_count,
+        // No voxels for a mesh; the emitted mesh's vertex count stands in.
+        voxel_count: vertex_count,
+        cheat_divergence: None,
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    })
+}
+
+/// Confirm an emitted [`Mesh`](test_cabinet_voxel_mesh::Mesh) is a well-formed
+/// `PartMesh`: parallel `positions`/`normals`/`colors` flat triple arrays of equal
+/// length, a triangle-aligned `indices` array, and every index in range. Returns a
+/// trailing clause (`"has …"`, `"references …"`) the caller prefixes with the mesh
+/// path.
+fn validate_mesh(mesh: &test_cabinet_voxel_mesh::Mesh) -> std::result::Result<(), String> {
+    if !mesh.positions.len().is_multiple_of(3) {
+        return Err(format!(
+            "has {} position floats, not a multiple of 3",
+            mesh.positions.len()
+        ));
+    }
+    let vertices = mesh.positions.len() / 3;
+    if mesh.normals.len() != mesh.positions.len() {
+        return Err(format!(
+            "has {} normal floats but {} position floats",
+            mesh.normals.len(),
+            mesh.positions.len()
+        ));
+    }
+    if mesh.colors.len() != mesh.positions.len() {
+        return Err(format!(
+            "has {} color floats but {} position floats",
+            mesh.colors.len(),
+            mesh.positions.len()
+        ));
+    }
+    if !mesh.indices.len().is_multiple_of(3) {
+        return Err(format!(
+            "has {} indices, not a multiple of 3",
+            mesh.indices.len()
+        ));
+    }
+    if let Some(&bad) = mesh.indices.iter().find(|&&i| i as usize >= vertices) {
+        return Err(format!(
+            "references vertex {bad} but has only {vertices} vertices"
+        ));
+    }
+    Ok(())
 }
 
 /// Read the model-written `rig.json` and convert it into a [`ModelSpec`] superset

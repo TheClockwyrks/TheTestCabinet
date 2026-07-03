@@ -285,24 +285,30 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: sprite-sheet lost its [sheet]"
                     );
                 }
-                AssetKind::VoxelModel => {
+                AssetKind::VoxelModel
+                | AssetKind::McModel
+                | AssetKind::SnModel
+                | AssetKind::DcModel => {
                     assert!(
                         manifest.voxel.is_some(),
-                        "{id}: voxel-model lost its [voxel]"
+                        "{id}: static voxel/meshed kind lost its [voxel]"
                     );
                     assert!(
                         manifest.model.is_none(),
-                        "{id}: static voxel-model has no [model]"
+                        "{id}: static voxel/meshed kind has no [model]"
                     );
                 }
-                AssetKind::VoxelAnimation => {
+                AssetKind::VoxelAnimation
+                | AssetKind::McAnimation
+                | AssetKind::SnAnimation
+                | AssetKind::DcAnimation => {
                     assert!(
                         manifest.voxel.is_some(),
-                        "{id}: voxel-animation lost its [voxel]"
+                        "{id}: animated voxel/meshed kind lost its [voxel]"
                     );
                     assert!(
                         manifest.model.is_some(),
-                        "{id}: voxel-animation lost its [model]"
+                        "{id}: animated voxel/meshed kind lost its [model]"
                     );
                 }
                 AssetKind::Sprite => {}

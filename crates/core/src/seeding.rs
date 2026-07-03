@@ -297,13 +297,8 @@ fn seed_voxel_tool(
     let preview = tool.preview.to_string_lossy().replace('\\', "/");
     let actions = output.actions.to_string_lossy().replace('\\', "/");
 
-    let background = test_cabinet_voxel::PreviewBackground::parse(&voxel_spec.background)
+    let background = test_cabinet_model_core::PreviewBackground::parse(&voxel_spec.background)
         .map_err(|err| Error::Seeding(format!("invalid voxel background: {err}")))?;
-    let dims = test_cabinet_voxel::Dims {
-        width: voxel_spec.width,
-        height: voxel_spec.height,
-        depth: voxel_spec.depth,
-    };
 
     // The config the binary reads. For an animated model the `actions`/`preview`
     // values are `{part}` templates and the config lists the declared parts (plus
@@ -321,6 +316,13 @@ fn seed_voxel_tool(
         let part_names: Vec<&str> = model.parts.iter().map(|p| p.name.as_str()).collect();
         config["parts"] = serde_json::json!(part_names);
         config["rig"] = serde_json::json!(crate::test_case::VOXEL_RIG_DEST);
+    }
+    // A surface-meshed kind (mc/sn/dc and their `-anim` siblings) emits its geometry
+    // as `mesh.json` — a single file for a static model, a `{part}` template for an
+    // animated one — so thread that path into the config the binary reads. The cube
+    // kinds emit no `mesh.json` and leave this unset.
+    if let Some(mesh) = test_case.asset_kind.mesh_dest() {
+        config["mesh"] = serde_json::json!(mesh);
     }
     // When a viewer is observing the run, seed the live-preview endpoint so the
     // sculpting binary streams each re-rendered frame back to the host. Absent for
@@ -340,10 +342,12 @@ fn seed_voxel_tool(
         ),
     )?;
 
-    // Seed each target's empty action log and blank starting preview, rendered from
-    // the empty volume through the same rasterizer the binary and validator use, so
-    // the run starts from a known, empty state. A static model is one target; an
-    // animated model is one per declared part, at its `{part}`-resolved paths.
+    // Seed each target's empty action log and a blank starting preview, so the run
+    // starts from a known, empty state. The blank preview is a solid frame in the
+    // configured background color — the same thing the empty scene renders to — that
+    // the binary's `init` overwrites with the wgpu+Mesa mesh render on first use. A
+    // static model is one target; an animated model is one per declared part, at its
+    // `{part}`-resolved paths.
     let targets: Vec<(PathBuf, PathBuf)> = match &test_case.model {
         Some(model) => model
             .parts
@@ -357,11 +361,7 @@ fn seed_voxel_tool(
             .collect(),
         None => vec![(output.actions.clone(), tool.preview.clone())],
     };
-    let empty_preview = test_cabinet_voxel::rasterize(
-        &test_cabinet_voxel::VoxelSet::empty(dims),
-        &test_cabinet_voxel::Camera::PREVIEW,
-        background,
-    );
+    let empty_preview = blank_preview_png(background.fill())?;
     for (actions_rel, preview_rel) in targets {
         let actions_path = repo.join(&actions_rel);
         if let Some(parent) = actions_path.parent() {
@@ -629,6 +629,33 @@ fn run_timestamp() -> String {
 /// Wrap an I/O error as a seeding error.
 fn seed_err(err: std::io::Error) -> Error {
     Error::Seeding(err.to_string())
+}
+
+/// The edge length of a seeded blank voxel preview, matching the mesh renderer's
+/// preview size so the placeholder frame is the same shape the binary re-renders.
+const SEED_PREVIEW_SIZE: u32 = 512;
+
+/// Encode a solid `SEED_PREVIEW_SIZE` square of the given straight-RGBA fill as PNG
+/// bytes — the empty-scene placeholder preview seeded before a voxel run starts.
+fn blank_preview_png(fill: [u8; 4]) -> Result<Vec<u8>> {
+    let count = (SEED_PREVIEW_SIZE * SEED_PREVIEW_SIZE) as usize;
+    let mut pixels = Vec::with_capacity(count * 4);
+    for _ in 0..count {
+        pixels.extend_from_slice(&fill);
+    }
+    let mut buf = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut buf, SEED_PREVIEW_SIZE, SEED_PREVIEW_SIZE);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|err| Error::Seeding(format!("writing blank preview header: {err}")))?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|err| Error::Seeding(format!("writing blank preview data: {err}")))?;
+    }
+    Ok(buf)
 }
 
 /// Wrap an I/O error as a seeding error, prefixed with the operation that failed.
