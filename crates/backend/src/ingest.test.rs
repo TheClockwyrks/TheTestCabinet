@@ -224,12 +224,12 @@ fn stored_manifest_carries_performance_specs() {
 #[test]
 fn stored_manifest_carries_voxel_specs() {
     // A voxel case's `[voxel]` bounding volume — and, for a voxel-animation case,
-    // its required `[model]` rig — must survive into the stored manifest. They are
-    // what the runner's seeder reads to write the `voxel(-anim).config.json` and
-    // pre-seed `rig.json`; if they are dropped, seeding fails with
-    // "voxel case has no [voxel]" (the regression this guards). Resolving the real
-    // static Skyshard and rigged Ironward cases guards the ingest path for both
-    // voxel kinds, mirroring the adversarial/performance guards above.
+    // its required `[model]` animation contract — must survive into the stored
+    // manifest. They are what the runner's seeder reads to write the
+    // `voxel(-anim).config.json` and pre-seed `rig.json`; if they are dropped, seeding
+    // fails with "voxel case has no [voxel]" (the regression this guards). Resolving
+    // the real static Skyshard and rigged Ironward cases guards the ingest path for
+    // both voxel kinds, mirroring the adversarial/performance guards above.
     let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
 
@@ -249,8 +249,12 @@ fn stored_manifest_carries_voxel_specs() {
     assert!(manifest.voxel.is_some(), "voxel volume survives ingest");
     let model = manifest.model.expect("required rig survives ingest");
     assert!(
-        !model.parts.is_empty(),
-        "the required rig must carry its declared parts"
+        !model.animations.is_empty(),
+        "the required rig must carry its declared animations"
+    );
+    assert!(
+        model.parts.is_empty(),
+        "parts are model-invented, not declared in the manifest"
     );
 }
 
