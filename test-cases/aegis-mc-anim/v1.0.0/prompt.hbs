@@ -1,10 +1,15 @@
-Composite and rig the **Aegis**, a colossal multi-gun walking fortress that strides
-on six independent legs — each a three-segment thigh/shin/flat-foot chain — whose main
-cannon aims forward, whose two side-mounted turrets each traverse to cover only their
-own flank, and whose radar vane sweeps on its own, as an 88x80x104 model **meshed with
-Marching Cubes** using only the `mc-anim` tool. You build it not by painting cells but
-by **compositing a signed-distance field** — adding and subtracting primitives — and
-you author its walk and weapon animations as F-curves.
+Composite and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
+legs, aims a dominant main cannon forward, works a side-mounted turret on each flank,
+and sweeps a radar vane — as an 88x80x104 model **meshed with Marching Cubes** using
+only the `mc-anim` tool. You build it not by painting cells but by **compositing a
+signed-distance field** — adding and subtracting primitives — and you **author its
+walk and weapon animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the Aegis is* and *how it must move*, but the parts you build, how you break
+the fortress into moving pieces, where you place the joints, and how you shape every
+form are **entirely yours to invent**. Work out the pieces a walking, firing fortress
+needs.
 
 ## How compositing and rigging works
 
@@ -26,34 +31,35 @@ triangle mesh with **Marching Cubes** — a **fixed LOW-POLY, chunky faceted** c
 (a coarse sample grid): it is what this binary is for, not a setting you tune. Lean
 into the bold, faceted look.
 
-Every operation targets a **part** with `--part <name>`; each part is a **separate
-field** composited in the shared volume's coordinates. The field starts **empty**.
-Colors are **opaque** `#rrggbb` — there is no transparency. After each call the binary
-re-renders that part's wgpu preview to `parts/<part>.png` and updates that part's
-emitted `parts/<part>.mesh.json`. Blank starting previews and a pre-seeded `rig.json`
-holding the required parts, joints, and animation declarations are already in place at
-`{{workspace}}`.
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each
+a parent and a pivot), place joints on them with `define-joint`, and author the
+required animations with `define-animation`/`add-keyframe`. Every field operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it;
+each part is a **separate field** composited in the shared volume's coordinates. The
+field starts **empty**. Colors are **opaque** `#rrggbb` — there is no transparency.
+After each call the binary re-renders that part's wgpu preview to `parts/<part>.png`
+and updates that part's emitted `parts/<part>.mesh.json`.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
+mc-anim define-part --name chassis
 mc-anim add-box --part chassis --cx 44 --cy 45 --cz 52 --sx 60 --sy 30 --sz 88 --color "#c69a4b"
 mc-anim add-sphere --part main_turret --cx 44 --cy 64 --cz 56 --r 12 --blend 3 --color "#c69a4b"
-mc-anim subtract-cylinder --part chassis --cx 44 --cy 60 --cz 96 --axis z --r 6 --length 20
 ```
 
-Run `mc-anim --help` to list every field operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints, and defining animations and their
-keyframes), and `mc-anim <operation> --help` for one operation's exact flags — that
-help text is the authoritative contract. **Read `parts/<part>.png` after your calls**
-to see that part's progress, **and read the assembled-scene previews under `scene/`
+(The part names above are just an example — name your own parts however you like.) Run
+`mc-anim --help` to list every field operation **and** the rig subcommands (defining
+parts, setting pivots, defining joints, and defining animations and their keyframes),
+and `mc-anim <operation> --help` for one operation's exact flags — that help text is
+the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
 fortress composed from all your parts, re-rendered after every operation. The scene
-views are how you confirm the parts actually fit together: that the six legs seat
-under the hull and reach the ground, the main turret sits centered on the citadel, the
-cannon meets the turret front, and each side turret seats out on its sponson. Because
-each part is composited in the shared volume's coordinates, position each part where it
-belongs on the finished fortress; the scene simply composes them there.
+views are how you confirm the parts actually fit together and that the legs reach the
+ground. Because each part is composited in the shared volume's coordinates, position
+each part where it belongs on the finished fortress; the scene simply composes them
+there.
 
 ## What to read first
 
@@ -64,37 +70,23 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, the required joints, and
-the required animations. The joints: **eighteen auto leg joints** — a `hip_*`, a
-`knee_*`, and a `foot_*` per leg (`lf, lm, lr, rf, rm, rr`), each leg an independent
-three-segment chain (thigh + shin + flat foot) that plants its foot flat and lifts it
-clear of the ground; the four gun caller joints — `main_turret_yaw` and
-`main_gun_pitch` for the main turret and cannon, and `left_turret_yaw` /
-`right_turret_yaw` for the two independently traversing side turrets; and the one auto
-`radar_spin` joint. The animations you must **author** (as F-curves, with
-`mc-anim define-animation` / `add-keyframe`): **`march`** (the two-tripod walk
-driving the eighteen leg joints), **`bombardment`** (the four gun joints), and the
-self-playing **`radar_spin`**. Run `mc-anim --help` for the exact operation, rig,
-and animation contract.
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form
+of the fortress, and — the fixed contract — the three animations you must author:
+**`march`** (the walk), **`bombardment`** (the guns), and the self-playing
+**`radar_spin`**. It does **not** hand you a parts list or joint angles; that is the
+point. Run `mc-anim --help` for the exact operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a heavily armored citadel raised on six
-independent three-segment legs (thigh + shin + flat foot, bent-knee rest), carrying a
-big main turret and cannon, a side-mounted turret out on each sponson, and a sweeping
-radar vane — all as a bold, low-poly faceted Marching Cubes surface. The required
-interface is **eighteen auto leg joints** (`hip_*` sweeps each leg, `knee_*` folds
-each shin the reverse/digitigrade way to lift the foot, `foot_*` keeps each foot flat),
-**four caller gun joints** (`main_turret_yaw` fine-aims within a narrow forward cone,
-`main_gun_pitch` elevates the cannon, and `left_turret_yaw` / `right_turret_yaw`
-traverse each side turret across its own flank), and **one auto joint**, `radar_spin`.
-You must also **author the three required animations** as F-curves with the `mc-anim`
-animation subcommands: `march` (the two-tripod walk with a planted, flat, still stance
-phase and an `ease-in` foot-plant), `bombardment` (the guns), and the self-playing
-`radar_spin`. Produce **every** required part, joint, and animation; you may add your
-own extra parts, joints, or animations on top, but do not drop or contradict the
-required interface. When you are satisfied, stop: the emitted per-part meshes and
-`rig.json` are your finished submission.
+correctly, and the rig is complete: a heavily armored citadel raised on legs, carrying
+a big main turret and forward cannon, a side-mounted turret out on each flank, and a
+sweeping radar vane — all as a bold, low-poly faceted Marching Cubes surface. **Author
+the three required animations** as F-curves with the `mc-anim` animation subcommands:
+`march` (a walk whose feet plant flat and still, then lift and swing — with weight, not
+a weightless slide), `bombardment` (the guns working while the fortress stands), and
+the self-playing `radar_spin`. The animations are the fixed contract — produce all
+three, by those names; the parts and joints that realize them are yours. When you are
+satisfied, stop: the emitted per-part meshes and `rig.json` are your finished
+submission.

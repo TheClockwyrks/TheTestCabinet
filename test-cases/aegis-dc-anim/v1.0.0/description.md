@@ -1,35 +1,28 @@
-**Aegis (Dual Contouring, Animated)** is a colossal Duneforged **six-legged
-walking fortress** — a heavily armored citadel that dwarfs every
-buildable unit, bristling with guns and striding on six heavy legs. This
-asset-generation case asks a model to mesh *and rig* it as a **Dual Contouring
-mesh** using only the `dc-anim` tool, one operation at a time. Instead of
-painting cells, the model shapes a **continuous signed-distance field** by
-compositing CSG primitives (spheres, boxes, ellipsoids, cylinders — added,
-subtracted, and blended), which Dual Contouring extracts into a **crisp,
-hard-surface** mesh: because DC preserves sharp edges and corners — for free at
-hard-union creases, and explicitly through its **`--sharp` / `--smooth`** tag —
-the model builds hard-surface armor with clean edges and defined panel seams
-rather than a rounded, cast look. The fortress is an immense armored hull (the
-fixed root) raised on **six independent three-segment legs** — an upper thigh, a
-lower shin, and a short flat foot on a hip and a knee, so each foot plants flat
-and lifts clear of the ground on its swing — a big central main turret with a
-long forward cannon, a rotating secondary turret **mounted out on each side
-sponson**, and a decorative radar vane that sweeps on its own. The rig's
-required contract is eighteen **`auto`** leg joints — a **`hip_*`**, a
-**`knee_*`**, and a **`foot_*`** for each of the six legs, driven by the
-model-authored **`march`** walk (a two-tripod gait with a planted, flat stance
-phase) — plus four caller-driven gun joints: **`main_turret_yaw`** (fine
-corrections within a narrow forward cone), **`main_gun_pitch`** (cannon
-elevation), and **`left_turret_yaw`** / **`right_turret_yaw`** (each side turret
-traversing only its own flank, driven by the **`bombardment`** weapon animation)
-— over one auto **`radar_spin`** that turns the vane forever. The model must
-**author** all three animations as F-curves. There is no target model — the
-model meshes and rigs toward a written brief, and may add its own extra parts,
-joints, and animations on top. Each part's emitted `mesh.json` and the rig are
-regenerated into a posable 3D model the frontend renders with live joint
-controls and the play-back animations, and a reviewer judges it against the
-brief: that it reads as a giant six-legged walking fortress built as the crisp,
-sharp-edged hard-surface armor Dual Contouring is made for, the legs stride on
-planted feet without clipping the ground, the main cannon aims forward and
-elevates without detaching, the side turrets are side-mounted and each sweep
-their own flank, and the hull stays put while only the moving parts move.
+**Aegis — Dual Contouring** is a colossal Duneforged **walking fortress** — a
+heavily armored citadel that dwarfs every buildable unit, bristling with guns and
+striding on legs — rendered as a **high-fidelity mesh with crisp, preserved sharp
+edges**. This asset-generation case asks a model to composite *and rig* it as an
+88×80×104 signed-distance-field model using only the `dc-anim` tool, one operation
+at a time: instead of painting cells, the model **adds and subtracts primitives**
+(spheres, boxes, ellipsoids, cylinders, with an optional soft `--blend` and a
+DC-only `--sharp`/`--smooth` tag) to build each part's field, and **Dual
+Contouring** meshes each field on a fine grid that keeps sharp edges and corners
+crisp while intentionally rounded forms stay smooth. The fortress is an immense
+armored hull raised on legs, a big central main turret with a long forward
+cannon, a rotating secondary turret out on each flank, and a decorative radar
+vane that sweeps on its own. Crucially, the case does **not** hand the model a
+rig: it fixes only the three animations the model must author — a walking
+**`march`**, a weapon **`bombardment`**, and a self-playing **`radar_spin`** — and
+leaves the parts, joints, and articulation that realize them entirely to the
+model, so the test measures whether a model can work out the pieces a walking,
+firing fortress needs, attach them where they belong, and animate them
+convincingly (legs that plant a flat foot and push the body forward, a cannon
+that aims and elevates, side turrets that each cover their own flank). There is
+no target model — the model composites and rigs toward a written brief. The
+emitted per-part meshes are assembled into a rigged 3D model the frontend renders
+with the play-back animations, and a reviewer judges it against the brief: that it
+reads as a giant multi-legged walking fortress with a high-fidelity, crisp-edged
+surface, the legs stride on planted feet without clipping the ground, the main
+cannon aims forward and elevates without detaching, the side turrets are
+side-mounted and each sweep their own flank, and the hull stays put while only
+the moving parts move.

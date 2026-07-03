@@ -1,55 +1,68 @@
-Mesh and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
-six independent legs — each a three-segment thigh/shin/flat-foot chain — whose main
-cannon aims forward, whose two side-mounted turrets each traverse to cover only their
-own flank, and whose radar vane sweeps on its own, as an 88x80x104 **Dual Contouring**
-mesh using only the `dc-anim` tool. Dual Contouring preserves **sharp edges and
-corners**, so build the fortress as **crisp hard-surface armor** — clean edges,
-defined panel seams — not a rounded, smoothed shape. You author its walk and weapon
-animations as F-curves.
+Composite and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
+legs, aims a dominant main cannon forward, works a side-mounted turret on each flank,
+and sweeps a radar vane — as an 88x80x104 model **meshed with Dual Contouring** using
+only the `dc-anim` tool. You build it not by painting cells but by **compositing a
+signed-distance field** — adding and subtracting primitives — and you **author its
+walk and weapon animations** as F-curves.
 
-## How meshing and rigging works
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the Aegis is* and *how it must move*, but the parts you build, how you break
+the fortress into moving pieces, where you place the joints, and how you shape every
+form are **entirely yours to invent**. Work out the pieces a walking, firing fortress
+needs.
 
-The only way to shape the surface and edit the rig is the `dc-anim` binary already
-on your `PATH`. It is the sole channel: unlike a voxel tool it does not paint cells —
-it maintains a **continuous signed-distance field** you shape by **compositing CSG
-primitives** (add/subtract spheres, boxes, ellipsoids, cylinders), and **Dual
-Contouring** extracts a crisp triangle mesh from that field's zero level set. You
-build the model by calling the tool **one operation at a time**, and the ordered
-operations you issue — recorded per part — together with the rig you define are the
-**authoritative output that is scored**, not any file you write directly. Anything
-produced another way is discarded and flagged; only the recorded operations and the
-rig count.
+## How compositing and rigging works
 
-Every operation targets a **part** with `--part <name>`; each part is an
-**independently-authored field** with its own preview and its own emitted mesh. The
-field starts **empty**. Primitives carry **opaque** `#rrggbb` colors — there is no
-transparency — and their centers and extents are **real-valued** within the volume
-(not snapped to a grid). After each call the binary extracts that part's mesh and
-re-renders its wgpu preview to `parts/<part>.png`, and emits that part's geometry to
-`parts/<part>.mesh.json`. Blank starting previews, empty per-part logs, and a
-pre-seeded `rig.json` holding the required parts, joints, and animation declarations
-are already in place at `{{workspace}}`.
+The only way to build a part and edit the rig is the `dc-anim` binary already on your
+`PATH`. It is the sole channel: you build the model by calling it **one operation at a
+time**, and the geometry it **emits** — one meshed `parts/<part>.mesh.json` per part —
+together with the rig you define are the **authoritative output that is scored**, not
+any file you write yourself. Anything produced another way (writing a mesh directly,
+editing a preview by hand) is discarded and flagged; only the tool-emitted meshes and
+the rig count.
+
+Unlike painting discrete voxels, `dc-anim` builds each part's geometry as a
+**continuous signed-distance field**: you **add** primitives (spheres, boxes,
+ellipsoids, cylinders — each a center/extent and an opaque `#rrggbb` color) to lay
+down material and **subtract** them to carve it away, optionally with a soft `--blend`
+radius that fuses primitives smoothly (a `--blend` of `0`, the default, is a hard
+union with a genuine crease). Dual Contouring uniquely exposes a **`--sharp`/`--smooth`**
+tag per primitive that preserves or rounds its edges. The binary then extracts the
+field's surface into a triangle mesh with **Dual Contouring** — a **fixed
+HIGH-FIDELITY, crisp** character (a fine sample grid) that **preserves sharp edges and
+corners** instead of rounding them: it is what this binary is for, not a setting you
+tune. Lean into the crisp, sharp-edged look, keeping smooth forms only for the few
+details that want them.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each
+a parent and a pivot), place joints on them with `define-joint`, and author the
+required animations with `define-animation`/`add-keyframe`. Every field operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it;
+each part is a **separate field** composited in the shared volume's coordinates. The
+field starts **empty**. Colors are **opaque** `#rrggbb` — there is no transparency.
+After each call the binary re-renders that part's wgpu preview to `parts/<part>.png`
+and updates that part's emitted `parts/<part>.mesh.json`.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-dc-anim add-box --part chassis --x 44 --y 44 --z 52 --width 60 --height 30 --depth 84 --color "#c69a4b" --sharp
+dc-anim define-part --name chassis
+dc-anim add-box --part chassis --cx 44 --cy 45 --cz 52 --sx 60 --sy 30 --sz 88 --color "#c69a4b" --sharp
+dc-anim add-sphere --part main_turret --cx 44 --cy 64 --cz 56 --r 12 --blend 3 --color "#c69a4b"
 ```
 
-Run `dc-anim --help` to list every operation **and** the rig subcommands (defining
+(The part names above are just an example — name your own parts however you like.) Run
+`dc-anim --help` to list every field operation **and** the rig subcommands (defining
 parts, setting pivots, defining joints, and defining animations and their keyframes),
 and `dc-anim <operation> --help` for one operation's exact flags — that help text is
-the authoritative contract. Note the field vocabulary: additive `add-sphere` /
-`add-box` / `add-ellipsoid` / `add-cylinder`, subtractive `subtract-*` to carve,
-`--blend <radius>` for a smooth (rounded) join versus a hard crease, and the
-Dual-Contouring-only **`--sharp` / `--smooth`** tag that controls whether an edge is
-preserved crisply or rounded. **Read `parts/<part>.png` after your calls** to see
-that part's surface take shape, and judge how the whole fortress fits together from
-the assembled 3D view the parts compose into — that the six legs seat under the hull
-and reach the ground, the main turret sits centered on the citadel, the cannon meets
-the turret front, and each side turret seats out on its sponson. Because each part is
-authored in the shared volume's coordinates, position each part's field where it
-belongs on the finished fortress.
+the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+part's progress, **and read the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
+fortress composed from all your parts, re-rendered after every operation. The scene
+views are how you confirm the parts actually fit together and that the legs reach the
+ground. Because each part is composited in the shared volume's coordinates, position
+each part where it belongs on the finished fortress; the scene simply composes them
+there.
 
 ## What to read first
 
@@ -60,39 +73,23 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, the required joints, and
-the required animations. The joints: **eighteen auto leg joints** — a `hip_*`, a
-`knee_*`, and a `foot_*` per leg (`lf, lm, lr, rf, rm, rr`), each leg an independent
-three-segment chain (thigh + shin + flat foot) that plants its foot flat and lifts it
-clear of the ground; the four gun caller joints — `main_turret_yaw` and
-`main_gun_pitch` for the main turret and cannon, and `left_turret_yaw` /
-`right_turret_yaw` for the two independently traversing side turrets; and the one auto
-`radar_spin` joint. The animations you must **author** (as F-curves, with
-`dc-anim define-animation` / `add-keyframe`): **`march`** (the two-tripod walk driving
-the eighteen leg joints), **`bombardment`** (the four gun joints), and the self-playing
-**`radar_spin`**. Run `dc-anim --help` for the exact operation, rig, and animation
-contract.
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form
+of the fortress, and — the fixed contract — the three animations you must author:
+**`march`** (the walk), **`bombardment`** (the guns), and the self-playing
+**`radar_spin`**. It does **not** hand you a parts list or joint angles; that is the
+point. Run `dc-anim --help` for the exact operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
-shows the crisp, sharp-edged surface the brief asks for, the parts fit together
-correctly, and the rig is complete: a hard-surface armored citadel
-raised on six independent three-segment legs (thigh + shin + flat foot, bent-knee
-rest), carrying a big main turret and cannon, a side-mounted turret out on each
-sponson, and a sweeping radar vane. Use Dual Contouring's strengths — hard unions
-and the `--sharp` tag for crisp edges and panel seams, `--blend` / `--smooth` only
-where you deliberately want a rounded form. The required interface is **eighteen auto
-leg joints** (`hip_*` sweeps each leg, `knee_*` folds each shin the reverse/digitigrade
-way to lift the foot, `foot_*` keeps each foot flat), **four caller gun joints**
-(`main_turret_yaw` fine-aims within a narrow forward cone, `main_gun_pitch` elevates
-the cannon, and `left_turret_yaw` / `right_turret_yaw` traverse each side turret across
-its own flank), and **one auto joint**, `radar_spin`. You must also **author the three
-required animations** as F-curves with the `dc-anim` animation subcommands: `march`
-(the two-tripod walk with a planted, flat, still stance phase and an `ease-in`
-foot-plant), `bombardment` (the guns), and the self-playing `radar_spin`. Produce
-**every** required part, joint, and animation; you may add your own extra parts,
-joints, or animations on top, but do not drop or contradict the required interface.
-When you are satisfied, stop: the recorded per-part logs, the emitted `mesh.json` per
-part, and `rig.json` are your finished submission.
+matches the brief, the assembled `scene/` previews show the parts fitting together
+correctly, and the rig is complete: a heavily armored citadel raised on legs, carrying
+a big main turret and forward cannon, a side-mounted turret out on each flank, and a
+sweeping radar vane — all as a crisp, high-fidelity Dual Contouring surface with sharp
+edges and corners preserved. **Author the three required animations** as F-curves with
+the `dc-anim` animation subcommands: `march` (a walk whose feet plant flat and still,
+then lift and swing — with weight, not a weightless slide), `bombardment` (the guns
+working while the fortress stands), and the self-playing `radar_spin`. The animations
+are the fixed contract — produce all three, by those names; the parts and joints that
+realize them are yours. When you are satisfied, stop: the emitted per-part meshes and
+`rig.json` are your finished submission.
