@@ -1,0 +1,44 @@
+[package]
+name = "test-cabinet-dc"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `dc` binary and its library: the **dual-contouring** meshing tool for static 3D
+# asset-generation cases. It is a thin CLI over `test-cabinet-voxel-mesh` (the signed-
+# distance `Field`, the shared CSG `FieldOp` vocabulary, and the `DualContouringMesher`)
+# and `test-cabinet-model-core` (the record/preview plumbing and the wgpu+Mesa mesh
+# renderer): each recorded operation composites a primitive into the field, then the
+# dual-contouring mesher re-extracts the surface to a `mesh.json` and the renderer draws
+# the preview PNG. Dual contouring samples the field on a fine grid, giving a chunky,
+# high-fidelity, sharp-edged surface. The rigged, animated sibling binary is `dc-anim`.
+[lib]
+name = "test_cabinet_dc"
+path = "src/lib.rs"
+
+# The `dc` CLI the model invokes inside the run container to build a single static
+# field-meshed model. Gated behind the `cli` feature (on by default) so a
+# `default-features = false` library consumer links only the pure re-exports and never
+# pulls in clap or the renderer stack.
+[[bin]]
+name = "dc"
+path = "src/bin/dc.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "test-cabinet-voxel-mesh/cli", "test-cabinet-model-core/cli"]
+
+[dependencies]
+# The signed-distance meshing domain (field, ops, meshers, grid presets, `mesh.json`).
+# Linked without default features so a `default-features = false` consumer of this
+# crate never pulls in the wgpu preview renderer; the `cli` feature re-enables it.
+test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+# The generic voxel-family core: the record/preview plumbing, config shapes, the rig
+# model, and the shared mesh renderer this crate's CLI builds on.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+clap = { workspace = true, optional = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "test-cabinet-dc-anim"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `dc-anim` binary: the dual-contouring meshing tool for rigged, animated 3D
+# asset-generation cases. It is a thin CLI over `test-cabinet-dc` (the dual-contouring
+# field domain — the field-op subcommands, the field backend, and the scene composer)
+# and `test-cabinet-model-core` (the rig/animation model and the record/preview
+# plumbing): each part has its own action log, preview, and `mesh.json`, all in the
+# shared volume's coordinates, and the binary additionally maintains the rig structure
+# in `rig.json`. The static sibling `dc` binary lives in `crates/dc`.
+[[bin]]
+name = "dc-anim"
+path = "src/main.rs"
+
+[dependencies]
+# The dual-contouring field domain, with its `cli` feature (clap subcommands, the field
+# backend, the scene composer) enabled; this transitively enables the renderer stack.
+test-cabinet-dc = { path = "../dc" }
+# The generic model + record/preview plumbing, with the `cli` feature for the rig I/O
+# and the `clap` value enums the rig subcommands parse.
+test-cabinet-model-core = { path = "../model-core" }
+clap = { workspace = true }
+
+[lints]
+workspace = true
