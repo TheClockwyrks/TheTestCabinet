@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { AnimationSpec, ModelSpec, VoxelsFile } from "../contract";
+import type { AnimationSpec, ModelSpec, PartMesh } from "../contract";
 import { sampleAnimation } from "../clips";
 import { poseRig } from "../hierarchy";
 import { buildPartGeometry } from "./buildMesh";
@@ -17,15 +17,19 @@ export interface VoxelRigOptions {
   timeMs?: number;
 }
 
-const isVoxelsFile = (
-  v: Record<string, VoxelsFile> | VoxelsFile,
-): v is VoxelsFile =>
-  Array.isArray((v as VoxelsFile).voxels) &&
-  typeof (v as VoxelsFile).dims === "object";
+// A single (static-model) `PartMesh` versus a by-part map: a `PartMesh` carries the
+// geometry arrays directly, whereas the map is keyed by part name and its values are
+// the meshes. Testing for the mesh's own `positions`/`indices` arrays distinguishes
+// them (a part is never named `positions`).
+const isPartMesh = (v: Record<string, PartMesh> | PartMesh): v is PartMesh =>
+  Array.isArray((v as PartMesh).indices) ||
+  ArrayBuffer.isView((v as PartMesh).indices);
 
 /**
  * A posable three.js voxel rig: one {@link THREE.Group} per part (all parented
- * under {@link VoxelRig.root}) carrying a single culled, vertex-colored mesh.
+ * under {@link VoxelRig.root}) carrying a single vertex-colored mesh, loaded
+ * straight from that part's {@link PartMesh} (`mesh.json`) — the runtime never
+ * re-meshes.
  *
  * `pose`/`update` run {@link poseRig} and write each part's **world** matrix onto
  * its group (`matrixAutoUpdate = false`), so the groups are held flat under
@@ -52,9 +56,16 @@ export class VoxelRig {
    */
   private activeAnimation: AnimationSpec | null = null;
 
+  /**
+   * @param rig the parts, joints, and animations to pose.
+   * @param meshesByPart each part's produced {@link PartMesh} (`mesh.json`), keyed
+   *   by part name — or a single `PartMesh` for a static model (assigned to the
+   *   first part). A part with no entry, or an empty mesh, renders as an empty
+   *   group (an attach socket).
+   */
   constructor(
     rig: ModelSpec,
-    voxelsByPart: Record<string, VoxelsFile> | VoxelsFile,
+    meshesByPart: Record<string, PartMesh> | PartMesh,
     opts: VoxelRigOptions = {},
   ) {
     this.rig = rig;
@@ -74,7 +85,7 @@ export class VoxelRig {
     this.root = new THREE.Group();
     this.root.name = "voxel-rig";
 
-    const single = isVoxelsFile(voxelsByPart);
+    const single = isPartMesh(meshesByPart);
     const rootPart = rig.parts[0];
 
     for (const part of rig.parts) {
@@ -82,18 +93,18 @@ export class VoxelRig {
       group.name = part.name;
       group.matrixAutoUpdate = false;
 
-      const voxels = single
+      const mesh = single
         ? part === rootPart
-          ? voxelsByPart
+          ? meshesByPart
           : undefined
-        : voxelsByPart[part.name];
+        : meshesByPart[part.name];
 
-      if (voxels && voxels.voxels.length > 0) {
-        const geometry = buildPartGeometry(voxels);
+      if (mesh && mesh.indices.length > 0) {
+        const geometry = buildPartGeometry(mesh);
         this.geometries.push(geometry);
-        const mesh = new THREE.Mesh(geometry, this.material);
-        mesh.name = `${part.name}:mesh`;
-        group.add(mesh);
+        const meshNode = new THREE.Mesh(geometry, this.material);
+        meshNode.name = `${part.name}:mesh`;
+        group.add(meshNode);
       }
 
       this.groups.set(part.name, group);

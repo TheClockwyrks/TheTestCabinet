@@ -3,10 +3,14 @@
 // the `@test-cabinet/voxel-runtime` runtime, for embedding a voxel asset in an
 // end-to-end game (or any engine) as a standard, animated mesh.
 //
-// It reads the artifacts a voxel-animation run produces — `rig.json` (the part
-// hierarchy, joints, and model-authored animations) and per-part `voxels.json` (the
-// regenerated voxel data) — and emits a glTF 2.0 file with:
-//   • one mesh per part (interior faces culled, `#rrggbb` baked as vertex colors),
+// It reads the artifacts a voxel-family run produces — `rig.json` (the part
+// hierarchy, joints, and model-authored animations) and per-part `mesh.json` (the
+// surface mesh the meshing binary already extracted) — and emits a glTF 2.0 file
+// with:
+//   • one mesh per part, its triangles carried straight from the part's `mesh.json`
+//     (vertex-colored) — the Rust mesher ran once, upstream, so this tool NEVER
+//     re-meshes, and one exporter serves every voxel-family type identically (cube
+//     `voxel`/`voxel-anim` and MC/SN/DC alike all emit the same `mesh.json` shape),
 //   • a node hierarchy matching the part tree (a game can find a part by node name
 //     and drive its transform, exactly as `voxel-runtime`'s `VoxelRig` does),
 //   • one glTF animation per `rig.animations` entry, with its F-curves DENSE-SAMPLED
@@ -15,24 +19,28 @@
 //   • a `<model>.interface.json` sidecar (mirrored into each driven node's `extras`)
 //     listing every `caller` joint as `{ node, kind, axis, min, max, rest }` — the
 //     procedural drives a game wires up.
-// A part sculpted with no voxels exports as an empty **attach socket** node (marked
-// `extras.socket`), a muzzle/exhaust a game hangs VFX on.
+// A part with no geometry (an empty `mesh.json`, or none provided) exports as an
+// empty **attach socket** node (marked `extras.socket`), a muzzle/exhaust a game
+// hangs VFX on.
 //
-// A static model (`voxel-model`) has no rig — pass a single `voxels.json` and it
-// emits a one-mesh, un-rigged glTF.
+// A static model (`voxel-model` / `mc-model` / …) has no rig — pass a single
+// `mesh.json` and it emits a one-mesh, un-rigged glTF.
 //
 // This is a STANDALONE tool: it has no dependencies and can be copied out of the
-// repo. Its mesh-culling and rig-posing math mirror the tested implementations in
-// `packages/voxel-runtime/src/{mesh,hierarchy,clips}.ts` — keep them in sync.
+// repo. Its rig-posing math mirrors the tested implementation in
+// `packages/voxel-runtime/src/{hierarchy,clips}.ts`, and it consumes the same
+// `mesh.json` geometry the runtime's `PartMesh` does — keep them in sync.
 //
 // Usage:
-//   node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb
-//   node scripts/voxel-to-gltf.mjs --voxels voxels.json --out model.glb   # static
+//   node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb
+//   node scripts/voxel-to-gltf.mjs --meshes mesh.json --out model.glb   # static
 //
 // Flags:
 //   --rig <path>          rig.json (omit for a static single-mesh model)
-//   --voxels <path>       a directory of `<part>.json` files (rigged), or a single
-//                         voxels.json file (static). Default: `voxels/` beside --rig.
+//   --meshes <path>       a directory of `<part>.json` mesh files (rigged), or a
+//                         single `mesh.json` file (static). Each is the `PartMesh`
+//                         shape `{ positions, normals, colors, indices }`. Default:
+//                         `meshes/` beside --rig.
 //   --out <path>          output; `.glb` (binary, default) or `.gltf` (+ .bin).
 //                         The interface sidecar is written beside it as
 //                         `<model>.interface.json`.
@@ -45,7 +53,7 @@ import { basename, dirname, extname, join } from "node:path";
 // CLI parsing
 
 function parseArgs(argv) {
-  const args = { out: null, rig: null, voxels: null, name: null };
+  const args = { out: null, rig: null, meshes: null, name: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const take = () => {
@@ -55,7 +63,7 @@ function parseArgs(argv) {
     };
     switch (a) {
       case "--rig": args.rig = take(); break;
-      case "--voxels": args.voxels = take(); break;
+      case "--meshes": args.meshes = take(); break;
       case "--out": args.out = take(); break;
       case "--name": args.name = take(); break;
       case "-h": case "--help": printHelp(); process.exit(0); break;
@@ -63,7 +71,7 @@ function parseArgs(argv) {
     }
   }
   if (!args.out) fail("--out is required");
-  if (!args.rig && !args.voxels) fail("pass --rig (rigged) or --voxels (static)");
+  if (!args.rig && !args.meshes) fail("pass --rig (rigged) or --meshes (static)");
   return args;
 }
 
@@ -71,8 +79,8 @@ function printHelp() {
   // The header comment is the reference; print a short synopsis.
   process.stdout.write(
     "voxel-to-gltf — convert a produced voxel model to glTF/GLB\n\n" +
-      "  node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb\n" +
-      "  node scripts/voxel-to-gltf.mjs --voxels voxels.json --out model.glb   # static\n\n" +
+      "  node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb\n" +
+      "  node scripts/voxel-to-gltf.mjs --meshes mesh.json --out model.glb   # static\n\n" +
       "See the header of this file for every flag.\n",
   );
 }
@@ -90,55 +98,48 @@ function readJson(path) {
   }
 }
 
+// Read a JSON file that may be absent: returns `null` if the file does not exist, but
+// still fails loudly on a malformed one. Used for a rig's optional per-part mesh (a
+// missing mesh becomes an attach socket, but a corrupt mesh is a real error).
+function readJsonIfPresent(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    fail(`could not read ${path}: ${err.message}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    fail(`could not parse ${path}: ${err.message}`);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Mesh building — mirrors packages/voxel-runtime/src/mesh.ts
+// Mesh input — the `mesh.json` (PartMesh) shape the meshing binaries emit.
+//
+// Every voxel-family binary (cube `voxel`/`voxel-anim` and MC/SN/DC alike) runs its
+// surface extraction once, in Rust, and writes each part's triangles as a `mesh.json`
+// with the flat `{ positions, normals, colors, indices }` arrays below. This tool
+// consumes that geometry verbatim — it does NOT re-mesh — so one exporter serves them
+// all identically.
 
-// Unit-cube faces, CCW from outside so back-face culling keeps the outward faces.
-const FACES = [
-  { dir: [-1, 0, 0], corners: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
-  { dir: [1, 0, 0], corners: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
-  { dir: [0, -1, 0], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] },
-  { dir: [0, 1, 0], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] },
-  { dir: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] },
-  { dir: [0, 0, 1], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] },
-];
-
-function hexToRgb(hex) {
-  const h = hex.charCodeAt(0) === 35 ? hex.slice(1) : hex;
-  const n = parseInt(h, 16);
-  if (h.length === 6 && !Number.isNaN(n)) {
-    return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
-  }
-  return [1, 1, 1];
+// Validate a decoded `mesh.json` is the PartMesh shape (flat numeric arrays). Returns
+// the mesh, or fails with a clear message.
+function asPartMesh(mesh, path) {
+  const ok =
+    mesh &&
+    Array.isArray(mesh.positions) &&
+    Array.isArray(mesh.normals) &&
+    Array.isArray(mesh.colors) &&
+    Array.isArray(mesh.indices);
+  if (!ok) fail(`${path} is not a mesh.json (expected positions/normals/colors/indices arrays)`);
+  return mesh;
 }
 
-const cellKey = (x, y, z) => ((x + 1024) * 4096 + (y + 1024)) * 4096 + (z + 1024);
-
-// Build a culled, vertex-colored surface mesh (plain arrays) from a VoxelsFile.
-function buildPartMesh(voxels) {
-  const occupied = new Set();
-  for (const v of voxels.voxels) occupied.add(cellKey(v.x, v.y, v.z));
-  const positions = [];
-  const normals = [];
-  const colors = [];
-  const indices = [];
-  let base = 0;
-  for (const v of voxels.voxels) {
-    const [r, g, b] = hexToRgb(v.color);
-    for (const face of FACES) {
-      const [dx, dy, dz] = face.dir;
-      if (occupied.has(cellKey(v.x + dx, v.y + dy, v.z + dz))) continue;
-      for (const c of face.corners) {
-        positions.push(v.x + c[0], v.y + c[1], v.z + c[2]);
-        normals.push(dx, dy, dz);
-        colors.push(r, g, b);
-      }
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      base += 4;
-    }
-  }
-  return { positions, normals, colors, indices };
-}
+// Whether a mesh carries any triangles (a part with an empty mesh is an attach socket).
+const meshHasGeometry = (mesh) => mesh && mesh.indices.length > 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Matrix math (column-major 4x4) — mirrors hierarchy.ts
@@ -576,7 +577,7 @@ function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld,
   return anim;
 }
 
-function build({ rig, voxelsByPart, name }) {
+function build({ rig, meshesByPart, name }) {
   const builder = new GltfBuilder();
   const gltf = {
     asset: { version: "2.0", generator: "test-cabinet voxel-to-gltf" },
@@ -618,10 +619,10 @@ function build({ rig, voxelsByPart, name }) {
     if (tr[0] || tr[1] || tr[2]) node.translation = tr;
     if (q[0] || q[1] || q[2] || q[3] !== 1) node.rotation = q;
 
-    // Mesh geometry, baked into the part's rest-local frame.
-    const voxels = voxelsByPart[part.name];
-    if (voxels && voxels.voxels.length > 0) {
-      const mesh = buildPartMesh(voxels);
+    // Mesh geometry (the meshing binary's `mesh.json`, verbatim), baked into the
+    // part's rest-local frame.
+    const mesh = meshesByPart[part.name];
+    if (meshHasGeometry(mesh)) {
       const invRest = invert(restWorld.get(part.name));
       const positions = new Float32Array(mesh.positions.length);
       const normals = new Float32Array(mesh.normals.length);
@@ -656,8 +657,9 @@ function build({ rig, voxelsByPart, name }) {
       });
       node.mesh = gltf.meshes.length - 1;
     } else {
-      // A part sculpted with no voxels is an attach socket (a muzzle, an exhaust):
-      // an empty node a game hangs VFX on or spawns projectiles from.
+      // A part with no geometry (an empty mesh.json, or none provided) is an attach
+      // socket (a muzzle, an exhaust): an empty node a game hangs VFX on or spawns
+      // projectiles from.
       node.extras = { ...(node.extras ?? {}), socket: true };
     }
 
@@ -766,29 +768,29 @@ function main() {
   const modelName = args.name ?? basename(args.out, extname(args.out));
 
   let rig;
-  const voxelsByPart = {};
+  const meshesByPart = {};
 
   if (args.rig) {
     rig = normalizeRig(readJson(args.rig));
     if (!Array.isArray(rig.parts)) fail(`${args.rig} is not a rig (no parts array)`);
-    const voxelsDir = args.voxels ?? join(dirname(args.rig), "voxels");
+    const meshesDir = args.meshes ?? join(dirname(args.rig), "meshes");
     for (const part of rig.parts) {
-      const path = join(voxelsDir, `${part.name}.json`);
-      try {
-        voxelsByPart[part.name] = readJson(path);
-      } catch {
-        process.stderr.write(`voxel-to-gltf: note: no voxels for part \`${part.name}\` at ${path}; skipping its mesh\n`);
+      const path = join(meshesDir, `${part.name}.json`);
+      const raw = readJsonIfPresent(path);
+      if (raw === null) {
+        process.stderr.write(`voxel-to-gltf: note: no mesh for part \`${part.name}\` at ${path}; exporting an attach socket\n`);
+        continue;
       }
+      meshesByPart[part.name] = asPartMesh(raw, path);
     }
   } else {
     // Static single-mesh model: one implicit "model" part, no joints.
-    const voxels = readJson(args.voxels);
-    if (!Array.isArray(voxels.voxels)) fail(`${args.voxels} is not a voxels.json (no voxels array)`);
-    rig = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [] };
-    voxelsByPart.model = voxels;
+    const mesh = asPartMesh(readJson(args.meshes), args.meshes);
+    rig = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [], animations: [] };
+    meshesByPart.model = mesh;
   }
 
-  const { gltf, bin, jointInterface } = build({ rig, voxelsByPart, name: modelName });
+  const { gltf, bin, jointInterface } = build({ rig, meshesByPart, name: modelName });
 
   const ext = extname(args.out).toLowerCase();
   if (ext === ".gltf") writeGltf(args.out, gltf, bin);
