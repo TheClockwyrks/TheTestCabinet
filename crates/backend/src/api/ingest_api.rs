@@ -48,16 +48,24 @@ pub async fn ingest(
     let checkout = state.config.checkout.clone();
     let store = state.store.clone();
 
+    // The whole-catalog prune must never drop a definition a run still references, so
+    // fetch that protected set here (async, before the blocking scan) and hand it to
+    // the ingestor. Cheap and harmless on a partial scan, which does not prune.
+    let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
+
     if wants_ndjson(&headers) {
-        return Ok(ingest_streaming(checkout, store, request));
+        return Ok(ingest_streaming(checkout, store, request, protected));
     }
 
     // Default: run the scan to completion and answer with the full report.
-    let report =
-        tokio::task::spawn_blocking(move || Ingestor::new(&checkout, &store).scan(&request))
-            .await
-            .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
-            .map_err(ApiError::from)?;
+    let report = tokio::task::spawn_blocking(move || {
+        Ingestor::new(&checkout, &store)
+            .with_protected_cases(protected)
+            .scan(&request)
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
+    .map_err(ApiError::from)?;
 
     Ok(Json(IngestResponse::from(report)).into_response())
 }
@@ -75,11 +83,16 @@ fn wants_ndjson(headers: &HeaderMap) -> bool {
 /// The scan outpaces no realistic consumer here, so an unbounded channel buffers the
 /// handful of small lines without backpressure; the response ends when the blocking
 /// task drops its sender.
-fn ingest_streaming(checkout: PathBuf, store: DefinitionStore, request: IngestRequest) -> Response {
+fn ingest_streaming(
+    checkout: PathBuf,
+    store: DefinitionStore,
+    request: IngestRequest,
+    protected: std::collections::HashSet<(String, String)>,
+) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
     tokio::task::spawn_blocking(move || {
-        let ingestor = Ingestor::new(&checkout, &store);
+        let ingestor = Ingestor::new(&checkout, &store).with_protected_cases(protected);
         let result = ingestor.scan_with_progress(&request, |event| {
             let _ = tx.send(encode_event(&StreamEvent::from(event)));
         });

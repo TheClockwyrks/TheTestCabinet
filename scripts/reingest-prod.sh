@@ -16,12 +16,14 @@
 # pushed HEAD and POST a forced ingest over localhost (the NetworkPolicy admits only
 # intra-pod traffic to the backend).
 #
-# Ingest ADDS and OVERWRITES; it never PRUNES. A case's identity is its folder slug
-# under test-cases/, so if you RENAME a case's folder (or delete a version), a plain
-# re-ingest leaves the OLD slug still served alongside the new one — a duplicate. To
-# drop the stale slug, rebuild the store from empty: `kubectl -n "$NAMESPACE" rollout
-# restart deploy/tcab-backend` reschedules the pod, and the ingest sidecar re-ingests
-# the current checkout into a fresh emptyDir on start (only the current slugs remain).
+# A case's identity is the `slug` its test-case.toml declares (NOT its folder name; the
+# two usually match but can differ — carom/ pins slug = "pong"). A WHOLE-CATALOG
+# re-ingest (no slug args) also PRUNES the store: any (slug, version) the checkout no
+# longer declares is dropped, EXCEPT one a published/pending run still references (kept
+# so the run stays resolvable and keeps its case metadata in the snapshot). So a folder
+# rename that keeps its slug, or a deleted run-less case, self-heals on the next full
+# re-ingest here — no pod restart / rebuild-from-empty needed. A scan scoped to slug
+# args never prunes (it hasn't seen the whole catalog); target by slug or folder name.
 #
 # Usage:
 #   scripts/reingest-prod.sh                 # force re-ingest every case

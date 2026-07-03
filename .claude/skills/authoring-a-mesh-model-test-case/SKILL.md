@@ -173,7 +173,7 @@ Author `test-case.toml` per the
 [manifests schema](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
 (the **Voxel cases** section):
 
-- **Metadata** — `name`, `difficulty`, `tags` (include `3d`/`voxel`/`mesh` and the
+- **Metadata** — `slug` (the case's stable identity — the store key and what every run records; normally the folder name), `name`, `difficulty`, `tags` (include `3d`/`voxel`/`mesh` and the
   algorithm, e.g. `dual-contouring`), `summary`, `description`, `prompt`,
   `max_runtime_hours`.
 - **`type = "asset-generation"`** — required. Omitting it defaults to `end-to-end`,

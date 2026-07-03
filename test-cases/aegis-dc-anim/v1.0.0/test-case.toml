@@ -1,3 +1,4 @@
+slug = "aegis-dc-anim"
 name = "Aegis (Dual Contouring, Animated)"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "rig", "walker"]

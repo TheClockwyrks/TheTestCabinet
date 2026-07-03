@@ -1,3 +1,4 @@
+slug = "lattice-inserter"
 name = "Lattice Inserter"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "machine"]

@@ -1,3 +1,4 @@
+slug = "spectra-fighter"
 name = "Spectra Fighter"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "ship"]

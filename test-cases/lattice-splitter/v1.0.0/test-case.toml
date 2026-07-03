@@ -1,3 +1,4 @@
+slug = "lattice-splitter"
 name = "Lattice Splitter"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "belt"]

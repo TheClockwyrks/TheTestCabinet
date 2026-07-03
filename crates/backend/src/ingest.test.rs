@@ -325,3 +325,129 @@ fn every_stored_manifest_preserves_its_asset_shape() {
         }
     }
 }
+
+// --- guarded prune of stale definitions -------------------------------------
+
+/// Write a minimal end-to-end case (no reference mockups, so ingest needs no
+/// browser render) under `<checkout>/test-cases/<folder>/v1.0.0` declaring `slug`.
+fn write_e2e_case(checkout: &std::path::Path, folder: &str, slug: &str) {
+    let base = checkout.join("test-cases").join(folder).join("v1.0.0");
+    write(&base.join("prompt.hbs"), "Build it.");
+    write(&base.join("variants/base.toml"), "slug = \"base\"\n");
+    let manifest = format!(
+        "slug = \"{slug}\"\nname = \"Case\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nvariants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"x\"\nbuild = \"y\"\n\
+         [[domain]]\nid = \"g\"\ndescription = \"d\"\n"
+    );
+    write(&base.join("test-case.toml"), &manifest);
+}
+
+/// Slugs currently served by the store, sorted.
+fn stored_slugs(store: &DefinitionStore) -> Vec<String> {
+    let mut slugs: Vec<String> = store
+        .list_cases()
+        .unwrap()
+        .into_iter()
+        .map(|(s, _)| s)
+        .collect();
+    slugs.sort();
+    slugs
+}
+
+#[test]
+fn whole_catalog_ingest_prunes_a_case_the_checkout_no_longer_declares() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_e2e_case(checkout.path(), "beta", "beta");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
+
+    // Drop beta from the checkout; a whole-catalog re-ingest prunes it.
+    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_slugs(&store), ["alpha"]);
+}
+
+#[test]
+fn prune_spares_a_definition_a_run_still_references() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_e2e_case(checkout.path(), "beta", "beta");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Drop beta from the checkout, but protect it as a published run would: the
+    // stale definition is kept so the run stays resolvable.
+    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    let protected = std::collections::HashSet::from([("beta".to_string(), "v1.0.0".to_string())]);
+    Ingestor::new(checkout.path(), &store)
+        .with_protected_cases(protected)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
+}
+
+#[test]
+fn a_folder_rename_that_pins_the_slug_overwrites_in_place_without_duplicating() {
+    // The bug this fixes: renaming a case's folder used to leave the old slug served
+    // alongside the new one. Pinning the slug across the rename keys both the old and
+    // new folder to the same store directory, so the re-ingest overwrites in place.
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "pong", "pong");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_slugs(&store), ["pong"]);
+
+    // Rename the folder pong -> carom but keep `slug = "pong"`.
+    std::fs::remove_dir_all(checkout.path().join("test-cases/pong")).unwrap();
+    write_e2e_case(checkout.path(), "carom", "pong");
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Still exactly one case, keyed by the pinned slug — no `carom` duplicate.
+    assert_eq!(stored_slugs(&store), ["pong"]);
+    assert!(store.has_version("pong", "v1.0.0"));
+    assert!(!store.has_version("carom", "v1.0.0"));
+}
+
+#[test]
+fn a_partial_scan_never_prunes() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_e2e_case(checkout.path(), "beta", "beta");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Remove beta, then run a scan scoped to alpha only. A partial scan has not seen
+    // the whole catalog, so it must not conclude beta is absent.
+    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec!["alpha".to_string()]),
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
+}

@@ -11,7 +11,8 @@ it scores a single solution against a set of **inputs** under **fuel metering**
 rather than pairing implementations against each other.
 
 ```toml
-# test-cases/<slug>/<version>/test-case.toml
+# test-cases/<folder>/<version>/test-case.toml
+slug = "route-finder"        # stable identity (required); the store key + recorded in every run
 name = "Route Finder"        # human-readable display name (site-facing)
 difficulty = "hard"          # relative difficulty: easy | medium | hard (required)
 tags = ["performance", "algorithms"] # classification tags (site-facing, required)

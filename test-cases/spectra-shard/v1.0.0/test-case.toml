@@ -1,3 +1,4 @@
+slug = "spectra-shard"
 name = "Spectra Shard"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "enemy"]

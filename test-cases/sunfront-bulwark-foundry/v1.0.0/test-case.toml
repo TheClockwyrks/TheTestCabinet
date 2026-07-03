@@ -1,3 +1,4 @@
+slug = "sunfront-bulwark-foundry"
 name = "Sunfront Bulwark Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]

@@ -67,16 +67,25 @@ fn every_catalog_case_and_variant_resolves() {
 fn resolves_carom_from_its_manifest() {
     let catalog = TestCaseCatalog::new(catalog_root());
 
+    // Carom's identity is decoupled from its folder name: the case lives in the
+    // `carom/` folder but its manifest pins `slug = "pong"` so the runs published
+    // under the case's original `pong` slug stay attached to it after the folder
+    // rename. So the catalog lists it — and resolution records it — as `pong`, even
+    // though it is looked up here by its folder name.
     let cases = catalog.list().expect("list catalog");
     assert!(
-        cases.iter().any(|c| c.slug == "carom"),
-        "carom should be listed"
+        cases.iter().any(|c| c.slug == "pong"),
+        "carom should be listed under its pinned `pong` slug"
+    );
+    assert!(
+        !cases.iter().any(|c| c.slug == "carom"),
+        "the folder name `carom` is not the case's identity"
     );
 
     let version = catalog
         .resolve_latest("carom")
-        .expect("resolve latest carom");
-    assert_eq!(version.slug, "carom");
+        .expect("resolve latest carom by folder name");
+    assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
     // manifest. Every variant seeds the overview spec and the standard mode.
     assert!(version.prompt_path.ends_with("prompt.hbs"));
@@ -205,8 +214,10 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
         .file_name()
         .and_then(|name| name.to_str())
         .expect("seeded run directory has a name");
+    // The run directory is named for the case's identity (its `pong` slug), not its
+    // `carom/` folder name, matching how the run record and store key it.
     assert!(
-        dir_name.starts_with("carom-v1.0.0-"),
+        dir_name.starts_with("pong-v1.0.0-"),
         "run directory is named for the test case and version: {dir_name}"
     );
 
@@ -280,6 +291,7 @@ fn temp_catalog(
 /// files under `variants/` and are listed by each test's `variants = [...]` key
 /// (which, as a root key, is prepended before this head's `[build]` table).
 const DEMO_HEAD: &str = r#"
+slug = "demo"
 name = "Demo"
 difficulty = "easy"
 tags = []

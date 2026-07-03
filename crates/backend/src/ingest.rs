@@ -88,12 +88,32 @@ pub enum IngestEvent<'a> {
 pub struct Ingestor<'a> {
     checkout: &'a Path,
     store: &'a DefinitionStore,
+    /// `(slug, version)` pairs a whole-catalog scan must never prune even when the
+    /// checkout no longer declares them — the definitions still-referencing runs
+    /// depend on. Empty by default (prune everything absent); set via
+    /// [`with_protected_cases`](Self::with_protected_cases).
+    protected: std::collections::HashSet<(String, String)>,
 }
 
 impl<'a> Ingestor<'a> {
     /// Create an ingestor over a checkout path and a target store.
     pub fn new(checkout: &'a Path, store: &'a DefinitionStore) -> Self {
-        Self { checkout, store }
+        Self {
+            checkout,
+            store,
+            protected: std::collections::HashSet::new(),
+        }
+    }
+
+    /// Protect these `(slug, version)` pairs from the whole-catalog prune — the set a
+    /// run references (see [`crate::db::Db::referenced_cases`]), so a stale definition
+    /// a published or pending run still needs is kept rather than dropped.
+    pub fn with_protected_cases(
+        mut self,
+        protected: std::collections::HashSet<(String, String)>,
+    ) -> Self {
+        self.protected = protected;
+        self
     }
 
     /// Run a scan, honoring the request's restrictions and `force` flag.
@@ -140,6 +160,16 @@ impl<'a> Ingestor<'a> {
             report.test_case_versions.push(ingested);
         }
 
+        // A whole-catalog scan has enumerated every case the checkout declares, so it
+        // can also drop definitions the checkout no longer has — the prune that keeps
+        // a folder rename (or a deleted version) from leaving the old slug served
+        // alongside the new one. A partial (`test_cases`) scan cannot: it has not seen
+        // the whole catalog, so it must not conclude anything is absent. Run-
+        // referenced definitions are spared regardless (see `prune_absent`).
+        if whole_catalog {
+            self.prune_absent(&report)?;
+        }
+
         // Stamp the marker only after a clean full scan, so a fresh store (no marker)
         // and a changed catalog both end at the token they were just ingested to.
         if let Some(version) = tagged {
@@ -147,6 +177,32 @@ impl<'a> Ingestor<'a> {
         }
 
         Ok(report)
+    }
+
+    /// Drop every stored `(slug, version)` the just-completed whole-catalog scan did
+    /// not touch — i.e. the checkout no longer declares — except any pair a run still
+    /// references (the `protected` set), which is kept so the run stays resolvable and
+    /// keeps its case metadata. `report` lists exactly the versions present in the
+    /// checkout (each keyed by its resolved slug), so anything in the store outside
+    /// that set and outside `protected` is stale and removed.
+    fn prune_absent(&self, report: &IngestReport) -> Result<()> {
+        let present: std::collections::HashSet<(&str, &str)> = report
+            .test_case_versions
+            .iter()
+            .map(|v| (v.slug.as_str(), v.version.as_str()))
+            .collect();
+        for (slug, versions) in self.store.list_cases()? {
+            for version in versions {
+                if present.contains(&(slug.as_str(), version.as_str())) {
+                    continue;
+                }
+                if self.protected.contains(&(slug.clone(), version.clone())) {
+                    continue;
+                }
+                self.store.remove_version(&slug, &version)?;
+            }
+        }
+        Ok(())
     }
 
     /// Resolve the set of `(slug, version)` pairs to scan from the checkout.
@@ -184,20 +240,29 @@ impl<'a> Ingestor<'a> {
     /// destructive in-place rebuild opened, which a run resolving its version during
     /// a force re-ingest saw as a spurious 404 "is not ingested". Building fresh also
     /// guarantees a file removed in the checkout does not linger in the store.
-    fn ingest_version(&self, slug: &str, version: &str, force: bool) -> Result<IngestedVersion> {
-        if !force && self.store.has_version(slug, version) {
+    fn ingest_version(&self, id: &str, version: &str, force: bool) -> Result<IngestedVersion> {
+        let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
+
+        // The store is keyed by the case's resolved slug (its manifest identity),
+        // which can differ from `id` — the folder name a targeted scan named, or the
+        // slug a whole-catalog scan enumerated. Resolve it cheaply up front so the
+        // unchanged-skip check and every store key below use the true identity rather
+        // than the lookup key, keeping the store directory and the manifest it holds
+        // in agreement.
+        let slug = catalog.slug_of(id, version).map_err(BackendError::Core)?;
+
+        if !force && self.store.has_version(&slug, version) {
             return Ok(IngestedVersion {
-                slug: slug.to_string(),
+                slug,
                 version: version.to_string(),
                 ingested: false,
                 rendered_references: 0,
             });
         }
 
-        let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
-        let resolved = catalog.resolve(slug, version).map_err(BackendError::Core)?;
+        let resolved = catalog.resolve(id, version).map_err(BackendError::Core)?;
 
-        let staged = self.store.new_staging_dir(slug, version)?;
+        let staged = self.store.new_staging_dir(&slug, version)?;
         let rendered = match self.build_version(&staged, &resolved) {
             Ok(rendered) => rendered,
             Err(err) => {
@@ -207,10 +272,10 @@ impl<'a> Ingestor<'a> {
                 return Err(err);
             }
         };
-        self.store.publish_staged_version(slug, version, &staged)?;
+        self.store.publish_staged_version(&slug, version, &staged)?;
 
         Ok(IngestedVersion {
-            slug: slug.to_string(),
+            slug,
             version: version.to_string(),
             ingested: true,
             rendered_references: rendered,

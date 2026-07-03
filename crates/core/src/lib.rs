@@ -1090,7 +1090,14 @@ fn build_failed_record(
         started_at: started_at.format(&Rfc3339).unwrap_or_default(),
         finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
         subject: RunSubject {
-            test_case_slug: request.test_case_slug.clone(),
+            // The case's identity is its resolved, manifest-declared slug — which can
+            // differ from the slug the run was *requested* by (a folder name, or an
+            // alias). Prefer it so a failed run is recorded against the same identity a
+            // successful one is; fall back to the request slug only when resolution
+            // itself failed, so there is no resolved case to read it from.
+            test_case_slug: test_case
+                .map(|tc| tc.slug.clone())
+                .unwrap_or_else(|| request.test_case_slug.clone()),
             test_case_version: test_case
                 .map(|tc| tc.version.clone())
                 .or_else(|| request.test_case_version.clone())

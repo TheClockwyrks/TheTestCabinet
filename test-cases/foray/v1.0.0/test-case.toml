@@ -1,3 +1,4 @@
+slug = "foray"
 # The Test Cabinet test case manifest — Foray.
 #
 # This is an ADVERSARIAL case: the model writes a wasm controller that drives one

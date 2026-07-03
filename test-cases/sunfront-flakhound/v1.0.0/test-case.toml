@@ -1,3 +1,4 @@
+slug = "sunfront-flakhound"
 name = "Sunfront Flakhound"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]

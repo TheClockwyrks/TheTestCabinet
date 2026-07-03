@@ -1,3 +1,4 @@
+slug = "aegis-sn-anim"
 name = "Aegis (Surface Nets, Animated)"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "mesh", "surface-nets", "rig", "walker"]

@@ -1,3 +1,4 @@
+slug = "gloamfin"
 name = "Gloamfin"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]

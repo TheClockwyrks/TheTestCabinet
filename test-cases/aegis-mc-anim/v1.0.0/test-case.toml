@@ -1,3 +1,4 @@
+slug = "aegis-mc-anim"
 name = "Aegis (Marching Cubes, Animated)"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "mc", "marching-cubes", "rig", "walker"]

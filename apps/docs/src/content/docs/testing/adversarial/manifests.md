@@ -13,7 +13,8 @@ implement, the **sandbox limits**, the **simulation loop**, and how matches are
 into a wasm module and to drive matches.
 
 ```toml
-# test-cases/<slug>/<version>/test-case.toml
+# test-cases/<folder>/<version>/test-case.toml
+slug = "capture"             # stable identity (required); the store key + recorded in every run
 name = "Capture"             # human-readable display name (site-facing)
 difficulty = "hard"          # relative difficulty: easy | medium | hard (required)
 tags = ["adversarial", "ctf"] # free-form classification tags (site-facing, required)

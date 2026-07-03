@@ -150,7 +150,9 @@ and step 4 of [`adding-an-end-to-end-variant`](../adding-an-end-to-end-variant/S
 ### 6. Write the manifest and declare variants
 
 Author `test-case.toml` per the schema in
-[`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md): metadata, the common
+[`testing/end-to-end/manifests.md`](../../../apps/docs/src/content/docs/testing/end-to-end/manifests.md): the required
+`slug` (the case's stable identity — the store key and what every run records;
+normally set it to the folder name), the rest of the metadata, the common
 `[[spec]]` and `[[reference]]` lists, the common `[[domain]]` list (at least one),
 a `variants` list of paths to standalone variant files under `variants/` (the
 first is the default — usually `base`), any opt-in `[[check]]`, the common

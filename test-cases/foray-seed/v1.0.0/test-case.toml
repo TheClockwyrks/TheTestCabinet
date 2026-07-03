@@ -1,3 +1,4 @@
+slug = "foray-seed"
 name = "Foray Seed Cache"
 difficulty = "easy"
 tags = ["asset-generation", "2d", "sprite", "item"]

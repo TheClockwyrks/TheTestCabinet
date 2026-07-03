@@ -1,3 +1,4 @@
+slug = "lattice-belt"
 name = "Lattice Transport Belt"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "belt"]

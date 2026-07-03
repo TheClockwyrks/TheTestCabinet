@@ -1,3 +1,4 @@
+slug = "lattice"
 # The Test Cabinet test case manifest — Lattice.
 #
 # This is a PERFORMANCE case: the model writes a wasm ENGINE that simulates a

@@ -10,8 +10,22 @@ Inferring this from file names alone would be fragile, so it is stated
 explicitly. For the meaning of the pieces it declares, see
 [Overview](/testing/end-to-end/overview/).
 
+The **`slug`** is the case's stable identity: it is the definition-store key and is
+recorded in every run, so it — not the folder name — is what ties a run to its case.
+It is declared explicitly rather than derived from the folder so the two are
+**decoupled**: a case's folder can be renamed for tidiness while its slug stays put,
+and the runs already published under that slug remain attached. In the common case the
+slug simply equals the folder name; the exception in this repo is `carom/`, which pins
+`slug = "pong"` to keep the runs published before its rename. A slug must be a valid
+kebab-case token (lowercase letters, digits, single hyphens between them) and be
+declared identically on every version of a folder. A whole-catalog ingest keys the
+store by the slug and prunes any stored case the checkout no longer declares (sparing
+any a published or pending run still references), so a rename that keeps the slug
+overwrites in place instead of leaving a duplicate.
+
 ```toml
-# test-cases/<slug>/<version>/test-case.toml
+# test-cases/<folder>/<version>/test-case.toml
+slug = "pong"                # stable identity (required); the store key + recorded in every run
 name = "Carom"               # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
 tags = ["arcade", "2d"]      # free-form classification tags (site-facing, required)

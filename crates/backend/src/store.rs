@@ -571,6 +571,38 @@ impl DefinitionStore {
         Ok(())
     }
 
+    /// Remove an ingested `(slug, version)` from the served tree — the prune half of
+    /// a whole-catalog ingest, which drops versions the checkout no longer declares.
+    ///
+    /// The version directory is first renamed aside into the staging area and then
+    /// deleted, so a concurrent [`read_manifest`](Self::read_manifest) sees the
+    /// version either wholly present or wholly gone, never mid-deletion — the same
+    /// atomic-swap discipline [`publish_staged_version`](Self::publish_staged_version)
+    /// uses. When the slug's last version is removed its (now-empty) slug directory is
+    /// removed too, so a fully-dropped case leaves no empty shell that
+    /// [`list_cases`](Self::list_cases) would still report. A version that is already
+    /// absent is a no-op.
+    pub fn remove_version(&self, slug: &str, version: &str) -> Result<()> {
+        let dir = self.version_dir(slug, version);
+        if !dir.exists() {
+            return Ok(());
+        }
+        let retired = self
+            .staging_root()
+            .join(format!("pruned-{slug}-{version}-{}", Uuid::new_v4()));
+        if let Some(parent) = retired.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&dir, &retired)?;
+        let _ = std::fs::remove_dir_all(&retired);
+        // Drop the slug directory once its last version is gone. `remove_dir` only
+        // succeeds on an empty directory, so a slug that still has other versions is
+        // left untouched.
+        let slug_dir = self.root.join("test-cases").join(slug);
+        let _ = std::fs::remove_dir(&slug_dir);
+        Ok(())
+    }
+
     /// Path to the store-root marker recording the catalog version of the most
     /// recent whole-catalog ingest. Lives in a root-level `.tcab/` sidecar (parallel
     /// to the per-version sidecars) so it is wiped together with the store it

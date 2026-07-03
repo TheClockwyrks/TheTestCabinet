@@ -1,3 +1,4 @@
+slug = "sunfront-scarab"
 name = "Sunfront Scarab"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]

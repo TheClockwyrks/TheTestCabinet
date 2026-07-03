@@ -20,7 +20,7 @@ fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCa
     // `variants` list is a root key, so it precedes `manifest_extra` (which usually
     // opens with a `[build]`/`[canvas]` table header).
     let manifest = format!(
-        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\"]\n{manifest_extra}\n\
          [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     );
@@ -78,6 +78,7 @@ fn only_asset_generation_releases_no_source_repo() {
 /// A complete, valid asset-generation manifest. Tests clone this and mutate one
 /// thing to exercise a single validation rule.
 const VALID_ASSET_MANIFEST: &str = "\
+slug = \"sprite\"\n\
 name = \"Sprite\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
@@ -205,6 +206,7 @@ fn asset_generation_rejects_a_review_item_reference() {
 /// thing. The preview/actions paths are `{frame}` templates since every frame is
 /// a separate file.
 const VALID_SHEET_MANIFEST: &str = "\
+slug = \"sprite\"\n\
 name = \"Sheet\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
@@ -483,6 +485,7 @@ fn end_to_end_rejects_asset_tables() {
 /// the `voxel` tool with plain (non-`{part}`) preview/action paths. Tests clone
 /// this and mutate one thing.
 const VALID_VOXEL_MODEL_MANIFEST: &str = "\
+slug = \"sprite\"\n\
 name = \"Jet\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
@@ -500,6 +503,7 @@ variants = [\"variants/base.toml\"]\n\
 /// a `turret` child, and a caller-driven `turret_yaw` rotation joint. The
 /// preview/action paths are `{part}` templates since every part is a separate file.
 const VALID_VOXEL_ANIM_MANIFEST: &str = "\
+slug = \"sprite\"\n\
 name = \"Tank\"\n\
 difficulty = \"hard\"\n\
 tags = [\"asset-generation\"]\n\
@@ -722,6 +726,7 @@ fn voxel_animation_rejects_a_parent_cycle() {
     // parent (so the root check passes) and every parent reference is declared, but
     // `b` and `c` form a cycle.
     let manifest = "\
+slug = \"sprite\"\n\
 name = \"Cycle\"\n\
 difficulty = \"hard\"\n\
 tags = [\"asset-generation\"]\n\
@@ -779,6 +784,7 @@ fn end_to_end_rejects_voxel_tables() {
 /// A complete, valid adversarial manifest. Tests clone this and mutate one thing
 /// to exercise a single validation rule.
 const VALID_ADVERSARIAL_MANIFEST: &str = "\
+slug = \"foray\"\n\
 name = \"Foray\"\n\
 difficulty = \"hard\"\n\
 tags = [\"adversarial\"]\n\
@@ -1002,7 +1008,7 @@ fn build_and(extra: &str) -> String {
 #[test]
 fn resolves_common_and_variant_review_items() {
     // A common item plus a `frenzy` variant (in its own file) that adds its own.
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"ball-spin\"\ntitle = \"Paddle spin\"\n\
@@ -1035,7 +1041,7 @@ fn resolves_common_and_variant_review_items() {
 
 #[test]
 fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"dup\"\ntitle = \"A common item\"\ntext = \"A common item.\"\nweight = 1\n\
@@ -1118,7 +1124,7 @@ fn a_review_item_naming_an_undeclared_domain_is_rejected() {
 fn a_case_with_no_domains_is_rejected() {
     // `catalog_with_files` supplies the whole manifest (and a default base variant
     // file), so we can omit domains.
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n"
         .to_string();
@@ -1134,7 +1140,7 @@ fn a_case_with_no_domains_is_rejected() {
 
 #[test]
 fn resolves_domains_with_humanized_default_names() {
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n\
@@ -1154,7 +1160,7 @@ fn resolves_domains_with_humanized_default_names() {
 /// domain and a review item rolling up to it. Shared by the per-variant-domain
 /// tests below; `override_gyre` replaces the gyre variant file's body.
 fn per_variant_domain_catalog(gyre_body: &str) -> (tempfile::TempDir, TestCaseCatalog) {
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n"
@@ -1224,7 +1230,7 @@ fn a_variant_domain_colliding_with_a_common_domain_is_rejected() {
 fn a_common_review_item_cannot_name_a_variant_only_domain() {
     // A common item is rated on every variant, so it may not roll up to a domain
     // only one variant declares.
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"Prose.\"\nweight = 1\ndomain = \"gyre\"\n\
@@ -1316,7 +1322,7 @@ fn catalog_with_files(
 /// than the one `base` variant builds its manifest directly instead.
 fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
-        "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\"]\n\
          {body}\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
@@ -1402,7 +1408,7 @@ fn a_variant_workspace_overrides_the_common_one() {
     // Two variants: the default `base` (inheriting the common workspace) and
     // `special`, whose own file overrides the workspace. `base.toml` is provided by
     // `catalog_with_files`; `special.toml` is supplied here.
-    let manifest = "name = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          variants = [\"variants/base.toml\", \"variants/special.toml\"]\n\
          workspace = \"workspaces/base\"\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
@@ -1487,4 +1493,117 @@ fn a_missing_workspace_directory_is_rejected() {
         format!("{err}").contains("workspace"),
         "unexpected error: {err}"
     );
+}
+
+// --- slug identity: decoupling the slug from the folder name ----------------
+
+/// Write a minimal resolvable end-to-end version under `<folder>/<version>` with a
+/// manifest declaring `slug`. Everything else is the least a version needs to
+/// resolve, so these tests isolate the folder-name-vs-slug behavior.
+fn write_slugged_case(root: &std::path::Path, folder: &str, version: &str, slug: &str) {
+    let dir = root.join(folder).join(version);
+    fs::create_dir_all(dir.join("variants")).expect("version dir");
+    fs::write(dir.join("prompt.hbs"), "Build it.").expect("prompt");
+    fs::write(dir.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
+    let manifest = format!(
+        "slug = \"{slug}\"\nname = \"Case\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nvariants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"x\"\nbuild = \"y\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+    );
+    fs::write(dir.join("test-case.toml"), manifest).expect("manifest");
+}
+
+#[test]
+fn resolving_by_slug_or_folder_name_both_yield_the_manifest_slug() {
+    // A folder named `carom` whose manifest pins `slug = "pong"` (a rename that keeps
+    // the old identity). It resolves both by its pinned slug and by its folder name,
+    // and the recorded identity is the slug either way — never the folder name.
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "carom", "v1.0.0", "pong");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    let by_slug = catalog.resolve("pong", "v1.0.0").expect("resolve by slug");
+    assert_eq!(by_slug.slug, "pong");
+    let by_folder = catalog
+        .resolve("carom", "v1.0.0")
+        .expect("resolve by folder name");
+    assert_eq!(by_folder.slug, "pong");
+
+    // The catalog lists the case under its slug, not its folder name.
+    let slugs: Vec<String> = catalog
+        .list()
+        .expect("list")
+        .into_iter()
+        .map(|c| c.slug)
+        .collect();
+    assert_eq!(slugs, ["pong"]);
+
+    // A cheap identity read agrees with a full resolve.
+    assert_eq!(catalog.slug_of("carom", "v1.0.0").expect("slug_of"), "pong");
+    assert_eq!(catalog.slug_of("pong", "v1.0.0").expect("slug_of"), "pong");
+}
+
+#[test]
+fn two_folders_declaring_the_same_slug_are_rejected() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "carom", "v1.0.0", "pong");
+    write_slugged_case(dir.path(), "pong", "v1.0.0", "pong");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    let err = catalog.list().expect_err("a duplicate slug is rejected");
+    assert!(
+        matches!(err, super::Error::DuplicateSlug { .. }),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_folder_whose_versions_disagree_on_slug_is_rejected() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "carom", "v1.0.0", "pong");
+    write_slugged_case(dir.path(), "carom", "v1.1.0", "carom");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    let err = catalog
+        .list()
+        .expect_err("inconsistent per-version slugs are rejected");
+    assert!(
+        format!("{err}").contains("every version of a folder must declare the same slug"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_ill_formed_slug_is_rejected() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "shouty", "v1.0.0", "Not A Slug");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    let err = catalog
+        .resolve("shouty", "v1.0.0")
+        .expect_err("an invalid slug is rejected");
+    assert!(
+        format!("{err}").contains("is not a valid slug"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn slug_validation_accepts_kebab_case_and_rejects_the_rest() {
+    for good in [
+        "pong",
+        "carom",
+        "sunfront-aegis",
+        "lattice-splitter",
+        "a1",
+        "x",
+    ] {
+        assert!(super::is_valid_slug(good), "{good} should be valid");
+    }
+    for bad in [
+        "", "-pong", "pong-", "po--ng", "Pong", "po ng", "pȯng", "foo_bar",
+    ] {
+        assert!(!super::is_valid_slug(bad), "{bad} should be invalid");
+    }
 }

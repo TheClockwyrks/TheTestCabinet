@@ -1,3 +1,4 @@
+slug = "sunfront-lumen"
 name = "Sunfront Lumen"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]

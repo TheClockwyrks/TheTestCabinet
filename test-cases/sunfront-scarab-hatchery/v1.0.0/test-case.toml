@@ -1,3 +1,4 @@
+slug = "sunfront-scarab-hatchery"
 name = "Sunfront Scarab Hatchery"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]

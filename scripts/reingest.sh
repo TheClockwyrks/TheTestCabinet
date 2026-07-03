@@ -26,10 +26,15 @@
 # of an already-stored (slug, version) — needed because iterating in place reuses a
 # version string, which the immutable store would otherwise decline to replace.
 #
-# Ingest ADDS and OVERWRITES; it never PRUNES. A case's identity is its folder slug
-# under test-cases/, so after you RENAME a case's folder (or delete a version) a
-# re-ingest leaves the OLD slug still served alongside the new one. To drop the stale
-# slug, start the backend from an empty definition store, then re-ingest.
+# A case's identity is the `slug` its test-case.toml declares (NOT its folder name;
+# the two usually match but can differ — e.g. carom/ pins slug = "pong" to keep the
+# runs published under its original slug). A WHOLE-CATALOG re-ingest (no slug args)
+# also PRUNES: any (slug, version) the checkout no longer declares is dropped from the
+# store, EXCEPT one a published/pending run still references (those are kept so the run
+# stays resolvable). So renaming a folder while keeping its slug, or deleting a run-less
+# case, self-heals on the next full re-ingest — no more rebuilding the store from empty.
+# A partial scan (slug/folder args) never prunes: it hasn't seen the whole catalog. You
+# may target a case by either its slug or its folder name.
 #
 # Usage:
 #   scripts/reingest.sh                 # re-ingest only cases changed since the last run

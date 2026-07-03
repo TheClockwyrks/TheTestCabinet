@@ -19,6 +19,15 @@ use crate::error::{Error, Result};
 /// See `docs/testing/end-to-end/manifests.md`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 struct Manifest {
+    /// The case's **stable identity**, recorded in every run and used as the
+    /// definition-store key. **Required.** It is declared explicitly rather than
+    /// derived from the folder name so identity is **decoupled from the folder**:
+    /// a case's folder can be renamed for tidiness while the slug its published
+    /// runs already reference stays put, so the rename neither orphans those runs
+    /// nor spawns a duplicate. Must be a valid slug (see [`is_valid_slug`]) and,
+    /// so a case has one identity, must be declared identically on every version
+    /// of the folder. In the common case it simply equals the folder name.
+    slug: String,
     /// Human-readable display name, surfaced on the site.
     name: String,
     /// Relative difficulty of the case, surfaced on the site (for example
@@ -187,6 +196,16 @@ struct Manifest {
     /// the secret scored set), unlike every other manifest path.
     #[serde(default, rename = "case")]
     cases: Vec<ManifestCase>,
+}
+
+/// Just the identity fields of a manifest, parsed on their own so the catalog can
+/// read a case's `slug` without parsing (or being tripped up by an unrelated error
+/// in) the whole manifest. Serde ignores the other fields, so this succeeds on any
+/// syntactically valid manifest that declares a `slug`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestIdentity {
+    /// The case's stable slug. See [`Manifest::slug`].
+    slug: String,
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -2071,55 +2090,164 @@ impl TestCaseCatalog {
     /// List every test case slug in the catalog, each with its versions newest
     /// first. Slugs with no version folders are skipped.
     pub fn list(&self) -> Result<Vec<TestCase>> {
-        let mut cases = Vec::new();
-        for slug in read_dir_names(&self.root)? {
-            let versions = self.versions(&slug)?;
-            if !versions.is_empty() {
-                cases.push(TestCase { slug, versions });
+        // Identity is the manifest-declared `slug`, which can differ from the
+        // folder name, so build the catalog by reading each folder's slug rather
+        // than trusting the directory name. A slug must be unique across the
+        // catalog (two folders claiming one identity is ambiguous) and declared
+        // identically on every version of a folder (a case has one identity), both
+        // enforced here so a malformed catalog fails at the gate — ingest lists
+        // before it resolves — rather than silently.
+        let mut cases: Vec<TestCase> = Vec::new();
+        let mut owner: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for folder in read_dir_names(&self.root)? {
+            let versions = self.version_names(&folder)?;
+            if versions.is_empty() {
+                continue;
             }
+            // Every version must declare the same slug; take the newest as the
+            // case's slug and check the rest agree.
+            let slug = self.read_slug(&folder, &versions[0])?;
+            for version in &versions[1..] {
+                let other = self.read_slug(&folder, version)?;
+                if other != slug {
+                    return Err(Error::InvalidTestCase {
+                        slug: folder.clone(),
+                        version: version.clone(),
+                        detail: format!(
+                            "slug `{other}` disagrees with `{slug}` declared by other versions; \
+                             every version of a folder must declare the same slug"
+                        ),
+                    });
+                }
+            }
+            if let Some(existing) = owner.insert(slug.clone(), folder.clone()) {
+                return Err(Error::DuplicateSlug {
+                    slug,
+                    folder_a: existing,
+                    folder_b: folder,
+                });
+            }
+            cases.push(TestCase { slug, versions });
         }
         cases.sort_by(|a, b| a.slug.cmp(&b.slug));
         Ok(cases)
     }
 
-    /// List the versions available for a slug, newest first.
-    pub fn versions(&self, slug: &str) -> Result<Vec<String>> {
-        let slug_dir = self.root.join(slug);
-        if !slug_dir.is_dir() {
+    /// List the versions available for a case (looked up by slug or folder name),
+    /// newest first.
+    pub fn versions(&self, id: &str) -> Result<Vec<String>> {
+        let folder = self.folder_for(id)?;
+        self.version_names(&folder)
+    }
+
+    /// The version subdirectories of a folder, newest first. An error only when the
+    /// folder is unreadable; a folder with no versions yields an empty list.
+    fn version_names(&self, folder: &str) -> Result<Vec<String>> {
+        let dir = self.root.join(folder);
+        if !dir.is_dir() {
             return Err(Error::TestCaseNotFound {
-                slug: slug.to_string(),
+                slug: folder.to_string(),
             });
         }
-        let mut versions = read_dir_names(&slug_dir)?;
+        let mut versions = read_dir_names(&dir)?;
         // Newest first. Versions are compared component-wise so `v1.10.0` sorts
         // after `v1.9.0` rather than lexically before it.
         versions.sort_by_key(|v| std::cmp::Reverse(version_key(v)));
         Ok(versions)
     }
 
-    /// Resolve an exact `<slug>@<version>` into a [`TestCaseVersion`], reading
-    /// its manifest and validating that it is self-contained.
-    pub fn resolve(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
-        let slug_dir = self.root.join(slug);
-        if !slug_dir.is_dir() {
-            return Err(Error::TestCaseNotFound {
-                slug: slug.to_string(),
+    /// Read just the `slug` a version's manifest declares (a lightweight parse that
+    /// ignores every other field), validating its format. This is the case's
+    /// identity; it may differ from `folder`.
+    fn read_slug(&self, folder: &str, version: &str) -> Result<String> {
+        let path = self.root.join(folder).join(version).join(MANIFEST_FILE);
+        let raw = fs::read_to_string(&path).map_err(|err| Error::InvalidTestCase {
+            slug: folder.to_string(),
+            version: version.to_string(),
+            detail: format!("could not read {MANIFEST_FILE}: {err}"),
+        })?;
+        let identity: ManifestIdentity =
+            toml::from_str(&raw).map_err(|err| Error::InvalidTestCase {
+                slug: folder.to_string(),
+                version: version.to_string(),
+                detail: format!("invalid {MANIFEST_FILE}: {err}"),
+            })?;
+        if !is_valid_slug(&identity.slug) {
+            return Err(Error::InvalidTestCase {
+                slug: folder.to_string(),
+                version: version.to_string(),
+                detail: format!(
+                    "slug `{}` is not a valid slug (lowercase letters, digits, and single \
+                     hyphens between them)",
+                    identity.slug
+                ),
             });
         }
-        let root = slug_dir.join(version);
+        Ok(identity.slug)
+    }
+
+    /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
+    /// targeting a re-ingest) its folder name — to the folder that holds it.
+    ///
+    /// A folder named exactly `id` wins immediately: it covers the common case where
+    /// the slug equals the folder name, and lets a rename's new folder be targeted by
+    /// name, both without scanning. Otherwise the folders are scanned for one whose
+    /// declared slug is `id`. The returned folder's declared slug is the identity,
+    /// regardless of which of the two the caller passed.
+    fn folder_for(&self, id: &str) -> Result<String> {
+        if self.root.join(id).is_dir() {
+            return Ok(id.to_string());
+        }
+        for folder in read_dir_names(&self.root)? {
+            let versions = self.version_names(&folder)?;
+            if let Some(newest) = versions.first()
+                && self.read_slug(&folder, newest)? == id
+            {
+                return Ok(folder);
+            }
+        }
+        Err(Error::TestCaseNotFound {
+            slug: id.to_string(),
+        })
+    }
+
+    /// The stable slug identifying the case a requested id (slug or folder name)
+    /// resolves to, at a specific version — the store key ingest uses. A lightweight
+    /// read that skips the full structural validation [`resolve`] performs.
+    pub fn slug_of(&self, id: &str, version: &str) -> Result<String> {
+        let folder = self.folder_for(id)?;
+        self.read_slug(&folder, version)
+    }
+
+    /// Resolve an exact case `<id>@<version>` into a [`TestCaseVersion`], reading
+    /// its manifest and validating that it is self-contained. `id` may be the case's
+    /// slug or its folder name; the resolved [`TestCaseVersion::slug`] is always the
+    /// manifest-declared identity, never the folder name.
+    pub fn resolve(&self, id: &str, version: &str) -> Result<TestCaseVersion> {
+        let folder = self.folder_for(id)?;
+        let root = self.root.join(&folder).join(version);
         if !root.is_dir() {
             return Err(Error::TestCaseVersionNotFound {
-                slug: slug.to_string(),
+                slug: id.to_string(),
                 version: version.to_string(),
             });
         }
 
-        let manifest = self.read_manifest(slug, version, &root)?;
+        let manifest = self.read_manifest(id, version, &root)?;
+        // The manifest's `slug` is the case's identity; every downstream key (the
+        // run record, the definition-store directory) uses it, not the folder name.
+        let slug = manifest.slug.clone();
         let invalid = |detail: String| Error::InvalidTestCase {
-            slug: slug.to_string(),
+            slug: slug.clone(),
             version: version.to_string(),
             detail,
         };
+        if !is_valid_slug(&slug) {
+            return Err(invalid(format!(
+                "slug `{slug}` is not a valid slug (lowercase letters, digits, and single \
+                 hyphens between them)"
+            )));
+        }
 
         // Every declared path must stay inside the version folder, keeping the
         // version self-contained.
@@ -3593,6 +3721,24 @@ impl TestCaseCatalog {
             detail: format!("invalid {MANIFEST_FILE}: {err}"),
         })
     }
+}
+
+/// Whether `slug` is a valid case slug: a non-empty kebab-case token of ASCII
+/// lowercase letters and digits, with single hyphens only *between* segments (no
+/// leading, trailing, or doubled hyphens).
+///
+/// A slug is used unescaped as a filesystem directory name (both the catalog and
+/// the definition store lay cases out as `test-cases/<slug>/<version>/`) and as a
+/// URL path segment, so it is constrained to a portable, unambiguous charset. Every
+/// existing case's folder name already satisfies this.
+pub fn is_valid_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.split('-').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
 }
 
 /// Read the immediate subdirectory names of a directory, ignoring files and

@@ -216,7 +216,7 @@ Author `test-case.toml` per the
 [manifests schema](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
 (**Voxel cases**):
 
-- **Metadata** — `name`, `difficulty`, `tags` (include `3d`/`voxel`/`mesh`/`rig` and
+- **Metadata** — `slug` (the case's stable identity — the store key and what every run records; normally the folder name), `name`, `difficulty`, `tags` (include `3d`/`voxel`/`mesh`/`rig` and
   the algorithm, e.g. `dual-contouring`/`walker`), `summary`, `description`, `prompt`,
   `max_runtime_hours`.
 - **`type = "asset-generation"`** and **`asset_kind`** — one of `"mc-animation"`,

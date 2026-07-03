@@ -1,3 +1,4 @@
+slug = "trench-walls"
 name = "Trench Walls"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "tileset"]

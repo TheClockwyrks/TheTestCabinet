@@ -1,3 +1,4 @@
+slug = "glimmerfin"
 name = "Glimmerfin"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "player"]

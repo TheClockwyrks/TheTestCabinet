@@ -134,7 +134,7 @@ render time (`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`), so keep y
 Author `test-case.toml` per the
 [manifests schema](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
-- **Metadata** — `name`, `difficulty`, `tags` (site-facing), `summary`,
+- **Metadata** — `slug` (the case's stable identity — the store key and what every run records; normally the folder name), `name`, `difficulty`, `tags` (site-facing), `summary`,
   `description`, `prompt`, `max_runtime_hours`.
 - **`type = "asset-generation"`** — required. Omitting it defaults to `end-to-end`,
   which then rejects the tables below.

@@ -1,3 +1,4 @@
+slug = "lattice-source"
 name = "Lattice Source"
 difficulty = "easy"
 tags = ["asset-generation", "2d", "sprite-sheet", "fixture"]

@@ -606,6 +606,25 @@ impl Db {
         self.assemble(rows).await
     }
 
+    /// The distinct `(test_case_slug, test_case_version)` pairs referenced by **any**
+    /// stored run — published *and* pending. This is the set a whole-catalog ingest
+    /// must never prune from the definition store: a definition a run depends on has
+    /// to stay resolvable so the run remains reviewable/playable and keeps its case
+    /// metadata in the public snapshot, even after its source folder is renamed or
+    /// removed from the checkout. Pending runs are included because a pushed-but-
+    /// unpublished run is still reviewable and must resolve its definition.
+    pub async fn referenced_cases(&self) -> Result<std::collections::HashSet<(String, String)>> {
+        let rows: Vec<(String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .distinct()
+            .into_tuple()
+            .all(&self.conn)
+            .await?;
+        Ok(rows.into_iter().collect())
+    }
+
     /// The total number of published runs (the count that lands in the snapshot).
     pub async fn run_count(&self) -> Result<i64> {
         Ok(run::Entity::find()

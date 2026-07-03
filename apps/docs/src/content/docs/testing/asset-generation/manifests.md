@@ -13,7 +13,8 @@ asset-generation case is human-reviewed against its brief, so it declares **no
 `[[reference]]`** at all.
 
 ```toml
-# test-cases/<slug>/<version>/test-case.toml
+# test-cases/<folder>/<version>/test-case.toml
+slug = "imp-sprite"          # stable identity (required); the store key + recorded in every run
 name = "Imp Sprite"          # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
 tags = ["asset-generation", "2d", "sprite"] # classification tags (site-facing, required)

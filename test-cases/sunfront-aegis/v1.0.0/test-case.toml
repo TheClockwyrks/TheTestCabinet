@@ -1,3 +1,4 @@
+slug = "sunfront-aegis"
 name = "Sunfront Aegis"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]

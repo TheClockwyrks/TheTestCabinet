@@ -1,3 +1,4 @@
+slug = "foray-raider"
 name = "Foray Raider"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]

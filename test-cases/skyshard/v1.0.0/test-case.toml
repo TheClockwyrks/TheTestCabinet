@@ -1,3 +1,4 @@
+slug = "skyshard"
 name = "Skyshard Interceptor"
 difficulty = "easy"
 tags = ["asset-generation", "3d", "voxel", "ship"]

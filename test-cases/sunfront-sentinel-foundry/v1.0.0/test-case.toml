@@ -1,3 +1,4 @@
+slug = "sunfront-sentinel-foundry"
 name = "Sunfront Sentinel Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]

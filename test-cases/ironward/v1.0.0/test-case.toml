@@ -1,3 +1,4 @@
+slug = "ironward"
 name = "Ironward Siege Tank"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]

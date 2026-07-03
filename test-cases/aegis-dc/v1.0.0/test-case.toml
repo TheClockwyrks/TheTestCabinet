@@ -1,3 +1,4 @@
+slug = "aegis-dc"
 name = "Aegis (Dual Contouring)"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "fortress"]

@@ -1,3 +1,4 @@
+slug = "sunfront-monolith-forge"
 name = "Sunfront Monolith Forge"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]

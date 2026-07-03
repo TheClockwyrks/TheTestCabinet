@@ -1,3 +1,4 @@
+slug = "spectra-prism"
 name = "Spectra Prism"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "enemy", "boss"]

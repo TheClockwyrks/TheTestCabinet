@@ -1,3 +1,4 @@
+slug = "foray-walls"
 name = "Foray Maze Walls"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "tileset"]

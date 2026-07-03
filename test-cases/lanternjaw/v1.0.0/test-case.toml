@@ -1,3 +1,4 @@
+slug = "lanternjaw"
 name = "Lanternjaw"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]

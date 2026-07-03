@@ -1056,3 +1056,32 @@ async fn set_publish_job_state_records_a_failure_detail() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Two pending runs of pong@v1.0.0 (should collapse to one pair), one run of a
+    // different case, and one of a different version of pong.
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None).await.unwrap();
+    let mut other = record("r3");
+    other.subject.test_case_slug = "carom".to_string();
+    other.subject.test_case_version = "v2.0.0".to_string();
+    db.push(&other, &links(), None).await.unwrap();
+    let mut pong_v2 = record("r4");
+    pong_v2.subject.test_case_version = "v1.1.0".to_string();
+    db.push(&pong_v2, &links(), None).await.unwrap();
+
+    let refs = db.referenced_cases().await.unwrap();
+    // Pending runs count — a definition a pushed-but-unpublished run needs must be
+    // spared too — and duplicate pairs collapse.
+    assert_eq!(
+        refs,
+        std::collections::HashSet::from([
+            ("pong".to_string(), "v1.0.0".to_string()),
+            ("pong".to_string(), "v1.1.0".to_string()),
+            ("carom".to_string(), "v2.0.0".to_string()),
+        ])
+    );
+}

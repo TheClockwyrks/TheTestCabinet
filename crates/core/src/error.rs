@@ -22,6 +22,21 @@ pub enum Error {
         slug: String,
     },
 
+    /// Two catalog folders declared the same `slug`, so the identity is
+    /// ambiguous. A slug is a case's stable identity and must be unique across the
+    /// whole catalog.
+    #[error(
+        "slug `{slug}` is declared by more than one test-case folder (`{folder_a}` and `{folder_b}`); a slug must be unique across the catalog"
+    )]
+    DuplicateSlug {
+        /// The slug declared by two folders.
+        slug: String,
+        /// One folder declaring it.
+        folder_a: String,
+        /// The other folder declaring it.
+        folder_b: String,
+    },
+
     /// A requested test case version did not exist for an existing slug.
     #[error("version `{version}` of test case `{slug}` was not found")]
     TestCaseVersionNotFound {
