@@ -1,0 +1,58 @@
+Sculpt the **Aegis Bastion**, a colossal six-legged war-fortress standing at rest,
+as a **3D mesh** in an 88x80x104 volume using only the `mc` Marching Cubes tool.
+
+## How meshing works
+
+The only way to shape the surface is the `mc` binary already on your `PATH`. It is
+the sole channel: you build the model by calling it **one operation at a time**, and
+the ordered operations you issue produce the emitted `mesh.json` — the
+**authoritative output that is scored**, not any pixels on disk. A model produced
+any other way (writing `mesh.json` directly, editing `model.png` by hand) is
+discarded and flagged; only what the tool emits counts.
+
+`mc` does **not** place cubes. It maintains a **continuous signed-distance field**
+and extracts a triangle mesh from its surface. You shape that field by
+**compositing solid primitives** — union material in with `add-sphere` /
+`add-box` / `add-ellipsoid` / `add-cylinder`, carve it away with the matching
+`subtract-*` primitives, blend joins with `--blend`, and reflect/shift/duplicate/
+recolor the whole field with `mirror` / `translate` / `copy` / `replace-color`.
+Each primitive carries an **opaque** `#rrggbb` color — there is no transparency.
+Marching Cubes samples the field on a **coarse** grid, so the surface is chunky and
+**faceted** — a bold **low-poly** look you should lean into, not fight.
+
+The field starts **empty**. After each call the binary re-renders the current mesh
+to a 3D preview at `model.png` and appends the operation to its op log. A blank
+starting preview is already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+mc add-box --x 44 --y 40 --z 56 --width 56 --height 28 --depth 72 --color "#c69a4b"
+```
+
+Run `mc --help` to list every operation and `mc <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`model.png` after your calls** to see the extracted surface and decide what to do
+next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the
+form of the fortress, and how to work the meshing tool. Run `mc --help` for the
+exact operation contract.
+
+## What to deliver
+
+Composite the fortress up operation by operation until the mesh in `model.png`
+matches the brief — a heavily armored citadel standing on six thick
+articulated legs, a big main turret with a long forward cannon, a side turret out on
+each sponson, and a sensor vane above, cleanly symmetric about its centerplane and
+boldly faceted. When you are satisfied, stop: the emitted `mesh.json` is your
+finished submission.

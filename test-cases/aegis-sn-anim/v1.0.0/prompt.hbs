@@ -1,0 +1,99 @@
+Sculpt and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
+six independent legs — each a three-segment thigh/shin/flat-foot chain — whose main
+cannon aims forward, whose two side-mounted turrets each traverse to cover only their
+own flank, and whose radar vane sweeps on its own, as a rigged 3D mesh in an
+88x80x104 volume using only the `sn-anim` tool. You author its walk and weapon
+animations as F-curves.
+
+## How sculpting and rigging works
+
+The only way to shape the model and edit the rig is the `sn-anim` binary already on
+your `PATH` — a **Surface Nets** meshing tool. It does **not** place cells: it
+maintains a **continuous signed-distance field** you shape by **compositing
+primitives** (`add-sphere`/`add-box`/`add-ellipsoid`/`add-cylinder`, their
+`subtract-` counterparts, a `--blend` radius for smooth joins, plus `mirror`,
+`translate`, `copy`, `replace-color`, `clear`), and it extracts the field's surface
+with Surface Nets — so the result is **smooth, watertight, and rounded**, with no
+sharp edges. Design the fortress to that character: heavy cast/molded armor built
+from big blended volumes, not faceted blocks or crisp knife-edges.
+
+It is the sole channel: you build the model by calling it **one operation at a
+time**, and the ordered operations you issue — recorded per part — together with the
+per-part mesh it emits and the rig you define are the **authoritative output that is
+scored**, not any file you write yourself. Anything produced another way (writing
+files directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations, the emitted meshes, and the rig count.
+
+Every operation targets a **part** with `--part <name>`; each part is composited
+**separately** into its own field, meshed on its own into its own
+`parts/<part>.mesh.json`, with its own preview and log. The field starts **empty**.
+Colors are **opaque** `#rrggbb` — there is no transparency. After each call the
+binary re-extracts that part's mesh and re-renders its 3D preview to
+`parts/<part>.png`. Blank starting previews, empty per-part logs, and a pre-seeded
+`rig.json` holding the required parts, joints, and animation declarations are already
+in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its part, for example:
+
+```
+sn-anim add-box --part chassis --x 44 --y 45 --z 52 --width 68 --height 24 --depth 88 --color "#c69a4b" --blend 4
+```
+
+Run `sn-anim --help` to list every field operation **and** the rig subcommands
+(defining parts, setting pivots, defining joints, and defining animations and their
+keyframes), and `sn-anim <operation> --help` for one operation's exact flags — that
+help text is the authoritative contract. **Read `parts/<part>.png` after your
+calls** to see that part's meshed surface, **and read the assembled-scene previews
+under `scene/` (`scene/iso.png`, `scene/front.png`, `scene/side.png`,
+`scene/top.png`)** — the whole fortress composed from all your parts, re-rendered
+after every operation. The scene views are how you confirm the parts actually fit
+together: that the six legs seat under the hull and reach the ground, the main turret
+sits centered on the citadel, the cannon meets the turret front, and each side turret
+seats out on its sponson. Because each part is composited in the shared volume's
+coordinates, position each part where it belongs on the finished fortress; the scene
+simply composes them there.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the field-
+compositing tool and its smooth Surface Nets character, the palette, the form of the
+fortress, the required parts and their pivots, the required joints, and the required
+animations. The joints: **eighteen auto leg joints** — a `hip_*`, a `knee_*`, and a
+`foot_*` per leg (`lf, lm, lr, rf, rm, rr`), each leg an independent three-segment
+chain (thigh + shin + flat foot) that plants its foot flat and lifts it clear of the
+ground; the four gun caller joints — `main_turret_yaw` and `main_gun_pitch` for the
+main turret and cannon, and `left_turret_yaw` / `right_turret_yaw` for the two
+independently traversing side turrets; and the one auto `radar_spin` joint. The
+animations you must **author** (as F-curves, with `sn-anim define-animation` /
+`add-keyframe`): **`march`** (the two-tripod walk driving the eighteen leg joints),
+**`bombardment`** (the four gun joints), and the self-playing **`radar_spin`**. Run
+`sn-anim --help` for the exact operation, rig, and animation contract.
+
+## What to deliver
+
+Build and rig the fortress up operation by operation until each `parts/<part>.png`
+matches the brief, the assembled `scene/` previews show the parts fitting together
+correctly, and the rig is complete: a heavily armored citadel of smooth,
+rounded cast armor raised on six independent three-segment legs (thigh + shin + flat
+foot, bent-knee rest), carrying a big main turret and cannon, a side-mounted turret
+out on each sponson, and a sweeping radar vane. The required interface is **eighteen
+auto leg joints** (`hip_*` sweeps each leg, `knee_*` folds each shin the
+reverse/digitigrade way to lift the foot, `foot_*` keeps each foot flat), **four
+caller gun joints** (`main_turret_yaw` fine-aims within a narrow forward cone,
+`main_gun_pitch` elevates the cannon, and `left_turret_yaw` / `right_turret_yaw`
+traverse each side turret across its own flank), and **one auto joint**,
+`radar_spin`. You must also **author the three required animations** as F-curves with
+the `sn-anim` animation subcommands: `march` (the two-tripod walk with a planted,
+flat, still stance phase and an `ease-in` foot-plant), `bombardment` (the guns), and
+the self-playing `radar_spin`. Produce **every** required part, joint, and animation;
+you may add your own extra parts, joints, or animations on top, but do not drop or
+contradict the required interface. When you are satisfied, stop: the recorded
+per-part logs, the emitted per-part `mesh.json`, and `rig.json` are your finished
+submission.

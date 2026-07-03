@@ -1,0 +1,54 @@
+Sculpt the **Aegis**, a colossal six-legged walking fortress, as a static
+88x80x104 smooth-surfaced model using only the `sn` meshing tool.
+
+## How sculpting works
+
+The only way to shape the surface is the `sn` binary already on your `PATH`. It is
+the sole channel: you build the model by calling it **one operation at a time**.
+Unlike a voxel tool that paints discrete cubes, `sn` maintains a **continuous
+signed-distance field** — you **composite primitives** into it (adding material
+with a sphere, box, ellipsoid, or cylinder; carving it away with another) and it
+extracts a triangle surface from the field's zero level set. `sn` is the **Surface
+Nets** extractor: it produces a **smooth, rounded, watertight, mid-fidelity**
+surface with no sharp edges, at a fixed resolution. Design for that — lean into
+rounded, beveled armor rather than crisp knife-edges.
+
+The field starts **empty**. Every primitive carries an **opaque** `#rrggbb` color —
+there is no transparency. After each call the binary extracts the surface to
+`mesh.json` and re-renders a 3D preview to `model.png`, recording the operation. The
+emitted `mesh.json` — the surface your recorded operations produce — is the
+authoritative output that is judged; a surface produced any other way is discarded.
+An empty field and a blank preview are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+sn add-box --x 44 --y 30 --z 52 --width 40 --height 16 --depth 60 --color "#c69a4b"
+sn add-sphere --x 44 --y 60 --z 56 --r 9 --color "#c69a4b" --blend 3
+```
+
+Run `sn --help` to list every operation and `sn <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`model.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the
+form of the fortress, and how the Surface Nets tool shapes a surface. Run
+`sn --help` for the exact operation contract.
+
+## What to deliver
+
+Build the fortress up operation by operation until the model in `model.png` matches
+the brief — a huge armored hull riding raised on six thick jointed
+legs, a big main turret with a long forward cannon, a side turret out on each
+sponson, and a sensor vane above, cleanly symmetric about its centerplane and built
+as one continuous rounded surface. When you are satisfied, stop: the emitted
+`mesh.json` is your finished submission.

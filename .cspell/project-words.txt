@@ -156,3 +156,13 @@ sponsons
 # Voxel-animation rig & F-curve vocabulary.
 interp
 keyframing
+
+# Surface-extraction meshing vocabulary (mc/sn/dc binaries + wgpu renderer).
+wgpu
+mesher
+meshers
+unioning
+unioned
+panelwork
+blobbiness
+stylised

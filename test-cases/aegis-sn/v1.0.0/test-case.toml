@@ -1,0 +1,142 @@
+name = "Aegis (Surface Nets)"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "mesh", "surface-nets", "sn", "walker"]
+summary = """
+Sculpt the Aegis as a static 88x80x104 smooth-surfaced model with the Surface \
+Nets meshing tool (`sn`): a colossal six-legged walking fortress — a rounded, \
+watertight, mid-fidelity mesh of softly beveled armor — composited from \
+signed-distance primitives one recorded operation at a time and emitted as a \
+single mesh.json."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sn-model"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed volume the model shapes its signed-distance field within (the 3D
+# analog of a 2D canvas): `width` across (x), `height` up (y), `depth`
+# front-to-back (z), in voxel units. The Aegis is deliberately huge — a walking
+# fortress with a far larger footprint than any buildable unit, riding raised on
+# legs — so its volume is broad, deep, and tall. The field always starts EMPTY
+# (everywhere outside, no surface); `background` is only the clear color behind
+# the wgpu preview PNG. A meshed voxel case reuses the [voxel] volume table and
+# must NOT declare [canvas].
+[voxel]
+width = 88
+height = 80
+depth = 104
+background = "transparent"
+
+# The meshing tool. `sn` is the only way to shape the surface: every operation
+# composites a signed-distance primitive into the single field, records itself to
+# the operation log, and re-renders the wgpu preview after each call. `sn` is the
+# Surface Nets extractor — a fixed medium-grid resolution that relaxes the surface
+# into rounded, uniformly tessellated, watertight triangles (no sharp-edge tag; that
+# is Dual Contouring only). Run `sn --help` for the field operations; no operations
+# schema is seeded.
+[tool]
+binary = "sn"
+preview = "model.png"
+
+# The recorded operation log — the authoritative output the run collects: the
+# ordered record of every `sn` op the model issued, from which the scored model is
+# regenerated. A static meshed case records a single log (a single implicit part),
+# so its path carries no {part} token. The `sn` binary additionally emits its
+# extracted `mesh.json` — the triangle surface (positions, normals, colors, indices)
+# the reviewer's 3D view is built from — at its own fixed path, so it is not named
+# here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the emitted mesh reads as the Aegis — a colossal six-legged \
+walking fortress, far larger than any buildable unit: a tiered, prowed armored \
+citadel riding raised on six heavy jointed legs, a big central main turret with a \
+long forward cannon, a side turret out on each sponson, and a sensor vane above — \
+rendered as the clean, rounded, watertight mid-fidelity surface Surface Nets \
+produces, cleanly symmetric about its centerplane, in the disciplined Duneforged \
+palette, filling the volume rather than floating small within it."""
+
+[[review_item]]
+id = "reads-as-fortress"
+title = "Reads as a giant six-legged walking fortress"
+text = """
+From more than one angle the mesh reads unmistakably as a giant six-legged walking \
+fortress — plainly far bigger and broader than an ordinary war machine, a colossal \
+striding stronghold: a tiered, prowed armored citadel (not a plain box) riding \
+raised on six heavy legs (three down each side), a big main turret with a long \
+forward cannon on top, a rotating secondary turret out on each side sponson, and a \
+sensor/radar vane above. It is a bristling, detailed multi-gun war machine, not an \
+abstract stack of shapes on legs."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "smooth-rounded-surface"
+title = "Clean, rounded, watertight Surface-Nets surface"
+text = """
+The armor reads as the smooth, rounded, mid-fidelity surface Surface Nets produces: \
+softly beveled plating, domed turret and citadel forms, and cylindrical barrels and \
+leg segments that blend into one continuous watertight skin — not a scatter of \
+disjoint primitives with visible gaps, seams pulled apart, or lone spheres and boxes \
+floating off the hull. Primitives that should join are blended into one solid \
+surface; nothing tears away from the body."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "articulated-legs"
+title = "Six thick, articulated legs carrying the raised hull"
+text = """
+The fortress stands on six thick, clearly articulated legs — three down each side, \
+each reading as a jointed limb (an upper thigh and a lower shin with a visible bend \
+at the knee, and a broad flat foot on the ground), spread wide under the hull's \
+corners over its own footprint — not straight posts, not a shared slab per side. The \
+legs plainly hold the armored hull raised well clear of the ground."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Bilateral symmetry"
+text = """
+The fortress is cleanly symmetric about its lengthwise vertical centerplane (between \
+x = 43 and x = 44): the two banks of three legs, the two side turrets on their \
+sponsons, and the main turret and cannon mirror or center on the centerplane, so it \
+reads as a deliberate war machine rather than a lopsided hull."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
+and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
+accent showing from multiple angles, no out-of-palette colors, and no stray \
+primitives drifting off the fortress."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "fills-volume"
+title = "Fills the volume"
+text = """
+The fortress uses most of the 88x80x104 volume — broad across the width at the leg \
+stance, deep along z, and tall from the feet on the ground up to the sensor vane, \
+with only a little margin on every side — neither shrunk into one corner nor clipped \
+where it runs past a face of the volume."""
+weight = 1
+domain = "fidelity"

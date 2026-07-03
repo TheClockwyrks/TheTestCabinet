@@ -1,0 +1,133 @@
+name = "Aegis Bastion (Marching Cubes)"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "voxel", "mesh", "marching-cubes", "fortress"]
+summary = """
+Sculpt the Aegis Bastion: a colossal, standing six-legged war-fortress meshed \
+from a signed-distance field with the `mc` Marching Cubes binary — a bold, chunky, \
+faceted low-poly surface — inside an 88x80x104 volume, one recorded operation at a \
+time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "mc-model"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The fixed volume the Marching Cubes field is framed in (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. The Aegis is deliberately huge — a walking fortress with a far larger
+# footprint than any buildable unit, standing raised on its legs — so its volume is
+# broad, deep, and tall. Unlike a cube case this volume frames a CONTINUOUS
+# signed-distance field (primitive centers and extents are real-valued within it),
+# not a discrete cell grid. The field always starts EMPTY; `background` is only the
+# clear color behind the wgpu preview PNG. A voxel/mesh case must NOT declare
+# [canvas].
+[voxel]
+width = 88
+height = 80
+depth = 104
+background = "transparent"
+
+# The meshing tool. `mc` is the only way to shape the surface: every operation
+# composites a primitive into (or carves it out of) the signed-distance field,
+# records itself to the op log, and re-renders the wgpu preview PNG of the extracted
+# mesh after each call. Marching Cubes samples the field on a COARSE uniform grid, so
+# the output is a chunky, faceted LOW-POLY surface — a fixed characteristic of the
+# binary, not a manifest knob. Run `mc --help` for the operations; no operations
+# schema is seeded.
+[tool]
+binary = "mc"
+preview = "model.png"
+
+# The recorded operation log — the authoritative output the run collects: the
+# ordered record of every `mc` op the model issued, from which the scored model is
+# regenerated. For a static model this is a single file (no `{part}` template). The
+# `mc` binary additionally emits its extracted `mesh.json` — the triangle surface
+# (positions/normals/colors/indices) the review viewer renders — at its own fixed
+# path, so it is not named here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the emitted mesh reads as the Aegis Bastion — a colossal, \
+standing six-legged war-fortress with a tiered, prowed armored citadel carrying a \
+big forward-firing main turret, a side turret out on each sponson, and a sensor \
+vane above — rendered with clean bilateral symmetry, the disciplined Duneforged \
+palette, and a form that embraces the bold, chunky, faceted low-poly character of \
+Marching Cubes while filling the volume."""
+
+[[review_item]]
+id = "reads-as-fortress"
+title = "Reads as a giant six-legged war-fortress"
+text = """
+From more than one angle the mesh reads unmistakably as a colossal six-legged \
+walking fortress standing at rest — plainly far bigger and broader than an ordinary \
+war machine: a tiered, prowed armored citadel (not a plain box) riding raised on six \
+heavy legs (three down each side), a big main turret with a long forward cannon on \
+top, a rotating-style secondary turret out on each side sponson, and a sensor vane \
+above. It is a bristling, detailed multi-gun stronghold, not an abstract stack of \
+blocks on posts."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "low-poly-faceted"
+title = "Bold, faceted low-poly character"
+text = """
+The surface leans INTO the Marching Cubes look: a chunky, boldly faceted low-poly \
+mesh with confident planar faces and hard silhouettes, its forms built by \
+compositing solid primitives — mostly HARD unions that leave crisp creases where \
+armor plates and decks meet, with rounded fillets (`--blend`) reserved for a few \
+deliberate soft joins. It does not fight the coarse grid by chasing fine detail the \
+algorithm cannot hold; the blocky facets read as an intentional stylised aesthetic, \
+not as noise or accidental blobbiness."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Bilateral symmetry"
+text = """
+The fortress is cleanly symmetric about its lengthwise vertical centerplane (between \
+x = 43 and x = 44): the three legs down each side, the two side sponsons and their \
+turrets, and any intakes or vents mirror each other, with the main turret, cannon, \
+and sensor vane centered on the plane — so it reads as a deliberate war machine \
+rather than a lopsided hull. Compositing one half of the field and reflecting it \
+with `mirror` is a clean way to guarantee this."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "clean-field"
+title = "Clean, watertight, well-composited surface"
+text = """
+The emitted mesh is a single clean, watertight surface built from a well-composited \
+field: the hull, legs, turrets, and vane read as one solid fortress, with no stray \
+floating primitives drifting off it, no primitive left poking out where it should \
+have been unioned or carved, and each leg meeting the hull and the ground as a \
+connected form rather than a loose stack."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-fills-volume"
+title = "Duneforged palette; fills the volume"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
+and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
+accent and no out-of-palette colors, and the fortress uses most of the 88x80x104 \
+volume — broad and deep, standing tall on its legs — with a little margin on every \
+side, neither shrunk into a corner nor clipped where it runs past a face."""
+weight = 1
+domain = "fidelity"
