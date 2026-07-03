@@ -117,7 +117,7 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # IMAGE_NAME_PREFIX/IMAGE_TAG knobs, so RUN_IMGS mirrors the set it builds.
 RUN_IMAGE_PREFIX := $(REGISTRY_PREFIX)/test-cabinet-
 RUN_IMAGE_TAG    := local
-RUN_IMAGE_NAMES  := base sprite sprite-sheet voxel voxel-animation adversarial performance
+RUN_IMAGE_NAMES  := base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation adversarial performance
 RUN_IMGS         := $(foreach n,$(RUN_IMAGE_NAMES),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value

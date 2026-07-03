@@ -15,6 +15,14 @@
 #     asset-generation run (`asset_kind = "voxel-animation"`) executes in — the
 #     base image plus the baked-in `voxel-anim` binary (`voxel-animation/Dockerfile`
 #     is `FROM` the base); and
+#   - the six surface-extraction meshing images — mc / mc-animation (Marching
+#     Cubes), sn / sn-animation (Surface Nets), and dc / dc-animation (Dual
+#     Contouring) — which every meshing asset-generation run executes in
+#     (`asset_kind = "mc-model"`/`"mc-animation"`/`"sn-model"`/`"sn-animation"`/
+#     `"dc-model"`/`"dc-animation"`): the base image plus the baked-in meshing
+#     binary (`mc`/`mc-anim`/`sn`/`sn-anim`/`dc`/`dc-anim`) and the Mesa
+#     software-Vulkan (lavapipe) runtime the previews render with (each
+#     `<name>/Dockerfile` is `FROM` the base); and
 #   - the adversarial image, which every adversarial run executes in — the base
 #     image plus the Rust + `wasm32-unknown-unknown` toolchain (so a model's
 #     controller builds to wasm in-container) and the Foray tooling compiled from
@@ -30,14 +38,17 @@
 # image at run time (see `harnesses/README.md`).
 #
 # Usage:
-#   ./build.sh                # build the base, sprite, sprite-sheet, voxel, voxel-animation, adversarial, and performance images
+#   ./build.sh                # build the base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and performance images (thirteen total)
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
 # configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
 # override TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_SPRITE /
 # TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_VOXEL /
-# TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION / TCAB_CONTAINER_IMAGE_ADVERSARIAL /
+# TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION / TCAB_CONTAINER_IMAGE_MC /
+# TCAB_CONTAINER_IMAGE_MC_ANIMATION / TCAB_CONTAINER_IMAGE_SN /
+# TCAB_CONTAINER_IMAGE_SN_ANIMATION / TCAB_CONTAINER_IMAGE_DC /
+# TCAB_CONTAINER_IMAGE_DC_ANIMATION / TCAB_CONTAINER_IMAGE_ADVERSARIAL /
 # TCAB_CONTAINER_IMAGE_PERFORMANCE; see
 # docs/components/core/execution.md). The
 # backend plays no part in container distribution, so this script never talks to
@@ -48,6 +59,9 @@
 # development path): the images are named `test-cabinet-base:<tag>`,
 # `test-cabinet-sprite:<tag>`, `test-cabinet-sprite-sheet:<tag>`,
 # `test-cabinet-voxel:<tag>`, `test-cabinet-voxel-animation:<tag>`,
+# `test-cabinet-mc:<tag>`, `test-cabinet-mc-animation:<tag>`,
+# `test-cabinet-sn:<tag>`, `test-cabinet-sn-animation:<tag>`,
+# `test-cabinet-dc:<tag>`, `test-cabinet-dc-animation:<tag>`,
 # `test-cabinet-adversarial:<tag>`, and `test-cabinet-performance:<tag>`, which is
 # what a runner resolves when TCAB_CONTAINER_REGISTRY is set to an empty string.
 #
@@ -62,9 +76,10 @@
 #                 IMAGE_NAME_PREFIXsprite, the sprite-sheet image is
 #                 IMAGE_NAME_PREFIXsprite-sheet, the voxel image is
 #                 IMAGE_NAME_PREFIXvoxel, the voxel-animation image is
-#                 IMAGE_NAME_PREFIXvoxel-animation, the adversarial image is
-#                 IMAGE_NAME_PREFIXadversarial, and the performance image is
-#                 IMAGE_NAME_PREFIXperformance
+#                 IMAGE_NAME_PREFIXvoxel-animation, the six meshing images are
+#                 IMAGE_NAME_PREFIX{mc,mc-animation,sn,sn-animation,dc,dc-animation},
+#                 the adversarial image is IMAGE_NAME_PREFIXadversarial, and the
+#                 performance image is IMAGE_NAME_PREFIXperformance
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
 set -euo pipefail
@@ -138,8 +153,9 @@ build_base() {
 
 # Build one asset-generation image `FROM` the base built above plus a drawing
 # binary compiled from `crates/`. The argument is the image's short name
-# (`sprite` / `sprite-sheet` / `voxel` / `voxel-animation`), which is both its name
-# suffix and the directory holding its Dockerfile. The build context is the
+# (`sprite` / `sprite-sheet` / `voxel` / `voxel-animation` / `mc` / `mc-animation`
+# / `sn` / `sn-animation` / `dc` / `dc-animation`), which is both its name suffix
+# and the directory holding its Dockerfile. The build context is the
 # repository root so the compile
 # stage can see `crates/`; building from the local base tag avoids a registry
 # round-trip and keeps the image pinned to the base produced in this invocation.
@@ -207,12 +223,19 @@ build_performance() {
 }
 
 # The base must be built before the sprite, sprite-sheet, voxel, voxel-animation,
-# adversarial, and performance images, which are all `FROM` it.
+# mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and
+# performance images, which are all `FROM` it.
 build_base
 build_asset_image sprite
 build_asset_image sprite-sheet
 build_asset_image voxel
 build_asset_image voxel-animation
+build_asset_image mc
+build_asset_image mc-animation
+build_asset_image sn
+build_asset_image sn-animation
+build_asset_image dc
+build_asset_image dc-animation
 build_adversarial
 build_performance
 echo "==> done"

@@ -44,6 +44,31 @@ RUN cargo build --release -p test-cabinet-voxel --bin voxel
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
+# The preview renderer draws through `wgpu` targeting Mesa's software Vulkan
+# (lavapipe) — there is no GPU in the run container, so the image must ship the
+# Mesa Vulkan ICD (`mesa-vulkan-drivers`, which provides lavapipe) and the Vulkan
+# loader (`libvulkan1`) the binary links against at run time. Installing OS
+# packages needs root, so switch to root for the apt-get and switch back to the
+# unprivileged `node` run user the base image set, leaving the run user unchanged.
+USER root
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		libvulkan1 \
+		mesa-vulkan-drivers \
+	&& rm -rf /var/lib/apt/lists/*
+USER node
+
+# Force `wgpu` onto the lavapipe (software CPU) Vulkan device deterministically
+# in-container: no GPU or display is present, and the base+Mesa install ships
+# an ICD for every driver, so restrict the loader to the lavapipe driver by
+# manifest-name glob. This is arch-agnostic (the manifest is `lvp_icd.<arch>.json`,
+# e.g. `lvp_icd.x86_64.json` or `lvp_icd.aarch64.json`), unlike pinning an
+# absolute VK_ICD_FILENAMES path, so it selects lavapipe on both x86_64 and arm64
+# (this project's local dev and prod are arm64). XDG_RUNTIME_DIR gives the loader
+# a writable runtime dir so it does not warn on every render.
+ENV VK_LOADER_DRIVERS_SELECT=lvp*
+ENV XDG_RUNTIME_DIR=/tmp
+
 # Bake in the `voxel` binary compiled in stage 1. `/usr/local/bin` is on PATH and
 # root-owned (COPY writes as root regardless of the inherited `USER node`); the
 # unprivileged run user only executes it, never writes it. A static voxel run

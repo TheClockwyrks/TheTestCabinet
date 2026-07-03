@@ -5,7 +5,7 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **five images**, selected by a run's
+There are **thirteen images**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
 its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
@@ -18,7 +18,31 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
   `draw` binary;
 - the **sprite-sheet** image, which every sprite-sheet asset-generation run
   (`asset_kind = "sprite-sheet"`) executes in — the base image plus the baked-in
-  `draw-sheet` binary; and
+  `draw-sheet` binary;
+- the **voxel** image, which every static-voxel asset-generation run
+  (`asset_kind = "voxel-model"`) executes in — the base image plus the baked-in
+  `voxel` binary;
+- the **voxel-animation** image, which every rigged-voxel asset-generation run
+  (`asset_kind = "voxel-animation"`) executes in — the base image plus the
+  baked-in `voxel-anim` binary;
+- the **mc** image, which every static Marching Cubes meshing run
+  (`asset_kind = "mc-model"`) executes in — the base image plus the baked-in
+  `mc` binary;
+- the **mc-animation** image, which every rigged Marching Cubes meshing run
+  (`asset_kind = "mc-animation"`) executes in — the base image plus the baked-in
+  `mc-anim` binary;
+- the **sn** image, which every static Surface Nets meshing run
+  (`asset_kind = "sn-model"`) executes in — the base image plus the baked-in
+  `sn` binary;
+- the **sn-animation** image, which every rigged Surface Nets meshing run
+  (`asset_kind = "sn-animation"`) executes in — the base image plus the baked-in
+  `sn-anim` binary;
+- the **dc** image, which every static Dual Contouring meshing run
+  (`asset_kind = "dc-model"`) executes in — the base image plus the baked-in
+  `dc` binary;
+- the **dc-animation** image, which every rigged Dual Contouring meshing run
+  (`asset_kind = "dc-animation"`) executes in — the base image plus the baked-in
+  `dc-anim` binary;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
@@ -44,16 +68,24 @@ the image by test type and asset kind via
 
 ```
 containers/
-├── base/Dockerfile          # the end-to-end run image (toolchain, run user)
-├── sprite/Dockerfile        # the base image plus the baked-in `draw` binary
-├── sprite-sheet/Dockerfile  # the base image plus the baked-in `draw-sheet` binary
-├── adversarial/            # the base image plus the wasm toolchain + Foray tooling
-│   ├── Dockerfile          #   (foray CLI, references + map, controller buildkit)
-│   └── buildkit/Cargo.toml #   de-workspaced root for the baked buildkit crates
-├── performance/           # the base image plus the wasm toolchain + Lattice tooling
-│   ├── Dockerfile          #   (lattice CLI, reference engines, training, engine buildkit)
-│   └── buildkit/Cargo.toml #   de-workspaced root for the baked buildkit crates
-└── build.sh                 # builds (and optionally pushes) all five images
+├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
+├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
+├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
+├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
+├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
+├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching Cubes)
+├── mc-animation/Dockerfile     # the base image plus the baked-in `mc-anim` binary
+├── sn/Dockerfile               # the base image plus the baked-in `sn` binary (Surface Nets)
+├── sn-animation/Dockerfile     # the base image plus the baked-in `sn-anim` binary
+├── dc/Dockerfile               # the base image plus the baked-in `dc` binary (Dual Contouring)
+├── dc-animation/Dockerfile     # the base image plus the baked-in `dc-anim` binary
+├── adversarial/                # the base image plus the wasm toolchain + Foray tooling
+│   ├── Dockerfile              #   (foray CLI, references + map, controller buildkit)
+│   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
+├── performance/                # the base image plus the wasm toolchain + Lattice tooling
+│   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine buildkit)
+│   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
+└── build.sh                    # builds (and optionally pushes) all thirteen images
 ```
 
 ## Base image
@@ -101,8 +133,29 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `sprite-sheet/` is the base image plus exactly the **`draw-sheet`** binary, the
   drawing tool a sprite-sheet run uses (`draw` plus a required `--frame` on every
   operation).
+- `voxel/` is the base image plus exactly the **`voxel`** binary, the sculpting
+  tool a static-voxel run uses.
+- `voxel-animation/` is the base image plus exactly the **`voxel-anim`** binary,
+  the sculpting-and-rigging tool a rigged-voxel run uses.
+- `mc/` and `mc-animation/` are the base image plus exactly the **`mc`** /
+  **`mc-anim`** binary, the Marching Cubes meshing tool (static / rigged) a
+  low-poly meshing run uses.
+- `sn/` and `sn-animation/` are the base image plus exactly the **`sn`** /
+  **`sn-anim`** binary, the Surface Nets meshing tool (static / rigged) a
+  smooth mid-fidelity meshing run uses.
+- `dc/` and `dc-animation/` are the base image plus exactly the **`dc`** /
+  **`dc-anim`** binary, the Dual Contouring meshing tool (static / rigged) a
+  high-fidelity, sharp-feature meshing run uses.
 
-Both Dockerfiles are `FROM` the base, so each inherits the toolchain, the `node`
+Each meshing image bakes in its one binary the same way `sprite`/`voxel` do; the
+`-animation` images add the rigging/F-curve authoring that
+`voxel-anim` uses. The voxel-family binaries render their preview PNGs with a
+`wgpu` renderer targeting Mesa (software Vulkan, headless), not the old
+deterministic isometric rasterizer, and their output is judged from the emitted
+data plus the rendered previews — there is no cheat-divergence check on these
+binaries.
+
+Both drawing Dockerfiles are `FROM` the base, so each inherits the toolchain, the `node`
 run user, the `/work` working directory, and the keep-alive `CMD`, and adds only
 its one binary. Unlike a harness CLI, these binaries are part of The Test Cabinet
 itself and their drawing logic must match the orchestrator's — the orchestrator
@@ -206,12 +259,16 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build the base, sprite, sprite-sheet, adversarial, and performance images
+./build.sh                # build all thirteen images (base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, performance)
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
 Build-only mode tags `test-cabinet-base:latest`, `test-cabinet-sprite:latest`,
-`test-cabinet-sprite-sheet:latest`, `test-cabinet-adversarial:latest`, and
+`test-cabinet-sprite-sheet:latest`, `test-cabinet-voxel:latest`,
+`test-cabinet-voxel-animation:latest`, `test-cabinet-mc:latest`,
+`test-cabinet-mc-animation:latest`, `test-cabinet-sn:latest`,
+`test-cabinet-sn-animation:latest`, `test-cabinet-dc:latest`,
+`test-cabinet-dc-animation:latest`, `test-cabinet-adversarial:latest`, and
 `test-cabinet-performance:latest` locally. Those are exactly the names a runner
 resolves (by test type and asset
 kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
@@ -247,9 +304,11 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build all four images (`./build.sh`) and
+Docker host. When validating on Linux, build all thirteen images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
-the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, and
+the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, that
+each voxel-family binary (`voxel`, `voxel-anim`, `mc`, `mc-anim`, `sn`, `sn-anim`,
+`dc`, `dc-anim`) is on `PATH` in its matching image, and
 that the adversarial image gives the unprivileged run user `cargo`/`rustc` and the
 `wasm32-unknown-unknown` target (e.g. `cargo --version` and a trivial
 `cargo build --target wasm32-unknown-unknown` as `node`), `foray` on `PATH`
