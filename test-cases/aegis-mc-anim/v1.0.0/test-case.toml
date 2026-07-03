@@ -1,4 +1,4 @@
-name = "Aegis — Marching Cubes"
+name = "Aegis (Marching Cubes, Animated)"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "mc", "marching-cubes", "rig", "walker"]
 summary = """

@@ -1,4 +1,4 @@
-**Aegis Bastion** is a colossal, hard-edged six-legged walking fortress. This
+**Aegis** is a colossal, hard-edged six-legged walking fortress. This
 asset-generation case asks a model to sculpt it as a static 88×80×104 mesh using
 only the Dual Contouring tool (`dc`), one operation at a time — compositing a
 signed-distance field from `add`/`subtract` primitives rather than placing voxels:

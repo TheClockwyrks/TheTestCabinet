@@ -1,8 +1,8 @@
-name = "Aegis Bastion (Marching Cubes)"
+name = "Aegis (Marching Cubes)"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "marching-cubes", "fortress"]
 summary = """
-Sculpt the Aegis Bastion: a colossal, standing six-legged war-fortress meshed \
+Sculpt the Aegis: a colossal, standing six-legged war-fortress meshed \
 from a signed-distance field with the `mc` Marching Cubes binary — a bold, chunky, \
 faceted low-poly surface — inside an 88x80x104 volume, one recorded operation at a \
 time."""
@@ -60,7 +60,7 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How convincingly the emitted mesh reads as the Aegis Bastion — a colossal, \
+How convincingly the emitted mesh reads as the Aegis — a colossal, \
 standing six-legged war-fortress with a tiered, prowed armored citadel carrying a \
 big forward-firing main turret, a side turret out on each sponson, and a sensor \
 vane above — rendered with clean bilateral symmetry, the disciplined Duneforged \

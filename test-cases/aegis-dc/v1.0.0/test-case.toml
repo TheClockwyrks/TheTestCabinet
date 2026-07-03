@@ -1,8 +1,8 @@
-name = "Aegis Bastion"
+name = "Aegis (Dual Contouring)"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "fortress"]
 summary = """
-Sculpt the Aegis Bastion: a colossal, hard-edged six-legged walking fortress \
+Sculpt the Aegis: a colossal, hard-edged six-legged walking fortress \
 built as an 88x80x104 signed-distance field and extracted with the Dual \
 Contouring tool (`dc`) into a single crisp-panelled mesh — one recorded \
 operation at a time, sharp seams and beveled armor preserved with `--sharp`."""
@@ -58,7 +58,7 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How convincingly the extracted mesh reads as the Aegis Bastion — a colossal, \
+How convincingly the extracted mesh reads as the Aegis — a colossal, \
 hard-surfaced six-legged walking fortress that dwarfs every ordinary unit, its \
 tiered prowed citadel bristling with a central main cannon, two side-mounted \
 turrets, and a sensor vane, standing planted on six heavy articulated legs — \

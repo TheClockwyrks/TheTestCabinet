@@ -1,6 +1,6 @@
-# Aegis Bastion — Dual Contouring sculpting brief
+# Aegis — Dual Contouring sculpting brief
 
-You are sculpting the **Aegis Bastion**, a **colossal multi-gun war-fortress**
+You are sculpting the **Aegis**, a **colossal multi-gun war-fortress**
 that stands on **six heavy legs** — a heavily armored walking stronghold that
 **dwarfs every ordinary battlefield unit**. It carries a **dominant main
 cannon**, **secondary guns**, and a **sensor vane**. Build it as a **static 3D

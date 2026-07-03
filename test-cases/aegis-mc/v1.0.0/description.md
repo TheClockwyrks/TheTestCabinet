@@ -1,4 +1,4 @@
-**Aegis Bastion** is a colossal, standing six-legged war-fortress. This
+**Aegis** is a colossal, standing six-legged war-fortress. This
 asset-generation case asks a model to sculpt it as a 3D mesh using only the `mc`
 Marching Cubes tool, one operation at a time: rather than placing cubes, the
 model composites a continuous signed-distance field — unioning in armor masses,
