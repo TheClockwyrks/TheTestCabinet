@@ -41,9 +41,10 @@
 # cluster Secrets from these; nothing sensitive is ever written to a tracked file.
 #
 # Targets:
-#   local-up        create the cluster, build+import images, apply, ingest catalog
+#   local-up        create the cluster, build+import service AND run images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
-#   local-rebuild   rebuild+import images, re-apply the overlay, restart the services (after a code OR manifest change)
+#   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
+#   run-images      rebuild+import the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 and the OTLP collector→:4318/:4317 to localhost
@@ -100,6 +101,25 @@ ARENA_IMG      := $(REGISTRY_PREFIX)/tcab-arena:local
 # image to build or import here (see the header comment and the local overlay).
 ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
 
+# The run-container images — the base end-to-end image plus the per-asset-kind
+# images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
+# and the adversarial/performance tooling), all compiled from `crates/` at image
+# build time (see `containers/build.sh` and `containers/*/Dockerfile`). These are
+# DISTINCT from the long-lived service images above: a run pod is a per-run Job the
+# dispatcher creates, running one of these images. In a deployment they come from
+# ghcr (core's `resolve_run_image` defaults to `ghcr.io/theclockwyrks/…:latest`);
+# locally the `run-images` target builds them from THIS checkout and imports them so
+# a change to the baked-in tooling actually reaches run pods, with the local
+# dispatcher overlay pointing `TCAB_CONTAINER_REGISTRY`/`_TAG` at this prefix/tag.
+# The `:local` tag is what makes the kubelet's IfNotPresent default use the imported
+# image rather than trying to pull it (a `:latest` tag would force a registry pull).
+# `build.sh` names each image `$(RUN_IMAGE_PREFIX)<name>:$(RUN_IMAGE_TAG)` via its
+# IMAGE_NAME_PREFIX/IMAGE_TAG knobs, so RUN_IMGS mirrors the set it builds.
+RUN_IMAGE_PREFIX := $(REGISTRY_PREFIX)/test-cabinet-
+RUN_IMAGE_TAG    := local
+RUN_IMAGE_NAMES  := base sprite sprite-sheet voxel voxel-animation adversarial performance
+RUN_IMGS         := $(foreach n,$(RUN_IMAGE_NAMES),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
+
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
 SERVICE_TOKEN ?= local-dev-service-token
@@ -131,9 +151,9 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images apply
 
-local-up: cluster images apply local-ingest
+local-up: cluster images run-images apply local-ingest
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
@@ -226,6 +246,42 @@ images:
 	    echo "Saving $$img …"; \
 	    $(CONTAINER_TOOL) save -o "$$tmp/img-$$i.tar" "$$img"; \
 	    tars="$$tars $$tmp/img-$$i.tar"; \
+	  done; \
+	  k3d image import $$tars -c '$(CLUSTER)'
+
+# Build the run-container images (the base + per-asset-kind images with their
+# baked-in modeling tool compiled from `crates/`) and import them into the cluster,
+# so run pods use THIS checkout's tooling instead of the published ghcr images. This
+# is the run-pod counterpart of the service-image `images` target and is what closes
+# the gap where a change to `voxel-anim`/`draw`/the core modeling library never
+# reaches a run: those tools live in these images, not in any service.
+#
+# It is DELIBERATELY separate from `local-rebuild` (which rebuilds only the service
+# images) and is instead folded into `local-up`: a run-container rebuild recompiles
+# each image's tooling from scratch (the run-container Dockerfiles carry no cargo
+# cache mount), so it is minutes-per-image and not something to pay on every
+# service-code iteration. Run it explicitly after changing the baked-in tooling —
+# `voxel-anim`, `voxel`, `draw`/`draw-sheet`, the Foray/Lattice tooling, or the core
+# modeling library any of them link — then enqueue a run (driver Jobs resolve the
+# run image fresh each run, so no service restart is needed to pick the new image
+# up).
+#
+# `build.sh` builds every image from the repo root; its IMAGE_NAME_PREFIX/IMAGE_TAG
+# name them to match RUN_IMGS, and DOCKER selects the same runtime the service images
+# use. The BuildKit-vs-credsStore DOCKER_CONFIG pin from `images` applies here too
+# (these Dockerfiles also pull only public base images).
+run-images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images:
+	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
+	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
+	  bash '$(REPO)/containers/build.sh'
+	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
+	  i=0; tars=""; \
+	  for img in $(RUN_IMGS); do \
+	    i=$$((i+1)); \
+	    echo "Saving $$img …"; \
+	    $(CONTAINER_TOOL) save -o "$$tmp/run-$$i.tar" "$$img"; \
+	    tars="$$tars $$tmp/run-$$i.tar"; \
 	  done; \
 	  k3d image import $$tars -c '$(CLUSTER)'
 
@@ -373,10 +429,17 @@ local-grafana:
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 4317:4317 & \
 	  wait
 
-# Rebuild after a code change: new images, re-import, re-apply the overlay, rolling
-# restart. (Driver pods are per-run Jobs the dispatcher creates fresh each run, so
-# they pick up the new tcab-driver:local image on the next run with no restart
-# here.) The `apply` dependency is what makes a rebuild also pick up MANIFEST
+# Rebuild after a code change: new SERVICE images, re-import, re-apply the overlay,
+# rolling restart. (Driver pods are per-run Jobs the dispatcher creates fresh each
+# run, so they pick up the new tcab-driver:local image on the next run with no
+# restart here.) This rebuilds ONLY the long-lived service images — NOT the
+# run-container images that bake in the modeling tooling (`voxel-anim`/`draw`/`voxel`
+# and the Foray/Lattice tooling). Those are minutes-per-image to recompile and are
+# rebuilt by the separate `run-images` target (folded into `local-up`); run it by
+# hand after changing that baked-in tooling or the core modeling library it links,
+# otherwise a run pod keeps executing the previously-imported (or ghcr) image and a
+# tooling change silently never reaches a run. The `apply` dependency is what makes a
+# rebuild also pick up MANIFEST
 # changes — RBAC, env, volumes — not just new image bytes; without it a Role or env
 # edit silently never reaches the cluster on a rebuild (it only does on local-up).
 # `kubectl apply -k` is idempotent (a no-op when nothing changed), and the rollout

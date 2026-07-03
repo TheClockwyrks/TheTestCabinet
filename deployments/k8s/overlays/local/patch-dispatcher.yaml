@@ -30,6 +30,21 @@ spec:
             # kubelet's IfNotPresent default uses the imported image, no pull).
             - name: TCAB_DRIVER_IMAGE
               value: "tcab-driver:local"
+            # Resolve the RUN-CONTAINER images from the locally-built+imported set the
+            # `run-images` target produces, instead of the compiled default
+            # (ghcr.io/theclockwyrks/…:latest). The dispatcher forwards these into
+            # every driver Job, where core's resolve_run_image composes
+            # <registry>/test-cabinet-<kind>:<tag> — e.g.
+            # docker.io/library/test-cabinet-voxel-animation:local — matching the
+            # names `run-images` imports (RUN_IMAGE_PREFIX/RUN_IMAGE_TAG). The `local`
+            # tag (not `latest`) is what makes the kubelet's IfNotPresent default use
+            # the imported image rather than trying to pull it. Without this override a
+            # run pod would pull the published ghcr image and a local change to the
+            # baked-in tooling (voxel-anim/draw/…) would never reach a run.
+            - name: TCAB_CONTAINER_REGISTRY
+              value: "docker.io/library"
+            - name: TCAB_CONTAINER_TAG
+              value: "local"
             # Subscription auth: point the dispatcher at the OPTIONAL
             # tcab-driver-subscription Secret the Makefile's `secrets` target builds
             # from the host's signed-in CLI credential files. The Secret is mounted

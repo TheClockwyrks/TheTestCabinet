@@ -650,7 +650,25 @@ impl Db {
 
         let mut out = Vec::with_capacity(runs.len());
         for run in runs {
-            let record: RunRecord = serde_json::from_str(&run.record_json)?;
+            // Tolerate a single record that no longer matches the current
+            // `RunRecord` schema: skip it (with a warning) rather than failing the
+            // whole page. A stored record can predate a contract change — e.g. an
+            // animated-voxel run recorded before F-curve keyframes gained their
+            // required `interp` field — and without this guard one such legacy row
+            // would 500 an entire worklist, blanking the console. The record stays in
+            // the DB for inspection; it simply does not appear in a listing.
+            let record: RunRecord = match serde_json::from_str(&run.record_json) {
+                Ok(record) => record,
+                Err(err) => {
+                    tracing::warn!(
+                        run_id = %run.id,
+                        error = %err,
+                        "skipping run whose stored record no longer deserializes against the \
+                         current RunRecord schema (likely predates a contract change)",
+                    );
+                    continue;
+                }
+            };
             let link = link_map.remove(&run.id);
             out.push(StoredRun {
                 record,

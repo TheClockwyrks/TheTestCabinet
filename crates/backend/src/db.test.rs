@@ -113,6 +113,40 @@ async fn a_pushed_run_is_unpublished_with_no_reviews_and_absent_from_the_public_
 }
 
 #[tokio::test]
+async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
+    // A stored record can predate a contract change and no longer parse as a
+    // `RunRecord` (e.g. an animated-voxel run recorded before F-curve keyframes
+    // gained their required `interp` field). Such a row must not blank an entire
+    // worklist; it is skipped, and its still-valid siblings return normally.
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("good"), &links(), None).await.unwrap();
+    db.push(&record("legacy"), &links(), None).await.unwrap();
+
+    // Corrupt `legacy`'s stored blob so it can no longer be parsed as a RunRecord,
+    // standing in for a row written under an older, incompatible schema.
+    run::Entity::update_many()
+        .col_expr(
+            run::Column::RecordJson,
+            Expr::value(r#"{"id":"legacy","schema":"from-before-a-contract-change"}"#),
+        )
+        .filter(run::Column::Id.eq("legacy"))
+        .exec(&db.conn)
+        .await
+        .unwrap();
+
+    // The reviewer worklist still returns the good run instead of erroring on the
+    // undeserializable sibling.
+    let (runs, _) = db.list_for_review(50, None).await.unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].record.id, "good");
+
+    // A direct read of the corrupt run is a clean not-found (it is skipped in
+    // assembly), while the good run still reads back.
+    assert!(db.get_run("legacy").await.unwrap().is_none());
+    assert!(db.get_run("good").await.unwrap().is_some());
+}
+
+#[tokio::test]
 async fn publish_is_refused_until_a_run_has_a_review() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(&record("r1"), &links(), None).await.unwrap();
