@@ -61,24 +61,25 @@ emitted-data validity plus the reviewer's judgment of the rendered previews.
 
 A **static model** (`voxel-model`) has one part — the whole model — so it emits one
 geometry set and one preview. An **animated model** (`voxel-animation`) emits **one
-set per declared part**, independently; there is no assembled-model aggregate. The
-per-part emitted data and previews are the scored artifacts.
+set per part the model defines**, independently; there is no assembled-model
+aggregate. The per-part emitted data and previews are the scored artifacts.
 
 ### The rig
 
 For an animated model the model authors **both** the mesh **and** the
 **animations** — the timeline motions (a walk, a recoil, an idle) as
-model-authored, first-class curves. The validator reconciles the model-produced
-**`rig.json`** — the full rig it built: required parts, joints, **and animations**
-plus any it added — against the case's **required**
-[`[model]`](/testing/asset-generation/manifests/#voxel-cases) contract. A missing
-required part, joint, **or animation** is a **zero-scored contract gap** that is
-recorded (not a crash): the game-facing joint interface and the required motions a
-case declares are scoring targets, so failing to produce them counts against the
-run rather than aborting evaluation. The run record carries both the required
-`model` and the produced `rig`, so the review UI can surface each caller joint (for
-example `turret_yaw`) as a live control and the 3D viewer can pose the full rig
-without a separate catalog lookup.
+model-authored, first-class curves — **and invents the rig itself**: the parts,
+joints, and pivots that carry the motion are the model's to devise, not a skeleton
+the case prescribes. The only rig contract a case fixes is the set of **required
+animations** (by name). The validator derives the parts to score from the
+model-produced **`rig.json`** — the full rig it built — and reconciles it against
+that contract: each **required animation** must be present and actually **animate**
+(carry keyframed motion). A missing or empty required animation is a **zero-scored
+contract gap** that is recorded (not a crash): the required motions a case declares
+are the scoring targets, so failing to produce them counts against the run rather
+than aborting evaluation. The run record carries both the required `model` (the
+animation contract) and the produced `rig`, so the 3D viewer can pose the full rig
+and play back the animations without a separate catalog lookup.
 
 The reviewer scores the produced **motion** — how well each required animation
 reads, such as a walk with a planted stance or the snap of a recoil — alongside the

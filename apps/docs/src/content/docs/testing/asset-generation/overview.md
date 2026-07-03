@@ -167,14 +167,19 @@ A rig is:
   **F-curve** — a rich Bézier curve (the graph-editor curve real 3D tools use),
   not linear interpolation — so motion can carry weight and snap.
 
-The manifest's `[model]` table declares the **required** parts, joints, **and
-animations** — the stable, game-facing interface and the scoring targets. The
-model both produces the mesh and **authors the animation keyframes and curves**.
-At run time it may **add** further parts, joints, and animations of its own; the
-produced `rig.json` carries **everything** (required plus model-added), and the
-review UI scores the produced animations (motion quality) against the required
-set — a missing required animation is a contract gap, exactly like a missing
-joint — while the viewer poses the full rig.
+The manifest's `[model]` table declares **only** the **required animations** — the
+game-facing contract and the scoring targets. It does **not** prescribe the parts or
+joints: the model **invents whatever rig** the subject needs (working out the parts,
+where they attach, and the joints they require), produces each part's mesh, and
+**authors the animation keyframes and curves** — and is judged on whether it worked
+those pieces out and animated them convincingly, not on following a prescribed
+skeleton. Prescribing the full rig would turn the case into instruction-following
+and make every model produce near-identical output; declaring only the animations
+(what the thing is and how it must move) is what makes the case measure creativity.
+The produced `rig.json` carries **everything** the model built (parts, joints, and
+animations), and the review UI **reconciles** the produced animations against the
+required set — a required animation that is missing, or that never actually
+animates, is a contract gap — while the viewer poses the full rig.
 
 #### Procedural drives vs baked animations
 
@@ -231,4 +236,4 @@ model sculpts and rigs, the [voxel-runtime](/components/voxel-runtime/overview/)
 package for how a game poses a produced rig, and
 [Manifests](/testing/asset-generation/manifests/) for how a case declares its
 canvas or `[voxel]` volume, `asset_kind`, the `[sheet]` frames and sequences, and
-the `[model]` parts, joints, and animations.
+the `[model]` required animations.

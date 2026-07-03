@@ -184,8 +184,8 @@ model (and a watching human) see the surface take shape operation by operation. 
 is **not** a cheat-detection mechanism. The [validator](/testing/asset-generation/evaluation/)
 does not regenerate or re-render anything: it parses the emitted
 [`mesh.json`](#the-meshjson-output-contract) and `rig.json`, confirms they are
-well-formed and readable, and checks the **rig contract** (that the required parts,
-joints, and animations are present). What is judged is the emitted data plus a
+well-formed and readable, and checks the **rig contract** (that each required
+animation is present and actually animates). What is judged is the emitted data plus a
 reviewer's read of the rendered previews — not how the data was produced.
 
 ### Preview rendering (wgpu + Mesa lavapipe)
@@ -235,14 +235,17 @@ a hierarchy with named joints and model-authored animations. Each animated binar
 `--part <name>` that selects which part an operation sculpts into; **each part is an
 independently-authored field**, meshed on its own into its own `mesh.json`, with its
 own operation log and its own preview (both `{part}` templates the case declares).
-The rig — the `[model]` table's parts (each with a pivot), joints, and F-curve
-animations — **composes and poses the per-part meshes**: parts are the pieces that
-animate, not subsections of one mesh.
+The rig — the parts (each with a pivot), joints, and F-curve animations the model
+**invents** — **composes and poses the per-part meshes**: parts are the pieces that
+animate, not subsections of one mesh. The case's `[model]` table fixes only the
+**required animations**; the model creates each part with `define-part` before it
+sculpts into it.
 
 ```
 mc-anim --help                         # same field operations, plus --part
 mc-anim add-box --part turret --x 12 --y 8 --z 12 --width 8 --height 4 --depth 8 --color "#4a5a3a"
-mc-anim init                           # initialize every declared part + rig.json
+mc-anim define-part --name turret --parent hull   # create a part before sculpting into it
+mc-anim init                           # seed rig.json (the required animation declarations)
 ```
 
 The rig model is **identical to [`voxel-anim`](/testing/asset-generation/voxel-binaries/#voxel-anim-one-volume-per-part-plus-the-rig)**
@@ -259,12 +262,14 @@ animation:
 - the design guidance for legged rigs and walk cycles is in
   [Rigging and animating walkers](/testing/asset-generation/rigging-walkers/).
 
-The seeded config lists the declared part names and the `{part}` templates, so
-`init` initializes every part's empty log and blank preview and seeds a `rig.json`
-pre-populated with the case's **required** parts, joints, and animation
-declarations. A model may **add** its own parts, joints, and animations on top; it
-**cannot** remove or contradict the required set, which is the game-facing contract
-a reviewer scores against.
+The seeded config carries the `{part}` templates and the `rig.json` path, so `init`
+seeds a `rig.json` pre-populated with the case's **required animation declarations**
+alone — its `parts` and `joints` start **empty**, because a case declares none. No
+part exists until the model creates one with `define-part` (which initializes that
+part's log, preview, and geometry); a field op on an undefined part is rejected. The
+model **builds the whole rig** — inventing the parts and joints the subject needs and
+authoring each required animation — and may add further animations of its own; the
+**required animations** are the game-facing contract a reviewer scores against.
 
 ## The `mesh.json` output contract
 

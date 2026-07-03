@@ -47,9 +47,9 @@ by the [meshing binaries](/testing/asset-generation/voxel-binaries/):
   hierarchy, each with an attachment pivot), the joints (named degrees of freedom,
   each caller-driven or `auto`), and the model-authored **animations** (named
   F-curve timelines), matching the
-  [`ModelSpec`/`PartSpec`/`JointSpec`](/components/core/run-records/) contract. This
-  is the required parts, joints, and animations the case declared **plus** any the
-  model added.
+  [`ModelSpec`/`PartSpec`/`JointSpec`](/components/core/run-records/) contract. The
+  parts and joints are entirely **model-invented**; the only rig the case fixed is
+  its **required animations** (by name), which this produced rig realizes.
 - **`mesh.json`** — one part's **surface mesh**, as the `PartMesh` shape: flat
   `positions` and `normals` (float triples), per-vertex `colors` (linear `0..1`
   RGB triples baked from the field's opaque `#rrggbb`), and triangle `indices`.

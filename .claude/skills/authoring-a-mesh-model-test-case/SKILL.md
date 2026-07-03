@@ -223,15 +223,22 @@ The brief is the test case. The rules that make one good:
   no access to these docs and no target model. The brief must be complete on its
   own — no link outside the seeded set — and it points at the binary's `--help` for
   the operations.
-- **Specify *what*, not *how*.** Describe the subject, palette, volume framing, and
-  orientation the model must achieve; leave the order of operations and technique to
-  the model (except where a variant deliberately constrains technique, or where the
+- **Specify *what*, not *how* — measure creativity, not instruction-following.**
+  Describe *what the subject is* (its key features, silhouette, and palette) and the
+  requirements it must satisfy — not exact dimensions, coordinates, or shapes. The
+  test rewards a model that invents a convincing model from the brief; a brief that
+  dictates every primitive just measures whether it can follow instructions. Pin only
+  what's truly required: the `[voxel]` volume, the exact palette, the orientation,
+  and the algorithm's character. Leave the order of operations and technique to the
+  model (except where a variant deliberately constrains technique, or where the
   algorithm's character warrants a nudge — "lean into the facets", "hold the edges
   crisp with `--sharp`").
-- **Use precise, testable values.** Pin the palette to exact `#rrggbb` values,
-  state the footprint and framing in the fixed `[voxel]` volume's coordinates, name
-  which axis is up and which way is forward, and name the silhouette features that
-  must read. Vague prose is the most common failure.
+- **Use precise, testable values for what you DO pin.** Pin the palette to exact
+  `#rrggbb` values, frame the subject against the fixed `[voxel]` volume, name which
+  axis is up and which way is forward, and name the silhouette features that must
+  read — as requirements, not as a primitive-by-primitive blueprint. Vague prose
+  about the *subject* is the most common failure; over-specified footprints are the
+  opposite trap.
 - **Own the algorithm's character.** Say plainly which extractor is in play and
   what it is *for*, so the model designs to its strength — a chunky faceted read for
   `mc`, a smooth watertight skin for `sn`, crisp hard-surface armor for `dc` — rather

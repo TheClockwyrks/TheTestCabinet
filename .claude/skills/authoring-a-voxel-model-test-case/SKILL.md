@@ -165,13 +165,20 @@ The brief is the test case. The rules that make one good:
   no access to these docs and no target model. The brief must be complete on its
   own — no link outside the seeded set — and it points at the binary's `--help` for
   the operations.
-- **Specify *what*, not *how*.** Describe the subject, palette, volume framing, and
-  orientation the model must achieve; leave the order of operations and technique to
-  the model (except where a variant deliberately constrains technique).
-- **Use precise, testable values.** Pin the palette to exact `#rrggbb` values,
-  state the footprint and framing in voxel coordinates against the fixed `[voxel]`
-  volume, name which axis is up and which way is forward, and name the silhouette
-  features that must read. Vague prose is the most common failure.
+- **Specify *what*, not *how* — measure creativity, not instruction-following.**
+  Describe *what the subject is* (its key features, silhouette, and palette) and the
+  requirements it must satisfy — not exact dimensions, coordinates, or shapes. The
+  test rewards a model that invents a convincing model from the brief; a brief that
+  dictates every voxel just measures whether it can follow instructions. Pin only
+  what's truly required: the `[voxel]` volume, the exact palette, and the orientation
+  (which axis is up, which way is forward). Leave the order of operations and
+  technique to the model (except where a variant deliberately constrains technique).
+- **Use precise, testable values for what you DO pin.** Pin the palette to exact
+  `#rrggbb` values, frame the subject against the fixed `[voxel]` volume, name which
+  axis is up and which way is forward, and name the silhouette features that must
+  read — as requirements, not as a voxel-by-voxel blueprint. Vague prose about the
+  *subject* is the most common failure; over-specified footprints are the opposite
+  trap.
 - **Keep the bar high.** Ask for a faithful, polished model that reads unmistakably
   as the subject from more than one angle — the frontend renders it rotating — not a
   rough blocky approximation.

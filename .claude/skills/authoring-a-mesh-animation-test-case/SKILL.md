@@ -1,5 +1,5 @@
 ---
-description: Read this skill before creating a new ANIMATED, rigged meshed asset-generation test case or version (asset_kind = "mc-animation", "sn-animation", or "dc-animation" — a 3D model with named parts and joints the model sculpts as per-part signed-distance fields with the `mc-anim`/`sn-anim`/`dc-anim` meshing binary and rigs with F-curve animations, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, `[model]` rig, or manifest under test-cases/. For a STATIC meshed model use authoring-a-mesh-model-test-case; for a rigged VOXEL (cube) model use authoring-a-voxel-animation-test-case; for a 2D sprite/sprite-sheet use authoring-an-asset-generation-test-case; for a playable game use authoring-an-end-to-end-test-case.
+description: Read this skill before creating a new ANIMATED, rigged meshed asset-generation test case or version (asset_kind = "mc-animation", "sn-animation", or "dc-animation" — a 3D model with named parts and joints the model sculpts as per-part signed-distance fields with the `mc-anim`/`sn-anim`/`dc-anim` meshing binary and rigs with F-curve animations, one recorded operation at a time), or when authoring or revising such a case's brief, prompt, `[model]` required animations, or manifest under test-cases/. For a STATIC meshed model use authoring-a-mesh-model-test-case; for a rigged VOXEL (cube) model use authoring-a-voxel-animation-test-case; for a 2D sprite/sprite-sheet use authoring-an-asset-generation-test-case; for a playable game use authoring-an-end-to-end-test-case.
 name: authoring-a-mesh-animation-test-case
 ---
 
@@ -46,21 +46,26 @@ the rig; read
 [`authoring-a-voxel-animation-test-case`](../authoring-a-voxel-animation-test-case/SKILL.md)
 for the rig-design details rather than duplicating them here.
 
-The defining requirement is the **rig contract**. The case's `[model]` table
-declares the **required** parts, joints, and **animation declarations** — the
-stable, **game-facing interface** a consuming game drives and plays, and the
-reviewer's scoring targets. At run time the model **authors** each required
-animation's motion (the F-curve keyframes) and may **add** further parts, joints,
-and animations of its own; the produced `rig.json` carries everything, and the
-validator reconciles it against the required set. Authoring one is writing a
-precise, self-contained **brief** *and* designing the required rig.
+The defining requirement is the **animation contract**. The case's `[model]` table
+declares only the set of **required animations** the model must author — each just a
+`name`, a `loop` flag, and an `auto_play` flag — the stable, **game-facing
+interface** a consuming game plays, and the reviewer's scoring targets. The case does
+**not** prescribe the parts, joints, pivots, ranges, or pose angles: the model
+**invents** the whole skeleton at run time — whatever parts and joints the subject
+needs — attaches them where they belong, and authors each required animation's motion
+(its F-curves). Working out the right pieces *is the test*. The produced `rig.json`
+carries everything, and the validator reconciles that each required animation exists
+and actually animates. Authoring one is writing a precise, self-contained **brief**
+that says WHAT the subject is and HOW it must move, and declaring the required
+animations.
 
 The authoritative docs are the source of truth — **read them first** and follow
 them as the authority:
 
 - [`testing/asset-generation/overview.md`](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-  — what the type measures, the meshed-voxel-model paradigm, and **The rig: parts,
-  joints, and animations** (caller-driven vs `auto`; required vs model-added);
+  — what the type measures, the meshed-voxel-model paradigm, and **The rig: parts
+  and joints** (the required animations are the contract; the parts and joints are
+  the model's to invent);
 - [`testing/asset-generation/mesh-binaries.md`](../../../apps/docs/src/content/docs/testing/asset-generation/mesh-binaries.md)
   — the `mc-anim`/`sn-anim`/`dc-anim` interface: the continuous **signed-distance
   field**, the shared **CSG vocabulary** (`add-*`/`subtract-*`, `--blend`, `mirror`/
@@ -77,13 +82,13 @@ them as the authority:
 - [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
   — every manifest field and the rules enforced at resolution (see **Voxel cases**,
   including the meshed `[tool].binary`, the `[output]` op log, and the
-  `[[model.part]]` / `[[model.joint]]` / `[[model.animation]]` tables);
+  `[[model.animation]]` declarations the `[model]` table carries);
 - [`testing/asset-generation/evaluation.md`](../../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md)
-  — per-part review, the rig reconciliation (a missing required joint or animation is
-  a recorded, zero-scored contract gap);
+  — per-part review and the animation reconciliation (a missing required animation,
+  or one that never actually animates, is a recorded, zero-scored contract gap);
 - [`components/voxel-runtime/overview.md`](../../../apps/docs/src/content/docs/components/voxel-runtime/overview.md)
   — how a produced rig's per-part `mesh.json` is posed for the review viewer and real
-  games (so the joint interface you design is what a game will drive).
+  games (so the rig interface the model invents is what a game will drive and play).
 
 This skill covers the **animated** meshed kinds only. For a **static** meshed model
 use
@@ -99,11 +104,12 @@ To add a variant to an existing mesh-animation version use
 
 The worked examples: the **Aegis** colossal six-legged walking fortress, rigged and
 animated once per algorithm — `test-cases/aegis-mc-anim/v1.0.0`,
-`test-cases/aegis-sn-anim/v1.0.0`, and `test-cases/aegis-dc-anim/v1.0.0` (a fixed
-`chassis` root; six independent three-segment legs driven by a two-tripod `march`;
-main and side turrets on `caller` joints driven by a `bombardment`; a self-playing
-`radar_spin`). Read the one for your algorithm alongside this skill — a new case
-should look like it.
+`test-cases/aegis-sn-anim/v1.0.0`, and `test-cases/aegis-dc-anim/v1.0.0`. Each
+`[model]` fixes only three required animations — a `march` walk, a `bombardment`
+weapon showcase, and a self-playing `radar_spin` — and the brief describes the
+fortress's features and how it must move; the model invents the legs, turrets, and
+joints that carry it. Read the one for your algorithm alongside this skill — a new
+case should look like it.
 
 ## Anatomy of a test case version
 
@@ -120,41 +126,34 @@ test-cases/<slug>/<version>/
 
 What a run receives: the selected variant's seeded specs (the common brief + any
 variant-additive brief), the `-anim` meshing binary, and a **pre-seeded `rig.json`**
-containing the case's required parts, joints, and animation declarations (so the
-contract exists from t=0). There is **no target model**; **no operations schema is
-seeded** (the binary's `--help` is the contract).
+carrying only the case's required animation declarations (empty tracks the model
+fills; `parts: []` and `joints: []`), so the animation contract exists from t=0.
+There is **no target model**; **no operations schema is seeded** (the binary's
+`--help` is the contract).
 
 ## Creating a new case — procedure
 
-### 1. Choose the subject, the algorithm, and design the rig
+### 1. Choose the subject, the algorithm, and the required animations
 
 Pick a **catalog slug** (e.g. `aegis-dc-anim`) and a subject that is naturally
-**articulated** — it has distinct, movable components a game would want to control.
+**articulated** — it has distinct, movable components a game would want to see move.
 Pick the **algorithm** for the surface character you want (bold faceted `mc-anim`,
 smooth watertight `sn-anim`, crisp hard-surface `dc-anim` with `--sharp`), which
 fixes the `asset_kind` and the `[tool].binary`.
 
-Design the **required rig** exactly as for a voxel animation — the mechanics are
-identical, so follow
+The only thing you fix about the rig is the set of **required animations** — exactly
+as for a voxel animation, so follow
 [`authoring-a-voxel-animation-test-case`](../authoring-a-voxel-animation-test-case/SKILL.md)
-(**Choose the subject and design the rig**) for the full detail. In brief:
+(**Choose the subject and the required animations**) for the full detail. In brief,
+for each motion the subject must perform declare a `[[model.animation]]` with a
+**`name`** a game plays it by (e.g. `march`, `bombardment`, `radar_spin`), whether it
+**`loop`s** (default `true`), and whether it **`auto_play`s** (`true` = a
+self-playing idle, `false` = a game-triggered playable).
 
-- **Parts** — name each component, give it a `parent` (the first part is the
-  **root**, no parent) and a **`pivot`** in the **shared volume's coordinates** (all
-  parts share one coordinate space): the point the part's joints rotate about, **not**
-  a placement offset — each part's field is composited in place where it sits on the
-  assembled model. Keep the hierarchy a **tree**.
-- **Joints** — for each degree of freedom a game should drive, declare a joint on a
-  part: its `kind` (`rotation` in radians / `translation` in voxels), `axis`,
-  `pivot`, `min`/`max`/`rest` range, and `drive`. Make the game-facing controls
-  **`drive = "caller"`**; use **`drive = "auto"`** for a joint moved only by the
-  model's animations (a walk cycle's hips and knees, a radar spin).
-- **Animations** — declare each required animation's identity and intent (name,
-  `period_ms`, `loop`, `auto_play`, and the `joints` it must drive); the model
-  authors the F-curve keyframes at run time.
-
-Keep the **required** rig to the interface a game truly needs — a stable, minimal
-contract; the model may add flourish parts/joints/animations on top. Pick a
+Do **not** design a parts list, a joint hierarchy, pivots, ranges, or pose angles —
+the model **invents** the skeleton the subject needs, attaches it where it belongs,
+and animates it, and working that out is the test. Keep the required animation set to
+the motions a game truly needs; the model may add flourish animations on top. Pick a
 `version` (`vX.Y.Z`); a version is **immutable** once runs reference it.
 
 ### 2. Write the brief
@@ -172,28 +171,28 @@ Seed a single self-contained `specs/brief.md`. State:
 - **the algorithm's character** — a short paragraph telling the model to lean into
   the extractor (faceted / smooth / crisp), and, for `dc-anim` only, to hold armor
   edges crisp with hard unions and **`--sharp`**;
-- **the required parts** — name each part, what it looks like, and where it attaches
-  (its pivot), and that each part is sculpted **separately** with
-  `<binary> --part <name>` in the **shared volume's coordinates**, positioned where
-  it sits on the assembled model (a turret already up on the hull, a barrel already
-  out front) — each part is its **own field**, meshed on its own;
-- **the required joints** — name each caller joint, the motion it must produce, and
-  its range, so the model sculpts the part to move plausibly about that pivot;
+- **the subject's key features** — name the components that must read (a hull, legs,
+  a main turret, a side turret per flank, a radar vane) and how they relate, but
+  **do not** prescribe their exact sizes, positions, pivots, or how to break them
+  into rig parts — that is the model's to invent. Note that each part the model
+  defines is sculpted **separately** with `<binary> --part <name>` in the **shared
+  volume's coordinates**, positioned where it sits on the assembled model — each part
+  is its **own field**, meshed on its own;
 - **how the tool behaves** — the `-anim` binary is the only way to shape the field
   and edit the rig, `--part` is required on every op, `--help` lists the operations
   **and the rig subcommands**, it re-renders each part's preview **and the
   assembled-scene previews** after each call, the field starts empty, and the
   recorded operations + emitted `mesh.json` + `rig.json` are the output;
-- **the required animations** — name each animation the model must author, its
-  intent (a decorative idle that plays on its own, or a named playable a game
-  triggers), its period and whether it loops, and the joints it must drive, so the
-  model authors motion that reads (a walk cycle's leg swing, a turret's radar sweep);
+- **the required animations** — name each animation the model must author and
+  describe the **behaviour** it must show in prose (a walk that plants its feet, a
+  turret that sweeps its arc), whether it loops, and whether it self-plays or is
+  game-triggered — but leave the joints, the period, and the pose angles to the
+  model;
 - that the model **may add** its own parts/joints/animations beyond the required set,
-  but must **not** drop or contradict the required interface.
+  but must **not** drop or contradict the required animations.
 
-The rotation-direction convention (positive pitch about `x` lifts a forward part
-**up**; yaw/roll right-handed) and the minimal-stable-interface guidance are the
-**same as voxel-anim** — see the voxel-animation skill's **Writing the brief**.
+Describing motion in world terms and keeping the required animation set minimal are
+the **same as voxel-anim** — see the voxel-animation skill's **Writing the brief**.
 
 ### 3. Write `prompt.hbs`
 
@@ -203,7 +202,7 @@ A short instruction pointing the model at the seeded brief, telling it to read t
 how the model confirms its separately sculpted parts fit together. Name the field
 vocabulary (`add-*`/`subtract-*`, `--blend`, and, for `dc-anim`, `--sharp`/`--smooth`)
 and restate the hard requirements (shape/rig only through the tool; `--part` on every
-op; produce every required part, joint, and animation; return when finished). Strict
+op; author every required animation; return when finished). Strict
 mode — only `{{variant.*}}`, `{{#each specs}}`, and `{{workspace}}`. Model it on the
 matching `aegis-*-anim` case's `prompt.hbs`. A shared **quality directive** is
 prepended to every asset-generation prompt automatically at render time
@@ -230,24 +229,26 @@ Author `test-case.toml` per the
   (e.g. `parts/{part}.actions.json`), exactly as `voxel-animation`; the per-part
   extracted meshes are emitted to `meshes/{part}.json` automatically by core — it is
   **not** declared in the manifest.
-- **`[model]`** — **required for this kind.** Declare the required rig **exactly as
-  for `voxel-animation`** (the schema is shared): `[[model.part]]` (first is the root,
-  no `parent`; each other names a declared `parent`; each a `pivot` `[x, y, z]`;
-  parents form a tree), `[[model.joint]]` (`name`, `part`, `kind`, `axis`, `pivot`,
-  `min`/`max`/`rest` with `min <= rest <= max`, `drive`, and the optional fixed
-  compound `offset`/`orient` mount), and `[[model.animation]]` (the **required
-  animations** — a unique `name`, `period_ms`, `loop`, `auto_play`, and the `joints`
-  each must drive; **no keyframes** — the model authors the F-curves at run time). See
-  the voxel-animation skill's **Write the manifest** for the field-by-field detail.
+- **`[model]`** — **required for this kind, and it carries ONLY `[[model.animation]]`
+  entries** — **exactly as for `voxel-animation`** (the schema is shared). There are
+  **no** `[[model.part]]` or `[[model.joint]]` tables; the case fixes no parts,
+  joints, pivots, ranges, or pose angles. Each `[[model.animation]]` entry declares
+  just a unique **`name`**, a **`loop`** flag (default `true`), and an **`auto_play`**
+  flag (default `false`; `true` = a self-playing idle, `false` = a game-triggered
+  playable) — **no `period_ms`, no `joints` list, and no keyframes**: the period, the
+  joints, and the F-curves are the model's to invent at run time. See the
+  voxel-animation skill's **Write the manifest** for the field-by-field detail.
 - A **`variants`** list (root key, before the first table) — the first entry the
   default.
 - **No targets** — declare **no `[[reference]]`**; resolution rejects any.
 - **`[[domain]]`** and **`[[review_item]]`** — at least one domain and a checklist
-  judging the rig against the brief (the parts read as the subject; the joints pose
-  correctly without detaching; the required animations play). An item may name the
-  caller **joints** it is about, so the review UI surfaces that joint's viewer and
-  control beside it. Each item carries only a `domain` (no `reference`). For `dc-anim`,
-  include an item for the crisp hard-surface read the extractor is chosen for.
+  judging the produced rig against the brief (it reads as the subject from multiple
+  angles; each required animation reads as its intended behaviour without parts
+  detaching or clipping). An item's text can name the **required animations** it
+  judges (e.g. `march`, `bombardment`), and the review UI plays the produced
+  animations and poses the rig beside the checklist. Each item carries only a
+  `domain` (no `reference`). For `dc-anim`, include an item for the crisp
+  hard-surface read the extractor is chosen for.
 
 There is **no `[build]` table** and **no `[[check]]`** for this type.
 
@@ -262,21 +263,23 @@ rig rules from the voxel-animation skill:
 
 - **Be self-contained.** No link outside the seeded set, and no target model; point
   at the binary's `--help` for the operations and rig subcommands.
-- **Specify *what*, not *how*.** Describe the subject, palette, volume framing, the
-  required parts and their pivots, and the joint motions; leave the sculpting order
-  and technique to the model (except the algorithm-character nudge and any variant
-  constraint).
-- **Use precise, testable values.** Pin the palette to exact `#rrggbb`; state each
-  part's footprint and pivot in the volume's coordinates; state each caller joint's
-  axis and range. Name what must read from the rig.
+- **Specify *what*, not *how* — measure creativity, not instruction-following.**
+  Describe *what the subject is* (its key features and how they relate) and *how it
+  must move* (the required animations and the behaviour each must show); pin only the
+  true requirements — the `[voxel]` volume, the exact palette, the algorithm's
+  character, and the required animation names. Do **not** prescribe a parts list, a
+  joint hierarchy, pivots, ranges, exact sizes, coordinates, or pose angles: working
+  out the pieces a moving subject needs *is the test*.
+- **Use precise, testable values for what you DO pin.** Pin the palette to exact
+  `#rrggbb`; state the volume framing (which axis is up, which way is forward); name
+  the silhouette features that must read and the behaviour each animation must show.
+  Keep the features as requirements, not measurements.
 - **Own the algorithm's character.** Say which extractor is in play and design to it
   — faceted `mc`, smooth `sn`, crisp/sharp `dc`.
-- **Match the rotation-direction convention and design a minimal, stable joint
-  interface** — these rules are identical to voxel-anim; see that skill's **Writing
-  the brief**.
-- **Keep the bar high.** Ask for a model that both reads as the subject and poses
-  correctly — the review UI renders each caller joint as a live control and plays the
-  produced animations.
+- **Describe motion in world terms and keep the required animation set minimal** —
+  these rules are identical to voxel-anim; see that skill's **Writing the brief**.
+- **Keep the bar high.** Ask for a model that both reads as the subject and animates
+  convincingly — the review UI plays the produced animations and poses the rig.
 
 ## Validating
 
@@ -296,14 +299,13 @@ tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-`prompt` catches strict-mode template and manifest errors — including rig resolution
-(unique parts, a single root, parent references with no cycles, joint → part
-references, `kind`/`axis`/`drive` parsing, `min <= rest <= max`, and each animation's
-unique name, positive `period_ms`, and declared driven `joints`). `seed` writes the
-seeded repository (under `tmp/`) so you can read what the model receives — the brief,
-the seeded `<binary>.config.json`, each part's blank preview, and the **pre-seeded
-`rig.json`** holding the required parts, joints, and animation declarations (with
-empty tracks the model fills) — and no target model.
+`prompt` catches strict-mode template and manifest errors — including animation
+resolution (each `[[model.animation]]` has a unique `name`, and the `[model]` table
+declares **no** parts or joints). `seed` writes the seeded repository (under `tmp/`)
+so you can read what the model receives — the brief, the seeded
+`<binary>.config.json`, and the **pre-seeded `rig.json`** holding only the required
+animation declarations (empty tracks the model fills; `parts: []`, `joints: []`) —
+and no target model.
 
 ### Re-ingest after editing
 

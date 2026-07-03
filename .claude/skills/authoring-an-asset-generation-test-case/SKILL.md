@@ -196,12 +196,19 @@ The brief is the test case. The rules that make one good:
   no access to these docs and no target image. The brief must be complete on its own
   — no link outside the seeded set, and it points at the binary's `--help` for the
   operations.
-- **Specify *what*, not *how*.** Describe the subject, palette, and framing the
-  sprite must achieve; leave the order of operations and technique to the model
-  (except where a variant deliberately constrains technique).
-- **Use precise, testable values.** Pin the palette to exact hex values, state the
-  framing in pixels against the fixed canvas, and name the silhouette features that
-  must read. Vague prose is the most common failure.
+- **Specify *what*, not *how* — measure creativity, not instruction-following.**
+  Describe *what the subject is* (its key features, silhouette, and palette) and the
+  requirements it must satisfy — not exact dimensions, pixel coordinates, or shapes.
+  The test rewards a model that invents a convincing sprite from the brief; a brief
+  that dictates every pixel just measures whether it can follow instructions. Pin
+  only what's truly required: the `[canvas]` bounds, the exact palette, and (for a
+  sheet) the required sequences. Leave the order of operations and technique to the
+  model (except where a variant deliberately constrains technique).
+- **Use precise, testable values for what you DO pin.** Pin the palette to exact hex
+  values, frame the subject against the fixed canvas, and name the silhouette
+  features that must read — as requirements, not as a pixel-by-pixel blueprint.
+  Vague prose about the *subject* is the most common failure; over-specified
+  coordinates are the opposite trap.
 - **Keep the bar high.** Ask for a faithful, polished sprite that reads
   unmistakably as the subject, not a rough approximation.
 

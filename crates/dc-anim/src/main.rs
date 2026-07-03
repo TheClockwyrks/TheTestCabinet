@@ -7,10 +7,11 @@
 //! composited in the **same shared volume's coordinates**, in place where it sits on
 //! the assembled model. On top of the per-part fields it maintains the rig structure in
 //! `rig.json`: the parts' hierarchy, the named joints a consuming game or an animation
-//! drives, and the model-authored animations. The manifest pre-seeds the required
-//! parts, joints, and animation declarations; the `define-part` / `set-pivot` /
-//! `define-joint` / `define-animation` / `add-keyframe` subcommands let the model author
-//! each required animation's motion and add its own.
+//! drives, and the model-authored animations. The manifest pre-seeds only the required
+//! **animation** declarations; the parts and joints are model-invented at run time via
+//! the `define-part` / `set-pivot` / `define-joint` subcommands, and the
+//! `define-animation` / `add-keyframe` subcommands let the model author each required
+//! animation's motion and add its own.
 //!
 //! The operation subcommands are shared with `dc`, so their `--help` is the same
 //! contract; no operations schema is seeded.
@@ -32,8 +33,8 @@ use test_cabinet_model_core::rig::{Drive, Interp, Joint, JointKind, Keyframe, Ri
     about = "Sculpt a rigged dual-contouring model, one part and one operation at a time."
 )]
 struct Cli {
-    /// Path to the rig config JSON (`{ width, height, depth, background, parts,
-    /// actions, preview, mesh, scene, rig }`). Read by `init` and every field operation.
+    /// Path to the rig config JSON (`{ width, height, depth, background, actions,
+    /// preview, mesh, scene, rig }`). Read by `init` and every field operation.
     #[arg(long, default_value = "dc-anim.config.json", global = true)]
     config: PathBuf,
     /// Which part to sculpt into. **Required** for a field operation; each part has its
@@ -46,8 +47,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Initialize every declared part: write an empty action log and a blank preview
-    /// per part so the run starts from a known, empty state.
+    /// Set up the rig and scene from whatever parts already exist (none, for a fresh
+    /// run, since parts are created by `define-part`): (re)initialize each existing
+    /// part's empty action log and blank preview, then render the blank assembled scene.
     Init,
     /// Re-render the assembled scene (every part composed at rest) from the current
     /// per-part logs, writing one PNG per view (`iso`, `front`, `side`, `top`). Runs
@@ -55,7 +57,9 @@ enum Command {
     Scene,
     /// Regenerate a preview from an action log without modifying it.
     Render(RenderArgs),
-    /// Add a part to the rig, or update its parent if it already exists.
+    /// Add a part to the rig, or update its parent if it already exists. Defining a new
+    /// part also initializes its files (action log, preview, mesh) so it becomes a
+    /// sculptable target immediately.
     DefinePart {
         /// The part name.
         #[arg(long)]

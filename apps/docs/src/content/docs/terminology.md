@@ -91,9 +91,9 @@ an axis), bounded by a `min`/`max`/`rest` range. Each joint is one of two kinds 
 who drives it. A **caller-driven** joint takes its value from a consuming game at
 runtime — the stable, game-facing control (for example `turret_yaw`). An
 **auto-play** joint animates itself from a looping keyframe clip the viewer and a
-game play back automatically. A [voxel-animation](#voxel) case declares the
-**required** joints in its `[model]` table (the scoring targets); the model may add
-more of its own. See
+game play back automatically. Joints are **model-invented**: a case does **not**
+declare joints — the model devises whatever joints its rig needs to carry the
+required animations. See
 [Voxel models and rigs](/testing/asset-generation/overview/#the-rig-parts-and-joints).
 
 ## Leaderboard
@@ -124,9 +124,10 @@ A part is one named [voxel](#voxel) component of a [rig](#rig) — for example a
 tank's `chassis`, `turret`, or `barrel`. Parts form a **parent/child hierarchy**,
 each attached to its parent at an [attachment pivot](#attachment-pivot), and each is
 sculpted independently (its own operation log and preview, targeted with
-`voxel-anim --part <name>`). Posing a parent moves its children with it. A
-[voxel-animation](#voxel) case declares the **required** parts in its `[model]`
-table; the model may add more. See
+`voxel-anim --part <name>`). Posing a parent moves its children with it. Parts are
+**model-invented**: the model creates each part at run time with `define-part` (a
+case declares no parts) — the only rig contract a case fixes is its required
+animations. See
 [Voxel models and rigs](/testing/asset-generation/overview/#the-rig-parts-and-joints).
 
 ## Publishing
@@ -188,9 +189,10 @@ A rig is the posable structure of a [voxel-animation](#voxel) model: its named
 [parts](#part) in a hierarchy, the named [joints](#joint) a consuming game drives
 (so a game can pose the model at runtime — "rotate the turret to 37°"), and the
 model-authored **animations** (named F-curve timelines — a walk, a recoil, an idle
-— a game plays). A case's `[model]` table declares the **required** rig (the stable,
-game-facing interface and the scoring targets); the model may add parts, joints, and
-animations beyond it, and the produced `rig.json` carries everything. The
+— a game plays). The rig is **model-invented**: a case's `[model]` table declares
+only the **required animations** (by name), the scoring targets, and the model
+devises whatever parts and joints carry them. The produced `rig.json` carries
+everything the model built. The
 [voxel-runtime](/components/voxel-runtime/overview/) poses a produced rig for both
 the review viewer and real games.
 

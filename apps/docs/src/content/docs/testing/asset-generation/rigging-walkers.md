@@ -4,14 +4,27 @@ title: Rigging and animating walkers
 
 Legged walkers — striders, mechs, walking fortresses — are the hardest voxel rigs to
 make read as *believable* rather than *flailing*, and they fail in consistent ways.
-This page is the authoritative reference for how a walker's legs are **structured**
-and **animated**, drawn from how established walkers (the AT-TE and AT-AT) are built.
-Author a walker [`voxel-animation`](/testing/asset-generation/overview/#voxel-models-and-rigs)
-case's brief and required rig against it, and — while the specs are still detailed —
-tell the model to build to it.
+This page is a reference for how a walker's legs **behave** — how a believable leg is
+structured and how a convincing walk cycle moves — drawn from how established walkers
+(the AT-TE and AT-AT) are built.
 
-The mechanics referenced here (parts, joints, model-authored **animations**, and
-**F-curves**) are defined in
+This is **design guidance, not a rig a case pins.** A case no longer declares parts,
+joints, or pose angles: its `[model]` table fixes only the [required
+animations](/testing/asset-generation/manifests/) (by name), and the model **invents**
+the parts, joints, pivots, and F-curves it needs to satisfy them. Use this page in two
+ways:
+
+- As an **author**, to write a walker
+  [`voxel-animation`](/testing/asset-generation/overview/#voxel-models-and-rigs) case's
+  brief — its behavioural requirements, in prose, for how the walk must read (a planted
+  stance phase, a flat foot, a believable gait). Describe *what convincing walking looks
+  like*; do not prescribe a skeleton, segment counts, or angles.
+- Point the **model** toward these principles from that brief, so it can work out and
+  build a leg that walks convincingly rather than following a pinned rig.
+
+The angles and segment breakdowns below are **illustrative** — they explain *why* real
+walkers read as heavy and grounded, not a spec to reproduce. The mechanics referenced
+here (parts, joints, model-authored **animations**, and **F-curves**) are defined in
 [The voxel binaries](/testing/asset-generation/voxel-binaries/) and
 [Manifests](/testing/asset-generation/manifests/); this page is the *design* guidance
 that sits on top of them.
@@ -85,10 +98,39 @@ two alternating **tripods** (three planted legs at all times) a half-period apar
 
 ## Keep the foot flat, and bend the knee the right way
 
-- **Flat foot.** The foot should tilt only about **±15°** across the whole cycle, held
-  level by the foot/ankle joint counter-rotating against the leg. A foot that tilts
-  far more than this (the tell-tale of a rigid two-joint arc with no foot control)
-  reads as the machine walking on its toes and heels.
+- **Flat foot.** The foot should tilt only about **±15°** in the **world** across the
+  whole cycle, held level by the foot/ankle joint counter-rotating against the leg. A
+  foot that tilts far more than this (the tell-tale of a rigid two-joint arc with no
+  foot control) reads as the machine walking on its toes and heels.
+
+### World-space angle vs. relative rotation — why feet don't stay flat
+
+This is the single most common reason a foot refuses to stay flat, and it is worth
+being explicit about. The example angles throughout this page (0° flat/forward, −90°
+straight down) describe the **world** orientation of each segment — how it points in
+the scene. But a joint does not set its segment's world angle. A joint's rotation is
+applied **relative to its parent segment**, and it stacks on top of everything above
+it: a segment's world orientation is the **sum** of its parent's world orientation and
+its own local joint rotation.
+
+So keeping the foot flat in the world is **not** a matter of holding the ankle at a
+fixed local angle. As the hip and knee rotate through the stride, their rotations
+**accumulate** down the chain, and the foot inherits all of them. To hold the foot flat
+(a roughly constant *world* angle), the ankle must **counter-rotate** by the negative of
+that accumulated hip + knee rotation, tracking it frame by frame — a moving local angle,
+not a constant one. A foot pinned to a fixed *local* angle will visibly tip as the leg
+folds and extends.
+
+Two consequences for the design:
+
+- The ankle needs **enough range** to cancel the full swing of the joints above it. If
+  the hip and knee together sweep a large arc, the ankle's range must be able to absorb
+  it; an ankle with a narrow range simply **cannot** stay flat through the stride.
+- When you author (or ask the model to author) the foot's track, think in the **world**
+  frame — "the foot stays flat while the shin swings back" — and let the relative ankle
+  keyframes fall out of that goal, rather than keyframing a fixed local ankle angle and
+  hoping it looks level.
+
 - **Knee direction.** The lower joint must bend the way a real walker's does (a
   reverse / digitigrade knee). The common failure is the **lower segment rotating the
   wrong way relative to the upper** — the knee bending "inside-out" — which instantly

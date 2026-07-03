@@ -147,15 +147,18 @@ assembled model with no per-part offset — see the assembled scene below.)
 ```
 voxel-anim --help                                       # same operations, plus --part
 voxel-anim fill-box --part turret --x 12 --y 8 --z 12 --width 8 --height 4 --depth 8 --color "#4a5a3a"
-voxel-anim init                                          # initialize every declared part + rig.json
+voxel-anim init                                          # seed rig.json (the required animation declarations)
 voxel-anim render --actions <log> --out <png> --width 32 --height 24 --depth 32
 ```
 
-The seeded `voxel-anim.config.json` lists the declared part names and the `{part}`
-templates, so `voxel-anim init` initializes every part's empty log, blank preview,
-and empty geometry and seeds a `rig.json` pre-populated with the case's **required**
-parts and joints. The **per-part emitted data and previews are the scored
-artifacts**; the assembled scene below is a non-scored extra.
+The seeded `voxel-anim.config.json` carries the `{part}` templates and the
+`rig.json` path, so `voxel-anim init` seeds a `rig.json` pre-populated with the
+case's **required animation declarations** (empty tracks; its `parts` and `joints`
+start **empty**, because a case declares none). No part exists until the model
+creates one with `define-part` — which then initializes that part's log, preview,
+and geometry — so `init` seeds no per-part files. The **per-part emitted data and
+previews are the scored artifacts**; the assembled scene below is a non-scored
+extra.
 
 ### The assembled scene
 
@@ -177,7 +180,7 @@ voxel-anim scene        # re-render the assembled scene on demand (also automati
   model down each axis, so it is easy to check a part is centered and aligned
   head-on.
 
-The scene composes parts at **rest** (the required rig rests at `0`, so this is the
+The scene composes parts at **rest** (every joint rests at `0`, so this is the
 true rest pose); it does not apply joint motion — the interactive, posable view is
 the frontend's [voxel-runtime](/components/voxel-runtime/overview/) rendering. Like
 the per-part previews, the scene is **not** a scored artifact.
@@ -185,12 +188,13 @@ the per-part previews, the scene is **not** a scored artifact.
 ### Rig subcommands
 
 Beyond sculpting voxels, `voxel-anim` edits the **rig structure** in `rig.json`:
-its parts, its joints, and its **animations**. The case pre-seeds the required parts
-and joints and the **required animation declarations** (a name, the joints each
-drives, and its loop/auto-play intent — but no keyframes) from its `[model]` table;
-these subcommands let the model **author** each required animation's motion and **add
-its own** parts, joints, and animations on top (the produced `rig.json` carries the
-required set plus everything the model adds):
+its parts, its joints, and its **animations**. The case pre-seeds **only** the
+**required animation declarations** (each just a name plus its loop/auto-play intent
+— no parts, no joints, no keyframes) from its `[model]` table; the seeded `rig.json`
+starts with **empty** `parts` and `joints`. These subcommands are how the model
+**builds the whole rig** — inventing the parts and joints the subject needs and
+authoring each required animation's motion — plus **adding** any further animations
+of its own (the produced `rig.json` carries everything the model builds):
 
 ```
 voxel-anim define-part  --name skirt --parent chassis
@@ -206,10 +210,13 @@ voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 600  --value=-0.35
 voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 1200 --value 0.35 --interp bezier
 ```
 
-- **`define-part`** adds a part under a declared `--parent`; it then becomes a
-  `--part` target for sculpting. Set its pivot with `set-pivot`. A part sculpted with
-  **no voxels** is an **attach point** (a `muzzle`, an exhaust) — an empty named node
-  a game reads as a socket for a projectile or effect.
+- **`define-part`** adds a part under a declared `--parent` (the first part defined
+  is the root, with no parent) and **initializes that part's files** — its operation
+  log, preview, and geometry — so it immediately becomes a `--part` target for
+  sculpting. A field operation on a part that has **not** been `define-part`'d yet is
+  rejected. Set its pivot with `set-pivot`. A part sculpted with **no voxels** is an
+  **attach point** (a `muzzle`, an exhaust) — an empty named node a game reads as a
+  socket for a projectile or effect.
 - **`set-pivot`** sets an existing part's pivot — the point, in the shared volume's
   coordinates, its joints rotate about.
 - **`define-joint`** adds a named degree of freedom on a part — its `--kind`
@@ -275,9 +282,10 @@ For a **rotation** joint, the sign of a value follows this convention:
 Rotation happens about the joint's `--pivot`, so place the pivot at the hinge the
 part should swing on (the shoulder, the turret ring, the barrel mount).
 
-A model **cannot** remove or contradict the case's required parts and joints — the
-required interface is the game-facing contract a reviewer scores against. The rig
-subcommands load, mutate, and rewrite `rig.json` in place, so it stays the single
-description of the produced rig, which the validator reconciles against the
-required [`[model]`](/testing/asset-generation/manifests/#voxel-cases) and the
+The case's **required animations** are the game-facing contract a reviewer scores
+against: the model must author every one so it actually animates, but the parts and
+joints that realize them are entirely its own to invent. The rig subcommands load,
+mutate, and rewrite `rig.json` in place, so it stays the single description of the
+produced rig, which the validator reconciles against the required
+[`[model]`](/testing/asset-generation/manifests/#voxel-cases) animations and the
 [voxel-runtime](/components/voxel-runtime/overview/) poses.

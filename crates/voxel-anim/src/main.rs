@@ -7,9 +7,10 @@
 //! the assembled model. On top of the per-part sculpting it maintains the rig
 //! structure in `rig.json`: the parts' hierarchy, the named joints a consuming game
 //! or an animation drives, and the model-authored animations. The manifest pre-seeds
-//! the required parts, joints, and animation declarations; the `define-part` /
-//! `set-pivot` / `define-joint` / `define-animation` / `add-keyframe` subcommands let
-//! the model author each required animation's motion and add its own.
+//! only the required **animation** declarations; the parts and joints are
+//! model-invented at run time via the `define-part` / `set-pivot` / `define-joint`
+//! subcommands, and the `define-animation` / `add-keyframe` subcommands let the model
+//! author each required animation's motion and add its own.
 //!
 //! The operation subcommands are shared with `voxel`, so their `--help` is the same
 //! contract; no operations schema is seeded. Like `voxel`, this binary does **not**
@@ -32,8 +33,8 @@ use test_cabinet_voxel::cli::{self, AnimConfig, OpCommand, RenderArgs};
     about = "Sculpt a rigged voxel model, one part and one operation at a time."
 )]
 struct Cli {
-    /// Path to the rig config JSON (`{ width, height, depth, background, parts,
-    /// actions, preview, scene, rig }`). Read by `init` and every sculpting operation.
+    /// Path to the rig config JSON (`{ width, height, depth, background, actions,
+    /// preview, scene, rig }`). Read by `init` and every sculpting operation.
     #[arg(long, default_value = "voxel-anim.config.json", global = true)]
     config: PathBuf,
     /// Which part to sculpt into. **Required** for a sculpting operation; each part
@@ -46,8 +47,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Initialize every declared part: write an empty action log and a blank
-    /// preview per part so the run starts from a known, empty state.
+    /// Set up the rig and scene from whatever parts already exist (none, for a
+    /// fresh run, since parts are created by `define-part`): (re)initialize each
+    /// existing part's empty action log and blank preview, then render the blank
+    /// assembled scene.
     Init,
     /// Re-render the assembled scene (every part composed at rest) from the current
     /// per-part logs, writing one PNG per view (`iso`, `front`, `side`, `top`).
@@ -55,7 +58,9 @@ enum Command {
     Scene,
     /// Regenerate a preview from an action log without modifying it.
     Render(RenderArgs),
-    /// Add a part to the rig, or update its parent if it already exists.
+    /// Add a part to the rig, or update its parent if it already exists. Defining a
+    /// new part also initializes its files (action log, preview, mesh) so it becomes
+    /// a sculptable target immediately.
     DefinePart {
         /// The part name.
         #[arg(long)]

@@ -75,11 +75,13 @@ impl Config {
 
 /// The rig configuration the orchestrator seeds next to an animated-model run.
 ///
-/// A rig's parts are **completely separate files**: each declared part has its own
-/// action log, preview, and mesh, derived from the `{part}` templates below by
-/// substituting the part name. The volume dimensions describe the shared coordinate
-/// space all parts are sculpted in. The rig's structure (parts + joints) lives in
-/// [`Self::rig`] (`rig.json`), pre-seeded from the manifest's required contract.
+/// A rig's parts are **completely separate files**: each part has its own action log,
+/// preview, and mesh, derived from the `{part}` templates below by substituting the
+/// part name. The volume dimensions describe the shared coordinate space all parts are
+/// sculpted in. The rig's structure — its parts and joints — is **model-invented** at
+/// run time and lives in [`Self::rig`] (`rig.json`): the manifest seeds `rig.json` with
+/// only the required **animation** declarations (empty tracks), and the parts and
+/// joints grow as the model calls `define-part` / `define-joint`.
 #[derive(Debug, Deserialize)]
 pub struct AnimConfig {
     /// Volume width in voxels.
