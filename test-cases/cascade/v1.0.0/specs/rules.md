@@ -1,4 +1,6 @@
-# Cascade — The deal and the rules of play
+# Rules
+
+## Overview
 
 This file defines how a game is dealt and every legal move. It builds on the pile
 layout in `specs/layout.md` and the coordinate system in `specs/overview.md`. How
@@ -6,20 +8,20 @@ many cards the stock turns at once is the one setting that varies by mode; it is
 defined in the mode spec under `specs/modes/`, and this file refers to it as the
 mode's **turn count**.
 
-## The deck and the deal
+## The Deck and the Deal
 
-- A single standard **52-card deck**: four suits (♠ ♥ ♦ ♣), thirteen ranks each
+- A single standard 52-card deck: four suits (♠ ♥ ♦ ♣), thirteen ranks each
   (Ace, 2–10, Jack, Queen, King). Ace is low (rank 1); King is high (rank 13).
-- **Shuffle** the full deck uniformly at random at the start of every new game.
+- Shuffle the full deck uniformly at random at the start of every new game.
   The shuffle must be genuinely random from game to game (seed it from a
   non-deterministic source), so no two deals are alike and the deal is not
   predictable.
-- **Deal** into the seven tableau columns, left to right: column `n` receives `n`
+- Deal into the seven tableau columns, left to right: column `n` receives `n`
   cards (column 1 gets 1, column 2 gets 2, …, column 7 gets 7), for 28 cards in
-  all. In each column every card is dealt **face-down except the last**, which is
+  all. In each column every card is dealt face-down **except the last**, which is
   turned **face-up**. So after the deal each column shows one face-up card on top
   of `n − 1` face-down cards.
-- The remaining **24 cards** form the **stock**, face-down, in dealing order. The
+- The remaining 24 cards form the **stock**, face-down, in dealing order. The
   **waste** and all four **foundations** start empty.
 
 A fresh, correct deal is the first thing a reviewer checks, so it must be exact:
@@ -48,24 +50,24 @@ and foundations empty.
   descending-alternating order may be moved together as a unit onto a legal
   target (a tableau card one higher and opposite in color, or an empty column if
   the run is headed by a King). You pick up the run from the card you grab down
-  to the bottom of the column; every card below the grabbed card comes with it.
+  to the bottom of the column; every card below the grabbed card moves with it.
 - **Turning a column card.** When a move leaves a column's new bottom card
-  **face-down**, that card is immediately **turned face-up**. A face-down card is
+  **face-down**, that card is immediately turned **face-up**. A face-down card is
   never playable until it is exposed and turned this way.
 - Face-down cards may not be moved, reordered, or peeked at.
 
-## Stock and waste
+## Stock and Waste
 
 - Clicking the **stock** turns the mode's **turn count** of cards face-up onto
   the **waste** (see the mode spec under `specs/modes/`). If fewer than that many
   remain, it turns all that remain.
 - Only the **top card of the waste** is playable — onto a foundation or a tableau
   column by the rules above. Playing it exposes the card beneath.
-- When the **stock is empty**, clicking its (empty) slot **recycles** the entire
+- When the stock is **empty**, clicking its (empty) slot **recycles** the entire
   waste back into the stock, face-down, preserving order, so it can be turned
   again. There is **no limit** on the number of passes through the stock.
 
-## Legal moves — where a card may go
+## Legal Moves
 
 A held card or run may be dropped only onto a pile that accepts it:
 
@@ -81,7 +83,7 @@ A drop that does not satisfy these rules is **rejected**: the card or run return
 to where it was picked up, and nothing changes. The game must never allow an
 illegal placement.
 
-## Auto-move to foundation
+## Auto-move to Foundation
 
 **Double-clicking** a playable card (the top of the waste, or the bottom face-up
 card of a tableau column) sends it directly to the foundation it belongs on, if
@@ -91,7 +93,7 @@ same foundation rules as a manual drop.
 
 ## Winning
 
-The game is **won** when **all 52 cards** are on the foundations (each foundation
+The game is **won** when all 52 cards are on the foundations (each foundation
 complete from Ace to King). On the win, play stops and the **victory cascade**
 begins — see `specs/cascade.md`. There is no separate loss state: a game with no
 legal moves left is simply unwinnable, and the player starts a new deal from the
