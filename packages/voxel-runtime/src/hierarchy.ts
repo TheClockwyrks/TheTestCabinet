@@ -1,5 +1,4 @@
 import type { AxisSpec, JointSpec, ModelSpec, Vec3 } from "./contract";
-import { sampleClip } from "./clips";
 
 /**
  * A part's resolved world transform after posing, as a column-major 16-element
@@ -19,7 +18,9 @@ export interface PoseInput {
    * back to the joint's `rest`; provided values are clamped to `[min, max]`.
    */
   caller?: Record<string, number>;
-  /** The playback clock (ms) used to sample auto-play joints. Defaults to `0`. */
+  /** The playback clock (ms). Reserved for callers that time their own posing;
+   * `poseRig` itself no longer samples per-joint clips (animations overlay their
+   * joints onto `caller` before posing). Defaults to `0`. */
   timeMs?: number;
 }
 
@@ -117,15 +118,15 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-/** Resolve the scalar value a joint should be posed at for this frame. */
+/**
+ * Resolve the scalar value a joint should be posed at for this frame. Both
+ * caller-driven and `auto` joints read the `caller` map: a game supplies the former;
+ * an `auto` joint holds at `rest` until an animation overlays its value onto the map
+ * (see `VoxelRig.applyPose`). A joint with no value in the map falls back to `rest`.
+ */
 function jointValue(joint: JointSpec, input: PoseInput): number {
-  let value: number;
-  if (joint.drive === "auto") {
-    value = joint.auto ? sampleClip(joint.auto, input.timeMs ?? 0) : joint.rest;
-  } else {
-    const provided = input.caller?.[joint.name];
-    value = provided === undefined ? joint.rest : provided;
-  }
+  const provided = input.caller?.[joint.name];
+  const value = provided === undefined ? joint.rest : provided;
   return clamp(value, joint.min, joint.max);
 }
 
@@ -178,9 +179,9 @@ function jointMatrix(joint: JointSpec, value: number): Float32Array {
  * where they sit on the assembled model), so a part contributes no placement
  * translation of its own — its `pivot` is the anchor its joints rotate about,
  * applied inside each joint. At rest a part stays exactly where it was sculpted.
- * Caller-driven joints read {@link PoseInput.caller} (clamped to
- * range, falling back to `rest`); auto-play joints are sampled from their
- * {@link AutoPlaySpec} at {@link PoseInput.timeMs}.
+ * Every joint reads its value from {@link PoseInput.caller} (clamped to range,
+ * falling back to `rest`): a game supplies caller-driven values, and an animation
+ * overlays its `auto` joints onto the same map before posing.
  *
  * Parts are resolved regardless of declaration order (parents are computed on
  * demand and memoised); the returned array preserves the rig's part order.

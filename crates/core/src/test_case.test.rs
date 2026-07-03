@@ -595,30 +595,51 @@ fn voxel_animation_resolves_its_model() {
     assert_eq!(joint.kind, JointKindSpec::Rotation);
     assert_eq!(joint.axis, AxisSpec::Y);
     assert_eq!(joint.drive, DriveKindSpec::Caller);
-    assert!(joint.auto.is_none(), "a caller joint carries no clip");
     assert_eq!(joint.rest, 0.0);
+    // A case with no [[model.animation]] resolves to no animation declarations.
+    assert!(model.animations.is_empty());
 }
 
 #[test]
-fn voxel_animation_resolves_an_auto_clip() {
-    // An `auto` joint folds its `[[model.clip]]` into the resolved joint's clip.
-    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace(
-        "drive = \"caller\"\n",
-        "drive = \"auto\"\n[[model.clip]]\njoint = \"turret_yaw\"\nperiod_ms = 2000\n\
-         loop = true\nkeyframes = [[0.0, 0.0], [1000.0, 1.5], [2000.0, 0.0]]\n",
+fn voxel_animation_resolves_a_required_animation() {
+    // A `[[model.animation]]` declares a required animation the model must author:
+    // its name, intent, and driven joints — but no keyframes (empty `tracks`).
+    let manifest = format!(
+        "{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"sweep\"\nperiod_ms = 2000\n\
+         loop = true\nauto_play = true\njoints = [\"turret_yaw\"]\n"
     );
     let version = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
         .expect("resolve");
-    let joint = &version.model.as_ref().expect("model").joints[0];
-    assert_eq!(joint.drive, DriveKindSpec::Auto);
-    let auto = joint.auto.as_ref().expect("auto clip");
-    assert_eq!(auto.period_ms, 2000);
-    assert!(auto.looping);
-    assert_eq!(auto.keyframes.len(), 3);
-    assert_eq!(auto.keyframes[1].t_ms, 1000);
-    assert_eq!(auto.keyframes[1].value, 1.5);
+    let model = version.model.as_ref().expect("model");
+    assert_eq!(model.animations.len(), 1);
+    let animation = &model.animations[0];
+    assert_eq!(animation.name, "sweep");
+    assert_eq!(animation.period_ms, 2000);
+    assert!(animation.looping);
+    assert!(animation.auto_play);
+    assert_eq!(animation.joints, vec!["turret_yaw".to_string()]);
+    assert!(
+        animation.tracks.is_empty(),
+        "a required declaration carries no keyframes"
+    );
+}
+
+#[test]
+fn voxel_animation_rejects_an_animation_naming_an_undeclared_joint() {
+    let manifest = format!(
+        "{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"sweep\"\nperiod_ms = 2000\n\
+         loop = true\njoints = [\"ghost\"]\n"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("an animation naming an undeclared joint is rejected");
+    assert!(
+        format!("{err}").contains("names joint `ghost`, which is not a declared joint"),
+        "got: {err}"
+    );
 }
 
 #[test]

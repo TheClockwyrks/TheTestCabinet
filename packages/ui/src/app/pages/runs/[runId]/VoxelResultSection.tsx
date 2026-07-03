@@ -111,7 +111,6 @@ function VoxelCanvas({
   parts,
   rig,
   mode,
-  autoPlayClip,
   callerJoints,
   animation,
   fallbackUrl,
@@ -121,7 +120,6 @@ function VoxelCanvas({
   parts: VoxelPartView[];
   rig: ModelSpec;
   mode: VoxelViewMode;
-  autoPlayClip?: string | null;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
   fallbackUrl: string | null;
@@ -145,7 +143,6 @@ function VoxelCanvas({
       voxels={artifacts.voxelsByPart}
       rig={rig}
       mode={mode}
-      autoPlayClip={autoPlayClip}
       callerJoints={callerJoints}
       animation={animation}
       fallbackUrl={fallbackUrl}
@@ -263,8 +260,8 @@ function formatJointValue(joint: JointSpec, value: number): string {
 }
 
 /**
- * One selectable entry in the shared rig preview: a predetermined animation, a
- * caller-driven joint (posed by a slider), or an auto-play joint (playing its clip).
+ * One selectable entry in the shared rig preview: a model-authored animation (an
+ * `autoPlay` idle or a named playable) or a caller-driven joint (posed by a slider).
  * Every entry drives the *same* {@link VoxelCanvas}, so the whole rig is reviewed
  * through a single WebGL context instead of one per joint/animation (which exhausts
  * the browser's active-context budget and blanks the views — see
@@ -278,29 +275,28 @@ type RigView =
       sub: string;
       animation: AnimationSpec;
     }
-  | { kind: "caller"; key: string; name: string; sub: string; joint: JointSpec }
-  | { kind: "auto"; key: string; name: string; sub: string; joint: JointSpec };
+  | { kind: "caller"; key: string; name: string; sub: string; joint: JointSpec };
 
 // The picker's groups, in display order. Each maps to a `RigView.kind`; a group
 // with no entries is omitted.
 const RIG_VIEW_GROUPS: { kind: RigView["kind"]; label: string }[] = [
   { kind: "animation", label: "Animations" },
   { kind: "caller", label: "Caller-driven joints" },
-  { kind: "auto", label: "Auto-play joints" },
 ];
 
-/** The selectable views for a rig: its predetermined animations, then its
- * caller-driven joints, then its auto-play joints — the flattened superset the old
- * per-section rows rendered, now feeding one shared canvas. */
+/** The selectable views for a rig: its model-authored animations, then its
+ * caller-driven joints — the flattened superset feeding one shared canvas. `auto`
+ * joints are not selectable on their own: they carry no motion of their own and are
+ * driven only by the animations. */
 function buildRigViews(rig: ModelSpec, animations: AnimationSpec[]): RigView[] {
   const views: RigView[] = [];
   for (const animation of animations) {
-    const n = animation.tracks.length;
+    const n = animation.joints.length;
     views.push({
       kind: "animation",
       key: `animation:${animation.name}`,
       name: animation.name,
-      sub: `${n} joint${n === 1 ? "" : "s"} · ${animation.periodMs}ms ${animation.looping ? "loop" : "once"}`,
+      sub: `${n} joint${n === 1 ? "" : "s"} · ${animation.periodMs}ms ${animation.looping ? "loop" : "once"}${animation.autoPlay ? " · idle" : ""}`,
       animation,
     });
   }
@@ -310,15 +306,6 @@ function buildRigViews(rig: ModelSpec, animations: AnimationSpec[]): RigView[] {
       key: `caller:${joint.name}`,
       name: joint.name,
       sub: joint.kind,
-      joint,
-    });
-  }
-  for (const joint of rig.joints.filter((j) => j.drive === "auto")) {
-    views.push({
-      kind: "auto",
-      key: `auto:${joint.name}`,
-      name: joint.name,
-      sub: `${joint.kind}${joint.auto?.periodMs ? ` · ${joint.auto.periodMs}ms loop` : ""}`,
       joint,
     });
   }
@@ -431,9 +418,8 @@ function PartGrid({ parts }: { parts: VoxelPartView[] }) {
 
 /**
  * An animated (rigged) voxel model: a single shared 3D view driven by a picker of
- * the rig's predetermined animations, caller-driven joints (posed by a slider), and
- * auto-play joints (playing their clip), then the per-part breakdown — the 3D analog
- * of `SheetResult`.
+ * the rig's model-authored animations and caller-driven joints (posed by a slider),
+ * then the per-part breakdown — the 3D analog of `SheetResult`.
  *
  * A rig can expose many joints and animations; rendering each in its own
  * {@link VoxelCanvas} spins up one WebGL context apiece, and a rig with a handful of
@@ -449,11 +435,11 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
     view.rig ?? view.model ?? staticRig(view.parts[0]?.name ?? "model");
   const fallbackUrl =
     view.parts[0]?.regeneratedUrl ?? view.parts[0]?.previewUrl ?? null;
-  // Predetermined animations are authored on the case's declared model spec (they
-  // are not produced into the rig), so read them from there, falling back to the
-  // produced rig for safety.
+  // Animations are model-authored and ride in the produced `rig.json`, so read them
+  // from the produced rig; fall back to the required declarations (they carry the
+  // names/joints even before the model authors tracks) for safety.
   const animations =
-    view.model?.animations ?? view.rig?.animations ?? EMPTY_ANIMATIONS;
+    view.rig?.animations ?? view.model?.animations ?? EMPTY_ANIMATIONS;
   const views = useMemo(
     () => buildRigViews(rig, animations),
     [rig, animations],
@@ -475,39 +461,27 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
     ),
   );
 
-  // Which clip/animation the shared canvas plays for the active view; caller views
-  // play nothing and are posed purely by `callerValues`.
+  // Which animation the shared canvas plays for the active view; caller views play
+  // nothing and are posed purely by `callerValues`.
   const playback =
-    active?.kind === "animation"
-      ? { animation: active.animation }
-      : active?.kind === "auto"
-        ? { autoPlayClip: active.joint.name }
-        : {};
+    active?.kind === "animation" ? { animation: active.animation } : {};
 
   const activeCaller = active?.kind === "caller" ? active.joint : null;
   const activeValue = activeCaller
     ? (callerValues[activeCaller.name] ?? activeCaller.rest)
     : 0;
 
-  // Only an autoplaying clip — a predetermined animation or an auto-play joint,
-  // both of which loop over a period — can be baked to a GIF; a caller-driven
-  // joint is posed by a slider, not time, so it has no motion to capture.
+  // Only an animation — which loops over a period — can be baked to a GIF; a
+  // caller-driven joint is posed by a slider, not time, so it has no motion to
+  // capture.
   const downloadable =
     active?.kind === "animation" && active.animation.periodMs > 0
       ? {
           name: active.name,
           periodMs: active.animation.periodMs,
           animation: active.animation,
-          autoPlayClip: null,
         }
-      : active?.kind === "auto" && (active.joint.auto?.periodMs ?? 0) > 0
-        ? {
-            name: active.name,
-            periodMs: active.joint.auto!.periodMs,
-            animation: null,
-            autoPlayClip: active.joint.name,
-          }
-        : null;
+      : null;
 
   // Baking a GIF renders offscreen with WebGL, so only offer it where WebGL is
   // available (the same capability the preview itself needs). Promote from an
@@ -520,10 +494,10 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
       <h3 className={`${styles.section} ${styles.leadHeading}`}>Rig preview</h3>
       <p className={styles.secondary}>
         Pick an animation or joint to drive the model — the whole rig plays
-        through one shared view. Predetermined animations are the choreographies
-        the case authored; caller-driven joints expose a slider a consuming game
-        would drive; auto-play joints loop the clip the model defined. Drag the
-        model to orbit it.
+        through one shared view. Animations are the F-curve choreographies the
+        model authored (an idle plays on its own; a named playable a game
+        triggers); caller-driven joints expose a slider a consuming game would
+        drive. Drag the model to orbit it.
       </p>
       <div className={styles.rigPreview}>
         <div className={styles.rigPreviewSidebar}>
@@ -570,7 +544,6 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                   voxels,
                   rig,
                   animation: downloadable.animation,
-                  autoPlayClip: downloadable.autoPlayClip,
                   callerJoints: callerValues,
                   periodMs: downloadable.periodMs,
                   background: panelBackground(),

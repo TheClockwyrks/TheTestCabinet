@@ -3,7 +3,7 @@
 //! keep the log and preview in step, and the rig helpers upsert cleanly.
 
 use super::*;
-use crate::rig::{Drive, Joint, JointKind, Keyframe, Rig};
+use crate::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
 use clap::Parser;
 
 /// A minimal parser that flattens [`OpCommand`] so a single operation can be parsed
@@ -346,22 +346,85 @@ fn compound_joint_mount_round_trips_and_omits_zero_default() {
 }
 
 #[test]
-fn drive_serializes_with_caller_and_auto_tags() {
-    let caller = serde_json::to_string(&Drive::Caller).unwrap();
-    assert_eq!(caller, "{\"type\":\"caller\"}");
-    let auto = serde_json::to_string(&Drive::AutoPlay {
-        keyframes: vec![Keyframe {
+fn drive_serializes_as_bare_caller_and_auto() {
+    assert_eq!(serde_json::to_string(&Drive::Caller).unwrap(), "\"caller\"");
+    assert_eq!(serde_json::to_string(&Drive::Auto).unwrap(), "\"auto\"");
+}
+
+#[test]
+fn upsert_animation_preserves_tracks_and_add_keyframe_sorts_and_replaces() {
+    let mut rig = Rig::new();
+    // A new animation declaration, then two keyframes added out of order.
+    rig.upsert_animation("walk", 1200, true, false, vec!["hip_l".to_string()]);
+    assert!(rig.add_keyframe(
+        "walk",
+        "hip_l",
+        Keyframe {
+            t_ms: 1200,
+            value: 0.35,
+            interp: Interp::Bezier,
+            out_handle: None,
+            in_handle: None,
+        },
+    ));
+    assert!(rig.add_keyframe(
+        "walk",
+        "hip_l",
+        Keyframe {
+            t_ms: 0,
+            value: 0.35,
+            interp: Interp::EaseIn,
+            out_handle: Some([50.0, 0.1]),
+            in_handle: None,
+        },
+    ));
+    // A keyframe with the same t_ms replaces in place.
+    assert!(rig.add_keyframe(
+        "walk",
+        "hip_l",
+        Keyframe {
+            t_ms: 1200,
+            value: -0.35,
+            interp: Interp::Linear,
+            out_handle: None,
+            in_handle: None,
+        },
+    ));
+    // add_keyframe on a missing animation reports failure.
+    assert!(!rig.add_keyframe(
+        "run",
+        "hip_l",
+        Keyframe {
             t_ms: 0,
             value: 0.0,
-        }],
-        period_ms: 1000,
-        r#loop: true,
-    })
-    .unwrap();
-    assert!(auto.contains("\"type\":\"auto\""), "{auto}");
-    assert!(auto.contains("\"periodMs\":1000"), "{auto}");
-    assert!(auto.contains("\"looping\":true"), "{auto}");
-    assert!(auto.contains("\"tMs\":0"), "{auto}");
+            interp: Interp::Linear,
+            out_handle: None,
+            in_handle: None,
+        },
+    ));
+
+    let track = &rig.animations[0].tracks[0];
+    assert_eq!(track.keyframes.len(), 2, "same-t_ms keyframe replaced");
+    assert_eq!(track.keyframes[0].t_ms, 0, "sorted by t_ms");
+    assert_eq!(track.keyframes[1].t_ms, 1200);
+    assert_eq!(track.keyframes[1].value, -0.35, "replaced in place");
+
+    // Redefining the animation preserves its authored tracks.
+    rig.upsert_animation("walk", 800, false, true, vec!["hip_l".to_string()]);
+    assert_eq!(rig.animations[0].period_ms, 800);
+    assert!(rig.animations[0].auto_play);
+    assert_eq!(rig.animations[0].tracks[0].keyframes.len(), 2);
+
+    // The F-curve keyframe serializes with camelCase, kebab-case interp, and omits
+    // absent handles.
+    let json = serde_json::to_string(&rig.animations[0].tracks[0].keyframes[0]).unwrap();
+    assert!(json.contains("\"tMs\":0"), "{json}");
+    assert!(json.contains("\"interp\":\"ease-in\""), "{json}");
+    assert!(json.contains("\"outHandle\":[50.0,0.1]"), "{json}");
+    assert!(
+        !json.contains("inHandle"),
+        "absent in-handle omitted: {json}"
+    );
 }
 
 fn cli_init(dims: &Dims, bg: PreviewBackground, actions: &Path, preview: &Path) {

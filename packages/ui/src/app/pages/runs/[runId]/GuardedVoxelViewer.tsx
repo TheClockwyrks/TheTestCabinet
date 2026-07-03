@@ -64,7 +64,6 @@ function VoxelFallback({
 interface ViewerProps {
   voxels: Record<string, VoxelsFile> | VoxelsFile;
   rig: ModelSpec;
-  autoPlayClip?: string | null;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
   frameDims?: VoxelDims | null;
@@ -149,7 +148,6 @@ export function GuardedVoxelViewer({
   voxels,
   rig,
   mode,
-  autoPlayClip,
   callerJoints,
   animation,
   frameDims,
@@ -161,7 +159,6 @@ export function GuardedVoxelViewer({
   voxels: ViewerVoxels;
   rig: ModelSpec;
   mode: VoxelViewMode;
-  autoPlayClip?: string | null;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
   frameDims?: VoxelDims | null;
@@ -189,7 +186,6 @@ export function GuardedVoxelViewer({
   const viewer: ViewerProps = {
     voxels: voxels as Record<string, VoxelsFile> | VoxelsFile,
     rig,
-    autoPlayClip,
     callerJoints,
     animation,
     frameDims,

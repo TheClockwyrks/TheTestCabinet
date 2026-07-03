@@ -20,9 +20,6 @@ const rigMock = vi.hoisted(() => {
     private use() {
       if (this.disposed) this.usedAfterDispose = true;
     }
-    play() {
-      this.use();
-    }
     playAnimation() {
       this.use();
     }
@@ -76,13 +73,7 @@ describe("VoxelViewer", () => {
     await act(async () => {
       render(
         <StrictMode>
-          <VoxelViewer
-            voxels={VOXELS}
-            rig={RIG}
-            mode="orbit"
-            autoPlayClip={null}
-            label="test"
-          />
+          <VoxelViewer voxels={VOXELS} rig={RIG} mode="orbit" label="test" />
         </StrictMode>,
       );
     });

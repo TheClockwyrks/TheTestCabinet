@@ -392,7 +392,8 @@ fn seed_voxel_tool(
 
 /// Build the `voxel-anim` binary's on-disk [`Rig`](test_cabinet_voxel::Rig) from a
 /// resolved [`ModelSpec`](crate::test_case::ModelSpec), so the seeded `rig.json`
-/// carries exactly the required parts and joints (and any auto-play clips).
+/// carries exactly the required parts, joints, and animation declarations (with
+/// empty tracks — the model authors the F-curves at run time).
 fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig {
     use crate::test_case::{AxisSpec, DriveKindSpec, JointKindSpec};
 
@@ -420,26 +421,7 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
             };
             let drive = match joint.drive {
                 DriveKindSpec::Caller => test_cabinet_voxel::Drive::Caller,
-                DriveKindSpec::Auto => {
-                    // A resolved `auto` joint always carries its clip (resolution
-                    // rejects one without); fall back to an empty clip defensively.
-                    let auto = joint.auto.as_ref();
-                    test_cabinet_voxel::Drive::AutoPlay {
-                        keyframes: auto
-                            .map(|a| {
-                                a.keyframes
-                                    .iter()
-                                    .map(|k| test_cabinet_voxel::Keyframe {
-                                        t_ms: k.t_ms,
-                                        value: k.value,
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                        period_ms: auto.map(|a| a.period_ms).unwrap_or_default(),
-                        r#loop: auto.map(|a| a.looping).unwrap_or_default(),
-                    }
-                }
+                DriveKindSpec::Auto => test_cabinet_voxel::Drive::Auto,
             };
             test_cabinet_voxel::Joint {
                 name: joint.name.clone(),
@@ -456,7 +438,26 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
             }
         })
         .collect();
-    test_cabinet_voxel::Rig { parts, joints }
+    // Seed the required animation DECLARATIONS (their joints set, empty tracks) so
+    // the required animations exist in `rig.json` from t=0; the model fills the
+    // F-curve tracks at run time.
+    let animations = model
+        .animations
+        .iter()
+        .map(|animation| test_cabinet_voxel::Animation {
+            name: animation.name.clone(),
+            period_ms: animation.period_ms,
+            looping: animation.looping,
+            auto_play: animation.auto_play,
+            joints: animation.joints.clone(),
+            tracks: Vec::new(),
+        })
+        .collect();
+    test_cabinet_voxel::Rig {
+        parts,
+        joints,
+        animations,
+    }
 }
 
 /// Seed an adversarial run's scaffolding into `repo`.

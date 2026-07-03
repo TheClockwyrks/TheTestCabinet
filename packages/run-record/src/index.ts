@@ -589,11 +589,11 @@ export type ModelSpec = {
    */
   joints: Array<JointSpec>;
   /**
-   * The predetermined, named animations the case authors so a reviewer can watch
-   * the rig perform a motion without driving its joints by hand. Empty when the
-   * case declares none. These are authored playback aids — not part of the rig
-   * the model produces — so they ride only on the declared model spec, never on
-   * the produced `rig.json`.
+   * The model's **animations** — one unified type across the pipeline. On the
+   * *required* contract each is a declaration (its `joints` set, `tracks` empty),
+   * seeded into `rig.json` from t=0; on the *produced* rig each additionally
+   * carries the model-authored F-curve `tracks`. Empty when the case declares
+   * none.
    */
   animations?: Array<AnimationSpec>;
 };
@@ -623,9 +623,10 @@ export type PartSpec = {
  * A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.
  *
  * A joint is either **caller-driven** (a consuming game supplies its value at
- * runtime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a
- * looping set of keyframes). Rotations are in radians about [`Self::axis`] through
- * [`Self::pivot`]; translations are in voxel units along the axis.
+ * runtime, e.g. `turret_yaw`) or **`auto`** (driven only by the model's
+ * [`AnimationSpec`] tracks, holding at `rest` until one overlays it). Rotations
+ * are in radians about [`Self::axis`] through [`Self::pivot`]; translations are in
+ * voxel units along the axis.
  */
 export type JointSpec = {
   /**
@@ -674,14 +675,9 @@ export type JointSpec = {
    */
   orient?: [number, number, number];
   /**
-   * Who drives this joint: a caller (a game) or an auto-play clip.
+   * Who drives this joint: a caller (a game) or the model's animations.
    */
   drive: DriveKindSpec;
-  /**
-   * The auto-play clip, present only when [`Self::drive`] is
-   * [`DriveKindSpec::Auto`]; `None` for a caller-driven joint.
-   */
-  auto?: AutoPlaySpec;
 };
 
 /**
@@ -700,53 +696,59 @@ export type AxisSpec = "x" | "y" | "z";
 export type DriveKindSpec = "caller" | "auto";
 
 /**
- * The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of
- * keyframes the viewer (and a consuming game) plays back automatically.
+ * How an [`AnimationSpec`] F-curve segment interpolates between two keyframes —
+ * the graph-editor curve real 3D tools use, so motion carries weight and snap
+ * instead of sliding linearly. Set per keyframe on the segment **leaving** it.
  */
-export type AutoPlaySpec = {
-  /**
-   * The keyframes, in time order, sampled over one period.
-   */
-  keyframes: Array<KeyframeSpec>;
-  /**
-   * The clip period in milliseconds (one full loop).
-   */
-  periodMs: number;
-  /**
-   * Whether the clip loops (true) or holds the last keyframe (false).
-   */
-  looping: boolean;
-};
+export type InterpSpec =
+  | "constant"
+  | "linear"
+  | "bezier"
+  | "ease-in"
+  | "ease-out"
+  | "ease-in-out";
 
 /**
- * A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.
+ * A resolved keyframe within an [`AnimationTrackSpec`] F-curve: a joint value at a
+ * time offset, plus how the curve leaves this key.
  */
 export type KeyframeSpec = {
   /**
-   * Time offset from the start of the clip, in milliseconds (`0..=period_ms`).
+   * Time offset from the start of the animation, in milliseconds
+   * (`0..=period_ms`).
    */
   tMs: number;
   /**
    * The joint value at this time.
    */
   value: number;
+  /**
+   * Interpolation of the segment **leaving** this key.
+   */
+  interp: InterpSpec;
+  /**
+   * Bézier out-handle on this key as `[dt_ms, dvalue]` offset from the key;
+   * `None` = auto tangent.
+   */
+  outHandle?: [number, number];
+  /**
+   * Bézier in-handle on this key as `[dt_ms, dvalue]` offset from the key; `None`
+   * = auto tangent.
+   */
+  inHandle?: [number, number];
 };
 
 /**
- * A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the
- * case authors so a reviewer can watch the rig perform a motion (a turret sweep, a
- * recoil, a walk cycle) without driving its joints by hand.
- *
- * An animation drives one or more of the rig's **caller** joints over a shared
- * timeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,
- * and together they play as a single loop. This is distinct from a joint's own
- * [`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself
- * defined): an animation is authored by the case, spans several joints, and is
- * offered in the viewer as a play button alongside the manual joint sliders.
+ * A model **animation** — one unified type across the whole pipeline. On the
+ * *required* contract it is a declaration: its [`Self::joints`] set is fixed and
+ * [`Self::tracks`] is empty; the declaration is seeded into `rig.json` from t=0. On
+ * the *produced* rig the model fills [`Self::tracks`] with the authored F-curve
+ * motion. An animation is either an [`Self::auto_play`] decorative idle (played
+ * continuously by default) or a named playable a game triggers.
  */
 export type AnimationSpec = {
   /**
-   * Stable, unique name shown in the viewer (for example `turret_sweep`).
+   * Stable, unique name a game plays this animation by (for example `walk`).
    */
   name: string;
   /**
@@ -758,14 +760,25 @@ export type AnimationSpec = {
    */
   looping: boolean;
   /**
-   * The per-joint tracks, one per joint the animation drives. At least one.
+   * Whether the animation plays continuously by default (a decorative idle) or is
+   * a named playable a game triggers.
    */
-  tracks: Array<AnimationTrackSpec>;
+  autoPlay: boolean;
+  /**
+   * The joints the animation is **required** to drive. Present on both the
+   * declaration and the produced animation.
+   */
+  joints: Array<string>;
+  /**
+   * The authored F-curve tracks, one per driven joint. Empty for a pure required
+   * declaration; filled on the produced rig.
+   */
+  tracks?: Array<AnimationTrackSpec>;
 };
 
 /**
- * One track of an [`AnimationSpec`]: the keyframes that drive a single joint over
- * the animation's timeline.
+ * One track of an [`AnimationSpec`]: the F-curve keyframes that drive a single
+ * joint over the animation's timeline.
  */
 export type AnimationTrackSpec = {
   /**

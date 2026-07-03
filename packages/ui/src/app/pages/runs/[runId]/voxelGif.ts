@@ -1,3 +1,4 @@
+/// <reference path="../../../../gifenc.d.ts" />
 import * as THREE from "three";
 import type {
   AnimationSpec,
@@ -29,14 +30,12 @@ export type VoxelGifInput = {
   voxels: Record<string, VoxelsFile> | VoxelsFile;
   /** The rig to pose (parts + joints). */
   rig: ModelSpec;
-  /** The predetermined animation to bake, or null when baking an auto-play clip. */
+  /** The animation to bake (or null to bake the rig's `autoPlay` idle). */
   animation: AnimationSpec | null;
-  /** The auto-play joint to isolate, or null when baking a named animation. */
-  autoPlayClip: string | null;
-  /** Static caller-joint values held while the clip plays (the animation/clip
-   * overrides only the joints it drives). */
+  /** Static caller-joint values held while the animation plays (it overrides only
+   * the joints it drives). */
   callerJoints: Record<string, number>;
-  /** The loop length in ms — `animation.periodMs` or the auto joint's period. */
+  /** The loop length in ms — the animation's `periodMs`. */
   periodMs: number;
   /** Solid background color (the preview panel's color), composited behind the
    * model so anti-aliased edges stay clean (a GIF's 1-bit alpha can't). */
@@ -56,8 +55,8 @@ export function voxelGifTiming(periodMs: number): {
 }
 
 /**
- * Bake one autoplaying voxel clip (a predetermined animation or an auto-play
- * joint) into a looping GIF, on an offscreen three.js renderer that mirrors the
+ * Bake one voxel animation into a looping GIF, on an offscreen three.js renderer
+ * that mirrors the
  * interactive preview's camera framing and lighting (see {@link framing} and the
  * shared light constants) so the download looks like what the reviewer saw.
  *
@@ -72,7 +71,6 @@ export async function encodeVoxelGif({
   voxels,
   rig,
   animation,
-  autoPlayClip,
   callerJoints,
   periodMs,
   background,
@@ -115,8 +113,8 @@ export async function encodeVoxelGif({
   const voxelRig = new VoxelRig(rig, voxels);
   pivot.add(voxelRig.root);
   voxelRig.pose(callerJoints);
-  if (animation) voxelRig.playAnimation(animation);
-  else voxelRig.play(autoPlayClip);
+  // A named animation to bake, or `null` to fall back to the rig's `autoPlay` idle.
+  voxelRig.playAnimation(animation);
 
   // A 2D canvas to composite each rendered frame onto and read pixels back from
   // (drawing our own WebGL canvas onto it is same-origin, so it never taints).

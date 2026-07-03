@@ -20,13 +20,13 @@ import {
 
 // How the viewer presents the model: `auto-rotate` slowly orbits the camera on
 // its own (the static-model gallery view); `orbit` is a still, drag-to-inspect
-// view (used beside a caller-joint slider or an auto-play clip, where the motion
+// view (used beside a caller-joint slider or a playing animation, where the motion
 // under review is the model's, not the camera's).
 export type VoxelViewMode = "auto-rotate" | "orbit";
 
 /**
  * The scene contents inside the {@link Canvas}: the posed rig (centered at the
- * origin) plus a frame loop that advances any playing auto-clip. Kept as a child
+ * origin) plus a frame loop that advances any playing animation. Kept as a child
  * component so it can call `useFrame`, which only works inside the R3F canvas.
  */
 function RigScene({
@@ -38,9 +38,9 @@ function RigScene({
   center: Vec3;
   animate: boolean;
 }) {
-  // Advance the rig's playback clock only when an auto-play clip is playing; a
-  // static or caller-posed model needs no per-frame work (the camera's own
-  // auto-rotate, when enabled, is driven by OrbitControls, not the rig).
+  // Advance the rig's playback clock only when an animation is playing; a static or
+  // caller-posed model needs no per-frame work (the camera's own auto-rotate, when
+  // enabled, is driven by OrbitControls, not the rig).
   useFrame((_, dt) => {
     if (animate) rig.update(dt);
   });
@@ -67,7 +67,6 @@ export default function VoxelViewer({
   voxels,
   rig,
   mode,
-  autoPlayClip,
   callerJoints,
   animation,
   enableZoom,
@@ -83,13 +82,10 @@ export default function VoxelViewer({
   rig: ModelSpec;
   /** Whether the camera auto-rotates or is a still drag-to-inspect view. */
   mode: VoxelViewMode;
-  /** The auto-play joint to isolate (its name), or `null` to play every auto-play
-   * joint; omit for a caller-posed or static view (no clip runs). */
-  autoPlayClip?: string | null;
   /** Caller-driven joint values to pose the rig at (e.g. `{ turret_yaw: 0.6 }`). */
   callerJoints?: Record<string, number>;
-  /** A predetermined animation to play (its tracks drive their joints over time),
-   * or `null`/omitted for none. */
+  /** A model-authored animation to play (its tracks drive their joints over time),
+   * or `null`/omitted for none — the rig's `autoPlay` idle then plays by default. */
   animation?: AnimationSpec | null;
   /** Whether scroll-to-zoom is enabled. Off by default: the inline gallery views
    * disable zoom, and only the expanded (fullscreen) view turns it on. */
@@ -127,13 +123,8 @@ export default function VoxelViewer({
     [voxels, frameDims],
   );
 
-  // Isolate the requested auto-play clip (or play them all with `null`); a
-  // caller-posed/static view passes no clip, which holds every auto joint at rest.
-  useEffect(() => {
-    voxelRig?.play(autoPlayClip ?? null);
-  }, [voxelRig, autoPlayClip]);
-
-  // Play the requested predetermined animation (or stop it with `null`).
+  // Play the requested animation (or stop it with `null`, which falls back to the
+  // rig's `autoPlay` idle if it has one).
   useEffect(() => {
     voxelRig?.playAnimation(animation ?? null);
   }, [voxelRig, animation]);
@@ -147,9 +138,11 @@ export default function VoxelViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voxelRig, callerKey]);
 
-  // Advance the playback clock each frame when an auto-play clip or a predetermined
-  // animation is running; a static or caller-posed model needs no per-frame work.
-  const animate = autoPlayClip !== undefined || animation != null;
+  // Advance the playback clock each frame when an animation is running — either the
+  // one requested, or the rig's own `autoPlay` idle (which plays by default); a
+  // static or caller-posed model needs no per-frame work.
+  const animate =
+    animation != null || (rig.animations?.some((a) => a.autoPlay) ?? false);
 
   return (
     <div style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}>

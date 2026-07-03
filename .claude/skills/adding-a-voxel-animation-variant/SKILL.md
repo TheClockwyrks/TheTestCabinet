@@ -11,8 +11,9 @@ A voxel-animation
 [asset-generation](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
 test case (`asset_kind = "voxel-animation"`) sculpts and rigs a 3D model out of
 opaque `#rrggbb` voxels — a `[model]` table declares the **required** rig (named
-`[[model.part]]` entries in a hierarchy and `[[model.joint]]` degrees of freedom a
-game poses) — each sculpted toward a goal **described in a brief** (there is no
+`[[model.part]]` entries in a hierarchy, `[[model.joint]]` degrees of freedom a game
+poses, and `[[model.animation]]` declarations the model must author as F-curves) —
+each sculpted toward a goal **described in a brief** (there is no
 target model). Its version offers one or more **variants**, and a run selects
 exactly one. Every variant seeds the version's **common specs** (the brief) plus
 its own **additive** specs. The chosen variant's slug is recorded in the run
@@ -46,10 +47,11 @@ Three things are fixed at the **version level** and a variant cannot touch them:
 
 - the **`asset_kind`** — a variant cannot turn an animation into a static model;
 - the **`[voxel]`** volume — the dimensions and preview background;
-- the **`[model]`** rig — the required parts and joints (the stable, game-facing
-  joint interface a game drives) are version-level metadata, so every variant
-  produces the **same** required rig with the **same** joint names and ranges. (The
-  model may still add its own extra parts/joints at run time, as always.)
+- the **`[model]`** rig — the required parts, joints, and animation declarations
+  (the stable, game-facing interface a game drives and plays) are version-level
+  metadata, so every variant produces the **same** required rig with the **same**
+  joint names/ranges and the **same** required animations. (The model may still add
+  its own extra parts/joints/animations at run time, as always.)
 
 What a variant *can* do is vary the **brief** the model sculpts toward across that
 fixed rig, via an additive spec:

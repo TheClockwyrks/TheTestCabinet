@@ -5,10 +5,11 @@
 //! its **own action log and preview** — separate files — though every part is
 //! sculpted in the **same shared volume's coordinates**, in place where it sits on
 //! the assembled model. On top of the per-part sculpting it maintains the rig
-//! structure in `rig.json`: the parts' hierarchy and the named joints a consuming
-//! game (or an auto-play clip) drives. The manifest pre-seeds the required parts
-//! and joints; the `define-part` / `set-pivot` / `define-joint` / `define-clip`
-//! subcommands let the model add its own or refine the seeded ones.
+//! structure in `rig.json`: the parts' hierarchy, the named joints a consuming game
+//! or an animation drives, and the model-authored animations. The manifest pre-seeds
+//! the required parts, joints, and animation declarations; the `define-part` /
+//! `set-pivot` / `define-joint` / `define-animation` / `add-keyframe` subcommands let
+//! the model author each required animation's motion and add its own.
 //!
 //! The operation subcommands are shared with `voxel`, so their `--help` is the same
 //! contract; no operations schema is seeded. Like `voxel`, this binary does **not**
@@ -22,7 +23,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use test_cabinet_voxel::Axis;
 use test_cabinet_voxel::cli::{self, AnimConfig, OpCommand, RenderArgs};
-use test_cabinet_voxel::rig::{Drive, Joint, JointKind, Keyframe, Rig};
+use test_cabinet_voxel::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
 
 /// The sculpting tool for rigged, animated asset-generation test cases.
 #[derive(Parser)]
@@ -135,26 +136,58 @@ enum Command {
         /// Fixed mount rotation about z (radians).
         #[arg(long, default_value_t = 0.0)]
         orient_z: f64,
-        /// Who drives the joint: `caller` (a game) or `auto` (an auto-play clip).
-        /// An `auto` joint starts with an empty clip; fill it with `define-clip`.
+        /// Who drives the joint: `caller` (a game) or `auto` (driven only by the
+        /// model's animations, holding at rest until one overlays it).
         #[arg(long, value_enum, default_value = "caller")]
         drive: DriveArg,
     },
-    /// Define (or replace) the auto-play clip on a joint, marking it auto-driven.
-    DefineClip {
-        /// The joint to animate.
+    /// Create or redefine a named animation's metadata (its period, loop, and
+    /// auto-play intent). Its motion is authored with `add-keyframe`; redefining an
+    /// existing animation preserves its already-authored tracks.
+    DefineAnimation {
+        /// The animation name (a game plays it by this name, e.g. `walk`).
         #[arg(long)]
-        joint: String,
-        /// The clip period in milliseconds (one full loop).
+        name: String,
+        /// The period in milliseconds (one full loop across every track).
         #[arg(long)]
         period_ms: u32,
-        /// Whether the clip loops (default) or holds the last keyframe.
+        /// Whether the animation loops (default) or plays once and holds the last
+        /// pose.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         r#loop: bool,
-        /// A keyframe as `<t_ms>:<value>`, repeated in time order (for example
-        /// `--keyframe 0:0.0 --keyframe 500:1.57`).
-        #[arg(long = "keyframe", value_parser = parse_keyframe)]
-        keyframes: Vec<Keyframe>,
+        /// Whether the animation plays continuously by default (a decorative idle)
+        /// versus a named playable a game triggers.
+        #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
+        auto_play: bool,
+    },
+    /// Add or replace one keyframe on an animation's track for a joint (the first
+    /// keyframe for a joint creates its track).
+    AddKeyframe {
+        /// The animation to add the keyframe to (must already exist).
+        #[arg(long)]
+        animation: String,
+        /// The joint this keyframe drives.
+        #[arg(long)]
+        joint: String,
+        /// Time offset from the start of the animation, in milliseconds.
+        #[arg(long)]
+        t_ms: u32,
+        /// The joint value at this time (radians for a rotation, voxels for a
+        /// translation).
+        #[arg(long)]
+        value: f64,
+        /// Interpolation of the segment leaving this key: `constant`, `linear`,
+        /// `bezier`, or an easing preset `ease-in`/`ease-out`/`ease-in-out`.
+        #[arg(long, value_enum, default_value = "bezier")]
+        interp: InterpArg,
+        /// Optional Bézier out-handle on this key as `<dt_ms,dvalue>` (offset from
+        /// the key). Omitted, a `bezier` key uses an auto tangent.
+        #[arg(long, value_parser = parse_handle)]
+        out_handle: Option<[f64; 2]>,
+        /// Optional Bézier in-handle on this key as `<dt_ms,dvalue>` (offset from the
+        /// key). Omitted, a `bezier` key uses an auto tangent.
+        #[arg(long, value_parser = parse_handle)]
+        in_handle: Option<[f64; 2]>,
     },
     /// Apply one sculpting operation to the `--part`: append it to that part's
     /// action log and re-render that part's preview.
@@ -162,45 +195,65 @@ enum Command {
     Op(OpCommand),
 }
 
-/// Who drives a joint, as a `clap` value: mirrors the `caller`/`auto` tag of the
+/// Who drives a joint, as a `clap` value: mirrors the `caller`/`auto` values of the
 /// on-disk [`Drive`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum DriveArg {
     /// A consuming game supplies the joint's value at runtime.
     Caller,
-    /// The joint animates itself from a looping keyframe clip.
+    /// The joint is driven only by the model's animations.
     Auto,
 }
 
 impl DriveArg {
-    /// The on-disk [`Drive`] this choice produces. `Auto` starts with an empty
-    /// clip; `define-clip` fills it in.
+    /// The on-disk [`Drive`] this choice produces.
     fn into_drive(self) -> Drive {
         match self {
             DriveArg::Caller => Drive::Caller,
-            DriveArg::Auto => Drive::AutoPlay {
-                keyframes: Vec::new(),
-                period_ms: 0,
-                r#loop: true,
-            },
+            DriveArg::Auto => Drive::Auto,
         }
     }
 }
 
-/// Parse a `--keyframe` value of the form `<t_ms>:<value>` into a [`Keyframe`].
-fn parse_keyframe(value: &str) -> Result<Keyframe, String> {
-    let (t, v) = value
-        .split_once(':')
-        .ok_or_else(|| format!("invalid keyframe `{value}` (expected `<t_ms>:<value>`)"))?;
-    let t_ms = t
-        .trim()
-        .parse::<u32>()
-        .map_err(|err| format!("invalid keyframe time `{t}`: {err}"))?;
-    let value = v
+/// A keyframe's interpolation, as a `clap` value: mirrors the on-disk [`Interp`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum InterpArg {
+    Constant,
+    Linear,
+    Bezier,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+impl InterpArg {
+    /// The on-disk [`Interp`] this choice produces.
+    fn into_interp(self) -> Interp {
+        match self {
+            InterpArg::Constant => Interp::Constant,
+            InterpArg::Linear => Interp::Linear,
+            InterpArg::Bezier => Interp::Bezier,
+            InterpArg::EaseIn => Interp::EaseIn,
+            InterpArg::EaseOut => Interp::EaseOut,
+            InterpArg::EaseInOut => Interp::EaseInOut,
+        }
+    }
+}
+
+/// Parse a Bézier handle value of the form `<dt_ms>,<dvalue>` into `[dt_ms, dvalue]`.
+fn parse_handle(value: &str) -> Result<[f64; 2], String> {
+    let (dt, dv) = value
+        .split_once(',')
+        .ok_or_else(|| format!("invalid handle `{value}` (expected `<dt_ms>,<dvalue>`)"))?;
+    let dt_ms = dt
         .trim()
         .parse::<f64>()
-        .map_err(|err| format!("invalid keyframe value `{v}`: {err}"))?;
-    Ok(Keyframe { t_ms, value })
+        .map_err(|err| format!("invalid handle dt `{dt}`: {err}"))?;
+    let dvalue = dv
+        .trim()
+        .parse::<f64>()
+        .map_err(|err| format!("invalid handle dvalue `{dv}`: {err}"))?;
+    Ok([dt_ms, dvalue])
 }
 
 fn main() -> ExitCode {
@@ -306,30 +359,59 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("defined joint {name}");
             Ok(())
         }
-        Command::DefineClip {
-            joint,
+        Command::DefineAnimation {
+            name,
             period_ms,
             r#loop,
-            keyframes,
+            auto_play,
         } => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
             let mut rig = Rig::load(&config.rig)?;
-            let target = rig
-                .joints
-                .iter_mut()
-                .find(|j| j.name == joint)
-                .ok_or_else(|| format!("no such joint `{joint}` in the rig"))?;
-            let count = keyframes.len();
-            target.drive = Drive::AutoPlay {
-                keyframes,
-                period_ms,
-                r#loop,
-            };
+            // The required joints are seeded on the declaration; a model-authored
+            // animation declares its driven set implicitly by adding keyframes, so
+            // this preserves the existing `joints` when redefining and starts empty
+            // for a new one.
+            let joints = rig
+                .animations
+                .iter()
+                .find(|a| a.name == name)
+                .map(|a| a.joints.clone())
+                .unwrap_or_default();
+            rig.upsert_animation(&name, period_ms, r#loop, auto_play, joints);
             rig.save(&config.rig)?;
-            println!(
-                "defined clip on {joint} ({count} keyframe{})",
-                plural(count)
+            println!("defined animation {name}");
+            Ok(())
+        }
+        Command::AddKeyframe {
+            animation,
+            joint,
+            t_ms,
+            value,
+            interp,
+            out_handle,
+            in_handle,
+        } => {
+            let config: AnimConfig = cli::read_config(&cli.config)?;
+            let mut rig = Rig::load(&config.rig)?;
+            let added = rig.add_keyframe(
+                &animation,
+                &joint,
+                Keyframe {
+                    t_ms,
+                    value,
+                    interp: interp.into_interp(),
+                    out_handle,
+                    in_handle,
+                },
             );
+            if !added {
+                return Err(format!(
+                    "no such animation `{animation}` in the rig (define it with \
+                     define-animation first)"
+                ));
+            }
+            rig.save(&config.rig)?;
+            println!("added keyframe to {animation} on joint {joint} at {t_ms}ms");
             Ok(())
         }
         Command::Op(op) => {
@@ -372,8 +454,4 @@ fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
     }
-}
-
-fn plural(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
 }

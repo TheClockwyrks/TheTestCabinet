@@ -4,13 +4,19 @@
 // end-to-end game (or any engine) as a standard, animated mesh.
 //
 // It reads the artifacts a voxel-animation run produces — `rig.json` (the part
-// hierarchy + joints) and per-part `voxels.json` (the regenerated voxel data) —
-// and emits a glTF 2.0 file with:
+// hierarchy, joints, and model-authored animations) and per-part `voxels.json` (the
+// regenerated voxel data) — and emits a glTF 2.0 file with:
 //   • one mesh per part (interior faces culled, `#rrggbb` baked as vertex colors),
 //   • a node hierarchy matching the part tree (a game can find a part by node name
-//     and drive its transform, exactly as `voxel-runtime`'s `VoxelRig` does), and
-//   • one glTF animation per case-authored animation and one for the rig's own
-//     auto-play clips, so the motion plays in any glTF viewer/engine.
+//     and drive its transform, exactly as `voxel-runtime`'s `VoxelRig` does),
+//   • one glTF animation per `rig.animations` entry, with its F-curves DENSE-SAMPLED
+//     so the eased motion survives to the engine and its `loop`/`autoPlay` intent
+//     carried in the animation's `extras`, and
+//   • a `<model>.interface.json` sidecar (mirrored into each driven node's `extras`)
+//     listing every `caller` joint as `{ node, kind, axis, min, max, rest }` — the
+//     procedural drives a game wires up.
+// A part sculpted with no voxels exports as an empty **attach socket** node (marked
+// `extras.socket`), a muzzle/exhaust a game hangs VFX on.
 //
 // A static model (`voxel-model`) has no rig — pass a single `voxels.json` and it
 // emits a one-mesh, un-rigged glTF.
@@ -21,19 +27,15 @@
 //
 // Usage:
 //   node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb
-//   node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb \
-//        --animations model.animations.json
 //   node scripts/voxel-to-gltf.mjs --voxels voxels.json --out model.glb   # static
 //
 // Flags:
 //   --rig <path>          rig.json (omit for a static single-mesh model)
 //   --voxels <path>       a directory of `<part>.json` files (rigged), or a single
 //                         voxels.json file (static). Default: `voxels/` beside --rig.
-//   --out <path>          output; `.glb` (binary, default) or `.gltf` (+ .bin)
-//   --animations <path>   JSON with the case's animations: an array of AnimationSpec,
-//                         or an object carrying `animations` / `rig.animations` /
-//                         `model.animations`. Auto-play clips come from rig.json and
-//                         need no flag.
+//   --out <path>          output; `.glb` (binary, default) or `.gltf` (+ .bin).
+//                         The interface sidecar is written beside it as
+//                         `<model>.interface.json`.
 //   --name <str>          model name (default: derived from --out)
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -43,7 +45,7 @@ import { basename, dirname, extname, join } from "node:path";
 // CLI parsing
 
 function parseArgs(argv) {
-  const args = { out: null, rig: null, voxels: null, animations: null, name: null };
+  const args = { out: null, rig: null, voxels: null, name: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const take = () => {
@@ -55,7 +57,6 @@ function parseArgs(argv) {
       case "--rig": args.rig = take(); break;
       case "--voxels": args.voxels = take(); break;
       case "--out": args.out = take(); break;
-      case "--animations": args.animations = take(); break;
       case "--name": args.name = take(); break;
       case "-h": case "--help": printHelp(); process.exit(0); break;
       default: fail(`unknown argument \`${a}\``);
@@ -276,46 +277,117 @@ function applyDir(m, d) {
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const isNonZero = (v) => Array.isArray(v) && (v[0] !== 0 || v[1] !== 0 || v[2] !== 0);
 
-// A joint arrives in one of two shapes: the raw produced `rig.json` (voxel binary
-// shape, `drive: { type, keyframes, periodMs, looping }`) or the run-record
-// `ModelSpec` (`drive: "caller" | "auto"`, `auto: { ... }`). Normalize to the
-// latter so the posing code has a single shape to read.
-function normalizeJoint(j) {
-  if (j.drive && typeof j.drive === "object") {
-    const drive = j.drive.type === "auto" ? "auto" : "caller";
-    const auto =
-      drive === "auto"
-        ? { keyframes: j.drive.keyframes ?? [], periodMs: j.drive.periodMs ?? 0, looping: !!j.drive.looping }
-        : undefined;
-    return { ...j, drive, auto };
-  }
-  return j;
+// Joints and animations arrive in the shared `ModelSpec`/`rig.json` shape (a joint's
+// `drive` is a bare `"caller"`/`"auto"`; animations ride in `rig.animations`), so
+// only the array defaults need normalizing.
+function normalizeRig(rig) {
+  return {
+    ...rig,
+    parts: rig.parts ?? [],
+    joints: rig.joints ?? [],
+    animations: rig.animations ?? [],
+  };
 }
 
-function normalizeRig(rig) {
-  return { ...rig, joints: (rig.joints ?? []).map(normalizeJoint) };
+// ── F-curve sampling — mirrors packages/voxel-runtime/src/clips.ts ──────────────
+// Normalised easing-preset handles in (u, w) space (a fraction of the segment's
+// time/value span), mirroring CSS `cubic-bezier` curves.
+const EASE_PRESETS = {
+  "ease-in": { out: [0.42, 0], in: [0, 0] },
+  "ease-out": { out: [0, 0], in: [-0.42, 0] },
+  "ease-in-out": { out: [0.42, 0], in: [-0.42, 0] },
+};
+
+function cubic1d(p0, p1, p2, p3, s) {
+  const u = 1 - s;
+  return u * u * u * p0 + 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s * p3;
+}
+
+// Value of a cubic Bézier (time, value) curve at a query time: solve x(s)=time by
+// bisection (x is monotonic across a well-formed segment), then read y(s).
+function bezierValueAtTime(p0, p1, p2, p3, time) {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (cubic1d(p0[0], p1[0], p2[0], p3[0], mid) < time) lo = mid;
+    else hi = mid;
+  }
+  const s = (lo + hi) / 2;
+  return cubic1d(p0[1], p1[1], p2[1], p3[1], s);
+}
+
+function autoOut(a, b, prev, dt) {
+  const slope = prev ? (b.value - prev.value) / (b.tMs - prev.tMs) : (b.value - a.value) / dt;
+  const h = dt / 3;
+  return [a.tMs + h, a.value + slope * h];
+}
+function autoIn(a, b, next, dt) {
+  const slope = next ? (next.value - a.value) / (next.tMs - a.tMs) : (b.value - a.value) / dt;
+  const h = dt / 3;
+  return [b.tMs - h, b.value - slope * h];
+}
+
+function evalSegment(a, b, prev, next, t) {
+  const dt = b.tMs - a.tMs;
+  if (dt <= 0) return b.value;
+  const interp = a.interp ?? "linear";
+  if (interp === "constant") return a.value;
+  if (interp === "linear") return a.value + (b.value - a.value) * ((t - a.tMs) / dt);
+  const dv = b.value - a.value;
+  let aOut;
+  let bIn;
+  if (interp === "ease-in" || interp === "ease-out" || interp === "ease-in-out") {
+    const preset = EASE_PRESETS[interp];
+    aOut = [a.tMs + preset.out[0] * dt, a.value + preset.out[1] * dv];
+    bIn = [b.tMs + preset.in[0] * dt, b.value + preset.in[1] * dv];
+  } else {
+    aOut = a.outHandle ? [a.tMs + a.outHandle[0], a.value + a.outHandle[1]] : autoOut(a, b, prev, dt);
+    bIn = b.inHandle ? [b.tMs + b.inHandle[0], b.value + b.inHandle[1]] : autoIn(a, b, next, dt);
+  }
+  return bezierValueAtTime([a.tMs, a.value], aOut, bIn, [b.tMs, b.value], t);
 }
 
 function sampleKeyframes(keyframes, timeMs, periodMs, looping) {
-  if (keyframes.length === 0) return 0;
-  if (keyframes.length === 1) return keyframes[0].value;
+  const n = keyframes.length;
+  if (n === 0) return 0;
+  const first = keyframes[0];
+  if (n === 1) return first.value;
+  const last = keyframes[n - 1];
+
   let t = timeMs;
-  const period = periodMs ?? keyframes[keyframes.length - 1].tMs;
-  if (looping && period > 0) {
-    t = ((t % period) + period) % period;
-  } else {
-    t = clamp(t, keyframes[0].tMs, keyframes[keyframes.length - 1].tMs);
+  if (looping && periodMs > 0) t = ((t % periodMs) + periodMs) % periodMs;
+
+  if (t <= first.tMs) return first.value;
+
+  if (t >= last.tMs) {
+    if (looping && periodMs > last.tMs) {
+      const wrap = { tMs: periodMs, value: first.value, interp: first.interp };
+      return evalSegment(last, wrap, keyframes[n - 2] ?? null, keyframes[1] ?? null, t);
+    }
+    return last.value;
   }
-  for (let i = 0; i < keyframes.length - 1; i++) {
+
+  for (let i = 0; i < n - 1; i++) {
     const a = keyframes[i];
     const b = keyframes[i + 1];
     if (t >= a.tMs && t <= b.tMs) {
-      const span = b.tMs - a.tMs || 1;
-      const f = (t - a.tMs) / span;
-      return a.value + (b.value - a.value) * f;
+      const prev =
+        i > 0
+          ? keyframes[i - 1]
+          : looping
+            ? { tMs: last.tMs - periodMs, value: last.value, interp: last.interp }
+            : null;
+      const next =
+        i + 2 < n
+          ? keyframes[i + 2]
+          : looping
+            ? { tMs: first.tMs + periodMs, value: first.value, interp: first.interp }
+            : null;
+      return evalSegment(a, b, prev, next, t);
     }
   }
-  return keyframes[keyframes.length - 1].value;
+  return last.value;
 }
 
 // The local transform a joint contributes at `value` (compound mount ∘ driven).
@@ -341,21 +413,17 @@ function jointMatrix(joint, value) {
   return multiply(mount, driven);
 }
 
-function jointValue(joint, caller, timeMs) {
-  let value;
-  if (joint.drive === "auto") {
-    value = joint.auto
-      ? sampleKeyframes(joint.auto.keyframes, timeMs, joint.auto.periodMs, joint.auto.looping)
-      : joint.rest;
-  } else {
-    const provided = caller[joint.name];
-    value = provided === undefined ? joint.rest : provided;
-  }
+// Every joint reads its value from the `caller` map — a game supplies caller-driven
+// values, and an animation overlays its `auto` joints there before posing — falling
+// back to `rest` when absent.
+function jointValue(joint, caller) {
+  const provided = caller[joint.name];
+  const value = provided === undefined ? joint.rest : provided;
   return clamp(value, joint.min, joint.max);
 }
 
 // Resolve every part's world matrix for a pose. Returns Map<name, Float64Array16>.
-function poseRig(rig, caller, timeMs) {
+function poseRig(rig, caller) {
   const partByName = new Map(rig.parts.map((p) => [p.name, p]));
   const jointsByPart = new Map();
   for (const j of rig.joints) {
@@ -370,7 +438,7 @@ function poseRig(rig, caller, timeMs) {
     const part = partByName.get(name);
     let local = identity();
     for (const j of jointsByPart.get(name) ?? []) {
-      local = multiply(local, jointMatrix(j, jointValue(j, caller, timeMs)));
+      local = multiply(local, jointMatrix(j, jointValue(j, caller)));
     }
     let world;
     if (part.parent && partByName.has(part.parent) && !seen.has(part.parent)) {
@@ -450,27 +518,24 @@ function vec3MinMax(positions) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Building the glTF document
 
-function loadAnimations(path) {
-  if (!path) return [];
-  const data = readJson(path);
-  const anims = Array.isArray(data)
-    ? data
-    : data.animations ?? data.rig?.animations ?? data.model?.animations ?? [];
-  if (!Array.isArray(anims)) fail(`${path} has no animations array`);
-  return anims;
-}
-
-// Union of keyframe times over one period (ms), always including 0 and periodMs.
-function timelineFor(keyframeTimeSets, periodMs) {
+// Dense-sample times (ms) over one period so an F-curve's easing survives baking as
+// LINEAR glTF samplers: the union of keyframe times (the exact key instants) plus a
+// regular subdivision between them. Always includes 0 and periodMs.
+function denseTimeline(keyframeTimeSets, periodMs) {
   const set = new Set([0, periodMs]);
   for (const times of keyframeTimeSets) for (const t of times) if (t >= 0 && t <= periodMs) set.add(t);
+  // ~30 samples/sec, clamped, to carry the curve between keys.
+  const steps = Math.max(8, Math.min(240, Math.round((periodMs / 1000) * 30)));
+  const dt = periodMs / steps;
+  for (let i = 1; i < steps; i++) set.add(Math.round(i * dt));
   return [...set].sort((a, b) => a - b);
 }
 
 // Build one glTF animation from a set of driven joints, sampling the rig at each
 // timeline breakpoint and emitting translation+rotation channels for the parts
-// those joints move. `poseAt(t)` returns the world-matrix map for time t.
-function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld, nodeIndexByPart, poseAt) {
+// those joints move. `poseAt(t)` returns the world-matrix map for time t. `extras`
+// carries the animation's `loop`/`autoPlay` intent (glTF has no native loop flag).
+function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld, nodeIndexByPart, poseAt, extras) {
   const animatedParts = [...new Set(drivenJoints.map((j) => j.part))].filter((p) => nodeIndexByPart.has(p));
   if (animatedParts.length === 0 || timelineMs.length < 2) return null;
 
@@ -506,10 +571,12 @@ function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld,
     samplers.push({ input: inputAccessor, output: rotAcc, interpolation: "LINEAR" });
     channels.push({ sampler: samplers.length - 1, target: { node, path: "rotation" } });
   }
-  return { name, samplers, channels };
+  const anim = { name, samplers, channels };
+  if (extras) anim.extras = extras;
+  return anim;
 }
 
-function build({ rig, voxelsByPart, namedAnimations, name }) {
+function build({ rig, voxelsByPart, name }) {
   const builder = new GltfBuilder();
   const gltf = {
     asset: { version: "2.0", generator: "test-cabinet voxel-to-gltf" },
@@ -529,10 +596,10 @@ function build({ rig, voxelsByPart, namedAnimations, name }) {
   };
 
   // Rest pose: parts are typically sculpted in place (rest = identity), but a
-  // compound mount or an auto clip at t=0 can make a part's rest transform
-  // non-identity — bake geometry into each part's rest-local frame so the node's
-  // default TRS reproduces exactly where the part sits at rest.
-  const restWorld = poseRig(rig, {}, 0);
+  // compound mount can make a part's rest transform non-identity — bake geometry
+  // into each part's rest-local frame so the node's default TRS reproduces exactly
+  // where the part sits at rest.
+  const restWorld = poseRig(rig, {});
   const nodeIndexByPart = new Map();
 
   // One node (+ mesh) per part.
@@ -588,6 +655,10 @@ function build({ rig, voxelsByPart, namedAnimations, name }) {
         ],
       });
       node.mesh = gltf.meshes.length - 1;
+    } else {
+      // A part sculpted with no voxels is an attach socket (a muzzle, an exhaust):
+      // an empty node a game hangs VFX on or spawns projectiles from.
+      node.extras = { ...(node.extras ?? {}), socket: true };
     }
 
     gltf.nodes.push(node);
@@ -603,48 +674,55 @@ function build({ rig, voxelsByPart, namedAnimations, name }) {
     }
   });
 
-  // Named, case-authored animations (drive caller joints).
+  // The model-authored animations that ride in `rig.animations`: each becomes one
+  // glTF animation with its F-curves dense-sampled (so the eased motion survives) and
+  // its loop/auto-play intent carried in `extras`.
   const jointByName = new Map(rig.joints.map((j) => [j.name, j]));
-  for (const anim of namedAnimations) {
-    const driven = anim.tracks.map((t) => jointByName.get(t.joint)).filter(Boolean);
-    const timeline = timelineFor(anim.tracks.map((t) => t.keyframes.map((k) => k.tMs)), anim.periodMs);
+  for (const anim of rig.animations) {
+    const tracks = anim.tracks ?? [];
+    if (tracks.length === 0) continue; // a required declaration the model never authored
+    const driven = tracks.map((t) => jointByName.get(t.joint)).filter(Boolean);
+    const timeline = denseTimeline(tracks.map((t) => t.keyframes.map((k) => k.tMs)), anim.periodMs);
     const poseAt = (t) => {
       const caller = {};
-      for (const track of anim.tracks) {
+      for (const track of tracks) {
         caller[track.joint] = sampleKeyframes(track.keyframes, t, anim.periodMs, anim.looping);
       }
-      return poseRig(rig, caller, 0);
+      return poseRig(rig, caller);
     };
-    const built = buildAnimation(builder, anim.name, rig, driven, timeline, restWorld, nodeIndexByPart, poseAt);
-    if (built) gltf.animations.push(built);
-  }
-
-  // The rig's own auto-play clips, baked as one "auto-play" animation.
-  const autoJoints = rig.joints.filter((j) => j.drive === "auto" && j.auto && j.auto.keyframes.length > 0);
-  if (autoJoints.length > 0) {
-    const maxPeriod = Math.max(...autoJoints.map((j) => j.auto.periodMs || 0), 1);
-    // Sample at each auto joint's keyframe times replicated across its loops.
-    const timeSets = autoJoints.map((j) => {
-      const period = j.auto.periodMs || maxPeriod;
-      const times = [];
-      for (let base2 = 0; base2 <= maxPeriod; base2 += period || maxPeriod) {
-        for (const k of j.auto.keyframes) times.push(base2 + k.tMs);
-        if (!period) break;
-      }
-      return times;
-    });
-    const timeline = timelineFor(timeSets, maxPeriod);
-    const poseAt = (t) => poseRig(rig, {}, t);
-    const built = buildAnimation(builder, "auto-play", rig, autoJoints, timeline, restWorld, nodeIndexByPart, poseAt);
+    const extras = { loop: !!anim.looping, autoPlay: !!anim.autoPlay };
+    const built = buildAnimation(builder, anim.name, rig, driven, timeline, restWorld, nodeIndexByPart, poseAt, extras);
     if (built) gltf.animations.push(built);
   }
 
   if (gltf.animations.length === 0) delete gltf.animations;
   if (name) gltf.scenes[0].name = name;
 
+  // The joint interface: every `caller` joint as `{ node, kind, axis, min, max,
+  // rest }`, the procedural drives a game wires up. Emitted as a sidecar and mirrored
+  // into each driven node's `extras.joints`.
+  const jointInterface = [];
+  for (const joint of rig.joints) {
+    if (joint.drive !== "caller") continue;
+    if (!nodeIndexByPart.has(joint.part)) continue;
+    const entry = {
+      node: joint.part,
+      name: joint.name,
+      kind: joint.kind,
+      axis: joint.axis,
+      min: joint.min,
+      max: joint.max,
+      rest: joint.rest,
+    };
+    jointInterface.push(entry);
+    const node = gltf.nodes[nodeIndexByPart.get(joint.part)];
+    node.extras = { ...(node.extras ?? {}) };
+    (node.extras.joints ??= []).push(entry);
+  }
+
   const bin = builder.bin();
   gltf.buffers = [{ byteLength: bin.length }];
-  return { gltf, bin };
+  return { gltf, bin, jointInterface };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -710,19 +788,26 @@ function main() {
     voxelsByPart.model = voxels;
   }
 
-  const namedAnimations = loadAnimations(args.animations);
-  const { gltf, bin } = build({ rig, voxelsByPart, namedAnimations, name: modelName });
+  const { gltf, bin, jointInterface } = build({ rig, voxelsByPart, name: modelName });
 
   const ext = extname(args.out).toLowerCase();
   if (ext === ".gltf") writeGltf(args.out, gltf, bin);
   else writeGlb(args.out, gltf, bin);
+
+  // The joint-interface sidecar beside the model (only when there are caller joints).
+  let sidecarPath = null;
+  if (jointInterface.length > 0) {
+    sidecarPath = join(dirname(args.out), basename(args.out, extname(args.out)) + ".interface.json");
+    writeFileSync(sidecarPath, JSON.stringify({ name: modelName, joints: jointInterface }, null, 2));
+  }
 
   const partCount = rig.parts.length;
   const animCount = gltf.animations?.length ?? 0;
   process.stdout.write(
     `voxel-to-gltf: wrote ${args.out} — ${partCount} part${partCount === 1 ? "" : "s"}, ` +
       `${gltf.meshes.length} mesh${gltf.meshes.length === 1 ? "" : "es"}, ` +
-      `${animCount} animation${animCount === 1 ? "" : "s"}\n`,
+      `${animCount} animation${animCount === 1 ? "" : "s"}` +
+      `${sidecarPath ? `, interface → ${sidecarPath}` : ""}\n`,
   );
 }
 

@@ -37,8 +37,9 @@ vi.mock("./GuardedVoxelViewer", () => ({
 // resolves to an empty object. Nothing to do.
 import { VoxelResultSection } from "./VoxelResultSection";
 
-// An animated rig with several caller and auto joints plus a predetermined
-// animation — the shape that used to mount one WebGL canvas per row.
+// An animated rig with two caller joints, two `auto` joints (driven only by
+// animations), and two model-authored animations — an `autoPlay` idle plus a named
+// playable. The section funnels the whole rig through one shared WebGL canvas.
 const RIG: ModelSpec = {
   parts: [
     { name: "chassis", pivot: [0, 0, 0] },
@@ -77,14 +78,6 @@ const RIG: ModelSpec = {
       max: 6,
       rest: 0,
       drive: "auto",
-      auto: {
-        periodMs: 2000,
-        looping: true,
-        keyframes: [
-          { tMs: 0, value: 0 },
-          { tMs: 2000, value: 6 },
-        ],
-      },
     },
     {
       name: "tread_l",
@@ -96,27 +89,37 @@ const RIG: ModelSpec = {
       max: 1,
       rest: 0,
       drive: "auto",
-      auto: {
-        periodMs: 1000,
-        looping: true,
-        keyframes: [
-          { tMs: 0, value: 0 },
-          { tMs: 1000, value: 1 },
-        ],
-      },
     },
   ],
   animations: [
     {
+      name: "idle",
+      periodMs: 2000,
+      looping: true,
+      autoPlay: true,
+      joints: ["radar_spin"],
+      tracks: [
+        {
+          joint: "radar_spin",
+          keyframes: [
+            { tMs: 0, value: 0, interp: "linear" },
+            { tMs: 2000, value: 6, interp: "linear" },
+          ],
+        },
+      ],
+    },
+    {
       name: "bombardment",
       periodMs: 4000,
       looping: true,
+      autoPlay: false,
+      joints: ["turret_yaw", "tread_l"],
       tracks: [
         {
           joint: "turret_yaw",
           keyframes: [
-            { tMs: 0, value: -1 },
-            { tMs: 4000, value: 1 },
+            { tMs: 0, value: -1, interp: "ease-in-out" },
+            { tMs: 4000, value: 1, interp: "linear" },
           ],
         },
       ],
@@ -148,10 +151,10 @@ const VIEW: VoxelResultView = {
 
 describe("VoxelResultSection (animated)", () => {
   it("mounts exactly one shared 3D viewer for a multi-joint rig", async () => {
-    // Regression guard: the section used to render a 3D canvas per animation, caller
-    // joint, and auto joint — five here — each its own WebGL context, exhausting the
-    // browser's active-context budget so the views blanked. The whole rig must now
-    // play through a single shared viewer.
+    // Regression guard: the section used to render a 3D canvas per animation and
+    // joint — each its own WebGL context, exhausting the browser's active-context
+    // budget so the views blanked. The whole rig must now play through a single
+    // shared viewer.
     await act(async () => {
       render(<VoxelResultSection view={VIEW} />);
     });
@@ -159,33 +162,31 @@ describe("VoxelResultSection (animated)", () => {
     expect(screen.getAllByTestId("voxel-viewer")).toHaveLength(1);
   });
 
-  it("still lets a reviewer select every joint and animation of the rig", async () => {
+  it("lets a reviewer select every animation and caller joint of the rig", async () => {
     await act(async () => {
       render(<VoxelResultSection view={VIEW} />);
     });
 
-    // Each animation/joint remains individually selectable; only the render surface
-    // is shared.
-    for (const name of [
-      "bombardment",
-      "turret_yaw",
-      "gun_pitch",
-      "radar_spin",
-      "tread_l",
-    ]) {
+    // Each animation and caller joint remains individually selectable; only the
+    // render surface is shared. `auto` joints are driven by the animations, not
+    // selectable on their own.
+    for (const name of ["idle", "bombardment", "turret_yaw", "gun_pitch"]) {
       expect(
         screen.getByRole("button", { name: new RegExp(name) }),
       ).toBeInTheDocument();
     }
+    // The `auto` joints are not offered as standalone picker entries.
+    expect(screen.queryByRole("button", { name: /radar_spin/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tread_l/ })).toBeNull();
   });
 
-  it("offers a GIF download for autoplaying clips but not caller joints", async () => {
+  it("offers a GIF download for animations but not caller joints", async () => {
     await act(async () => {
       render(<VoxelResultSection view={VIEW} />);
     });
 
-    // The first view (a predetermined animation) is selected by default; it loops
-    // over a period, so it can be baked to a GIF.
+    // The first view (the `idle` animation) is selected by default; it loops over a
+    // period, so it can be baked to a GIF.
     expect(
       screen.getByRole("button", { name: "Download GIF" }),
     ).toBeInTheDocument();
@@ -194,8 +195,8 @@ describe("VoxelResultSection (animated)", () => {
     fireEvent.click(screen.getByRole("button", { name: /turret_yaw/ }));
     expect(screen.queryByRole("button", { name: "Download GIF" })).toBeNull();
 
-    // An auto-play joint loops over its own period, so the download returns.
-    fireEvent.click(screen.getByRole("button", { name: /radar_spin/ }));
+    // A named animation loops over its period, so the download returns.
+    fireEvent.click(screen.getByRole("button", { name: /bombardment/ }));
     expect(
       screen.getByRole("button", { name: "Download GIF" }),
     ).toBeInTheDocument();

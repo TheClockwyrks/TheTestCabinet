@@ -189,14 +189,25 @@
       ]
     },
     "AnimationSpec": {
-      "description": "A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the\ncase authors so a reviewer can watch the rig perform a motion (a turret sweep, a\nrecoil, a walk cycle) without driving its joints by hand.\n\nAn animation drives one or more of the rig's **caller** joints over a shared\ntimeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,\nand together they play as a single loop. This is distinct from a joint's own\n[`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself\ndefined): an animation is authored by the case, spans several joints, and is\noffered in the viewer as a play button alongside the manual joint sliders.",
+      "description": "A model **animation** — one unified type across the whole pipeline. On the\n*required* contract it is a declaration: its [`Self::joints`] set is fixed and\n[`Self::tracks`] is empty; the declaration is seeded into `rig.json` from t=0. On\nthe *produced* rig the model fills [`Self::tracks`] with the authored F-curve\nmotion. An animation is either an [`Self::auto_play`] decorative idle (played\ncontinuously by default) or a named playable a game triggers.",
       "properties": {
+        "autoPlay": {
+          "description": "Whether the animation plays continuously by default (a decorative idle) or is\na named playable a game triggers.",
+          "type": "boolean"
+        },
+        "joints": {
+          "description": "The joints the animation is **required** to drive. Present on both the\ndeclaration and the produced animation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "looping": {
           "description": "Whether the animation loops (true) or plays once and holds the last pose.",
           "type": "boolean"
         },
         "name": {
-          "description": "Stable, unique name shown in the viewer (for example `turret_sweep`).",
+          "description": "Stable, unique name a game plays this animation by (for example `walk`).",
           "type": "string"
         },
         "periodMs": {
@@ -206,18 +217,18 @@
           "type": "integer"
         },
         "tracks": {
-          "description": "The per-joint tracks, one per joint the animation drives. At least one.",
+          "description": "The authored F-curve tracks, one per driven joint. Empty for a pure required\ndeclaration; filled on the produced rig.",
           "items": {
             "$ref": "#/$defs/AnimationTrackSpec"
           },
           "type": "array"
         }
       },
-      "required": ["name", "periodMs", "looping", "tracks"],
+      "required": ["name", "periodMs", "looping", "autoPlay", "joints"],
       "type": "object"
     },
     "AnimationTrackSpec": {
-      "description": "One track of an [`AnimationSpec`]: the keyframes that drive a single joint over\nthe animation's timeline.",
+      "description": "One track of an [`AnimationSpec`]: the F-curve keyframes that drive a single\njoint over the animation's timeline.",
       "properties": {
         "joint": {
           "description": "The joint this track drives (a declared [`JointSpec::name`]).",
@@ -391,30 +402,6 @@
         }
       ]
     },
-    "AutoPlaySpec": {
-      "description": "The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of\nkeyframes the viewer (and a consuming game) plays back automatically.",
-      "properties": {
-        "keyframes": {
-          "description": "The keyframes, in time order, sampled over one period.",
-          "items": {
-            "$ref": "#/$defs/KeyframeSpec"
-          },
-          "type": "array"
-        },
-        "looping": {
-          "description": "Whether the clip loops (true) or holds the last keyframe (false).",
-          "type": "boolean"
-        },
-        "periodMs": {
-          "description": "The clip period in milliseconds (one full loop).",
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": ["keyframes", "periodMs", "looping"],
-      "type": "object"
-    },
     "AxisSpec": {
       "description": "A principal axis a [`JointSpec`] acts about or along.",
       "oneOf": [
@@ -489,7 +476,7 @@
         },
         {
           "const": "auto",
-          "description": "The joint animates itself from a looping [`AutoPlaySpec`] clip.",
+          "description": "The joint is driven only by the model's [`AnimationSpec`] tracks, holding at\n`rest` until one overlays it.",
           "type": "string"
         }
       ]
@@ -539,6 +526,41 @@
         }
       ]
     },
+    "InterpSpec": {
+      "description": "How an [`AnimationSpec`] F-curve segment interpolates between two keyframes —\nthe graph-editor curve real 3D tools use, so motion carries weight and snap\ninstead of sliding linearly. Set per keyframe on the segment **leaving** it.",
+      "oneOf": [
+        {
+          "const": "constant",
+          "description": "Hold the value until the next key (a step).",
+          "type": "string"
+        },
+        {
+          "const": "linear",
+          "description": "A straight line to the next key.",
+          "type": "string"
+        },
+        {
+          "const": "bezier",
+          "description": "A smooth cubic Bézier shaped by tangent handles (auto tangents when omitted).",
+          "type": "string"
+        },
+        {
+          "const": "ease-in",
+          "description": "Preset Bézier: start slow and accelerate into the next key.",
+          "type": "string"
+        },
+        {
+          "const": "ease-out",
+          "description": "Preset Bézier: start fast and decelerate into the next key.",
+          "type": "string"
+        },
+        {
+          "const": "ease-in-out",
+          "description": "Preset Bézier: ease both ends.",
+          "type": "string"
+        }
+      ]
+    },
     "JointKindSpec": {
       "description": "Whether a [`JointSpec`] rotates or translates its part.",
       "oneOf": [
@@ -555,26 +577,15 @@
       ]
     },
     "JointSpec": {
-      "description": "A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.\n\nA joint is either **caller-driven** (a consuming game supplies its value at\nruntime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a\nlooping set of keyframes). Rotations are in radians about [`Self::axis`] through\n[`Self::pivot`]; translations are in voxel units along the axis.",
+      "description": "A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.\n\nA joint is either **caller-driven** (a consuming game supplies its value at\nruntime, e.g. `turret_yaw`) or **`auto`** (driven only by the model's\n[`AnimationSpec`] tracks, holding at `rest` until one overlays it). Rotations\nare in radians about [`Self::axis`] through [`Self::pivot`]; translations are in\nvoxel units along the axis.",
       "properties": {
-        "auto": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AutoPlaySpec"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The auto-play clip, present only when [`Self::drive`] is\n[`DriveKindSpec::Auto`]; `None` for a caller-driven joint."
-        },
         "axis": {
           "$ref": "#/$defs/AxisSpec",
           "description": "The axis the joint acts about (rotation) or along (translation)."
         },
         "drive": {
           "$ref": "#/$defs/DriveKindSpec",
-          "description": "Who drives this joint: a caller (a game) or an auto-play clip."
+          "description": "Who drives this joint: a caller (a game) or the model's animations."
         },
         "kind": {
           "$ref": "#/$defs/JointKindSpec",
@@ -648,10 +659,34 @@
       "type": "object"
     },
     "KeyframeSpec": {
-      "description": "A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.",
+      "description": "A resolved keyframe within an [`AnimationTrackSpec`] F-curve: a joint value at a\ntime offset, plus how the curve leaves this key.",
       "properties": {
+        "inHandle": {
+          "description": "Bézier in-handle on this key as `[dt_ms, dvalue]` offset from the key; `None`\n= auto tangent.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": ["array", "null"]
+        },
+        "interp": {
+          "$ref": "#/$defs/InterpSpec",
+          "description": "Interpolation of the segment **leaving** this key."
+        },
+        "outHandle": {
+          "description": "Bézier out-handle on this key as `[dt_ms, dvalue]` offset from the key;\n`None` = auto tangent.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": ["array", "null"]
+        },
         "tMs": {
-          "description": "Time offset from the start of the clip, in milliseconds (`0..=period_ms`).",
+          "description": "Time offset from the start of the animation, in milliseconds\n(`0..=period_ms`).",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -662,7 +697,7 @@
           "type": "number"
         }
       },
-      "required": ["tMs", "value"],
+      "required": ["tMs", "value", "interp"],
       "type": "object"
     },
     "MediaKind": {
@@ -684,7 +719,7 @@
       "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required** contract\n(the scoring targets and the stable, game-facing joint interface); at run time\nthe model may add further parts and joints of its own, which are recorded in\nthe produced `rig.json` but are not required here. Carried into the run record\n(see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know\nthe joint interface without a separate catalog lookup.",
       "properties": {
         "animations": {
-          "description": "The predetermined, named animations the case authors so a reviewer can watch\nthe rig perform a motion without driving its joints by hand. Empty when the\ncase declares none. These are authored playback aids — not part of the rig\nthe model produces — so they ride only on the declared model spec, never on\nthe produced `rig.json`.",
+          "description": "The model's **animations** — one unified type across the pipeline. On the\n*required* contract each is a declaration (its `joints` set, `tracks` empty),\nseeded into `rig.json` from t=0; on the *produced* rig each additionally\ncarries the model-authored F-curve `tracks`. Empty when the case declares\nnone.",
           "items": {
             "$ref": "#/$defs/AnimationSpec"
           },

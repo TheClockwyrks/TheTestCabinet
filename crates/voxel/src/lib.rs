@@ -21,7 +21,7 @@ pub mod rig;
 pub use color::{ColorError, PreviewBackground, Rgb};
 pub use ops::{Axis, Operation};
 pub use raster::{Camera, SceneView, rasterize, rasterize_scene};
-pub use rig::{Drive, Joint, JointKind, Keyframe, Part, Rig};
+pub use rig::{Animation, Drive, Interp, Joint, JointKind, Keyframe, Part, Rig, Track};
 
 /// The bounding volume the model sculpts within: extents along each axis, in
 /// voxels. `y` is the up axis.

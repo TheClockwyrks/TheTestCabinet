@@ -418,10 +418,12 @@ struct ManifestVoxel {
 
 /// The `[model]` table of a voxel-animation case: the **required** rig the model
 /// must produce — named parts in a parent/child hierarchy, the named joints a
-/// consuming game (or an auto-play clip) drives, and the auto-play clips that
-/// animate any auto-driven joints. These are the stable, game-facing contract and
-/// the scoring targets; at run time the model may add further parts, joints, and
-/// clips of its own (recorded in `rig.json`) beyond what this table requires.
+/// consuming game or an animation drives, and the **required animation
+/// declarations** (a name, its intent, and the joints it must drive — but no
+/// keyframes). These are the stable, game-facing contract and the scoring targets;
+/// at run time the model authors each required animation's motion and may add
+/// further parts, joints, and animations of its own (recorded in `rig.json`) beyond
+/// what this table requires.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestModel {
     /// The declared parts, as repeated `[[model.part]]` tables. At least one is
@@ -431,18 +433,15 @@ struct ManifestModel {
     /// The declared joints, as repeated `[[model.joint]]` tables.
     #[serde(default, rename = "joint")]
     joint: Vec<ManifestJoint>,
-    /// The declared auto-play clips, as repeated `[[model.clip]]` tables — one per
-    /// auto-driven joint.
-    #[serde(default, rename = "clip")]
-    clip: Vec<ManifestClip>,
-    /// The predetermined, named animations, as repeated `[[model.animation]]`
-    /// tables — authored playback aids the viewer offers as play buttons.
+    /// The required animation declarations, as repeated `[[model.animation]]`
+    /// tables — the animations the model must author (name, intent, and the driven
+    /// joints; the keyframes are authored at run time, not declared here).
     #[serde(default, rename = "animation")]
     animation: Vec<ManifestAnimation>,
 }
 
-// `ManifestModel` owns joints and clips that carry `f64` fields, so it takes a
-// manual `Eq` for the same reason as `ManifestSheetSequence` above.
+// `ManifestModel` owns joints that carry `f64` range fields, so it takes a manual
+// `Eq` for the same reason as `ManifestSheetSequence` above.
 impl Eq for ManifestModel {}
 
 /// A single `[[model.part]]` entry: one named voxel component of the rig and its
@@ -489,7 +488,8 @@ struct ManifestJoint {
     /// applied in addition to the driven motion — the rotation half. Optional.
     #[serde(default)]
     orient: Option<[f64; 3]>,
-    /// Who drives this joint: `caller` (a game) or `auto` (an auto-play clip).
+    /// Who drives this joint: `caller` (a game) or `auto` (driven only by the
+    /// model's animations).
     drive: String,
 }
 
@@ -497,59 +497,28 @@ struct ManifestJoint {
 // same reason as `ManifestSheetSequence` above.
 impl Eq for ManifestJoint {}
 
-/// A single `[[model.clip]]` entry: the looping auto-play timeline for one
-/// auto-driven joint. Each keyframe is an inline `[t_ms, value]` pair.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-struct ManifestClip {
-    /// The joint this clip animates (a declared `[[model.joint]]` name whose
-    /// `drive` is `auto`).
-    joint: String,
-    /// The clip period in milliseconds (one full loop).
-    period_ms: u32,
-    /// Whether the clip loops (true) or holds the last keyframe (false). `loop` is
-    /// a Rust keyword, so the field is `r#loop`.
-    r#loop: bool,
-    /// The keyframes, each an inline `[t_ms, value]` pair, in time order.
-    keyframes: Vec<[f64; 2]>,
-}
-
-// `ManifestClip` carries `f64` keyframe values, so it takes a manual `Eq` for the
-// same reason as `ManifestSheetSequence` above.
-impl Eq for ManifestClip {}
-
-/// A single `[[model.animation]]` entry: one named, predetermined animation and its
-/// per-joint tracks (each a nested `[[model.animation.track]]` table).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// A single `[[model.animation]]` entry: one **required** animation the model must
+/// author. The case declares the animation's identity and intent — its `name`,
+/// `period_ms`, `loop`/`auto_play` flags, and the `joints` it must drive — but not
+/// its keyframes: the model authors the F-curve motion at run time with the
+/// `voxel-anim` `define-animation`/`add-keyframe` subcommands.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestAnimation {
-    /// Stable, unique name shown in the viewer.
+    /// Stable, unique name a game plays this animation by.
     name: String,
     /// The period in milliseconds (one full loop across every track).
     period_ms: u32,
-    /// Whether the animation loops (true) or holds the last pose (false). `loop` is
-    /// a Rust keyword, so the field is `r#loop`.
+    /// Whether the animation loops (true) or plays once and holds the last pose
+    /// (false). `loop` is a Rust keyword, so the field is `r#loop`.
     r#loop: bool,
-    /// The per-joint tracks, as repeated `[[model.animation.track]]` tables.
-    #[serde(default, rename = "track")]
-    track: Vec<ManifestAnimationTrack>,
+    /// Whether the animation plays continuously by default (a decorative idle) or
+    /// is a named playable a game triggers. Defaults to `false`.
+    #[serde(default)]
+    auto_play: bool,
+    /// The joints the model is required to drive (all declared `[[model.joint]]`
+    /// names).
+    joints: Vec<String>,
 }
-
-// `ManifestAnimation` bottoms out in `f64` keyframe values, so it takes a manual
-// `Eq` for the same reason as `ManifestClip` above.
-impl Eq for ManifestAnimation {}
-
-/// A single `[[model.animation.track]]` entry: the keyframes that drive one joint
-/// over its animation's timeline. Each keyframe is an inline `[t_ms, value]` pair,
-/// mirroring `[[model.clip]]`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-struct ManifestAnimationTrack {
-    /// The joint this track drives (a declared `[[model.joint]]` name).
-    joint: String,
-    /// The keyframes, each an inline `[t_ms, value]` pair, in time order.
-    keyframes: Vec<[f64; 2]>,
-}
-
-// `ManifestAnimationTrack` carries `f64` keyframe values, so it takes a manual `Eq`.
-impl Eq for ManifestAnimationTrack {}
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
 /// array): a `source` file inside the version folder seeded to a `dest` path in
@@ -1281,11 +1250,11 @@ pub struct ModelSpec {
     pub parts: Vec<PartSpec>,
     /// The declared joints, in declared order. Each names a declared part.
     pub joints: Vec<JointSpec>,
-    /// The predetermined, named animations the case authors so a reviewer can watch
-    /// the rig perform a motion without driving its joints by hand. Empty when the
-    /// case declares none. These are authored playback aids — not part of the rig
-    /// the model produces — so they ride only on the declared model spec, never on
-    /// the produced `rig.json`.
+    /// The model's **animations** — one unified type across the pipeline. On the
+    /// *required* contract each is a declaration (its `joints` set, `tracks` empty),
+    /// seeded into `rig.json` from t=0; on the *produced* rig each additionally
+    /// carries the model-authored F-curve `tracks`. Empty when the case declares
+    /// none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub animations: Vec<AnimationSpec>,
 }
@@ -1311,9 +1280,10 @@ pub struct PartSpec {
 /// A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.
 ///
 /// A joint is either **caller-driven** (a consuming game supplies its value at
-/// runtime, e.g. `turret_yaw`) or **auto-play** (the model defines the motion as a
-/// looping set of keyframes). Rotations are in radians about [`Self::axis`] through
-/// [`Self::pivot`]; translations are in voxel units along the axis.
+/// runtime, e.g. `turret_yaw`) or **`auto`** (driven only by the model's
+/// [`AnimationSpec`] tracks, holding at `rest` until one overlays it). Rotations
+/// are in radians about [`Self::axis`] through [`Self::pivot`]; translations are in
+/// voxel units along the axis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -1347,13 +1317,8 @@ pub struct JointSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub orient: Option<[f64; 3]>,
-    /// Who drives this joint: a caller (a game) or an auto-play clip.
+    /// Who drives this joint: a caller (a game) or the model's animations.
     pub drive: DriveKindSpec,
-    /// The auto-play clip, present only when [`Self::drive`] is
-    /// [`DriveKindSpec::Auto`]; `None` for a caller-driven joint.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub auto: Option<AutoPlaySpec>,
 }
 
 // `JointSpec` carries `f64` range fields, so it cannot derive `Eq` (and neither can
@@ -1394,66 +1359,91 @@ pub enum AxisSpec {
 pub enum DriveKindSpec {
     /// A consuming game supplies the joint's value at runtime.
     Caller,
-    /// The joint animates itself from a looping [`AutoPlaySpec`] clip.
+    /// The joint is driven only by the model's [`AnimationSpec`] tracks, holding at
+    /// `rest` until one overlays it.
     Auto,
 }
 
-/// The auto-play clip of an [`DriveKindSpec::Auto`] joint: a looping timeline of
-/// keyframes the viewer (and a consuming game) plays back automatically.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// How an [`AnimationSpec`] F-curve segment interpolates between two keyframes —
+/// the graph-editor curve real 3D tools use, so motion carries weight and snap
+/// instead of sliding linearly. Set per keyframe on the segment **leaving** it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct AutoPlaySpec {
-    /// The keyframes, in time order, sampled over one period.
-    pub keyframes: Vec<KeyframeSpec>,
-    /// The clip period in milliseconds (one full loop).
-    pub period_ms: u32,
-    /// Whether the clip loops (true) or holds the last keyframe (false).
-    pub looping: bool,
+pub enum InterpSpec {
+    /// Hold the value until the next key (a step).
+    Constant,
+    /// A straight line to the next key.
+    Linear,
+    /// A smooth cubic Bézier shaped by tangent handles (auto tangents when omitted).
+    Bezier,
+    /// Preset Bézier: start slow and accelerate into the next key.
+    EaseIn,
+    /// Preset Bézier: start fast and decelerate into the next key.
+    EaseOut,
+    /// Preset Bézier: ease both ends.
+    EaseInOut,
 }
 
-/// A resolved keyframe within an [`AutoPlaySpec`]: a joint value at a time offset.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A resolved keyframe within an [`AnimationTrackSpec`] F-curve: a joint value at a
+/// time offset, plus how the curve leaves this key.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct KeyframeSpec {
-    /// Time offset from the start of the clip, in milliseconds (`0..=period_ms`).
+    /// Time offset from the start of the animation, in milliseconds
+    /// (`0..=period_ms`).
     pub t_ms: u32,
     /// The joint value at this time.
     pub value: f64,
+    /// Interpolation of the segment **leaving** this key.
+    pub interp: InterpSpec,
+    /// Bézier out-handle on this key as `[dt_ms, dvalue]` offset from the key;
+    /// `None` = auto tangent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub out_handle: Option<[f64; 2]>,
+    /// Bézier in-handle on this key as `[dt_ms, dvalue]` offset from the key; `None`
+    /// = auto tangent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub in_handle: Option<[f64; 2]>,
 }
 
-// Manual `Eq` for the two float-bearing rig types, for the same reason as
-// `JointSpec` above.
-impl Eq for AutoPlaySpec {}
+// Manual `Eq` for the float-bearing keyframe, for the same reason as `JointSpec`
+// above.
 impl Eq for KeyframeSpec {}
 
-/// A named, predetermined animation of a [`ModelSpec`]: a choreographed clip the
-/// case authors so a reviewer can watch the rig perform a motion (a turret sweep, a
-/// recoil, a walk cycle) without driving its joints by hand.
-///
-/// An animation drives one or more of the rig's **caller** joints over a shared
-/// timeline: each [track](AnimationTrackSpec) supplies the keyframes for one joint,
-/// and together they play as a single loop. This is distinct from a joint's own
-/// [`AutoPlaySpec`] clip (which animates a single `auto` joint the model itself
-/// defined): an animation is authored by the case, spans several joints, and is
-/// offered in the viewer as a play button alongside the manual joint sliders.
+/// A model **animation** — one unified type across the whole pipeline. On the
+/// *required* contract it is a declaration: its [`Self::joints`] set is fixed and
+/// [`Self::tracks`] is empty; the declaration is seeded into `rig.json` from t=0. On
+/// the *produced* rig the model fills [`Self::tracks`] with the authored F-curve
+/// motion. An animation is either an [`Self::auto_play`] decorative idle (played
+/// continuously by default) or a named playable a game triggers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AnimationSpec {
-    /// Stable, unique name shown in the viewer (for example `turret_sweep`).
+    /// Stable, unique name a game plays this animation by (for example `walk`).
     pub name: String,
     /// The period in milliseconds — one full loop across every track.
     pub period_ms: u32,
     /// Whether the animation loops (true) or plays once and holds the last pose.
     pub looping: bool,
-    /// The per-joint tracks, one per joint the animation drives. At least one.
+    /// Whether the animation plays continuously by default (a decorative idle) or is
+    /// a named playable a game triggers.
+    pub auto_play: bool,
+    /// The joints the animation is **required** to drive. Present on both the
+    /// declaration and the produced animation.
+    pub joints: Vec<String>,
+    /// The authored F-curve tracks, one per driven joint. Empty for a pure required
+    /// declaration; filled on the produced rig.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tracks: Vec<AnimationTrackSpec>,
 }
 
-/// One track of an [`AnimationSpec`]: the keyframes that drive a single joint over
-/// the animation's timeline.
+/// One track of an [`AnimationSpec`]: the F-curve keyframes that drive a single
+/// joint over the animation's timeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -3607,11 +3597,12 @@ fn resolve_sheet(
 /// Every declared part must carry a unique, non-empty name; the first part is the
 /// root (no `parent`), and every other part's `parent` must name a declared part
 /// with no cycles. Every joint must carry a unique non-empty name, reference a
-/// declared part, and parse its `kind`/`axis`/`drive` with `min <= rest <= max`. An
-/// `auto` joint must have exactly one matching `[[model.clip]]` (and a `caller`
-/// joint none); every clip must reference a declared `auto` joint. `invalid` is the
-/// resolver's error constructor, threaded in so messages carry the case's slug and
-/// version.
+/// declared part, and parse its `kind`/`axis`/`drive` with `min <= rest <= max`.
+/// Every `[[model.animation]]` must carry a unique non-empty name, a positive
+/// `period_ms`, and a non-empty `joints` list naming distinct declared joints; it is
+/// resolved into an [`AnimationSpec`] declaration (its `joints` set, empty `tracks`)
+/// the model authors at run time. `invalid` is the resolver's error constructor,
+/// threaded in so messages carry the case's slug and version.
 fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> Result<ModelSpec> {
     if model.part.is_empty() {
         return Err(invalid(
@@ -3768,83 +3759,13 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
             offset: nonzero(joint.offset),
             orient: nonzero(joint.orient),
             drive,
-            auto: None,
         });
     }
 
-    // Clips: each attaches an auto-play timeline to an `auto` joint. Validate the
-    // reference and the timeline, then fold it into the joint's `auto` field.
-    for clip in &model.clip {
-        let Some(joint) = joints.iter_mut().find(|j| j.name == clip.joint) else {
-            return Err(invalid(format!(
-                "model clip names joint `{}`, which is not a declared joint",
-                clip.joint
-            )));
-        };
-        if joint.drive != DriveKindSpec::Auto {
-            return Err(invalid(format!(
-                "model clip names joint `{}`, which is not an `auto` joint",
-                clip.joint
-            )));
-        }
-        if joint.auto.is_some() {
-            return Err(invalid(format!(
-                "model joint `{}` declares more than one [[model.clip]]",
-                clip.joint
-            )));
-        }
-        if clip.period_ms == 0 {
-            return Err(invalid(format!(
-                "model clip for joint `{}` must declare a `period_ms` greater than zero",
-                clip.joint
-            )));
-        }
-        if clip.keyframes.is_empty() {
-            return Err(invalid(format!(
-                "model clip for joint `{}` declares no keyframes",
-                clip.joint
-            )));
-        }
-        let mut keyframes = Vec::with_capacity(clip.keyframes.len());
-        for [t_ms, value] in &clip.keyframes {
-            if !(t_ms.is_finite() && value.is_finite()) {
-                return Err(invalid(format!(
-                    "model clip for joint `{}` has a non-finite keyframe",
-                    clip.joint
-                )));
-            }
-            if *t_ms < 0.0 || *t_ms > f64::from(clip.period_ms) {
-                return Err(invalid(format!(
-                    "model clip for joint `{}` has a keyframe `t_ms` outside `0..=period_ms`",
-                    clip.joint
-                )));
-            }
-            keyframes.push(KeyframeSpec {
-                t_ms: *t_ms as u32,
-                value: *value,
-            });
-        }
-        joint.auto = Some(AutoPlaySpec {
-            keyframes,
-            period_ms: clip.period_ms,
-            looping: clip.r#loop,
-        });
-    }
-
-    // Every `auto` joint needs its clip; a `caller` joint never carries one.
-    if let Some(joint) = joints
-        .iter()
-        .find(|j| j.drive == DriveKindSpec::Auto && j.auto.is_none())
-    {
-        return Err(invalid(format!(
-            "model joint `{}` is `auto` but declares no [[model.clip]]",
-            joint.name
-        )));
-    }
-
-    // Animations: each is a named, predetermined clip spanning one or more of the
-    // rig's joints. Validate the name, period, and every track's joint reference and
-    // keyframe timeline, then build the resolved [`AnimationSpec`]s.
+    // Animations: each `[[model.animation]]` is a REQUIRED declaration — a name, its
+    // intent, and the joints it must drive, but no keyframes. Validate the name,
+    // period, and joint references, then build an [`AnimationSpec`] declaration with
+    // empty `tracks` (seeded into `rig.json`; the model authors the F-curves).
     let mut animations: Vec<AnimationSpec> = Vec::with_capacity(model.animation.len());
     for animation in &model.animation {
         if animation.name.trim().is_empty() {
@@ -3864,63 +3785,35 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
                 animation.name
             )));
         }
-        if animation.track.is_empty() {
+        if animation.joints.is_empty() {
             return Err(invalid(format!(
-                "model animation `{}` declares no [[model.animation.track]]",
+                "model animation `{}` must declare at least one required joint",
                 animation.name
             )));
         }
-        let mut tracks: Vec<AnimationTrackSpec> = Vec::with_capacity(animation.track.len());
-        for track in &animation.track {
-            if !joints.iter().any(|j| j.name == track.joint) {
+        let mut seen: Vec<&String> = Vec::with_capacity(animation.joints.len());
+        for joint in &animation.joints {
+            if !joints.iter().any(|j| &j.name == joint) {
                 return Err(invalid(format!(
-                    "model animation `{}` has a track for joint `{}`, which is not a declared \
-                     joint",
-                    animation.name, track.joint
+                    "model animation `{}` names joint `{joint}`, which is not a declared joint",
+                    animation.name
                 )));
             }
-            if tracks.iter().any(|t| t.joint == track.joint) {
+            if seen.contains(&joint) {
                 return Err(invalid(format!(
-                    "model animation `{}` declares more than one track for joint `{}`",
-                    animation.name, track.joint
+                    "model animation `{}` names joint `{joint}` more than once",
+                    animation.name
                 )));
             }
-            if track.keyframes.is_empty() {
-                return Err(invalid(format!(
-                    "model animation `{}` track for joint `{}` declares no keyframes",
-                    animation.name, track.joint
-                )));
-            }
-            let mut keyframes = Vec::with_capacity(track.keyframes.len());
-            for [t_ms, value] in &track.keyframes {
-                if !(t_ms.is_finite() && value.is_finite()) {
-                    return Err(invalid(format!(
-                        "model animation `{}` track for joint `{}` has a non-finite keyframe",
-                        animation.name, track.joint
-                    )));
-                }
-                if *t_ms < 0.0 || *t_ms > f64::from(animation.period_ms) {
-                    return Err(invalid(format!(
-                        "model animation `{}` track for joint `{}` has a keyframe `t_ms` outside \
-                         `0..=period_ms`",
-                        animation.name, track.joint
-                    )));
-                }
-                keyframes.push(KeyframeSpec {
-                    t_ms: *t_ms as u32,
-                    value: *value,
-                });
-            }
-            tracks.push(AnimationTrackSpec {
-                joint: track.joint.clone(),
-                keyframes,
-            });
+            seen.push(joint);
         }
         animations.push(AnimationSpec {
             name: animation.name.clone(),
             period_ms: animation.period_ms,
             looping: animation.r#loop,
-            tracks,
+            auto_play: animation.auto_play,
+            joints: animation.joints.clone(),
+            tracks: Vec::new(),
         });
     }
 

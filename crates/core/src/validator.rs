@@ -20,8 +20,8 @@ use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
 use crate::test_case::{
-    AutoPlaySpec, AxisSpec, DriveKindSpec, JointKindSpec, JointSpec, KeyframeSpec, MediaKind,
-    ModelSpec, PartSpec, ProofFile, TestCaseVersion, TestType,
+    AnimationSpec, AnimationTrackSpec, AxisSpec, DriveKindSpec, InterpSpec, JointKindSpec,
+    JointSpec, KeyframeSpec, MediaKind, ModelSpec, PartSpec, ProofFile, TestCaseVersion, TestType,
 };
 use crate::validation::{
     AssetFrameResult, AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary,
@@ -793,26 +793,9 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 test_cabinet_voxel::Axis::Y => AxisSpec::Y,
                 test_cabinet_voxel::Axis::Z => AxisSpec::Z,
             };
-            let (drive, auto) = match &joint.drive {
-                test_cabinet_voxel::Drive::Caller => (DriveKindSpec::Caller, None),
-                test_cabinet_voxel::Drive::AutoPlay {
-                    keyframes,
-                    period_ms,
-                    r#loop,
-                } => (
-                    DriveKindSpec::Auto,
-                    Some(AutoPlaySpec {
-                        keyframes: keyframes
-                            .iter()
-                            .map(|k| KeyframeSpec {
-                                t_ms: k.t_ms,
-                                value: k.value,
-                            })
-                            .collect(),
-                        period_ms: *period_ms,
-                        looping: *r#loop,
-                    }),
-                ),
+            let drive = match &joint.drive {
+                test_cabinet_voxel::Drive::Caller => DriveKindSpec::Caller,
+                test_cabinet_voxel::Drive::Auto => DriveKindSpec::Auto,
             };
             // Carry a compound mount through, dropping an all-zero one to `None`.
             let nonzero = |v: [f64; 3]| Some(v).filter(|a| a.iter().any(|c| *c != 0.0));
@@ -828,24 +811,63 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 offset: nonzero(joint.offset),
                 orient: nonzero(joint.orient),
                 drive,
-                auto,
             }
         })
         .collect();
-    // Animations are authored playback aids carried only on the case's declared
-    // model spec, never produced into `rig.json`, so the rig reconstructed here has
-    // none.
+    // The model's animations ride in the produced `rig.json` (the required
+    // declarations, seeded with empty tracks, plus the F-curves the model authored).
+    let animations = rig
+        .animations
+        .iter()
+        .map(|animation| AnimationSpec {
+            name: animation.name.clone(),
+            period_ms: animation.period_ms,
+            looping: animation.looping,
+            auto_play: animation.auto_play,
+            joints: animation.joints.clone(),
+            tracks: animation
+                .tracks
+                .iter()
+                .map(|track| AnimationTrackSpec {
+                    joint: track.joint.clone(),
+                    keyframes: track.keyframes.iter().map(keyframe_to_spec).collect(),
+                })
+                .collect(),
+        })
+        .collect();
     ModelSpec {
         parts,
         joints,
-        animations: Vec::new(),
+        animations,
     }
 }
 
-/// Reconcile the produced rig against the required one, noting any required part or
-/// joint the model did not produce. These are the game-facing contract's scoring
-/// targets, so a missing one is recorded (in the run-level detail) rather than
-/// crashing the validator.
+/// Convert a voxel [`Keyframe`](test_cabinet_voxel::rig::Keyframe) into the contract
+/// [`KeyframeSpec`], mapping its interpolation and carrying its Bézier handles.
+fn keyframe_to_spec(kf: &test_cabinet_voxel::rig::Keyframe) -> KeyframeSpec {
+    use test_cabinet_voxel::rig::Interp;
+    let interp = match kf.interp {
+        Interp::Constant => InterpSpec::Constant,
+        Interp::Linear => InterpSpec::Linear,
+        Interp::Bezier => InterpSpec::Bezier,
+        Interp::EaseIn => InterpSpec::EaseIn,
+        Interp::EaseOut => InterpSpec::EaseOut,
+        Interp::EaseInOut => InterpSpec::EaseInOut,
+    };
+    KeyframeSpec {
+        t_ms: kf.t_ms,
+        value: kf.value,
+        interp,
+        out_handle: kf.out_handle,
+        in_handle: kf.in_handle,
+    }
+}
+
+/// Reconcile the produced rig against the required one, noting any required part,
+/// joint, or animation the model did not produce. These are the game-facing
+/// contract's scoring targets, so a gap is recorded (in the run-level detail) rather
+/// than crashing the validator. For each required animation, the produced rig must
+/// carry one of the same name whose authored tracks drive every required joint.
 fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<String>) {
     for part in &required.parts {
         if !produced.parts.iter().any(|p| p.name == part.name) {
@@ -861,6 +883,31 @@ fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<Str
                 "required joint `{}` is missing from the produced rig",
                 joint.name
             ));
+        }
+    }
+    for animation in &required.animations {
+        let Some(produced_anim) = produced
+            .animations
+            .iter()
+            .find(|a| a.name == animation.name)
+        else {
+            notes.push(format!(
+                "required animation `{}` is missing from the produced rig",
+                animation.name
+            ));
+            continue;
+        };
+        for joint in &animation.joints {
+            let driven = produced_anim
+                .tracks
+                .iter()
+                .any(|t| &t.joint == joint && !t.keyframes.is_empty());
+            if !driven {
+                notes.push(format!(
+                    "required animation `{}` does not drive joint `{joint}`",
+                    animation.name
+                ));
+            }
         }
     }
 }

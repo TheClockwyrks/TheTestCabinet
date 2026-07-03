@@ -19,27 +19,30 @@ is **no target model**, and the result is **subjective** — reviewed against th
 brief.
 
 The defining requirement is the **rig contract**. The case's `[model]` table
-declares the **required** parts and joints — the stable, **game-facing joint
-interface** a consuming game drives and the reviewer's scoring targets. At run time
-the model may **add** further parts, joints, and auto-play clips of its own; the
-produced `rig.json` carries everything, and the validator reconciles it against the
-required set. Authoring one is writing a precise, self-contained **brief** *and*
-designing the required rig.
+declares the **required** parts, joints, and **animation declarations** — the
+stable, **game-facing interface** a consuming game drives and plays, and the
+reviewer's scoring targets. At run time the model **authors** each required
+animation's motion (the F-curve keyframes) and may **add** further parts, joints, and
+animations of its own; the produced `rig.json` carries everything, and the validator
+reconciles it against the required set. Authoring one is writing a precise,
+self-contained **brief** *and* designing the required rig.
 
 The authoritative docs are the source of truth — **read them first** and follow
 them as the authority:
 
 - [`testing/asset-generation/overview.md`](../../../apps/docs/src/content/docs/testing/asset-generation/overview.md)
   — what the type measures, the opaque-voxel/empty-volume model, and **The rig:
-  parts and joints** (caller-driven vs auto-play; required vs model-added);
+  parts, joints, and animations** (caller-driven vs `auto`; required vs model-added);
 - [`testing/asset-generation/voxel-binaries.md`](../../../apps/docs/src/content/docs/testing/asset-generation/voxel-binaries.md)
   — the `voxel-anim` operation set, the required `--part`, the seeded
   `voxel-anim.config.json`, the per-part isometric PNG preview, the **assembled
-  multi-view scene** (`scene/{view}.png` — iso/front/side/top), and the rig
-  subcommands (`define-part`, `set-pivot`, `define-joint`, `define-clip`);
+  multi-view scene** (`scene/{view}.png` — iso/front/side/top), the rig subcommands
+  (`define-part`, `set-pivot`, `define-joint`, `define-animation`, `add-keyframe`),
+  and the **F-curve** interpolation (`constant`/`linear`/`bezier` +
+  `ease-in`/`ease-out`/`ease-in-out`);
 - [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
   — every manifest field and the rules enforced at resolution (see **Voxel cases**,
-  including the `[[model.part]]` / `[[model.joint]]` / `[[model.clip]]` tables);
+  including the `[[model.part]]` / `[[model.joint]]` / `[[model.animation]]` tables);
 - [`testing/asset-generation/evaluation.md`](../../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md)
   — per-part regeneration, the rig reconciliation (a missing required joint is a
   recorded, zero-scored contract gap), and cheat-divergence per part;
@@ -97,9 +100,9 @@ Design the **required rig**:
   part: its `kind` (`rotation` in radians / `translation` in voxels), `axis`,
   `pivot`, `min`/`max`/`rest` range, and `drive`. Make the game-facing controls
   **`drive = "caller"`** (e.g. `turret_yaw`: a rotation about `y` through the
-  turret's mount, full `-π..π`, resting at `0`); use **`drive = "auto"`** with a
-  `[[model.clip]]` only for motion the *model* should define (idle bob, tread
-  scroll).
+  turret's mount, full `-π..π`, resting at `0`); use **`drive = "auto"`** for a joint
+  the game never drives directly — it is moved only by the model's animations (idle
+  bob, tread scroll, a walk cycle's hips and knees).
 
 Keep the **required** rig to the interface a game truly needs — a stable, minimal
 contract. The model may add flourish parts/joints on top. Pick a `version`
@@ -126,8 +129,12 @@ Seed a single self-contained `specs/brief.md`. State:
   previews** (`scene/{iso,front,side,top}.png` — the whole rig composed at rest) after
   each call, the volume starts empty, and the recorded operations + `rig.json` are the
   output;
-- that the model **may add** its own parts/joints/clips beyond the required set, but
-  must **not** drop or contradict the required interface.
+- **the required animations** — name each animation the model must author, its
+  intent (a decorative idle that plays on its own, or a named playable a game
+  triggers), its period and whether it loops, and the joints it must drive, so the
+  model authors motion that reads (a walk cycle's leg swing, a turret's radar sweep);
+- that the model **may add** its own parts/joints/animations beyond the required set,
+  but must **not** drop or contradict the required interface.
 
 ### 3. Write `prompt.hbs`
 
@@ -172,19 +179,18 @@ Author `test-case.toml` per the
     applied in addition to the driven motion, so a component can be attached at a
     custom rotation *and* translation (a joint with `min = max = rest = 0` but a
     non-zero mount is a purely static attach).
-  - `[[model.clip]]` entries (optional) — an auto-play timeline for a `drive =
-    "auto"` joint: the `joint` it drives, `period_ms`, `loop`, and in-order
-    `keyframes` over `[0, period_ms]`. A `caller` joint takes **no** clip.
-  - `[[model.animation]]` entries (optional) — **predetermined, case-authored
-    animations** the review viewer plays on demand (a play button beside the manual
-    joint sliders), so a reviewer can watch the finished rig perform a motion without
-    posing it by hand. Each has a unique `name`, a `period_ms`, a `loop` flag, and
-    one or more `[[model.animation.track]]` tables — each a declared `joint` plus its
-    inline `[t_ms, value]` `keyframes` over `[0, period_ms]`. An animation usually
-    drives the rig's **caller** joints and may span several at once (e.g. a
-    `turret_sweep` that swings the turret while dipping the barrel). Unlike a clip
-    (one `auto` joint the *model* defines), an animation is authored by the *case*,
-    is a pure playback aid, and is **not** part of the produced `rig.json`.
+  - `[[model.animation]]` entries (optional) — the **required animations the model
+    must author**. The case declares only the animation's identity and intent, **not
+    its keyframes**: a unique `name`, a `period_ms` (one loop), a `loop` flag (loop
+    vs. play once and hold), an `auto_play` flag (`true` = a decorative idle that
+    plays continuously by default, e.g. a radar spin; `false` = a named playable a
+    game triggers, e.g. a walk or a recoil), and the `joints` it must drive (all
+    declared joints, usually the `auto` ones). At run time the model authors the
+    motion as **F-curves** — per-keyframe `constant`/`linear`/`bezier` interpolation
+    plus `ease-in`/`ease-out`/`ease-in-out` presets — with `define-animation` /
+    `add-keyframe`; the produced animations ride in `rig.json`, are exported to glTF
+    for a game to play, and are scored against these declarations (a missing required
+    animation is a zero-scored contract gap like a missing joint).
 - A **`variants`** list (root key, before the first table) — the first entry the
   default.
 - **No targets** — declare **no `[[reference]]`**; resolution rejects any.
@@ -247,11 +253,12 @@ tcab seed   --test-case <slug> --version <version> --variant <variant>
 
 `prompt` catches strict-mode template and manifest errors — including rig
 resolution (unique parts, a single root, parent references with no cycles, joint →
-part references, `kind`/`axis`/`drive` parsing, `min <= rest <= max`, and each clip
-naming a `drive = "auto"` joint). `seed` writes the seeded repository (under `tmp/`)
-so you can read what the model receives — the brief, the seeded
-`voxel-anim.config.json`, each part's blank preview, and the **pre-seeded
-`rig.json`** holding the required parts and joints — and no target model.
+part references, `kind`/`axis`/`drive` parsing, `min <= rest <= max`, and each
+animation's unique name, positive `period_ms`, and declared driven `joints`). `seed`
+writes the seeded repository (under `tmp/`) so you can read what the model receives —
+the brief, the seeded `voxel-anim.config.json`, each part's blank preview, and the
+**pre-seeded `rig.json`** holding the required parts, joints, and animation
+declarations (with empty tracks the model fills) — and no target model.
 
 ### Re-ingest after editing
 

@@ -1,25 +1,28 @@
 //! The on-disk rig the `voxel-anim` binary writes to `rig.json` and core reads.
 //!
 //! An animated voxel model is a **rig**: named [`Part`]s in a parent/child
-//! hierarchy, each sculpted independently, plus named [`Joint`]s (degrees of
-//! freedom) a consuming game or an auto-play clip drives. The manifest fixes the
-//! *required* parts and joints (the stable, game-facing contract and the scoring
-//! targets); at run time the model may add further parts, joints, and auto-play
-//! clips, all recorded here. `rig.json` is the authoritative structure of an
-//! animated run alongside the per-part operation logs.
+//! hierarchy, each sculpted independently, named [`Joint`]s (degrees of freedom) a
+//! consuming game or an animation drives, and named [`Animation`]s (F-curve
+//! timelines the model authors). The manifest fixes the *required* parts, joints,
+//! and animation declarations (the stable, game-facing contract and the scoring
+//! targets); at run time the model authors each required animation's motion and may
+//! add further parts, joints, and animations, all recorded here. `rig.json` is the
+//! authoritative structure of an animated run alongside the per-part operation logs.
 //!
 //! These serde shapes are chosen to map cleanly onto core's resolved
-//! `ModelSpec`/`JointSpec`/`DriveKindSpec`/`AutoPlaySpec` contract types (which
+//! `ModelSpec`/`JointSpec`/`DriveKindSpec`/`AnimationSpec` contract types (which
 //! parse `rig.json` on their own side): `JointKind` and `Axis` serialize as their
-//! lowercase names, and a joint's [`Drive`] tag is exactly `caller` or `auto`.
-//! Actual JSON (de)serialization via `serde_json` is CLI-gated; the plain serde
-//! derives stay available to core.
+//! lowercase names, a joint's [`Drive`] is exactly `caller` or `auto`, and a
+//! keyframe's [`Interp`] is `constant`/`linear`/`bezier`/`ease-in`/`ease-out`/
+//! `ease-in-out`. Actual JSON (de)serialization via `serde_json` is CLI-gated; the
+//! plain serde derives stay available to core.
 
 use serde::{Deserialize, Serialize};
 
 use crate::ops::Axis;
 
-/// A complete rig: the parts to sculpt and the joints that pose them.
+/// A complete rig: the parts to sculpt, the joints that pose them, and the
+/// model-authored animations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rig {
@@ -28,6 +31,10 @@ pub struct Rig {
     pub parts: Vec<Part>,
     /// The joints, in declared order. Each names a declared part.
     pub joints: Vec<Joint>,
+    /// The animations, in declared order. Seeded from the case's required
+    /// declarations (with empty [`Animation::tracks`]) and filled by the model.
+    #[serde(default)]
+    pub animations: Vec<Animation>,
 }
 
 /// One named voxel component of the rig.
@@ -89,7 +96,7 @@ pub struct Joint {
     /// rotation half of the compound mount. All-zero (the default) means no rotation.
     #[serde(default, skip_serializing_if = "is_zero3")]
     pub orient: [f64; 3],
-    /// Who drives this joint: a caller (a game) or an auto-play clip.
+    /// Who drives this joint: a caller (a game) or the model's animations.
     pub drive: Drive,
 }
 
@@ -113,46 +120,101 @@ pub enum JointKind {
 /// Who drives a [`Joint`].
 ///
 /// A `caller` joint is left to a consuming game to pose at runtime; an `auto` joint
-/// carries the looping keyframe clip the model defined for it. The tag values
-/// (`caller` / `auto`) match core's `DriveKindSpec`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+/// is driven only by the model's [`Animation`]s, holding at `rest` until one
+/// overlays it. Serializes to a bare string `caller` / `auto`, matching core's
+/// `DriveKindSpec`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Drive {
     /// A consuming game supplies the joint's value at runtime.
     Caller,
-    /// The joint animates itself from a looping keyframe clip.
-    #[serde(rename = "auto")]
-    AutoPlay {
-        /// The keyframes, in time order, sampled over one period.
-        keyframes: Vec<Keyframe>,
-        /// The clip period in milliseconds (one full loop). Serialized as
-        /// `periodMs` to match core's `AutoPlaySpec`.
-        #[serde(rename = "periodMs")]
-        period_ms: u32,
-        /// Whether the clip loops (true) or holds the last keyframe (false).
-        /// Serialized as `looping` to match core's `AutoPlaySpec`.
-        #[serde(rename = "looping")]
-        r#loop: bool,
-    },
+    /// The joint is driven only by the model's animations.
+    Auto,
 }
 
-/// A single keyframe within an auto-play [`Drive::AutoPlay`] clip: a joint value at
-/// a time offset from the start of the clip.
+/// How an [`Animation`] F-curve segment interpolates between two keyframes, set on
+/// the segment **leaving** each key. Serializes to `constant`/`linear`/`bezier`/
+/// `ease-in`/`ease-out`/`ease-in-out`, matching core's `InterpSpec`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+pub enum Interp {
+    /// Hold the value until the next key (a step).
+    Constant,
+    /// A straight line to the next key.
+    Linear,
+    /// A smooth cubic Bézier shaped by tangent handles (auto tangents when omitted).
+    Bezier,
+    /// Preset Bézier: start slow and accelerate into the next key.
+    EaseIn,
+    /// Preset Bézier: start fast and decelerate into the next key.
+    EaseOut,
+    /// Preset Bézier: ease both ends.
+    EaseInOut,
+}
+
+/// A single keyframe of an [`Animation`] F-curve track: a joint value at a time
+/// offset, with the interpolation of the segment leaving this key and optional
+/// Bézier tangent handles.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keyframe {
-    /// Time offset from the start of the clip, in milliseconds (`0..=period_ms`).
+    /// Time offset from the start of the animation, in milliseconds
+    /// (`0..=period_ms`).
     pub t_ms: u32,
     /// The joint value at this time.
     pub value: f64,
+    /// Interpolation of the segment **leaving** this key.
+    pub interp: Interp,
+    /// Bézier out-handle on this key as `[dt_ms, dvalue]`; `None` = auto tangent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub out_handle: Option<[f64; 2]>,
+    /// Bézier in-handle on this key as `[dt_ms, dvalue]`; `None` = auto tangent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_handle: Option<[f64; 2]>,
+}
+
+/// One track of an [`Animation`]: the F-curve keyframes that drive a single joint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    /// The joint this track drives (a declared [`Joint::name`]).
+    pub joint: String,
+    /// The keyframes, in time order over the animation's period.
+    pub keyframes: Vec<Keyframe>,
+}
+
+/// A model-authored animation: a named F-curve timeline. Seeded from the case's
+/// required declaration (its [`Self::joints`] set fixed, [`Self::tracks`] empty) and
+/// filled by the model. Field JSON keys match core's `AnimationSpec` (`periodMs`,
+/// `looping`, `autoPlay`, `joints`, `tracks`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Animation {
+    /// Stable, unique name a game plays this animation by.
+    pub name: String,
+    /// The period in milliseconds — one full loop across every track.
+    pub period_ms: u32,
+    /// Whether the animation loops (true) or plays once and holds the last pose.
+    pub looping: bool,
+    /// Whether the animation plays continuously by default (a decorative idle) or is
+    /// a named playable a game triggers.
+    pub auto_play: bool,
+    /// The joints the animation is **required** to drive.
+    pub joints: Vec<String>,
+    /// The authored F-curve tracks, one per driven joint. Empty for a pure required
+    /// declaration.
+    #[serde(default)]
+    pub tracks: Vec<Track>,
 }
 
 impl Rig {
-    /// An empty rig with no parts and no joints.
+    /// An empty rig with no parts, joints, or animations.
     pub fn new() -> Rig {
         Rig {
             parts: Vec::new(),
             joints: Vec::new(),
+            animations: Vec::new(),
         }
     }
 
@@ -190,6 +252,67 @@ impl Rig {
         } else {
             self.joints.push(joint);
         }
+    }
+
+    /// Create an animation, or update the metadata (period, loop, auto-play, joints)
+    /// of the existing same-name animation **in place, preserving its authored
+    /// tracks**. A new animation starts with no tracks; grow them with
+    /// [`Self::add_keyframe`].
+    pub fn upsert_animation(
+        &mut self,
+        name: &str,
+        period_ms: u32,
+        looping: bool,
+        auto_play: bool,
+        joints: Vec<String>,
+    ) {
+        if let Some(existing) = self.animations.iter_mut().find(|a| a.name == name) {
+            existing.period_ms = period_ms;
+            existing.looping = looping;
+            existing.auto_play = auto_play;
+            existing.joints = joints;
+        } else {
+            self.animations.push(Animation {
+                name: name.to_string(),
+                period_ms,
+                looping,
+                auto_play,
+                joints,
+                tracks: Vec::new(),
+            });
+        }
+    }
+
+    /// Add a keyframe to an animation's track for `joint` (creating the track on the
+    /// joint's first keyframe), replacing any keyframe at the same `t_ms` and keeping
+    /// the track sorted by `t_ms`. Returns `false` if no animation of that name
+    /// exists.
+    pub fn add_keyframe(&mut self, animation: &str, joint: &str, kf: Keyframe) -> bool {
+        let Some(anim) = self.animations.iter_mut().find(|a| a.name == animation) else {
+            return false;
+        };
+        let track = match anim.tracks.iter_mut().position(|t| t.joint == joint) {
+            Some(i) => &mut anim.tracks[i],
+            None => {
+                anim.tracks.push(Track {
+                    joint: joint.to_string(),
+                    keyframes: Vec::new(),
+                });
+                anim.tracks.last_mut().expect("just pushed")
+            }
+        };
+        match track.keyframes.iter().position(|k| k.t_ms == kf.t_ms) {
+            Some(i) => track.keyframes[i] = kf,
+            None => {
+                let at = track
+                    .keyframes
+                    .iter()
+                    .position(|k| k.t_ms > kf.t_ms)
+                    .unwrap_or(track.keyframes.len());
+                track.keyframes.insert(at, kf);
+            }
+        }
+        true
     }
 }
 

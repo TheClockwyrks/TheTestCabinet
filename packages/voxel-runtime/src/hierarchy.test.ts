@@ -93,27 +93,19 @@ describe("poseRig", () => {
     expect(mid[0]).toBeCloseTo(Math.cos(0.5), 6);
   });
 
-  it("samples auto-play joints from their clip at timeMs", () => {
+  it("holds an auto joint at rest, and poses it from an overlaid caller value", () => {
+    // `auto` joints no longer carry their own clip: they read the caller map (an
+    // animation overlays its sampled values there), holding at `rest` when absent.
     const rig: ModelSpec = {
       parts: [part("turret")],
-      joints: [
-        yaw({
-          drive: "auto",
-          min: -Math.PI,
-          max: Math.PI,
-          auto: {
-            keyframes: [
-              { tMs: 0, value: 0 },
-              { tMs: 1000, value: 1 },
-            ],
-            periodMs: 1000,
-            looping: true,
-          },
-        }),
-      ],
+      joints: [yaw({ drive: "auto", min: -Math.PI, max: Math.PI, rest: 0 })],
     };
-    // At 500ms the clip value is 0.5 rad about Y.
-    const m = world(poseRig(rig, { timeMs: 500 }), "turret");
+    // No overlaid value → rest (0) → identity rotation.
+    const rest = world(poseRig(rig, {}), "turret");
+    expect(rest[0]).toBeCloseTo(1, 6);
+    expect(rest[8]).toBeCloseTo(0, 6);
+    // An overlaid caller value (0.5 rad about Y) poses the auto joint.
+    const m = world(poseRig(rig, { caller: { turret_yaw: 0.5 } }), "turret");
     expect(m[0]).toBeCloseTo(Math.cos(0.5), 6);
     expect(m[8]).toBeCloseTo(Math.sin(0.5), 6);
   });

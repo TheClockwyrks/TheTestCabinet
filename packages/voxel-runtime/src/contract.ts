@@ -17,9 +17,9 @@ export type {
   JointKindSpec,
   AxisSpec,
   DriveKindSpec,
-  AutoPlaySpec,
+  // The model-authored F-curve animations (`rig.animations`).
+  InterpSpec,
   KeyframeSpec,
-  // Predetermined, case-authored animations (the viewer's play buttons).
   AnimationSpec,
   AnimationTrackSpec,
 } from "@test-cabinet/run-record";
