@@ -23,7 +23,7 @@
 
 use test_cabinet_model_core::color::Rgb;
 
-use crate::field::Field;
+use crate::field::{Field, PAD};
 use crate::mesher::{Mesh, Mesher};
 
 /// The medium-resolution surface-nets surface extractor. Meshes a field sampled at
@@ -244,12 +244,22 @@ fn gradient_normal(field: &Field, p: [f32; 3]) -> [f32; 3] {
         sample_sdf(field, [p[0], p[1] + h, p[2]]) - sample_sdf(field, [p[0], p[1] - h, p[2]]),
         sample_sdf(field, [p[0], p[1], p[2] + h]) - sample_sdf(field, [p[0], p[1], p[2] - h]),
     ];
-    let len = (grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]).sqrt();
-    if len < 1.0e-12 {
-        [0.0, 1.0, 0.0]
-    } else {
-        [grad[0] / len, grad[1] / len, grad[2] / len]
+    normalize_gradient(grad)
+}
+
+/// Normalize a raw field gradient into an outward unit normal, robust to the very
+/// large distances the sealed exterior border carries: divide out the largest
+/// component first so squaring it can't overflow `f32` (a border gradient can reach
+/// `~1e29`, whose square exceeds `f32::MAX`). Falls back to `+y` where the gradient
+/// vanishes or is non-finite.
+fn normalize_gradient(grad: [f32; 3]) -> [f32; 3] {
+    let m = grad[0].abs().max(grad[1].abs()).max(grad[2].abs());
+    if !m.is_finite() || m < 1.0e-12 {
+        return [0.0, 1.0, 0.0];
     }
+    let g = [grad[0] / m, grad[1] / m, grad[2] / m];
+    let len = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+    [g[0] / len, g[1] / len, g[2] / len]
 }
 
 /// Trilinearly interpolate the field's signed distance at world point `p`, clamping
@@ -282,12 +292,13 @@ fn sample_sdf(field: &Field, p: [f32; 3]) -> f32 {
 }
 
 /// The lower node index and fractional offset for `coord` on an axis of `n` nodes at
-/// spacing `step`, clamped so the returned index has a valid `+1` neighbour.
+/// spacing `step`, clamped so the returned index has a valid `+1` neighbour. World `0`
+/// maps to interior node [`PAD`], matching [`Field::node_world`].
 fn axis_sample(coord: f32, step: f32, n: u32) -> (u32, f32) {
     if step <= 0.0 || n < 2 {
         return (0, 0.0);
     }
-    let g = (coord / step).clamp(0.0, (n - 1) as f32);
+    let g = (coord / step + PAD as f32).clamp(0.0, (n - 1) as f32);
     let i0 = (g.floor() as u32).min(n - 2);
     (i0, (g - i0 as f32).clamp(0.0, 1.0))
 }

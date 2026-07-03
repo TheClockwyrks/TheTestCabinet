@@ -20,6 +20,18 @@ use test_cabinet_model_core::color::Rgb;
 /// primitives stays finite.
 pub const OUTSIDE: f32 = 1.0e30;
 
+/// The width, in grid nodes, of the **`OUTSIDE` border** the grid carries around the
+/// declared volume on every axis. The sampled grid is `PAD` nodes larger than the
+/// volume on each side; those border nodes are held permanently outside the solid
+/// (see [`Field::seal_border`]). This is what makes a solid that reaches a volume
+/// **face** — a foot resting flat on the `y = 0` ground plane, a barrel bored through
+/// to a side — get a proper **cap** there: the sign change between the last interior
+/// node (inside) and its border neighbour (outside) yields the closing triangles a
+/// bare, unpadded grid would leave as an open hole. Interior world coordinates are
+/// unchanged: node index `PAD` on an axis still sits at world `0`, so vertex
+/// positions and rig pivots line up exactly as before.
+pub const PAD: u32 = 1;
+
 /// The placeholder color of a node no primitive has colored yet. Only nodes on or
 /// inside the composited surface carry a meaningful color; this is what the empty
 /// exterior reads as.
@@ -129,10 +141,46 @@ impl Field {
         ]
     }
 
-    /// The world-space position of node `(i, j, k)`.
+    /// The world-space position of node `(i, j, k)`. Node index [`PAD`] on an axis
+    /// sits at world `0` and node `n - 1 - PAD` at the volume's extent, so the
+    /// [`PAD`]-node border ring straddles the volume faces (negative indices map just
+    /// outside the volume) while the interior mapping is exactly `world = (index -
+    /// PAD) * spacing`.
     pub fn node_world(&self, i: u32, j: u32, k: u32) -> [f32; 3] {
         let [dx, dy, dz] = self.spacing();
-        [i as f32 * dx, j as f32 * dy, k as f32 * dz]
+        let p = PAD as f32;
+        [
+            (i as f32 - p) * dx,
+            (j as f32 - p) * dy,
+            (k as f32 - p) * dz,
+        ]
+    }
+
+    /// Force every node in the [`PAD`]-node border ring to read **outside** the solid
+    /// (far positive distance, uncolored, not sharp). Called once after a field is
+    /// composited so any solid that reaches — or spills past — a volume face meets an
+    /// exterior neighbour there and is **capped** by the mesher rather than left as an
+    /// open hole. Interior nodes are untouched.
+    pub fn seal_border(&mut self) {
+        let (nx, ny, nz) = (self.res.nx, self.res.ny, self.res.nz);
+        for k in 0..nz {
+            for j in 0..ny {
+                for i in 0..nx {
+                    let border = i < PAD
+                        || j < PAD
+                        || k < PAD
+                        || i >= nx - PAD
+                        || j >= ny - PAD
+                        || k >= nz - PAD;
+                    if border {
+                        let idx = self.index(i, j, k);
+                        self.sdf[idx] = OUTSIDE;
+                        self.color[idx] = EMPTY_COLOR;
+                        self.sharp[idx] = false;
+                    }
+                }
+            }
+        }
     }
 
     /// Sample the field at the node nearest `world`, returning its `(sdf, color,
@@ -151,23 +199,31 @@ impl Field {
 }
 
 /// The spacing between adjacent nodes on an axis of `extent` world units with `n`
-/// nodes: `extent / (n - 1)`, or `0` for a degenerate single-node axis.
+/// nodes, `2 * PAD` of which are the exterior border: the `n - 2*PAD` interior nodes
+/// span the extent, so spacing is `extent / (n - 2*PAD - 1)`. Returns `0` for a
+/// degenerate axis with no interior interval.
 fn axis_spacing(extent: f32, n: u32) -> f32 {
-    if n <= 1 { 0.0 } else { extent / (n - 1) as f32 }
+    let interior = n.saturating_sub(2 * PAD);
+    if interior <= 1 {
+        0.0
+    } else {
+        extent / (interior - 1) as f32
+    }
 }
 
 /// The index of the node nearest `coord` on an axis of `extent` world units with `n`
 /// nodes at spacing `step`, or `None` when `coord` lies outside `[0, extent]` (with a
-/// small tolerance). The returned index is clamped into `0..n`.
+/// small tolerance). World `0` maps to interior node [`PAD`]; the returned index is
+/// clamped into `0..n`.
 fn nearest_node(coord: f32, step: f32, extent: f32, n: u32) -> Option<u32> {
     let eps = step * 0.5 + 1.0e-3;
     if !(-eps..=extent + eps).contains(&coord) {
         return None;
     }
     if step <= 0.0 {
-        return Some(0);
+        return Some(PAD.min(n - 1));
     }
-    let idx = (coord / step).round();
+    let idx = (coord / step).round() + PAD as f32;
     let clamped = idx.clamp(0.0, (n - 1) as f32);
     Some(clamped as u32)
 }

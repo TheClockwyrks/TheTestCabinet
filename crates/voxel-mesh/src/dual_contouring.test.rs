@@ -192,6 +192,47 @@ fn empty_field_meshes_to_nothing() {
 }
 
 #[test]
+fn box_reaching_the_floor_is_capped_not_left_open() {
+    // A box whose bottom spills past the y=0 volume floor (y spans [-2, 8]) must be
+    // capped by the exterior border ring, not left open — the foot-on-ground regression.
+    let ops = vec![FieldOp::AddBox {
+        cx: 10.0,
+        cy: 3.0,
+        cz: 10.0,
+        width: 8.0,
+        height: 10.0,
+        depth: 8.0,
+        color: Rgb([60, 80, 200]),
+        blend: 0.0,
+        sharp: false,
+    }];
+    let mesh = mesh_of(&ops);
+
+    assert_well_formed(&mesh, bounds());
+    assert_watertight_manifold(&mesh);
+
+    let (min, max) = vertex_bbox(&mesh);
+    let cell = GridConfig::dual_contouring().cell_size;
+    assert!(
+        min[1] >= -cell,
+        "mesh dips below the floor: min y = {}",
+        min[1]
+    );
+    assert!(min[1] <= cell, "mesh floor is missing: min y = {}", min[1]);
+    assert!(max[1] > 6.0, "mesh top should reach the box top near y=8");
+
+    let has_downward_cap = mesh
+        .positions
+        .chunks_exact(3)
+        .zip(mesh.normals.chunks_exact(3))
+        .any(|(p, n)| p[1] < cell && n[1] < -0.5);
+    assert!(
+        has_downward_cap,
+        "the floor cap should have downward-facing normals"
+    );
+}
+
+#[test]
 fn sphere_is_a_watertight_manifold_shell_of_the_right_size() {
     let color = Rgb([220, 40, 40]);
     let radius = 6.0;

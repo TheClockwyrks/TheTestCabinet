@@ -8,9 +8,13 @@ import { buildPartGeometry } from "./buildMesh";
 export interface VoxelRigOptions {
   /**
    * Material used for every part mesh. Defaults to a `MeshStandardMaterial`
-   * with `vertexColors: true` (the scene must supply lighting). The rig takes
-   * ownership only of the default material (it is disposed by
-   * {@link VoxelRig.dispose}); a caller-supplied material is left alone.
+   * with `vertexColors: true` and `side: THREE.DoubleSide` (the scene must supply
+   * lighting). Double-sided rendering is deliberate: a mesher-extracted surface can
+   * be legitimately open — a hollowed barrel bore, an intentional cavity — and
+   * front-face-only culling would render those interior walls invisible, reading as a
+   * hole straight through the model. The rig takes ownership only of the default
+   * material (it is disposed by {@link VoxelRig.dispose}); a caller-supplied material
+   * is left alone.
    */
   material?: THREE.Material;
   /** Initial playback clock, in milliseconds. Defaults to `0`. */
@@ -78,7 +82,10 @@ export class VoxelRig {
       this.material = opts.material;
       this.ownedMaterial = null;
     } else {
-      this.material = new THREE.MeshStandardMaterial({ vertexColors: true });
+      this.material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      });
       this.ownedMaterial = this.material;
     }
 

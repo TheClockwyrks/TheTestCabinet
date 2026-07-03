@@ -175,6 +175,54 @@ fn sphere_is_a_closed_shell_of_the_right_size() {
 }
 
 #[test]
+fn box_reaching_the_floor_is_capped_not_left_open() {
+    // A box whose bottom spills past the y=0 volume floor (y spans [-2, 8]). The
+    // exterior border ring holds the floor closed, so the bottom must be capped with a
+    // downward-facing wall rather than left as an open hole — the regression this
+    // guards (a foot resting flat on the ground plane).
+    let ops = vec![FieldOp::AddBox {
+        cx: 10.0,
+        cy: 3.0,
+        cz: 10.0,
+        width: 8.0,
+        height: 10.0,
+        depth: 8.0,
+        color: Rgb([60, 80, 200]),
+        blend: 0.0,
+        sharp: false,
+    }];
+    let field = render(bounds(), &GridConfig::marching_cubes(), &ops);
+    let mesh = MarchingCubesMesher.mesh(&field);
+
+    assert_well_formed(&mesh, bounds());
+    // The floor is capped, so the surface stays a closed 2-manifold.
+    assert_watertight(&mesh);
+
+    // The solid is clipped at the floor: no vertex dips below y=0, and the mesh
+    // actually reaches it (the bottom is present, not missing).
+    let (min, max) = vertex_bbox(&mesh);
+    let cell = GridConfig::marching_cubes().cell_size;
+    assert!(
+        min[1] >= -cell,
+        "mesh dips below the floor: min y = {}",
+        min[1]
+    );
+    assert!(min[1] <= cell, "mesh floor is missing: min y = {}", min[1]);
+    assert!(max[1] > 6.0, "mesh top should reach the box top near y=8");
+
+    // The cap carries outward (downward) normals: some vertex near the floor faces -y.
+    let has_downward_cap = mesh
+        .positions
+        .chunks_exact(3)
+        .zip(mesh.normals.chunks_exact(3))
+        .any(|(p, n)| p[1] < cell && n[1] < -0.5);
+    assert!(
+        has_downward_cap,
+        "the floor cap should have downward-facing normals"
+    );
+}
+
+#[test]
 fn box_meshes_to_a_closed_watertight_surface() {
     // A box whose faces avoid the grid nodes (nodes fall on even coordinates), so no
     // corner sample sits exactly on the surface.

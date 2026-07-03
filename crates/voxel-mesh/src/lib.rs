@@ -55,6 +55,9 @@ pub fn render(bounds: Dims, config: &GridConfig, operations: &[FieldOp]) -> Fiel
     for operation in operations {
         operation.apply(&mut field);
     }
+    // Hold the exterior border ring outside the solid so any surface reaching a volume
+    // face is capped by the mesher rather than left as an open hole.
+    field.seal_border();
     field
 }
 

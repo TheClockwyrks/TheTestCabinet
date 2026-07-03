@@ -10,7 +10,7 @@
 //! rounded, watertight surface; dual contouring samples finely *and* honors the
 //! sharp tags so crisp edges and corners survive.
 
-use crate::field::{Dims, Resolution};
+use crate::field::{Dims, PAD, Resolution};
 
 /// A surface-extraction algorithm, and thus a fixed output character.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,8 +77,10 @@ impl GridConfig {
     }
 
     /// The grid [`Resolution`] this config samples `bounds` at: each axis gets
-    /// `round(extent / cell_size) + 1` nodes, floored to 2 so every axis has a valid
-    /// spacing even when the volume is thinner than one cell.
+    /// `round(extent / cell_size) + 1` interior nodes (floored to 2 so every axis has
+    /// a valid spacing even when the volume is thinner than one cell) plus `2 * PAD`
+    /// exterior border nodes — one [`PAD`]-node ring on every side — so a solid that
+    /// reaches a volume face is capped rather than left open.
     pub fn resolution(&self, bounds: &Dims) -> Resolution {
         Resolution {
             nx: axis_nodes(bounds.width, self.cell_size),
@@ -88,12 +90,15 @@ impl GridConfig {
     }
 }
 
-/// The node count for an axis of `extent` world units sampled at `cell_size`: at
-/// least 2, so the axis always has a defined spacing.
+/// The node count for an axis of `extent` world units sampled at `cell_size`: the
+/// interior node count (at least 2, so the axis always has a defined spacing) plus
+/// the `2 * PAD` exterior border nodes.
 fn axis_nodes(extent: f32, cell_size: f32) -> u32 {
-    if cell_size <= 0.0 {
-        return 2;
-    }
-    let cells = (extent / cell_size).round().max(1.0);
-    (cells as u32).saturating_add(1).max(2)
+    let interior = if cell_size <= 0.0 {
+        2
+    } else {
+        let cells = (extent / cell_size).round().max(1.0);
+        (cells as u32).saturating_add(1).max(2)
+    };
+    interior + 2 * PAD
 }
