@@ -27,7 +27,7 @@ use test_cabinet_model_core::render::View;
 
 use test_cabinet_voxel_mesh::{
     Algorithm, Axis, Dims, Field, FieldOp, GridConfig, MarchingCubesMesher, Mesher,
-    PreviewBackground, Rgb, render, to_mesh_glb,
+    PreviewBackground, Rgb, render, simplify_mesh, to_mesh_glb,
 };
 
 // Re-export the generic config/record surface the binaries reach as
@@ -44,9 +44,13 @@ fn grid_config() -> GridConfig {
     GridConfig::for_algorithm(ALGORITHM)
 }
 
-/// Extract the surface of `field` with this binary's mesher (marching cubes).
+/// Extract the surface of `field` with this binary's mesher (marching cubes), then
+/// collapse the extractor's redundant coplanar triangles with QEM simplification. The
+/// single chokepoint every emission path routes through, so the preview PNG, the
+/// exported `.glb`, and the recorded vertex count all describe the same simplified
+/// mesh.
 fn mesh_field(field: &Field) -> test_cabinet_voxel_mesh::Mesh {
-    MarchingCubesMesher.mesh(field)
+    simplify_mesh(&MarchingCubesMesher.mesh(field))
 }
 
 /// A single field operation, expressed as a `clap` subcommand.

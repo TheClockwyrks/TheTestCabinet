@@ -30,6 +30,12 @@ pub mod field;
 pub mod marching_cubes;
 pub mod mesher;
 pub mod ops;
+// QEM simplification is binary-only: the meshing binaries decimate the extracted mesh
+// before writing its `.glb`, while `core` links this crate without `cli` only to
+// well-formedness-check a mesh a binary already emitted, and never simplifies. Gating
+// it on `cli` keeps that unused code out of the `core`/backend/driver builds.
+#[cfg(feature = "cli")]
+pub mod simplify;
 pub mod surface_nets;
 
 // The generic model types live in `test-cabinet-model-core`. Re-export them (and
@@ -44,6 +50,8 @@ pub use field::{Dims, Field, Resolution};
 pub use marching_cubes::MarchingCubesMesher;
 pub use mesher::{Mesh, Mesher, StubMesher};
 pub use ops::FieldOp;
+#[cfg(feature = "cli")]
+pub use simplify::simplify_mesh;
 pub use surface_nets::SurfaceNetsMesher;
 
 /// Regenerate a field from an operation log: start empty at the `config`-derived

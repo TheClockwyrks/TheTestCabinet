@@ -150,6 +150,23 @@ All three use a **uniform** grid; there is no octree or adaptive subdivision.
 Resolution is tuned per algorithm (MC coarse, SN medium, DC fine) and is not a
 per-case parameter.
 
+### Simplification (all three)
+
+A uniform grid spends triangles evenly, so a large **flat** region carries as many
+triangles as an equally sized curved one — thousands of coplanar triangles that
+describe a single plane. After extraction, every binary runs a **quadric-error-metric
+(QEM) simplification** pass that collapses that redundancy before the mesh is encoded
+to its `.glb`, typically cutting the triangle count of a blocky model by a large
+fraction (flat areas collapse the most; tightly curved and sharp regions are left
+dense). It is applied to the exported mesh, the preview, and the recorded vertex count
+alike, so all three agree.
+
+The pass only performs an edge collapse when it **provably preserves the surface's
+watertight, 2-manifold topology** (the *link condition*), so it never opens a crack —
+and it never collapses across a **color boundary** (so color patches keep crisp edges)
+or a **sharp feature** (whose high collapse error keeps Dual Contouring's creases). It
+is a fixed characteristic of the binaries, not a per-case knob.
+
 ## Dual Contouring only: sharp features
 
 `dc` and `dc-anim` add a **sharp-feature tag** on primitives — a `--sharp` /
