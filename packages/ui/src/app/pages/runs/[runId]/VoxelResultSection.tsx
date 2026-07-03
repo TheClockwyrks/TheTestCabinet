@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type {
   AnimationSpec,
   JointSpec,
   ModelSpec,
 } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import {
   fetchMeshesByPart,
   useVoxelArtifacts,
@@ -11,7 +14,7 @@ import {
   type VoxelResultView,
 } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
-import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
+import { GuardedVoxelViewer, type ViewerMeshes } from "./GuardedVoxelViewer";
 import { GifDownloadButton } from "./GifDownloadButton";
 import { encodeVoxelGif } from "./voxelGif";
 import type { VoxelViewMode } from "./VoxelViewer";
@@ -37,8 +40,8 @@ function voxelGifFilename(name: string): string {
   return `${slug || "animation"}.gif`;
 }
 
-// A stable empty animations list, so a rig with no predetermined animations doesn't
-// hand `buildRigViews`'s memo a fresh array (new identity) every render.
+// A stable empty animations list used as the fallback when a rig declares none, so
+// the fallback is one shared constant rather than a fresh `[]` on every render.
 const EMPTY_ANIMATIONS: AnimationSpec[] = [];
 
 const CANVAS_BOX: React.CSSProperties = {
@@ -113,6 +116,8 @@ function VoxelCanvas({
   fallbackUrl,
   label,
   height,
+  meshes,
+  enabled,
 }: {
   parts: VoxelPartView[];
   rig: ModelSpec;
@@ -122,22 +127,32 @@ function VoxelCanvas({
   fallbackUrl: string | null;
   label: string;
   height?: number;
+  // When provided, the caller has already fetched (and possibly filtered) the meshes,
+  // so this canvas renders them directly instead of fetching its own — used by the
+  // animated reviewer, which hoists the fetch to compute geometry stats and isolate a
+  // single part. When omitted, the canvas fetches its own (the static-model path).
+  meshes?: ViewerMeshes;
+  enabled?: boolean;
 }) {
   // Start disabled so the first paint never blocks on capability checks (and SSR
-  // never touches WebGL), and so the heavy `mesh.json` fetch is skipped for a
-  // browser that will only ever show the static fallback; promote from an effect
-  // (client-only). `GuardedVoxelViewer` re-checks the same capability before it
-  // mounts three.
-  const [enabled, setEnabled] = useState(false);
+  // never touches WebGL), and so the heavy `.glb` fetch is skipped for a browser that
+  // will only ever show the static fallback; promote from an effect (client-only).
+  // `GuardedVoxelViewer` re-checks the same capability before it mounts three.
+  const [selfEnabled, setSelfEnabled] = useState(false);
   useEffect(() => {
-    setEnabled(supportsWebGL() && !prefersReducedMotion());
+    setSelfEnabled(supportsWebGL() && !prefersReducedMotion());
   }, []);
+  const gate = enabled ?? selfEnabled;
 
-  const artifacts = useVoxelArtifacts(enabled ? parts : []);
+  // Only fetch when the caller didn't hand us meshes. The hook must run every render,
+  // so pass an empty part list when we already have meshes (or the view is disabled).
+  const provided = meshes !== undefined;
+  const artifacts = useVoxelArtifacts(!provided && gate ? parts : []);
+  const resolved = provided ? meshes : artifacts.meshesByPart;
 
   return (
     <GuardedVoxelViewer
-      meshes={artifacts.meshesByPart}
+      meshes={resolved}
       rig={rig}
       mode={mode}
       callerJoints={callerJoints}
@@ -240,95 +255,114 @@ function formatJointValue(joint: JointSpec, value: number): string {
   return value.toFixed(1);
 }
 
-/**
- * One selectable entry in the shared rig preview: a model-authored animation (an
- * `autoPlay` idle or a named playable) or a caller-driven joint (posed by a slider).
- * Every entry drives the *same* {@link VoxelCanvas}, so the whole rig is reviewed
- * through a single WebGL context instead of one per joint/animation (which exhausts
- * the browser's active-context budget and blanks the views — see
- * {@link VoxelAnimationResult}).
- */
-type RigView =
-  | {
-      kind: "animation";
-      key: string;
-      name: string;
-      sub: string;
-      animation: AnimationSpec;
-    }
-  | { kind: "caller"; key: string; name: string; sub: string; joint: JointSpec };
+/** The three ways to inspect a rig in the shared preview: play its model-authored
+ * animations, pose its caller-driven joints, or isolate individual part meshes. Every
+ * mode drives the *same* {@link VoxelCanvas}, so the whole rig is reviewed through a
+ * single WebGL context rather than one per joint/animation (which exhausts the
+ * browser's active-context budget and blanks the views). */
+type ViewerMode = "animations" | "joints" | "meshes";
 
-// The picker's groups, in display order. Each maps to a `RigView.kind`; a group
-// with no entries is omitted.
-const RIG_VIEW_GROUPS: { kind: RigView["kind"]; label: string }[] = [
-  { kind: "animation", label: "Animations" },
-  { kind: "caller", label: "Caller-driven joints" },
+const MODE_OPTIONS: ReadonlyArray<SegmentedOption<ViewerMode>> = [
+  { value: "animations", label: "Animations" },
+  { value: "joints", label: "Joints" },
+  { value: "meshes", label: "Meshes" },
 ];
 
-/** The selectable views for a rig: its model-authored animations, then its
- * caller-driven joints — the flattened superset feeding one shared canvas. `auto`
- * joints are not selectable on their own: they carry no motion of their own and are
- * driven only by the animations. */
-function buildRigViews(rig: ModelSpec, animations: AnimationSpec[]): RigView[] {
-  const views: RigView[] = [];
-  for (const animation of animations) {
-    const n = animation.joints.length;
-    views.push({
-      kind: "animation",
-      key: `animation:${animation.name}`,
-      name: animation.name,
-      sub: `${n} joint${n === 1 ? "" : "s"} · ${animation.periodMs}ms ${animation.looping ? "loop" : "once"}${animation.autoPlay ? " · idle" : ""}`,
-      animation,
-    });
+/** How many distinct joints an animation actually drives. A model-authored animation
+ * drives its joints through its F-curve `tracks` (its declared `joints` list is empty
+ * on the produced rig, so reading that would show "0 joints"); count the distinct
+ * joints across the tracks, falling back to the declared list for a bare required
+ * declaration with no authored tracks. */
+function drivenJointCount(animation: AnimationSpec): number {
+  const tracks = animation.tracks ?? [];
+  if (tracks.length > 0) {
+    return new Set(tracks.map((t) => t.joint)).size;
   }
-  for (const joint of rig.joints.filter((j) => j.drive === "caller")) {
-    views.push({
-      kind: "caller",
-      key: `caller:${joint.name}`,
-      name: joint.name,
-      sub: joint.kind,
-      joint,
-    });
-  }
-  return views;
+  return animation.joints.length;
 }
 
-/** The grouped list of rig views to choose from; the active one drives the shared
- * canvas. Groups with no entries are dropped. */
-function RigViewPicker({
-  views,
-  selectedKey,
-  onSelect,
+/** An animation's one-line summary: the joints it drives, its period, and whether it
+ * loops / self-plays. */
+function animationSummary(animation: AnimationSpec): string {
+  const n = drivenJointCount(animation);
+  return `${n} joint${n === 1 ? "" : "s"} · ${animation.periodMs}ms ${
+    animation.looping ? "loop" : "once"
+  }${animation.autoPlay ? " · idle" : ""}`;
+}
+
+/** A part mesh's complexity: vertex and triangle counts (3 floats per vertex in
+ * `positions`, 3 indices per triangle). */
+function meshComplexity(mesh: PartMesh): { vertices: number; triangles: number } {
+  return {
+    vertices: Math.floor(mesh.positions.length / 3),
+    triangles: Math.floor(mesh.indices.length / 3),
+  };
+}
+
+/** Whole-model geometry stats across every part: total vertices/triangles and the
+ * bounding-box size (in voxel units). `null` while the meshes are still loading. */
+function modelStats(
+  meshes: Record<string, PartMesh> | null,
+): {
+  vertices: number;
+  triangles: number;
+  size: [number, number, number] | null;
+} | null {
+  if (!meshes) return null;
+  let vertices = 0;
+  let triangles = 0;
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
+  for (const mesh of Object.values(meshes)) {
+    const c = meshComplexity(mesh);
+    vertices += c.vertices;
+    triangles += c.triangles;
+    const p = mesh.positions;
+    for (let i = 0; i + 2 < p.length; i += 3) {
+      // In-bounds by the loop guard; `?? 0` only satisfies noUncheckedIndexedAccess.
+      const x = p[i] ?? 0;
+      const y = p[i + 1] ?? 0;
+      const z = p[i + 2] ?? 0;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+  }
+  const size: [number, number, number] | null = Number.isFinite(minX)
+    ? [maxX - minX, maxY - minY, maxZ - minZ]
+    : null;
+  return { vertices, triangles, size };
+}
+
+/** A compact "W×H×D · N verts · M tris" readout of a model's geometry. */
+function GeometryStats({
+  stats,
 }: {
-  views: RigView[];
-  selectedKey: string;
-  onSelect: (key: string) => void;
+  stats: {
+    vertices: number;
+    triangles: number;
+    size: [number, number, number] | null;
+  };
 }) {
+  const size = stats.size
+    ? `${stats.size[0].toFixed(0)}×${stats.size[1].toFixed(0)}×${stats.size[2].toFixed(0)}`
+    : "—";
   return (
-    <div className={styles.voxelPicker}>
-      {RIG_VIEW_GROUPS.map((group) => {
-        const items = views.filter((v) => v.kind === group.kind);
-        if (items.length === 0) return null;
-        return (
-          <div key={group.kind} className={styles.voxelPickerGroup}>
-            <span className={styles.voxelPickerGroupLabel}>{group.label}</span>
-            {items.map((view) => (
-              <button
-                key={view.key}
-                type="button"
-                className={`${styles.voxelPickerButton} ${
-                  view.key === selectedKey ? styles.voxelPickerButtonActive : ""
-                }`}
-                aria-pressed={view.key === selectedKey}
-                onClick={() => onSelect(view.key)}
-              >
-                <span className={styles.voxelPickerName}>{view.name}</span>
-                <span className={styles.voxelPickerSub}>{view.sub}</span>
-              </button>
-            ))}
-          </div>
-        );
-      })}
+    <div className={styles.voxelStats}>
+      <span title="Bounding-box size (voxel units)">{size}</span>
+      <span aria-hidden="true">·</span>
+      <span title="Total vertices">{stats.vertices.toLocaleString()} verts</span>
+      <span aria-hidden="true">·</span>
+      <span title="Total triangles">
+        {stats.triangles.toLocaleString()} tris
+      </span>
     </div>
   );
 }
@@ -391,113 +425,231 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   const fallbackUrl = view.parts[0]?.previewUrl ?? null;
   // Animations are model-authored and ride in the produced `rig.json`, so read them
   // from the produced rig; fall back to the required declarations (they carry the
-  // names/joints even before the model authors tracks) for safety.
+  // names even before the model authors tracks) for safety.
   const animations =
     view.rig?.animations ?? view.model?.animations ?? EMPTY_ANIMATIONS;
-  const views = useMemo(
-    () => buildRigViews(rig, animations),
-    [rig, animations],
+  const callerJoints = useMemo(
+    () => rig.joints.filter((j) => j.drive === "caller"),
+    [rig],
   );
 
-  const [selectedKey, setSelectedKey] = useState(() => views[0]?.key ?? "");
-  const active = views.find((v) => v.key === selectedKey) ?? views[0] ?? null;
+  // Hoist the mesh fetch here (rather than inside the canvas) so we can show geometry
+  // stats and isolate a single part's mesh in "Meshes" mode. Gated on the same
+  // capability the canvas needs, and promoted from an effect so SSR/first paint never
+  // touch WebGL or the heavy `.glb` fetch.
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    setEnabled(supportsWebGL() && !prefersReducedMotion());
+  }, []);
+  const artifacts = useVoxelArtifacts(enabled ? view.parts : []);
+  const meshes = artifacts.meshesByPart;
+  const stats = useMemo(() => modelStats(meshes), [meshes]);
+
+  const [mode, setMode] = useState<ViewerMode>("animations");
+  const [selectedAnimation, setSelectedAnimation] = useState(
+    () => animations[0]?.name ?? "",
+  );
+  const activeAnimation =
+    animations.find((a) => a.name === selectedAnimation) ??
+    animations[0] ??
+    null;
+  // The part isolated in "Meshes" mode; `""` shows the assembled model.
+  const [selectedPart, setSelectedPart] = useState<string>("");
 
   // Caller-joint slider values, keyed by joint name and defaulting to each joint's
-  // rest, so posing one joint then switching views (and back) preserves where the
+  // rest, so posing one joint then switching modes (and back) preserves where the
   // reviewer left every slider. The whole map is always fed to the shared canvas, so
-  // an auto/animation view still holds the caller joints at their posed values (and
-  // the played animation overrides only the joints its tracks drive).
+  // a played animation overrides only the joints its tracks drive.
   const [callerValues, setCallerValues] = useState<Record<string, number>>(() =>
-    Object.fromEntries(
-      rig.joints
-        .filter((j) => j.drive === "caller")
-        .map((j) => [j.name, j.rest]),
-    ),
+    Object.fromEntries(callerJoints.map((j) => [j.name, j.rest])),
   );
 
-  // Which animation the shared canvas plays for the active view; caller views play
-  // nothing and are posed purely by `callerValues`.
-  const playback =
-    active?.kind === "animation" ? { animation: active.animation } : {};
-
-  const activeCaller = active?.kind === "caller" ? active.joint : null;
-  const activeValue = activeCaller
-    ? (callerValues[activeCaller.name] ?? activeCaller.rest)
-    : 0;
-
-  // Only an animation — which loops over a period — can be baked to a GIF; a
-  // caller-driven joint is posed by a slider, not time, so it has no motion to
-  // capture.
+  // Only an animation — which loops over a period — can be baked to a GIF; posed
+  // joints and isolated meshes have no motion over time to capture.
   const downloadable =
-    active?.kind === "animation" && active.animation.periodMs > 0
-      ? {
-          name: active.name,
-          periodMs: active.animation.periodMs,
-          animation: active.animation,
-        }
+    mode === "animations" && activeAnimation && activeAnimation.periodMs > 0
+      ? activeAnimation
       : null;
-
   // Baking a GIF renders offscreen with WebGL, so only offer it where WebGL is
-  // available (the same capability the preview itself needs). Promote from an
-  // effect so the first paint and SSR never touch WebGL.
+  // available (the same capability the preview itself needs).
   const [webglOk, setWebglOk] = useState(false);
   useEffect(() => setWebglOk(supportsWebGL()), []);
+
+  // What the shared canvas plays and shows, by mode: play the selected animation
+  // ("animations"); pose the caller sliders with nothing playing ("joints"); or
+  // isolate one part at rest ("meshes", `selectedPart` set).
+  const playback =
+    mode === "animations" && activeAnimation
+      ? { animation: activeAnimation }
+      : {};
+  const selectedMesh =
+    mode === "meshes" && selectedPart && meshes
+      ? meshes[selectedPart]
+      : undefined;
+  const viewerMeshes: ViewerMeshes =
+    mode === "meshes" && selectedPart && meshes
+      ? selectedMesh
+        ? { [selectedPart]: selectedMesh }
+        : {}
+      : meshes;
+  const label =
+    mode === "meshes" && selectedPart
+      ? `${selectedPart} mesh`
+      : activeAnimation
+        ? `${activeAnimation.name} preview`
+        : "Rig preview";
 
   return (
     <>
       <h3 className={`${styles.section} ${styles.leadHeading}`}>Rig preview</h3>
       <p className={styles.secondary}>
-        Pick an animation or joint to drive the model — the whole rig plays
-        through one shared view. Animations are the F-curve choreographies the
-        model authored (an idle plays on its own; a named playable a game
-        triggers); caller-driven joints expose a slider a consuming game would
-        drive. Drag the model to orbit it.
+        Switch between the model's <strong>animations</strong> (the F-curve
+        choreographies it authored — an idle plays on its own, a named playable a
+        game triggers), its game-drivable <strong>joints</strong> (posed by a
+        slider), and its individual <strong>meshes</strong> (each part on its
+        own). Drag the model to orbit it.
       </p>
-      <div className={styles.rigPreview}>
+      <div
+        className={styles.rigPreview}
+        style={
+          { "--rig-preview-size": `${RIG_PREVIEW_SIZE}px` } as CSSProperties
+        }
+      >
         <div className={styles.rigPreviewSidebar}>
-          <RigViewPicker
-            views={views}
-            selectedKey={selectedKey}
-            onSelect={setSelectedKey}
+          <SegmentedControl
+            options={MODE_OPTIONS}
+            value={mode}
+            onChange={setMode}
+            ariaLabel="Rig view mode"
           />
-          {activeCaller ? (
-            <div className={styles.voxelSlider}>
-              <span className={styles.sequenceSub}>
-                {activeCaller.kind} ·{" "}
-                {formatJointValue(activeCaller, activeValue)}
-              </span>
-              <input
-                type="range"
-                min={activeCaller.min}
-                max={activeCaller.max}
-                // Continuous posing (`any`) rather than a computed numeric step: a
-                // joint's rest or a game-driven value rarely lands on a `(max-min)/100`
-                // grid, and a browser that doesn't silently snap the value (e.g. Safari)
-                // then flags it invalid and pops a "select a valid value" bubble over
-                // the slider. `any` accepts any value in range, so there's no grid to
-                // violate.
-                step="any"
-                value={activeValue}
-                onChange={(e) =>
-                  setCallerValues((prev) => ({
-                    ...prev,
-                    [activeCaller.name]: Number(e.target.value),
-                  }))
-                }
-                aria-label={`${activeCaller.name} value`}
-                style={{ width: "100%" }}
-              />
-            </div>
-          ) : null}
+          {stats ? <GeometryStats stats={stats} /> : null}
+          <div className={styles.voxelModeList}>
+            {mode === "animations" ? (
+              animations.length > 0 ? (
+                animations.map((animation) => (
+                  <button
+                    key={animation.name}
+                    type="button"
+                    className={`${styles.voxelPickerButton} ${
+                      animation.name === activeAnimation?.name
+                        ? styles.voxelPickerButtonActive
+                        : ""
+                    }`}
+                    aria-pressed={animation.name === activeAnimation?.name}
+                    onClick={() => setSelectedAnimation(animation.name)}
+                  >
+                    <span className={styles.voxelPickerName}>
+                      {animation.name}
+                    </span>
+                    <span className={styles.voxelPickerSub}>
+                      {animationSummary(animation)}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p className={styles.secondary}>
+                  This model authored no animations.
+                </p>
+              )
+            ) : null}
+
+            {mode === "joints" ? (
+              callerJoints.length > 0 ? (
+                callerJoints.map((joint) => {
+                  const value = callerValues[joint.name] ?? joint.rest;
+                  return (
+                    <div key={joint.name} className={styles.voxelSlider}>
+                      <span className={styles.voxelPickerName}>
+                        {joint.name}
+                      </span>
+                      <span className={styles.sequenceSub}>
+                        {joint.kind} · {formatJointValue(joint, value)}
+                      </span>
+                      <input
+                        type="range"
+                        min={joint.min}
+                        max={joint.max}
+                        // Continuous posing (`any`) rather than a computed numeric
+                        // step: a joint's rest or a game value rarely lands on a
+                        // `(max-min)/100` grid, and a browser that doesn't silently
+                        // snap (e.g. Safari) then flags it invalid. `any` accepts any
+                        // value in range, so there's no grid to violate.
+                        step="any"
+                        value={value}
+                        onChange={(e) =>
+                          setCallerValues((prev) => ({
+                            ...prev,
+                            [joint.name]: Number(e.target.value),
+                          }))
+                        }
+                        aria-label={`${joint.name} value`}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                  );
+                })
+              ) : (
+                <p className={styles.secondary}>
+                  This model exposes no game-drivable joints — its motion lives in
+                  the Animations tab.
+                </p>
+              )
+            ) : null}
+
+            {mode === "meshes" ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.voxelPickerButton} ${
+                    selectedPart === "" ? styles.voxelPickerButtonActive : ""
+                  }`}
+                  aria-pressed={selectedPart === ""}
+                  onClick={() => setSelectedPart("")}
+                >
+                  <span className={styles.voxelPickerName}>All parts</span>
+                  {stats ? (
+                    <span className={styles.voxelPickerSub}>
+                      {stats.vertices.toLocaleString()} verts ·{" "}
+                      {stats.triangles.toLocaleString()} tris
+                    </span>
+                  ) : null}
+                </button>
+                {view.parts.map((part) => {
+                  const mesh = meshes ? meshes[part.name] : undefined;
+                  const c = mesh ? meshComplexity(mesh) : null;
+                  return (
+                    <button
+                      key={part.name}
+                      type="button"
+                      className={`${styles.voxelPickerButton} ${
+                        selectedPart === part.name
+                          ? styles.voxelPickerButtonActive
+                          : ""
+                      }`}
+                      aria-pressed={selectedPart === part.name}
+                      onClick={() => setSelectedPart(part.name)}
+                    >
+                      <span className={styles.voxelPickerName}>{part.name}</span>
+                      <span className={styles.voxelPickerSub}>
+                        {c
+                          ? `${c.vertices.toLocaleString()} verts · ${c.triangles.toLocaleString()} tris`
+                          : "—"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            ) : null}
+          </div>
           {downloadable && webglOk ? (
             <GifDownloadButton
               filename={voxelGifFilename(downloadable.name)}
               encode={async () => {
-                const meshes = await fetchMeshesByPart(view.parts);
+                const gifMeshes = await fetchMeshesByPart(view.parts);
                 return encodeVoxelGif({
-                  meshes,
+                  meshes: gifMeshes,
                   rig,
-                  animation: downloadable.animation,
+                  animation: downloadable,
                   callerJoints: callerValues,
                   periodMs: downloadable.periodMs,
                   background: panelBackground(),
@@ -512,10 +664,12 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
               parts={view.parts}
               rig={rig}
               mode="orbit"
+              meshes={viewerMeshes}
+              enabled={enabled}
               callerJoints={callerValues}
               {...playback}
               fallbackUrl={fallbackUrl}
-              label={active ? `${active.name} preview` : "Rig preview"}
+              label={label}
               height={RIG_PREVIEW_SIZE}
             />
           </div>

@@ -165,40 +165,77 @@ describe("VoxelResultSection (animated)", () => {
     expect(screen.getAllByTestId("voxel-viewer")).toHaveLength(1);
   });
 
-  it("lets a reviewer select every animation and caller joint of the rig", async () => {
+  it("exposes the rig's animations, caller joints, and meshes across modes", async () => {
     await act(async () => {
       render(<VoxelResultSection view={VIEW} />);
     });
 
-    // Each animation and caller joint remains individually selectable; only the
-    // render surface is shared. `auto` joints are driven by the animations, not
-    // selectable on their own.
-    for (const name of ["idle", "bombardment", "turret_yaw", "gun_pitch"]) {
-      expect(
-        screen.getByRole("button", { name: new RegExp(name) }),
-      ).toBeInTheDocument();
-    }
-    // The `auto` joints are not offered as standalone picker entries.
-    expect(screen.queryByRole("button", { name: /radar_spin/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /tread_l/ })).toBeNull();
+    // Animations mode (default): every animation is selectable; caller joints are not
+    // shown here.
+    expect(screen.getByRole("button", { name: /idle/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /bombardment/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: /turret_yaw/ })).toBeNull();
+
+    // Joints mode: each caller joint gets a slider. `auto` joints (driven only by the
+    // animations) are not posable on their own.
+    fireEvent.click(screen.getByRole("radio", { name: "Joints" }));
+    expect(
+      screen.getByRole("slider", { name: /turret_yaw/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /gun_pitch/ })).toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: /radar_spin/ })).toBeNull();
+    expect(screen.queryByRole("slider", { name: /tread_l/ })).toBeNull();
+
+    // Meshes mode: every part is listed for isolation, alongside an "All parts" entry.
+    fireEvent.click(screen.getByRole("radio", { name: "Meshes" }));
+    expect(
+      screen.getByRole("button", { name: /All parts/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /chassis/ })).toBeInTheDocument();
   });
 
-  it("offers a GIF download for animations but not caller joints", async () => {
+  it("counts the joints an animation actually drives, from its tracks", async () => {
     await act(async () => {
       render(<VoxelResultSection view={VIEW} />);
     });
 
-    // The first view (the `idle` animation) is selected by default; it loops over a
-    // period, so it can be baked to a GIF.
+    // `bombardment` declares two joints but its produced tracks drive only one, so the
+    // summary reflects the one it actually animates — not "0 joints" (the bug this
+    // guards, from reading the empty declared list) and not the declared two.
+    expect(
+      screen.getByRole("button", { name: /bombardment/ }),
+    ).toHaveTextContent("1 joint ·");
+  });
+
+  it("shows the model's geometry stats (bounding box, vertices, triangles)", async () => {
+    await act(async () => {
+      render(<VoxelResultSection view={VIEW} />);
+    });
+
+    // The mock chassis mesh is a single triangle: 3 vertices, 1 triangle.
+    expect(screen.getByText(/3 verts/)).toBeInTheDocument();
+    expect(screen.getByText(/1 tris/)).toBeInTheDocument();
+  });
+
+  it("offers a GIF download for an animation, not for posed joints", async () => {
+    await act(async () => {
+      render(<VoxelResultSection view={VIEW} />);
+    });
+
+    // The `idle` animation is selected by default; it loops over a period, so it can
+    // be baked to a GIF.
     expect(
       screen.getByRole("button", { name: "Download GIF" }),
     ).toBeInTheDocument();
 
-    // A caller-driven joint is posed by a slider, not time — nothing to capture.
-    fireEvent.click(screen.getByRole("button", { name: /turret_yaw/ }));
+    // Joints mode poses with a slider, not time — nothing to capture.
+    fireEvent.click(screen.getByRole("radio", { name: "Joints" }));
     expect(screen.queryByRole("button", { name: "Download GIF" })).toBeNull();
 
-    // A named animation loops over its period, so the download returns.
+    // Back in Animations, a named playable loops over its period, so it returns.
+    fireEvent.click(screen.getByRole("radio", { name: "Animations" }));
     fireEvent.click(screen.getByRole("button", { name: /bombardment/ }));
     expect(
       screen.getByRole("button", { name: "Download GIF" }),

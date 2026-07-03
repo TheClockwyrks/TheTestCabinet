@@ -458,10 +458,17 @@
   border-radius: t.$radius-md;
   overflow: hidden;
 
+  // Pin the section to the preview's height so a long sidebar list scrolls within
+  // the sidebar rather than stretching the row taller than the preview (which would
+  // leave empty space beside it). `--rig-preview-size` is set inline from the TS
+  // preview-size constant; the extra padding matches the stage's.
+  block-size: calc(var(--rig-preview-size, 480px) + #{t.$space-md} * 2);
+
   // On a narrow viewport the side-by-side split gets cramped; stack the sidebar
-  // above the preview.
+  // above the preview and let the content decide the height.
   @include bp.below(t.$bp-sm) {
     grid-template-columns: 1fr;
+    block-size: auto;
   }
 }
 
@@ -472,6 +479,19 @@
   padding: t.$space-md;
   min-width: 0;
   min-height: 0;
+  // Bound the sidebar to the pinned row height so its scroll region (the mode list)
+  // is what scrolls, not the whole row.
+  overflow: hidden;
+}
+
+// The whole-model geometry readout (bounding box · vertices · triangles), shown
+// beneath the mode switch. A compact, muted, wrapping row of stats.
+.voxelStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 // The preview column, set off from the sidebar by a divider — which becomes a top
@@ -490,30 +510,18 @@
   }
 }
 
-// The rig preview's view picker: a grouped, scrollable list of the rig's
-// animations/joints, one of which drives the single shared canvas. It fills the
-// sidebar and scrolls a long list within it, rather than pushing the slider or the
-// preview out of view.
-.voxelPicker {
+// The rig preview's mode list: the scrollable list of the active mode's entries
+// (animations, caller-joint sliders, or part meshes), one of which drives the single
+// shared canvas. It grows to fill the sidebar between the mode switch and the GIF
+// button, and scrolls a long list within itself rather than stretching the row past
+// the preview.
+.voxelModeList {
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
-  flex: 0 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
-}
-
-.voxelPickerGroup {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.voxelPickerGroupLabel {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: t.$color-text-muted;
 }
 
 .voxelPickerButton {
