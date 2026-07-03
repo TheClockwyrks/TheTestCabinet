@@ -31,28 +31,38 @@ in which case the reviewer is shown exactly those animations and frames beside t
 item — with a toggle between the live animation and the still frames — instead of
 scanning the whole sheet to find them.
 
-## Voxel regeneration
+## Voxel validation
 
-A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run
-regenerates in the same way, one dimension up. The validator replays each part's
-recorded operation log through the **same voxel-and-raster library** the
-[voxel binary](/testing/asset-generation/voxel-binaries/) used and, per part,
-produces two artifacts:
+A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run is **not
+regenerated**. Where a sprite's output is replayed from its recorded action log, a
+voxel run's output is the data the
+[voxel binary](/testing/asset-generation/voxel-binaries/) **emits** —
+[`crates/core`](/components/core/overview/) neither re-runs the operation log nor
+re-renders any preview. Instead the validator **parses the emitted data**, per part,
+and confirms it is well-formed and readable:
 
-- **`voxels.json`** — the sparse, order-stable voxel data (only occupied cells,
-  each an opaque `#rrggbb`, within the declared `[voxel]` volume). This is what the
-  frontend renders as an interactive 3D model with three.js (see
-  [voxel-runtime](/components/voxel-runtime/overview/)); it is a produced artifact,
-  not part of the run record.
-- **the regenerated isometric preview PNG** — rasterized by the same fixed,
-  integer-only isometric projection the binary previews with. This is the **scored
-  output** for the part.
+- **the emitted geometry** — the meshed surface as a per-part `mesh.json` (the
+  `PartMesh` shape the runtime and the [glTF
+  exporter](/components/voxel-runtime/overview/#exporting-to-gltf) consume) and, for
+  the cube tools (`voxel`/`voxel-anim`), the sparse, order-stable `voxels.json`
+  alongside it (only occupied cells, each an opaque `#rrggbb`, within the declared
+  `[voxel]` volume). These are produced artifacts, not part of the run record; they
+  are what the frontend renders as an interactive 3D model with three.js (see
+  [voxel-runtime](/components/voxel-runtime/overview/)).
+- **the rendered preview PNG(s)** — the previews the binary rendered during the run
+  (see [voxel binaries](/testing/asset-generation/voxel-binaries/)). These are taken
+  as the reviewer sees them, not reproduced.
 
-A **static model** (`voxel-model`) has one part — the whole model — so it
-regenerates one `voxels.json` and one preview. An **animated model**
-(`voxel-animation`) regenerates **one per declared part**, independently, each with
-its own cheat-divergence; there is no assembled-model aggregate. The
-per-part previews are the scored artifacts.
+The validator confirms this emitted data is **valid** — parseable, within the
+declared volume, and (for an animated model) satisfying the [rig contract](#the-rig)
+below — but it does **not** re-derive the geometry or police how it was produced.
+The output is what is judged, not the production path. Scoring is on that
+emitted-data validity plus the reviewer's judgment of the rendered previews.
+
+A **static model** (`voxel-model`) has one part — the whole model — so it emits one
+geometry set and one preview. An **animated model** (`voxel-animation`) emits **one
+set per declared part**, independently; there is no assembled-model aggregate. The
+per-part emitted data and previews are the scored artifacts.
 
 ### The rig
 
@@ -85,12 +95,10 @@ strong sign it tried to bypass the drawing tool. The divergence is recorded so a
 reviewer sees it; because only the regenerated image is ever scored, a model gains
 nothing from drawing outside the tool, and the mismatch simply marks the attempt.
 
-For a **voxel** run the identical check runs on the **isometric preview PNG**: the
-one fixed rasterizer serves both the binary's in-container preview and the
-validator's regeneration, so a model that placed voxels only through the tool
-regenerates to the same PNG and a model that wrote a preview image directly
-diverges. For an animated model each **part** carries its own cheat-divergence,
-measured against that part's on-disk preview.
+This check applies only to the 2D drawing tools. A
+[voxel run](#voxel-validation) is judged on its **emitted data** (see above) and is
+not policed this way — the geometry and preview it emits are what a reviewer
+evaluates, whatever produced them.
 
 ## Review
 

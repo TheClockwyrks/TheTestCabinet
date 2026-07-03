@@ -53,7 +53,7 @@ interfaces. A host imports only what it needs.
   [asset-generation](/testing/asset-generation/overview/) run's media — the
   regenerated, target, and preview images plus the action log, and for a
   [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
-  regenerated `voxels.json` and `rig.json` — the same way (a
+  emitted `mesh.json` (plus `voxels.json` for the cube tools) and `rig.json` — the same way (a
   published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
   run from the artifact service's matching endpoint; the site from snapshot
   assets), which the **Verdict** tab's result view shows side by side. A voxel run
@@ -62,15 +62,15 @@ interfaces. A host imports only what it needs.
   [voxel-runtime](/components/voxel-runtime/overview/)'s `VoxelRig` (a `voxel-model`
   auto-rotating; a `voxel-animation` orbit-drag with a range control per caller
   joint, e.g. `turret_yaw`, playback of each auto-play joint, and a play button per
-  case-authored **predetermined animation**), falling back to the regenerated
-  preview PNG where WebGL is unavailable or reduced motion is requested so the run
+  case-authored **predetermined animation**), falling back to the emitted
+  preview PNG (rendered by the binary with wgpu) where WebGL is unavailable or reduced motion is requested so the run
   stays reviewable. Each 3D view carries an **expand-to-fullscreen** button: inline,
   scroll-to-zoom is disabled (the model rotates but does not zoom); expanded, both
   scroll-to-zoom and grab-to-rotate are enabled. The **live monitor** renders a
   voxel run's in-progress model the same way — rebuilding it in 3D from the streamed
-  `voxels.json` after each operation (a **Scene** view assembling every part whose
+  `mesh.json` after each operation (a **Scene** view assembling every part whose
   mount location is known, and a **Model** view for one part at a time) instead of
-  the flat isometric PNG. (Both
+  the emitted preview PNG. (Both
   consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
   desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks

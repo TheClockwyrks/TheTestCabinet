@@ -5,8 +5,8 @@ title: Voxel binaries
 A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs)
 asset-generation run sculpts through a **voxel binary** on its `PATH` — the only
 channel for placing a voxel, the 3D counterpart of the
-[drawing binaries](/testing/asset-generation/binaries/). There are two, sharing
-one voxel-and-raster implementation:
+[drawing binaries](/testing/asset-generation/binaries/). There are two, both built
+on the shared `model-core` library:
 
 - **`voxel`** — for a [static model](/testing/asset-generation/manifests/#voxel-cases)
   (`asset_kind = "voxel-model"`): one opaque-RGB voxel volume, sculpted as a single
@@ -17,20 +17,23 @@ one voxel-and-raster implementation:
   of **rig subcommands** that build the parts and joints hierarchy **and author the
   animations**.
 
-The binaries are built from `crates/voxel` and each is baked into its own
+The binaries are built from `crates/voxel` and `crates/voxel-anim` on the shared
+`crates/model-core` library — the rig/animation model, the CLI record/preview
+plumbing, the cube mesher, and the `wgpu` renderer — and each is baked into its own
 [run-container image](/components/core/execution/#containerization): `voxel` into
 the **voxel image** (`test-cabinet-voxel`) and `voxel-anim` into the
 **voxel-animation image** (`test-cabinet-voxel-animation`), so a run carries only
-the tool it uses. The same library regenerates the voxels and the isometric
-preview after the run (see [Evaluation](/testing/asset-generation/evaluation/)), so
-a model produced any other way cannot match.
+the tool it uses. Nothing is regenerated or re-rendered after the run: the binary
+**emits** the geometry (`voxels.json` and a per-part `mesh.json`) and the rig
+(`rig.json`), and the validator parses those and confirms they are well-formed (see
+[Evaluation](/testing/asset-generation/evaluation/)).
 
 ## Voxels are opaque and the volume starts empty
 
 Every voxel cell is an **opaque `#rrggbb`** color — there is **no alpha**, so an
 operation that touches a cell either sets it to a solid color or clears it back to
 empty; nothing composites. The voxel volume always **starts empty**; the
-`background` a case declares is only the isometric preview PNG's clear color and
+`background` a case declares is only the preview PNG's clear color and
 never places a voxel. Coordinates are the volume's integer grid: `x` across,
 `y` **up**, `z` in depth, each in `0..extent`.
 
@@ -69,40 +72,40 @@ The operations are:
 Coordinates are **signed** (a shape may be placed partially outside the volume; the
 out-of-bounds portion is **clipped**, never a panic); sizes and radii are unsigned.
 Colors are opaque `#rrggbb`. A set/fill operation **replaces** the cells it touches,
-so the recorded log regenerates to an exact, order-only volume.
+so the recorded log produces an exact, order-only volume.
 
 ## How a call records and previews
 
-Each operation appends itself to the run's **operation log** and re-renders the
-**preview** from the whole log, so the recorded log is always the single source of
-truth and the preview always reflects it. The orchestrator seeds a
-`voxel.config.json` (static) or `voxel-anim.config.json` (animated) next to the
-workspace giving the volume dimensions, background, the log/preview paths — and,
-for the animated tool, the part list and the `rig.json` path — so an operation
-needs no volume flags. A model reads the preview between calls to judge its
-progress.
+Each operation appends itself to the run's **operation log**, updates the part's
+emitted geometry — the `voxels.json` and a per-part `mesh.json` (the meshed surface
+in the runtime's `PartMesh` shape) — and re-renders the **preview** from that
+geometry, so the recorded log documents every operation and the emitted data and
+preview always reflect it. The orchestrator seeds a `voxel.config.json` (static) or
+`voxel-anim.config.json` (animated) next to the workspace giving the volume
+dimensions, background, the log/preview/geometry paths — and, for the animated tool,
+the part list and the `rig.json` path — so an operation needs no volume flags. A
+model reads the preview between calls to judge its progress.
 
 ```
-voxel init    # write an empty log and a blank isometric preview (a run starts pre-seeded)
-voxel render --actions <log> --out <png> --width <w> --height <h> --depth <d>   # regenerate a log
+voxel init    # write an empty log, blank preview, and empty geometry (a run starts pre-seeded)
+voxel render --actions <log> --out <png> --width <w> --height <h> --depth <d>   # re-render a log's preview
 ```
 
-### The isometric preview
+### The preview
 
-The preview each call re-renders is a **fixed isometric** projection rasterized by
-an **integer-only painter's algorithm** — occupied voxels drawn back-to-front,
-three visible cube faces each with a fixed shading multiplier, encoded with the
-same PNG encoder the sprite tools use so the validator's decoder round-trips it.
-The camera constants (the isometric basis, the cube edge in pixels, and the output
-dimensions derived from the volume `[voxel]` dims) are fixed in the binary and
-shared with the validator — this **one rasterizer serves both** the in-container
-preview and the post-run regeneration, which is what makes
-[cheat-divergence](/testing/asset-generation/evaluation/) meaningful: a model that
-places voxels only through the tool regenerates to the same PNG, and a model that
-writes an image directly diverges. The preview is a **still** image; the
-interactive, rotatable 3D view is the frontend's three.js rendering of the
-regenerated `voxels.json` (see [voxel-runtime](/components/voxel-runtime/overview/)),
-not something the binary produces.
+The preview each call re-renders is a real **3D render of the meshed model**. The
+binary meshes the voxel volume into geometry and renders it with **`wgpu` targeting
+Mesa lavapipe** — software Vulkan, running on the CPU, headless (there is no GPU in
+the run container) — through an **orbit camera** with directional shading, encoded
+as a PNG. This generic mesh renderer lives in `model-core` and serves every
+voxel-family binary, so previews are apples-to-apples across tools. It **replaces**
+the retired integer-only isometric rasterizer (`crates/voxel/src/raster.rs`); the
+preview no longer needs to be byte-reproducible, because nothing regenerates it
+after the run (see [Evaluation](/testing/asset-generation/evaluation/)). The preview
+is a **still** image; the interactive, rotatable 3D view is the frontend's three.js
+rendering of the emitted `mesh.json`/`voxels.json` (see
+[voxel-runtime](/components/voxel-runtime/overview/)), not something the binary
+produces.
 
 ## Live preview
 
@@ -113,17 +116,17 @@ the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
 orchestrator adds a `live` block to the seeded config, and after each operation the
 binary connects back to the run host and streams a one-line JSON header
 (`{ token, frame, operationCount, operation, length, voxelLength }`) followed by the
-freshly rendered isometric PNG's raw bytes and then the part's current `voxels.json`
+freshly rendered preview PNG's raw bytes and then the part's current `voxels.json`
 text (`voxelLength` bytes). The voxel body lets the viewer rebuild the model **in
 3D** as it is sculpted — rotating it and assembling the scene exactly as the
-finished-run view does — rather than showing only the flat isometric PNG; a
+finished-run view does — rather than showing only the still preview PNG; a
 PNG-only viewer simply ignores it. For an animated model the `frame` field carries
 the **part index**, so the viewer can show the most-recently-sculpted part, the
 status of every part, and the assembled scene at once (a static model uses part
 index `0`). Streaming is **best-effort and non-essential** — absent for an unwatched
 run, never fails an operation, and never recorded; the recorded **operation log**
-remains the run's authoritative output, and the reviewed voxels and preview are
-always [regenerated](/testing/asset-generation/evaluation/) from it.
+documents how the model built each part, and the reviewed artifacts are the geometry
+and preview the binary [emits](/testing/asset-generation/evaluation/).
 
 ## `voxel-anim`: one volume per part, plus the rig
 
@@ -149,10 +152,10 @@ voxel-anim render --actions <log> --out <png> --width 32 --height 24 --depth 32
 ```
 
 The seeded `voxel-anim.config.json` lists the declared part names and the `{part}`
-templates, so `voxel-anim init` initializes every part's empty log and blank
-preview and seeds a `rig.json` pre-populated with the case's **required** parts and
-joints. The **per-part previews are the scored artifacts** (each deterministic);
-the assembled scene below is a non-scored extra.
+templates, so `voxel-anim init` initializes every part's empty log, blank preview,
+and empty geometry and seeds a `rig.json` pre-populated with the case's **required**
+parts and joints. The **per-part emitted data and previews are the scored
+artifacts**; the assembled scene below is a non-scored extra.
 
 ### The assembled scene
 
@@ -168,11 +171,11 @@ one PNG per view:
 voxel-anim scene        # re-render the assembled scene on demand (also automatic after each op)
 ```
 
-- **`iso`** — the same isometric projection as the per-part previews, for a 3D read
-  of the whole model.
-- **`front`**, **`side`**, **`top`** — flat orthographic elevations (one voxel is
-  one filled square; the nearest voxel along the view axis wins), so it is easy to
-  check a part is centered and aligned head-on.
+- **`iso`** — a 3D orbit render matching the per-part previews, for a read of the
+  whole model.
+- **`front`**, **`side`**, **`top`** — orthographic-camera elevations of the meshed
+  model down each axis, so it is easy to check a part is centered and aligned
+  head-on.
 
 The scene composes parts at **rest** (the required rig rests at `0`, so this is the
 true rest pose); it does not apply joint motion — the interactive, posable view is

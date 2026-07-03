@@ -260,10 +260,11 @@ pixel (there is no alpha). The two 3D
 [asset-generation](/testing/asset-generation/overview/) kinds sculpt into a fixed
 voxel volume, which always starts empty: `voxel-model` produces a
 static model and `voxel-animation` produces a [rig](#rig) — named [parts](#part)
-posed by named [joints](#joint). A voxel run's authoritative output is its recorded
-operation log; the validator regenerates the sparse `voxels.json` cells and an
-isometric preview from it, and the frontend renders an interactive 3D model with
-three.js. See
+posed by named [joints](#joint). A voxel run's authoritative output is the data its
+voxel binary **emits** — the meshed geometry (a per-part `mesh.json`, plus the
+sparse `voxels.json` for the cube tools) and a rendered preview; the validator
+parses and validates that emitted data rather than regenerating it, and the
+frontend renders an interactive 3D model with three.js. See
 [Voxel models and rigs](/testing/asset-generation/overview/#voxel-models-and-rigs).
 
 ## Web Console

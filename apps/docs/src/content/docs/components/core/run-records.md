@@ -89,16 +89,23 @@ The harness version is not duplicated here; it lives in the subject.
   is informational and does not affect the run's status.
 - For an [asset-generation](/testing/asset-generation/overview/) run, an
   **asset** result instead of (end-to-end) checks: the run-root-relative paths to
-  the regenerated image (the output a human reviews against the brief), the
-  model's on-disk preview, and the recorded action log; the recorded operation
-  count; and the **cheat divergence** (how far the regenerated image differs from
-  the model's preview, `0..=1`, or null when there was no readable preview to
-  compare). There is no target image and no fidelity score — the asset is judged
-  subjectively against the brief; cheat divergence is recorded rather than gated.
-  On publish the media files are uploaded and served back as per-run media
-  (`/runs/<id>/asset/<file>`, where `<file>` is `regenerated.png`, `preview.png`,
-  or `actions.json`) so the gallery can show the result. The field is absent on an
-  end-to-end run.
+  the run's produced media, the recorded action log, and the recorded operation
+  count. There is no target image and no fidelity score — the asset is judged
+  subjectively against the brief. The produced media, and whether a cheat signal is
+  recorded, depend on the
+  [asset kind](/testing/asset-generation/overview/#asset-kinds). A **2D sprite or
+  sprite-sheet** run carries the regenerated image (the output a human reviews
+  against the brief), the model's on-disk preview, and the **cheat divergence** (how
+  far the regenerated image differs from the model's preview, `0..=1`, or null when
+  there was no readable preview to compare), which is recorded rather than gated. A
+  **voxel** run is not regenerated and carries no cheat divergence: it carries the
+  **emitted geometry** — a per-part `mesh.json` (plus the sparse `voxels.json` for
+  the cube tools, and `rig.json` for an animated model) — and the binary's rendered
+  preview. On publish the media files are uploaded and served back as per-run media
+  (`/runs/<id>/asset/<file>`, where `<file>` is `regenerated.png`, `preview.png`, or
+  `actions.json` for a sprite and `mesh.json`, `voxels.json`, `rig.json`, or
+  `preview.png` for a voxel run) so the gallery can show the result. The field is
+  absent on an end-to-end run.
 
 ### Links
 

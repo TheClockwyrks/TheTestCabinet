@@ -23,7 +23,9 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (per-frame files)
-                             # | "voxel-model" | "voxel-animation" (3D — see "Voxel cases" below)
+                             # | a 3D voxel kind: "voxel-model"/"voxel-animation" (cube cells),
+                             # "mc-model"/"mc-animation", "sn-model"/"sn-animation",
+                             # "dc-model"/"dc-animation" (meshed) — see "Voxel cases" below
 
 # Variants: an ORDERED list of paths to standalone variant files (first = default).
 # Because `variants` is a root key, it must appear BEFORE the first table header
@@ -115,15 +117,18 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   score against — declaring one, common or per-variant, is rejected).
 - `asset_kind` chooses the **shape** of the asset within an asset-generation
   case: `"sprite"` (the default — one sprite drawn onto the whole canvas),
-  `"sprite-sheet"` (a set of animation frames, each a separate file),
-  `"voxel-model"` (a static 3D voxel model), or `"voxel-animation"` (a rigged,
-  animated 3D voxel model). It is a property of the whole version, **not** a
-  variant axis — a case is exactly one kind, never a mix, and a variant cannot
-  change it. `asset_kind` (and the `[sheet]`, `[voxel]`, and `[model]` tables) are
-  only valid for an asset-generation case; an explicit value on any other type is
-  rejected. The two 2D kinds declare a `[canvas]`; the two 3D kinds declare a
-  `[voxel]` volume instead (see [Voxel cases](#voxel-cases)) — a voxel case must
-  **not** declare `[canvas]`, and a 2D case must **not** declare `[voxel]`.
+  `"sprite-sheet"` (a set of animation frames, each a separate file), or one of the
+  3D **voxel** kinds — the **cube** kinds `"voxel-model"` (static) and
+  `"voxel-animation"` (rigged, animated), or the **meshed** kinds `"mc-model"`,
+  `"sn-model"`, `"dc-model"` (static) and `"mc-animation"`, `"sn-animation"`,
+  `"dc-animation"` (rigged, animated). It is a property of the whole version,
+  **not** a variant axis — a case is exactly one kind, never a mix, and a variant
+  cannot change it. `asset_kind` (and the `[sheet]`, `[voxel]`, and `[model]`
+  tables) are only valid for an asset-generation case; an explicit value on any
+  other type is rejected. The two 2D kinds declare a `[canvas]`; every 3D voxel
+  kind declares a `[voxel]` volume instead (see [Voxel cases](#voxel-cases)) — a
+  voxel case must **not** declare `[canvas]`, and a 2D case must **not** declare
+  `[voxel]`.
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
   each just the `index` it is written to (passed as
@@ -211,13 +216,18 @@ domain = "fidelity"
 
 ## Voxel cases
 
-A **voxel** case (`asset_kind = "voxel-model"` or `"voxel-animation"`) produces a
-3D asset instead of a 2D image. It replaces the `[canvas]` table with a `[voxel]`
-table and reuses `[tool]` and `[output]` unchanged in shape; an animated case adds
-a `[model]` table declaring the [rig](/testing/asset-generation/overview/#the-rig-parts-and-joints).
-Everything else on the page — `type`, `variants`, `[[spec]]`, `[[domain]]`,
-`[[review_item]]`, the no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules —
-behaves exactly as above.
+A **voxel** case produces a 3D asset instead of a 2D image. There are eight voxel
+kinds in two families: the **cube** kinds (`asset_kind = "voxel-model"` or
+`"voxel-animation"`), which sculpt discrete opaque cells, and the **meshed** kinds
+(`"mc-model"`/`"mc-animation"`, `"sn-model"`/`"sn-animation"`,
+`"dc-model"`/`"dc-animation"`), which extract a surface from a signed-distance field
+(see [Meshed voxel models](/testing/asset-generation/overview/#meshed-voxel-models)).
+Every voxel kind replaces the `[canvas]` table with a `[voxel]` table and reuses
+`[tool]` and `[output]` unchanged in shape; every **animated** kind (any
+`-animation`) adds a `[model]` table declaring the
+[rig](/testing/asset-generation/overview/#the-rig-parts-and-joints). Everything else
+on the page — `type`, `variants`, `[[spec]]`, `[[domain]]`, `[[review_item]]`, the
+no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules — behaves exactly as above.
 
 ```toml
 # A static voxel model (asset_kind = "voxel-model").
@@ -233,13 +243,13 @@ background = "transparent"   # PNG preview clear color only: transparent | a hex
                              # (it never places a voxel; the volume is always empty to start)
 
 # The building binary. `voxel` for a static model, `voxel-anim` for an animated
-# one. `preview` is where the binary rasterizes the isometric PNG after each op.
+# one. `preview` is where the binary writes the wgpu PNG preview after each op.
 [tool]
 binary  = "voxel"            # the voxel binary in the environment (required)
-preview = "model.png"        # where the isometric preview is written (a {part} template for voxel-animation)
+preview = "model.png"        # where the preview PNG is written (a {part} template for voxel-animation)
 
-# Where the recorded operation log is collected — the authoritative output the
-# voxel data and preview are regenerated from.
+# Where the recorded operation log is collected. A cube case names its op log here;
+# a meshed case names its emitted mesh instead (see below).
 [output]
 actions = "actions.json"     # the ordered op record (a {part} template for voxel-animation)
 ```
@@ -325,21 +335,83 @@ auto_play = false          # true = plays continuously by default (a decorative 
 joints    = ["hip_l", "knee_l", "hip_r", "knee_r"]  # the joints the model MUST drive
 ```
 
+A **meshed** case (`asset_kind` beginning `mc-`, `sn-`, or `dc-`) is identical in
+manifest shape to a cube case — it frames the same `[voxel]` volume, and its
+animated kinds carry the same `[model]` rig — but its `[tool].binary` is the
+corresponding **meshing binary** and its `[output]` names the emitted per-part
+**`mesh.json`** (the triangle mesh the surface extractor produces) rather than an
+op log:
+
+```toml
+# A static meshed model (asset_kind = "dc-model"; mc-model / sn-model are identical
+# in shape — only the binary differs).
+asset_kind = "dc-model"
+
+[voxel]
+width  = 48                  # the field bounds — the same volume table as a cube case,
+height = 48                  # here framing the signed-distance field the surface is
+depth  = 48                  # extracted from (see "Meshed voxel models")
+background = "transparent"
+
+[tool]
+binary  = "dc"               # the meshing binary: mc | sn | dc (static),
+                             # mc-anim | sn-anim | dc-anim (animated)
+preview = "model.png"        # where the wgpu preview PNG is written (a {part} template for an animated kind)
+
+[output]
+mesh = "mesh.json"           # the emitted per-part mesh (a {part} template for an animated kind)
+```
+
+An **animated** meshed case (`mc-animation`, `sn-animation`, `dc-animation`) uses the
+`-anim` binary and, exactly like `voxel-animation`, makes `[tool].preview` and
+`[output].mesh` `{part}` templates and adds the `[model]` rig table:
+
+```toml
+# A rigged, animated meshed model (asset_kind = "sn-animation").
+asset_kind = "sn-animation"
+
+[voxel]
+width = 40
+height = 32
+depth = 40
+background = "transparent"
+
+[tool]
+binary  = "sn-anim"          # required for sn-animation (mc-anim / dc-anim for the others)
+preview = "parts/{part}.png"    # {part} REQUIRED for an animated kind
+
+[output]
+mesh = "parts/{part}.mesh.json" # {part} REQUIRED for an animated kind
+
+# The REQUIRED rig — parts, joints, and animations — declared EXACTLY as for
+# voxel-animation (the [[model.part]] / [[model.joint]] / [[model.animation]]
+# entries above). Required for — and only for — an animated kind.
+[model]
+```
+
 - The **`[voxel]`** table fixes the bounding volume: its `width`, `height` (up),
-  and `depth` in voxels, and the `background` used **only** as the isometric
-  preview PNG's clear color — it never places a voxel, because the volume always
-  starts **empty**. It is required for — and only for — a voxel case, and replaces
-  `[canvas]`: a voxel case declaring `[canvas]`, or a 2D case declaring `[voxel]`,
-  is rejected. Voxel cells are **opaque `#rrggbb`** (there is no alpha).
+  and `depth` in voxels, and the `background` used **only** as the preview PNG's
+  clear color — it never places material, because the volume always starts
+  **empty**. For a cube case it bounds the sculpted cells; for a meshed case it
+  frames the signed-distance field the surface is extracted from. It is required
+  for — and only for — a voxel case, and replaces `[canvas]`: a voxel case declaring
+  `[canvas]`, or a 2D case declaring `[voxel]`, is rejected. Voxel material is
+  **opaque `#rrggbb`** (there is no alpha).
 - The **`[tool]`** and **`[output]`** tables work exactly as for a sprite, with the
-  voxel binaries: `binary = "voxel"` for a static model, `"voxel-anim"` for an
-  animated one (see
-  [The voxel binaries](/testing/asset-generation/voxel-binaries/)). For
-  `voxel-animation` — where each part is a separate log and preview — `preview` and
-  `actions` **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a
-  static `voxel-model` they name single files and must **not** carry `{part}`.
-- The **`[model]`** table is **required for — and only for — `asset_kind =
-  "voxel-animation"`**. It declares the rig's `[[model.part]]` hierarchy,
+  voxel binaries. `[tool].binary` is the binary for the kind: `voxel` / `voxel-anim`
+  for the cube kinds, and `mc` / `sn` / `dc` (static) or `mc-anim` / `sn-anim` /
+  `dc-anim` (animated) for the meshed kinds (see
+  [The voxel binaries](/testing/asset-generation/voxel-binaries/)). Which binary a
+  case names fixes the output's **character** — a cube volume, or an `mc` low-poly,
+  `sn` smooth, or `dc` sharp-edged surface — it is **not** a manifest knob. A cube
+  case's `[output]` names its `actions` op log; a meshed case's names the emitted
+  per-part `mesh` (`mesh.json`). For an **animated** kind — where each part is
+  authored, previewed, and emitted separately — `preview` and the `[output]` path
+  **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a **static**
+  kind they name single files and must **not** carry `{part}`.
+- The **`[model]`** table is **required for — and only for — an animated voxel
+  kind** (`voxel-animation` or any meshed `-animation`: `mc-animation`,
+  `sn-animation`, `dc-animation`). It declares the rig's `[[model.part]]` hierarchy,
   `[[model.joint]]` degrees of freedom, and the **required `[[model.animation]]`
   declarations**. Resolution validates that part names are unique, the **first**
   part is the root (no `parent`), every other `parent` names a declared part, the
@@ -378,9 +450,9 @@ joints    = ["hip_l", "knee_l", "hip_r", "knee_r"]  # the joints the model MUST 
   viewer poses the full rig. See
   [Evaluation](/testing/asset-generation/evaluation/).
 
-A voxel-animation `[[review_item]]` may name the caller **joints** it is about (the
-analog of a sprite sheet's `sequences`/`frames`), so the review UI surfaces exactly
-that joint's viewer and control beside the item.
+An animated voxel case's `[[review_item]]` may name the caller **joints** it is
+about (the analog of a sprite sheet's `sequences`/`frames`), so the review UI
+surfaces exactly that joint's viewer and control beside the item.
 
 :::caution[Re-ingest after editing]
 The test type and the `[canvas]`/`[voxel]`/`[tool]`/`[output]`/`[model]` tables

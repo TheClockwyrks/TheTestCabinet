@@ -70,7 +70,8 @@ than scored.
 ## Asset kinds
 
 A case declares, with its `asset_kind`, **what shape of asset** the model produces
-— today one of four, split across two dimensionalities:
+— today one of ten, split across two dimensionalities and, in 3D, two building
+paradigms:
 
 - **`sprite`** (the default) — a **single sprite**: one image drawn onto the whole
   canvas with the [`draw` binary](/testing/asset-generation/binaries/).
@@ -78,17 +79,27 @@ A case declares, with its `asset_kind`, **what shape of asset** the model produc
   **completely separate file** (its own canvas, not a region of one larger image),
   drawn with the [`draw-sheet` binary](/testing/asset-generation/binaries/) and a
   required `--frame <index>`.
-- **`voxel-model`** — a **static 3D voxel model**: an opaque-RGB voxel volume
-  sculpted with the [`voxel` binary](/testing/asset-generation/voxel-binaries/).
-- **`voxel-animation`** — a **rigged, animated 3D voxel model**: a hierarchy of
-  named parts with named joints, each part sculpted with the
-  [`voxel-anim` binary](/testing/asset-generation/voxel-binaries/) and a required
-  `--part <name>`.
+- **`voxel-model`** / **`voxel-animation`** — the **cube voxel** kinds: an
+  opaque-RGB voxel volume of **discrete cells**, sculpted with the [`voxel` /
+  `voxel-anim` binaries](/testing/asset-generation/voxel-binaries/). `voxel-model`
+  is a static model; `voxel-animation` is a rigged, animated one — a hierarchy of
+  named parts with named joints, each part sculpted with a required `--part <name>`.
+- **`mc-model`** / **`mc-animation`**, **`sn-model`** / **`sn-animation`**,
+  **`dc-model`** / **`dc-animation`** — the **meshed voxel** kinds: a smooth
+  **surface extracted from a signed-distance field** built by compositing
+  primitives, with the [`mc` / `sn` / `dc`
+  binaries](/testing/asset-generation/voxel-binaries/) (and their `-anim` variants
+  for the animated kinds). Each algorithm gives the surface a fixed character —
+  Marching Cubes low-poly, Surface Nets smooth mid-fidelity, Dual Contouring
+  high-fidelity with sharp edges (see [Meshed voxel
+  models](#meshed-voxel-models)). The `-model` kinds are static; the `-animation`
+  kinds are rigged and animated exactly like `voxel-animation`, each part built
+  with a required `--part <name>`.
 
 `asset_kind` is a property of the whole version, **not** a variant — a case is
-exactly one kind, never a mix, and a variant cannot change it. None of the four
-carries a target: every kind is [regenerated from its recorded
-operations](#why-the-actions-are-the-output) and reviewed against the brief.
+exactly one kind, never a mix, and a variant cannot change it. None of the ten
+carries a target: every kind is reviewed against the brief, never against a
+supplied picture.
 
 A **sprite-sheet** case adds a `[sheet]` table that declares its **frames** (each
 by the index it is written to) and the **animation sequences** — ordered lists of
@@ -98,22 +109,36 @@ sheet by its motion, not just its static pixels.
 
 ## Voxel models and rigs
 
-The two **voxel** kinds move the same regenerate-from-actions design into 3D. The
-model sculpts into a fixed **voxel volume** (declared by a `[voxel]` table:
-`width` × `height` × `depth`) whose cells are **opaque `#rrggbb`** — there is no
-alpha, and the volume starts **empty**. The building binary records every
-operation and, after each one, rasterizes a **deterministic, integer-only
-isometric PNG preview** so the model can read a real image to see its progress —
-exactly the role `canvas.png` plays for a sprite. That PNG is also what
-[cheat-divergence](/testing/asset-generation/evaluation/) is measured against; the
-authoritative output is still the recorded **operation log**, and the validator
-regenerates both the voxel data (`voxels.json`) and the preview from it.
+The **voxel** kinds move asset generation into 3D. The model builds into a fixed
+**voxel volume** (declared by a `[voxel]` table: `width` × `height` × `depth`)
+whose material is **opaque `#rrggbb`** — there is no alpha, and the volume starts
+**empty**. The building binary records every operation and, after each one,
+re-renders a **PNG preview** so the model can read a real image to see its progress
+— exactly the role `canvas.png` plays for a sprite. Previews come from a shared
+**`wgpu` mesh renderer** (an orbit-camera 3D view with lighting), so every voxel
+kind previews through the same real-3D path.
 
-Because the stored voxel data is regenerated, the frontend can render it as an
-**interactive 3D model** with three.js on top of the still preview: a
-`voxel-model` view **auto-rotates** the model, and a `voxel-animation` view gives
-one **orbit-drag** viewer per animation — mirroring how a sprite sheet's sequences
-animate in the review UI.
+There are two families of voxel kinds, differing in **how the model builds** and in
+the geometry each emits:
+
+- The **cube** kinds — `voxel-model` and `voxel-animation` — paint **discrete
+  opaque cells** into the volume with the `voxel` / `voxel-anim` binaries.
+- The **meshed** kinds — `mc-*`, `sn-*`, and `dc-*` — build a **continuous
+  surface** from a signed-distance field, described in [Meshed voxel
+  models](#meshed-voxel-models) below.
+
+Both families emit a **mesh** as their geometry (a per-part `mesh.json`), and both
+are judged the same way: the recorded **operation log** and the emitted geometry
+(plus the rig, for an animated kind) are the authoritative output, and the
+validator **parses the emitted data**, confirms it is well-formed and readable, and
+checks that the [rig contract](#the-rig-parts-and-joints) is satisfied. There is no
+image-similarity score and no cheat check — what is scored is the emitted data and a
+reviewer's judgment of the rendered previews.
+
+Because the emitted geometry travels in the result, the frontend renders it as an
+**interactive 3D model** with three.js: a static (`-model`) view **auto-rotates**
+the model, and an animated (`-animation`) view gives one **orbit-drag** viewer per
+animation — mirroring how a sprite sheet's sequences animate in the review UI.
 
 ### The rig: parts and joints
 
@@ -160,6 +185,46 @@ limits) the game wires up. **Animations** are baked clips the game plays back �
 walk, recoil, a spinning idle — with their easing captured in F-curves. The
 turret is not a clip (the game rotates the `turret` joint itself, clamped to its
 limits); the walk is not a caller joint (the game just plays it).
+
+## Meshed voxel models
+
+The **meshed** voxel kinds — `mc-model`/`mc-animation`, `sn-model`/`sn-animation`,
+and `dc-model`/`dc-animation` — replace the cube kinds' discrete cells with a
+**smooth surface**. Instead of painting voxels, the model composites a **continuous
+signed-distance field** — a scalar field that, at every point in the `[voxel]`
+volume, records the distance to the nearest surface — by **adding and subtracting
+primitives** (spheres, boxes, ellipsoids, cylinders), optionally with a soft
+`--blend` that fuses them smoothly. The binary then **extracts the surface** of that
+field (its zero level set) into a triangle mesh. This is a CSG-style paradigm rather
+than pixel- or cell-painting, which is why the meshing binaries are separate tools
+with their own vocabulary; see [The voxel
+binaries](/testing/asset-generation/voxel-binaries/).
+
+The three algorithms extract the same field differently, and each gives the surface
+a **fixed character** — you choose the kind (and so the binary) for the look you
+want; it is not a per-case knob:
+
+- **`mc-*` — Marching Cubes** samples the field on a **coarse** grid and emits a
+  **low-poly**, chunky faceted surface.
+- **`sn-*` — Surface Nets** works on a medium grid and emits a **smooth,
+  mid-fidelity** surface: watertight, with uniform triangle density, rounded
+  features, and no sharp edges.
+- **`dc-*` — Dual Contouring** samples on a **fine** grid and solves for feature
+  positions, giving a **high-fidelity** surface that **preserves sharp edges and
+  corners** (and honors a per-primitive sharp-feature tag the other two cannot
+  represent).
+
+This differs from the **cube** kinds (`voxel-model`/`voxel-animation`), which place
+discrete opaque cells and read as blocky, Minecraft-style volumes: the meshed kinds
+never expose individual cells — the volume only **frames the field** the surface is
+extracted from.
+
+Everything else about the voxel family carries over unchanged. The meshed kinds emit
+the same per-part `mesh.json` geometry and preview through the same `wgpu` renderer,
+and — for the animated kinds (`mc-animation`, `sn-animation`, `dc-animation`) — are
+**rigged and animated exactly as `voxel-animation` is**: the same parts, joints, and
+model-authored F-curve animations described under [The rig](#the-rig-parts-and-joints)
+above, one field authored per `--part` and composed and posed by the rig.
 
 See [The voxel binaries](/testing/asset-generation/voxel-binaries/) for how the
 model sculpts and rigs, the [voxel-runtime](/components/voxel-runtime/overview/)

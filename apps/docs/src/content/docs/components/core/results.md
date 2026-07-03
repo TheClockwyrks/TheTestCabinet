@@ -33,11 +33,12 @@ asset-generation — must be released as its **own** public git repository.
   publishing one never creates a repository on GitHub. This covers all four
   [asset kinds](/testing/asset-generation/overview/#asset-kinds) — a sprite or
   sprite-sheet run uploads its regenerated images, and a
-  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run additionally
-  uploads its regenerated `voxels.json` and (for an animated model) `rig.json`, so
+  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run instead
+  uploads its emitted `mesh.json` (plus `voxels.json` for the cube tools) and (for an
+  animated model) `rig.json`, so
   the review UI can render an interactive 3D model: a `voxel-model` auto-rotates and
   a `voxel-animation` gives one orbit-drag viewer per animation with a control per
-  caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-regeneration).
+  caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-validation).
 
 ## Run Record
 
