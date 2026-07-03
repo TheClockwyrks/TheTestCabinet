@@ -9,7 +9,8 @@ that pumps the piston down and back up — so the foundry runs on its own while 
 `base` stays fixed. There is no target model — the model sculpts and rigs toward
 a written brief, and may add its own extra parts and joints on top. The recorded
 per-part operations are regenerated into a rigged 3D model the frontend renders
-with the dish and piston cycling on their clips, and a reviewer judges it against
+with the dish and piston cycling on their auto-play animations, and a reviewer
+judges it against
 the brief: that it reads as a works, the dish sweeps and piston bobs on the correct
 axes without detaching, the base stays fixed, and the dish and piston stay attached
 are what they weigh.

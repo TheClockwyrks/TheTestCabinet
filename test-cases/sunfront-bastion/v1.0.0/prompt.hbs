@@ -26,8 +26,9 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 65 --y1 70 --z1 65 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations as F-curves with `define-animation`/`add-keyframe`), and `voxel-anim
 <operation> --help` for one operation's exact flags — that help text is the
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
@@ -49,9 +50,10 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the keep, the required parts and their pivots, and the three auto
-`crown_spin`, `gate_raise`, and `beacon_spin` joints. Run `voxel-anim --help` for
-the exact operation and rig contract.
+form of the keep, the required parts and their pivots, the three auto `crown_spin`,
+`gate_raise`, and `beacon_spin` joints, and the three required auto-play animations
+you must author as F-curves. Run `voxel-anim --help` for the exact operation, rig,
+and animation contract.
 
 ## What to deliver
 
@@ -60,8 +62,10 @@ matches the brief, the assembled `scene/` previews show the parts fitting togeth
 correctly, and the rig is complete: a massive masonry keep base, a collector crown
 ringing the summit, a gate in the front wall, and a beacon atop the spire. The
 required interface is the three auto **`crown_spin`**, **`gate_raise`**, and
-**`beacon_spin`** joints that turn the crown, lift the gate up and down, and turn
-the beacon on their own, while the `base` stays fixed. Produce **every** required
-part and joint; you may add your own extra parts, joints, or auto-play clips on
-top, but do not drop or contradict the required interface. When you are satisfied,
-stop: the recorded per-part logs and `rig.json` are your finished submission.
+**`beacon_spin`** joints — each driven by a decorative auto-play animation you
+author as F-curves — that turn the crown, lift the gate up and down, and turn the
+beacon on their own, while the `base` stays fixed. Produce **every** required part,
+joint, and animation; you may add your own extra parts, joints, or auto-play
+animations on top, but do not drop or contradict the required interface. When you
+are satisfied, stop: the recorded per-part logs and `rig.json` are your finished
+submission.

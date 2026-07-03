@@ -3,8 +3,9 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bombard Foundry: a 60x68x60 opaque-voxel mortar-works \
-whose overhead crane arm swings and loading piston bobs on their own auto clips \
-while the base stays fixed, built and rigged one recorded operation at a time."""
+whose overhead crane arm swings and loading piston bobs on their own auto-play \
+animations while the base stays fixed, built and rigged one recorded operation at \
+a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -42,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and these animations; at run time
+# it MAY add further parts, joints, and animations of its own (recorded in
+# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
+# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
+# the first operation.
 [model]
 
 # The mortar-works tower and foundation: the root part (no parent), fixed to the
@@ -68,9 +70,9 @@ name = "piston"
 parent = "base"
 pivot = [16, 30, 40]
 
-# The crane arm's own looping swing. An `auto` joint the case drives with a
-# `[[model.clip]]`, a rotation about `x` so the arm swings fore and aft on its own
-# without a caller. `rest = 0` is level; it swings between `min = -0.4` and
+# The crane arm's own looping swing. An `auto` joint driven by the `crane_swing`
+# auto-play animation, a rotation about `x` so the arm swings fore and aft on its
+# own without a caller. `rest = 0` is level; it swings between `min = -0.4` and
 # `max = 0.4` radians.
 [[model.joint]]
 name = "crane_swing"
@@ -83,8 +85,8 @@ max = 0.4
 rest = 0.0
 drive = "auto"
 
-# The loading piston's own looping bob. An `auto` joint the case drives with a
-# `[[model.clip]]`, a downward translation along `y` so the piston stamps on its
+# The loading piston's own looping bob. An `auto` joint driven by the `piston_bob`
+# auto-play animation, a downward translation along `y` so the piston stamps on its
 # own without a caller. `rest = 0` is fully raised; `min = -6` is the bottom of the
 # stroke.
 [[model.joint]]
@@ -98,21 +100,29 @@ max = 0.0
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the mortar-works runs on its own.
-# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
-# (radians for the crane swing, voxels for the piston bob). The crane arm swings
-# aft, then fore, then back; the piston drops down and rises back and loops.
-[[model.clip]]
-joint = "crane_swing"
+# The required animations — one decorative auto-play animation per animated part,
+# so the mortar-works runs on its own. Each is a DECLARATION only: the case fixes
+# the animation's identity and intent (name, period, loop, the joint it drives),
+# and the model authors the F-curve keyframes at run time with the voxel-anim
+# `define-animation`/`add-keyframe` subcommands. `auto_play = true` = a decorative
+# idle that plays continuously. There are no caller joints and no playable
+# animations for this case.
+
+# The crane arm swings aft, then fore, then back on its own.
+[[model.animation]]
+name = "crane_swing"
 period_ms = 2800
 loop = true
-keyframes = [[0, -0.4], [1400, 0.4], [2800, -0.4]]
+auto_play = true
+joints = ["crane_swing"]
 
-[[model.clip]]
-joint = "piston_bob"
+# The piston drops down and rises back up on its own.
+[[model.animation]]
+name = "piston_bob"
 period_ms = 1300
 loop = true
-keyframes = [[0, 0.0], [650, -6.0], [1300, 0.0]]
+auto_play = true
+joints = ["piston_bob"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -124,9 +134,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bombard \
 Foundry and runs correctly — a heavy mortar-works whose overhead crane arm swings \
-fore and aft and whose loading piston bobs down and back up on their own auto \
-clips while the base stays put, with a clear solar-amber energy accent and the \
-disciplined Duneforged palette."""
+fore and aft and whose loading piston bobs down and back up on their own auto-play \
+animations while the base stays put, with a clear solar-amber energy accent and \
+the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-foundry"
@@ -143,12 +153,12 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Crane swings and piston bobs on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
-stays fixed: the `crane_swing` joint rocks the crane arm fore and aft about its \
-mount, and the `piston_bob` joint drives the loading piston straight down and back \
-up in its flank. Across each cycle no voxel of the crane arm or piston tears away \
-from its mount or clips into the works — each moves as one solid piece about the \
-correct axis."""
+The animated elements cycle on their own via their auto-play animations while the \
+`base` stays fixed: the `crane_swing` joint rocks the crane arm fore and aft about \
+its mount, and the `piston_bob` joint drives the loading piston straight down and \
+back up in its flank. Across each cycle no voxel of the crane arm or piston tears \
+away from its mount or clips into the works — each moves as one solid piece about \
+the correct axis."""
 weight = 3
 domain = "fidelity"
 

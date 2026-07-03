@@ -83,33 +83,55 @@ where it sits on the finished keep:
 ## The required joints
 
 All three animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the bastion cycles without any
-caller. There are **no** caller joints.
+joint, driven by a decorative auto-play animation you author, so the bastion cycles
+without any caller. There are **no** caller joints.
 
 - **`crown_spin`** — a **rotation** about the **y** (up) axis, through the crown
   center at pivot **`[36, 76, 36]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the collector
-  crown a full revolution and loops, so it rotates on its own. Sculpt the crown
-  so it rotates plausibly about its center without any voxel tearing away from the
-  summit.
+  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the crown so it rotates
+  plausibly about its center without any voxel tearing away from the summit.
 - **`gate_raise`** — a **translation** along the **y** (up) axis, through the gate
   mount at pivot **`[36, 22, 70]`**, **`drive = "auto"`**. Its range is
   **`min = 0` (fully lowered, shut, at rest) to `max = 16` (fully raised)**,
-  resting at `0`. The clip lifts the gate straight up, holds it open, and lowers
-  it back down, so it raises on its own. Sculpt the gate so it slides plausibly
-  up and down about its mount without any voxel tearing away or clipping the
-  wall.
+  resting at `0`. Sculpt the gate so it slides plausibly up and down about its
+  mount without any voxel tearing away or clipping the wall.
 - **`beacon_spin`** — a **rotation** about the **y** (up) axis, through the beacon
   center at pivot **`[36, 84, 36]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the beacon slowly
-  a full revolution and loops, so it sweeps on its own. Sculpt the beacon so it
-  rotates plausibly about its center without any voxel tearing away from the
-  spire.
+  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the beacon so it rotates
+  plausibly about its center without any voxel tearing away from the spire.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
+## The required animations
+
+You must **author the motion** of each required animation yourself, as **F-curves**,
+with the `voxel-anim` animation subcommands — `define-animation` to declare it,
+then
+`add-keyframe` to lay in each keyframe (see `voxel-anim --help`). The case does
+**not** ship the keyframes: it declares each animation's identity and intent, and
+**you** produce the curves. Each is a decorative **auto-play** idle
+(`auto_play =
+true`, `loop = true`) — it plays continuously on its own with no caller — and drives
+its single joint. Give the motion weight with per-keyframe interpolation
+(`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` Bézier tangents); the elements should move with an
+eased, deliberate cadence, never a mechanical linear slide.
+
+- **`crown_spin`** — `period_ms = 4000`. Drive the `crown_spin` joint one full,
+  smooth revolution (about `-π → +π`) across the loop, so the collector crown turns
+  steadily and continuously on its own.
+- **`gate_raise`** — `period_ms = 3600`. Drive the `gate_raise` joint up from `0`
+  (shut) to `16` (fully raised), **hold it open**, then lower it back to `0`, with
+  weight into the lift and the settle — the gate rises, dwells open, and closes
+  on
+  its own each loop.
+- **`beacon_spin`** — `period_ms = 5000`. Drive the `beacon_spin` joint one slow
+  full revolution (about `-π → +π`) across the loop, so the beacon sweeps steadily
+  and continuously on its own.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this
 (for example flanking pennants, extra pipework, or a rotating dish), but you must
-**not drop or contradict** the required parts or the three auto `crown_spin`,
-`gate_raise`, and `beacon_spin` joints.
+**not drop or contradict** the required parts, the three auto `crown_spin`,
+`gate_raise`, and `beacon_spin` joints, or their three required animations.
 
 ## Working the tool
 
@@ -117,10 +139,12 @@ Sculpt each part up in sensible layers, selecting it with `--part <name>` — fi
 the keep base with its walls, towers, and spire, then the crown, the gate, and the
 beacon, checking each part's preview as you go. Define the parts, pivots, and the
 three auto `crown_spin`, `gate_raise`, and `beacon_spin` joints through the tool's
-rig subcommands (the required parts and joints are already pre-seeded in
-`rig.json`, but confirm they match this brief and adjust pivots to your sculpt).
-Run `voxel-anim --help` for the available operations (setting and clearing single
-voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
-rig subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
+rig subcommands (the required parts, joints, and animation declarations are already
+pre-seeded in `rig.json`, but confirm they match this brief and adjust pivots to
+your sculpt), then **author each required animation's F-curves** with
+`define-animation` and `add-keyframe`. Run `voxel-anim --help` for the available
+operations (setting and clearing single voxels, filling and stroking boxes, 3D
+lines, spheres, and a mirror plane), the rig subcommands, and the animation
+subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
 Call `voxel-anim` once per operation and read `parts/<part>.png` between calls to
 judge each part against this brief.

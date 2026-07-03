@@ -73,25 +73,47 @@ where it sits on the finished spire:
 ## The required joints
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the spire cycles without any
+joint that the required animations (below) drive, so the spire cycles without any
 caller. There are **no** caller joints.
 
 - **`halo_ring_spin`** — a **rotation** about the **y** (up) axis, through the
   ring hub at pivot **`[22, 66, 22]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the ring a full
-  revolution and loops, so it spins on its own. Sculpt the ring so it rotates
+  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the ring so it rotates
   plausibly about that vertical axis without any voxel tearing away from the crown.
 - **`lens_pulse`** — a **translation** along the **y** (up) axis, through the lens
   seat at pivot **`[22, 74, 22]`**, **`drive = "auto"`**. Its range is
   **`min = 0` (seated, at rest) to `max = 4` (top of the pulse)**, resting at `0`.
-  The clip drives the lens straight up and back down, so it pulses on its own.
   Sculpt the lens so it slides plausibly up and down about that seat without any
   voxel tearing away or clipping the tip.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a second ring, a light halo, or extra finials), but you must **not
-drop or contradict** the required parts or the two auto `halo_ring_spin` and
-`lens_pulse` joints.
+## The required animations
+
+The spire ships **no caller controls** — instead you must **author** two
+**decorative, self-playing** animations that make the spire idle on its own. Each
+is already declared in the rig as a required animation (name, period, `loop`,
+`auto_play`, and the joint it drives); you supply the **motion** — the F-curve
+keyframes — with the `voxel-anim` animation subcommands (`define-animation`, then
+`add-keyframe`). Author the motion as **F-curves**, not linear slides: choose each
+keyframe's interpolation (`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out`,
+with optional `--out-handle`/`--in-handle` bezier handles) so the motion carries
+weight and eases through its extremes rather than sliding at constant speed.
+
+- **`halo_ring_spin`** — `auto_play = true`, `loop = true`, period **2200 ms**,
+  driving the `halo_ring_spin` joint. Author a **full, continuous revolution** of
+  the ring about the vertical axis over one period (sweeping the joint's `-π..+π`
+  range and wrapping seamlessly as it loops). A steady rotation reads best with
+  `linear` interpolation so the spin never stalls at the wrap.
+- **`lens_pulse`** — `auto_play = true`, `loop = true`, period **1500 ms**,
+  driving the `lens_pulse` joint. Author a **rise-and-settle bob**: the lens eases
+  up off its seat to the top of its range and eases back down within one period,
+  landing softly. Use eased interpolation (e.g. `ease-out` up, `ease-in` back to
+  the seat) so the lens hangs at the top and settles with weight rather than
+  bouncing linearly.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a second ring, a light halo, or extra finials), but you must
+**not drop or contradict** the required parts, the two auto `halo_ring_spin` and
+`lens_pulse` joints, or the two required animations.
 
 ## Working the tool
 
@@ -99,10 +121,11 @@ Sculpt each part up in sensible layers, selecting it with `--part <name>` — fi
 the spire base and its crown, then the halo ring, then the lens, checking each
 part's preview as you go. Define the parts, pivots, and the two auto
 `halo_ring_spin` and `lens_pulse` joints through the tool's rig subcommands (the
-required parts and joints are already pre-seeded in `rig.json`, but confirm they
-match this brief and adjust pivots to your sculpt). Run `voxel-anim --help` for
-the available operations (setting and clearing single voxels, filling and
-stroking boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands,
-and `voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim`
-once per operation and read `parts/<part>.png` between calls to judge each part
-against this brief.
+required parts, joints, and animations are already pre-seeded in `rig.json`, but
+confirm they match this brief and adjust pivots to your sculpt), then **author the
+two required animations' motion** with `define-animation` and `add-keyframe`. Run
+`voxel-anim --help` for the available operations (setting and clearing single
+voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane), the
+rig subcommands, and the animation subcommands, and `voxel-anim <operation> --help`
+for each one's exact flags. Call `voxel-anim` once per operation and read
+`parts/<part>.png` between calls to judge each part against this brief.

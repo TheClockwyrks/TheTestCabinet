@@ -1,6 +1,8 @@
-Sculpt and rig the **Sunfront Flakhound**, a four-legged anti-air walker whose
-back turret traverses and whose twin flak barrels elevate while its legs scuttle,
-as a 52x48x56 opaque-voxel model using only the voxel-anim tool.
+Sculpt and rig the **Sunfront Flakhound**, a four-legged anti-air walker that
+strides on four independent, two-jointed legs while its back turret traverses and
+its twin flak barrels elevate, as a 52x48x56 opaque-voxel model using only the
+voxel-anim tool — and **author its `walk` and `flak_track` animations** as motion
+curves.
 
 ## How sculpting and rigging works
 
@@ -27,17 +29,18 @@ voxel-anim fill-box --part body --x0 8 --y0 8 --z0 6 --x1 43 --y1 30 --z1 49 --c
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
+(defining parts, setting pivots, defining joints, and — with `define-animation` and
+`add-keyframe` — authoring the required animations as F-curves), and `voxel-anim
 <operation> --help` for one operation's exact flags — that help text is the
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole walker composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the leg banks
-seat under the body's flanks, the turret sits on the back, and the barrels meet the
-turret's front. Because each part is sculpted in the shared volume's coordinates,
-position each part where it belongs on the finished walker; the scene simply
-composes them there.
+scene views are how you confirm the parts actually fit together: that each leg
+seats under its corner of the body and bends to the ground, the turret sits on the
+back, and the barrels meet the turret's front. Because each part is sculpted in the
+shared volume's coordinates, position each part where it belongs on the finished
+walker; the scene simply composes them there.
 
 ## What to read first
 
@@ -50,19 +53,26 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the walker, the required parts and their pivots, the required caller
-`turret_yaw` and `barrel_pitch` joints, and the two auto scuttle joints. Run
-`voxel-anim --help` for the exact operation and rig contract.
+`turret_yaw` and `barrel_pitch` joints, the twelve auto leg joints (a hip, a
+reverse knee, and a flat foot per leg), and the two required animations you must
+author. Run `voxel-anim --help` for the exact operation, rig, and animation
+contract.
 
 ## What to deliver
 
 Build and rig the walker up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an armored body on four scuttling legs, a
-turret on its back, and twin flak barrels projecting from the turret. The required
-interface is a caller-driven **`turret_yaw`** joint that traverses the turret about
-its mount and a caller-driven **`barrel_pitch`** joint that elevates the barrels,
-plus the two auto **`legs_left_scuttle`** and **`legs_right_scuttle`** joints that
-walk the legs in opposite phase. Produce **every** required part and joint; you may
-add your own extra parts, joints, or auto-play clips on top, but do not drop or
-contradict the required interface. When you are satisfied, stop: the recorded
-per-part logs and `rig.json` are your finished submission.
+correctly, and the rig is complete: an armored body on four independent
+two-jointed legs (each a thigh, a shin, and a flat foot with a clearly bent knee),
+a turret on its back, and twin flak barrels projecting from the turret. The
+required interface is a caller-driven **`turret_yaw`** joint that traverses the
+turret about its mount, a caller-driven **`barrel_pitch`** joint that elevates the
+barrels, and the twelve auto **`hip_*`/`knee_*`/`foot_*`** leg joints. You must
+also **author both required animations** with the `voxel-anim`
+`define-animation`/`add-keyframe` subcommands as weight-carrying F-curves: a
+**`walk`** that strides the four legs in a diagonal-pair gait with a planted,
+flat-footed stance phase and an eased plant, and a **`flak_track`** that sweeps the
+turret while elevating the barrels. Produce **every** required part, joint, and
+animation; you may add your own extra parts, joints, or animations on top, but do
+not drop or contradict the required interface. When you are satisfied, stop: the
+recorded per-part logs and `rig.json` are your finished submission.

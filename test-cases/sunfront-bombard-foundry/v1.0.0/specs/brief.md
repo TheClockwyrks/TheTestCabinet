@@ -75,35 +75,59 @@ where it sits on the finished works:
 ## The required joints
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the foundry cycles without any
-caller. There are **no** caller joints.
+joint, driven by its own auto-play animation (below), so the foundry cycles
+without any caller. There are **no** caller joints.
 
 - **`crane_swing`** — a **rotation** about the **x** (across) axis, through the
   crane arm's shoulder mount at pivot **`[30, 52, 30]`**, **`drive = "auto"`**.
   Its range is **`min = -0.4` to `max = 0.4`** radians, resting at `0` (level).
-  The clip rocks the arm fore and aft about its shoulder, so it swings on its
-  own. Sculpt the arm so it swings plausibly about that mount without any voxel
+  It rocks the arm fore and aft about its shoulder, so it swings on its own.
+  Sculpt the arm so it swings plausibly about that mount without any voxel
   tearing away or clipping the works.
 - **`piston_bob`** — a **translation** along the **y** (up) axis, through the
   piston mount at pivot **`[16, 30, 40]`**, **`drive = "auto"`**. Its range is
   **`min = -6` (bottom of the stroke) to `max = 0` (fully raised, at rest)**,
-  resting at `0`. The clip drives the piston straight down and back up in its bay,
-  so it bobs on its own. Sculpt the piston so it slides plausibly down and up about
-  that mount without any voxel tearing away or clipping the bay walls.
+  resting at `0`. It drives the piston straight down and back up in its bay, so
+  it
+  bobs on its own. Sculpt the piston so it slides plausibly down and up about that
+  mount without any voxel tearing away or clipping the bay walls.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a second piston, a puff vent, or extra pipework), but you must **not
-drop or contradict** the required parts or the two auto `crane_swing` and
-`piston_bob` joints.
+## The required animations
+
+You must **author the motion** for both auto joints. Each animation is a
+**decorative idle** (`auto_play` — it plays continuously on its own, with no
+caller). The rig is pre-seeded with these animations' identities; you author
+their **F-curves** with the `voxel-anim` animation subcommands
+(`define-animation`, then `add-keyframe` per keyframe). Give each keyframe an
+`--interp` (`constant`, `linear`, `bezier`, `ease-in`, `ease-out`, or
+`ease-in-out`) and, where it helps, `--out-handle`/`--in-handle` — the motion
+must carry **weight** through eased curves, not slide linearly.
+
+- **`crane_swing`** — period **2800 ms**, `loop = true`, drives the `crane_swing`
+  joint. The heavy crane arm **eases** aft to `-0.4`, swings **fore** to `+0.4`,
+  and eases back, easing through each extreme so the arm settles into its turns
+  rather than snapping — a weighty pendulum swing, not a constant-speed slide.
+- **`piston_bob`** — period **1300 ms**, `loop = true`, drives the `piston_bob`
+  joint. The loading piston **drops** from rest (`0`) to the bottom of its stroke
+  (`-6`) and **rises** back up, with an `ease-in` into the bottom of the stroke
+  so
+  it lands with a stamp, then eases back up and loops with no jerk at the seam.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a second piston, a puff vent, or extra pipework), but you must
+**not drop or contradict** the required parts, the two auto `crane_swing` and
+`piston_bob` joints, or their two required animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the works base, then the crane arm, then the piston, checking each part's preview
-as you go. Define the parts, pivots, and the two auto `crane_swing` and
-`piston_bob` joints through the tool's rig subcommands (the required parts and
-joints are already pre-seeded in `rig.json`, but confirm they match this brief and
-adjust pivots to your sculpt). Run `voxel-anim --help` for the available operations
+as you go. Define the parts, pivots, the two auto `crane_swing` and `piston_bob`
+joints, and the two required animations' F-curves through the tool's rig
+subcommands (the required parts, joints, and animation identities are already
+pre-seeded in `rig.json`, but confirm they match this brief, adjust pivots to your
+sculpt, and author each animation's keyframes). Run `voxel-anim --help` for the
+available operations
 (setting and clearing single voxels, filling and stroking boxes, 3D lines,
 spheres, and a mirror plane) and the rig subcommands, and `voxel-anim <operation>
 --help` for each one's exact flags. Call `voxel-anim` once per operation and read

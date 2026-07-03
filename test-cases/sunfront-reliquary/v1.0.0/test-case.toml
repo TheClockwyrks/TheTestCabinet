@@ -4,8 +4,8 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Reliquary: a 60x96x60 opaque-voxel monument \
 cradling a glowing solar core, whose orbital ring turns, core rises and falls, \
-and guardian fins counter-rotate on their own auto clips while the base stays \
-fixed, built and rigged one recorded operation at a time."""
+and guardian fins counter-rotate on their own auto-play animations while the base \
+stays fixed, built and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and the required animations; at run
+# time it MAY add further parts, joints, and animations of its own (recorded in
+# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
+# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
+# the first operation.
 [model]
 
 # The monument plinth and its cradle: the root part (no parent), fixed to the
@@ -76,9 +77,9 @@ name = "guardian_fins"
 parent = "base"
 pivot = [30, 78, 30]
 
-# The orbital ring's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` so the ring turns on its own without
-# a caller.
+# The orbital ring's own looping spin. An `auto` joint driven by the `ring_spin`
+# auto_play animation, a full rotation about `y` so the ring turns on its own
+# without a caller.
 [[model.joint]]
 name = "ring_spin"
 part = "orbital_ring"
@@ -90,10 +91,10 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The solar core's own looping rise-and-fall pulse. An `auto` joint the case drives
-# with a `[[model.clip]]`, an upward translation along `y` so the core breathes on
-# its own without a caller. `rest = 0` is the settled height; `max = 6` is the top
-# of the rise.
+# The solar core's own looping rise-and-fall pulse. An `auto` joint driven by the
+# `core_pulse` auto_play animation, an upward translation along `y` so the core
+# breathes on its own without a caller. `rest = 0` is the settled height; `max = 6`
+# is the top of the rise.
 [[model.joint]]
 name = "core_pulse"
 part = "core"
@@ -105,9 +106,9 @@ max = 6.0
 rest = 0.0
 drive = "auto"
 
-# The guardian fins' own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` in the OPPOSITE direction to the ring
-# so the fins counter-rotate on their own without a caller.
+# The guardian fins' own looping spin. An `auto` joint driven by the `fins_spin`
+# auto_play animation, a full rotation about `y` in the OPPOSITE direction to the
+# ring so the fins counter-rotate on their own without a caller.
 [[model.joint]]
 name = "fins_spin"
 part = "guardian_fins"
@@ -119,28 +120,38 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the monument runs on its own.
-# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
-# (radians for the two rotation spins, voxels for the translation pulse). The ring
-# turns one full revolution; the core rises then settles back; the fins turn a full
-# revolution the OTHER way (opposite phase to the ring).
-[[model.clip]]
-joint = "ring_spin"
+# The required decorative animations — one per animated part, so the monument runs
+# on its own. Each is a DECLARATION only (name, period, loop, auto_play, joints); it
+# carries NO keyframes. The model authors each motion as F-curves at run time with
+# the `voxel-anim` animation subcommands, and the produced rig.json carries the
+# curves. `auto_play = true` means the animation plays continuously by default (a
+# decorative idle), so the ring turns, the core breathes, and the fins counter-rotate
+# on their own with no caller.
+
+# The orbital ring's continuous spin — one full revolution about `y`.
+[[model.animation]]
+name = "ring_spin"
 period_ms = 3000
 loop = true
-keyframes = [[0, -3.14159], [3000, 3.14159]]
+auto_play = true
+joints = ["ring_spin"]
 
-[[model.clip]]
-joint = "core_pulse"
+# The solar core's breathing pulse — a rise-and-settle translation along `y`.
+[[model.animation]]
+name = "core_pulse"
 period_ms = 2000
 loop = true
-keyframes = [[0, 0.0], [1000, 6.0], [2000, 0.0]]
+auto_play = true
+joints = ["core_pulse"]
 
-[[model.clip]]
-joint = "fins_spin"
+# The guardian fins' continuous counter-spin — a full revolution about `y` the
+# OTHER way from the ring.
+[[model.animation]]
+name = "fins_spin"
 period_ms = 3400
 loop = true
-keyframes = [[0, 3.14159], [3400, -3.14159]]
+auto_play = true
+joints = ["fins_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -153,8 +164,8 @@ description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Reliquary \
 and runs correctly — a tall, precious monument cradling a glowing solar core, \
 whose orbital ring turns, core rises and falls, and guardian fins counter-rotate \
-on their own auto clips while the base stays put, with a heavy solar-hot and \
-amber core glow and the disciplined Duneforged palette."""
+on their own auto-play animations while the base stays put, with a heavy solar-hot \
+and amber core glow and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-reliquary"
@@ -172,8 +183,8 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Ring turns, core pulses, and fins counter-rotate on their own"
 text = """
-The three animated elements cycle on their own via their auto clips while the \
-`base` stays fixed: the `ring_spin` joint turns the orbital ring a full \
+The three animated elements cycle on their own via their auto-play animations \
+while the `base` stays fixed: the `ring_spin` joint turns the orbital ring a full \
 revolution about the vertical axis, the `core_pulse` joint lifts the solar core \
 up and settles it back in a breathing rise and fall, and the `fins_spin` joint \
 turns the guardian fins a full revolution the opposite way. Across each cycle no \

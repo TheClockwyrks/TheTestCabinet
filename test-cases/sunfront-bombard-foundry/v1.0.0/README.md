@@ -21,14 +21,20 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `piston` | `base` | `[16, 30, 40]` | The loading piston head |
 
 - **`crane_swing`** (auto, rotation about `x`, `-0.4..0.4`) — the crane arm rocks
-  fore and aft over the works on its own clip.
+  fore and aft over the works on its own via its auto-play animation.
 - **`piston_bob`** (auto, translation along `y`, `-6..0`) — the loading piston bobs
-  straight down and back up in its flank on its own clip.
+  straight down and back up in its flank on its own via its auto-play animation.
 
-Both required joints are `auto`-driven: the foundry cycles on its own with no
-caller and no case-authored review animation. The model may add its own extra
-parts, joints, and clips on top, but must not drop or contradict the required
-interface.
+Both required **animations** are declared in the `[model]` table by identity only
+(`name`, `period_ms`, `loop`, `auto_play = true`, and the single joint each
+drives) — the model authors their F-curve keyframes at run time with the
+`voxel-anim` `define-animation`/`add-keyframe` subcommands.
+
+This is a STRUCTURE-class case: it has **no caller joints and no playable
+animations** — both required animations are decorative `auto_play` idles. Both
+moving parts cycle on their own while the `base` stays fixed. The model may add
+its own extra parts, joints, and animations on top, but must not drop or
+contradict the required interface.
 
 ## Contents
 

@@ -1,6 +1,6 @@
-Sculpt and rig the **Sunfront Bulwark**, a heavy bipedal shield-mech whose broad
-left tower-shield arm raises and smashes while its legs walk, as a 56x68x48
-opaque-voxel model using only the voxel-anim tool.
+Sculpt and rig the **Sunfront Bulwark**, a heavy bipedal shield-mech whose right
+maul arm raises and smashes while it strides on two independent, three-segment
+legs, as a 56x68x48 opaque-voxel model using only the voxel-anim tool.
 
 ## How sculpting and rigging works
 
@@ -27,9 +27,9 @@ voxel-anim fill-box --part torso --x0 12 --y0 28 --z0 12 --x1 43 --y1 58 --z1 35
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+(defining parts, setting pivots, defining joints, and authoring animations with
+`define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole mech composed from all your parts, re-rendered after every operation. The
@@ -49,18 +49,22 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the mech, the required parts and their pivots, the required caller
-`weapon_pitch` joint, and the two auto stride joints. Run `voxel-anim --help` for
-the exact operation and rig contract.
+`weapon_pitch` joint, the six `auto` leg joints, and the two required animations you
+must author (`walk` and `smash`). Run `voxel-anim --help` for the exact operation and
+rig contract.
 
 ## What to deliver
 
 Build and rig the mech up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an armored torso and head on two walking legs,
-with a broad tower shield carried on the left arm. The required interface is a
-caller-driven **`weapon_pitch`** joint that raises and smashes the shield about its
-shoulder hinge, plus the two auto **`leg_left_stride`** and **`leg_right_stride`**
-joints that walk the legs in opposite phase. Produce **every** required part and
-joint; you may add your own extra parts, joints, or auto-play clips on top, but do
+correctly, and the rig is complete: an armored torso and head on two independent
+three-segment legs (thigh, shin, flat foot) standing on visibly bent knees, with a
+broad tower shield carried on the left arm and a maul in the right. The required
+interface is a caller-driven **`weapon_pitch`** joint that raises and smashes the
+maul about its shoulder hinge, six `auto` leg joints (`hip_*`, `knee_*`, `foot_*`),
+and two model-authored animations — **`walk`** (drive all six leg joints in an
+opposite-phase gait with a planted stance phase, authored as F-curves) and
+**`smash`** (drive `weapon_pitch`). Produce **every** required part, joint, and
+animation; you may add your own extra parts, joints, or animations on top, but do
 not drop or contradict the required interface. When you are satisfied, stop: the
 recorded per-part logs and `rig.json` are your finished submission.

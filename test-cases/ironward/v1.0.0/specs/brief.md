@@ -76,19 +76,43 @@ A consuming game drives the rig by joint name. The **required** joint is:
 Design the turret and barrel so this motion reads correctly: the barrel is a child
 of the turret, so it swings along with it and always stays attached.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
+## The required animation
+
+You must also **author** one required animation — the review viewer plays it as
+a
+button so a reviewer can watch the turret work without dragging the slider by hand:
+
+- **`turret_sweep`** — a **looping**, 4000 ms animation driving the **`turret_yaw`**
+  joint. It swings the turret center → left → center → right → center and loops
+  smoothly back. It is a **named playable** (not an idle that starts on its own).
+
+The case declares this animation's identity and intent only — **you author its
+motion as F-curves** with the `voxel-anim` animation subcommands: `define-animation`
+to create `turret_sweep`, then `add-keyframe` to place each keyframe on the
+`turret_yaw` track. Give each keyframe an interpolation (`--interp
+constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` for bezier), so the sweep **eases** at the ends of
+its
+travel and carries weight — a heavy turret slowing as it reaches each extreme and
+rolling back — rather than sliding linearly at a constant rate. Run `voxel-anim
+--help` for the exact animation subcommands and flags.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this
 (for example an optional caller joint **`barrel_pitch`** — a rotation about the
 **x** axis through the barrel's mount that elevates and depresses the gun — or a
-subtle idle motion), but you must **not drop or contradict** the required parts
-and the required `turret_yaw` joint.
+subtle decorative idle), but you must **not drop or contradict** the required parts,
+the required `turret_yaw` joint, or the required `turret_sweep` animation.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the chassis and its tracks, then the turret, then the barrel, checking each
-part's preview as you go. Define the parts, pivots, and the `turret_yaw` joint
-through the
-tool's rig subcommands (the required parts and joint are already pre-seeded in
+part's preview as you go. Define the parts, pivots, and the `turret_yaw` joint,
+and author the
+`turret_sweep` animation, through the
+tool's rig and animation subcommands (the required parts, joint, and animation
+declaration are already pre-seeded in
 `rig.json`, but confirm they match this brief and adjust pivots to your sculpt).
 Run `voxel-anim --help` for the available operations (setting and clearing single
 voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the

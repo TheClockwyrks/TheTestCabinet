@@ -72,36 +72,59 @@ where it sits on the finished spire:
 ## The required joints
 
 This is a **structure**: it has no caller-driven controls. Instead, both moving
-parts **animate on their own** — each carries an **auto**-driven joint the case
-drives with a looping clip, so the foundry works without any caller:
+parts **animate on their own** — each carries an **auto**-driven joint you must
+declare and then drive with a looping animation you author, so the foundry works
+without any caller:
 
 - **`rail_arm_slide`** — a **translation** along the **y** (up) axis, through the
   rail-arm's mount at pivot **`[22, 50, 22]`**, `min = 0` (seated at the bottom,
-  at rest), `max = 10` (fully raised), rest `0`, **`drive = "auto"`**. It rides
-  the rail-arm smoothly up ten voxels and back down and loops. Sculpt the arm so
-  it slides plausibly along the shaft without any voxel tearing away from its
-  rail or clipping through the shaft.
+  at rest), `max = 10` (fully raised), rest `0`, **`drive = "auto"`**. Sculpt the
+  arm so it slides plausibly along the shaft without any voxel tearing away from
+  its rail or clipping through the shaft.
 - **`focus_ring_spin`** — a **rotation** about the **y** (up) axis, through the
   ring's mount at pivot **`[22, 68, 22]`**, a full turn (`min = -π`, `max = +π`),
-  rest `0`, **`drive = "auto"`**. It turns the focus-ring a full revolution and
-  loops. Sculpt the ring so it rotates plausibly about that vertical axis without
-  detaching from the crown.
+  rest `0`, **`drive = "auto"`**. Sculpt the ring so it rotates plausibly about
+  that vertical axis without detaching from the crown.
 
 The `base` stays **fixed** — only the rail-arm and the focus-ring move.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a subtle idle glow or extra detail vents), but you must **not drop
-or contradict** the required parts or the two auto joints.
+## The required animations
+
+You must **author** two looping, auto-play animations — one per moving part — so
+the foundry cycles on its own. The case declares each animation's identity and
+intent; **you produce the motion**. For each one, create it with the `voxel-anim`
+animation subcommands (`define-animation`, then `add-keyframe`) and shape it as
+an
+**F-curve** — set each keyframe's interpolation (`--interp
+constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` bezier tangents) so the motion carries **weight**
+rather than sliding linearly. Run `voxel-anim --help` and `voxel-anim
+define-animation --help` / `voxel-anim add-keyframe --help` for the exact flags.
+
+- **`rail_arm_slide`** — period **1600 ms**, `loop`, **auto-play**, driving the
+  `rail_arm_slide` joint. Ride the rail-arm smoothly up its full ten voxels and
+  back down, easing into the top and bottom of the stroke (ease-in-out) so it
+  settles rather than snapping — a heavy carriage riding the shaft.
+- **`focus_ring_spin`** — period **2000 ms**, `loop`, **auto-play**, driving the
+  `focus_ring_spin` joint. Turn the focus-ring one full, continuous revolution
+  (`-π → +π`) at a steady pace (linear, so the spin never stutters).
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a subtle idle glow or extra detail vents), but you must **not
+drop or contradict** the required parts, the two auto joints, or the two required
+animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the base tower and its footing, then the rail-arm, then the focus-ring, checking
 each part's preview as you go. Define the parts, pivots, and the two auto joints
-through the tool's rig subcommands (the required parts and joints are already
-pre-seeded in `rig.json`, but confirm they match this brief and adjust pivots to
-your sculpt). Run `voxel-anim --help` for the available operations (setting and
-clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
-mirror plane) and the rig subcommands, and `voxel-anim <operation> --help` for
-each one's exact flags. Call `voxel-anim` once per operation and read
-`parts/<part>.png` between calls to judge each part against this brief.
+through the tool's rig subcommands (the required parts, joints, and animations are
+already pre-seeded in `rig.json`, but confirm they match this brief and adjust
+pivots to your sculpt), then author each required animation's F-curve keyframes
+with `define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available
+operations (setting and clearing single voxels, filling and stroking boxes, 3D
+lines, spheres, and a mirror plane) and the rig and animation subcommands, and
+`voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim` once
+per operation and read `parts/<part>.png` between calls to judge each part against
+this brief.

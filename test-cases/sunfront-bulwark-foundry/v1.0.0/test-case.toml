@@ -4,8 +4,8 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bulwark Foundry: a 60x72x60 opaque-voxel heavy \
 armored bunker-forge whose blast door raises and whose flywheel turns on their \
-own auto clips while the base stays fixed, built and rigged one recorded \
-operation at a time."""
+own auto-play animations while the base stays fixed, built and rigged one \
+recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and these animations; at run time
+# it MAY add further parts, joints, and animations of its own (recorded in
+# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
+# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
+# the first operation.
 [model]
 
 # The armored bunker-forge itself: the root part (no parent), fixed to the world.
@@ -55,22 +56,23 @@ name = "base"
 pivot = [0, 0, 0]
 
 # The heavy blast door across the front. It raises and lowers on its own via the
-# auto `blast_door_raise` joint.
+# auto `blast_door_raise` joint, driven by the `blast_door_raise` animation.
 [[model.part]]
 name = "blast_door"
 parent = "base"
 pivot = [30, 24, 58]
 
 # The great drive flywheel on the right flank. It turns on its own via the auto
-# `flywheel_spin` joint.
+# `flywheel_spin` joint, driven by the `flywheel_spin` animation.
 [[model.part]]
 name = "flywheel"
 parent = "base"
 pivot = [46, 44, 24]
 
-# The blast door's own looping raise. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the door lifts and drops on its own without a caller. A
-# translation up the `y` axis, `0` (shut, at rest) to `14` (fully raised).
+# The blast door's own looping raise. An `auto` joint driven by the
+# `blast_door_raise` auto-play animation, so the door lifts and drops on its own
+# without a caller. A translation up the `y` axis, `0` (shut, at rest) to `14`
+# (fully raised).
 [[model.joint]]
 name = "blast_door_raise"
 part = "blast_door"
@@ -82,8 +84,8 @@ max = 14.0
 rest = 0.0
 drive = "auto"
 
-# The flywheel's own slow spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the wheel turns on its own. A rotation about the `z`
+# The flywheel's own slow spin. An `auto` joint driven by the `flywheel_spin`
+# auto-play animation, so the wheel turns on its own. A rotation about the `z`
 # (front-to-back) axis, a full turn each way, resting at `0`.
 [[model.joint]]
 name = "flywheel_spin"
@@ -96,21 +98,29 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the foundry works on its own.
-# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs. The
-# door rises, holds open, then drops (voxels); the flywheel spins a full turn
-# (radians). There are no caller joints and no review animations for this case.
-[[model.clip]]
-joint = "blast_door_raise"
+# The required animations — one decorative auto-play animation per animated part,
+# so the foundry works on its own. Each is a DECLARATION only: the case fixes the
+# animation's identity and intent (name, period, loop, the joint it drives), and
+# the model authors the F-curve keyframes at run time with the voxel-anim
+# `define-animation`/`add-keyframe` subcommands. `auto_play = true` = a decorative
+# idle that plays continuously. There are no caller joints and no playable
+# animations for this case.
+
+# The door rises, holds open, then drops on its own.
+[[model.animation]]
+name = "blast_door_raise"
 period_ms = 3200
 loop = true
-keyframes = [[0, 0.0], [960, 14.0], [2240, 14.0], [3200, 0.0]]
+auto_play = true
+joints = ["blast_door_raise"]
 
-[[model.clip]]
-joint = "flywheel_spin"
+# The flywheel turns steadily a full turn on its own.
+[[model.animation]]
+name = "flywheel_spin"
 period_ms = 2400
 loop = true
-keyframes = [[0, -3.14159], [2400, 3.14159]]
+auto_play = true
+joints = ["flywheel_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -122,9 +132,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bulwark \
 Foundry and animates correctly — a heavy armored Duneforged bunker-forge whose \
-blast door raises and drops and whose flywheel turns on their own auto clips \
-while the base stays put, with a clear solar-amber forge accent and the \
-disciplined Duneforged palette."""
+blast door raises and drops and whose flywheel turns on their own auto-play \
+animations while the base stays put, with a clear solar-amber forge accent and \
+the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-bunker-forge"
@@ -141,11 +151,11 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Blast door and flywheel cycle on their own"
 text = """
-The animated elements cycle on their own via their auto clips: the `blast_door` \
-rises straight up, holds open, and drops back shut along its vertical track \
-through the `blast_door_raise` joint, and the `flywheel` turns steadily about \
-its axle through the `flywheel_spin` joint. Across each cycle no voxel of either \
-part tears away from its mount or clips into the base."""
+The animated elements cycle on their own via their auto-play animations: the \
+`blast_door` rises straight up, holds open, and drops back shut along its \
+vertical track through the `blast_door_raise` joint, and the `flywheel` turns \
+steadily about its axle through the `flywheel_spin` joint. Across each cycle no \
+voxel of either part tears away from its mount or clips into the base."""
 weight = 3
 domain = "fidelity"
 
@@ -163,10 +173,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Door and flywheel stay attached"
 text = """
-Each child stays attached to the base across its clip's range: the blast door \
-meets its door frame at the front and the flywheel meets its axle housing on the \
-flank, with no gap and never floating free or detaching as the door raises and \
-the wheel turns."""
+Each child stays attached to the base across its animation's range: the blast \
+door meets its door frame at the front and the flywheel meets its axle housing \
+on the flank, with no gap and never floating free or detaching as the door \
+raises and the wheel turns."""
 weight = 2
 domain = "fidelity"
 

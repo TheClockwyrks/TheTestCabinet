@@ -21,14 +21,20 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `vent` | `base` | `[28, 10, 16]` | The side exhaust vent |
 
 - **`hatch_turn`** (auto, rotation about `y`, `-π..π`) — the central iris hatch
-  slowly turns through a full sweep about its vertical axis on its own clip.
+  slowly turns through a full sweep about its vertical axis.
 - **`vent_bob`** (auto, translation along `y`, `0..6`) — the side vent rises and
-  settles on its own clip.
+  settles.
 
-This building has **no** caller-driven joints and no review animation: the two
-auto clips are the animation, cycling on their own while the `base` stays fixed.
-The model may add its own extra parts, joints, and clips on top, but must not drop
-or contradict the required interface.
+Both auto joints are driven by a required, decorative **`auto_play`** animation
+of
+the same name (`hatch_turn`, `period_ms = 2600`; `vent_bob`, `period_ms = 1400`;
+both `loop = true`). Each animation is declared as a required contract but carries
+**no** keyframes — the model authors its F-curve motion at run time with the
+`voxel-anim` `define-animation`/`add-keyframe` subcommands. This building has **no**
+caller-driven joints: the two decorative animations are the whole animation,
+cycling on their own while the `base` stays fixed. The model may add its own extra
+parts, joints, and animations on top, but must not drop or contradict the required
+interface.
 
 ## Contents
 

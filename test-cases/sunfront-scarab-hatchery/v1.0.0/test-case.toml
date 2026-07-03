@@ -3,8 +3,9 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Scarab Hatchery: a 56x40x56 opaque-voxel squat \
-hive-mound whose central hatch iris slowly turns and a side vent bobs, each on its \
-own looping auto clip, built and rigged one recorded operation at a time."""
+hive-mound whose central hatch iris slowly turns and a side vent bobs, each a \
+looping decorative auto-play animation the model authors, built and rigged one \
+recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -42,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and these animations; at run time it
+# MAY add further parts, joints, and animations of its own (recorded in rig.json)
+# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
+# `rig.json` is pre-seeded from this table so the contract exists from the first
+# operation.
 [model]
 
 # The hive-mound foundation and shell: the root part (no parent), fixed to the
@@ -55,22 +57,22 @@ name = "base"
 pivot = [0, 0, 0]
 
 # The central iris hatch crowning the mound. It slowly rotates on its own via the
-# auto `hatch_turn` joint.
+# auto `hatch_turn` joint, driven by the decorative `hatch_turn` animation.
 [[model.part]]
 name = "hatch"
 parent = "base"
 pivot = [28, 20, 40]
 
 # A side exhaust vent low on the mound. It bobs up and down on its own via the
-# auto `vent_bob` joint.
+# auto `vent_bob` joint, driven by the decorative `vent_bob` animation.
 [[model.part]]
 name = "vent"
 parent = "base"
 pivot = [28, 10, 16]
 
-# The hatch's own looping iris turn. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the hatch rotates on its own without a caller. A full turn
-# about the vertical axis; `rest = 0` faces forward.
+# The hatch's own looping iris turn. An `auto` joint driven by the decorative
+# `hatch_turn` animation, so the hatch rotates on its own without a caller. A full
+# turn about the vertical axis; `rest = 0` faces forward.
 [[model.joint]]
 name = "hatch_turn"
 part = "hatch"
@@ -82,9 +84,9 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The vent's own looping vertical bob. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the vent rises and settles on its own. A translation up the
-# y (up) axis; `rest = 0` is fully seated.
+# The vent's own looping vertical bob. An `auto` joint driven by the decorative
+# `vent_bob` animation, so the vent rises and settles on its own. A translation up
+# the y (up) axis; `rest = 0` is fully seated.
 [[model.joint]]
 name = "vent_bob"
 part = "vent"
@@ -96,21 +98,27 @@ max = 6.0
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated sub-part, so the hatchery cycles on its
-# own with no caller. Only `auto` joints take a clip. Keyframes are inline
-# `[t_ms, value]` pairs (radians for the hatch turn, voxels for the vent bob).
-# The hatch sweeps a full turn each cycle; the vent rises then settles.
-[[model.clip]]
-joint = "hatch_turn"
+# The required animations — one decorative auto-play motion per animated sub-part,
+# so the hatchery cycles on its own with no caller. Each is a DECLARATION only
+# (name, period, loop, auto_play, and the joints it must drive) — it carries NO
+# keyframes. The model authors each animation's motion as F-curves at run time with
+# the `voxel-anim` `define-animation`/`add-keyframe` subcommands; the produced
+# rig.json carries the curves and the reviewer scores them. `auto_play = true`
+# marks each as a continuously-playing decorative idle. The hatch sweeps a full turn
+# each cycle; the vent rises then settles.
+[[model.animation]]
+name = "hatch_turn"
 period_ms = 2600
 loop = true
-keyframes = [[0, -3.14159], [2600, 3.14159]]
+auto_play = true
+joints = ["hatch_turn"]
 
-[[model.clip]]
-joint = "vent_bob"
+[[model.animation]]
+name = "vent_bob"
 period_ms = 1400
 loop = true
-keyframes = [[0, 0.0], [700, 6.0], [1400, 0.0]]
+auto_play = true
+joints = ["vent_bob"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -122,9 +130,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Scarab \
 Hatchery and animates correctly — a squat, wide hive-mound clustered with hatch \
-cells whose central iris hatch slowly turns and whose side vent bobs, each on its \
-own looping clip, while the base stays put, with a clear solar-amber energy accent \
-and the disciplined Duneforged palette."""
+cells whose central iris hatch slowly turns and whose side vent bobs, each a \
+looping decorative auto-play animation the model authors, while the base stays put, \
+with a clear solar-amber energy accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-hatchery"
@@ -141,11 +149,11 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Hatch turns and vent bobs on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
-stays fixed: the central hatch rotates smoothly through a full turn about its \
-vertical axis on `hatch_turn`, and the side vent rises and settles on `vent_bob`, \
-each looping continuously with no voxel tearing away from its mount across the \
-motion."""
+The animated elements cycle on their own via their decorative auto-play animations \
+while the `base` stays fixed: the central hatch rotates smoothly through a full \
+turn about its vertical axis on `hatch_turn`, and the side vent rises and settles \
+on `vent_bob`, each looping continuously with weight-carrying motion and no voxel \
+tearing away from its mount across the cycle."""
 weight = 3
 domain = "fidelity"
 

@@ -4,8 +4,8 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Flak Foundry: a 56x76x56 opaque-voxel works crowned \
 with a sweeping radar dish that turns and a bobbing piston, both cycling on their \
-own auto clips while the base stays fixed, built and rigged one recorded \
-operation at a time."""
+own decorative auto-play animations while the base stays fixed, built and rigged \
+one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, joints, and animation declarations; at run time it
+# MAY add further parts, joints, and auto-play animations of its own (recorded in
+# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
+# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
+# the first operation.
 [model]
 
 # The foundry works and foundation: the root part (no parent), fixed to the world.
@@ -55,22 +56,22 @@ name = "base"
 pivot = [0, 0, 0]
 
 # The radar dish crowning the works. It sweeps around on its own on the
-# auto-driven `dish_sweep`.
+# auto-driven `dish_sweep`, animated by the decorative auto-play `dish_sweep`.
 [[model.part]]
 name = "dish"
 parent = "base"
 pivot = [28, 64, 28]
 
 # The charging piston, riding on the works' flank. It bobs up and down on its own
-# on the auto-driven `piston_bob`.
+# on the auto-driven `piston_bob`, animated by the decorative auto-play `piston_bob`.
 [[model.part]]
 name = "piston"
 parent = "base"
 pivot = [40, 34, 24]
 
-# The radar dish's own looping sweep. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` so the dish scans the sky on its own
-# without a caller.
+# The radar dish's own looping sweep. An `auto` joint driven by the decorative
+# auto-play `dish_sweep` animation, a full rotation about `y` so the dish scans the
+# sky on its own without a caller.
 [[model.joint]]
 name = "dish_sweep"
 part = "dish"
@@ -82,9 +83,10 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The piston's own looping bob. An `auto` joint the case drives with a
-# `[[model.clip]]`, a downward translation along `y` so the piston pumps on its own
-# without a caller. `rest = 0` is fully raised; `min = -5` is the bottom of the bob.
+# The piston's own looping bob. An `auto` joint driven by the decorative auto-play
+# `piston_bob` animation, a downward translation along `y` so the piston pumps on its
+# own without a caller. `rest = 0` is fully raised; `min = -5` is the bottom of the
+# bob.
 [[model.joint]]
 name = "piston_bob"
 part = "piston"
@@ -96,21 +98,27 @@ max = 0.0
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the foundry runs on its own. Only
-# `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs (radians for
-# the rotation sweep, voxels for the translation bob). The dish turns a full
-# revolution and loops; the piston drops down and rises back.
-[[model.clip]]
-joint = "dish_sweep"
+# The required animations — one decorative auto-play idle per animated part, so the
+# foundry runs on its own. Each is a DECLARATION only: name, period, loop, auto_play,
+# and the joint it must drive. It carries NO keyframes/tracks — the model authors the
+# motion as F-curves at run time with the `voxel-anim` animation subcommands
+# (`define-animation` then `add-keyframe`; see the brief). Both are `auto_play = true`
+# (continuously-playing decorative idles) and `loop = true`. The dish turns a full
+# revolution; the piston drops down and rises back. `rig.json` is pre-seeded with
+# these declarations so the contract exists from the first operation.
+[[model.animation]]
+name = "dish_sweep"
 period_ms = 3000
 loop = true
-keyframes = [[0, -3.14159], [3000, 3.14159]]
+auto_play = true
+joints = ["dish_sweep"]
 
-[[model.clip]]
-joint = "piston_bob"
+[[model.animation]]
+name = "piston_bob"
 period_ms = 1200
 loop = true
-keyframes = [[0, 0.0], [600, -5.0], [1200, 0.0]]
+auto_play = true
+joints = ["piston_bob"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -122,8 +130,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Flak Foundry \
 and runs correctly — a blocky works crowned with a radar dish that sweeps around \
-while a piston bobs up and down on their own auto clips and the base stays put, \
-with a clear solar-amber energy accent and the disciplined Duneforged palette."""
+while a piston bobs up and down on their own decorative auto-play animations and \
+the base stays put, with a clear solar-amber energy accent and the disciplined \
+Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-foundry"
@@ -140,8 +149,8 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Dish sweeps and piston bobs on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
-stays fixed: the `dish_sweep` joint turns the radar dish a full revolution around \
+The animated elements cycle on their own via their auto-play animations while the \
+`base` stays fixed: the `dish_sweep` joint turns the radar dish a full revolution around \
 its vertical mast, and the `piston_bob` joint drives the piston straight down and \
 back up. Across each cycle no voxel of the dish or piston tears away from its \
 mount or clips into the works — each moves as one solid piece about the correct \

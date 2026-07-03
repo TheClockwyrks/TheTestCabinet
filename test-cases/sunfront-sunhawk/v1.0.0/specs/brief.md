@@ -84,30 +84,68 @@ A consuming game drives the rig by joint name. The **required** caller joint is:
   gunship can rake targets below. Only the cannon moves on this joint; no voxel
   of it should tear away from the hull or clip into the fuselage as it aims.
 
-The two rotors **animate on their own** — each carries an **auto**-driven spin
-joint the case drives with a looping clip, so the blades whirl without the caller:
+The rotors and the hover are driven by **`auto`** joints — no caller supplies their
+value; the **animations you author** (below) move them:
 
 - **`rotor_left_spin`** — a **rotation** about **y** (up) through **`[14, 28, 32]`**,
   a full turn (`min = -π`, `max = +π`), rest `0`, **`drive = "auto"`**.
-- **`rotor_right_spin`** — the same about **`[50, 28, 32]`**, spinning on its own
-  fast clip so the right rotor blurs alongside the left.
+- **`rotor_right_spin`** — the same about **`[50, 28, 32]`**, so the right rotor
+  blurs alongside the left.
+- **`hover_bob`** — a **translation** along **y** (up) through **`[32, 18, 32]`**,
+  range **`min = -2.0` to `max = 2.0`**, rest `0`, **`drive = "auto"`**. Driving
+  it
+  lifts and lowers the **whole craft** slightly so it reads as hovering in place.
 
 Sculpt each rotor so it rotates plausibly about its vertical mount without
 detaching from the hull.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a tail fin, landing skids, or a subtle idle bob), but you must **not
-drop or contradict** the required parts, the required caller `cannon_pitch` joint,
-or the two auto rotor-spin joints.
+## The required animations — you author the motion
+
+Beyond sculpting and rigging, you must **author each required animation's motion**
+with the `voxel-anim` animation subcommands — `define-animation` to create the
+animation, then `add-keyframe` for each pose along its timeline (run
+`voxel-anim --help` for the exact subcommands and flags). The case ships **no**
+keyframes; it declares each animation's identity and intent, and **you** produce
+the curves. Author them as **F-curves** — set each keyframe's interpolation with
+`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out` (and, where it
+helps, `--out-handle`/`--in-handle`) so the motion carries **weight and ease**,
+not
+a mechanical linear slide.
+
+The three required animations are:
+
+- **`rotor_spin`** (`period_ms = 240`, loops, **plays on its own**) — spins both
+  rotors. Drive `rotor_left_spin` and `rotor_right_spin` a full turn (`-π → +π`)
+  across the short period so the blades read as a continuous blur. This is a
+  decorative idle that auto-plays; a smooth, near-constant-rate spin is right here.
+- **`hover`** (`period_ms = 2400`, loops, playable) — the gunship's **hover /
+  cruise movement**. Bob `hover_bob` gently up and down (rise, hold near the top,
+  settle, hold near the bottom) so the craft breathes as it holds station. Ease
+  the
+  turns (`ease-in-out`) with a soft float at the top — it should feel buoyant, not
+  like a sawtooth.
+- **`strafe`** (`period_ms = 2000`, loops, playable) — the **cannon gun-run**. Sweep
+  `cannon_pitch` down to rake the ground and back up, then loop. Ease into the
+  bottom of the dive (`ease-in`) so the gun settles onto the target with weight
+  before it tips back up; keep it within the joint's `-0.9 … 0.3` range.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this
+(for example a tail fin, landing skids, or a subtle banking idle), but you must
+**not drop or contradict** the required parts, the required caller `cannon_pitch`
+joint, the three auto joints, or the three required animations above.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the fuselage hull and nose, then each rotor, then the cannon, checking each part's
-preview as you go. Define the parts, pivots, the caller `cannon_pitch` joint, and
-the two auto spin joints through the tool's rig subcommands (the required parts
-and joints are already pre-seeded in `rig.json`, but confirm they match this
-brief and adjust pivots to your sculpt). Run `voxel-anim --help` for the
+preview as you go. Define the parts, pivots, the caller `cannon_pitch` joint, the
+three auto joints (`rotor_left_spin`, `rotor_right_spin`, `hover_bob`), and the
+three required animations (`rotor_spin`, `hover`, `strafe`) through the tool's rig
+and animation subcommands (the required parts, joints, and animation declarations
+are already pre-seeded in `rig.json`, but confirm they match this brief, adjust
+pivots to your sculpt, and author each animation's keyframes). Run `voxel-anim
+--help` for the
 available operations (setting and clearing single voxels, filling and stroking
 boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, and
 `voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim`

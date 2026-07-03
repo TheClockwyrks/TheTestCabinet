@@ -26,10 +26,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part hull --x0 6 --y0 6 --z0 8 --x1 57 --y1 22 --z1 57 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole aircraft composed from all your parts, re-rendered after every operation. The
@@ -49,8 +50,9 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the aircraft, the required parts and their pivots, the required caller
-`cannon_pitch` joint, and the two auto rotor-spin joints. Run `voxel-anim --help`
-for the exact operation and rig contract.
+`cannon_pitch` joint, the three auto joints, and the three required animations you
+must author. Run `voxel-anim --help` for the exact operation, rig, and animation
+contract.
 
 ## What to deliver
 
@@ -59,8 +61,11 @@ matches the brief, the assembled `scene/` previews show the parts fitting togeth
 correctly, and the rig is complete: a wide, flat fuselage carrying two spinning
 rotors, with an underslung cannon beneath the nose. The required interface is a
 caller-driven **`cannon_pitch`** joint that tilts the cannon up and down about its
-mount, plus the two auto **`rotor_left_spin`** and **`rotor_right_spin`** joints
-that whirl the rotors. Produce **every** required part and joint; you may add your
-own extra parts, joints, or auto-play clips on top, but do not drop or contradict
-the required interface. When you are satisfied, stop: the recorded per-part logs
-and `rig.json` are your finished submission.
+mount, plus three auto joints — **`rotor_left_spin`**, **`rotor_right_spin`**, and
+**`hover_bob`** — and the three required animations you must author as F-curves:
+**`rotor_spin`** (the auto-playing rotor blur), **`hover`** (the up/down hover
+movement), and **`strafe`** (the cannon gun-run). Produce **every** required part,
+joint, and animation; you may add your own extra parts, joints, or auto-play
+animations on top, but do not drop or contradict the required interface. When you
+are satisfied, stop: the recorded per-part logs and `rig.json` are your finished
+submission.

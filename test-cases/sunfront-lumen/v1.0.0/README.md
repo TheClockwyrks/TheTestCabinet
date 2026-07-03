@@ -24,14 +24,19 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 
 - **`emitter_pitch`** (caller, rotation about `x`, `-0.6..0.6`) — the game-facing
   control: tilts the front beam projector up and down about its mount.
-- **`ring_left_spin`** / **`ring_right_spin`** (auto, rotation about `z`,
-  `-π..π`) — the two rings spin on their own via their clips, turning in opposite
-  directions.
+- **`ring_left_spin`** / **`ring_right_spin`** (auto, rotation about `z`, `-π..π`)
+  — the two rings, driven by the `ring_spin` animation in opposite directions.
+- **`hover_bob`** (auto, translation along `y`, `-2..2`) — on the root `core`,
+  driven by the `hover` animation to bob the whole (legless) drone in place.
 
-The case also authors a **`pulse`** review animation that drives `emitter_pitch`
-so a reviewer can watch the beam nod without dragging the slider. The model may
-add its own extra parts, joints, and clips on top, but must not drop or contradict
-the required interface.
+The `[model]` table also declares three **required animations** the model must
+**author** at run time as F-curves (`define-animation` / `add-keyframe`): the
+decorative **`ring_spin`** (`auto_play = true`, the counter-rotating rings),
+**`hover`** (a playable movement bob), and **`pulse`** (a playable emitter nod).
+The manifest declares each animation's identity only — name, period, loop,
+`auto_play`, and the joints it must drive — never its keyframes. The model may add
+its own extra parts, joints, and animations on top, but must not drop or
+contradict the required interface.
 
 ## Contents
 

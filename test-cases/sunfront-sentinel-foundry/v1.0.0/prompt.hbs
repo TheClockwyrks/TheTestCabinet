@@ -17,8 +17,8 @@ sculpted **separately** in its own preview and log. The volume starts **empty**.
 Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
 the binary re-renders that part's isometric preview to `parts/<part>.png` and
 appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+logs, and a pre-seeded `rig.json` holding the required parts, joints, and animation
+declarations are already in place at `{{workspace}}`.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -26,10 +26,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 49 --y1 60 --z1 49 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole foundry composed from all your parts, re-rendered after every operation. The
@@ -48,9 +49,10 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the tower, the required parts and their pivots, and the two auto
-`piston_stamp` and `gear_spin` joints. Run `voxel-anim --help` for the exact
-operation and rig contract.
+form of the tower, the required parts and their pivots, the two auto `piston_stamp`
+and `gear_spin` joints, and the two required auto-playing animations you must
+author (as F-curves) to drive them. Run `voxel-anim --help` for the exact
+operation, rig, and animation contract.
 
 ## What to deliver
 
@@ -58,9 +60,10 @@ Build and rig the foundry up operation by operation until each `parts/<part>.png
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: a tall masonry tower base, a stamping press in
 its throat, and a drive gear on its flank. The required interface is the two auto
-**`piston_stamp`** and **`gear_spin`** joints that hammer the press down and up and
-turn the gear a full revolution on their own, while the `base` stays fixed. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+**`piston_stamp`** and **`gear_spin`** joints, each moved by a required auto-playing
+animation you author (as weighty F-curves) that hammers the press down and up and
+turns the gear a full revolution on their own, while the `base` stays fixed. Produce
+**every** required part, joint, and animation; you may add your own extra parts,
+joints, or auto-playing animations on top, but do not drop or contradict the
+required interface. When you are satisfied, stop: the recorded per-part logs and
+`rig.json` are your finished submission.

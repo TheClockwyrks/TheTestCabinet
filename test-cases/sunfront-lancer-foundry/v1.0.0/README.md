@@ -23,15 +23,21 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `focus_ring` | `base` | `[22, 68, 22]` | The spinning focus-ring at the crown |
 
 This is a **structure**: it has no caller-driven controls. Both moving parts
-animate on their own through auto joints:
+animate on their own through auto joints, each driven by a required auto-play
+animation the model authors:
 
 - **`rail_arm_slide`** (auto, translation along `y`, `0..10`) — rides the rail-arm
-  up and down its shaft on its own clip.
+  up and down its shaft, driven by the required `rail_arm_slide` animation
+  (`period_ms = 1600`, loop, auto_play).
 - **`focus_ring_spin`** (auto, rotation about `y`, `-π..π`) — turns the
-  focus-ring a full revolution on its own clip.
+  focus-ring a full revolution, driven by the required `focus_ring_spin` animation
+  (`period_ms = 2000`, loop, auto_play).
 
-The `base` stays fixed. The model may add its own extra parts, joints, and clips
-on top, but must not drop or contradict the required interface.
+The two `[[model.animation]]` entries are **declarations only** — no keyframes:
+the model authors each motion as an F-curve at run time with the `voxel-anim`
+`define-animation`/`add-keyframe` subcommands. The `base` stays fixed. The model
+may add its own extra parts, joints, and animations on top, but must not drop or
+contradict the required interface.
 
 ## Contents
 
@@ -45,8 +51,9 @@ on top, but must not drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
+`rig.json` holding the required parts, joints, and animation declarations (so the
+contract exists from the first operation). There is no target model and no
+operations schema — the binary's
 `--help` is the contract.
 
 ## Variants

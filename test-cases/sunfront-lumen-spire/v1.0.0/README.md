@@ -21,13 +21,23 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `lens` | `base` | `[22, 74, 22]` | The solar lens atop the tip |
 
 - **`halo_ring_spin`** (auto, rotation about `y`, `-π..π`) — the halo ring turns
-  a full revolution about the spire's vertical axis on its own clip.
+  a full revolution about the spire's vertical axis.
 - **`lens_pulse`** (auto, translation along `y`, `0..4`) — the solar lens bobs
-  straight up and back down on its own clip.
+  straight up and back down.
 
-Both required joints are `auto`-driven: the spire cycles on its own with no caller
-and no case-authored review animation. The model may add its own extra parts,
-joints, and clips on top, but must not drop or contradict the required interface.
+Both joints are driven by required **auto-play animations** the model must author
+(motion supplied as F-curves at run time, not shipped by the case):
+
+| Animation | Period | `auto_play` | Loop | Drives |
+| --- | --- | --- | --- | --- |
+| `halo_ring_spin` | 2200 ms | yes | yes | `halo_ring_spin` |
+| `lens_pulse` | 1500 ms | yes | yes | `lens_pulse` |
+
+Both required joints are `auto`-driven and both animations are decorative
+(`auto_play = true`): the spire cycles on its own with no caller. The model may
+add
+its own extra parts, joints, and animations on top, but must not drop or contradict
+the required interface.
 
 ## Contents
 

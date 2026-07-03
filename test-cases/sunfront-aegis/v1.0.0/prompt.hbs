@@ -1,8 +1,9 @@
 Sculpt and rig the **Sunfront Aegis**, a colossal multi-gun walking fortress that
-strides on six independent, two-jointed legs, whose main cannon aims forward, whose
-two side-mounted turrets each traverse to cover only their own flank, and whose
-radar vane sweeps on its own, as an 88x80x104 opaque-voxel model using only the
-voxel-anim tool.
+strides on six independent legs — each a three-segment thigh/shin/flat-foot chain —
+whose main cannon aims forward, whose two side-mounted turrets each traverse to cover
+only their own flank, and whose radar vane sweeps on its own, as an 88x80x104
+opaque-voxel model using only the voxel-anim tool. You author its walk and weapon
+animations as F-curves.
 
 ## How sculpting and rigging works
 
@@ -29,7 +30,8 @@ voxel-anim fill-box --part chassis --x0 8 --y0 30 --z0 8 --x1 79 --y1 60 --z1 96
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
+(defining parts, setting pivots, defining joints, and defining animations and their
+keyframes), and `voxel-anim
 <operation> --help` for one operation's exact flags — that help text is the
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
@@ -52,28 +54,36 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, and the required joints:
-**twelve leg joints** — a `hip_*` and a `knee_*` per leg (`lf, lm, lr, rf, rm, rr`)
-so each of the six legs swings and bends independently and lifts its foot clear of
-the ground; the four gun joints — `main_turret_yaw` and `main_gun_pitch` for the
-main turret and cannon, and `left_turret_yaw` / `right_turret_yaw` for the two
-independently traversing side turrets; and the one auto `radar_spin` joint that
-sweeps the decorative radar on its own. Run `voxel-anim --help` for the exact
-operation and rig contract.
+form of the fortress, the required parts and their pivots, the required joints, and
+the required animations. The joints: **eighteen auto leg joints** — a `hip_*`, a
+`knee_*`, and a `foot_*` per leg (`lf, lm, lr, rf, rm, rr`), each leg an independent
+three-segment chain (thigh + shin + flat foot) that plants its foot flat and lifts it
+clear of the ground; the four gun caller joints — `main_turret_yaw` and
+`main_gun_pitch` for the main turret and cannon, and `left_turret_yaw` /
+`right_turret_yaw` for the two independently traversing side turrets; and the one auto
+`radar_spin` joint. The animations you must **author** (as F-curves, with
+`voxel-anim define-animation` / `add-keyframe`): **`march`** (the two-tripod walk
+driving the eighteen leg joints), **`bombardment`** (the four gun joints), and the
+self-playing **`radar_spin`**. Run `voxel-anim --help` for the exact operation, rig,
+and animation contract.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: a tiered, prowed armored citadel raised on six
-independent two-jointed legs, carrying a big main turret and cannon, a side-mounted
-turret out on each sponson, and a sweeping radar vane. The required interface is
-**sixteen caller joints** — the twelve leg joints (`hip_*` swing each leg,
-`knee_*` bends each shin to lift the foot), plus `main_turret_yaw` (fine-aim within
-a narrow forward cone), `main_gun_pitch` (elevate the cannon), and `left_turret_yaw`
-/ `right_turret_yaw` (traverse each side turret across its own flank) — and **one
-auto joint**, `radar_spin`, that sweeps the radar on its own. Produce **every**
-required part and joint; you may add your own extra parts, joints, or auto-play
-clips on top, but do not drop or contradict the required interface. When you are
-satisfied, stop: the recorded per-part logs and `rig.json` are your finished
-submission.
+independent three-segment legs (thigh + shin + flat foot, bent-knee rest), carrying a
+big main turret and cannon, a side-mounted turret out on each sponson, and a sweeping
+radar vane. The required interface is **eighteen auto leg joints** (`hip_*` sweeps
+each leg, `knee_*` folds each shin the reverse/digitigrade way to lift the foot,
+`foot_*` keeps each foot flat), **four caller gun joints** (`main_turret_yaw`
+fine-aims within a narrow forward cone, `main_gun_pitch` elevates the cannon, and
+`left_turret_yaw` / `right_turret_yaw` traverse each side turret across its own
+flank), and **one auto joint**, `radar_spin`. You must also **author the three
+required animations** as F-curves with the `voxel-anim` animation subcommands:
+`march` (the two-tripod walk with a planted, flat, still stance phase and an
+`ease-in` foot-plant), `bombardment` (the guns), and the self-playing `radar_spin`.
+Produce **every** required part, joint, and animation; you may add your own extra
+parts, joints, or animations on top, but do not drop or contradict the required
+interface. When you are satisfied, stop: the recorded per-part logs and `rig.json`
+are your finished submission.

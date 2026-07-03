@@ -13,7 +13,10 @@ reviewed subjectively against it.
 
 ## The rig
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The required, game-facing contract declared in `test-case.toml`'s `[model]`
+table —
+parts, joints, and the three required animations (declared, but authored by the
+model as F-curves):
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
@@ -23,15 +26,19 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `beacon` | `base` | `[36, 84, 36]` | The signal beacon atop the spire |
 
 - **`crown_spin`** (auto, rotation about `y`, `-π..π`) — the collector crown turns
-  a full revolution on its own clip.
+  a full revolution, driven by the `crown_spin` auto-play animation.
 - **`gate_raise`** (auto, translation along `y`, `0..16`) — the gate lifts
-  straight up, holds, and lowers on its own clip.
+  straight up, holds, and lowers, driven by the `gate_raise` auto-play animation.
 - **`beacon_spin`** (auto, rotation about `y`, `-π..π`) — the beacon turns slowly
-  a full revolution on its own clip.
+  a full revolution, driven by the `beacon_spin` auto-play animation.
 
-All three required joints are `auto`-driven: the bastion cycles on its own with
-no caller and no case-authored review animation. The model may add its own extra
-parts, joints, and clips on top, but must not drop or contradict the required
+All three required joints are `auto`-driven, each by one required decorative
+**auto-play** animation (`crown_spin` period 4000 ms, `gate_raise` 3600 ms,
+`beacon_spin` 5000 ms; all `loop = true`). The manifest declares each animation's
+identity and intent only — **no keyframes**; the model authors the motion as
+F-curves with `voxel-anim`'s `define-animation`/`add-keyframe` subcommands. The
+bastion cycles on its own with no caller. The model may add its own extra parts,
+joints, and animations on top, but must not drop or contradict the required
 interface.
 
 ## Contents

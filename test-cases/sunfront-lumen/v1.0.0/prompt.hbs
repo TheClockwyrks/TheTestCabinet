@@ -26,10 +26,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part core --x0 10 --y0 24 --z0 10 --x1 29 --y1 44 --z1 29 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole drone composed from all your parts, re-rendered after every operation. The
@@ -49,8 +50,9 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the drone, the required parts and their pivots, the required caller
-`emitter_pitch` joint, and the two auto spin joints. Run `voxel-anim --help` for
-the exact operation and rig contract.
+`emitter_pitch` joint, the auto spin/hover joints, and the three required
+animations you must author (`ring_spin`, `hover`, `pulse`). Run `voxel-anim
+--help` for the exact operation, rig, and animation contract.
 
 ## What to deliver
 
@@ -59,9 +61,10 @@ matches the brief, the assembled `scene/` previews show the parts fitting togeth
 correctly, and the rig is complete: a floating core with a solar-hot heart, two
 counter-rotating rings, and a beam emitter projecting from the core face. The
 required interface is a caller-driven **`emitter_pitch`** joint that tilts the beam
-up and down about its mount, plus the two auto **`ring_left_spin`** and
-**`ring_right_spin`** joints that turn the rings in opposite directions. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+up and down about its mount, the auto **`ring_left_spin`** / **`ring_right_spin`**
+and **`hover_bob`** joints, and the three required animations you author on them —
+**`ring_spin`** (the counter-rotating rings), **`hover`** (the whole craft bobbing
+in place), and **`pulse`** (the emitter nodding). Produce **every** required part,
+joint, and animation; you may add your own extra parts, joints, or animations on
+top, but do not drop or contradict the required interface. When you are satisfied,
+stop: the recorded per-part logs and `rig.json` are your finished submission.

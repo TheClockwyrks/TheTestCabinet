@@ -25,10 +25,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part chassis --x0 8 --y0 0 --z0 5 --x1 51 --y1 18 --z1 74 --color "#5d6b3a"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole tank composed from all your parts, re-rendered after every operation. The
@@ -57,7 +58,9 @@ Build and rig the tank up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: a chassis on tracks, a turret on top, and a
 barrel projecting from the turret, with a caller-driven **`turret_yaw`** joint that
-swings the turret about its mount. Produce **every** required part and
-the required joint; you may add your own extra parts, joints, or auto-play clips on
-top, but do not drop or contradict the required interface. When you are satisfied,
+swings the turret about its mount, plus the required **`turret_sweep`** animation
+authored as F-curves on the `turret_yaw` track. Produce **every** required part,
+the required joint, and the required animation; you may add your own extra parts,
+joints, or auto-play animations on top, but do not drop or contradict the required
+interface. When you are satisfied,
 stop: the recorded per-part logs and `rig.json` are your finished submission.

@@ -71,40 +71,65 @@ where it sits on the finished tower:
   standing proud of the flank so its teeth read, meeting the tower at the hub with
   no gap. Shape it so it turns cleanly about its hub.
 
-## The required joints
+## The required joints and animations
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the foundry cycles without any
-caller. There are **no** caller joints.
+joint, moved by a required, continuously **auto-playing** animation you must
+author, so the foundry cycles without any caller. There are **no** caller joints.
 
-- **`piston_stamp`** — a **translation** along the **y** (up) axis, through the
-  press mount at pivot **`[28, 50, 28]`**, **`drive = "auto"`**. Its range is
-  **`min = -8` (bottom of the stamp) to `max = 0` (fully raised, at rest)**,
-  resting at `0`. The clip drives the press straight down and back up in its
-  throat, so it hammers on its own. Sculpt the press so it slides plausibly down
-  and up about that mount without any voxel tearing away or clipping the throat
-  walls.
-- **`gear_spin`** — a **rotation** about the **z** (front-to-back) axis, through
-  the gear hub at pivot **`[42, 40, 20]`**, **`drive = "auto"`**. Its range is a
-  full turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the gear a
-  full revolution and loops, so it spins on its own. Sculpt the gear so it rotates
-  plausibly about its hub without any voxel tearing away from the flank.
+- **`piston_stamp`** — a joint that is a **translation** along the **y** (up)
+  axis, through the press mount at pivot **`[28, 50, 28]`**, **`drive = "auto"`**.
+  Its range is **`min = -8` (bottom of the stamp) to `max = 0` (fully raised, at
+  rest)**, resting at `0`. Sculpt the press so it slides plausibly down and up
+  about that mount without any voxel tearing away or clipping the throat walls.
+- **`gear_spin`** — a joint that is a **rotation** about the **z** (front-to-back)
+  axis, through the gear hub at pivot **`[42, 40, 20]`**, **`drive = "auto"`**.
+  Its
+  range is a full turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the gear
+  so
+  it rotates plausibly about its hub without any voxel tearing away from the flank.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a second gear, a puff vent, or extra pipework), but you must **not
-drop or contradict** the required parts or the two auto `piston_stamp` and
-`gear_spin` joints.
+You must **author** the two required animations that move these joints — both
+looping, both **auto-playing** (they run continuously by default, so the foundry
+idles on its own with no caller):
+
+- **`piston_stamp`** — period **1200 ms**, `loop`, `auto_play`, driving the
+  `piston_stamp` joint. The press hammers straight **down** to the bottom of the
+  stamp and back **up** to rest, once per loop.
+- **`gear_spin`** — period **1800 ms**, `loop`, `auto_play`, driving the
+  `gear_spin` joint. The gear turns a **full revolution** (from `-π` to `+π`) and
+  loops seamlessly.
+
+Author each animation's motion as **F-curves**, not linear slides — the motion
+must carry weight. Use `voxel-anim define-animation` to create the animation
+(its `--period-ms`, `--loop`, `--auto-play`), then `voxel-anim add-keyframe` to
+set each keyframe's time and value with an `--interp`
+(`constant` | `linear` | `bezier` | `ease-in` | `ease-out` | `ease-in-out`, with
+optional `--out-handle`/`--in-handle` Bézier tangents). Give the **press** a
+weighty hammer — `ease-in` into the bottom of the stamp so it lands with a thump,
+then `ease-out` back up — rather than a constant-speed glide. Keep the **gear**
+turning at a steady rate so its revolution loops seamlessly. Read `voxel-anim
+--help` and `voxel-anim define-animation --help` / `voxel-anim add-keyframe
+--help` for the exact flags.
+
+You **may add** your own extra parts, joints, or auto-playing animations on top
+of
+this (for example a second gear, a puff vent, or extra pipework), but you must
+**not drop or contradict** the required parts, the two auto `piston_stamp` and
+`gear_spin` joints, or the two required animations that drive them.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the tower base and its throat, then the press, then the gear, checking each part's
 preview as you go. Define the parts, pivots, and the two auto `piston_stamp` and
-`gear_spin` joints through the tool's rig subcommands (the required parts and
-joints are already pre-seeded in `rig.json`, but confirm they match this brief and
-adjust pivots to your sculpt). Run `voxel-anim --help` for the available
-operations (setting and clearing single voxels, filling and stroking boxes, 3D
-lines, spheres, and a mirror plane) and the rig subcommands, and `voxel-anim
+`gear_spin` joints through the tool's rig subcommands (the required parts, joints,
+and animations are already pre-seeded in `rig.json`, but confirm they match this
+brief and adjust pivots to your sculpt), then **author the two required animations**
+(`piston_stamp` and `gear_spin`) with `define-animation` and `add-keyframe` as
+described above. Run `voxel-anim --help` for the available operations (setting and
+clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a mirror
+plane), the rig subcommands, and the animation subcommands, and `voxel-anim
 <operation> --help` for each one's exact flags. Call `voxel-anim` once per
 operation and read `parts/<part>.png` between calls to judge each part against
 this brief.

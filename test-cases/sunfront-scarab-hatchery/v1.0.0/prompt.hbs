@@ -27,9 +27,9 @@ voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 49 --y1 22 --z1 49 --c
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+(defining parts, setting pivots, defining joints, and defining animations and
+adding keyframes), and `voxel-anim <operation> --help` for one operation's exact
+flags — that help text is the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole hatchery composed from all your parts, re-rendered after every operation. The
@@ -48,9 +48,10 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the hatchery, the required parts and their pivots, and the two auto joints
-`hatch_turn` and `vent_bob` that animate on their own. Run `voxel-anim --help` for
-the exact operation and rig contract.
+form of the hatchery, the required parts and their pivots, the two auto joints
+`hatch_turn` and `vent_bob`, and the two required animations whose F-curve motion
+you must author. Run `voxel-anim --help` for the exact operation, rig, and
+animation contract.
 
 ## What to deliver
 
@@ -60,8 +61,9 @@ correctly, and the rig is complete: a squat, wide hive-mound clustered with hatc
 cells (the fixed root), a central iris hatch on the crown, and a vent set into the
 side. The required interface is two auto joints — **`hatch_turn`** that turns the
 iris hatch about its vertical axis and **`vent_bob`** that lifts the vent up and
-settles it back — each on its own looping clip, while the `base` stays fixed.
-Produce **every** required part and joint; you may add your own extra parts,
-joints, or auto-play clips on top, but do not drop or contradict the required
-interface. When you are satisfied, stop: the recorded per-part logs and `rig.json`
-are your finished submission.
+settles it back — each driven by a looping decorative animation whose F-curve
+motion **you author** with `define-animation`/`add-keyframe`, while the `base` stays
+fixed. Produce **every** required part, joint, and animation; you may add your own
+extra parts, joints, or auto-play animations on top, but do not drop or contradict
+the required interface. When you are satisfied, stop: the recorded per-part logs and
+`rig.json` are your finished submission.

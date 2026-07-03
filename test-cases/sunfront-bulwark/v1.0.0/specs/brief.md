@@ -19,6 +19,11 @@ the description below.
   vertical centerplane between `x = 27` and `x = 28`. The **two arms are the
   deliberate exceptions**: the **left** arm (out toward `x = 0`) carries the tower
   shield, and the **right** arm (out toward `x = 55`) wields the maul.
+- Each leg is an **articulated chain of three segments** (a thigh, a shin, and a
+  short flat foot) so it can plant a foot and stride, not a single rigid stump —
+  see **The parts** and **The legs** below. Sculpt the assembled rest pose with
+  a
+  **clearly bent knee**, not a straight column.
 - The Bulwark is deliberately **broad and heavily armored** — a slow, plodding
   frontline tank, wide across the shoulders and thick in the leg, not a lithe
   runner.
@@ -44,15 +49,19 @@ the center of the chest**, so the accent reads from multiple angles.
 
 ## The parts
 
-The mech is a **rig** of four required parts in a parent/child hierarchy. Sculpt
+The mech is a **rig** of eight required parts in a parent/child hierarchy. Sculpt
 each in its own local coordinates within the shared volume, positioned where it
 sits on the finished mech:
 
 | Part | Parent | Attaches at (pivot) | What it is |
 | --- | --- | --- | --- |
 | `torso` | *(root)* | `[0, 0, 0]` | Body, head, both shoulders, and the left shield arm |
-| `leg_left` | `torso` | `[18, 28, 24]` | The left leg |
-| `leg_right` | `torso` | `[38, 28, 24]` | The right leg |
+| `thigh_l` | `torso` | `[18, 28, 24]` | The left leg's upper thigh (hangs from the left hip) |
+| `shin_l` | `thigh_l` | `[18, 15, 24]` | The left leg's lower shin (hangs from the left knee) |
+| `foot_l` | `shin_l` | `[18, 3, 24]` | The left leg's short, flat foot (hangs from the left ankle) |
+| `thigh_r` | `torso` | `[38, 28, 24]` | The right leg's upper thigh (mirror of the left) |
+| `shin_r` | `thigh_r` | `[38, 15, 24]` | The right leg's lower shin |
+| `foot_r` | `shin_r` | `[38, 3, 24]` | The right leg's short, flat foot |
 | `weapon` | `torso` | `[40, 44, 26]` | The right arm gripping the siege maul |
 
 - **`torso`** is the **root** — the fixed core of the mech. Sculpt a broad,
@@ -68,13 +77,33 @@ sits on the finished mech:
   present** holding the shield, not a shield stuck flat to the chest. Keep the
   right shoulder and the two hips fleshed out where the maul arm and the legs mount
   so the children have something to seat against.
-- **`leg_left`** attaches under the left hip at **`[18, 28, 24]`**. Sculpt a
-  thick, armored leg in brass and bronze with an iron hip and knee joint,
-  reaching down to the ground and planted beneath the hip. It meets the torso
-  at the mount with no
-  gap.
-- **`leg_right`** attaches under the right hip at **`[38, 28, 24]`**, a mirror of
-  the left leg.
+
+### The legs
+
+Each leg is an **independent three-segment chain** on its **own** hip, positioned
+directly above its **own** foot — the same `x` and `z` all the way down, only `y`
+descending. Do **not** model a single leg-bank part on one shared pivot:
+rotating a
+spread of feet about one point drives feet through the ground. Sculpt both legs
+in a
+**standing, clearly bent-knee** stance (the knee folded, not a straight column)
+so
+the assembled rest scene shows folded legs.
+
+- **`thigh_l`** hangs from the **left hip** at **`[18, 28, 24]`** down to the knee
+  around `y = 15`. A thick, armored upper leg in brass and bronze with an iron hip
+  joint. It meets the torso at the hip with no gap.
+- **`shin_l`** hangs from the **left knee** at **`[18, 15, 24]`** down to the ankle
+  around `y = 3`. A thick lower leg with an iron knee joint at the top. It meets
+  the
+  thigh at the knee with no gap.
+- **`foot_l`** hangs from the **left ankle** at **`[18, 3, 24]`** — a **short, flat
+  foot** (a low, wide iron-and-bronze pad, only a few voxels tall) that sits
+  flat on
+  the ground. It meets the shin at the ankle with no gap.
+- **`thigh_r`**, **`shin_r`**, **`foot_r`** are the **mirror** of the left leg,
+  on
+  the right hip at **`[38, 28, 24]`** (knee `[38, 15, 24]`, ankle `[38, 3, 24]`).
 - **`weapon`** attaches at the **right shoulder** at **`[40, 44, 26]`**.
   Sculpt a **full right arm** — a blocky upper arm and forearm with an iron
   elbow, ending in a **fist that grips the haft of a heavy siege maul**: a long
@@ -97,34 +126,95 @@ A consuming game drives the rig by joint name. The **required** caller joint is:
   smash. Only the weapon moves on this joint; no voxel of it should tear away
   from the shoulder or clip into the torso as it swings.
 
-The two legs **animate on their own** — each carries an **auto**-driven stride
-joint the case drives with a looping clip, so the legs walk without the caller:
+Each leg carries **three `auto` joints** (driven by the `walk` animation you author,
+below — **not** by the caller). Per leg, using its own pivots:
 
-- **`leg_left_stride`** — a **rotation** about **x** through **`[18, 28, 24]`**,
-  `min = -0.5`, `max = 0.5`, rest `0`, **`drive = "auto"`**.
-- **`leg_right_stride`** — the same about **`[38, 28, 24]`**, driven in the
-  opposite phase so the mech walks in a natural gait.
+| Joint | Part | Kind / axis | Pivot (l / r) | Range | Rest | Role |
+| --- | --- | --- | --- | --- | --- | --- |
+| `hip_l` / `hip_r` | `thigh_l` / `thigh_r` | rotation, x | `[18,28,24]` / `[38,28,24]` | `-0.5 .. 0.5` | `0.0` | the big fore/aft stride sweep |
+| `knee_l` / `knee_r` | `shin_l` / `shin_r` | rotation, x | `[18,15,24]` / `[38,15,24]` | `-1.4 .. 0.2` | **`-0.7`** | the reverse/digitigrade fold |
+| `foot_l` / `foot_r` | `foot_l` / `foot_r` | rotation, x | `[18,3,24]` / `[38,3,24]` | `-0.3 .. 0.3` | `0.0` | the ±~15° ankle tilt |
 
-Sculpt each leg so it rotates plausibly forward and back about its hip mount
-without detaching from the torso.
+- The **knee rests at `-0.7`** — a **clearly bent** knee. A near-straight leg
+  has no
+  room to extend and fold, so it cannot keep its foot planted while the body passes
+  over it. Sculpt the shin so this rest reads as a **folded** leg.
+- The knee must fold the shin **rearward** (a **reverse / digitigrade** knee,
+  like a
+  bird's or a real walker's). The common failure is the shin bending the wrong
+  way —
+  "inside-out" — which reads as broken. If your sculpt bends inside-out, **flip
+  the
+  sign** of the knee's animated values, not just the range.
+- The **foot stays flat.** The `foot_*` ankle counter-rotates against the shin
+  so the
+  foot tilts only about **±15°** across the whole cycle — never walking on toes
+  or
+  heels.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a subtle head turn, or making the left shield arm its own part), but
-you must **not drop or contradict** the required parts, the required caller
-`weapon_pitch` joint, or the two auto stride joints — and the finished mech must
-clearly have **two arms**, a shield on the left and the maul on the right.
+## The required animations
+
+You must **author** the motion for each required animation below with the
+`voxel-anim` animation subcommands — `define-animation` to set (or confirm) its
+name/period/loop/auto-play, then `add-keyframe` per keyframe (see
+`voxel-anim --help`). The case pre-seeds each animation's **declaration** (its name,
+period, loop, auto-play, and the joints it must drive) into `rig.json` with **no
+keyframes** — you supply the **F-curves**. Author real curves, not linear slides:
+each `add-keyframe` takes an **`--interp`** of
+`constant | linear | bezier | ease-in | ease-out | ease-in-out` (with optional
+`--out-handle`/`--in-handle` Bézier handles). Legs carry weight, so linear keys
+read
+as a weightless, mechanical flail however correct the poses.
+
+- **`walk`** (period **900 ms**, loops, `auto_play = false` — a named playable a
+  game
+  triggers) drives **all six leg joints**: `hip_l`, `knee_l`, `foot_l`, `hip_r`,
+  `knee_r`, `foot_r`. Author a real walk cycle with a **planted stance phase**:
+  for
+  each leg, a segment where the **foot is flat and still on the ground and translates
+  straight backward relative to the body** (the mech passes over the planted foot,
+  the hip and knee extending/folding together to hold the foot at a fixed ground
+  point), then a **swing** — the knee folds to **lift the foot clear**, the leg
+  carries forward, and the foot **plants** again. Land each plant with an **`ease-in`**
+  into the foot-plant for the heavy "thump" of this ponderous mech; keep the
+  rest of
+  the roll smooth (`ease-in-out`). Phase the two legs in **opposite phase** —
+  leg `r`
+  a half period (450 ms) behind leg `l` — so one foot is always planted. There must
+  be a still, flat, planted segment: a continuous-arc "flailing" leg that never
+  sits
+  still on the ground is wrong. Design the **foot path** first (flat during
+  stance, a
+  lift arc during swing), then solve the hip/knee/ankle angles to it, then set the
+  eased keys.
+- **`smash`** (period **700 ms**, loops, `auto_play = false`) drives only
+  `weapon_pitch`: wind the maul up overhead (toward `max = 1.1`), slam it down and
+  forward (toward `min = -0.5`) with an **`ease-in`** into the strike, then recover
+  to the ready pose (`0.2`). It touches no leg joint, so the legs hold still
+  while it
+  plays.
+
+You **may add** your own extra parts, joints, or animations on top of this (for
+example a subtle head turn, or making the left shield arm its own part), but you
+must
+**not drop or contradict** the required parts, the required caller `weapon_pitch`
+joint, the six `auto` leg joints, or the two required animations — and the finished
+mech must clearly have **two arms**, a shield on the left and the maul on the right.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
-the armored torso, head, shoulders, and the left shield arm, then each leg, then
-the right maul arm, checking each part's preview as you go. Define the parts,
-pivots, the caller `weapon_pitch` joint, and the two auto stride joints through
-the tool's rig subcommands (the required parts and joints are already pre-seeded
-in `rig.json`, but confirm they match this brief and adjust pivots to your
-sculpt).
+the armored torso, head, shoulders, and the left shield arm, then each leg segment
+(thigh, shin, foot), then the right maul arm, checking each part's preview as you
+go. Define the parts, pivots, the caller `weapon_pitch` joint, and the six `auto`
+leg joints through the tool's rig subcommands, and **author the `walk` and `smash`
+F-curves** with `define-animation` and `add-keyframe` (the required parts, joints,
+and empty animation declarations are already pre-seeded in `rig.json`, but confirm
+they match this brief, adjust pivots to your sculpt, and fill in the animation
+keyframes).
 Run `voxel-anim --help` for the available operations (setting and clearing single
 voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
-rig subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
-Call `voxel-anim` once per operation and read `parts/<part>.png` between calls to
-judge each part against this brief.
+rig subcommands (including `define-animation`/`add-keyframe`), and
+`voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim` once
+per operation and read `parts/<part>.png` (and the assembled `scene/` previews)
+between calls to judge each part against this brief.

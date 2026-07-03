@@ -3,8 +3,8 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Sentinel Foundry: a 56x72x56 opaque-voxel assembly \
-tower whose stamping press pistons down and drive gear spins on their own auto \
-clips while the base stays fixed, built and rigged one recorded operation at a \
+tower whose stamping press pistons down and drive gear spins on their own auto-play \
+animations while the base stays fixed, built and rigged one recorded operation at a \
 time."""
 description = "description.md"
 prompt = "prompt.hbs"
@@ -43,10 +43,10 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, joints, and animations; at run time it MAY add
+# further parts, joints, and animations of its own (recorded in rig.json) beyond
+# what this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json`
+# is pre-seeded from this table so the contract exists from the first operation.
 [model]
 
 # The foundry tower and foundation: the root part (no parent), fixed to the world.
@@ -68,10 +68,10 @@ name = "gear"
 parent = "base"
 pivot = [42, 40, 20]
 
-# The stamping press's own looping stamp. An `auto` joint the case drives with a
-# `[[model.clip]]`, a downward translation along `y` so the press hammers on its
-# own without a caller. `rest = 0` is fully raised; `min = -8` is the bottom of the
-# stamp.
+# The stamping press's own looping stamp. An `auto` joint driven by the
+# same-named `[[model.animation]]`, a downward translation along `y` so the press
+# hammers on its own without a caller. `rest = 0` is fully raised; `min = -8` is the
+# bottom of the stamp.
 [[model.joint]]
 name = "piston_stamp"
 part = "piston"
@@ -83,9 +83,9 @@ max = 0.0
 rest = 0.0
 drive = "auto"
 
-# The drive gear's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `z` so the gear turns on its own without a
-# caller.
+# The drive gear's own looping spin. An `auto` joint driven by the same-named
+# `[[model.animation]]`, a full rotation about `z` so the gear turns on its own
+# without a caller.
 [[model.joint]]
 name = "gear_spin"
 part = "gear"
@@ -97,21 +97,25 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the foundry runs on its own. Only
-# `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs (voxels for
-# the translation stamp, radians for the rotation spin). The press drops down and
-# rises back; the gear turns a full revolution and loops.
-[[model.clip]]
-joint = "piston_stamp"
+# The required decorative animations — one per animated part, so the foundry runs
+# on its own. Each is a DECLARATION only (`auto_play = true`, looping): the case
+# fixes the animation's identity and intent, and the model authors the motion (the
+# F-curve keyframes) at run time with the `voxel-anim`
+# `define-animation`/`add-keyframe` subcommands. There are NO keyframes here. The
+# press drops down and rises back; the gear turns a full revolution and loops.
+[[model.animation]]
+name = "piston_stamp"
 period_ms = 1200
 loop = true
-keyframes = [[0, 0.0], [600, -8.0], [1200, 0.0]]
+auto_play = true
+joints = ["piston_stamp"]
 
-[[model.clip]]
-joint = "gear_spin"
+[[model.animation]]
+name = "gear_spin"
 period_ms = 1800
 loop = true
-keyframes = [[0, -3.14159], [1800, 3.14159]]
+auto_play = true
+joints = ["gear_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -123,9 +127,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Sentinel \
 Foundry and runs correctly — a tall assembly tower whose stamping press hammers \
-down and back up while the drive gear spins on their own auto clips and the base \
-stays put, with a clear solar-amber energy accent and the disciplined Duneforged \
-palette."""
+down and back up while the drive gear spins on their own auto-play animations and \
+the base stays put, with a clear solar-amber energy accent and the disciplined \
+Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-foundry"
@@ -142,11 +146,13 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Press stamps and gear spins on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
-stays fixed: the `piston_stamp` joint drives the press straight down and back up \
-in its throat, and the `gear_spin` joint turns the drive gear a full revolution. \
-Across each cycle no voxel of the press or gear tears away from its mount or clips \
-into the tower — each moves as one solid piece about the correct axis."""
+The animated elements cycle on their own via their auto-play animations while the \
+`base` stays fixed: the `piston_stamp` animation drives the press straight down \
+and back up in its throat, and the `gear_spin` animation turns the drive gear a \
+full revolution. The motion carries weight — the press eases into the bottom of \
+each stamp rather than sliding linearly. Across each cycle no voxel of the press \
+or gear tears away from its mount or clips into the tower — each moves as one solid \
+piece about the correct axis."""
 weight = 3
 domain = "fidelity"
 

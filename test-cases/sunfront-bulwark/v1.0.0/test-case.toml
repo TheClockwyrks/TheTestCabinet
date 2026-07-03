@@ -5,8 +5,9 @@ summary = """
 Sculpt and rig the Sunfront Bulwark: a 56x68x48 opaque-voxel heavy bipedal mech \
 that braces a tower shield on its left arm and swings a heavy siege maul on its \
 right arm — the maul arm raising and smashing on a caller-driven weapon_pitch joint \
-while its two legs walk on their own, built and rigged one recorded operation at a \
-time."""
+while it strides on two independent, three-segment/two-joint legs (a hip, a \
+reverse-folding knee, and a flat foot each) via a model-authored walk animation, \
+built and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -44,30 +45,74 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts and joints, and AUTHOR the F-curves for each
+# required `[[model.animation]]` declaration below; at run time it MAY add further
+# parts, joints, and animations of its own (recorded in rig.json) beyond what this
+# table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# pre-seeded from this table (parts, joints, and the empty animation declarations)
+# so the contract exists from the first operation.
+#
+# The rig has two kinds of moving part, and the drive of each is deliberate:
+#   * The two legs are `auto` — each leg is its OWN three-part chain (thigh + shin +
+#     short flat foot) on its OWN hip directly above its OWN foot, with three auto
+#     joints (a `hip_*`, a reverse-folding `knee_*`, and a `foot_*` ankle). The
+#     model authors the `walk` animation that drives all six leg joints in an
+#     opposite-phase biped gait with a planted stance phase; at rest they hold a
+#     visibly bent-knee stance.
+#   * The maul arm's `weapon_pitch` is `caller` — a game (and the `smash` playback
+#     animation) drives it by name; at rest it holds the maul up and ready.
 [model]
 
 # The mech's armored upper body and head: the root part (no parent), fixed to the
-# world.
+# world. Carries both shoulders, the fixed left tower-shield arm, and the two leg
+# hips.
 [[model.part]]
 name = "torso"
 pivot = [0, 0, 0]
 
-# The left leg, mounted under the left hip. It walks on `leg_left_stride`.
+# --- The two legs. Each leg is THREE parts (an upper thigh + a lower shin + a
+# short, flat foot) with three pivots (a hip on the torso, a knee between thigh and
+# shin, and an ankle between shin and foot), so the knee folds to lift the foot
+# clear on its swing and the ankle keeps the foot flat while planted. The legs are
+# INDEPENDENT — each its own chain on its own hip directly above its own foot (x,z
+# held constant down the chain) — so no shared pivot drags the feet through the
+# ground. Ids: left (l), right (r). ---
+
+# Left thigh, hung from the left hip under the torso.
 [[model.part]]
-name = "leg_left"
+name = "thigh_l"
 parent = "torso"
 pivot = [18, 28, 24]
 
-# The right leg, mirroring the left. It walks on `leg_right_stride` in opposite
-# phase.
+# Left shin, hung from the left knee down toward the foot.
 [[model.part]]
-name = "leg_right"
+name = "shin_l"
+parent = "thigh_l"
+pivot = [18, 15, 24]
+
+# Left foot: a short, flat foot hung from the left ankle.
+[[model.part]]
+name = "foot_l"
+parent = "shin_l"
+pivot = [18, 3, 24]
+
+# Right thigh, mirroring the left.
+[[model.part]]
+name = "thigh_r"
 parent = "torso"
 pivot = [38, 28, 24]
+
+# Right shin.
+[[model.part]]
+name = "shin_r"
+parent = "thigh_r"
+pivot = [38, 15, 24]
+
+# Right foot.
+[[model.part]]
+name = "foot_r"
+parent = "shin_r"
+pivot = [38, 3, 24]
 
 # The right arm gripping the heavy siege maul, mounted at the right shoulder. It
 # winds up and smashes on the caller-driven `weapon_pitch`. (The left arm and its
@@ -76,6 +121,83 @@ pivot = [38, 28, 24]
 name = "weapon"
 parent = "torso"
 pivot = [40, 44, 26]
+
+# --- Joints ---
+
+# The two hip joints: each swings its whole leg fore-and-aft about the hip — the big
+# stride sweep. `auto` (driven by the `walk` animation). rot x, range ±0.5, rest 0.
+[[model.joint]]
+name = "hip_l"
+part = "thigh_l"
+kind = "rotation"
+axis = "x"
+pivot = [18, 28, 24]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "hip_r"
+part = "thigh_r"
+kind = "rotation"
+axis = "x"
+pivot = [38, 28, 24]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+# The two knee joints: each folds the shin REARWARD (reverse / digitigrade) to lift
+# the foot on the swing and to extend/fold while planted so the foot holds a fixed
+# ground point. `auto`. rot x, range -1.4..0.2, REST -0.7 — a clearly bent knee, so
+# the rest scene shows folded legs, never a straight column.
+[[model.joint]]
+name = "knee_l"
+part = "shin_l"
+kind = "rotation"
+axis = "x"
+pivot = [18, 15, 24]
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "knee_r"
+part = "shin_r"
+kind = "rotation"
+axis = "x"
+pivot = [38, 15, 24]
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+# The two ankle joints: each tilts its foot only ±~15°, counter-rotating against the
+# shin to keep the foot FLAT across the whole cycle (never walking on toes/heels).
+# `auto`. rot x, range ±0.3, rest 0.
+[[model.joint]]
+name = "foot_l"
+part = "foot_l"
+kind = "rotation"
+axis = "x"
+pivot = [18, 3, 24]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "foot_r"
+part = "foot_r"
+kind = "rotation"
+axis = "x"
+pivot = [38, 3, 24]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
 
 # The required caller-driven joint: a game addresses `weapon_pitch` by name to wind
 # the right maul arm up over the head and smash it down about its shoulder mount.
@@ -93,60 +215,32 @@ max = 1.1
 rest = 0.2
 drive = "caller"
 
-# The left leg's own looping stride. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the mech walks on its own without a caller.
-[[model.joint]]
-name = "leg_left_stride"
-part = "leg_left"
-kind = "rotation"
-axis = "x"
-pivot = [18, 28, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
+# --- Required animations (the model AUTHORS the F-curves; the case declares only
+# identity + intent + the joints each must drive — no keyframes). ---
 
-# The right leg's stride, in opposite phase to the left.
-[[model.joint]]
-name = "leg_right_stride"
-part = "leg_right"
-kind = "rotation"
-axis = "x"
-pivot = [38, 28, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-# The auto-play walk clips — one per leg, in opposite phase, so the heavy mech
-# plods on its own. Only `auto` joints take a clip; the caller-driven `weapon_pitch`
-# takes none. Keyframes are inline `[t_ms, value]` pairs (radians).
-[[model.clip]]
-joint = "leg_left_stride"
+# `walk`: the WALK. A named playable (`auto_play = false`) a game triggers. It drives
+# all six leg joints in an opposite-phase biped gait (leg `l` a half period behind
+# leg `r`) with a PLANTED STANCE phase — the foot flat and still on the ground,
+# translating straight back relative to the body while the machine passes over it —
+# then a swing (lift, forward, plant), landing with an `ease-in` into the foot-plant
+# for a heavy "thump". It touches no weapon joint.
+[[model.animation]]
+name = "walk"
 period_ms = 900
 loop = true
-keyframes = [[0, 0.0], [225, 0.5], [450, 0.0], [675, -0.5], [900, 0.0]]
+auto_play = false
+joints = ["hip_l", "knee_l", "foot_l", "hip_r", "knee_r", "foot_r"]
 
-[[model.clip]]
-joint = "leg_right_stride"
-period_ms = 900
-loop = true
-keyframes = [[0, 0.0], [225, -0.5], [450, 0.0], [675, 0.5], [900, 0.0]]
-
-# A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the maul smash through its range without dragging the joint
-# slider by hand. Each `[[model.animation.track]]` drives one joint over the shared
-# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `smash` winds the maul up overhead, slams it down and forward, then recovers to
-# the ready pose.
+# `smash`: the WEAPON showcase. A named playable (`auto_play = false`) the reviewer
+# can play so the maul smashes through its range without dragging the slider. It
+# winds the maul up overhead, slams it down and forward, then recovers to the ready
+# pose — driving only `weapon_pitch`, so the legs hold still.
 [[model.animation]]
 name = "smash"
 period_ms = 700
 loop = true
-
-[[model.animation.track]]
-joint = "weapon_pitch"
-keyframes = [[0, 0.2], [150, 1.1], [400, -0.5], [700, 0.2]]
+auto_play = false
+joints = ["weapon_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -159,31 +253,47 @@ description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bulwark and \
 poses correctly — a heavy bipedal mech with two arms, a tower shield braced on the \
 left and a siege maul in the right, whose right maul arm winds up and smashes on \
-its shoulder mount without detaching while the two legs walk on their own and the \
-torso stays put, with a clear solar-amber chest-core accent and the disciplined \
-Duneforged palette."""
+its shoulder mount without detaching while the two independent three-segment legs \
+stride in the model-authored `walk` — each foot lifting clear on its swing and \
+planting flat, the knees folding the right way — and the torso stays put, with a \
+clear solar-amber chest-core accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-mech"
 title = "Reads as a heavy shield-and-maul mech"
 text = """
 From more than one angle the model reads unmistakably as a heavy walking war-mech \
-with two arms: a broad, armored torso with a head on top, a pair of thick legs \
-planted beneath the hips, a wide tower shield braced on a visible left arm, and a \
-heavy siege maul gripped in a visible right arm. It is a bulky bipedal fighting \
-machine, not an abstract stack of boxes, and it is plainly armed — not armless."""
+with two arms: a broad, armored torso with a head on top, a pair of thick, visibly \
+bent-knee legs planted beneath the hips, a wide tower shield braced on a visible \
+left arm, and a heavy siege maul gripped in a visible right arm. It is a bulky \
+bipedal fighting machine, not an abstract stack of boxes, and it is plainly armed — \
+not armless."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "weapon-pitches"
-title = "Maul smashes and legs walk"
+id = "legs-walk"
+title = "Legs stride with a planted stance, not a flail"
 text = """
-Driving the `weapon_pitch` joint swings the right maul arm cleanly up over the head \
-and down in a smash about its shoulder mount, with no voxel of the arm or maul \
-tearing away or clipping into the torso across the full range. The two legs walk on \
-their own through the `leg_left_stride` and `leg_right_stride` auto joints, striding \
-in opposite phase."""
+Playing the model-authored `walk` strides the mech on its two independent legs in \
+opposite phase: each leg swings on its own `hip_*`, folds at its own `knee_*` (the \
+reverse/digitigrade way, not inside-out) to lift the foot clear on its swing, and \
+keeps its `foot_*` flat — with a clear PLANTED STANCE phase where the foot sits \
+flat and still on the ground while the body passes over it, easing into each \
+foot-plant. No foot is dragged or driven down through the ground, and the motion \
+carries weight (F-curves), not a weightless linear flail. Each shin stays attached \
+to its thigh and each thigh to the torso across the whole range."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "maul-smashes"
+title = "Maul smashes on its shoulder hinge"
+text = """
+Driving the `weapon_pitch` joint (and playing the `smash` animation) swings the \
+right maul arm cleanly up over the head and down in a smash about its shoulder \
+mount, with no voxel of the arm or maul tearing away or clipping into the torso \
+across the full range."""
 weight = 3
 domain = "fidelity"
 
@@ -191,9 +301,9 @@ domain = "fidelity"
 id = "torso-fixed"
 title = "Torso stays fixed"
 text = """
-Only the moving parts move: the shield arm when `weapon_pitch` is driven and the \
-legs as they stride. The torso and head stay put — they are the fixed root of the \
-rig, not carried along by the weapon or the legs."""
+Only the moving parts move: the maul arm when `weapon_pitch` is driven and the legs \
+as they stride in `walk`. The torso and head stay put — they are the fixed root of \
+the rig, not carried along by the weapon or the legs."""
 weight = 2
 domain = "fidelity"
 
@@ -201,10 +311,11 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Legs and maul arm stay attached"
 text = """
-Each child stays attached to the torso across its joint's range: the two legs meet \
-the hips at their mounts and the right maul arm meets the right shoulder, with no \
-gap and never floating free or detaching as the legs stride and the maul swings. \
-The left shield arm stays fixed to the torso."""
+Each child stays attached across its joint's range: each thigh meets the torso at \
+its hip, each shin meets its thigh at the knee, each foot meets its shin at the \
+ankle, and the right maul arm meets the right shoulder — with no gap and never \
+floating free or detaching as the legs stride and the maul swings. The left shield \
+arm stays fixed to the torso."""
 weight = 2
 domain = "fidelity"
 

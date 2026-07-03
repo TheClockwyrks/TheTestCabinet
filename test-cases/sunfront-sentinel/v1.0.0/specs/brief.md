@@ -43,15 +43,20 @@ The **solar-amber** accent is the team-tint region: give the mech a clear amber
 
 ## The parts
 
-The mech is a **rig** of four required parts in a parent/child hierarchy. Sculpt
-each in its own local coordinates within the shared volume, positioned where it
-sits on the finished mech:
+The mech is a **rig** of eight required parts in a parent/child hierarchy. Each
+leg is its **own** three-segment chain — a thigh, a shin, and a short foot —
+rather than a single swung block. Sculpt each part in its own local coordinates
+within the shared volume, positioned where it sits on the finished mech:
 
 | Part | Parent | Attaches at (pivot) | What it is |
 | --- | --- | --- | --- |
 | `torso` | *(root)* | `[0, 0, 0]` | The upper body and head |
-| `leg_left` | `torso` | `[14, 26, 20]` | The left leg |
-| `leg_right` | `torso` | `[30, 26, 20]` | The right leg |
+| `thigh_l` | `torso` | `[14, 26, 20]` | Left upper leg (thigh) |
+| `shin_l` | `thigh_l` | `[14, 14, 20]` | Left lower leg (shin) |
+| `foot_l` | `shin_l` | `[14, 3, 20]` | Left flat foot |
+| `thigh_r` | `torso` | `[30, 26, 20]` | Right upper leg (thigh) |
+| `shin_r` | `thigh_r` | `[30, 14, 20]` | Right lower leg (shin) |
+| `foot_r` | `shin_r` | `[30, 3, 20]` | Right flat foot |
 | `weapon` | `torso` | `[30, 40, 24]` | The right-arm rifle |
 
 - **`torso`** is the **root** — the fixed core of the mech. Sculpt an upright
@@ -60,12 +65,16 @@ sits on the finished mech:
   Set the **solar-amber visor** across the front of the head. Keep the hips and
   the right shoulder fleshed out where the legs and rifle mount so the children
   have something to seat against.
-- **`leg_left`** attaches to the left hip at **`[14, 26, 20]`**. Sculpt a single
-  jointed leg in the iron color reaching down to a planted foot on the ground from
-  its hip mount, positioned under the left side of the torso. It sits **below and
-  against** the torso with no gap at the mount.
-- **`leg_right`** attaches to the right hip at **`[30, 26, 20]`**, a mirror of the
-  left leg in the same iron color.
+- **The left leg** is a three-part chain hung under the left hip. **`thigh_l`**
+  attaches to the torso at **`[14, 26, 20]`** (the hip); **`shin_l`** hangs from
+  the knee at **`[14, 14, 20]`**; **`foot_l`** is a short, **flat** foot on the
+  ankle at **`[14, 3, 20]`**. Notice the x and z stay fixed down the chain and
+  only y descends — so the whole leg stands **directly above its own foot**.
+  Sculpt it in the iron color, each segment seating against its parent with no
+  gap. Sculpt the leg in a clearly **bent-knee** stance (the knee folded, not a
+  straight column) so the foot can stay planted as the body passes over it.
+- **The right leg** — **`thigh_r`** `[30, 26, 20]`, **`shin_r`** `[30, 14, 20]`,
+  **`foot_r`** `[30, 3, 20]` — mirrors the left in the same iron color.
 - **`weapon`** attaches to the right shoulder at **`[30, 40, 24]`**. Sculpt a
   rifle in the iron color carried on the right arm and projecting **forward (+z)**,
   meeting the shoulder at the mount with no gap. Shape it so it can tilt up and
@@ -83,32 +92,69 @@ A consuming game drives the rig by joint name. The **required** caller joint is:
   can aim. Only the weapon moves on this joint; no voxel of it should tear away
   from the arm or clip into the torso as it pitches.
 
-The two legs **animate on their own** — each carries an **auto**-driven stride
-joint the case drives with a looping clip, so the mech walks without the caller:
+Each leg carries **three `auto` joints**, driven by the `walk` animation (below),
+never by the caller. Per leg (`<id>` is `l` then `r`):
 
-- **`leg_left_stride`** — a **rotation** about **x** through **`[14, 26, 20]`**,
-  `min = -0.6`, `max = 0.6`, rest `0`, **`drive = "auto"`**.
-- **`leg_right_stride`** — the same about **`[30, 26, 20]`**, driven in the
-  opposite phase so the mech walks in a natural gait.
+- **`hip_<id>`** on the thigh — **rotation** about **x** through the hip pivot,
+  `min = -0.5`, `max = 0.5`, rest `0`. The big fore/aft sweep of the leg.
+- **`knee_<id>`** on the shin — **rotation** about **x** through the knee pivot,
+  `min = -1.4`, `max = 0.2`, **rest = `-0.7`** (a clearly **bent** knee at rest,
+  never straight). This is a **reverse / digitigrade** knee: `-0.7` must fold the
+  shin **rearward**. If your sculpt makes the knee bend "inside-out", flip the
+  **sign** of the knee's animated values (fix the direction, not just the range).
+- **`foot_<id>`** on the foot — **rotation** about **x** through the ankle pivot,
+  `min = -0.3`, `max = 0.3`, rest `0`. A small ankle tilt (only ±~15° across the
+  whole cycle) that **keeps the foot flat** by counter-rotating against the shin.
 
-Sculpt each leg so it swings plausibly forward and back about its hip without
-detaching from the torso.
+Sculpt each leg so it bends at hip, knee, and ankle without any segment detaching
+from its parent across these ranges.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a subtle head turn, or an extra left-arm detail), but you must **not
+## The required animations
+
+You must also **author two animations** with the tool's animation subcommands —
+`define-animation` to declare each one, then `add-keyframe` to lay down its
+motion. Author the motion as **F-curves**, not straight lines: each `add-keyframe`
+takes an `--interp` (`constant` | `linear` | `bezier`, or the easing presets
+`ease-in` | `ease-out` | `ease-in-out`) with optional `--out-handle`/`--in-handle`
+Bézier tangents, so the motion carries weight instead of sliding linearly. The two
+required animations are:
+
+- **`walk`** — period **800 ms**, `loop = true`, **not** auto-play; it drives all
+  six leg joints (`hip_l`, `knee_l`, `foot_l`, `hip_r`, `knee_r`, `foot_r`) and
+  **no** weapon joint. Author a believable walk cycle with a **planted stance
+  phase**: for each leg there must be a segment of the cycle where the **foot is
+  flat and still on the ground** and translates straight **backward relative to
+  the body** (the mech passing over it) while the hip and knee extend and fold to
+  hold the foot at a fixed ground point — then a **swing** where the knee folds
+  to
+  lift the foot clear, carries it forward, and **plants** it again. Put an
+  **`ease-in` on the descent into the foot-plant** so each step lands with weight
+  (a "thump"), and keep the ankle counter-rotating so the foot stays flat (±~15°)
+  throughout. Design the **foot path first**, then solve the hip/knee/ankle angles
+  that place the foot on it. Phase the two legs in **opposite** phase (a half
+  period apart) so the mech is always supported. There must **not** be a
+  continuous, foot-never-still arc — that reads as flailing, not walking.
+- **`fire`** — period **500 ms**, `loop = true`, **not** auto-play; it drives only
+  `weapon_pitch`. Snap the rifle into a quick recoil nod (a fast `ease-in` kick),
+  overshoot back, and settle, so a reviewer can watch it recoil without dragging
+  the slider.
+
+You **may add** your own extra parts, joints, or animations on top of this (for
+example a subtle head turn, or a self-playing idle detail), but you must **not
 drop or contradict** the required parts, the required caller `weapon_pitch` joint,
-or the two auto stride joints.
+the six auto leg joints, or the two required animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
-the torso and head, then each leg, then the rifle, checking each part's preview
-as you go. Define the parts, pivots, the caller `weapon_pitch` joint, and the two
-auto stride joints through the tool's rig subcommands (the required parts and
-joints are already pre-seeded in `rig.json`, but confirm they match this brief and
-adjust pivots to your sculpt). Run `voxel-anim --help` for the available
-operations (setting and clearing single voxels, filling and stroking boxes, 3D
-lines, spheres, and a mirror plane) and the rig subcommands, and `voxel-anim
-<operation> --help` for each one's exact flags. Call `voxel-anim` once per
-operation and read `parts/<part>.png` between calls to judge each part against
-this brief.
+the torso and head, then each leg segment (thigh, shin, foot), then the rifle,
+checking each part's preview as you go. Define the parts, pivots, the caller
+`weapon_pitch` joint, and the six auto leg joints through the tool's rig
+subcommands (the required parts and joints are already pre-seeded in `rig.json`,
+but confirm they match this brief and adjust pivots to your sculpt), then author
+the `walk` and `fire` animations with `define-animation` and `add-keyframe`. Run
+`voxel-anim --help` for the available operations (setting and clearing single
+voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane), the
+rig subcommands, and the animation subcommands, and `voxel-anim <operation>
+--help` for each one's exact flags. Call `voxel-anim` once per operation and read
+`parts/<part>.png` between calls to judge each part against this brief.

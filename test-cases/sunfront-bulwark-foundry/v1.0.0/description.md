@@ -9,7 +9,8 @@ along its vertical track, and the auto-driven **`flywheel_spin`** joint turns th
 wheel about its axle. There is no target model — the model sculpts and rigs
 toward a written brief, and may add its own extra parts and joints on top. The
 recorded per-part operations are regenerated into a rigged 3D model the frontend
-renders with the blast door and flywheel cycling on their own clips, and a
+renders with the blast door and flywheel cycling on their own auto-play
+animations, and a
 reviewer judges it against the brief: that it reads as an armored bunker-forge,
 the door and flywheel cycle on their own, the base stays fixed, and the parts
 stay attached are what they weigh.

@@ -18,10 +18,16 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
 | `body` | *(root)* | `[0, 0, 0]` | The armored hull |
-| `legs_left` | `body` | `[13, 14, 40]` | The left group of legs |
-| `legs_right` | `body` | `[43, 14, 40]` | The right group of legs |
+| `thigh_lf` / `shin_lf` / `foot_lf` | chain from `body` | `[13,16,56]` / `[13,9,56]` / `[13,2,56]` | Left-front leg (thigh → shin → flat foot) |
+| `thigh_lr` / `shin_lr` / `foot_lr` | chain from `body` | `[13,16,24]` / `[13,9,24]` / `[13,2,24]` | Left-rear leg |
+| `thigh_rf` / `shin_rf` / `foot_rf` | chain from `body` | `[43,16,56]` / `[43,9,56]` / `[43,2,56]` | Right-front leg |
+| `thigh_rr` / `shin_rr` / `foot_rr` | chain from `body` | `[43,16,24]` / `[43,9,24]` / `[43,2,24]` | Right-rear leg |
 | `turret` | `body` | `[28, 30, 44]` | The rotating turret on top |
 | `barrel` | `turret` | `[28, 38, 56]` | The long mortar barrel, on the turret front |
+
+Each leg is an **independent three-segment chain** (thigh → shin → foot) on its
+own
+hip directly above its own foot — no shared leg-bank part.
 
 - **`turret_yaw`** (caller, rotation about `y`, `-π..π`) — the game-facing
   control: swings the turret, and the barrel with it, a full half-turn each way
@@ -29,14 +35,19 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 - **`barrel_pitch`** (caller, rotation about `x`, `-0.2..1.0`, rest `0.4`) — the
   second game-facing control: elevates and depresses the mortar barrel so it can
   lob high.
-- **`legs_left_scuttle`** / **`legs_right_scuttle`** (auto, rotation about `x`,
-  `-0.6..0.6`) — the two leg groups scuttle on their own via their looping clips,
-  driven in opposite phase.
+- **`hip_*`** / **`knee_*`** / **`foot_*`** (auto, rotation about `x`, one set per
+  leg `lf, lr, rf, rr`) — the twelve leg joints driven by the `walk` animation:
+  a
+  hip sweep (±0.5), a reverse knee (`-1.4..0.2`, bent-knee rest `-0.7`), and a flat
+  foot tilt (±0.3).
 
-The case also authors a **`bombard_fire`** review animation that drives
-`barrel_pitch` in a quick recoil-lob so a reviewer can watch the mortar fire
-without dragging the slider. The model may add its own extra parts, joints, and
-clips on top, but must not drop or contradict the required interface.
+The rig also declares two **required animations the model must author** as F-curves
+(no keyframes in the manifest): **`walk`** (period 650 ms, drives all twelve leg
+joints in a diagonal-pair gait with a planted stance phase and flat feet) and
+**`bombard_fire`** (period 1000 ms, drives `barrel_pitch` in a quick recoil-lob).
+The model authors both with the `voxel-anim` `define-animation`/`add-keyframe`
+subcommands. The model may add its own extra parts, joints, and animations on top,
+but must not drop or contradict the required interface.
 
 ## Contents
 

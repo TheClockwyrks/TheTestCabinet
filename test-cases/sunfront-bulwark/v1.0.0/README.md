@@ -13,27 +13,37 @@ seeded brief and is reviewed subjectively against it.
 
 ## The rig
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
+Each leg is an **independent three-segment chain** (thigh → shin → flat foot) on
+its
+own hip, directly above its own foot:
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
 | `torso` | *(root)* | `[0, 0, 0]` | Body, head, both shoulders, and the left shield arm |
-| `leg_left` | `torso` | `[18, 28, 24]` | The left leg |
-| `leg_right` | `torso` | `[38, 28, 24]` | The right leg |
+| `thigh_l` / `thigh_r` | `torso` | `[18, 28, 24]` / `[38, 28, 24]` | Each leg's upper thigh |
+| `shin_l` / `shin_r` | `thigh_l` / `thigh_r` | `[18, 15, 24]` / `[38, 15, 24]` | Each leg's lower shin |
+| `foot_l` / `foot_r` | `shin_l` / `shin_r` | `[18, 3, 24]` / `[38, 3, 24]` | Each leg's short, flat foot |
 | `weapon` | `torso` | `[40, 44, 26]` | The right arm gripping the siege maul |
 
 - **`weapon_pitch`** (caller, rotation about `x`, `-0.5..1.1`) — the game-facing
   control: winds the right maul arm up over the head and smashes it down about its
   shoulder hinge. (The left arm and its braced tower shield are part of the fixed
   `torso`.)
-- **`leg_left_stride`** / **`leg_right_stride`** (auto, rotation about `x`,
-  `-0.5..0.5`) — the two legs walk on their own via their `walk_left` / `walk_right`
-  clips, driven in opposite phase.
+- **Six `auto` leg joints** — per leg a `hip_*` (rot x, `-0.5..0.5`, the stride
+  sweep), a `knee_*` (rot x, `-1.4..0.2`, **rest `-0.7`** — a bent, reverse/
+  digitigrade knee), and a `foot_*` (rot x, `±0.3` — the ±~15° flat-foot ankle).
+  These are driven by the model-authored `walk` animation, not the caller.
 
-The case also authors a **`smash`** review animation that drives `weapon_pitch`
-so a reviewer can watch the maul smash without dragging the slider. The model
-may add its own extra parts, joints, and clips on top, but must not drop or
-contradict the required interface.
+The `[model]` table declares **two required animations the model must author** as
+F-curves (`define-animation` + `add-keyframe`): **`walk`** (period 900 ms, a named
+playable driving all six leg joints in an opposite-phase biped gait with a planted
+stance phase and an `ease-in` foot-plant) and **`smash`** (period 700 ms, driving
+`weapon_pitch`). The case declares only each animation's identity, intent, and
+joints — **no keyframes**; the model produces the motion, and `rig.json` is
+pre-seeded with the empty declarations. The model may add its own extra parts,
+joints, and animations on top, but must not drop or contradict the required
+interface.
 
 ## Contents
 

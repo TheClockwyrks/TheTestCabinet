@@ -43,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, joints, and animations; at run time it MAY add
+# further parts, joints, and auto-play animations of its own (recorded in rig.json)
+# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
+# `rig.json` is pre-seeded from this table so the contract exists from the first
+# operation.
 [model]
 
 # The wide, flat gunship fuselage: the root part (no parent), fixed to the world.
@@ -87,8 +88,8 @@ max = 0.3
 rest = -0.3
 drive = "caller"
 
-# The left rotor's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the rotor blurs around on its own without a caller.
+# The left rotor's own looping spin. An `auto` joint the decorative `rotor_spin`
+# animation drives, so the rotor blurs around on its own without a caller.
 [[model.joint]]
 name = "rotor_left_spin"
 part = "rotor_left"
@@ -112,35 +113,54 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play spin clips — one per rotor, each sweeping a full turn about the
-# vertical axis on a fast period so the blades read as spinning. Only `auto` joints
-# take a clip; the caller-driven `cannon_pitch` takes none. Keyframes are inline
-# `[t_ms, value]` pairs (radians).
-[[model.clip]]
-joint = "rotor_left_spin"
+# The required vertical hover-bob joint on the root hull: a small up/down
+# translation of the whole craft along the world-up (y) axis that reads as the
+# gunship hovering in place. An `auto` joint an animation drives, not caller-facing.
+[[model.joint]]
+name = "hover_bob"
+part = "hull"
+kind = "translation"
+axis = "y"
+pivot = [32, 18, 32]
+min = -2.0
+max = 2.0
+rest = 0.0
+drive = "auto"
+
+# The required animations the model must AUTHOR at run time as F-curves with the
+# `voxel-anim` animation subcommands (`define-animation` then `add-keyframe`). Each
+# entry here is a DECLARATION only — a unique name, a period, the loop/auto_play
+# flags, and the joints it must drive. No keyframes are shipped in the manifest; the
+# model produces the motion itself.
+
+# `rotor_spin`: the decorative rotor blur. `auto_play = true`, so it loops
+# continuously on its own, driving both auto rotor-spin joints a full turn each on a
+# fast period so the blades read as spinning.
+[[model.animation]]
+name = "rotor_spin"
 period_ms = 240
 loop = true
-keyframes = [[0, -3.14159], [240, 3.14159]]
+auto_play = true
+joints = ["rotor_left_spin", "rotor_right_spin"]
 
-[[model.clip]]
-joint = "rotor_right_spin"
-period_ms = 240
+# `hover`: the movement animation. `auto_play = false` — a playable "hovering" state
+# a game triggers — that bobs the whole craft gently up and down on `hover_bob`.
+[[model.animation]]
+name = "hover"
+period_ms = 2400
 loop = true
-keyframes = [[0, -3.14159], [240, 3.14159]]
+auto_play = false
+joints = ["hover_bob"]
 
-# A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the cannon strafe through its range without dragging the joint
-# slider by hand. Each `[[model.animation.track]]` drives one joint over the shared
-# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `strafe` sweeps the cannon down and back up as it rakes the ground, then loops.
+# `strafe`: the weapon showcase. `auto_play = false` — a play button a reviewer can
+# trigger to watch the cannon rake the ground and tip back up, driving the caller
+# `cannon_pitch` through its range.
 [[model.animation]]
 name = "strafe"
 period_ms = 2000
 loop = true
-
-[[model.animation.track]]
-joint = "cannon_pitch"
-keyframes = [[0, -0.3], [1000, -0.8], [2000, -0.3]]
+auto_play = false
+joints = ["cannon_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]

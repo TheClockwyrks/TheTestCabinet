@@ -21,13 +21,21 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `gear_crown` | `base` | `[34, 74, 34]` | The gear crown atop the forge |
 
 - **`hammer_stamp`** (auto, translation along `y`, `-18..0`) — the great hammer
-  pounds straight down and back up in the forge's throat on its own clip.
+  pounds straight down and back up in the forge's throat.
 - **`crown_spin`** (auto, rotation about `y`, `-π..π`) — the gear crown turns a
-  full revolution atop the forge on its own clip.
+  full revolution atop the forge.
 
-Both required joints are `auto`-driven: the forge cycles on its own with no caller
-and no case-authored review animation. The model may add its own extra parts,
-joints, and clips on top, but must not drop or contradict the required interface.
+Both required joints are `auto`-driven by the case's two required animations
+(declarations only — the model authors the F-curve keyframes at run time):
+
+| Animation | Period | loop | auto_play | Drives |
+| --- | --- | --- | --- | --- |
+| `hammer_stamp` | 1600 ms | yes | yes | `hammer_stamp` |
+| `crown_spin` | 2600 ms | yes | yes | `crown_spin` |
+
+Both animations are `auto_play` decorative idles, so the forge cycles on its own
+with no caller. The model may add its own extra parts, joints, and animations on
+top, but must not drop or contradict the required interface.
 
 ## Contents
 
@@ -41,8 +49,9 @@ joints, and clips on top, but must not drop or contradict the required interface
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
+`rig.json` holding the required parts, joints, and animation declarations (so the
+contract exists from the first operation). There is no target model and no
+operations schema — the binary's
 `--help` is the contract.
 
 ## Variants

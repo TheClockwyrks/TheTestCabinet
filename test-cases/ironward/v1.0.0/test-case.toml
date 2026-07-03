@@ -42,9 +42,9 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and this joint; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
+# model must produce these parts, this joint, and the required animation; at run
+# time it MAY add further parts, joints, and auto-play animations of its own
+# (recorded in rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
 # pre-seeded from this table so the contract exists from the first operation.
 [model]
 
@@ -79,19 +79,18 @@ max = 3.14159265
 rest = 0.0
 drive = "caller"
 
-# A predetermined animation the review viewer offers as a play button, so a reviewer
-# can watch the turret sweep through its range without dragging the joint slider by
-# hand. Each `[[model.animation.track]]` drives one joint over the shared
-# `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians here).
+# A required animation the model must AUTHOR at run time: the review viewer offers
+# it as a play button so a reviewer can watch the turret sweep through its range
+# without dragging the joint slider by hand. This is a declaration only — the model
+# authors the F-curves itself with the `voxel-anim` animation subcommands
+# (`define-animation` then `add-keyframe`); the manifest carries no keyframes.
 # `turret_sweep` swings the turret center → left → center → right → center and loops.
 [[model.animation]]
 name = "turret_sweep"
 period_ms = 4000
 loop = true
-
-[[model.animation.track]]
-joint = "turret_yaw"
-keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]]
+auto_play = false
+joints = ["turret_yaw"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]

@@ -3,9 +3,9 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Lancer Foundry: a 44x84x44 opaque-voxel spire whose \
-rail-arm slides up and down and whose focus-ring spins, each on its own auto \
-clip, while the base stays fixed, built and rigged one recorded operation at a \
-time."""
+rail-arm slides up and down and whose focus-ring spins, each on its own auto-play \
+animation the model authors, while the base stays fixed, built and rigged one \
+recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,11 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and these animations; at run time it
+# MAY add further parts, joints, and animations of its own (recorded in rig.json)
+# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
+# `rig.json` is pre-seeded from this table so the contract exists from the first
+# operation.
 [model]
 
 # The foundry tower and its footing: the root part (no parent), fixed to the
@@ -69,10 +70,10 @@ name = "focus_ring"
 parent = "base"
 pivot = [22, 68, 22]
 
-# The rail-arm's own looping slide. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the arm rides up and back down on its own without a caller.
-# A translation along `y` (voxels): `rest = 0` is seated at the bottom, `max = 10`
-# is fully raised.
+# The rail-arm's own looping slide. An `auto` joint driven by the required
+# `rail_arm_slide` animation, so the arm rides up and back down on its own without a
+# caller. A translation along `y` (voxels): `rest = 0` is seated at the bottom,
+# `max = 10` is fully raised.
 [[model.joint]]
 name = "rail_arm_slide"
 part = "rail_arm"
@@ -84,9 +85,9 @@ max = 10.0
 rest = 0.0
 drive = "auto"
 
-# The focus-ring's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the ring turns on its own. A rotation about `y` (radians)
-# through a full turn, `rest = 0`.
+# The focus-ring's own looping spin. An `auto` joint driven by the required
+# `focus_ring_spin` animation, so the ring turns on its own. A rotation about `y`
+# (radians) through a full turn, `rest = 0`.
 [[model.joint]]
 name = "focus_ring_spin"
 part = "focus_ring"
@@ -98,21 +99,27 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated sub-part — so the foundry works on its
-# own while the base stays fixed. Only `auto` joints take a clip. Keyframes are
-# inline `[t_ms, value]` pairs. The rail-arm rides up to +10 voxels and back down
-# over 1.6s; the focus-ring turns a full revolution over 2.0s.
-[[model.clip]]
-joint = "rail_arm_slide"
+# The required auto-play animations — one per animated sub-part — so the foundry
+# works on its own while the base stays fixed. Each is a DECLARATION only (name,
+# period, loop, auto_play, joints): the case does NOT ship keyframes. The model
+# authors each animation's motion as F-curves at run time with the `voxel-anim`
+# `define-animation`/`add-keyframe` subcommands, and the produced rig.json carries
+# it. `auto_play = true` makes each a continuous decorative idle. The rail-arm
+# animation rides the arm up to +10 voxels and back down over 1.6s; the focus-ring
+# animation turns a full revolution over 2.0s.
+[[model.animation]]
+name = "rail_arm_slide"
 period_ms = 1600
 loop = true
-keyframes = [[0, 0.0], [800, 10.0], [1600, 0.0]]
+auto_play = true
+joints = ["rail_arm_slide"]
 
-[[model.clip]]
-joint = "focus_ring_spin"
+[[model.animation]]
+name = "focus_ring_spin"
 period_ms = 2000
 loop = true
-keyframes = [[0, -3.14159], [2000, 3.14159]]
+auto_play = true
+joints = ["focus_ring_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -124,9 +131,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lancer \
 Foundry and poses correctly — a tall, slender Duneforged spire whose rail-arm \
-slides up and down its shaft and whose focus-ring spins on their own auto clips \
-while the base stays put, with a clear solar-amber energy accent and the \
-disciplined Duneforged palette."""
+slides up and down its shaft and whose focus-ring spins on their own auto-play \
+animations while the base stays put, with a clear solar-amber energy accent and \
+the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-foundry"
@@ -143,11 +150,13 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Rail-arm slides and focus-ring spins"
 text = """
-The animated elements cycle on their own via their auto clips: the `rail_arm` \
-rides smoothly up and down its shaft on the `rail_arm_slide` joint, and the \
-`focus_ring` turns a full revolution on the `focus_ring_spin` joint, both \
-looping without a caller. Across each joint's range no voxel of the moving part \
-tears away from its mount or clips through the shaft."""
+The animated elements cycle on their own via their auto-play animations: the \
+`rail_arm_slide` animation rides the `rail_arm` smoothly up and down its shaft on \
+the `rail_arm_slide` joint, and the `focus_ring_spin` animation turns the \
+`focus_ring` a full revolution on the `focus_ring_spin` joint, both looping \
+without a caller and moving with weight (eased F-curves, not a linear slide). \
+Across each joint's range no voxel of the moving part tears away from its mount or \
+clips through the shaft."""
 weight = 3
 domain = "fidelity"
 

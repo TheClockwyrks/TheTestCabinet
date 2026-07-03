@@ -25,11 +25,21 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 - **`cannon_pitch`** (caller, rotation about `x`, `-0.9..0.3`, rest `-0.3`) — the
   game-facing control: tilts the underslung cannon up and down about its mount.
 - **`rotor_left_spin`** / **`rotor_right_spin`** (auto, rotation about `y`,
-  `-π..π`) — the two rotors spin on their own via their fast spin clips.
+  `-π..π`) — the two rotors, driven by the decorative `rotor_spin` animation.
+- **`hover_bob`** (auto, translation along `y`, `-2.0..2.0`, rest `0`) — a small
+  vertical bob of the whole hull, driven by the `hover` movement animation.
 
-The case also authors a **`strafe`** review animation that drives `cannon_pitch`
-so a reviewer can watch the cannon rake the ground without dragging the slider.
-The model may add its own extra parts, joints, and clips on top, but must not
+The `[model]` table also declares three **required animations** the model must
+**author** at run time as F-curves (with the `voxel-anim`
+`define-animation`/`add-keyframe` subcommands) — the case ships no keyframes, only
+the declarations:
+
+- **`rotor_spin`** (`auto_play = true`, period 240 ms) — the continuous rotor blur.
+- **`hover`** (`auto_play = false`, period 2400 ms) — the up/down hover movement.
+- **`strafe`** (`auto_play = false`, period 2000 ms) — the cannon gun-run, drives
+  `cannon_pitch`.
+
+The model may add its own extra parts, joints, and animations on top, but must not
 drop or contradict the required interface.
 
 ## Contents

@@ -27,9 +27,9 @@ voxel-anim fill-box --part base --x0 14 --y0 0 --z0 14 --x1 29 --y1 60 --z1 29 -
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+(defining parts, setting pivots, defining joints, and authoring animations with
+`define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole spire composed from all your parts, re-rendered after every operation. The
@@ -48,9 +48,10 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the spire, the required parts and their pivots, and the two auto joints
-that slide the rail-arm and spin the focus-ring. Run `voxel-anim --help` for the
-exact operation and rig contract.
+form of the spire, the required parts and their pivots, the two auto joints that
+slide the rail-arm and spin the focus-ring, and the two required auto-play
+animations you must author to drive them. Run `voxel-anim --help` for the exact
+operation and rig contract.
 
 ## What to deliver
 
@@ -60,8 +61,8 @@ correctly, and the rig is complete: a fixed masonry base tower, a rail-arm set
 into the mid-shaft, and a focus-ring crowning the top. This is a structure with no
 caller controls: the interface is the two auto joints — **`rail_arm_slide`** that
 rides the arm up and down, and **`focus_ring_spin`** that turns the ring a full
-revolution — each looping on its own clip while the base stays fixed. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+revolution — each driven by a looping auto-play animation **you author** as an
+F-curve, while the base stays fixed. Produce **every** required part, joint, and
+animation; you may add your own extra parts, joints, or auto-play animations on
+top, but do not drop or contradict the required interface. When you are satisfied,
+stop: the recorded per-part logs and `rig.json` are your finished submission.

@@ -3,12 +3,13 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Aegis: an 88x80x104 opaque-voxel colossal walking \
-fortress that dwarfs every buildable unit, striding on six independent, two-jointed \
-legs (a hip and a knee each) so every foot lifts clear of the ground, its central \
-main turret fine-correcting within a narrow forward cone while its cannon elevates, \
-and two side-mounted turrets each traversing to cover only their own flank — built \
-and rigged one recorded operation at a time, with a caller-driven walk and a \
-weapon-only bombardment the reviewer can play back."""
+fortress that dwarfs every buildable unit, striding on six independent legs — each a \
+three-segment, two-joint chain (thigh + shin + flat foot) over its own footprint so \
+every foot plants flat and lifts clear of the ground — its central main turret \
+fine-correcting within a narrow forward cone while its cannon elevates, and two \
+side-mounted turrets each traversing to cover only their own flank — built and rigged \
+one recorded operation at a time, with a model-authored march (a two-tripod walk), a \
+weapon-only bombardment, and a self-playing radar sweep the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -49,18 +50,22 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and the required ANIMATIONS
+# (declared here as name + intent + the joints each drives; the model authors their
+# F-curves at run time). At run time it MAY add further parts, joints, and animations
+# of its own (recorded in rig.json) beyond what this table requires. `pivot` is
+# `[x, y, z]` in voxel coordinates. `rig.json` is pre-seeded from this table so the
+# contract exists from the first operation.
 #
-# The rig has three kinds of moving part, and the drive of each is deliberate:
-#   * The SIX legs and the two gun controls are `caller` — a game (and the review
-#     viewer's `march` / `bombardment` animations) drive them by name; at rest they
-#     hold still, so the weapon animation can pose the guns while the legs stay
-#     planted and the walk animation can stride the legs while the guns stay put.
-#   * The `radar` sensor vane is `auto` — it turns on its own forever (a decorative
-#     part), so it keeps sweeping under BOTH animations and at idle.
+# The rig has two kinds of moving part, and the drive of each is deliberate:
+#   * The eighteen leg joints (a hip, a knee, and a foot per leg) are `auto` —
+#     driven by the model-authored `march` walk animation. The two gun turrets and
+#     the cannon are `caller` — a game (and the review viewer's `bombardment`
+#     animation) drive them by name — so the weapon animation can pose the guns while
+#     the legs stay planted and the walk can stride the legs while the guns stay put.
+#   * The `radar` sensor vane is `auto`, driven by the self-playing `radar_spin`
+#     animation (auto_play), so it keeps sweeping under BOTH playable animations and
+#     at idle.
 [model]
 
 # The armored fortress hull: the root part (no parent), fixed to the world. A
@@ -71,74 +76,107 @@ actions = "parts/{part}.actions.json"
 name = "chassis"
 pivot = [0, 0, 0]
 
-# --- The six legs. Each leg is TWO parts (an upper thigh + a lower shin) with two
-# pivots (a hip on the chassis and a knee between the segments), so the knee can
-# bend to lift the foot clear of the ground on its swing instead of dragging it
-# through the dirt. The legs are INDEPENDENT — one part per leg, each on its own
-# hip directly above its own foot — so no single pivot drags a fore-and-aft bank of
-# feet below ground. Three legs down each side: front (f), middle (m), rear (r). ---
+# --- The six legs. Each leg is an independent THREE-segment chain — an upper thigh,
+# a lower shin, and a short FLAT foot — on THREE pivots (a hip on the chassis, a knee
+# between thigh and shin, and an ankle between shin and foot). The bent knee lifts
+# the foot clear on its swing while the flat foot stays level, and each leg is its
+# OWN chain on its OWN hip directly above its OWN foot — so no single pivot drags a
+# fore-and-aft bank of feet below ground. Three legs down each side: front (f),
+# middle (m), rear (r). Parent chain per leg: thigh_<id>←chassis, shin_<id>←thigh_<id>,
+# foot_<id>←shin_<id>. ---
 
 # Left-front thigh, hung from its hip under the left-front corner of the hull.
 [[model.part]]
-name = "leg_lf"
+name = "thigh_lf"
 parent = "chassis"
 pivot = [14, 30, 78]
 
-# Left-front shin, hung from the left-front knee down to the foot.
+# Left-front shin, hung from the left-front knee down toward the ankle.
 [[model.part]]
 name = "shin_lf"
-parent = "leg_lf"
+parent = "thigh_lf"
 pivot = [10, 14, 78]
 
+# Left-front foot: a short, flat foot on the ankle at the bottom of the shin.
 [[model.part]]
-name = "leg_lm"
+name = "foot_lf"
+parent = "shin_lf"
+pivot = [8, 4, 78]
+
+[[model.part]]
+name = "thigh_lm"
 parent = "chassis"
 pivot = [14, 30, 52]
 
 [[model.part]]
 name = "shin_lm"
-parent = "leg_lm"
+parent = "thigh_lm"
 pivot = [10, 14, 52]
 
 [[model.part]]
-name = "leg_lr"
+name = "foot_lm"
+parent = "shin_lm"
+pivot = [8, 4, 52]
+
+[[model.part]]
+name = "thigh_lr"
 parent = "chassis"
 pivot = [14, 30, 26]
 
 [[model.part]]
 name = "shin_lr"
-parent = "leg_lr"
+parent = "thigh_lr"
 pivot = [10, 14, 26]
 
 [[model.part]]
-name = "leg_rf"
+name = "foot_lr"
+parent = "shin_lr"
+pivot = [8, 4, 26]
+
+[[model.part]]
+name = "thigh_rf"
 parent = "chassis"
 pivot = [73, 30, 78]
 
 [[model.part]]
 name = "shin_rf"
-parent = "leg_rf"
+parent = "thigh_rf"
 pivot = [77, 14, 78]
 
 [[model.part]]
-name = "leg_rm"
+name = "foot_rf"
+parent = "shin_rf"
+pivot = [79, 4, 78]
+
+[[model.part]]
+name = "thigh_rm"
 parent = "chassis"
 pivot = [73, 30, 52]
 
 [[model.part]]
 name = "shin_rm"
-parent = "leg_rm"
+parent = "thigh_rm"
 pivot = [77, 14, 52]
 
 [[model.part]]
-name = "leg_rr"
+name = "foot_rm"
+parent = "shin_rm"
+pivot = [79, 4, 52]
+
+[[model.part]]
+name = "thigh_rr"
 parent = "chassis"
 pivot = [73, 30, 26]
 
 [[model.part]]
 name = "shin_rr"
-parent = "leg_rr"
+parent = "thigh_rr"
 pivot = [77, 14, 26]
+
+[[model.part]]
+name = "foot_rr"
+parent = "shin_rr"
+pivot = [79, 4, 26]
 
 # The big central main turret, mounted on top-center of the hull. It makes only
 # fine corrections about its vertical mount via the caller-driven `main_turret_yaw`
@@ -182,88 +220,60 @@ pivot = [44, 72, 40]
 
 # --- Joints ---
 
-# The six hip joints: each swings its whole leg fore-and-aft about the hip. Caller
-# so they hold at rest (planted, standing) unless the `march` animation strides
-# them. rot x, range ±0.4, rest 0.
+# The eighteen leg joints — a hip, a knee, and a foot per leg, ALL `drive = "auto"`
+# (driven by the model-authored `march` walk). Per leg:
+#   * hip_<id>  on thigh_<id>: rot x, the big fore/aft sweep, range ±0.5, rest 0.
+#   * knee_<id> on shin_<id>:  rot x, a REVERSE/digitigrade fold, range -1.4..0.2,
+#     rest -0.7 (a clearly BENT knee at rest — never a straight column, so the foot
+#     can stay planted as the body passes over it).
+#   * foot_<id> on foot_<id>:  rot x, a small ±0.3 ankle tilt that counter-rotates
+#     against the shin to keep the foot FLAT (±~15°) through the whole cycle.
+
+# Left-front leg.
 [[model.joint]]
 name = "hip_lf"
-part = "leg_lf"
+part = "thigh_lf"
 kind = "rotation"
 axis = "x"
 pivot = [14, 30, 78]
-min = -0.4
-max = 0.4
+min = -0.5
+max = 0.5
 rest = 0.0
-drive = "caller"
+drive = "auto"
 
-[[model.joint]]
-name = "hip_lm"
-part = "leg_lm"
-kind = "rotation"
-axis = "x"
-pivot = [14, 30, 52]
-min = -0.4
-max = 0.4
-rest = 0.0
-drive = "caller"
-
-[[model.joint]]
-name = "hip_lr"
-part = "leg_lr"
-kind = "rotation"
-axis = "x"
-pivot = [14, 30, 26]
-min = -0.4
-max = 0.4
-rest = 0.0
-drive = "caller"
-
-[[model.joint]]
-name = "hip_rf"
-part = "leg_rf"
-kind = "rotation"
-axis = "x"
-pivot = [73, 30, 78]
-min = -0.4
-max = 0.4
-rest = 0.0
-drive = "caller"
-
-[[model.joint]]
-name = "hip_rm"
-part = "leg_rm"
-kind = "rotation"
-axis = "x"
-pivot = [73, 30, 52]
-min = -0.4
-max = 0.4
-rest = 0.0
-drive = "caller"
-
-[[model.joint]]
-name = "hip_rr"
-part = "leg_rr"
-kind = "rotation"
-axis = "x"
-pivot = [73, 30, 26]
-min = -0.4
-max = 0.4
-rest = 0.0
-drive = "caller"
-
-# The six knee joints: each bends the shin to lift the foot on its swing so it
-# clears the ground. Caller so they hold at a slight standing bend at rest. rot x,
-# range -0.2..1.0, rest 0.1.
 [[model.joint]]
 name = "knee_lf"
 part = "shin_lf"
 kind = "rotation"
 axis = "x"
 pivot = [10, 14, 78]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_lf"
+part = "foot_lf"
+kind = "rotation"
+axis = "x"
+pivot = [8, 4, 78]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+# Left-middle leg.
+[[model.joint]]
+name = "hip_lm"
+part = "thigh_lm"
+kind = "rotation"
+axis = "x"
+pivot = [14, 30, 52]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 [[model.joint]]
 name = "knee_lm"
@@ -271,10 +281,33 @@ part = "shin_lm"
 kind = "rotation"
 axis = "x"
 pivot = [10, 14, 52]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_lm"
+part = "foot_lm"
+kind = "rotation"
+axis = "x"
+pivot = [8, 4, 52]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+# Left-rear leg.
+[[model.joint]]
+name = "hip_lr"
+part = "thigh_lr"
+kind = "rotation"
+axis = "x"
+pivot = [14, 30, 26]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 [[model.joint]]
 name = "knee_lr"
@@ -282,10 +315,33 @@ part = "shin_lr"
 kind = "rotation"
 axis = "x"
 pivot = [10, 14, 26]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_lr"
+part = "foot_lr"
+kind = "rotation"
+axis = "x"
+pivot = [8, 4, 26]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+# Right-front leg.
+[[model.joint]]
+name = "hip_rf"
+part = "thigh_rf"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 78]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 [[model.joint]]
 name = "knee_rf"
@@ -293,10 +349,33 @@ part = "shin_rf"
 kind = "rotation"
 axis = "x"
 pivot = [77, 14, 78]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_rf"
+part = "foot_rf"
+kind = "rotation"
+axis = "x"
+pivot = [79, 4, 78]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+# Right-middle leg.
+[[model.joint]]
+name = "hip_rm"
+part = "thigh_rm"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 52]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 [[model.joint]]
 name = "knee_rm"
@@ -304,10 +383,33 @@ part = "shin_rm"
 kind = "rotation"
 axis = "x"
 pivot = [77, 14, 52]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_rm"
+part = "foot_rm"
+kind = "rotation"
+axis = "x"
+pivot = [79, 4, 52]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+# Right-rear leg.
+[[model.joint]]
+name = "hip_rr"
+part = "thigh_rr"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 26]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
 
 [[model.joint]]
 name = "knee_rr"
@@ -315,10 +417,21 @@ part = "shin_rr"
 kind = "rotation"
 axis = "x"
 pivot = [77, 14, 26]
-min = -0.2
-max = 1.0
-rest = 0.1
-drive = "caller"
+min = -1.4
+max = 0.2
+rest = -0.7
+drive = "auto"
+
+[[model.joint]]
+name = "foot_rr"
+part = "foot_rr"
+kind = "rotation"
+axis = "x"
+pivot = [79, 4, 26]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
 
 # The required caller-driven main-turret traverse: a game addresses `main_turret_yaw`
 # by name to make FINE corrections that keep the main cannon pointed forward. It is
@@ -379,9 +492,9 @@ max = 1.6
 rest = 0.8
 drive = "caller"
 
-# The decorative radar sweep: an `auto` joint driven by a looping clip, so the vane
-# turns on its own forever. rot y, a full turn each way. It is the only auto joint —
-# it keeps sweeping under both the `march` and `bombardment` animations.
+# The decorative radar sweep: an `auto` joint driven by the self-playing `radar_spin`
+# animation, so the vane turns on its own forever. rot y, a full turn each way. It is
+# the only non-leg auto joint — it keeps sweeping under both playable animations.
 [[model.joint]]
 name = "radar_spin"
 part = "radar"
@@ -393,104 +506,53 @@ max = 3.14159
 rest = 0.0
 drive = "auto"
 
-# The auto-play clip for the decorative radar. Only `auto` joints take a clip; the
-# caller-driven legs and guns take none. Keyframes are inline `[t_ms, value]` pairs
-# (radians).
-[[model.clip]]
-joint = "radar_spin"
-period_ms = 3000
-loop = true
-keyframes = [[0, -3.14159], [3000, 3.14159]]
+# --- Required animations. Each is a DECLARATION ONLY — a name, its loop/auto_play
+# intent, and the joints the model MUST drive. There are NO keyframes/tracks here:
+# the model authors each animation's F-curves at run time with the `voxel-anim`
+# `define-animation` / `add-keyframe` subcommands (see the brief). rig.json is
+# pre-seeded with these declarations so the contract exists from the first op. ---
 
-# --- Case-authored playback animations (viewer play buttons; NOT part of rig.json) ---
-
-# `march`: the WALK. It drives only the twelve leg joints — the hips swing
-# fore-and-aft and the knees bend to lift each foot — in an alternating-tripod gait
-# (legs lf/rm/lr step together, opposite rf/lm/rr), so the reviewer sees exactly how
-# the fortress strides across the map when spawned. It touches NO gun joint, so the
-# turrets and cannon hold at rest; the `auto` radar keeps sweeping on its own.
+# `march`: the WALK (playable — `auto_play = false`). It drives all EIGHTEEN leg
+# joints — the hips sweep fore/aft, the knees fold to lift each foot, the ankles keep
+# the feet flat — in an alternating two-TRIPOD gait (tripod A = lf/rm/lr steps
+# together, tripod B = rf/lm/rr a half period out of phase, so three feet are planted
+# at all times). It touches NO gun joint, so the turrets and cannon hold at rest; the
+# `auto` radar keeps sweeping on its own.
 [[model.animation]]
 name = "march"
 period_ms = 1600
 loop = true
+auto_play = false
+joints = [
+  "hip_lf", "knee_lf", "foot_lf",
+  "hip_lm", "knee_lm", "foot_lm",
+  "hip_lr", "knee_lr", "foot_lr",
+  "hip_rf", "knee_rf", "foot_rf",
+  "hip_rm", "knee_rm", "foot_rm",
+  "hip_rr", "knee_rr", "foot_rr",
+]
 
-# Tripod A (lf, rm, lr): stance 0..800 (hip forward->back), swing 800..1600 (hip
-# back->forward, knee lifts the foot at ~1200).
-[[model.animation.track]]
-joint = "hip_lf"
-keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
-
-[[model.animation.track]]
-joint = "knee_lf"
-keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
-
-[[model.animation.track]]
-joint = "hip_lr"
-keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
-
-[[model.animation.track]]
-joint = "knee_lr"
-keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
-
-[[model.animation.track]]
-joint = "hip_rm"
-keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
-
-[[model.animation.track]]
-joint = "knee_rm"
-keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
-
-# Tripod B (rf, lm, rr): half a period out of phase — swing 0..800 (knee lifts at
-# ~400), stance 800..1600.
-[[model.animation.track]]
-joint = "hip_rf"
-keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
-
-[[model.animation.track]]
-joint = "knee_rf"
-keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
-
-[[model.animation.track]]
-joint = "hip_lm"
-keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
-
-[[model.animation.track]]
-joint = "knee_lm"
-keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
-
-[[model.animation.track]]
-joint = "hip_rr"
-keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
-
-[[model.animation.track]]
-joint = "knee_rr"
-keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
-
-# `bombardment`: the WEAPON showcase. It drives only the four gun joints — the main
-# cannon lobs forward within its narrow cone while the two side turrets each sweep
-# their own flank arc independently and out of phase. It touches NO leg joint, so
-# the legs hold planted (the fortress stands still and fights); the `auto` radar
-# keeps sweeping on its own.
+# `bombardment`: the WEAPON showcase (playable — `auto_play = false`). It drives only
+# the four gun caller joints — the main cannon lobs forward within its narrow cone
+# while the two side turrets each sweep their own flank arc independently and out of
+# phase. It touches NO leg joint, so the legs hold planted (the fortress stands still
+# and fights); the `auto` radar keeps sweeping on its own.
 [[model.animation]]
 name = "bombardment"
 period_ms = 4000
 loop = true
+auto_play = false
+joints = ["main_turret_yaw", "main_gun_pitch", "left_turret_yaw", "right_turret_yaw"]
 
-[[model.animation.track]]
-joint = "main_turret_yaw"
-keyframes = [[0, -0.3], [2000, 0.3], [4000, -0.3]]
-
-[[model.animation.track]]
-joint = "main_gun_pitch"
-keyframes = [[0, 0.1], [1000, 0.6], [2000, 0.1], [3000, 0.6], [4000, 0.1]]
-
-[[model.animation.track]]
-joint = "left_turret_yaw"
-keyframes = [[0, -1.4], [2000, -0.2], [4000, -1.4]]
-
-[[model.animation.track]]
-joint = "right_turret_yaw"
-keyframes = [[0, 0.2], [2000, 1.4], [4000, 0.2]]
+# `radar_spin`: the decorative radar sweep (`auto_play = true` — a self-playing idle,
+# migrated from the former looping clip). It drives only the `radar_spin` auto joint
+# and plays continuously under both playable animations and at idle.
+[[model.animation]]
+name = "radar_spin"
+period_ms = 3000
+loop = true
+auto_play = true
+joints = ["radar_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -502,12 +564,13 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
 poses correctly — a colossal walking fortress, far larger than any buildable unit, \
-striding on six independent two-jointed legs whose feet lift clear of the ground, \
-whose central main turret fine-traverses within a narrow forward cone and whose \
-cannon elevates on their caller joints without detaching while the two side-mounted \
-turrets independently swing to cover their own flanks, the decorative radar sweeps \
-on its own, and the hull stays put, with a clear solar-amber accent and the \
-disciplined Duneforged palette."""
+striding on six independent legs, each a three-segment thigh/shin/flat-foot chain \
+that plants its foot flat and lifts it clear of the ground under the model-authored \
+`march`, whose central main turret fine-traverses within a narrow forward cone and \
+whose cannon elevates on their caller joints without detaching while the two \
+side-mounted turrets independently swing to cover their own flanks, the decorative \
+radar sweeps on its own, and the hull stays put, with a clear solar-amber accent and \
+the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-fortress"
@@ -525,13 +588,17 @@ domain = "fidelity"
 
 [[review_item]]
 id = "legs-walk"
-title = "Legs stride independently without clipping the ground"
+title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `march` strides the fortress on its six legs: each leg swings on its own \
-`hip_*` joint and bends at its own `knee_*` so the foot lifts clear of the ground on \
-its swing and plants again — the legs step in an alternating-tripod gait, NOT as one \
-rigid bank, and no foot is dragged or driven down through the ground. Each leg's \
-shin stays attached to its thigh and each thigh to the hull across the whole range."""
+Playing `march` strides the fortress on its six independent three-segment legs: each \
+leg sweeps on its own `hip_*`, folds at its own reverse-bending `knee_*`, and keeps \
+its foot flat on its own `foot_*` ankle. Each foot has a clear PLANTED STANCE — flat \
+and still on the ground while the fortress passes over it — then lifts clear, swings \
+forward, and plants again with weight, the six legs cycling as two alternating \
+tripods (three feet always down), NOT as one rigid bank and never flailing in a \
+continuous arc. No foot is dragged or driven down through the ground, the knees bend \
+the right (digitigrade) way, and each shin stays attached to its thigh, each foot to \
+its shin, and each thigh to the hull across the whole range."""
 weight = 3
 domain = "fidelity"
 

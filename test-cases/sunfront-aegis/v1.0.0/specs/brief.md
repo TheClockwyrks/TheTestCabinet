@@ -61,26 +61,33 @@ angles.
 
 ## The parts
 
-The fortress is a **rig of nineteen required parts** in a parent/child
+The fortress is a **rig of twenty-four required parts** in a parent/child
 hierarchy. Sculpt each in its own place within the shared volume, positioned
-where it sits on the finished fortress. **Each of the six legs is two parts** —
-an upper `leg_*` thigh and a lower `shin_*` — so the leg can bend at the knee.
+where it sits on the finished fortress. **Each of the six legs is three parts**
+— an upper `thigh_*`, a lower `shin_*`, and a short flat `foot_*` — so the leg
+is an articulated chain that bends at the knee and keeps its foot flat.
 
 | Part | Parent | Attaches at (pivot) | What it is |
 | --- | --- | --- | --- |
 | `chassis` | *(root)* | `[0, 0, 0]` | The armored fortress hull, raised on legs |
-| `leg_lf` | `chassis` | `[14, 30, 78]` | Left-front thigh (upper leg) |
-| `shin_lf` | `leg_lf` | `[10, 14, 78]` | Left-front shin (lower leg + foot) |
-| `leg_lm` | `chassis` | `[14, 30, 52]` | Left-middle thigh |
-| `shin_lm` | `leg_lm` | `[10, 14, 52]` | Left-middle shin |
-| `leg_lr` | `chassis` | `[14, 30, 26]` | Left-rear thigh |
-| `shin_lr` | `leg_lr` | `[10, 14, 26]` | Left-rear shin |
-| `leg_rf` | `chassis` | `[73, 30, 78]` | Right-front thigh |
-| `shin_rf` | `leg_rf` | `[77, 14, 78]` | Right-front shin |
-| `leg_rm` | `chassis` | `[73, 30, 52]` | Right-middle thigh |
-| `shin_rm` | `leg_rm` | `[77, 14, 52]` | Right-middle shin |
-| `leg_rr` | `chassis` | `[73, 30, 26]` | Right-rear thigh |
-| `shin_rr` | `leg_rr` | `[77, 14, 26]` | Right-rear shin |
+| `thigh_lf` | `chassis` | `[14, 30, 78]` | Left-front thigh (upper leg) |
+| `shin_lf` | `thigh_lf` | `[10, 14, 78]` | Left-front shin (lower leg) |
+| `foot_lf` | `shin_lf` | `[8, 4, 78]` | Left-front foot (short, flat) |
+| `thigh_lm` | `chassis` | `[14, 30, 52]` | Left-middle thigh |
+| `shin_lm` | `thigh_lm` | `[10, 14, 52]` | Left-middle shin |
+| `foot_lm` | `shin_lm` | `[8, 4, 52]` | Left-middle foot |
+| `thigh_lr` | `chassis` | `[14, 30, 26]` | Left-rear thigh |
+| `shin_lr` | `thigh_lr` | `[10, 14, 26]` | Left-rear shin |
+| `foot_lr` | `shin_lr` | `[8, 4, 26]` | Left-rear foot |
+| `thigh_rf` | `chassis` | `[73, 30, 78]` | Right-front thigh |
+| `shin_rf` | `thigh_rf` | `[77, 14, 78]` | Right-front shin |
+| `foot_rf` | `shin_rf` | `[79, 4, 78]` | Right-front foot |
+| `thigh_rm` | `chassis` | `[73, 30, 52]` | Right-middle thigh |
+| `shin_rm` | `thigh_rm` | `[77, 14, 52]` | Right-middle shin |
+| `foot_rm` | `shin_rm` | `[79, 4, 52]` | Right-middle foot |
+| `thigh_rr` | `chassis` | `[73, 30, 26]` | Right-rear thigh |
+| `shin_rr` | `thigh_rr` | `[77, 14, 26]` | Right-rear shin |
+| `foot_rr` | `shin_rr` | `[79, 4, 26]` | Right-rear foot |
 | `main_turret` | `chassis` | `[44, 60, 56]` | The big central turret |
 | `main_gun` | `main_turret` | `[44, 66, 74]` | The main cannon on the turret front |
 | `left_turret` | `chassis` | `[12, 44, 52]` | The rotating LEFT-side turret, on its sponson |
@@ -96,31 +103,42 @@ an upper `leg_*` thigh and a lower `shin_*` — so the leg can bend at the knee.
   out of each side face around `y = 44` for the side turrets, and keep the belly
   solid around `y = 30` where the six leg hips mount.
 
-### The legs (six legs, each an upper `leg_*` + a lower `shin_*`)
+### The legs (six legs, each a `thigh_*` + `shin_*` + `foot_*` chain)
 
 The fortress stands on **six independent legs — three down each side** (front
-`f`, middle `m`, rear `r`). Sculpt each leg as **two segments** so it bends like
-a real walking leg:
+`f`, middle `m`, rear `r`). Sculpt each leg as a **three-segment articulated
+chain** — a thigh, a shin, and a short flat foot on **two moving joints** (a hip
+and a knee) plus an ankle — so it walks like a real heavy machine, not a stick
+swung from a hip:
 
-- The **`leg_*` thigh** hangs from its **hip** on the hull's belly (pivot
-  around `y = 30`, tucked under its corner of the hull) down and slightly
-  outward to the knee. Sculpt it in the iron color as a thick, armored upper
-  leg.
-- The **`shin_*`** hangs from the **knee** (pivot around `y = 14`) straight
-  down to a broad **foot** planted on the ground at `y = 0`. Sculpt it in iron
-  as the lower leg and foot.
-- Each leg is its **own pair of parts**, mounted on its **own hip directly
-  above its own foot** — the left legs' feet around `x = 10`, the right legs'
-  around `x = 77`, spread wide for a stable, heavy stance. Do **not** sculpt the
-  legs as one shared slab per side: they must move independently.
-- The leg meets the hull at the hip with no gap, and the shin meets the thigh
-  at the knee with no gap, across the whole range of motion.
+- The **`thigh_*`** hangs from its **hip** on the hull's belly (pivot around
+  `y = 30`, tucked under its corner of the hull) down and slightly outward to
+  the knee. Sculpt it in the iron color as a thick, armored upper leg.
+- The **`shin_*`** hangs from the **knee** (pivot around `y = 14`) down to the
+  ankle. Sculpt it in iron as the lower leg.
+- The **`foot_*`** is a short, **flat foot** on the **ankle** (pivot around
+  `y = 4`) planted on the ground near `y = 0`. Sculpt it in iron as a broad,
+  level foot — the part that carries the fortress's weight on the ground.
+- **Rest pose is a clearly BENT knee, never a straight column.** Sculpt the
+  thigh and shin so that at rest (knee folded to about `-0.7` rad) the leg reads
+  as visibly bent — a straight leg has no room to extend and fold, so its foot
+  cannot stay planted while the body passes over it.
+- Each leg is its **own chain of parts**, mounted on its **own hip directly
+  above its own foot** — the left legs' feet around `x = 8`, the right legs'
+  around `x = 79`, spread wide for a stable, heavy stance. Do **not** sculpt the
+  legs as one shared slab per side, and do **not** put a fore-and-aft spread of
+  feet on one shared pivot: they must move independently, or rotating the bank
+  drives the rear feet down through the ground while the front feet lift.
+- The thigh meets the hull at the hip with no gap, the shin meets the thigh at
+  the knee with no gap, and the foot meets the shin at the ankle with no gap,
+  across the whole range of motion.
 
-The pivots above are the **hips** (`leg_*` mount to the hull) and the **knees**
-(`shin_*` mount to the thigh). Sculpt each segment so the hip can swing it
-fore-and-aft and the knee can bend the shin to **lift the foot clear of the
-ground** without any voxel tearing off, and without the foot ever being driven
-down through the ground.
+The three pivots per leg are the **hip** (`thigh_*` mounts to the hull), the
+**knee** (`shin_*` mounts to the thigh), and the **ankle** (`foot_*` mounts to
+the shin). Sculpt each segment so the hip can sweep the leg fore-and-aft, the
+knee can fold to **lift the foot clear of the ground** on the swing, and the
+ankle can counter-rotate to keep the **foot flat** — all without any voxel
+tearing off and without the foot ever being driven down through the ground.
 
 ### The turrets, cannon, and radar
 
@@ -150,29 +168,38 @@ down through the ground.
 
 ## The required joints
 
-A consuming game drives the rig by joint name, and the review viewer offers two
-play-back **animations** — a **`march`** (the walk) and a **`bombardment`** (the
-guns) — so a reviewer can watch the fortress move without dragging sliders. The
-drive of each joint is deliberate:
+A consuming game drives the rig's **caller** joints by name, and the model
+authors three **animations** — a **`march`** (the walk), a **`bombardment`**
+(the guns), and a self-playing **`radar_spin`** — that the review viewer plays
+back so a reviewer can watch the fortress move. The drive of each joint is
+deliberate:
 
-**The six legs — twelve caller joints (a hip and a knee per leg).** Each leg has
-a hip that swings the whole leg fore-and-aft and a knee that bends the shin to
-lift the foot. They are **caller-driven**, so at rest the legs **hold still,
-planted and standing** (the fortress does not walk on its own); the `march`
-animation strides them. For each leg `X` (one of `lf, lm, lr, rf, rm, rr`):
+**The six legs — eighteen `auto` joints (a hip, a knee, and a foot per leg).**
+Each leg has a hip that sweeps the whole leg fore-and-aft, a knee that folds the
+shin to lift the foot, and an ankle that keeps the foot flat. They are all
+**`auto`** — driven by the `march` walk you author; a game does not drive them
+per frame. For each leg `X` (one of `lf, lm, lr, rf, rm, rr`):
 
 - **`hip_X`** — a **rotation** about the **x** (across) axis, through that
-  leg's hip pivot, range `min = -0.4`, `max = 0.4`, rest `0`. It swings the
-  whole leg forward and back.
+  leg's hip pivot, range `min = -0.5`, `max = 0.5`, rest `0`. The big fore/aft
+  sweep.
 - **`knee_X`** — a **rotation** about the **x** axis, through that leg's knee
-  pivot, range `min = -0.2`, `max = 1.0`, rest `0.1`. It bends the shin to
-  **lift the foot off the ground** on the leg's forward swing and straightens to
-  plant it.
+  pivot, range `min = -1.4`, `max = 0.2`, rest **`-0.7`** (a clearly BENT knee
+  at rest). It folds the shin to **lift the foot off the ground** on the swing
+  and extends to keep the foot planted through stance. The knee must bend the
+  **reverse / digitigrade** way (folding the shin rearward); if your sculpt
+  makes it bend "inside-out", **flip the sign** of the knee's animated values,
+  not just the range.
+- **`foot_X`** — a **rotation** about the **x** axis, through that leg's ankle
+  pivot, range `min = -0.3`, `max = 0.3`, rest `0`. A small ±~15° ankle tilt
+  that **counter-rotates against the shin to keep the foot flat** (never walking
+  on toes or heels).
 
-Sculpt each leg so that, as its hip swings and its knee bends across these
-ranges, the foot **lifts clear of the ground and plants again** — a real step —
-with the shin staying attached to the thigh and the thigh to the hull, and no
-foot dragged below the ground.
+Sculpt each leg (bent-knee rest) so that, as its hip sweeps, its knee folds, and
+its ankle counters across these ranges, the foot **plants flat, holds still on
+the ground while the fortress passes over it, then lifts clear and plants
+again** — a real step — with the shin staying attached to the thigh, the foot to
+the shin, and the thigh to the hull, and no foot dragged below the ground.
 
 **The main turret and cannon — two caller joints.** Both **caller-driven** (they
 hold still unless the game or the `bombardment` animation drives them):
@@ -206,27 +233,72 @@ flank**:
 
 - **`radar_spin`** — a **rotation** about the **y** axis through **`[44, 72,
   40]`**, `min = -3.14159`, `max = 3.14159`, rest `0`, **`drive = "auto"`**. It
-  sweeps on its own forever via a looping clip — a decorative, always-moving
-  detail that keeps turning under both animations and at idle. Sculpt the vane
-  so it rotates plausibly about its vertical mast without any voxel leaving the
-  citadel.
+  sweeps on its own forever, driven by the self-playing `radar_spin` animation —
+  a decorative, always-moving detail that keeps turning under both playable
+  animations and at idle. Sculpt the vane so it rotates plausibly about its
+  vertical mast without any voxel leaving the citadel.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example antennae, a commander's cupola, exhaust vents, or extra decorative
+You **may add** your own extra parts, joints, or animations on top of this (for
+example antennae, a commander's cupola, exhaust vents, or extra decorative
 always-moving detail), but you must **not drop or contradict** the required
-parts, the sixteen required caller joints (twelve leg + four gun), or the one
-auto radar joint.
+parts, the four required gun caller joints, the eighteen auto leg joints, the one
+auto radar joint, or the three required animations below.
+
+## The required animations — author each as F-curves
+
+`rig.json` is pre-seeded with **three required animation declarations** — a
+`name`, a `period_ms`, a `loop`/`auto_play` intent, and the `joints` each must
+drive — **but no keyframes**. You must **author each animation's motion
+yourself** with the `voxel-anim` animation subcommands: `define-animation` (to
+confirm/redefine its period and flags) then `add-keyframe` for each keyframe on
+each joint's track. Author them as **F-curves** — set each keyframe's `--interp`
+(`constant`, `linear`, `bezier`, or the easing presets `ease-in`, `ease-out`,
+`ease-in-out`), with optional `--out-handle <dt,dv>` / `--in-handle <dt,dv>`
+Bézier tangents — so the motion **carries weight**, never sliding linearly
+between poses. Run `voxel-anim --help` and `voxel-anim add-keyframe --help` for
+the exact flags.
+
+- **`march`** — the WALK. `period_ms = 1600`, `loop = true`, `auto_play = false`
+  (a playable a game triggers). It drives all **eighteen** leg joints
+  (`hip_*`, `knee_*`, `foot_*`). Author a real walk cycle: each leg has a
+  **planted STANCE phase** — the foot flat and **still on the ground**,
+  translating straight backward relative to the body while the fortress passes
+  over it (hip and knee working together to hold the foot at a fixed ground
+  point, the ankle counter-rotating to keep it flat) — then a **SWING** — the
+  knee folds toward `-1.2` to lift the foot clear, the hip carries it forward,
+  and the foot **plants** again. Give the plant a sharp **`ease-in`** on the
+  final descent for the weight/"thump" of a heavy foot landing; ease the rest of
+  the roll smoothly (`ease-in-out`/`bezier`). Do **not** author a continuous
+  arc with no still, flat, planted segment — that reads as flailing, not walking.
+  Design the foot path first (flat ground segment, then lift arc), then solve the
+  hip/knee/ankle angles to it, then set the eased keys.
+- **Gait phasing:** the six legs walk as **two alternating tripods** — tripod A
+  = `lf, rm, lr` step together, tripod B = `rf, lm, rr` a **half period
+  (800 ms)** out of phase — so **three feet are planted at all times** and the
+  fortress is always supported.
+- **`bombardment`** — the WEAPON showcase. `period_ms = 4000`, `loop = true`,
+  `auto_play = false`. It drives only the **four gun caller joints**: the main
+  cannon lobs forward (`main_gun_pitch` up and down) within its narrow cone
+  (`main_turret_yaw` correcting), while the two side turrets each sweep their own
+  flank arc (`left_turret_yaw`, `right_turret_yaw`) independently and out of
+  phase. It touches **no leg joint**, so the legs hold planted. Ease the sweeps
+  and lobs (`ease-in-out`) so they feel like heavy machinery, not linear slides.
+- **`radar_spin`** — the decorative radar sweep. `period_ms = 3000`,
+  `loop = true`, `auto_play = true` (a self-playing idle). It drives only the
+  `radar_spin` joint, turning the vane a full sweep each loop; it plays
+  continuously under both playable animations and at idle.
 
 ## Working the tool
 
 The only way to place a voxel and edit the rig is the `voxel-anim` binary
 already on your `PATH`. Sculpt each part up in sensible layers, selecting it
-with `--part <name>` — finish the hull, then each leg's thigh and shin, then the
-main turret, then the main cannon, then each side turret, then the radar,
-checking each part's preview as you go. Define the parts, pivots, and joints
-through the tool's rig subcommands (the required parts and joints are already
-pre-seeded in `rig.json`, but confirm they match this brief and adjust pivots to
-your sculpt). Run `voxel-anim --help` for the available operations (setting and
+with `--part <name>` — finish the hull, then each leg's thigh, shin, and foot,
+then the main turret, then the main cannon, then each side turret, then the
+radar, checking each part's preview as you go. Define the parts, pivots, joints,
+and animations through the tool's rig subcommands (the required parts, joints,
+and animation declarations are already pre-seeded in `rig.json`, but confirm they
+match this brief, adjust pivots to your sculpt, and author each animation's
+keyframes). Run `voxel-anim --help` for the available operations (setting and
 clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
 mirror plane) and the rig subcommands, and `voxel-anim <operation> --help` for
 each one's exact flags. Call `voxel-anim` once per operation, read

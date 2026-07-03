@@ -10,7 +10,8 @@ foundry runs on its own while the `base` stays fixed. There is no target model â
 the model sculpts and rigs toward a written brief, and may add its own extra
 parts and joints on top. The recorded per-part operations are regenerated into a
 rigged 3D model the frontend renders with the crane arm and piston cycling on
-their clips, and a reviewer judges it against the brief: that it reads as a
+their own auto-play animations, and a reviewer judges it against the brief: that
+it reads as a
 mortar-works, the crane swings and piston bobs on the correct axes without
 detaching, the base stays fixed, and the crane arm and piston stay attached are
 what they weigh.

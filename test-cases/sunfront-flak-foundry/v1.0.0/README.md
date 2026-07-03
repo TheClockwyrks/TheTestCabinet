@@ -21,13 +21,19 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `piston` | `base` | `[40, 34, 24]` | The charging piston on the flank |
 
 - **`dish_sweep`** (auto, rotation about `y`, `-π..π`) — the radar dish turns a
-  full revolution on its own clip.
+  full revolution.
 - **`piston_bob`** (auto, translation along `y`, `-5..0`) — the piston bobs
-  straight down and back up on its own clip.
+  straight down and back up.
 
-Both required joints are `auto`-driven: the foundry cycles on its own with no
-caller and no case-authored review animation. The model may add its own extra
-parts, joints, and clips on top, but must not drop or contradict the required
+Both required joints are `auto`-driven by two required decorative **animations**
+(same names, `auto_play = true`, `loop = true`): `dish_sweep` (`period_ms = 3000`)
+and `piston_bob` (`period_ms = 1200`). The animations are **declarations only**
+in
+`test-case.toml` — name, period, loop, auto_play, and the joint each drives, with
+**no keyframes**; the model authors each one's F-curves at run time with the
+`voxel-anim` `define-animation`/`add-keyframe` subcommands. The foundry cycles on
+its own with no caller. The model may add its own extra parts, joints, and
+auto-play animations on top, but must not drop or contradict the required
 interface.
 
 ## Contents
@@ -42,9 +48,9 @@ interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required parts, joints, and animation declarations (so the
+contract exists from the first operation). There is no target model and no
+operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

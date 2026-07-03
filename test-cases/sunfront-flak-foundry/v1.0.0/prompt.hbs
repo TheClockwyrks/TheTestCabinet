@@ -26,10 +26,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 49 --y1 62 --z1 49 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole foundry composed from all your parts, re-rendered after every operation. The
@@ -48,9 +49,10 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the works, the required parts and their pivots, and the two auto
-`dish_sweep` and `piston_bob` joints. Run `voxel-anim --help` for the exact
-operation and rig contract.
+form of the works, the required parts and their pivots, the two auto `dish_sweep`
+and `piston_bob` joints, and the two required decorative animations you must
+author. Run `voxel-anim --help` for the exact operation, rig, and animation
+contract.
 
 ## What to deliver
 
@@ -58,9 +60,10 @@ Build and rig the foundry up operation by operation until each `parts/<part>.png
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: a tall masonry works base, a radar dish on its
 crown, and a piston on its flank. The required interface is the two auto
-**`dish_sweep`** and **`piston_bob`** joints that turn the dish a full revolution
-and bob the piston down and up on their own, while the `base` stays fixed. Produce
-**every** required part and joint; you may add your own extra parts, joints, or
-auto-play clips on top, but do not drop or contradict the required interface. When
-you are satisfied, stop: the recorded per-part logs and `rig.json` are your
-finished submission.
+**`dish_sweep`** and **`piston_bob`** joints, plus the two decorative auto-play
+animations of the same names that you author as F-curves to turn the dish a full
+revolution and bob the piston down and up on their own, while the `base` stays
+fixed. Produce **every** required part, joint, and animation; you may add your own
+extra parts, joints, or auto-play animations on top, but do not drop or contradict
+the required interface. When you are satisfied, stop: the recorded per-part logs
+and `rig.json` are your finished submission.

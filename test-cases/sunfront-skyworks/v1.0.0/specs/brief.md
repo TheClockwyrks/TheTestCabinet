@@ -75,37 +75,62 @@ where it sits on the finished pad:
 ## The required joints
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the Skyworks cycles without any
+joint that its required animation drives, so the Skyworks cycles without any
 caller. There are **no** caller joints.
 
 - **`turbine_spin`** — a **rotation** about the **y** (up) axis, through the
   turbine hub at pivot **`[32, 50, 32]`**, **`drive = "auto"`**. Its range is a
-  full turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the turbine
-  a full revolution fast and loops, so it spins on its own. Sculpt the turbine
-  so it rotates plausibly about its hub without any voxel tearing away from the
-  mast.
+  full turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the turbine so it
+  rotates plausibly about its hub without any voxel tearing away from the mast.
 - **`launch_door_raise`** — a **translation** along the **y** (up) axis, through
   the door mount at pivot **`[32, 20, 50]`**, **`drive = "auto"`**. Its range is
   **`min = 0` (fully closed, at rest) to `max = 16` (fully raised)**, resting at
-  `0`. The clip slides the door up, holds it open, then lowers it back, so it
-  cycles on its own. Sculpt the door so it slides plausibly up and down in its
-  runners without any voxel tearing away or clipping the front face.
+  `0`. Sculpt the door so it slides plausibly up and down in its runners without
+  any voxel tearing away or clipping the front face.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a second door panel, a beacon, or extra pipework), but you must
-**not drop or contradict** the required parts or the two auto `turbine_spin` and
-`launch_door_raise` joints.
+## The required animations
+
+The rig ships **two required animations** you must author. Each is pre-declared
+in
+`rig.json` as a name, its loop/`auto_play` intent, and the single joint it drives;
+you supply its **motion** by authoring its F-curves. Both are **decorative
+idles** (`auto_play = true`): they play continuously on their own so the Skyworks
+runs without any caller.
+
+- **`turbine_spin`** (period `700 ms`, `loop = true`, `auto_play = true`, drives
+  the `turbine_spin` joint) — spins the turbine a **full revolution fast** and
+  loops. Author a continuous, even rotation from `-π` back around to `+π`.
+- **`launch_door_raise`** (period `3400 ms`, `loop = true`, `auto_play = true`,
+  drives the `launch_door_raise` joint) — slides the door **up, holds it open,
+  then lowers it back**. Give it weight: ease the door into and out of the open
+  hold rather than sliding it linearly.
+
+Author each animation with the `voxel-anim` animation subcommands —
+`define-animation` to declare it, then `add-keyframe` to place its keys (see
+`voxel-anim --help`). Set each keyframe's interpolation with `--interp`
+(`constant | linear | bezier | ease-in | ease-out | ease-in-out`), and shape the
+curve with the optional `--out-handle` / `--in-handle` handles, so the motion
+carries **weight as F-curves** and never just slides linearly. The turbine's spin
+reads best as an even `linear` loop; the door should `ease-in` / `ease-out` around
+its open hold.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a second door panel, a beacon, or extra pipework), but you must
+**not drop or contradict** the required parts, the two auto `turbine_spin` and
+`launch_door_raise` joints, or their two required animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` —
 finish the pad base and its mast, then the turbine, then the door, checking each
-part's preview as you go. Define the parts, pivots, and the two auto
-`turbine_spin` and `launch_door_raise` joints through the tool's rig subcommands
-(the required parts and joints are already pre-seeded in `rig.json`, but confirm
-they match this brief and adjust pivots to your sculpt). Run `voxel-anim --help`
-for the available operations (setting and clearing single voxels, filling and
-stroking boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands,
-and `voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim`
-once per operation and read `parts/<part>.png` between calls to judge each part
-against this brief.
+part's preview as you go. Define the parts, pivots, the two auto `turbine_spin`
+and `launch_door_raise` joints, and the two required animations' F-curves through
+the tool's rig and animation subcommands (the required parts, joints, and
+animation declarations are already pre-seeded in `rig.json`, but confirm they
+match this brief, adjust pivots to your sculpt, and author each animation's
+keyframes). Run `voxel-anim --help` for the available operations (setting and
+clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands
+(`define-animation`, `add-keyframe`), and `voxel-anim <operation> --help` for each
+one's exact flags. Call `voxel-anim` once per operation and read
+`parts/<part>.png` between calls to judge each part against this brief.

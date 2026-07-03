@@ -26,10 +26,11 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part torso --x0 16 --y0 34 --z0 16 --x1 47 --y1 70 --z1 39 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and defining
+animations and keyframing them), and `voxel-anim <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole mech composed from all your parts, re-rendered after every operation. The
@@ -49,18 +50,22 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the mech, the required parts and their pivots, the required caller
-`weapon_pitch` joint, and the two auto stride joints. Run `voxel-anim --help`
-for the exact operation and rig contract.
+`weapon_pitch` joint, the six auto leg joints, and the two required animations
+(`walk` and `fire`) whose F-curve motion you author. Run `voxel-anim --help` for
+the exact operation, rig, and animation contract.
 
 ## What to deliver
 
 Build and rig the mech up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a massive torso and head on two walking legs,
-with a giant cannon carried on the right arm. The required interface is a
-caller-driven **`weapon_pitch`** joint that aims the cannon up and down about its
-shoulder mount, plus the two auto **`leg_left_stride`** and **`leg_right_stride`**
-joints that walk the legs in opposite phase. Produce **every** required part and
-joint; you may add your own extra parts, joints, or auto-play clips on top, but do
-not drop or contradict the required interface. When you are satisfied, stop: the
-recorded per-part logs and `rig.json` are your finished submission.
+correctly, and the rig is complete: a massive torso and head on two independent,
+three-segment walking legs, with a giant cannon carried on the right arm. The
+required interface is a caller-driven **`weapon_pitch`** joint that aims the cannon
+up and down about its shoulder mount, the six auto leg joints (**`hip_l`**,
+**`knee_l`**, **`foot_l`**, **`hip_r`**, **`knee_r`**, **`foot_r`**), and the two
+required animations you author as F-curves: a slow, heavy, planted **`walk`** that
+strides both legs in opposite phase and a weapon-only **`fire`** recoil. Produce
+**every** required part, joint, and animation; you may add your own extra parts,
+joints, or animations on top, but do not drop or contradict the required interface.
+When you are satisfied, stop: the recorded per-part logs and `rig.json` are your
+finished submission.

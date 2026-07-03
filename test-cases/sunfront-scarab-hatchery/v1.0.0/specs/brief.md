@@ -74,38 +74,63 @@ where it sits on the finished building:
 ## The required joints
 
 Both animated elements **move on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the hatchery cycles without any
-caller. There are **no** caller-driven joints on this building.
+joint, so the hatchery cycles without any caller. There are **no** caller-driven
+joints on this building.
 
 - **`hatch_turn`** — a **rotation** about the **y** (up) axis, through the hatch's
   vertical mount at pivot **`[28, 20, 40]`**, **`drive = "auto"`**. Its range is
-  a **full half-turn each way**, `min = -π`, `max = +π`, resting at `0`. Its clip
-  sweeps the hatch smoothly through a full turn each cycle, like a slowly rotating
-  iris. Sculpt the hatch so it rotates plausibly about that vertical axis: no voxel
-  should tear away from the mount or clip into the mound as it turns.
+  a **full half-turn each way**, `min = -π`, `max = +π`, resting at `0`. Sculpt
+  the
+  hatch so it rotates plausibly about that vertical axis: no voxel should tear away
+  from the mount or clip into the mound as it turns.
 - **`vent_bob`** — a **translation** along the **y** (up) axis, through the vent's
   mount at pivot **`[28, 10, 16]`**, **`drive = "auto"`**. Its range is `min = 0`
-  (fully seated, at rest) to `max = 6` voxels up, resting at `0`. Its clip lifts
-  the vent up then settles it back each cycle. Sculpt the vent so it slides
-  straight up and down about its mount without detaching from the base.
+  (fully seated, at rest) to `max = 6` voxels up, resting at `0`. Sculpt the
+  vent so
+  it slides straight up and down about its mount without detaching from the base.
 
 Sculpt each sub-part so it moves plausibly about its mount and always stays
 attached to the base.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example subtle steam plumes, or extra detail hatch cells), but you must **not
-drop or contradict** the required parts or the two required auto joints
-`hatch_turn` and `vent_bob`.
+## The required animations
+
+You must also **author the motion** for two required, self-playing decorative
+animations — one per moving sub-part — as **F-curves**, so the hatchery cycles
+continuously on its own. Each is already declared as a required animation (name,
+period, `loop = true`, `auto_play = true`, and the single joint it drives); the
+case ships **no** keyframes — **you** author the timeline with the `voxel-anim`
+animation subcommands (`define-animation` to create/confirm the animation, then
+`add-keyframe` to lay down each keyframe). Give every keyframe an `--interp`
+(`constant`/`linear`/`bezier` or the `ease-in`/`ease-out`/`ease-in-out` presets,
+with optional `--out-handle`/`--in-handle`) so the motion carries **weight** on
+smooth curves — never a flat linear slide.
+
+- **`hatch_turn`** — `period_ms = 2600`, looping. Sweep the hatch smoothly through
+  a full turn about its vertical axis each cycle, like a slowly rotating iris. Ease
+  the curve so the turn reads as a steady, weighted rotation rather than a constant
+  linear spin, and make the loop seamless (the end pose flows back into the start).
+- **`vent_bob`** — `period_ms = 1400`, looping. Lift the vent up off its seat and
+  settle it back each cycle. Shape the curve with weight — ease out of the seated
+  rest, ease into the top of the rise, and `ease-in` into the settle so it lands
+  softly rather than sliding at constant speed.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example subtle steam plumes, or extra detail hatch cells), but you must
+**not drop or contradict** the required parts, the two required auto joints, or
+the
+two required animations `hatch_turn` and `vent_bob`.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the hive-mound base and its hatch cells, then the iris hatch, then the vent,
 checking each part's preview as you go. Define the parts, pivots, and the two auto
-joints through the tool's rig subcommands (the required parts and joints are
-already pre-seeded in `rig.json`, but confirm they match this brief and adjust
-pivots to your sculpt). Run `voxel-anim --help` for the available operations
-(setting and clearing single voxels, filling and stroking boxes, 3D lines,
-spheres, and a mirror plane) and the rig subcommands, and `voxel-anim <operation>
---help` for each one's exact flags. Call `voxel-anim` once per operation and read
-`parts/<part>.png` between calls to judge each part against this brief.
+joints through the tool's rig subcommands (the required parts, joints, and
+animations are already pre-seeded in `rig.json`, but confirm they match this brief
+and adjust pivots to your sculpt), then **author the two required animations** with
+`define-animation` and `add-keyframe` as described above. Run `voxel-anim --help`
+for the available operations (setting and clearing single voxels, filling and
+stroking boxes, 3D lines, spheres, and a mirror plane), the rig subcommands, and
+the animation subcommands, and `voxel-anim <operation> --help` for each one's exact
+flags. Call `voxel-anim` once per operation and read `parts/<part>.png` between
+calls to judge each part against this brief.

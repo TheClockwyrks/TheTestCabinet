@@ -87,7 +87,8 @@ A consuming game drives the rig by joint name. The **required** caller joint is:
   core or clip into it as it tilts.
 
 The two rings **spin on their own** — each carries an **auto**-driven spin joint
-the case drives with a looping clip, so the rings turn without the caller:
+an
+animation drives (below), so the rings turn without the caller:
 
 - **`ring_left_spin`** — a **rotation** about **z** (front-to-back) through
   **`[10, 34, 20]`**, `min = -π`, `max = +π`, rest `0`, **`drive = "auto"`**, so
@@ -98,21 +99,56 @@ the case drives with a looping clip, so the rings turn without the caller:
 Sculpt each ring so it turns plausibly about its mount, as a full hoop, without
 detaching from the core.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a subtle core bob, or a third ring), but you must **not drop or
-contradict** the required parts, the required caller `emitter_pitch` joint, or the
-two auto spin joints.
+This air unit has **no legs**; it hovers on one more required **auto** joint on
+the
+root `core`:
+
+- **`hover_bob`** — a **translation** along **y** (up/down) through
+  **`[20, 28, 20]`**, `min = -2.0`, `max = 2.0`, rest `0`, **`drive = "auto"`**.
+  Driving it lifts and lowers the **whole drone** a little so it reads as floating
+  in place. An animation drives it (below); there is no caller.
+
+## The required animations
+
+Beyond the parts and joints, you must **author three named animations** with the
+`voxel-anim` animation subcommands — `define-animation` to declare each, then
+`add-keyframe` to lay down its motion. Author each as **F-curves**: give keyframes
+weight with per-keyframe interpolation (`--interp
+constant|linear|bezier|ease-in|ease-out|ease-in-out`, and the optional
+`--out-handle`/`--in-handle` bezier handles) so the motion eases and settles — it
+must **not** slide linearly. Run `voxel-anim --help` and `voxel-anim
+define-animation --help` / `voxel-anim add-keyframe --help` for the exact flags.
+The three (each **loops**) are:
+
+- **`ring_spin`** (period **1600 ms**, plays continuously on its own — a decorative
+  idle) — drives `ring_left_spin` and `ring_right_spin` a full turn each, in
+  **opposite** directions, so the two rings counter-rotate smoothly and endlessly
+  around the core.
+- **`hover`** (period **2600 ms**, a movement state a game triggers) — drives
+  `hover_bob` so the whole craft rises and settles in a gentle, weighted bob:
+  ease up to the top of the bob, hang, ease back down, hang — never a straight
+  saw-tooth slide.
+- **`pulse`** (period **2000 ms**, a playable a reviewer triggers) — drives the
+  caller `emitter_pitch` so the beam nods up, back to level, down, and level again,
+  each turn eased so the beam settles rather than snapping.
+
+You **may add** your own extra parts, joints, or animations on top of this (for
+example a third ring or a subtle emitter flicker), but you must **not drop or
+contradict** the required parts, the required caller `emitter_pitch` joint, the
+three auto spin/hover joints, or the three required animations above.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the core hull and its heart, then each ring, then the emitter, checking each
 part's preview as you go. Define the parts, pivots, the caller `emitter_pitch`
-joint, and the two auto spin joints through the tool's rig subcommands (the
+joint, and the auto spin/hover joints through the tool's rig subcommands (the
 required parts and joints are already pre-seeded in `rig.json`, but confirm they
-match this brief and adjust pivots to your sculpt). Run `voxel-anim --help` for
-the available operations (setting and clearing single voxels, filling and stroking
-boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, and
-`voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim` once
-per operation and read `parts/<part>.png` between calls to judge each part against
-this brief.
+match this brief and adjust pivots to your sculpt), then **author the three
+required animations** (`ring_spin`, `hover`, `pulse`) with `define-animation` and
+`add-keyframe` as described above. Run `voxel-anim --help` for the available
+operations (setting and clearing single voxels, filling and stroking boxes, 3D
+lines, spheres, and a mirror plane), the rig subcommands, and the animation
+subcommands, and `voxel-anim <operation> --help` for each one's exact flags. Call
+`voxel-anim` once per operation and read `parts/<part>.png` between calls to judge
+each part against this brief.

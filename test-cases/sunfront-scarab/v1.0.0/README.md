@@ -13,25 +13,32 @@ seeded brief and is reviewed subjectively against it.
 
 ## The rig
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
+The body is the fixed root; each of the four legs is its own three-part chain (a
+thigh, a shin, and a short flat foot) on its own hip directly above its own foot;
+the mandibles hang at the head:
 
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
 | `body` | *(root)* | `[0, 0, 0]` | The domed carapace body and head |
-| `legs_left` | `body` | `[10, 8, 28]` | The left bank of legs |
-| `legs_right` | `body` | `[38, 8, 28]` | The right bank of legs |
+| `thigh_<id>` | `body` | hip | Upper leg for corner `<id>` (`lf`/`lr`/`rf`/`rr`) |
+| `shin_<id>` | `thigh_<id>` | knee | Lower leg |
+| `foot_<id>` | `shin_<id>` | ankle | Short flat foot |
 | `mandibles` | `body` | `[24, 8, 50]` | The snapping front jaws |
 
+- **`hip_<id>`** / **`knee_<id>`** / **`foot_<id>`** (auto, rotation about `x`;
+  hip `±0.5`, knee `-1.4..0.2` rest `-0.5` bent, foot `±0.3`) — the twelve leg
+  joints the model-authored `walk` drives; at rest the legs hold a bent, planted
+  standing pose.
 - **`mandibles_snap`** (caller, rotation about `x`, `0..0.9`) — the game-facing
   control: swings the front jaws open and shut about their hinge.
-- **`legs_left_scuttle`** / **`legs_right_scuttle`** (auto, rotation about `x`,
-  `-0.6..0.6`) — the two leg banks scuttle on their own via their
-  `scuttle_left` / `scuttle_right` clips, driven in opposite phase.
 
-The case also authors a **`bite`** review animation that drives `mandibles_snap`
-so a reviewer can watch the jaws snap without dragging the slider. The model may
-add its own extra parts, joints, and clips on top, but must not drop or contradict
-the required interface.
+Both animations are **model-authored** (declared in `[[model.animation]]` with no
+keyframes; the model produces the F-curves): a **`walk`** (600 ms, diagonal-pair
+gait with a planted stance phase) driving all twelve leg joints, and a **`bite`**
+(500 ms) driving `mandibles_snap` so a reviewer can watch the jaws snap without
+dragging the slider. The model may add its own extra parts, joints, and animations
+on top, but must not drop or contradict the required interface.
 
 ## Contents
 

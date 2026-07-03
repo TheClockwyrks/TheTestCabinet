@@ -24,16 +24,25 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `guardian_fins` | `base` | `[30, 78, 30]` | The crowning guardian fins |
 
 - **`ring_spin`** (auto, rotation about `y`, `-π..π`) — the orbital ring turns a
-  full revolution on its own clip.
+  full revolution.
 - **`core_pulse`** (auto, translation along `y`, `0..6`) — the solar core rises
-  and settles back in a breathing pulse on its own clip.
+  and settles back in a breathing pulse.
 - **`fins_spin`** (auto, rotation about `y`, `-π..π`) — the guardian fins
-  counter-rotate a full revolution the opposite way on their own clip.
+  counter-rotate a full revolution the opposite way.
 
-All three required joints are `auto`-driven: the monument cycles on its own with
-no caller and no case-authored review animation. The model may add its own extra
-parts, joints, and clips on top, but must not drop or contradict the required
-interface.
+The `[model]` table also declares three required **animations** the model must
+author as F-curves (no keyframes ship in the manifest) — each an `auto_play`,
+looping decorative idle driving its like-named joint:
+
+- **`ring_spin`** (period 3000 ms) drives the `ring_spin` joint.
+- **`core_pulse`** (period 2000 ms) drives the `core_pulse` joint.
+- **`fins_spin`** (period 3400 ms) drives the `fins_spin` joint.
+
+All three required joints are `auto`-driven and all three animations are
+`auto_play`: the monument cycles on its own with no caller. The model authors each
+animation's motion at run time with the `voxel-anim` `define-animation`/`add-keyframe`
+subcommands. The model may add its own extra parts, joints, and animations on top,
+but must not drop or contradict the required interface.
 
 ## Contents
 

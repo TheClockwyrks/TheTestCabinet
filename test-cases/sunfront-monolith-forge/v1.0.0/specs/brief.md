@@ -75,35 +75,64 @@ where it sits on the finished forge:
 ## The required joints
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the forge cycles without any
-caller. There are **no** caller joints.
+joint, so the forge cycles without any caller. There are **no** caller joints.
 
 - **`hammer_stamp`** — a **translation** along the **y** (up) axis, through the
   hammer mount at pivot **`[34, 58, 34]`**, **`drive = "auto"`**. Its range is
   **`min = -18` (bottom of the stamp) to `max = 0` (fully raised, at rest)**,
-  resting at `0`. The clip drives the great hammer straight down deep and back up
-  in its throat, so it pounds on its own. Sculpt the hammer so it slides
-  plausibly down and up about that mount without any voxel tearing away or
+  resting at `0`. Its animation (below) drives the great hammer straight down deep
+  and back up in its throat, so it pounds on its own. Sculpt the hammer so it
+  slides plausibly down and up about that mount without any voxel tearing away or
   clipping the throat walls.
 - **`crown_spin`** — a **rotation** about the **y** (up) axis, through the gear
   crown hub at pivot **`[34, 74, 34]`**, **`drive = "auto"`**. Its range is a
-  full turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the crown a
-  full revolution and loops, so it spins on its own. Sculpt the gear crown so it
+  full turn, `min = -π`, `max = +π`, resting at `0`. Its animation turns the crown
+  a full revolution and loops, so it spins on its own. Sculpt the gear crown so
+  it
   rotates plausibly about its hub without any voxel tearing away from the crest.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a second gear, a puff vent, or extra pipework), but you must **not
-drop or contradict** the required parts or the two auto `hammer_stamp` and
-`crown_spin` joints.
+## The required animations
+
+The forge ships **two required animations** you must **author**. The case declares
+each animation's identity and intent only — its name, period, and the joint it
+drives — **not** its keyframes. You produce the motion yourself as an **F-curve**:
+call `voxel-anim define-animation` to create it, then `voxel-anim add-keyframe`
+to
+place each keyframe on its joint's track, choosing an `--interp` per keyframe
+(`constant`, `linear`, `bezier`, `ease-in`, `ease-out`, or `ease-in-out`, with
+optional `--out-handle`/`--in-handle`) so the motion carries **weight** — an eased
+curve, never a flat linear slide. Both are **decorative, self-playing idles**
+(`auto_play`): they run continuously so the forge cycles on its own.
+
+- **`hammer_stamp`** — period **1600 ms**, looping, driving the `hammer_stamp`
+  joint. Author the great hammer dropping deep down its throat and rising back to
+  rest: pull it down toward `-18`, then lift it back to `0` over the loop. Give
+  the
+  drop its weight — ease **into** the bottom of the stamp so it lands with a thud,
+  rather than sliding linearly — and let it recover more smoothly on the way up.
+- **`crown_spin`** — period **2600 ms**, looping, driving the `crown_spin` joint.
+  Author the gear crown turning one steady full revolution about its hub (from
+  `-π` to `+π`) and looping seamlessly, at a constant pace so the spin reads as
+  a
+  continuous turn.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a second gear, a puff vent, or extra pipework), but you must
+**not drop or contradict** the required parts, the two auto `hammer_stamp` and
+`crown_spin` joints, or the two required animations that drive them.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the forge base and its throat, then the hammer, then the gear crown, checking each
-part's preview as you go. Define the parts, pivots, and the two auto `hammer_stamp`
-and `crown_spin` joints through the tool's rig subcommands (the required parts and
-joints are already pre-seeded in `rig.json`, but confirm they match this brief and
-adjust pivots to your sculpt). Run `voxel-anim --help` for the available
+part's preview as you go. Define the parts, pivots, the two auto `hammer_stamp`
+and
+`crown_spin` joints, and their two required animations through the tool's rig and
+animation subcommands (the required parts, joints, and animation declarations are
+already pre-seeded in `rig.json`, but the animations carry **no** keyframes — you
+author each F-curve with `define-animation`/`add-keyframe` — and confirm the parts
+and joints match this brief, adjusting pivots to your sculpt). Run `voxel-anim
+--help` for the available
 operations (setting and clearing single voxels, filling and stroking boxes, 3D
 lines, spheres, and a mirror plane) and the rig subcommands, and `voxel-anim
 <operation> --help` for each one's exact flags. Call `voxel-anim` once per

@@ -72,7 +72,7 @@ where it sits on the finished building:
 ## The required joints
 
 This foundry has **no caller controls** — both moving parts **animate on their
-own** through **auto**-driven joints the case drives with looping clips:
+own** through **auto**-driven joints you drive with the animations below:
 
 - **`blast_door_raise`** — a **translation** along the **y** (up) axis, through
   the door mount at pivot **`[30, 24, 58]`**, **`drive = "auto"`**. Its range is
@@ -89,19 +89,41 @@ own** through **auto**-driven joints the case drives with looping clips:
 Sculpt each part so it moves plausibly about its mount without detaching from the
 base.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
-(for example a venting stack, a smaller gear, or a subtle glow flicker), but you
-must **not drop or contradict** the required parts or the two auto joints
-`blast_door_raise` and `flywheel_spin`.
+## The required animations
+
+You must **author the motion** for both auto joints. Each animation is a
+**decorative idle** (`auto_play` — it plays continuously on its own, with no
+caller). The rig is pre-seeded with these animations' identities; you author
+their **F-curves** with the `voxel-anim` animation subcommands
+(`define-animation`, then `add-keyframe` per keyframe). Give each keyframe an
+`--interp` (`constant`, `linear`, `bezier`, `ease-in`, `ease-out`, or
+`ease-in-out`) and, where it helps, `--out-handle`/`--in-handle` — the motion
+must carry **weight** through eased curves, not slide linearly.
+
+- **`blast_door_raise`** — period **3200 ms**, `loop = true`, drives the
+  `blast_door_raise` joint. The heavy door **eases up** off its rest, **holds
+  open** at the top for a beat, then **eases back down** and settles shut — a
+  weighty portcullis cycle, not a constant-speed slide.
+- **`flywheel_spin`** — period **2400 ms**, `loop = true`, drives the
+  `flywheel_spin` joint. The great wheel turns a **full, steady revolution** each
+  loop (sweep the rotation from `-π` to `+π`), reading as continuous rotation with
+  no jerk at the loop seam.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this (for example a venting stack, a smaller gear, or a subtle glow flicker), but
+you must **not drop or contradict** the required parts, the two auto joints
+`blast_door_raise` and `flywheel_spin`, or their two required animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` —
 finish the armored base and its door frame and axle housing, then the blast door,
 then the flywheel, checking each part's preview as you go. Define the parts,
-pivots, and the two auto joints through the tool's rig subcommands (the required
-parts and joints are already pre-seeded in `rig.json`, but confirm they match
-this brief and adjust pivots to your sculpt). Run `voxel-anim --help` for the
+pivots, the two auto joints, and the two required animations' F-curves through the
+tool's rig subcommands (the required parts, joints, and animation identities are
+already pre-seeded in `rig.json`, but confirm they match this brief, adjust pivots
+to your sculpt, and author each animation's keyframes). Run `voxel-anim --help`
+for the
 available operations (setting and clearing single voxels, filling and stroking
 boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, and
 `voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim`

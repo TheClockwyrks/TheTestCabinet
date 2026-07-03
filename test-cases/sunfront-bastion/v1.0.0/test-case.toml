@@ -4,8 +4,8 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bastion: a 72x88x72 opaque-voxel fortified keep \
 whose solar collector crown rotates, whose gate raises, and whose beacon slowly \
-turns on their own auto clips while the base stays fixed, built and rigged one \
-recorded operation at a time."""
+turns on their own auto-play animations while the base stays fixed, built and \
+rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,10 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, joints, and animations; at run time it MAY add
+# further parts, joints, and animations of its own (recorded in rig.json) beyond
+# what this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json`
+# is pre-seeded from this table so the contract exists from the first operation.
 [model]
 
 # The fortress keep and its ramparts: the root part (no parent), fixed to the
@@ -76,9 +76,9 @@ name = "beacon"
 parent = "base"
 pivot = [36, 84, 36]
 
-# The collector crown's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` so the ring turns on its own without a
-# caller.
+# The collector crown's own looping spin. An `auto` joint driven by the auto-play
+# `crown_spin` animation, a full rotation about `y` so the ring turns on its own
+# without a caller.
 [[model.joint]]
 name = "crown_spin"
 part = "solar_crown"
@@ -90,10 +90,10 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The gate's own looping raise. An `auto` joint the case drives with a
-# `[[model.clip]]`, an upward translation along `y` so the gate lifts and lowers on
-# its own without a caller. `rest = 0` is fully lowered (shut); `max = 16` is the
-# top of the raise.
+# The gate's own looping raise. An `auto` joint driven by the auto-play `gate_raise`
+# animation, an upward translation along `y` so the gate lifts and lowers on its own
+# without a caller. `rest = 0` is fully lowered (shut); `max = 16` is the top of the
+# raise.
 [[model.joint]]
 name = "gate_raise"
 part = "gate"
@@ -105,9 +105,9 @@ max = 16.0
 rest = 0.0
 drive = "auto"
 
-# The beacon's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a slow full rotation about `y` so the beacon sweeps on its own
-# without a caller.
+# The beacon's own looping spin. An `auto` joint driven by the auto-play
+# `beacon_spin` animation, a slow full rotation about `y` so the beacon sweeps on
+# its own without a caller.
 [[model.joint]]
 name = "beacon_spin"
 part = "beacon"
@@ -119,27 +119,33 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the bastion runs on its own. Only
-# `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs (radians for
-# the two rotation spins, voxels for the translation raise). The crown turns a full
-# revolution and loops; the gate lifts, holds, and lowers; the beacon turns slowly.
-[[model.clip]]
-joint = "crown_spin"
+# The required animations — one decorative auto-play idle per animated part, so the
+# bastion runs on its own. Each is a DECLARATION only: name, period, loop, auto_play,
+# and the joint(s) it must drive. It carries NO keyframes — the model authors the
+# motion as F-curves at run time with the `voxel-anim` animation subcommands
+# (`define-animation` then `add-keyframe`). Every one is `auto_play = true` (a
+# continuously-playing decorative idle) and `loop = true`. The crown turns a full
+# revolution; the gate lifts, holds, and lowers; the beacon turns slowly.
+[[model.animation]]
+name = "crown_spin"
 period_ms = 4000
 loop = true
-keyframes = [[0, -3.14159], [4000, 3.14159]]
+auto_play = true
+joints = ["crown_spin"]
 
-[[model.clip]]
-joint = "gate_raise"
+[[model.animation]]
+name = "gate_raise"
 period_ms = 3600
 loop = true
-keyframes = [[0, 0.0], [1080, 16.0], [2520, 16.0], [3600, 0.0]]
+auto_play = true
+joints = ["gate_raise"]
 
-[[model.clip]]
-joint = "beacon_spin"
+[[model.animation]]
+name = "beacon_spin"
 period_ms = 5000
 loop = true
-keyframes = [[0, -3.14159], [5000, 3.14159]]
+auto_play = true
+joints = ["beacon_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -152,8 +158,8 @@ description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bastion and \
 runs correctly — a huge, detailed fortified keep whose solar collector crown \
 rotates, whose gate raises and lowers, and whose beacon slowly turns on their own \
-auto clips while the base stays put, with a clear solar-amber energy accent and \
-the disciplined Duneforged palette."""
+auto-play animations while the base stays put, with a clear solar-amber energy \
+accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-bastion"
@@ -170,10 +176,11 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Crown rotates, gate raises, and beacon spins on their own"
 text = """
-The three animated elements cycle on their own via their auto clips while the \
-`base` stays fixed: the `crown_spin` joint turns the solar collector crown a full \
-revolution, the `gate_raise` joint lifts the gate straight up and back down in the \
-front wall, and the `beacon_spin` joint turns the beacon slowly atop the spire. \
+The three animated elements cycle on their own via their auto-play animations while \
+the `base` stays fixed: the `crown_spin` animation turns the solar collector crown \
+a full revolution, the `gate_raise` animation lifts the gate straight up and back \
+down in the front wall, and the `beacon_spin` animation turns the beacon slowly \
+atop the spire. \
 Across each cycle no voxel of the crown, gate, or beacon tears away from its mount \
 or clips into the keep — each moves as one solid piece about the correct axis."""
 weight = 3

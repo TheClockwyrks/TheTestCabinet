@@ -22,14 +22,20 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `flywheel` | `base` | `[46, 44, 24]` | The turning drive flywheel |
 
 - **`blast_door_raise`** (auto, translation along `y`, `0..14`) — the front blast
-  door raises and drops on its own via its clip.
+  door raises and drops on its own via its auto-play animation.
 - **`flywheel_spin`** (auto, rotation about `z`, `-π..π`) — the drive flywheel
-  turns steadily on its own via its clip.
+  turns steadily on its own via its auto-play animation.
 
-This is a STRUCTURE-class case: it has **no caller joints and no review
-animations**. Both moving parts cycle on their own through the two auto clips
-while the `base` stays fixed. The model may add its own extra parts, joints, and
-clips on top, but must not drop or contradict the required interface.
+Both required **animations** are declared in the `[model]` table by identity only
+(`name`, `period_ms`, `loop`, `auto_play = true`, and the single joint each
+drives) — the model authors their F-curve keyframes at run time with the
+`voxel-anim` `define-animation`/`add-keyframe` subcommands.
+
+This is a STRUCTURE-class case: it has **no caller joints and no playable
+animations** — both required animations are decorative `auto_play` idles. Both
+moving parts cycle on their own while the `base` stays fixed. The model may add
+its own extra parts, joints, and animations on top, but must not drop or
+contradict the required interface.
 
 ## Contents
 

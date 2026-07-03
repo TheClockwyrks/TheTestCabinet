@@ -1,6 +1,7 @@
 Sculpt and rig the **Sunfront Bombard**, a four-legged siege mortar walker whose
-turret swivels and whose long barrel lobs high while its legs scuttle, as a
-56x52x80 opaque-voxel model using only the voxel-anim tool.
+turret swivels and whose long barrel lobs high while it strides on four independent
+legs under a walk gait you author, as a 56x52x80 opaque-voxel model using only the
+voxel-anim tool.
 
 ## How sculpting and rigging works
 
@@ -26,16 +27,17 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 voxel-anim fill-box --part body --x0 8 --y0 20 --z0 6 --x1 47 --y1 34 --z1 73 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole walker composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the leg
-groups seat under the body's flanks, the turret sits centered on the hull, and the
-barrel meets the turret's front. Because each part is sculpted in the shared
+Run `voxel-anim --help` to list every operation **and** the rig and animation
+subcommands (defining parts, setting pivots, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `parts/<part>.png` after your calls** to see that part's progress,
+**and read the assembled-scene previews under `scene/` (`scene/iso.png`,
+`scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole walker composed
+from all your parts, re-rendered after every operation. The scene views are how you
+confirm the parts actually fit together: that the four legs seat under the body's
+corners and reach the ground, the turret sits centered on the hull, and the barrel
+meets the turret's front. Because each part is sculpted in the shared
 volume's coordinates, position each part where it belongs on the finished walker;
 the scene simply composes them there.
 
@@ -50,19 +52,24 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the walker, the required parts and their pivots, the required caller
-`turret_yaw` and `barrel_pitch` joints, and the two auto scuttle joints. Run
-`voxel-anim --help` for the exact operation and rig contract.
+`turret_yaw` and `barrel_pitch` joints, the twelve auto leg joints, and the two
+animations you must author (`walk` and `bombard_fire`). Run `voxel-anim --help` for
+the exact operation, rig, and animation contract.
 
 ## What to deliver
 
 Build and rig the walker up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a low hull on four scuttling legs, a turret on
-top, and a long mortar barrel projecting from the turret. The required interface is
-a caller-driven **`turret_yaw`** joint that swings the turret about its mount and a
-caller-driven **`barrel_pitch`** joint that lobs the barrel up and down, plus the
-two auto **`legs_left_scuttle`** and **`legs_right_scuttle`** joints that walk the
-legs in opposite phase. Produce **every** required part and joint; you may add your
-own extra parts, joints, or auto-play clips on top, but do not drop or contradict
-the required interface. When you are satisfied, stop: the recorded per-part logs
-and `rig.json` are your finished submission.
+correctly, and the rig is complete: a low hull on four independent three-segment
+legs (thigh, shin, flat foot), a turret on top, and a long mortar barrel projecting
+from the turret. The required interface is a caller-driven **`turret_yaw`** joint
+that swings the turret about its mount and a caller-driven **`barrel_pitch`** joint
+that lobs the barrel up and down, plus the twelve auto leg joints (`hip_*`,
+`knee_*`, `foot_*` for each of `lf, lr, rf, rr`). You must also **author** the two
+required animations as F-curves with `define-animation`/`add-keyframe`: a **`walk`**
+gait that strides the four legs in a diagonal-pair pattern with a planted stance
+phase and flat feet, and a **`bombard_fire`** recoil-lob of the barrel. Produce
+**every** required part, joint, and animation; you may add your own extra parts,
+joints, or animations on top, but do not drop or contradict the required interface.
+When you are satisfied, stop: the recorded per-part logs and `rig.json` are your
+finished submission.

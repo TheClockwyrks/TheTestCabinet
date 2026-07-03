@@ -84,31 +84,53 @@ where it sits on the finished monument:
 ## The required joints
 
 All three animated elements **run on their own** — each carries an
-**auto**-driven joint the case drives with a looping clip, so the monument cycles
-without any caller. There are **no** caller joints.
+**auto**-driven joint, so the monument cycles without any caller. There are **no**
+caller joints.
 
 - **`ring_spin`** — a **rotation** about the **y** (up) axis, through the ring's
   center at pivot **`[30, 60, 30]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the ring a full
-  revolution and loops, so it orbits on its own. Sculpt the ring so it rotates
+  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the ring so it rotates
   plausibly about its center without any voxel tearing away.
 - **`core_pulse`** — a **translation** along the **y** (up) axis, through the core
   mount at pivot **`[30, 56, 30]`**, **`drive = "auto"`**. Its range is
   **`min = 0` (settled, at rest) to `max = 6` (top of the rise)**, resting at `0`.
-  The clip lifts the core up and settles it back in a slow breathing pulse, so it
-  rises and falls on its own. Sculpt the core so it slides plausibly up and down
-  about that mount without any voxel tearing away or clipping the cradle walls.
+  Sculpt the core so it slides plausibly up and down about that mount without any
+  voxel tearing away or clipping the cradle walls.
 - **`fins_spin`** — a **rotation** about the **y** (up) axis, through the fins'
   hub at pivot **`[30, 78, 30]`**, **`drive = "auto"`**. Its range is a full turn,
-  `min = -π`, `max = +π`, resting at `0`. The clip turns the fins a full
-  revolution and loops in the **opposite direction to the ring**, so they
-  counter-rotate on their own. Sculpt the fins so they rotate plausibly about
-  their hub without any voxel tearing away.
+  `min = -π`, `max = +π`, resting at `0`. Sculpt the fins so they rotate plausibly
+  about their hub without any voxel tearing away.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
+## The required animations
+
+You must also **author the motion** for three required animations — the timeline
+curves that turn the ring, breathe the core, and counter-rotate the fins. The case
+declares each animation's identity and intent; **you author its F-curves** with
+the
+`voxel-anim` animation subcommands (`define-animation` to declare it, then
+`add-keyframe` per keyframe). Each is **`auto_play`** (a decorative idle that plays
+continuously on its own) and **loops**. Give each motion **weight through its
+curves** — set each keyframe's interpolation (`--interp
+constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` bezier handles) rather than sliding linearly:
+
+- **`ring_spin`** — `period_ms = 3000`, `loop`, `auto_play`, drives the
+  **`ring_spin`** joint. One smooth, steady full revolution of the orbital ring
+  about `y`; a constant-speed orbit reads best with even, near-linear pacing.
+- **`core_pulse`** — `period_ms = 2000`, `loop`, `auto_play`, drives the
+  **`core_pulse`** joint. A slow breathing rise-and-settle of the solar core: lift
+  it up, hold near the top, and ease it back down — use eased curves so the breath
+  feels weighted, not a mechanical sawtooth.
+- **`fins_spin`** — `period_ms = 3400`, `loop`, `auto_play`, drives the
+  **`fins_spin`** joint. One smooth full revolution of the guardian fins about `y`
+  in the **opposite direction to the ring**, so they visibly counter-rotate.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this
 (for example a second inner ring, glinting facets, or extra masonry buttresses),
-but you must **not drop or contradict** the required parts or the three auto
-`ring_spin`, `core_pulse`, and `fins_spin` joints.
+but you must **not drop or contradict** the required parts, the three auto
+`ring_spin`, `core_pulse`, and `fins_spin` joints, or the three required
+animations.
 
 ## Working the tool
 
@@ -117,9 +139,14 @@ the plinth and its cradle, then the core, then the ring, then the fins, checking
 each part's preview as you go. Define the parts, pivots, and the three auto
 `ring_spin`, `core_pulse`, and `fins_spin` joints through the tool's rig
 subcommands (the required parts and joints are already pre-seeded in `rig.json`,
-but confirm they match this brief and adjust pivots to your sculpt). Run
+but confirm they match this brief and adjust pivots to your sculpt), then author
+the three required `ring_spin`, `core_pulse`, and `fins_spin` animations with the
+animation subcommands (`define-animation`, then `add-keyframe` per keyframe). Run
 `voxel-anim --help` for the available operations (setting and clearing single
-voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
-rig subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
+voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane), the
+rig
+subcommands, and the animation subcommands, and `voxel-anim <operation> --help`
+for
+each one's exact flags.
 Call `voxel-anim` once per operation and read `parts/<part>.png` between calls to
 judge each part against this brief.

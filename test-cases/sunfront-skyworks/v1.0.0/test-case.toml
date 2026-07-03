@@ -4,8 +4,8 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Skyworks: a 64x64x64 opaque-voxel open launch-pad \
 hangar whose turbine spins fast and launch door raises and lowers on their own \
-auto clips while the base stays fixed, built and rigged one recorded operation \
-at a time."""
+auto-play animations while the base stays fixed, built and rigged one recorded \
+operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,10 +43,12 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and the required ANIMATIONS
+# (declared here as name + loop/auto_play intent + the joints each drives; the model
+# authors their F-curves at run time). At run time it MAY add further parts, joints,
+# and animations of its own (recorded in rig.json) beyond what this table requires.
+# `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is pre-seeded from this
+# table so the contract exists from the first operation.
 [model]
 
 # The launch-pad hangar and foundation: the root part (no parent), fixed to the
@@ -69,9 +71,9 @@ name = "launch_door"
 parent = "base"
 pivot = [32, 20, 50]
 
-# The turbine's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` so the turbine turns on its own
-# without a caller.
+# The turbine's own looping spin. An `auto` joint driven by the decorative
+# `turbine_spin` animation, a full rotation about `y` so the turbine turns on its
+# own without a caller.
 [[model.joint]]
 name = "turbine_spin"
 part = "turbine"
@@ -83,10 +85,10 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The launch door's own looping raise. An `auto` joint the case drives with a
-# `[[model.clip]]`, an upward translation along `y` so the door lifts and settles
-# on its own without a caller. `rest = 0` is fully closed; `max = 16` is fully
-# raised.
+# The launch door's own looping raise. An `auto` joint driven by the decorative
+# `launch_door_raise` animation, an upward translation along `y` so the door lifts
+# and settles on its own without a caller. `rest = 0` is fully closed; `max = 16`
+# is fully raised.
 [[model.joint]]
 name = "launch_door_raise"
 part = "launch_door"
@@ -98,21 +100,31 @@ max = 16.0
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the Skyworks runs on its own.
-# Only `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs
-# (radians for the turbine spin, voxels for the door raise). The turbine turns a
-# full revolution fast and loops; the door rises, holds open, then lowers.
-[[model.clip]]
-joint = "turbine_spin"
+# --- Required animations. Each is a DECLARATION ONLY — a name, its loop/auto_play
+# intent, and the joints the model MUST drive. There are NO keyframes/tracks here:
+# the model authors each animation's F-curves at run time with the `voxel-anim`
+# `define-animation` / `add-keyframe` subcommands (see the brief). rig.json is
+# pre-seeded with these declarations so the contract exists from the first op. ---
+
+# `turbine_spin`: the decorative turbine sweep (`auto_play = true` — a self-playing
+# idle). It drives only the `turbine_spin` auto joint, turning the turbine a full
+# revolution fast and looping so the pad runs on its own.
+[[model.animation]]
+name = "turbine_spin"
 period_ms = 700
 loop = true
-keyframes = [[0, -3.14159], [700, 3.14159]]
+auto_play = true
+joints = ["turbine_spin"]
 
-[[model.clip]]
-joint = "launch_door_raise"
+# `launch_door_raise`: the decorative launch-door cycle (`auto_play = true` — a
+# self-playing idle). It drives only the `launch_door_raise` auto joint, sliding the
+# door up, holding it open, then lowering it back, looping on its own.
+[[model.animation]]
+name = "launch_door_raise"
 period_ms = 3400
 loop = true
-keyframes = [[0, 0.0], [1020, 16.0], [2380, 16.0], [3400, 0.0]]
+auto_play = true
+joints = ["launch_door_raise"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -124,9 +136,9 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Skyworks \
 and runs correctly — an open launch-pad hangar whose turbine spins fast overhead \
-and launch door raises and lowers on their own auto clips while the base stays \
-put, with a clear solar-amber energy accent and the disciplined Duneforged \
-palette."""
+and launch door raises and lowers on their own auto-play animations while the \
+base stays put, with a clear solar-amber energy accent and the disciplined \
+Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-skyworks"
@@ -143,8 +155,8 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Turbine spins and door raises on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
-stays fixed: the `turbine_spin` joint turns the turbine a full revolution fast \
+The animated elements cycle on their own via their auto-play animations while the \
+`base` stays fixed: the `turbine_spin` joint turns the turbine a full revolution fast \
 overhead, and the `launch_door_raise` joint slides the launch door up and back \
 down in its front face. Across each cycle no voxel of the turbine or door tears \
 away from its mount or clips into the pad — each moves as one solid piece about \

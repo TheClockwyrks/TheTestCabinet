@@ -49,18 +49,23 @@ start:
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
 form of the mech, the required parts and their pivots, the required caller
-`weapon_pitch` joint, and the two auto stride joints. Run `voxel-anim --help`
-for the exact operation and rig contract.
+`weapon_pitch` joint, the six auto leg joints, and the two required animations you
+must author (`walk` and `fire`). Run `voxel-anim --help` for the exact operation,
+rig, and animation contract.
 
 ## What to deliver
 
 Build and rig the mech up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an upright torso on two walking legs, with a
-long rail-lance projecting forward from the chest. The required interface is a
+correctly, and the rig is complete: an upright torso on two independent
+three-segment legs (thigh, shin, flat foot with a bent knee), with a long
+rail-lance projecting forward from the chest. The required interface is a
 caller-driven **`weapon_pitch`** joint that aims the rail-lance up and down about
-its chest mount, plus the two auto **`leg_left_stride`** and **`leg_right_stride`**
-joints that walk the legs in opposite phase. Produce **every** required part and
-joint; you may add your own extra parts, joints, or auto-play clips on top, but do
+its chest mount, plus the six auto leg joints (**`hip_l`/`knee_l`/`foot_l`** and
+**`hip_r`/`knee_r`/`foot_r`**), and you must **author** the two required animations
+with `define-animation`/`add-keyframe` as F-curves: a playable **`walk`** (the legs
+in opposite phase with a planted stance phase and an eased foot-plant) and a
+weapon-only **`fire`** recoil. Produce **every** required part, joint, and
+animation; you may add your own extra parts, joints, or animations on top, but do
 not drop or contradict the required interface. When you are satisfied, stop: the
 recorded per-part logs and `rig.json` are your finished submission.

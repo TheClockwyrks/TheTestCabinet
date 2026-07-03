@@ -21,14 +21,16 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | `launch_door` | `base` | `[32, 20, 50]` | The launch door in the front face |
 
 - **`turbine_spin`** (auto, rotation about `y`, `-π..π`) — the turbine turns a
-  full revolution fast on its own clip.
+  full revolution fast on its own decorative `turbine_spin` animation.
 - **`launch_door_raise`** (auto, translation along `y`, `0..16`) — the launch
-  door slides up, holds open, then lowers back on its own clip.
+  door slides up, holds open, then lowers back on its own decorative
+  `launch_door_raise` animation.
 
-Both required joints are `auto`-driven: the Skyworks cycles on its own with no
-caller and no case-authored review animation. The model may add its own extra
-parts, joints, and clips on top, but must not drop or contradict the required
-interface.
+Both required joints are `auto`-driven by two required **animations**
+(`auto_play = true`, declared in `[model]` as name + intent; the model authors
+their F-curves at run time): the Skyworks cycles on its own with no caller. The
+model may add its own extra parts, joints, and animations on top, but must not
+drop or contradict the required interface.
 
 ## Contents
 

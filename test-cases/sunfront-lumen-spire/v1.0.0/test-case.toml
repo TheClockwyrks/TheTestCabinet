@@ -3,8 +3,8 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Lumen Spire: a 44x88x44 opaque-voxel beacon spire \
-whose halo ring spins and solar lens pulses up and down on their own auto clips \
-while the base stays fixed, built and rigged one recorded operation at a time."""
+whose halo ring spins and solar lens pulses up and down on their own auto-play \
+animations while the base stays fixed, built and rigged one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,7 +43,7 @@ actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
 # model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
+# parts, joints, and auto-play animations of its own (recorded in rig.json) beyond what
 # this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
 # pre-seeded from this table so the contract exists from the first operation.
 [model]
@@ -67,9 +67,9 @@ name = "lens"
 parent = "base"
 pivot = [22, 74, 22]
 
-# The halo ring's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, a full rotation about `y` so the ring turns on its own without a
-# caller.
+# The halo ring's own looping spin. An `auto` joint driven by the decorative
+# `halo_ring_spin` animation (below), a full rotation about `y` so the ring turns
+# on its own without a caller.
 [[model.joint]]
 name = "halo_ring_spin"
 part = "halo_ring"
@@ -81,9 +81,9 @@ max = 3.14159265
 rest = 0.0
 drive = "auto"
 
-# The solar lens's own looping pulse. An `auto` joint the case drives with a
-# `[[model.clip]]`, an upward translation along `y` so the lens bobs on its own
-# without a caller. `rest = 0` is seated; `max = 4` is the top of the pulse.
+# The solar lens's own looping pulse. An `auto` joint driven by the decorative
+# `lens_pulse` animation (below), an upward translation along `y` so the lens bobs
+# on its own without a caller. `rest = 0` is seated; `max = 4` is the top of the pulse.
 [[model.joint]]
 name = "lens_pulse"
 part = "lens"
@@ -95,21 +95,27 @@ max = 4.0
 rest = 0.0
 drive = "auto"
 
-# The auto-play clips — one per animated part, so the spire runs on its own. Only
-# `auto` joints take a clip. Keyframes are inline `[t_ms, value]` pairs (radians for
-# the ring spin, voxels for the lens pulse). The ring turns a full revolution and
-# loops; the lens rises and settles back.
-[[model.clip]]
-joint = "halo_ring_spin"
+# The required animations — decorative, self-playing idles so the spire runs on its
+# own. The case declares each animation's identity and intent only; the model AUTHORS
+# the motion (the F-curve keyframes) at run time with the `voxel-anim`
+# `define-animation`/`add-keyframe` subcommands, and the produced `rig.json` carries
+# it. Both are `auto_play = true` (they play continuously by default) and loop.
+
+# The halo ring's continuous spin: a full revolution about the ring's `y` axis.
+[[model.animation]]
+name = "halo_ring_spin"
 period_ms = 2200
 loop = true
-keyframes = [[0, -3.14159], [2200, 3.14159]]
+auto_play = true
+joints = ["halo_ring_spin"]
 
-[[model.clip]]
-joint = "lens_pulse"
+# The solar lens's continuous pulse: rising off its seat and settling back down.
+[[model.animation]]
+name = "lens_pulse"
 period_ms = 1500
 loop = true
-keyframes = [[0, 0.0], [750, 4.0], [1500, 0.0]]
+auto_play = true
+joints = ["lens_pulse"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -121,7 +127,7 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lumen Spire \
 and runs correctly — a slim beacon spire whose halo ring spins and solar lens \
-pulses up and down on their own auto clips while the base stays put, with a strong \
+pulses up and down on their own auto-play animations while the base stays put, with a strong \
 solar-hot energy accent and the disciplined Duneforged palette."""
 
 [[review_item]]
@@ -139,7 +145,7 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Halo ring spins and lens pulses on their own"
 text = """
-The animated elements cycle on their own via their auto clips while the `base` \
+The animated elements cycle on their own via their auto-play animations while the `base` \
 stays fixed: the `halo_ring_spin` joint turns the halo ring a full revolution \
 about the spire's vertical axis, and the `lens_pulse` joint bobs the solar lens \
 straight up and back down. Across each cycle no voxel of the ring or lens tears \

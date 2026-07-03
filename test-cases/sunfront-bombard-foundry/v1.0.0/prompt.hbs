@@ -27,7 +27,8 @@ voxel-anim fill-box --part base --x0 8 --y0 0 --z0 8 --x1 51 --y1 56 --z1 51 --c
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints and clips), and `voxel-anim
+(defining parts, setting pivots, defining joints, and authoring animations'
+F-curve keyframes with `define-animation`/`add-keyframe`), and `voxel-anim
 <operation> --help` for one operation's exact flags — that help text is the
 authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
@@ -48,19 +49,21 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the works, the required parts and their pivots, and the two auto
-`crane_swing` and `piston_bob` joints. Run `voxel-anim --help` for the exact
-operation and rig contract.
+form of the works, the required parts and their pivots, the two auto `crane_swing`
+and `piston_bob` joints, and the two required auto-play animations whose F-curves
+you must author. Run `voxel-anim --help` for the exact operation and rig contract.
 
 ## What to deliver
 
 Build and rig the foundry up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: a heavy masonry works base, an overhead crane
-arm off its top, and a loading piston in its flank. The required interface is the
-two auto **`crane_swing`** and **`piston_bob`** joints that rock the crane arm fore
-and aft and bob the piston down and up on their own, while the `base` stays fixed.
-Produce **every** required part and joint; you may add your own extra parts,
-joints, or auto-play clips on top, but do not drop or contradict the required
-interface. When you are satisfied, stop: the recorded per-part logs and `rig.json`
-are your finished submission.
+arm off its top, and a loading piston in its flank. This foundry has no caller
+controls — its two moving parts animate on their own through the auto
+**`crane_swing`** joint that rocks the crane arm fore and aft and the auto
+**`piston_bob`** joint that bobs the piston down and up, while the `base` stays
+fixed. You author both animations' F-curves yourself with
+`define-animation`/`add-keyframe`. Produce **every** required part, joint, and
+animation; you may add your own extra parts, joints, or auto-play animations on
+top, but do not drop or contradict the required interface. When you are satisfied,
+stop: the recorded per-part logs and `rig.json` are your finished submission.

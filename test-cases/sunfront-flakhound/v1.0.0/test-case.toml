@@ -3,10 +3,12 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Flakhound: a 52x48x56 opaque-voxel four-legged \
-anti-air walker whose back turret traverses on a caller-driven turret_yaw joint \
-and whose twin flak barrels elevate on a caller-driven barrel_pitch joint while \
-its two leg banks scuttle on their own, built and rigged one recorded operation \
-at a time."""
+anti-air walker striding on four independent, two-jointed legs (a hip, a reverse \
+knee, and a flat foot each) so every foot plants and lifts clear of the ground, \
+its back turret traversing on a caller-driven turret_yaw joint while its twin flak \
+barrels elevate on a caller-driven barrel_pitch joint — built and rigged one \
+recorded operation at a time, with a model-authored walk and a flak-tracking \
+animation the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -44,30 +46,100 @@ preview = "parts/{part}.png"
 actions = "parts/{part}.actions.json"
 
 # The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# model must produce these parts, these joints, and the required animations; at run
+# time it MAY add further parts, joints, and animations of its own (recorded in
+# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
+# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
+# the first operation.
+#
+# The rig has two kinds of moving part, and the drive of each is deliberate:
+#   * The FOUR legs' joints are `auto` — they are driven by the required `walk`
+#     animation the model authors (a game plays `walk` to stride the walker). At
+#     rest they hold the standing pose, so the `flak_track` weapon animation can
+#     pose the turret while the legs stay put.
+#   * The turret traverse and barrel elevation are `caller` — the procedural aim
+#     interface a game (and the `flak_track` playback animation) drives by name.
 [model]
 
-# The walker's armored body: the root part (no parent), fixed to the world.
+# The walker's armored body: the root part (no parent), fixed to the world. It
+# carries the traversing turret up top and the four independent leg hips tucked
+# under its flanks. It rides raised off the ground on the legs.
 [[model.part]]
 name = "body"
 pivot = [0, 0, 0]
 
-# The left bank of legs, mounted low on the left flank. It scuttles on
-# `legs_left_scuttle`.
-[[model.part]]
-name = "legs_left"
-parent = "body"
-pivot = [12, 10, 28]
+# --- The four legs. Each leg is THREE parts (an upper thigh + a lower shin + a
+# short flat foot) with two bending joints (a hip on the body and a reverse knee
+# between thigh and shin) plus a small ankle tilt, so the foot lifts clear on the
+# swing and plants flat on the ground instead of dragging. The legs are
+# INDEPENDENT — each is its own chain on its own hip directly above its own foot
+# (x,z held constant down the chain) — so no shared pivot drags a fore-and-aft bank
+# of feet below ground. Two legs down each side: front (f), rear (r). ---
 
-# The right bank of legs, mirroring the left. It scuttles on `legs_right_scuttle`
-# in opposite phase.
+# Left-front leg: thigh -> shin -> foot, hung from its hip under the left-front
+# corner of the body.
 [[model.part]]
-name = "legs_right"
+name = "thigh_lf"
 parent = "body"
-pivot = [40, 10, 28]
+pivot = [12, 14, 38]
+
+[[model.part]]
+name = "shin_lf"
+parent = "thigh_lf"
+pivot = [12, 8, 38]
+
+[[model.part]]
+name = "foot_lf"
+parent = "shin_lf"
+pivot = [12, 2, 38]
+
+# Left-rear leg.
+[[model.part]]
+name = "thigh_lr"
+parent = "body"
+pivot = [12, 14, 18]
+
+[[model.part]]
+name = "shin_lr"
+parent = "thigh_lr"
+pivot = [12, 8, 18]
+
+[[model.part]]
+name = "foot_lr"
+parent = "shin_lr"
+pivot = [12, 2, 18]
+
+# Right-front leg.
+[[model.part]]
+name = "thigh_rf"
+parent = "body"
+pivot = [40, 14, 38]
+
+[[model.part]]
+name = "shin_rf"
+parent = "thigh_rf"
+pivot = [40, 8, 38]
+
+[[model.part]]
+name = "foot_rf"
+parent = "shin_rf"
+pivot = [40, 2, 38]
+
+# Right-rear leg.
+[[model.part]]
+name = "thigh_rr"
+parent = "body"
+pivot = [40, 14, 18]
+
+[[model.part]]
+name = "shin_rr"
+parent = "thigh_rr"
+pivot = [40, 8, 18]
+
+[[model.part]]
+name = "foot_rr"
+parent = "shin_rr"
+pivot = [40, 2, 18]
 
 # The traversing flak turret, mounted on the back of the body. It traverses on the
 # caller-driven `turret_yaw`.
@@ -82,6 +154,150 @@ pivot = [26, 30, 28]
 name = "barrel"
 parent = "turret"
 pivot = [26, 36, 34]
+
+# --- Joints ---
+
+# --- The four legs: twelve `auto` joints (a hip, a knee, and a foot per leg),
+# driven by the required `walk` animation. Each leg rests in a BENT-KNEE stance
+# (knee rest -0.5, a clearly folded knee, never a straight column) so it can hold
+# its foot flat and planted as the body passes over it. The knee folds the shin
+# REARWARD (reverse / digitigrade). The foot joint counter-rotates against the shin
+# to keep the foot flat (±~15°). ---
+
+# Left-front hip: the big fore/aft sweep of the whole leg about its hip.
+[[model.joint]]
+name = "hip_lf"
+part = "thigh_lf"
+kind = "rotation"
+axis = "x"
+pivot = [12, 14, 38]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+# Left-front knee: reverse fold of the shin, lifting the foot on the swing.
+[[model.joint]]
+name = "knee_lf"
+part = "shin_lf"
+kind = "rotation"
+axis = "x"
+pivot = [12, 8, 38]
+min = -1.4
+max = 0.2
+rest = -0.5
+drive = "auto"
+
+# Left-front foot: the small ankle tilt that keeps the foot flat.
+[[model.joint]]
+name = "foot_lf"
+part = "foot_lf"
+kind = "rotation"
+axis = "x"
+pivot = [12, 2, 38]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "hip_lr"
+part = "thigh_lr"
+kind = "rotation"
+axis = "x"
+pivot = [12, 14, 18]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "knee_lr"
+part = "shin_lr"
+kind = "rotation"
+axis = "x"
+pivot = [12, 8, 18]
+min = -1.4
+max = 0.2
+rest = -0.5
+drive = "auto"
+
+[[model.joint]]
+name = "foot_lr"
+part = "foot_lr"
+kind = "rotation"
+axis = "x"
+pivot = [12, 2, 18]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "hip_rf"
+part = "thigh_rf"
+kind = "rotation"
+axis = "x"
+pivot = [40, 14, 38]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "knee_rf"
+part = "shin_rf"
+kind = "rotation"
+axis = "x"
+pivot = [40, 8, 38]
+min = -1.4
+max = 0.2
+rest = -0.5
+drive = "auto"
+
+[[model.joint]]
+name = "foot_rf"
+part = "foot_rf"
+kind = "rotation"
+axis = "x"
+pivot = [40, 2, 38]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "hip_rr"
+part = "thigh_rr"
+kind = "rotation"
+axis = "x"
+pivot = [40, 14, 18]
+min = -0.5
+max = 0.5
+rest = 0.0
+drive = "auto"
+
+[[model.joint]]
+name = "knee_rr"
+part = "shin_rr"
+kind = "rotation"
+axis = "x"
+pivot = [40, 8, 18]
+min = -1.4
+max = 0.2
+rest = -0.5
+drive = "auto"
+
+[[model.joint]]
+name = "foot_rr"
+part = "foot_rr"
+kind = "rotation"
+axis = "x"
+pivot = [40, 2, 18]
+min = -0.3
+max = 0.3
+rest = 0.0
+drive = "auto"
 
 # The required caller-driven turret traverse: a game addresses `turret_yaw` by name
 # to swing the turret (and the barrels with it) about its vertical mount, a full
@@ -111,65 +327,37 @@ max = 1.3
 rest = 0.5
 drive = "caller"
 
-# The left leg bank's own looping scuttle. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the legs walk on their own without a caller.
-[[model.joint]]
-name = "legs_left_scuttle"
-part = "legs_left"
-kind = "rotation"
-axis = "x"
-pivot = [12, 10, 28]
-min = -0.6
-max = 0.6
-rest = 0.0
-drive = "auto"
+# --- Required animations (declarations only — the model authors the F-curve
+# keyframes at run time with `voxel-anim define-animation`/`add-keyframe`). Each
+# declares the animation's identity and intent; it carries NO keyframes here. ---
 
-# The right leg bank's scuttle, in opposite phase to the left.
-[[model.joint]]
-name = "legs_right_scuttle"
-part = "legs_right"
-kind = "rotation"
-axis = "x"
-pivot = [40, 10, 28]
-min = -0.6
-max = 0.6
-rest = 0.0
-drive = "auto"
-
-# The auto-play scuttle clips — one per leg bank, in opposite phase, so the walker
-# skitters on its own. Only `auto` joints take a clip; the caller-driven
-# `turret_yaw` and `barrel_pitch` take none. Keyframes are inline `[t_ms, value]`
-# pairs (radians).
-[[model.clip]]
-joint = "legs_left_scuttle"
-period_ms = 550
+# `walk`: the WALK. It drives all twelve leg joints — each leg's hip swings
+# fore-and-aft, its reverse knee folds to lift the foot on the swing, and its ankle
+# keeps the foot flat — in a DIAGONAL-PAIR gait (legs lf/rr step together, opposite
+# rf/lr), so a game (and the reviewer) sees exactly how the walker strides. It
+# touches NO weapon joint, so the turret and barrels hold at rest.
+[[model.animation]]
+name = "walk"
+period_ms = 650
 loop = true
-keyframes = [[0, 0.0], [137, 0.6], [275, 0.0], [412, -0.6], [550, 0.0]]
+auto_play = false
+joints = [
+  "hip_lf", "knee_lf", "foot_lf",
+  "hip_lr", "knee_lr", "foot_lr",
+  "hip_rf", "knee_rf", "foot_rf",
+  "hip_rr", "knee_rr", "foot_rr",
+]
 
-[[model.clip]]
-joint = "legs_right_scuttle"
-period_ms = 550
-loop = true
-keyframes = [[0, 0.0], [137, -0.6], [275, 0.0], [412, 0.6], [550, 0.0]]
-
-# A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the turret track a target across the sky without dragging the
-# joint sliders by hand. Each `[[model.animation.track]]` drives one joint over the
-# shared `period_ms` timeline; keyframes are inline `[t_ms, value]` pairs (radians).
-# `flak_track` sweeps the turret left→right while raising and lowering the barrels,
-# then loops.
+# `flak_track`: the WEAPON showcase. It sweeps the turret left->right on
+# `turret_yaw` while raising and lowering the barrels on `barrel_pitch`, so a
+# reviewer can watch the walker track a target across the sky without dragging the
+# sliders. It touches NO leg joint, so the legs hold their standing pose.
 [[model.animation]]
 name = "flak_track"
 period_ms = 4000
 loop = true
-
-[[model.animation.track]]
-joint = "turret_yaw"
-keyframes = [[0, -1.0], [2000, 1.0], [4000, -1.0]]
-
-[[model.animation.track]]
-joint = "barrel_pitch"
-keyframes = [[0, 0.5], [2000, 1.2], [4000, 0.5]]
+auto_play = false
+joints = ["turret_yaw", "barrel_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -180,43 +368,56 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Flakhound and \
-poses correctly — a four-legged anti-air walker whose back turret traverses on its \
-vertical mount and whose twin flak barrels elevate skyward, without detaching, \
-while the two leg banks scuttle on their own and the body stays put, with a clear \
-solar-amber targeting eye and the disciplined Duneforged palette."""
+poses correctly — a four-legged anti-air walker striding on four independent \
+two-jointed legs whose feet plant flat and lift clear of the ground, whose back \
+turret traverses on its vertical mount and whose twin flak barrels elevate skyward \
+without detaching while the body stays put, with a clear solar-amber targeting eye \
+and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-flakhound"
 title = "Reads as an anti-air walker"
 text = """
 From more than one angle the model reads unmistakably as a four-legged anti-air \
-walker: a squat armored body, four legs splayed out in two banks down its sides, \
-and a turret on its back carrying a pair of long flak barrels raked upward. It is \
-a striding flak platform, not an abstract stack of boxes."""
+walker: a squat armored body, four independent jointed legs (each a thigh + shin + \
+foot with a clearly bent knee) splayed down its sides, and a turret on its back \
+carrying a pair of long flak barrels raked upward. It is a striding flak platform, \
+not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "legs-walk"
+title = "Legs stride independently without clipping the ground"
+text = """
+Playing `walk` strides the walker on its four legs: each leg swings on its own \
+`hip_*` joint and folds at its own reverse `knee_*` so the foot lifts clear of the \
+ground on its swing, then plants flat and still (`foot_*` keeping it level) while \
+the body passes over it — the legs step in a diagonal-pair gait, NOT as one rigid \
+bank, and no foot is dragged or driven down through the ground. Each shin stays \
+attached to its thigh and each thigh to the body across the whole range."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "turret-tracks"
-title = "Turret traverses, barrels elevate, legs scuttle"
+title = "Turret traverses; barrels elevate"
 text = """
-Driving the `turret_yaw` joint swings the turret cleanly about its vertical mount \
-and driving the `barrel_pitch` joint raises and lowers the twin barrels about \
-their hinge, each across its full range with no voxel tearing off its mount or \
-clipping into the body below. The two leg banks scuttle on their own through the \
-`legs_left_scuttle` and `legs_right_scuttle` auto joints, stepping in opposite \
-phase."""
-weight = 3
+Driving `turret_yaw` (and playing `flak_track`) swings the turret cleanly about \
+its vertical mount and driving `barrel_pitch` raises and lowers the twin barrels \
+about their hinge, each across its full range with no voxel tearing off its mount \
+or clipping into the body below."""
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "body-fixed"
-title = "Body stays fixed"
+title = "Body stays fixed; only the moving parts move"
 text = """
-Only the moving parts move: the turret and barrels when `turret_yaw` and \
-`barrel_pitch` are driven and the legs as they scuttle. The armored body stays \
-put — it is the fixed root of the rig, not carried along by the turret or the \
-legs."""
+The armored body is the fixed root of the rig: it stays put, never carried along \
+by the turret or the legs. When `flak_track` plays, only the turret and barrels \
+move and the legs hold their standing pose; when `walk` plays, only the legs move \
+and the turret stays put. Nothing but the moving parts moves."""
 weight = 2
 domain = "fidelity"
 
@@ -224,10 +425,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Turret, barrels, and legs stay attached"
 text = """
-Each child stays attached across its joint's range: the two leg banks meet the \
-body's flanks at their mounts, the turret meets the back of the body, and the \
-barrels meet the turret's front — with no gap and never floating free or detaching \
-as the turret traverses, the barrels elevate, and the legs scuttle."""
+Each child stays attached across its joint's range: each leg's segments meet at \
+the hip, knee, and ankle with no gap, the turret meets the back of the body, and \
+the barrels meet the turret's front — with no gap and never floating free or \
+detaching as the legs stride, the turret traverses, and the barrels elevate."""
 weight = 2
 domain = "fidelity"
 

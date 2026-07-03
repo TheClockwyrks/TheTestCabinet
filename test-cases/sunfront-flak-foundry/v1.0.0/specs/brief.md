@@ -73,37 +73,63 @@ where it sits on the finished works:
 ## The required joints
 
 Both animated elements **run on their own** — each carries an **auto**-driven
-joint the case drives with a looping clip, so the foundry cycles without any
-caller. There are **no** caller joints.
+joint moved by a looping decorative animation you author (see below), so the
+foundry cycles without any caller. There are **no** caller joints.
 
 - **`dish_sweep`** — a **rotation** about the **y** (up) axis, through the dish
   mast at pivot **`[28, 64, 28]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. The clip turns the dish a full
-  revolution and loops, so it scans the sky on its own. Sculpt the dish so it
-  rotates plausibly about that mast without any voxel tearing away or striking the
-  works below.
+  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the dish so it rotates
+  plausibly about that mast without any voxel tearing away or striking the works
+  below.
 - **`piston_bob`** — a **translation** along the **y** (up) axis, through the
   piston mount at pivot **`[40, 34, 24]`**, **`drive = "auto"`**. Its range is
   **`min = -5` (bottom of the bob) to `max = 0` (fully raised, at rest)**, resting
-  at `0`. The clip drives the piston straight down and back up, so it pumps on its
-  own. Sculpt the piston so it slides plausibly down and up about that mount
+  at `0`. Sculpt the piston so it slides plausibly down and up about that mount
   without any voxel tearing away from the flank.
 
-You **may add** your own extra parts, joints, or auto-play clips on top of this
+## The required animations
+
+You must **author the motion** of each required animation yourself, as **F-curves**,
+with the `voxel-anim` animation subcommands — `define-animation` to declare it,
+then
+`add-keyframe` to lay in each keyframe (see `voxel-anim --help`). The case does
+**not** ship the keyframes: it declares each animation's identity and intent, and
+**you** produce the curves. Each is a decorative **auto-play** idle
+(`auto_play =
+true`, `loop = true`) — it plays continuously on its own with no caller — and drives
+its single joint. Give the motion weight with per-keyframe interpolation
+(`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` Bézier tangents); the elements should move with an
+eased, deliberate cadence, never a mechanical linear slide.
+
+- **`dish_sweep`** — `period_ms = 3000`. Drive the `dish_sweep` joint one full,
+  smooth revolution (about `-π → +π`) across the loop, so the radar dish scans the
+  sky steadily and continuously on its own.
+- **`piston_bob`** — `period_ms = 1200`. Drive the `piston_bob` joint down from
+  `0`
+  (fully raised) to `-5` (bottom of the bob) and back up to `0`, with weight into
+  the drop and the recovery — the piston pumps straight down and rises again on
+  its
+  own each loop, with an eased cadence rather than a flat linear ramp.
+
+You **may add** your own extra parts, joints, or auto-play animations on top of
+this
 (for example a second vent, a spinning fan, or extra pipework), but you must **not
-drop or contradict** the required parts or the two auto `dish_sweep` and
-`piston_bob` joints.
+drop or contradict** the required parts, the two auto `dish_sweep` and `piston_bob`
+joints, or their two required animations.
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
 the works base and its mast, then the dish, then the piston, checking each part's
 preview as you go. Define the parts, pivots, and the two auto `dish_sweep` and
-`piston_bob` joints through the tool's rig subcommands (the required parts and
-joints are already pre-seeded in `rig.json`, but confirm they match this brief and
-adjust pivots to your sculpt). Run `voxel-anim --help` for the available
-operations (setting and clearing single voxels, filling and stroking boxes, 3D
-lines, spheres, and a mirror plane) and the rig subcommands, and `voxel-anim
-<operation> --help` for each one's exact flags. Call `voxel-anim` once per
-operation and read `parts/<part>.png` between calls to judge each part against
-this brief.
+`piston_bob` joints through the tool's rig subcommands (the required parts, joints,
+and animation declarations are already pre-seeded in `rig.json`, but confirm they
+match this brief and adjust pivots to your sculpt), then **author each required
+animation's F-curves** with `define-animation` and `add-keyframe`. Run `voxel-anim
+--help` for the available operations (setting and clearing single voxels, filling
+and stroking boxes, 3D lines, spheres, and a mirror plane), the rig subcommands,
+and
+the animation subcommands, and `voxel-anim <operation> --help` for each one's exact
+flags. Call `voxel-anim` once per operation and read `parts/<part>.png` between
+calls to judge each part against this brief.

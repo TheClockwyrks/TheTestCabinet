@@ -18,20 +18,33 @@ The required, game-facing contract declared in `test-case.toml`'s `[model]` tabl
 | Part | Parent | Pivot | What it is |
 | --- | --- | --- | --- |
 | `torso` | *(root)* | `[0, 0, 0]` | The upper body and head |
-| `leg_left` | `torso` | `[14, 26, 24]` | The left leg |
-| `leg_right` | `torso` | `[30, 26, 24]` | The right leg |
+| `thigh_l` | `torso` | `[14, 26, 24]` | The left upper leg |
+| `shin_l` | `thigh_l` | `[14, 14, 24]` | The left lower leg |
+| `foot_l` | `shin_l` | `[14, 3, 24]` | The left foot (short, flat) |
+| `thigh_r` | `torso` | `[30, 26, 24]` | The right upper leg |
+| `shin_r` | `thigh_r` | `[30, 14, 24]` | The right lower leg |
+| `foot_r` | `shin_r` | `[30, 3, 24]` | The right foot |
 | `weapon` | `torso` | `[22, 44, 30]` | The long center rail-lance |
+
+Each leg is its **own** independent three-segment / two-joint chain (thigh +
+shin +
+short flat foot), on its own hip directly above its own foot, with a bent-knee rest
+pose so the foot can stay planted as the body passes over it.
 
 - **`weapon_pitch`** (caller, rotation about `x`, `-0.6..0.6`) — the game-facing
   control: aims the rail-lance up and down about its chest mount.
-- **`leg_left_stride`** / **`leg_right_stride`** (auto, rotation about `x`,
-  `-0.6..0.6`) — the two legs walk on their own via their `walk_left` / `walk_right`
-  clips, driven in opposite phase.
+- **`hip_l` / `knee_l` / `foot_l`** and **`hip_r` / `knee_r` / `foot_r`** (auto,
+  rotation about `x`) — the six leg joints the required `walk` animation drives:
+  a
+  big hip sweep (`-0.5..0.5`), a reverse/digitigrade knee fold (`-1.4..0.2`, rest
+  `-0.7`), and a small flat-foot ankle tilt (`-0.3..0.3`).
 
-The case also authors a **`fire`** review animation that drives `weapon_pitch`
-so a reviewer can watch the lance recoil without dragging the slider. The model
-may add its own extra parts, joints, and clips on top, but must not drop or
-contradict the required interface.
+The case requires two model-authored animations (declarations only — the model
+authors the F-curves): a playable **`walk`** (period 800 ms, the two legs in
+opposite phase with a planted stance phase and an eased foot-plant) and a
+weapon-only **`fire`** (period 500 ms, the lance recoil) the reviewer can play
+back. The model may add its own extra parts, joints, and animations on top, but
+must not drop or contradict the required interface.
 
 ## Contents
 
