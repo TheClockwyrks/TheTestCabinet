@@ -1,7 +1,15 @@
-import type { VoxelDims, VoxelsFile } from "@test-cabinet/run-record";
+import type { VoxelDims } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 
 /** Column-major-agnostic 3-tuple. */
 export type Vec3 = [number, number, number];
+
+// A single (static-model) {@link PartMesh} versus a by-part map: a `PartMesh`
+// carries the flat `positions` array, a map does not.
+function isPartMesh(v: Record<string, PartMesh> | PartMesh): v is PartMesh {
+  const positions = (v as PartMesh).positions;
+  return Array.isArray(positions) || ArrayBuffer.isView(positions);
+}
 
 // The scene's lighting and camera framing, shared by the interactive viewer
 // (`VoxelViewer`, which declares them as R3F elements) and the offscreen GIF
@@ -20,14 +28,19 @@ export function cameraPosition(distance: number): Vec3 {
 
 /**
  * Camera framing — the model's center, the camera distance that fits it, and a
- * far plane — derived from the raw voxel bounds (or a fixed `frameDims` volume
- * when the caller pins the frame). Computed from the data rather than a built
- * rig so it's correct on the very first render, before the rig exists. Each voxel
- * occupies the unit cube `[x, x+1]`, so the far corner is `max + 1`; the rest
- * pose is representative, so posing a joint doesn't reframe.
+ * far plane — derived from the mesh's vertex bounds (or a fixed `frameDims` volume
+ * when the caller pins the frame). Computed from the geometry rather than a built
+ * rig so it's correct on the very first render, before the rig exists. Mesh
+ * positions are already in model units, so the bounds are the raw min/max of the
+ * `positions` arrays; the rest pose is representative, so posing a joint doesn't
+ * reframe.
+ *
+ * The `frameDims` branch pins the camera to a fixed volume — used by the live view
+ * so the camera holds steady as the model is sculpted (its geometry grows operation
+ * by operation).
  */
 export function framing(
-  voxels: Record<string, VoxelsFile> | VoxelsFile,
+  meshes: Record<string, PartMesh> | PartMesh,
   frameDims: VoxelDims | null | undefined,
 ): { center: Vec3; distance: number; far: number } {
   if (frameDims) {
@@ -44,35 +57,38 @@ export function framing(
       far: dist * 20,
     };
   }
-  const files = Array.isArray((voxels as VoxelsFile).voxels)
-    ? [voxels as VoxelsFile]
-    : Object.values(voxels as Record<string, VoxelsFile>);
+  const list = isPartMesh(meshes) ? [meshes] : Object.values(meshes);
   let minX = Infinity;
   let minY = Infinity;
   let minZ = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   let maxZ = -Infinity;
-  for (const file of files) {
-    for (const v of file.voxels) {
-      if (v.x < minX) minX = v.x;
-      if (v.y < minY) minY = v.y;
-      if (v.z < minZ) minZ = v.z;
-      if (v.x > maxX) maxX = v.x;
-      if (v.y > maxY) maxY = v.y;
-      if (v.z > maxZ) maxZ = v.z;
+  for (const mesh of list) {
+    const p = mesh.positions;
+    for (let i = 0; i + 2 < p.length; i += 3) {
+      // The loop bound guarantees these three indices are in range.
+      const x = p[i]!;
+      const y = p[i + 1]!;
+      const z = p[i + 2]!;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
     }
   }
   if (minX > maxX) {
-    // No voxels to frame yet — a neutral default.
+    // No geometry to frame yet — a neutral default.
     return { center: [0, 0, 0], distance: 32, far: 400 };
   }
   const center: Vec3 = [
-    (minX + maxX + 1) / 2,
-    (minY + maxY + 1) / 2,
-    (minZ + maxZ + 1) / 2,
+    (minX + maxX) / 2,
+    (minY + maxY) / 2,
+    (minZ + maxZ) / 2,
   ];
-  const size = Math.max(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, 1);
+  const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
   const dist = size * 2.2;
   return { center, distance: dist, far: dist * 20 };
 }

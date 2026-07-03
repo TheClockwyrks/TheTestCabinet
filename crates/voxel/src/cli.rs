@@ -519,7 +519,10 @@ impl record::SculptBackend for CubeBackend {
 
         Ok(record::Rendered {
             image,
-            live_body: set.to_voxels_json(),
+            // Stream the face-culled `mesh.json` (the `PartMesh` the 3D client
+            // renders) — the same geometry every voxel-family binary streams live,
+            // so the live viewer rebuilds the model from a mesh, never re-meshing.
+            live_body: mesh_json,
         })
     }
 }

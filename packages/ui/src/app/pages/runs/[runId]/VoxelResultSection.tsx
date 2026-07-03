@@ -5,7 +5,7 @@ import type {
   ModelSpec,
 } from "@test-cabinet/run-record";
 import {
-  fetchVoxelsByPart,
+  fetchMeshesByPart,
   useVoxelArtifacts,
   type VoxelPartView,
   type VoxelResultView,
@@ -36,10 +36,6 @@ function voxelGifFilename(name: string): string {
     .replace(/^-+|-+$/g, "");
   return `${slug || "animation"}.gif`;
 }
-
-// Divergence at or above this fraction reads as "drew outside the tool" — the same
-// threshold the sprite results use.
-const OUTSIDE_TOOL = 0.05;
 
 // A stable empty animations list, so a rig with no predetermined animations doesn't
 // hand `buildRigViews`'s memo a fresh array (new identity) every render.
@@ -102,10 +98,11 @@ function VoxelFallback({
 }
 
 /**
- * The post-run 3D viewer for a part set: fetches each part's `voxels.json` (only on
+ * The post-run 3D viewer for a part set: fetches each part's `mesh.json` (only on
  * a WebGL-capable browser whose user hasn't asked for reduced motion) and hands the
- * resolved data to {@link GuardedVoxelViewer}, which mounts the lazy 3D viewer with
- * an expand-to-fullscreen affordance (and falls back to the static PNG otherwise).
+ * resolved meshes to {@link GuardedVoxelViewer}, which mounts the lazy 3D viewer
+ * with an expand-to-fullscreen affordance (and falls back to the static PNG
+ * otherwise).
  */
 function VoxelCanvas({
   parts,
@@ -127,7 +124,7 @@ function VoxelCanvas({
   height?: number;
 }) {
   // Start disabled so the first paint never blocks on capability checks (and SSR
-  // never touches WebGL), and so the heavy `voxels.json` fetch is skipped for a
+  // never touches WebGL), and so the heavy `mesh.json` fetch is skipped for a
   // browser that will only ever show the static fallback; promote from an effect
   // (client-only). `GuardedVoxelViewer` re-checks the same capability before it
   // mounts three.
@@ -140,7 +137,7 @@ function VoxelCanvas({
 
   return (
     <GuardedVoxelViewer
-      voxels={artifacts.voxelsByPart}
+      meshes={artifacts.meshesByPart}
       rig={rig}
       mode={mode}
       callerJoints={callerJoints}
@@ -152,11 +149,9 @@ function VoxelCanvas({
   );
 }
 
-/** A part's cheat-divergence / operations / voxel-count readout — the voxel analog
- * of the sprite results' `FrameSignals`. */
+/** A part's operations / voxel-count readout — the voxel analog of the sprite
+ * results' `FrameSignals`. */
 function VoxelSignals({ part }: { part: VoxelPartView }) {
-  const drewOutsideTool =
-    part.cheatDivergence !== null && part.cheatDivergence > OUTSIDE_TOOL;
   return (
     <dl
       style={{
@@ -166,20 +161,6 @@ function VoxelSignals({ part }: { part: VoxelPartView }) {
         marginTop: 16,
       }}
     >
-      <dt>Cheat divergence</dt>
-      <dd>
-        {part.cheatDivergence === null ? (
-          <span className={styles.secondary}>unmeasured</span>
-        ) : (
-          <span className={drewOutsideTool ? styles.notLoaded : styles.loaded}>
-            {(part.cheatDivergence * 100).toFixed(1)}%
-            {drewOutsideTool
-              ? " — sculpted outside the tool"
-              : " — matches recorded actions"}
-          </span>
-        )}
-      </dd>
-
       <dt>Voxels</dt>
       <dd>{part.voxelCount.toLocaleString()}</dd>
 
@@ -230,7 +211,7 @@ function VoxelModelResult({ view }: { view: VoxelResultView }) {
               parts={view.parts}
               rig={rig}
               mode="auto-rotate"
-              fallbackUrl={part?.regeneratedUrl ?? part?.previewUrl ?? null}
+              fallbackUrl={part?.previewUrl ?? null}
               label="Interactive model"
               height={240}
             />
@@ -353,8 +334,7 @@ function RigViewPicker({
 }
 
 /** The per-part breakdown as a grid — the voxel analog of the sprite results'
- * `FrameGrid`: each part's voxel count, operation count, cheat divergence, and
- * action-log link. */
+ * `FrameGrid`: each part's voxel count, operation count, and action-log link. */
 function PartGrid({ parts }: { parts: VoxelPartView[] }) {
   return (
     <table className={`${styles.checks} ${styles.frameGrid}`}>
@@ -363,54 +343,29 @@ function PartGrid({ parts }: { parts: VoxelPartView[] }) {
           <th scope="col">Part</th>
           <th scope="col">Voxels</th>
           <th scope="col">Ops</th>
-          <th scope="col">Divergence</th>
           {/* The log column holds only the "log" link, so it needs no header. */}
           <th scope="col" aria-label="Action log" />
         </tr>
       </thead>
       <tbody>
-        {parts.map((part) => {
-          const drewOutsideTool =
-            part.cheatDivergence !== null &&
-            part.cheatDivergence > OUTSIDE_TOOL;
-          return (
-            <tr key={part.name}>
-              <th scope="row" className={styles.checkName}>
-                {part.name}
-              </th>
-              <td className={styles.secondary}>
-                {part.voxelCount.toLocaleString()}
-              </td>
-              <td className={styles.secondary}>{part.operationCount}</td>
-              <td>
-                {part.cheatDivergence === null ? (
-                  <span className={styles.secondary}>unmeasured</span>
-                ) : (
-                  <span
-                    className={
-                      drewOutsideTool ? styles.notLoaded : styles.loaded
-                    }
-                    title={
-                      drewOutsideTool
-                        ? "sculpted outside the tool"
-                        : "matches recorded actions"
-                    }
-                  >
-                    {(part.cheatDivergence * 100).toFixed(1)}%
-                    {drewOutsideTool ? " — outside tool" : ""}
-                  </span>
-                )}
-              </td>
-              <td className={styles.frameLogCell}>
-                {part.actionsUrl ? (
-                  <a href={part.actionsUrl} target="_blank" rel="noreferrer">
-                    log
-                  </a>
-                ) : null}
-              </td>
-            </tr>
-          );
-        })}
+        {parts.map((part) => (
+          <tr key={part.name}>
+            <th scope="row" className={styles.checkName}>
+              {part.name}
+            </th>
+            <td className={styles.secondary}>
+              {part.voxelCount.toLocaleString()}
+            </td>
+            <td className={styles.secondary}>{part.operationCount}</td>
+            <td className={styles.frameLogCell}>
+              {part.actionsUrl ? (
+                <a href={part.actionsUrl} target="_blank" rel="noreferrer">
+                  log
+                </a>
+              ) : null}
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );
@@ -433,8 +388,7 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
   // trivial single-part rig, so the parts at least render even if no rig resolved.
   const rig =
     view.rig ?? view.model ?? staticRig(view.parts[0]?.name ?? "model");
-  const fallbackUrl =
-    view.parts[0]?.regeneratedUrl ?? view.parts[0]?.previewUrl ?? null;
+  const fallbackUrl = view.parts[0]?.previewUrl ?? null;
   // Animations are model-authored and ride in the produced `rig.json`, so read them
   // from the produced rig; fall back to the required declarations (they carry the
   // names/joints even before the model authors tracks) for safety.
@@ -539,9 +493,9 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
             <GifDownloadButton
               filename={voxelGifFilename(downloadable.name)}
               encode={async () => {
-                const voxels = await fetchVoxelsByPart(view.parts);
+                const meshes = await fetchMeshesByPart(view.parts);
                 return encodeVoxelGif({
-                  voxels,
+                  meshes,
                   rig,
                   animation: downloadable.animation,
                   callerJoints: callerValues,

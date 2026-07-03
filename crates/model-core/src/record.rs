@@ -45,7 +45,8 @@ pub trait SculptBackend {
 }
 
 /// The rendered artifacts of one target: the preview PNG bytes and the live-stream
-/// body (the geometry payload — the cube tool sends its sparse `voxels.json` text).
+/// body (the geometry payload — every voxel tool sends its `PartMesh`-shaped
+/// `mesh.json` text, the same geometry the 3D client renders).
 pub struct Rendered {
     /// The re-rendered preview PNG.
     pub image: Vec<u8>,
@@ -61,8 +62,8 @@ pub struct ApplyResult {
     pub count: usize,
     /// The re-rendered preview PNG.
     pub image: Vec<u8>,
-    /// The live-stream body (the geometry payload — sparse `voxels.json` for the
-    /// cube tool).
+    /// The live-stream body (the geometry payload — the `PartMesh`-shaped `mesh.json`
+    /// every voxel tool streams).
     pub live_body: String,
 }
 
@@ -126,11 +127,11 @@ pub fn apply<B: SculptBackend>(
 /// every error here is swallowed — the recorded action log remains the run's
 /// authoritative output regardless of whether a frame reaches a viewer. The wire
 /// form is one JSON header line (`{ token, frame, operation, operationCount,
-/// length, voxelLength }`) followed by exactly `length` raw PNG bytes and then
-/// `voxelLength` bytes of the live body text; the listener validates the token
-/// before accepting the frame. `frame` carries the part index (0 for a single
-/// static model). The body lets the live viewer rebuild the model in 3D — a
-/// PNG-only viewer simply ignores it.
+/// length, meshLength }`) followed by exactly `length` raw PNG bytes and then
+/// `meshLength` bytes of the live body text (the `mesh.json`); the listener
+/// validates the token before accepting the frame. `frame` carries the part index
+/// (0 for a single static model). The body lets the live viewer rebuild the model in
+/// 3D — a PNG-only viewer simply ignores it.
 pub fn send_live_preview(
     endpoint: &str,
     token: &str,
@@ -181,7 +182,7 @@ fn try_send_live_preview(
         "operation": operation,
         "operationCount": operation_count,
         "length": image.len(),
-        "voxelLength": body_bytes.len(),
+        "meshLength": body_bytes.len(),
     }))?;
     header.push(b'\n');
     stream.write_all(&header)?;

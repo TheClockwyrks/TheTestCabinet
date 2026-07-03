@@ -979,6 +979,28 @@ impl AssetKind {
         })
     }
 
+    /// The run-workspace-relative path (or `{part}` template, for an animated kind)
+    /// the client-facing `PartMesh` geometry (`mesh.json`) every **voxel-family** kind
+    /// emits — [`MESH_DEST`] for a static kind, [`MESH_PART_DEST`] for an animated
+    /// one. `None` for the 2D sprite kinds, which emit no geometry.
+    ///
+    /// Unlike [`Self::mesh_dest`] — which is `Some` only for the six surface-meshed
+    /// kinds and selects the mesh-parsing validation path — this is `Some` for the
+    /// two **cube** kinds as well: their binaries also emit a face-culled `mesh.json`,
+    /// and the 3D client renders from that mesh for every voxel-family kind. Threaded
+    /// by seeding into the tool config so every voxel binary writes here, claimed in
+    /// manifest resolution, and read back by the validator as the served geometry.
+    pub fn voxel_mesh_dest(self) -> Option<&'static str> {
+        if !self.is_voxel() {
+            return None;
+        }
+        Some(if self.is_animated() {
+            MESH_PART_DEST
+        } else {
+            MESH_DEST
+        })
+    }
+
     /// The run-workspace-relative path the orchestrator seeds this kind's tool
     /// configuration to: [`ASSET_CONFIG_DEST`] for the 2D `draw`/`draw-sheet`
     /// kinds, [`VOXEL_CONFIG_DEST`] / [`VOXEL_ANIM_CONFIG_DEST`] for the two cube
@@ -3370,10 +3392,10 @@ impl TestCaseCatalog {
             // one of each per declared part and additionally produces `rig.json`, so
             // each resolved path is claimed.
             if let (Some(tool), Some(output)) = (&tool, &output) {
-                // A meshed kind additionally emits a per-part (`{part}`) or single
-                // `mesh.json`; claim it so a spec can never land on the geometry the
-                // binary writes.
-                let mesh_template = manifest.asset_kind.mesh_dest();
+                // Every voxel-family kind additionally emits a per-part (`{part}`) or
+                // single `mesh.json`; claim it so a spec can never land on the geometry
+                // the binary writes.
+                let mesh_template = manifest.asset_kind.voxel_mesh_dest();
                 if let Some(model) = &model {
                     for part in &model.parts {
                         claim(part_path(&tool.preview, &part.name), "part preview")?;

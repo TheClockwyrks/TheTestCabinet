@@ -124,17 +124,16 @@ fn asset_request_parses_bare_names_and_per_frame_names() {
 #[test]
 fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     // An animated voxel model addresses its parts by declared index: the served
-    // `regenerated-1.png` / `voxels-1.json` resolve to part 1's recorded tree
+    // `preview-0.png` / `voxels-1.json` resolve to that part's recorded tree
     // paths, which carry slashes the flat one-segment served name flattens away.
     let part = |name: &str| VoxelPartResult {
         name: name.to_string(),
+        mesh: format!("meshes/{name}.json"),
         regenerated_voxels: format!("voxels/{name}.json"),
-        regenerated_image: format!("regenerated/{name}.png"),
         preview_image: format!("parts/{name}.png"),
         ops_log: format!("parts/{name}.actions.json"),
         operation_count: 3,
         voxel_count: 10,
-        cheat_divergence: None,
         detail: None,
     };
     let voxel = VoxelGenResult {
@@ -154,20 +153,25 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
             ..Default::default()
         },
         &[
-            ("regenerated/turret.png", b"\x89PNG turret"),
             ("voxels/turret.json", b"{\"dims\":{}}"),
+            ("meshes/chassis.json", b"{\"positions\":[]}"),
             ("parts/chassis.png", b"\x89PNG chassis-preview"),
         ],
     );
-    // Part 1 (turret) regenerated PNG and voxels.json; part 0 (chassis) preview.
-    let served = serve_asset_file(dir.path(), "regenerated-1.png").expect("regenerated");
-    assert_eq!(served.content_type, "image/png");
-    assert_eq!(served.body, b"\x89PNG turret");
+    // Part 1 (turret) voxels.json; part 0 (chassis) preview. Cheat detection is
+    // retired for voxel, so there is no regenerated PNG to serve.
     let served = serve_asset_file(dir.path(), "voxels-1.json").expect("voxels");
     assert_eq!(served.content_type, "application/json");
     assert_eq!(served.body, b"{\"dims\":{}}");
+    // Part 0 (chassis) mesh.json — the geometry the 3D client renders.
+    let served = serve_asset_file(dir.path(), "mesh-0.json").expect("mesh");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.body, b"{\"positions\":[]}");
     let served = serve_asset_file(dir.path(), "preview-0.png").expect("preview");
+    assert_eq!(served.content_type, "image/png");
     assert_eq!(served.body, b"\x89PNG chassis-preview");
+    // A voxel run serves no regenerated PNG.
+    assert!(serve_asset_file(dir.path(), "regenerated-1.png").is_none());
     // An out-of-range part index is a miss (404), not a panic.
     assert!(serve_asset_file(dir.path(), "voxels-9.json").is_none());
 }
@@ -178,13 +182,12 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     let voxel = VoxelGenResult {
         parts: vec![VoxelPartResult {
             name: "model".to_string(),
+            mesh: "mesh.json".to_string(),
             regenerated_voxels: "voxels.json".to_string(),
-            regenerated_image: "regenerated.png".to_string(),
             preview_image: "model.png".to_string(),
             ops_log: "actions.json".to_string(),
             operation_count: 5,
             voxel_count: 20,
-            cheat_divergence: None,
             detail: None,
         }],
         model: None,
@@ -198,13 +201,16 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
         },
         &[
             ("voxels.json", b"{\"dims\":{}}"),
-            ("regenerated.png", b"\x89PNG static"),
+            ("mesh.json", b"{\"positions\":[]}"),
+            ("model.png", b"\x89PNG static-preview"),
         ],
     );
     let served = serve_asset_file(dir.path(), "voxels.json").expect("voxels");
     assert_eq!(served.body, b"{\"dims\":{}}");
-    let served = serve_asset_file(dir.path(), "regenerated.png").expect("regenerated");
-    assert_eq!(served.body, b"\x89PNG static");
+    let served = serve_asset_file(dir.path(), "mesh.json").expect("mesh");
+    assert_eq!(served.body, b"{\"positions\":[]}");
+    let served = serve_asset_file(dir.path(), "preview.png").expect("preview");
+    assert_eq!(served.body, b"\x89PNG static-preview");
 }
 
 #[test]

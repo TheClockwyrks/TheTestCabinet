@@ -226,9 +226,11 @@ pub async fn upload_proofs_to_backend(
 /// `regenerated.png`/`preview.png`/`actions.json` (its one frame), or a sprite
 /// sheet's per-frame `regenerated-<index>.png`/`preview-<index>.png`/`actions-<index>.json`
 /// — matching `playable::serve_asset_file` and the snapshot exactly so the keys line
-/// up with the UI lookup. A voxel run mirrors the same way, adding the regenerated
-/// `voxels.json` (bare for a static model, `voxels-<index>.json` per part for an
-/// animated one).
+/// up with the UI lookup. A voxel run mirrors the same way but carries no
+/// regenerated PNG (cheat detection is retired for voxel): each part uploads its
+/// `preview.png`/`actions.json`, the `mesh.json` the 3D client renders, and the
+/// secondary `voxels.json` (bare for a static model, `mesh-<index>.json` /
+/// `voxels-<index>.json` per part for an animated one).
 ///
 /// A no-op for any non-asset-generation run (an adversarial run's replays are
 /// mirrored by [`upload_adversarial_to_backend`] instead). Best-effort: an
@@ -269,8 +271,8 @@ pub async fn upload_assets_to_backend(
         // A voxel run mirrors its parts the same flat way: a static model under
         // bare names (its one part), an animated model suffixing each part with its
         // `-<index>` in declared order — matching `playable::serve_asset_file` and
-        // the snapshot. The extra `voxels.json` is the regenerated voxel data the
-        // 3D client renders.
+        // the snapshot. The `mesh.json` is the geometry the 3D client renders; the
+        // `voxels.json` is a secondary artifact.
         let animated = voxel.model.is_some() || voxel.rig.is_some();
         for (index, part) in voxel.parts.iter().enumerate() {
             let suffix = if animated {
@@ -279,9 +281,9 @@ pub async fn upload_assets_to_backend(
                 String::new()
             };
             let artifacts = [
-                (format!("regenerated{suffix}.png"), &part.regenerated_image),
                 (format!("preview{suffix}.png"), &part.preview_image),
                 (format!("actions{suffix}.json"), &part.ops_log),
+                (format!("mesh{suffix}.json"), &part.mesh),
                 (format!("voxels{suffix}.json"), &part.regenerated_voxels),
             ];
             for (served, rel) in artifacts {

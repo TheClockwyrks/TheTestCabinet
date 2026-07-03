@@ -517,18 +517,24 @@ impl VoxelGenValidator {
 }
 
 /// The per-part plan the validator evaluates: where this part's recorded log and
-/// preview live, and where its geometry lives. For a **cube** kind the geometry is
-/// the sparse `voxels.json` the validator regenerates from the log at
-/// [`Self::regenerated_voxels_rel`]; for a **meshed** kind it is the `mesh.json` the
-/// binary *emitted*, read (not regenerated) from [`Self::mesh_rel`], and
-/// `regenerated_voxels_rel` records that same emitted mesh path.
+/// preview live, and where its geometry lives.
+///
+/// [`Self::mesh_client_rel`] is the `PartMesh`-shaped `mesh.json` **every**
+/// voxel-family kind emits and the 3D client renders from. For a **cube** kind the
+/// validator additionally regenerates the sparse `voxels.json` from the log at
+/// [`Self::regenerated_voxels_rel`] (a secondary artifact); for a **meshed** kind it
+/// reads (does not regenerate) the emitted `mesh.json` at [`Self::mesh_rel`] to
+/// validate it, and `regenerated_voxels_rel` repeats that mesh path.
 struct PartPlan {
     name: String,
     ops_rel: PathBuf,
     preview_rel: PathBuf,
     regenerated_voxels_rel: String,
-    /// The run-relative path of the emitted `mesh.json` for a meshed kind; `None`
-    /// for a cube kind (which regenerates `voxels.json` instead).
+    /// The client-facing `mesh.json` path (the geometry the 3D viewer loads), for
+    /// every voxel-family kind — the cube kinds emit it too.
+    mesh_client_rel: String,
+    /// The run-relative path of the emitted `mesh.json` a **meshed** kind parses to
+    /// validate; `None` for a cube kind (which regenerates `voxels.json` instead).
     mesh_rel: Option<PathBuf>,
 }
 
@@ -578,16 +584,21 @@ impl Validator for VoxelGenValidator {
         };
 
         // A meshed kind (mc/sn/dc + `-anim`) reads the `mesh.json` its binary
-        // emitted; a cube kind regenerates `voxels.json` from the log. The mesh
-        // template is a single file for a static kind and a `{part}` template for an
-        // animated one.
+        // emitted; a cube kind regenerates `voxels.json` from the log. `mesh_template`
+        // is the meshed-only parse path; `client_mesh_template` is the client-facing
+        // `mesh.json` **every** voxel kind emits (both are `{part}` templates for an
+        // animated kind, a single file for a static one).
         let mesh_template = test_case.asset_kind.mesh_dest();
-        let is_meshed = mesh_template.is_some();
+        let is_meshed = test_case.asset_kind.is_meshed();
+        // Every voxel-family kind is routed here, so this is always `Some`.
+        let client_mesh_template = test_case
+            .asset_kind
+            .voxel_mesh_dest()
+            .expect("a voxel-family kind declares a mesh geometry path");
 
         // One target for a static model (named `model`); one per declared part for
-        // an animated model, each with its own log, preview, and geometry (the
-        // regenerated `voxels.json` for a cube kind, or the emitted `mesh.json` for a
-        // meshed kind).
+        // an animated model, each with its own log, preview, client mesh, and — for a
+        // cube kind — the regenerated `voxels.json`.
         let plans: Vec<PartPlan> = match test_case.model.as_ref() {
             None => {
                 let mesh_rel = mesh_template.map(PathBuf::from);
@@ -600,6 +611,7 @@ impl Validator for VoxelGenValidator {
                     ops_rel: output.actions.clone(),
                     preview_rel: tool.preview.clone(),
                     regenerated_voxels_rel: geometry_rel,
+                    mesh_client_rel: client_mesh_template.to_string(),
                     mesh_rel,
                 }]
             }
@@ -613,11 +625,16 @@ impl Validator for VoxelGenValidator {
                         .as_ref()
                         .map(|p| rel_string(p))
                         .unwrap_or_else(|| format!("voxels/{}.json", part.name));
+                    let mesh_client_rel = rel_string(&crate::test_case::part_path(
+                        Path::new(client_mesh_template),
+                        &part.name,
+                    ));
                     PartPlan {
                         name: part.name.clone(),
                         ops_rel: crate::test_case::part_path(&output.actions, &part.name),
                         preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
                         regenerated_voxels_rel: geometry_rel,
+                        mesh_client_rel,
                         mesh_rel,
                     }
                 })
@@ -644,13 +661,12 @@ impl Validator for VoxelGenValidator {
                     if is_anim {
                         parts.push(VoxelPartResult {
                             name: plan.name.clone(),
+                            mesh: plan.mesh_client_rel.clone(),
                             regenerated_voxels: plan.regenerated_voxels_rel.clone(),
-                            regenerated_image: rel_string(&plan.preview_rel),
                             preview_image: rel_string(&plan.preview_rel),
                             ops_log: rel_string(&plan.ops_rel),
                             operation_count: 0,
                             voxel_count: 0,
-                            cheat_divergence: None,
                             detail: Some(detail),
                         });
                     } else {
@@ -709,8 +725,8 @@ impl Validator for VoxelGenValidator {
 /// voxel data cannot be written — the caller maps that to a failed load (static) or
 /// a zero-scored part (animated). A missing log is treated as an empty part (with a
 /// note), so a model that simply never sculpted a part is recorded rather than
-/// failed. Preview regeneration and cheat divergence are retired: the served
-/// "regenerated" image is the model's own rendered preview and divergence is `None`.
+/// failed. Preview regeneration and cheat divergence are retired: the reviewed
+/// image is the model's own rendered preview.
 fn score_part(
     repo: &Path,
     dims: test_cabinet_voxel::Dims,
@@ -753,20 +769,16 @@ fn score_part(
 
     // Preview regeneration and cheat divergence are retired for the voxel family:
     // the scored artifact is the emitted mesh/rig plus reviewer judgment of the
-    // model's own rendered preview, so core no longer re-renders a preview here.
-    // The served "regenerated" image is the model's preview (the wgpu+Mesa render
-    // the binary produced), and divergence goes unmeasured.
-    let preview_rel = rel_string(&plan.preview_rel);
-
+    // model's own rendered preview, so core no longer re-renders a preview here. The
+    // reviewed image is the model's preview (the wgpu+Mesa render the binary made).
     Ok(VoxelPartResult {
         name: plan.name.clone(),
+        mesh: plan.mesh_client_rel.clone(),
         regenerated_voxels: plan.regenerated_voxels_rel.clone(),
-        regenerated_image: preview_rel.clone(),
-        preview_image: preview_rel,
+        preview_image: rel_string(&plan.preview_rel),
         ops_log: rel_string(&plan.ops_rel),
         operation_count: operations.len(),
         voxel_count: set.occupied_count(),
-        cheat_divergence: None,
         detail: (!notes.is_empty()).then(|| notes.join("; ")),
     })
 }
@@ -844,21 +856,19 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
         }
     };
 
-    // As in the cube path, the served "regenerated" image is the model's own rendered
-    // preview and divergence is retired.
-    let preview_rel = rel_string(&plan.preview_rel);
-
+    // As in the cube path, the reviewed image is the model's own rendered preview
+    // and cheat divergence is retired.
     Ok(VoxelPartResult {
         name: plan.name.clone(),
-        // The emitted `mesh.json` is what the client renders in 3D.
+        // The emitted `mesh.json` is what the client renders in 3D; a meshed kind has
+        // no `voxels.json`, so `regenerated_voxels` repeats the same mesh path.
+        mesh: plan.mesh_client_rel.clone(),
         regenerated_voxels: plan.regenerated_voxels_rel.clone(),
-        regenerated_image: preview_rel.clone(),
-        preview_image: preview_rel,
+        preview_image: rel_string(&plan.preview_rel),
         ops_log: rel_string(&plan.ops_rel),
         operation_count,
         // No voxels for a mesh; the emitted mesh's vertex count stands in.
         voxel_count: vertex_count,
-        cheat_divergence: None,
         detail: (!notes.is_empty()).then(|| notes.join("; ")),
     })
 }

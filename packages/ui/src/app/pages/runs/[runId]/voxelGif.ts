@@ -1,10 +1,7 @@
 /// <reference path="../../../../gifenc.d.ts" />
 import * as THREE from "three";
-import type {
-  AnimationSpec,
-  ModelSpec,
-  VoxelsFile,
-} from "@test-cabinet/run-record";
+import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import {
@@ -26,8 +23,8 @@ const FPS = 24;
 const MAX_FRAMES = 96;
 
 export type VoxelGifInput = {
-  /** The regenerated voxel data, keyed by part name (or a single file). */
-  voxels: Record<string, VoxelsFile> | VoxelsFile;
+  /** The produced geometry, keyed by part name (or a single {@link PartMesh}). */
+  meshes: Record<string, PartMesh> | PartMesh;
   /** The rig to pose (parts + joints). */
   rig: ModelSpec;
   /** The animation to bake (or null to bake the rig's `autoPlay` idle). */
@@ -68,7 +65,7 @@ export function voxelGifTiming(periodMs: number): {
  * Throws if a WebGL context can't be created.
  */
 export async function encodeVoxelGif({
-  voxels,
+  meshes,
   rig,
   animation,
   callerJoints,
@@ -76,7 +73,7 @@ export async function encodeVoxelGif({
   background,
 }: VoxelGifInput): Promise<Blob> {
   const { frameCount, stepMs, delayMs } = voxelGifTiming(periodMs);
-  const { center, distance, far } = framing(voxels, null);
+  const { center, distance, far } = framing(meshes, null);
 
   // Opaque solid background: no alpha needed, and it gives clean anti-aliased
   // edges the way transparency (1-bit in a GIF) can't.
@@ -110,7 +107,7 @@ export async function encodeVoxelGif({
   pivot.position.set(-center[0], -center[1], -center[2]);
   scene.add(pivot);
 
-  const voxelRig = new VoxelRig(rig, voxels);
+  const voxelRig = new VoxelRig(rig, meshes);
   pivot.add(voxelRig.root);
   voxelRig.pose(callerJoints);
   // A named animation to bake, or `null` to fall back to the rig's `autoPlay` idle.

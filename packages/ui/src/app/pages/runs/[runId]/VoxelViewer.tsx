@@ -1,12 +1,8 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useState } from "react";
-import type {
-  AnimationSpec,
-  ModelSpec,
-  VoxelDims,
-  VoxelsFile,
-} from "@test-cabinet/run-record";
+import type { AnimationSpec, ModelSpec, VoxelDims } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
 import {
   AMBIENT_INTENSITY,
@@ -52,9 +48,9 @@ function RigScene({
 }
 
 /**
- * Interactive 3D view of a regenerated voxel model. Builds a
+ * Interactive 3D view of a produced voxel model. Builds a
  * {@link VoxelRig} from the run's rig structure ({@link ModelSpec}, which travels
- * inline in the run record) and the fetched per-part `voxels.json`, then renders
+ * inline in the run record) and the fetched per-part `mesh.json`, then renders
  * it in an R3F {@link Canvas} with orbit controls and lighting.
  *
  * Default export so it can be `React.lazy`-loaded — `three`, `@react-three/drei`,
@@ -64,7 +60,7 @@ function RigScene({
  * component can assume a WebGL-capable browser.
  */
 export default function VoxelViewer({
-  voxels,
+  meshes,
   rig,
   mode,
   callerJoints,
@@ -74,9 +70,9 @@ export default function VoxelViewer({
   height = 320,
   label,
 }: {
-  /** The regenerated voxel data: one file for a static model, or a map keyed by
-   * part name for an animated rig. */
-  voxels: Record<string, VoxelsFile> | VoxelsFile;
+  /** The produced geometry: one {@link PartMesh} for a static model, or a map keyed
+   * by part name for an animated rig. */
+  meshes: Record<string, PartMesh> | PartMesh;
   /** The rig to pose (parts + joints). A static model passes a trivial single-part
    * rig. */
   rig: ModelSpec;
@@ -108,19 +104,19 @@ export default function VoxelViewer({
   // a new, live rig instead.
   const [voxelRig, setVoxelRig] = useState<VoxelRig | null>(null);
   useEffect(() => {
-    const built = new VoxelRig(rig, voxels);
+    const built = new VoxelRig(rig, meshes);
     setVoxelRig(built);
     return () => built.dispose();
-  }, [rig, voxels]);
+  }, [rig, meshes]);
 
   // Frame the camera so any size of model fills the view. When `frameDims` is given
   // (the live view) frame the fixed volume so the camera holds steady as the model
-  // grows; otherwise frame the voxel bounds. Derived from the data, not the rig, so
+  // grows; otherwise frame the mesh bounds. Derived from the data, not the rig, so
   // the camera is correct on the first render even though the rig builds a tick later
   // in the effect above.
   const { center, distance, far } = useMemo(
-    () => framing(voxels, frameDims),
-    [voxels, frameDims],
+    () => framing(meshes, frameDims),
+    [meshes, frameDims],
   );
 
   // Play the requested animation (or stop it with `null`, which falls back to the

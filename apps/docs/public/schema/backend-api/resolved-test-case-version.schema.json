@@ -22,6 +22,36 @@
           "const": "voxel-animation",
           "description": "A rigged, animatable 3D voxel model: named parts in a parent/child hierarchy\nwith named joints a consuming game drives at runtime (for example a tank's\n`turret_yaw`), drawn with the `voxel-anim` binary. Declares a `[voxel]` table\nand a `[model]` table (the required parts and joints the model must produce,\non top of which it may add its own).",
           "type": "string"
+        },
+        {
+          "const": "mc-model",
+          "description": "A static surface-meshed 3D model built with the **marching cubes** `mc`\nbinary: the model composites a signed-distance field of CSG primitives, which\nthe mesher extracts to a per-model `mesh.json`. Declares a `[voxel]` table\n(the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted\n**low-poly** surface.",
+          "type": "string"
+        },
+        {
+          "const": "mc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **marching cubes**\n`mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield extracted to its own `mesh.json`; declares a `[voxel]` and a `[model]`\ntable.",
+          "type": "string"
+        },
+        {
+          "const": "sn-model",
+          "description": "A static surface-meshed 3D model built with the **surface nets** `sn` binary.\nDeclares a `[voxel]` table and no `[model]`. Surface nets yields a smooth,\nwatertight mid-fidelity surface with uniform triangle density.",
+          "type": "string"
+        },
+        {
+          "const": "sn-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **surface nets**\n`sn-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
+        },
+        {
+          "const": "dc-model",
+          "description": "A static surface-meshed 3D model built with the **dual contouring** `dc`\nbinary. Declares a `[voxel]` table and no `[model]`. Dual contouring yields a\nhigh-fidelity surface that preserves sharp edges and corners.",
+          "type": "string"
+        },
+        {
+          "const": "dc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **dual contouring**\n`dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
         }
       ]
     },
@@ -477,7 +507,7 @@
       "type": "object"
     },
     "VoxelSpec": {
-      "description": "The resolved `[voxel]` of a voxel asset-generation case: the bounding volume\nthe model draws into, the 3D analog of [`CanvasSpec`]. `background` is the\nclear color behind the rasterized isometric preview PNG (the voxel volume\nitself always starts empty); it is kept as the manifest string — validated to\nparse — so the resolved version stays serializable without depending on the\nvoxel library's color type, and the validator re-parses it when it regenerates.",
+      "description": "The resolved `[voxel]` of a voxel asset-generation case: the bounding volume\nthe model draws into, the 3D analog of [`CanvasSpec`]. `background` is the\nclear color behind the rendered preview PNG (the voxel volume itself always\nstarts empty); it is kept as the manifest string — validated to parse — so the\nresolved version stays serializable without depending on the voxel library's\ncolor type.",
       "properties": {
         "background": {
           "description": "Preview clear color: `transparent` or a hex color.",

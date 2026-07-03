@@ -179,11 +179,12 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
 }
 
 // The validation widget for a voxel asset-generation run: the run regenerated
-// model(s) (the load signal), how many voxels each part contains, and whether the
-// model wrote outside the tool (cheat divergence on the isometric preview). A
-// static model is one part; an animated model has one row per declared part. As
-// with the sprite table there is no target model or fidelity score — the
-// regenerated model is reviewed against the brief on the Verdict tab.
+// model(s) (the load signal) and how many voxels each part contains. A static
+// model is one part; an animated model has one row per declared part. Cheat
+// detection is retired for the voxel family, so — unlike the sprite table — there
+// is no divergence column. As with the sprite table there is no target model or
+// fidelity score — the regenerated model is reviewed against the brief on the
+// Verdict tab.
 function VoxelValidationTable({ run }: { run: RunRecord }) {
   const { validation } = run;
   const voxel = validation.voxel!;
@@ -211,8 +212,6 @@ function VoxelValidationTable({ run }: { run: RunRecord }) {
             </td>
           </tr>
           {voxel.parts.map((part) => {
-            const drewOutsideTool =
-              part.cheatDivergence !== null && part.cheatDivergence > 0.05;
             const label = animated ? part.name : "Model";
             return (
               <tr key={part.name}>
@@ -222,20 +221,7 @@ function VoxelValidationTable({ run }: { run: RunRecord }) {
                 <td>
                   {part.operationCount} ops · {part.voxelCount} voxels
                 </td>
-                <td className={styles.secondary}>
-                  {part.cheatDivergence === null ? (
-                    part.detail ?? "—"
-                  ) : (
-                    <span
-                      className={
-                        drewOutsideTool ? styles.notLoaded : styles.loaded
-                      }
-                    >
-                      divergence {(part.cheatDivergence * 100).toFixed(1)}%
-                      {drewOutsideTool ? " — drew outside the tool" : ""}
-                    </span>
-                  )}
-                </td>
+                <td className={styles.secondary}>{part.detail ?? "—"}</td>
               </tr>
             );
           })}

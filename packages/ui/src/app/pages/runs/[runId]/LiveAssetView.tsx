@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
-import type { AssetSheet, ModelSpec, VoxelsFile } from "@test-cabinet/run-record";
+import type { AssetSheet, ModelSpec } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { AssetPreview } from "../../../../client/types";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
 import styles from "./RunDetailPages.module.scss";
@@ -144,28 +145,28 @@ function SlotImage({
   );
 }
 
-/** A trivial single-part rig whose one part carries the whole model's voxels — used
+/** A trivial single-part rig whose one part carries the whole model's mesh — used
  * for a static voxel model and for each per-part live view. */
 function staticRig(partName: string): ModelSpec {
   return { parts: [{ name: partName, pivot: [0, 0, 0] }], joints: [] };
 }
 
-/** Whether any streamed preview carries voxel geometry — the signal that this is a
+/** Whether any streamed preview carries mesh geometry — the signal that this is a
  * voxel run (a voxel-animation case also declares a `model` up front). */
 function isVoxelRun(
   previews: Map<number, AssetPreview>,
   model: ModelSpec | null,
 ): boolean {
   if (model) return true;
-  for (const preview of previews.values()) if (preview.voxels) return true;
+  for (const preview of previews.values()) if (preview.mesh) return true;
   return false;
 }
 
 /**
  * The live 3D view for an in-progress voxel run. As the model sculpts, each
- * operation streams the part's current voxels (alongside its isometric PNG); this
- * rebuilds the model in 3D and rotates it, exactly as the finished-run view does —
- * no need to wait for the run to complete.
+ * operation streams the part's current surface mesh (alongside its isometric PNG);
+ * this rebuilds the model in 3D and rotates it, exactly as the finished-run view
+ * does — no need to wait for the run to complete.
  *
  * Two views are offered for a rigged (animated) model:
  * - **Scene** assembles every part whose mount location is known — i.e. every part
@@ -195,29 +196,22 @@ function LiveVoxelView({
   // being sculpted.
   const [picked, setPicked] = useState<number | null>(null);
 
-  // A content signature so the voxel objects (and the meshes built from them) are
+  // A content signature so the mesh objects (and the geometry built from them) are
   // rebuilt only when a new operation arrives, not on every render.
   const signature = [...previews.entries()]
-    .map(([index, p]) => `${index}:${p.operationCount}:${p.voxels ? 1 : 0}`)
+    .map(([index, p]) => `${index}:${p.operationCount}:${p.mesh ? 1 : 0}`)
     .sort()
     .join(",");
 
-  // The streamed voxels for each part, keyed by its preview (part) index.
-  const voxelsByIndex = useMemo(() => {
-    const map = new Map<number, VoxelsFile>();
+  // The streamed mesh for each part, keyed by its preview (part) index.
+  const meshesByIndex = useMemo(() => {
+    const map = new Map<number, PartMesh>();
     for (const [index, preview] of previews) {
-      if (preview.voxels) map.set(index, preview.voxels);
+      if (preview.mesh) map.set(index, preview.mesh);
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
-
-  // Frame the camera from the fixed volume so it holds steady as the model grows;
-  // every part shares the same declared volume, so any streamed part's dims serve.
-  const frameDims = useMemo(() => {
-    for (const file of voxelsByIndex.values()) return file.dims;
-    return null;
-  }, [voxelsByIndex]);
 
   // The slots the case will fill: one per declared part (a rig), or the single model
   // (a static voxel case), unioned with any streamed index beyond them.
@@ -231,19 +225,19 @@ function LiveVoxelView({
   // part), keyed by part name for the rig. A model-added part beyond the declared
   // set has no known mount yet, so it is left out of the scene.
   const sceneRig = useMemo<ModelSpec>(() => model ?? staticRig("model"), [model]);
-  const sceneVoxels = useMemo(() => {
-    const byPart: Record<string, VoxelsFile> = {};
+  const sceneMeshes = useMemo(() => {
+    const byPart: Record<string, PartMesh> = {};
     if (model) {
       model.parts.forEach((part, index) => {
-        const file = voxelsByIndex.get(index);
-        if (file) byPart[part.name] = file;
+        const mesh = meshesByIndex.get(index);
+        if (mesh) byPart[part.name] = mesh;
       });
     } else {
-      const file = voxelsByIndex.get(0);
-      if (file) byPart.model = file;
+      const mesh = meshesByIndex.get(0);
+      if (mesh) byPart.model = mesh;
     }
     return byPart;
-  }, [model, voxelsByIndex]);
+  }, [model, meshesByIndex]);
 
   // The per-part Model view's selected part: the user's pick, else the part being
   // sculpted, else the first slot.
@@ -251,7 +245,7 @@ function LiveVoxelView({
   const selectedSlot =
     slots.find((s) => s.index === selectedIndex) ?? slots[0] ?? null;
   const selectedName = selectedSlot?.name ?? "model";
-  const selectedVoxels = voxelsByIndex.get(selectedIndex) ?? null;
+  const selectedMesh = meshesByIndex.get(selectedIndex) ?? null;
   const partRig = useMemo(() => staticRig(selectedName), [selectedName]);
   const fallbackFor = (index: number): string | null => {
     const preview = previews.get(index);
@@ -303,7 +297,7 @@ function LiveVoxelView({
         <div className={styles.liveLayout}>
           <nav className={styles.slotRail} aria-label="Model parts">
             <p className={styles.slotRailLabel}>
-              {voxelsByIndex.size}/{slots.length} sculpted
+              {meshesByIndex.size}/{slots.length} sculpted
             </p>
             <ul className={styles.slotList}>
               {slots.map((slot) => {
@@ -345,10 +339,9 @@ function LiveVoxelView({
           <figure className={styles.liveMain}>
             <div className={styles.liveVoxelCanvas}>
               <GuardedVoxelViewer
-                voxels={selectedVoxels}
+                meshes={selectedMesh}
                 rig={partRig}
                 mode="auto-rotate"
-                frameDims={frameDims}
                 fallbackUrl={fallbackFor(selectedIndex)}
                 label={`${selectedName} (in progress)`}
                 height={340}
@@ -372,10 +365,9 @@ function LiveVoxelView({
         <figure className={styles.liveMain}>
           <div className={styles.liveVoxelCanvas}>
             <GuardedVoxelViewer
-              voxels={animated ? sceneVoxels : (voxelsByIndex.get(0) ?? null)}
+              meshes={animated ? sceneMeshes : (meshesByIndex.get(0) ?? null)}
               rig={sceneRig}
               mode="auto-rotate"
-              frameDims={frameDims}
               fallbackUrl={fallbackFor(activeFrame ?? 0)}
               label={animated ? "Assembled scene (in progress)" : "Model (in progress)"}
               height={340}
@@ -387,8 +379,8 @@ function LiveVoxelView({
             <span className={styles.secondary}>
               {" · "}
               {animated
-                ? `${Object.keys(sceneVoxels).length}/${model!.parts.length} parts placed`
-                : `${voxelsByIndex.get(0)?.voxels.length.toLocaleString() ?? 0} voxels`}
+                ? `${Object.keys(sceneMeshes).length}/${model!.parts.length} parts placed`
+                : `${((meshesByIndex.get(0)?.positions.length ?? 0) / 3).toLocaleString()} vertices`}
             </span>
           </figcaption>
         </figure>

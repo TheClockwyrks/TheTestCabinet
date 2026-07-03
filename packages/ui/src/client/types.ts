@@ -8,8 +8,8 @@ import type {
   ModelSpec,
   RunRecord,
   TestType,
-  VoxelsFile,
 } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
 import type {
   DomainRating,
@@ -279,10 +279,10 @@ export interface AssetPreview {
   operation?: string | null;
   // The frame's PNG, base64-encoded (no `data:` prefix; the viewer builds the URL).
   image: string;
-  // The frame's current occupied voxels, for a voxel run — the sparse `voxels.json`
-  // shape the 3D viewer renders, so the live view can rebuild the part in 3D and
-  // assemble the scene. Absent (null/undefined) for a 2D sprite run.
-  voxels?: VoxelsFile | null;
+  // The frame's current surface mesh, for a voxel run — the `PartMesh`-shaped
+  // `mesh.json` the 3D viewer renders, so the live view can rebuild the part in 3D
+  // and assemble the scene. Absent (null/undefined) for a 2D sprite run.
+  mesh?: PartMesh | null;
 }
 
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors

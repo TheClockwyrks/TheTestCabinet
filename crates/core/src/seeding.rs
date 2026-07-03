@@ -317,11 +317,12 @@ fn seed_voxel_tool(
         config["parts"] = serde_json::json!(part_names);
         config["rig"] = serde_json::json!(crate::test_case::VOXEL_RIG_DEST);
     }
-    // A surface-meshed kind (mc/sn/dc and their `-anim` siblings) emits its geometry
-    // as `mesh.json` — a single file for a static model, a `{part}` template for an
-    // animated one — so thread that path into the config the binary reads. The cube
-    // kinds emit no `mesh.json` and leave this unset.
-    if let Some(mesh) = test_case.asset_kind.mesh_dest() {
+    // Every voxel-family kind — the two cube kinds and the six surface-meshed kinds —
+    // emits its client-facing geometry as a `PartMesh`-shaped `mesh.json`: a single
+    // file for a static model, a `{part}` template for an animated one. Thread that
+    // path into the config the binary reads so the mesh lands at the canonical
+    // location the validator (and the served/published artifact set) expect.
+    if let Some(mesh) = test_case.asset_kind.voxel_mesh_dest() {
         config["mesh"] = serde_json::json!(mesh);
     }
     // When a viewer is observing the run, seed the live-preview endpoint so the

@@ -15,8 +15,8 @@ import type {
   RunRecord,
   RunSubject,
   TournamentRecord,
-  VoxelsFile,
 } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -350,25 +350,23 @@ export interface AssetResultView {
 }
 
 /**
- * One part of a voxel asset-generation run, resolved for display: the regenerated
- * voxel data the 3D viewer poses, the isometric PNGs (regenerated vs the model's
- * own preview) reviewed against the brief, and the recorded operation log — each
- * as a loadable URL (or null when the host cannot serve it) — alongside the
- * recorded cheat-divergence signal. The 3D analog of {@link AssetFrameView}.
+ * One part of a voxel asset-generation run, resolved for display: the
+ * `PartMesh`-shaped `mesh.json` the 3D viewer poses, the model's own isometric
+ * preview PNG (reviewed against the brief and used as the WebGL/reduced-motion
+ * fallback), and the recorded operation log — each as a loadable URL (or null when
+ * the host cannot serve it). Cheat detection is retired for the voxel family, so —
+ * unlike the sprite {@link AssetFrameView} — a voxel part carries no regenerated
+ * image and no cheat divergence. The 3D analog of {@link AssetFrameView}.
  */
 export interface VoxelPartView {
   /** The part name: `model` for a static model, the declared part for animation. */
   name: string;
-  /** The regenerated `voxels.json` for this part (fed to the 3D viewer). */
-  voxelsUrl: string | null;
-  /** The regenerated isometric PNG (the WebGL/reduced-motion fallback). */
-  regeneratedUrl: string | null;
-  /** The model's own on-disk isometric preview PNG. */
+  /** The `mesh.json` for this part (the `PartMesh` geometry fed to the 3D viewer). */
+  meshUrl: string | null;
+  /** The model's own isometric preview PNG (also the WebGL/reduced-motion fallback). */
   previewUrl: string | null;
   /** The recorded operation log for this part. */
   actionsUrl: string | null;
-  /** Divergence of the regenerated image from the preview, or null if unmeasured. */
-  cheatDivergence: number | null;
   /** How many operations the recorded log holds. */
   operationCount: number;
   /** How many occupied voxels the regenerated part contains. */
@@ -381,7 +379,7 @@ export interface VoxelPartView {
  * A voxel asset-generation run's result, resolved for display: one part for a
  * static model, one per declared part for an animated (rigged) model. The rig
  * structure travels inline in the run record (the {@link ModelSpec}), so the
- * viewer poses it directly; only each part's `voxels.json` is fetched (see
+ * viewer poses it directly; only each part's `mesh.json` is fetched (see
  * {@link GalleryData} `useVoxelArtifacts`). The 3D analog of {@link AssetResultView}.
  */
 export interface VoxelResultView {
@@ -485,7 +483,7 @@ export interface GalleryData extends GalleryDataInput {
   /**
    * A voxel asset-generation run's result resolved for display, or null when the
    * run is not a voxel run (its `validation.voxel` is absent). Media URLs (the
-   * per-part `voxels.json` and isometric PNGs) are resolved via
+   * per-part `mesh.json` and isometric PNGs) are resolved via
    * {@link assetMediaUrl}; the rig structure travels inline in the run record.
    */
   voxelResultFor(run: RunRecord): VoxelResultView | null;
@@ -594,11 +592,9 @@ export function GalleryDataProvider({
           const suffix = animated ? `-${index}` : "";
           return {
             name: part.name,
-            voxelsUrl: url(`voxels${suffix}.json`),
-            regeneratedUrl: url(`regenerated${suffix}.png`),
+            meshUrl: url(`mesh${suffix}.json`),
             previewUrl: url(`preview${suffix}.png`),
             actionsUrl: url(`actions${suffix}.json`),
-            cheatDivergence: part.cheatDivergence,
             operationCount: part.operationCount,
             voxelCount: part.voxelCount,
             detail: part.detail,
@@ -669,18 +665,18 @@ export function useGalleryData(): GalleryData {
   return ctx;
 }
 
-// A process-wide cache of fetched `voxels.json` files, keyed by their resolved
-// URL. Voxel data is immutable per published/produced run, so a file fetched once
+// A process-wide cache of fetched `mesh.json` files, keyed by their resolved URL.
+// Mesh geometry is immutable per published/produced run, so a file fetched once
 // (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.
-const voxelFileCache = new Map<string, VoxelsFile>();
+const meshFileCache = new Map<string, PartMesh>();
 
 /** The load state of a set of voxel artifacts (see {@link useVoxelArtifacts}). */
 export interface VoxelArtifacts {
   /**
-   * The fetched voxel data keyed by part name, or null while any part is still
-   * loading (so the viewer waits for a complete set before building its meshes).
+   * The fetched per-part meshes keyed by part name, or null while any part is still
+   * loading (so the viewer waits for a complete set before building its rig).
    */
-  voxelsByPart: Record<string, VoxelsFile> | null;
+  meshesByPart: Record<string, PartMesh> | null;
   /** True while any requested part is still being fetched. */
   loading: boolean;
   /** A message when a part could not be fetched or parsed, else null. */
@@ -688,28 +684,28 @@ export interface VoxelArtifacts {
 }
 
 /**
- * Fetch (and cache) each servable part's `voxels.json`, resolving to a
- * `{ [partName]: VoxelsFile }` map (parts with no `voxelsUrl` are skipped). The
- * module cache is keyed by resolved URL and shared with {@link useVoxelArtifacts},
- * so the 3D viewer and any one-off consumer (e.g. the GIF export, which builds an
+ * Fetch (and cache) each servable part's `mesh.json`, resolving to a
+ * `{ [partName]: PartMesh }` map (parts with no `meshUrl` are skipped). The module
+ * cache is keyed by resolved URL and shared with {@link useVoxelArtifacts}, so the
+ * 3D viewer and any one-off consumer (e.g. the GIF export, which builds an
  * offscreen rig outside React) fetch each immutable file at most once. Rejects if
  * any servable part fails to fetch or parse.
  */
-export async function fetchVoxelsByPart(
-  parts: readonly { name: string; voxelsUrl: string | null }[],
-): Promise<Record<string, VoxelsFile>> {
-  const servable = parts.filter((p) => p.voxelsUrl);
+export async function fetchMeshesByPart(
+  parts: readonly { name: string; meshUrl: string | null }[],
+): Promise<Record<string, PartMesh>> {
+  const servable = parts.filter((p) => p.meshUrl);
   const entries = await Promise.all(
     servable.map(async (part) => {
-      const url = part.voxelsUrl!;
-      const cached = voxelFileCache.get(url);
+      const url = part.meshUrl!;
+      const cached = meshFileCache.get(url);
       if (cached) return [part.name, cached] as const;
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`${part.name}: ${response.status}`);
       }
-      const file = (await response.json()) as VoxelsFile;
-      voxelFileCache.set(url, file);
+      const file = (await response.json()) as PartMesh;
+      meshFileCache.set(url, file);
       return [part.name, file] as const;
     }),
   );
@@ -717,43 +713,42 @@ export async function fetchVoxelsByPart(
 }
 
 /**
- * Fetch (and cache) the `voxels.json` data the 3D voxel viewer needs for a run's
- * parts. Pass the run's {@link VoxelResultView} parts (name + resolved
- * `voxelsUrl`); the hook fetches each (an unservable-null URL is skipped),
- * resolves the lot into a `{ [partName]: VoxelsFile }` map, and reuses the module
- * cache across mounts. `voxelsByPart` stays null until every servable part has
- * resolved, so the viewer builds one complete rig rather than flickering
- * part-by-part.
+ * Fetch (and cache) the `mesh.json` geometry the 3D voxel viewer needs for a run's
+ * parts. Pass the run's {@link VoxelResultView} parts (name + resolved `meshUrl`);
+ * the hook fetches each (an unservable-null URL is skipped), resolves the lot into
+ * a `{ [partName]: PartMesh }` map, and reuses the module cache across mounts.
+ * `meshesByPart` stays null until every servable part has resolved, so the viewer
+ * builds one complete rig rather than flickering part-by-part.
  */
 export function useVoxelArtifacts(
-  parts: readonly { name: string; voxelsUrl: string | null }[],
+  parts: readonly { name: string; meshUrl: string | null }[],
 ): VoxelArtifacts {
   // A stable dependency key: the ordered name→url pairs as one string.
-  const key = parts.map((p) => `${p.name}=${p.voxelsUrl ?? ""}`).join("|");
+  const key = parts.map((p) => `${p.name}=${p.meshUrl ?? ""}`).join("|");
   const [state, setState] = useState<VoxelArtifacts>({
-    voxelsByPart: null,
+    meshesByPart: null,
     loading: true,
     error: null,
   });
 
   useEffect(() => {
-    const servable = parts.filter((p) => p.voxelsUrl);
+    const servable = parts.filter((p) => p.meshUrl);
     if (servable.length === 0) {
-      setState({ voxelsByPart: {}, loading: false, error: null });
+      setState({ meshesByPart: {}, loading: false, error: null });
       return;
     }
     let cancelled = false;
-    setState({ voxelsByPart: null, loading: true, error: null });
+    setState({ meshesByPart: null, loading: true, error: null });
 
-    fetchVoxelsByPart(servable)
-      .then((voxelsByPart) => {
+    fetchMeshesByPart(servable)
+      .then((meshesByPart) => {
         if (cancelled) return;
-        setState({ voxelsByPart, loading: false, error: null });
+        setState({ meshesByPart, loading: false, error: null });
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
         setState({
-          voxelsByPart: null,
+          meshesByPart: null,
           loading: false,
           error: cause instanceof Error ? cause.message : String(cause),
         });

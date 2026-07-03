@@ -194,10 +194,11 @@ pub struct VoxelGenResult {
 /// The regenerate result for one part of a voxel-generation run.
 ///
 /// For a static model this is the whole model's one part; for an animated model
-/// there is one per declared part. As with [`AssetFrameResult`], the
-/// [divergence](Self::cheat_divergence) between the isometric PNG regenerated from
-/// this part's operation log and the PNG the model left on disk is recorded (not
-/// gated) — a high divergence means the model wrote pixels the tool would not.
+/// there is one per declared part. Cheat detection is retired for the voxel family:
+/// the scored artifact is the emitted geometry (the `PartMesh`-shaped `mesh.json`
+/// every voxel-family binary emits) plus reviewer judgment of the model's own
+/// rendered preview, so — unlike the sprite [`AssetFrameResult`] — a voxel part
+/// carries no regenerated image and no cheat divergence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -205,14 +206,18 @@ pub struct VoxelPartResult {
     /// The part name this result records under: `model` for a static model, the
     /// declared `[[model.part]]` name for an animated model.
     pub name: String,
-    /// Run-root-relative path to the voxel data ([`VoxelsFile`]) regenerated from
-    /// this part's operation log — what the client renders in 3D.
+    /// Run-root-relative path to the `PartMesh`-shaped `mesh.json` this part's binary
+    /// emitted — **what the client renders in 3D** for every voxel-family kind (both
+    /// the cube kinds and the six surface-meshed kinds emit it). `mesh.json` for a
+    /// static kind, `meshes/<part>.json` per part for an animated one.
+    pub mesh: String,
+    /// Run-root-relative path to the sparse voxel data ([`VoxelsFile`]) regenerated
+    /// from this part's operation log. A secondary artifact retained for the two cube
+    /// kinds (which regenerate it); for a meshed kind — which emits no `voxels.json` —
+    /// this repeats [`Self::mesh`]. The client renders from [`Self::mesh`], not this.
     pub regenerated_voxels: String,
-    /// Run-root-relative path to the isometric PNG regenerated from this part's
-    /// operation log — the scored output for this part.
-    pub regenerated_image: String,
-    /// Run-root-relative path to the isometric PNG the model left on disk (this
-    /// part's `preview`), kept for the side-by-side comparison and the divergence.
+    /// Run-root-relative path to the isometric PNG the model rendered for this part
+    /// (its `preview`) — the reviewed image for this part.
     pub preview_image: String,
     /// Run-root-relative path to this part's recorded operation log.
     pub ops_log: String,
@@ -220,11 +225,6 @@ pub struct VoxelPartResult {
     pub operation_count: usize,
     /// How many occupied voxels the regenerated part contains.
     pub voxel_count: usize,
-    /// Divergence between the regenerated part preview and the model's on-disk
-    /// preview, in `0.0..=1.0` (0.0 is identical). `None` when the model left no
-    /// readable preview to compare.
-    #[serde(default)]
-    pub cheat_divergence: Option<f64>,
     /// Detail about anything that could not be evaluated for this part.
     #[serde(default)]
     pub detail: Option<String>,

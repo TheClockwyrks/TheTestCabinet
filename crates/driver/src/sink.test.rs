@@ -122,7 +122,7 @@ fn preview(frame: u32) -> AssetPreview {
         operation_count: 1,
         operation: None,
         image: String::new(),
-        voxels: None,
+        mesh: None,
     }
 }
 

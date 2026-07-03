@@ -1228,18 +1228,16 @@
       "type": "object"
     },
     "VoxelPartResult": {
-      "description": "The regenerate result for one part of a voxel-generation run.\n\nFor a static model this is the whole model's one part; for an animated model\nthere is one per declared part. As with [`AssetFrameResult`], the\n[divergence](Self::cheat_divergence) between the isometric PNG regenerated from\nthis part's operation log and the PNG the model left on disk is recorded (not\ngated) — a high divergence means the model wrote pixels the tool would not.",
+      "description": "The regenerate result for one part of a voxel-generation run.\n\nFor a static model this is the whole model's one part; for an animated model\nthere is one per declared part. Cheat detection is retired for the voxel family:\nthe scored artifact is the emitted geometry (the `PartMesh`-shaped `mesh.json`\nevery voxel-family binary emits) plus reviewer judgment of the model's own\nrendered preview, so — unlike the sprite [`AssetFrameResult`] — a voxel part\ncarries no regenerated image and no cheat divergence.",
       "properties": {
-        "cheatDivergence": {
-          "default": null,
-          "description": "Divergence between the regenerated part preview and the model's on-disk\npreview, in `0.0..=1.0` (0.0 is identical). `None` when the model left no\nreadable preview to compare.",
-          "format": "double",
-          "type": ["number", "null"]
-        },
         "detail": {
           "default": null,
           "description": "Detail about anything that could not be evaluated for this part.",
           "type": ["string", "null"]
+        },
+        "mesh": {
+          "description": "Run-root-relative path to the `PartMesh`-shaped `mesh.json` this part's binary\nemitted — **what the client renders in 3D** for every voxel-family kind (both\nthe cube kinds and the six surface-meshed kinds emit it). `mesh.json` for a\nstatic kind, `meshes/<part>.json` per part for an animated one.",
+          "type": "string"
         },
         "name": {
           "description": "The part name this result records under: `model` for a static model, the\ndeclared `[[model.part]]` name for an animated model.",
@@ -1256,15 +1254,11 @@
           "type": "string"
         },
         "previewImage": {
-          "description": "Run-root-relative path to the isometric PNG the model left on disk (this\npart's `preview`), kept for the side-by-side comparison and the divergence.",
-          "type": "string"
-        },
-        "regeneratedImage": {
-          "description": "Run-root-relative path to the isometric PNG regenerated from this part's\noperation log — the scored output for this part.",
+          "description": "Run-root-relative path to the isometric PNG the model rendered for this part\n(its `preview`) — the reviewed image for this part.",
           "type": "string"
         },
         "regeneratedVoxels": {
-          "description": "Run-root-relative path to the voxel data ([`VoxelsFile`]) regenerated from\nthis part's operation log — what the client renders in 3D.",
+          "description": "Run-root-relative path to the sparse voxel data ([`VoxelsFile`]) regenerated\nfrom this part's operation log. A secondary artifact retained for the two cube\nkinds (which regenerate it); for a meshed kind — which emits no `voxels.json` —\nthis repeats [`Self::mesh`]. The client renders from [`Self::mesh`], not this.",
           "type": "string"
         },
         "voxelCount": {
@@ -1276,8 +1270,8 @@
       },
       "required": [
         "name",
+        "mesh",
         "regeneratedVoxels",
-        "regeneratedImage",
         "previewImage",
         "opsLog",
         "operationCount",

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { act, render } from "@testing-library/react";
-import type { ModelSpec, VoxelsFile } from "@test-cabinet/run-record";
+import type { ModelSpec } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A stand-in for the three.js `VoxelRig` that records every instance built and
@@ -52,9 +53,13 @@ vi.mock("@test-cabinet/voxel-runtime/three", () => ({
 // Imported after the mocks are registered.
 import VoxelViewer from "./VoxelViewer";
 
-const VOXELS: VoxelsFile = {
-  dims: { width: 1, height: 1, depth: 1 },
-  voxels: [{ x: 0, y: 0, z: 0, color: "#ffffff" }],
+// A single-triangle {@link PartMesh} — enough geometry for the viewer to build a
+// rig and frame the camera without a real mesher.
+const MESH: PartMesh = {
+  positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+  normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+  colors: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+  indices: [0, 1, 2],
 };
 const RIG: ModelSpec = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [] };
 
@@ -73,7 +78,7 @@ describe("VoxelViewer", () => {
     await act(async () => {
       render(
         <StrictMode>
-          <VoxelViewer voxels={VOXELS} rig={RIG} mode="orbit" label="test" />
+          <VoxelViewer meshes={MESH} rig={RIG} mode="orbit" label="test" />
         </StrictMode>,
       );
     });
@@ -89,7 +94,7 @@ describe("VoxelViewer", () => {
     await act(async () => {
       const result = render(
         <StrictMode>
-          <VoxelViewer voxels={VOXELS} rig={RIG} mode="auto-rotate" label="test" />
+          <VoxelViewer meshes={MESH} rig={RIG} mode="auto-rotate" label="test" />
         </StrictMode>,
       );
       unmount = result.unmount;

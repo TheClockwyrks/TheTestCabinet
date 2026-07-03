@@ -1,11 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type {
-  AnimationSpec,
-  ModelSpec,
-  VoxelDims,
-  VoxelsFile,
-} from "@test-cabinet/run-record";
+import type { AnimationSpec, ModelSpec, VoxelDims } from "@test-cabinet/run-record";
+import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
@@ -15,19 +11,21 @@ import styles from "./RunDetailPages.module.scss";
 // it (see the capability guard below).
 const VoxelViewer = lazy(() => import("./VoxelViewer"));
 
-/** The fetched/streamed voxel data the viewer renders: one file for a static model,
- * or a map keyed by part name for a rig. `null`/empty renders the fallback. */
-export type ViewerVoxels = Record<string, VoxelsFile> | VoxelsFile | null;
+/** The fetched/streamed geometry the viewer renders: one {@link PartMesh} for a
+ * static model, or a map keyed by part name for a rig. `null`/empty renders the
+ * fallback. */
+export type ViewerMeshes = Record<string, PartMesh> | PartMesh | null;
 
-// Whether a voxel payload actually carries geometry to render (an empty map, or a
-// single file with no voxels, has nothing to show yet — fall back to the PNG).
-function hasVoxels(voxels: ViewerVoxels): boolean {
-  if (!voxels) return false;
-  if (Array.isArray((voxels as VoxelsFile).voxels)) {
-    return (voxels as VoxelsFile).voxels.length > 0;
+// Whether a mesh payload actually carries geometry to render (an empty map, or a
+// single mesh with no vertices, has nothing to show yet — fall back to the PNG).
+function hasMeshes(meshes: ViewerMeshes): boolean {
+  if (!meshes) return false;
+  const positions = (meshes as PartMesh).positions;
+  if (Array.isArray(positions) || ArrayBuffer.isView(positions)) {
+    return positions.length > 0;
   }
-  return Object.values(voxels as Record<string, VoxelsFile>).some(
-    (f) => f.voxels.length > 0,
+  return Object.values(meshes as Record<string, PartMesh>).some(
+    (m) => m.positions.length > 0,
   );
 }
 
@@ -62,7 +60,7 @@ function VoxelFallback({
 // The props shared by the inline viewer and its fullscreen twin (everything but the
 // zoom/mode/height that differ between them).
 interface ViewerProps {
-  voxels: Record<string, VoxelsFile> | VoxelsFile;
+  meshes: Record<string, PartMesh> | PartMesh;
   rig: ModelSpec;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
@@ -140,12 +138,12 @@ function FullscreenOverlay({
  *
  * Zoom is disabled inline (the model rotates but does not zoom); a "Fullscreen"
  * button expands the view into an overlay where both scroll-to-zoom and
- * grab-to-rotate are enabled. Callers pass already-resolved voxels — the post-run
- * view fetches each part's `voxels.json` first, the live view feeds the streamed
- * data straight in.
+ * grab-to-rotate are enabled. Callers pass already-resolved meshes — the post-run
+ * view fetches each part's `mesh.json` first, the live view feeds the streamed mesh
+ * straight in.
  */
 export function GuardedVoxelViewer({
-  voxels,
+  meshes,
   rig,
   mode,
   callerJoints,
@@ -156,7 +154,7 @@ export function GuardedVoxelViewer({
   height,
   fullscreenable = true,
 }: {
-  voxels: ViewerVoxels;
+  meshes: ViewerMeshes;
   rig: ModelSpec;
   mode: VoxelViewMode;
   callerJoints?: Record<string, number>;
@@ -180,11 +178,11 @@ export function GuardedVoxelViewer({
     <VoxelFallback url={fallbackUrl} label={label} height={height} />
   );
 
-  if (!enabled || !hasVoxels(voxels)) return fallback;
+  if (!enabled || !hasMeshes(meshes)) return fallback;
 
-  // `hasVoxels` guarantees `voxels` is non-null here.
+  // `hasMeshes` guarantees `meshes` is non-null here.
   const viewer: ViewerProps = {
-    voxels: voxels as Record<string, VoxelsFile> | VoxelsFile,
+    meshes: meshes as Record<string, PartMesh> | PartMesh,
     rig,
     callerJoints,
     animation,

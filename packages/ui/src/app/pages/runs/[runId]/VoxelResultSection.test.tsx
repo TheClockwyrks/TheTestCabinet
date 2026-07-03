@@ -10,19 +10,24 @@ vi.mock("../../../components/webgl", () => ({
   prefersReducedMotion: () => false,
 }));
 
-// The voxel data would otherwise be fetched from the artifact service; hand the
+// The mesh geometry would otherwise be fetched from the artifact service; hand the
 // viewer a ready part map so it mounts immediately.
 vi.mock("../../../data/galleryContext", () => ({
   useVoxelArtifacts: () => ({
-    voxelsByPart: {
-      chassis: { dims: { width: 1, height: 1, depth: 1 }, voxels: [] },
+    meshesByPart: {
+      chassis: {
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+        colors: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        indices: [0, 1, 2],
+      },
     },
     loading: false,
     error: null,
   }),
   // Referenced by the GIF-export button's encode closure (only on click, which
   // these tests don't trigger); present so the named import resolves.
-  fetchVoxelsByPart: vi.fn(),
+  fetchMeshesByPart: vi.fn(),
 }));
 
 // Stand in for the real (WebGL) viewer with a counter marker, so the test can
@@ -130,11 +135,9 @@ const RIG: ModelSpec = {
 function part(name: string): VoxelResultView["parts"][number] {
   return {
     name,
-    voxelsUrl: `voxels/${name}.json`,
-    regeneratedUrl: `regenerated/${name}.png`,
+    meshUrl: `meshes/${name}.json`,
     previewUrl: `parts/${name}.png`,
     actionsUrl: `parts/${name}.actions.json`,
-    cheatDivergence: 0,
     operationCount: 10,
     voxelCount: 100,
     detail: null,
