@@ -301,9 +301,11 @@ fn seed_voxel_tool(
         .map_err(|err| Error::Seeding(format!("invalid voxel background: {err}")))?;
 
     // The config the binary reads. For an animated model the `actions`/`preview`
-    // values are `{part}` templates and the config lists the declared parts (plus
-    // the `rig.json` path), so `voxel-anim init` and every operation resolve each
-    // part's separate files; for a static model they are plain paths.
+    // values are `{part}` templates and the config carries the `rig.json` path, so
+    // every operation resolves each part's separate files; for a static model they
+    // are plain paths. The parts themselves are NOT listed here — an animated case
+    // fixes no parts, so the model invents them at run time with `define-part` and the
+    // binary reads the growing part set straight from `rig.json`.
     let mut config = serde_json::json!({
         "width": voxel_spec.width,
         "height": voxel_spec.height,
@@ -312,9 +314,7 @@ fn seed_voxel_tool(
         "actions": actions,
         "preview": preview,
     });
-    if let Some(model) = &test_case.model {
-        let part_names: Vec<&str> = model.parts.iter().map(|p| p.name.as_str()).collect();
-        config["parts"] = serde_json::json!(part_names);
+    if test_case.model.is_some() {
         config["rig"] = serde_json::json!(crate::test_case::VOXEL_RIG_DEST);
     }
     // Every voxel-family kind — the two cube kinds and the six surface-meshed kinds —
@@ -378,8 +378,8 @@ fn seed_voxel_tool(
     }
 
     // Pre-seed `rig.json` from the required rig so the game-facing contract (the
-    // parts and joints the model must produce) exists from t=0; the `voxel-anim`
-    // binary rewrites it as the model refines pivots and adds parts/joints.
+    // required animation declarations) exists from t=0; the binary grows it as the
+    // model invents parts and joints and authors the animations' F-curves.
     if let Some(model) = &test_case.model {
         let rig = model_to_rig(model);
         let mut json = serde_json::to_string_pretty(&rig)

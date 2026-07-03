@@ -596,11 +596,28 @@ impl Validator for VoxelGenValidator {
             .voxel_mesh_dest()
             .expect("a voxel-family kind declares a mesh geometry path");
 
-        // One target for a static model (named `model`); one per declared part for
-        // an animated model, each with its own log, preview, client mesh, and — for a
-        // cube kind — the regenerated `voxels.json`.
-        let plans: Vec<PartPlan> = match test_case.model.as_ref() {
-            None => {
+        // Animated models invent their own parts, so the set to score comes from the
+        // PRODUCED rig (`rig.json`), not from any declared list: read it first, then
+        // build one target per produced part. A static model is the single implicit
+        // `model` target. A missing/unreadable `rig.json` is a recorded gap, not a
+        // crash.
+        let is_anim = test_case.model.is_some();
+        let mut run_notes: Vec<String> = Vec::new();
+        let produced_rig = if is_anim {
+            match read_rig(repo) {
+                Ok(rig) => Some(rig),
+                Err(detail) => {
+                    run_notes.push(detail);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let plans: Vec<PartPlan> = match produced_rig.as_ref() {
+            // A static model: one implicit `model` target.
+            None if !is_anim => {
                 let mesh_rel = mesh_template.map(PathBuf::from);
                 let geometry_rel = mesh_rel
                     .as_ref()
@@ -615,7 +632,11 @@ impl Validator for VoxelGenValidator {
                     mesh_rel,
                 }]
             }
-            Some(model) => model
+            // An animated model whose rig could not be read: nothing to score (the gap
+            // is already noted); carry on with no parts.
+            None => Vec::new(),
+            // An animated model: one target per part the model actually produced.
+            Some(rig) => rig
                 .parts
                 .iter()
                 .map(|part| {
@@ -641,7 +662,6 @@ impl Validator for VoxelGenValidator {
                 .collect(),
         };
 
-        let is_anim = test_case.model.is_some();
         let mut parts = Vec::with_capacity(plans.len());
         for plan in &plans {
             // A meshed kind parses the emitted `mesh.json` (never re-meshing); a cube
@@ -676,21 +696,9 @@ impl Validator for VoxelGenValidator {
             }
         }
 
-        // For an animated model, read the produced rig and reconcile it against the
-        // required rig. A missing/unreadable `rig.json`, and any required part or
-        // joint absent from it, is recorded in the run-level detail — not gated.
-        let mut run_notes: Vec<String> = Vec::new();
-        let produced_rig = if is_anim {
-            match read_rig(repo) {
-                Ok(rig) => Some(rig),
-                Err(detail) => {
-                    run_notes.push(detail);
-                    None
-                }
-            }
-        } else {
-            None
-        };
+        // Reconcile the produced rig against the required animations: each required
+        // animation must be present in `rig.json` and actually animate. A gap is
+        // recorded in the run-level detail — not gated.
         if let (Some(required), Some(produced)) = (test_case.model.as_ref(), produced_rig.as_ref())
         {
             reconcile_rig(required, produced, &mut run_notes);
@@ -1028,28 +1036,12 @@ fn keyframe_to_spec(kf: &test_cabinet_voxel::rig::Keyframe) -> KeyframeSpec {
     }
 }
 
-/// Reconcile the produced rig against the required one, noting any required part,
-/// joint, or animation the model did not produce. These are the game-facing
-/// contract's scoring targets, so a gap is recorded (in the run-level detail) rather
-/// than crashing the validator. For each required animation, the produced rig must
-/// carry one of the same name whose authored tracks drive every required joint.
+/// Reconcile the produced rig against the required animations — the **only** contract
+/// a case fixes (parts and joints are model-invented). For each required animation the
+/// produced rig must carry one of the same name that actually **animates** (at least
+/// one keyframed track); a missing or empty required animation is recorded in the
+/// run-level detail rather than crashing the validator.
 fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<String>) {
-    for part in &required.parts {
-        if !produced.parts.iter().any(|p| p.name == part.name) {
-            notes.push(format!(
-                "required part `{}` is missing from the produced rig",
-                part.name
-            ));
-        }
-    }
-    for joint in &required.joints {
-        if !produced.joints.iter().any(|j| j.name == joint.name) {
-            notes.push(format!(
-                "required joint `{}` is missing from the produced rig",
-                joint.name
-            ));
-        }
-    }
     for animation in &required.animations {
         let Some(produced_anim) = produced
             .animations
@@ -1062,17 +1054,13 @@ fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<Str
             ));
             continue;
         };
-        for joint in &animation.joints {
-            let driven = produced_anim
-                .tracks
-                .iter()
-                .any(|t| &t.joint == joint && !t.keyframes.is_empty());
-            if !driven {
-                notes.push(format!(
-                    "required animation `{}` does not drive joint `{joint}`",
-                    animation.name
-                ));
-            }
+        let animates = produced_anim.tracks.iter().any(|t| !t.keyframes.is_empty());
+        if !animates {
+            notes.push(format!(
+                "required animation `{}` is declared but animates nothing (no keyframed \
+                 tracks)",
+                animation.name
+            ));
         }
     }
 }

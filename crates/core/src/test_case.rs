@@ -443,100 +443,43 @@ struct ManifestVoxel {
 /// at run time the model authors each required animation's motion and may add
 /// further parts, joints, and animations of its own (recorded in `rig.json`) beyond
 /// what this table requires.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestModel {
-    /// The declared parts, as repeated `[[model.part]]` tables. At least one is
-    /// required; the first is the root.
-    #[serde(default, rename = "part")]
-    part: Vec<ManifestPart>,
-    /// The declared joints, as repeated `[[model.joint]]` tables.
-    #[serde(default, rename = "joint")]
-    joint: Vec<ManifestJoint>,
     /// The required animation declarations, as repeated `[[model.animation]]`
-    /// tables — the animations the model must author (name, intent, and the driven
-    /// joints; the keyframes are authored at run time, not declared here).
+    /// tables — the animations the model must author. A case declares **only**
+    /// animations: it names each required animation (and whether it is a
+    /// self-playing idle or a game-triggered playable), and leaves the parts,
+    /// joints, and F-curve motion that realize it entirely to the model.
     #[serde(default, rename = "animation")]
     animation: Vec<ManifestAnimation>,
 }
 
-// `ManifestModel` owns joints that carry `f64` range fields, so it takes a manual
-// `Eq` for the same reason as `ManifestSheetSequence` above.
-impl Eq for ManifestModel {}
-
-/// A single `[[model.part]]` entry: one named voxel component of the rig and its
-/// attachment point in its parent's local coordinates.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct ManifestPart {
-    /// Stable name of this part (for example `chassis`, `turret`).
-    name: String,
-    /// The parent part this one is attached to, or omitted for the root part.
-    #[serde(default)]
-    parent: Option<String>,
-    /// The attachment point in the parent's local voxel coordinates (`[x, y, z]`).
-    /// Defaults to the origin `[0, 0, 0]` when omitted.
-    #[serde(default)]
-    pivot: Option<[i64; 3]>,
-}
-
-/// A single `[[model.joint]]` entry: one named degree of freedom on a part. `kind`
-/// (`rotation`/`translation`), `axis` (`x`/`y`/`z`), and `drive` (`caller`/`auto`)
-/// are kept as strings here and parsed at resolution.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-struct ManifestJoint {
-    /// Stable name of this joint; the parameter a game addresses.
-    name: String,
-    /// The part this joint moves (a declared `[[model.part]]` name).
-    part: String,
-    /// Whether this joint rotates or translates the part (`rotation`/`translation`).
-    kind: String,
-    /// The axis the joint acts about (rotation) or along (translation): `x`/`y`/`z`.
-    axis: String,
-    /// The joint origin in the part's local voxel coordinates (`[x, y, z]`).
-    pivot: [i64; 3],
-    /// Minimum value: radians for a rotation, voxel units for a translation.
-    min: f64,
-    /// Maximum value.
-    max: f64,
-    /// The rest/default value, within `[min, max]`.
-    rest: f64,
-    /// A fixed mount translation `[x, y, z]` (voxels) applied in addition to the
-    /// driven motion — the translation half of a compound attach. Optional.
-    #[serde(default)]
-    offset: Option<[f64; 3]>,
-    /// A fixed mount rotation `[x, y, z]` (radians, Euler X→Y→Z about `pivot`)
-    /// applied in addition to the driven motion — the rotation half. Optional.
-    #[serde(default)]
-    orient: Option<[f64; 3]>,
-    /// Who drives this joint: `caller` (a game) or `auto` (driven only by the
-    /// model's animations).
-    drive: String,
-}
-
-// `ManifestJoint` carries `f64` range fields, so it takes a manual `Eq` for the
-// same reason as `ManifestSheetSequence` above.
-impl Eq for ManifestJoint {}
-
 /// A single `[[model.animation]]` entry: one **required** animation the model must
-/// author. The case declares the animation's identity and intent — its `name`,
-/// `period_ms`, `loop`/`auto_play` flags, and the `joints` it must drive — but not
-/// its keyframes: the model authors the F-curve motion at run time with the
-/// `voxel-anim` `define-animation`/`add-keyframe` subcommands.
+/// author. A case declares only the animation's **identity** — its `name` and
+/// whether it `loop`s and/or `auto_play`s — never its parts, joints, period, or
+/// keyframes. The model invents whatever rig (parts and joints) it needs, authors the
+/// F-curve motion (and chooses the period) at run time with the
+/// `define-animation`/`add-keyframe` subcommands, and the reviewer scores the motion
+/// it produced against the brief.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestAnimation {
     /// Stable, unique name a game plays this animation by.
     name: String,
-    /// The period in milliseconds (one full loop across every track).
-    period_ms: u32,
     /// Whether the animation loops (true) or plays once and holds the last pose
-    /// (false). `loop` is a Rust keyword, so the field is `r#loop`.
+    /// (false). Defaults to `true`. `loop` is a Rust keyword, so the field is
+    /// `r#loop`.
+    #[serde(default = "default_true")]
     r#loop: bool,
-    /// Whether the animation plays continuously by default (a decorative idle) or
-    /// is a named playable a game triggers. Defaults to `false`.
+    /// Whether the animation plays continuously by default (a decorative idle, such
+    /// as a sweeping radar) or is a named playable a game triggers (a walk, a
+    /// recoil). Defaults to `false`.
     #[serde(default)]
     auto_play: bool,
-    /// The joints the model is required to drive (all declared `[[model.joint]]`
-    /// names).
-    joints: Vec<String>,
+}
+
+/// The serde default for [`ManifestAnimation::r#loop`] — most animations loop.
+fn default_true() -> bool {
+    true
 }
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
@@ -3908,168 +3851,18 @@ fn resolve_sheet(
 /// the model authors at run time. `invalid` is the resolver's error constructor,
 /// threaded in so messages carry the case's slug and version.
 fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> Result<ModelSpec> {
-    if model.part.is_empty() {
+    // A case's rig contract is **only** the animations the model must author. Parts,
+    // joints, pivots, and F-curves are all model-invented — the test measures whether
+    // a model can work out the pieces it needs and animate them, not whether it can
+    // follow a prescribed rig. So the required set is a list of animation names (with
+    // their loop/auto-play identity); the produced `rig.json` is scored against it.
+    if model.animation.is_empty() {
         return Err(invalid(
-            "a [model] must declare at least one [[model.part]]".to_string(),
+            "a [model] must declare at least one [[model.animation]] — the only rig \
+             contract a case fixes is which animations the model must author"
+                .to_string(),
         ));
     }
-
-    // Parts: unique, non-empty names.
-    let mut parts: Vec<PartSpec> = Vec::with_capacity(model.part.len());
-    for part in &model.part {
-        if part.name.trim().is_empty() {
-            return Err(invalid("model part `name` must not be empty".to_string()));
-        }
-        if parts.iter().any(|p| p.name == part.name) {
-            return Err(invalid(format!(
-                "duplicate model part name `{}`",
-                part.name
-            )));
-        }
-        parts.push(PartSpec {
-            name: part.name.clone(),
-            parent: part.parent.clone(),
-            pivot: part.pivot.unwrap_or([0, 0, 0]),
-        });
-    }
-    // The first declared part is the root, so it must have no parent.
-    if parts[0].parent.is_some() {
-        return Err(invalid(format!(
-            "the first model part `{}` is the root and must declare no `parent`",
-            parts[0].name
-        )));
-    }
-    // Every declared parent must reference a declared part, and no part may be its
-    // own parent.
-    for part in &parts {
-        if let Some(parent) = &part.parent {
-            if parent == &part.name {
-                return Err(invalid(format!(
-                    "model part `{}` is its own parent",
-                    part.name
-                )));
-            }
-            if !parts.iter().any(|p| &p.name == parent) {
-                return Err(invalid(format!(
-                    "model part `{}` names parent `{}`, which is not a declared part",
-                    part.name, parent
-                )));
-            }
-        }
-    }
-    // No cycles: walking any part's parent chain must reach a root within `len`
-    // hops (a longer walk means it revisited a part, i.e. a cycle).
-    for part in &parts {
-        let mut current = part;
-        let mut hops = 0usize;
-        while let Some(parent) = &current.parent {
-            current = parts
-                .iter()
-                .find(|p| &p.name == parent)
-                .expect("parent references validated above");
-            hops += 1;
-            if hops > parts.len() {
-                return Err(invalid(format!(
-                    "model part `{}` is part of a parent cycle",
-                    part.name
-                )));
-            }
-        }
-    }
-
-    // Joints: unique non-empty names referencing declared parts, with parseable
-    // kind/axis/drive and a valid `[min, rest, max]` range.
-    let mut joints: Vec<JointSpec> = Vec::with_capacity(model.joint.len());
-    for joint in &model.joint {
-        if joint.name.trim().is_empty() {
-            return Err(invalid("model joint `name` must not be empty".to_string()));
-        }
-        if joints.iter().any(|j| j.name == joint.name) {
-            return Err(invalid(format!(
-                "duplicate model joint name `{}`",
-                joint.name
-            )));
-        }
-        if !parts.iter().any(|p| p.name == joint.part) {
-            return Err(invalid(format!(
-                "model joint `{}` names part `{}`, which is not a declared part",
-                joint.name, joint.part
-            )));
-        }
-        let kind = match joint.kind.as_str() {
-            "rotation" => JointKindSpec::Rotation,
-            "translation" => JointKindSpec::Translation,
-            other => {
-                return Err(invalid(format!(
-                    "model joint `{}` has invalid kind `{other}` (expected `rotation` or \
-                     `translation`)",
-                    joint.name
-                )));
-            }
-        };
-        let axis = match joint.axis.as_str() {
-            "x" => AxisSpec::X,
-            "y" => AxisSpec::Y,
-            "z" => AxisSpec::Z,
-            other => {
-                return Err(invalid(format!(
-                    "model joint `{}` has invalid axis `{other}` (expected `x`, `y`, or `z`)",
-                    joint.name
-                )));
-            }
-        };
-        let drive = match joint.drive.as_str() {
-            "caller" => DriveKindSpec::Caller,
-            "auto" => DriveKindSpec::Auto,
-            other => {
-                return Err(invalid(format!(
-                    "model joint `{}` has invalid drive `{other}` (expected `caller` or `auto`)",
-                    joint.name
-                )));
-            }
-        };
-        if !(joint.min.is_finite() && joint.max.is_finite() && joint.rest.is_finite()) {
-            return Err(invalid(format!(
-                "model joint `{}` has a non-finite min/max/rest",
-                joint.name
-            )));
-        }
-        if !(joint.min <= joint.rest && joint.rest <= joint.max) {
-            return Err(invalid(format!(
-                "model joint `{}` must satisfy min <= rest <= max",
-                joint.name
-            )));
-        }
-        // A declared mount (offset/orient) must be finite; an all-zero mount is
-        // dropped to `None` so it never bloats the seeded `rig.json`.
-        let mount_finite = |v: &Option<[f64; 3]>| v.map(|a| a.iter().all(|c| c.is_finite()));
-        if mount_finite(&joint.offset) == Some(false) || mount_finite(&joint.orient) == Some(false)
-        {
-            return Err(invalid(format!(
-                "model joint `{}` has a non-finite offset/orient",
-                joint.name
-            )));
-        }
-        let nonzero = |v: Option<[f64; 3]>| v.filter(|a| a.iter().any(|c| *c != 0.0));
-        joints.push(JointSpec {
-            name: joint.name.clone(),
-            part: joint.part.clone(),
-            kind,
-            axis,
-            pivot: joint.pivot,
-            min: joint.min,
-            max: joint.max,
-            rest: joint.rest,
-            offset: nonzero(joint.offset),
-            orient: nonzero(joint.orient),
-            drive,
-        });
-    }
-
-    // Animations: each `[[model.animation]]` is a REQUIRED declaration — a name, its
-    // intent, and the joints it must drive, but no keyframes. Validate the name,
-    // period, and joint references, then build an [`AnimationSpec`] declaration with
-    // empty `tracks` (seeded into `rig.json`; the model authors the F-curves).
     let mut animations: Vec<AnimationSpec> = Vec::with_capacity(model.animation.len());
     for animation in &model.animation {
         if animation.name.trim().is_empty() {
@@ -4083,47 +3876,21 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
                 animation.name
             )));
         }
-        if animation.period_ms == 0 {
-            return Err(invalid(format!(
-                "model animation `{}` must declare a `period_ms` greater than zero",
-                animation.name
-            )));
-        }
-        if animation.joints.is_empty() {
-            return Err(invalid(format!(
-                "model animation `{}` must declare at least one required joint",
-                animation.name
-            )));
-        }
-        let mut seen: Vec<&String> = Vec::with_capacity(animation.joints.len());
-        for joint in &animation.joints {
-            if !joints.iter().any(|j| &j.name == joint) {
-                return Err(invalid(format!(
-                    "model animation `{}` names joint `{joint}`, which is not a declared joint",
-                    animation.name
-                )));
-            }
-            if seen.contains(&joint) {
-                return Err(invalid(format!(
-                    "model animation `{}` names joint `{joint}` more than once",
-                    animation.name
-                )));
-            }
-            seen.push(joint);
-        }
+        // The period and the driven joints are the model's to choose, so the required
+        // declaration carries a placeholder period (`0`) and no joints; the produced
+        // rig supplies the real values, which is what the reviewer scores.
         animations.push(AnimationSpec {
             name: animation.name.clone(),
-            period_ms: animation.period_ms,
+            period_ms: 0,
             looping: animation.r#loop,
             auto_play: animation.auto_play,
-            joints: animation.joints.clone(),
+            joints: Vec::new(),
             tracks: Vec::new(),
         });
     }
-
     Ok(ModelSpec {
-        parts,
-        joints,
+        parts: Vec::new(),
+        joints: Vec::new(),
         animations,
     })
 }

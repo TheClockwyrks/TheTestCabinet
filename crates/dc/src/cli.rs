@@ -745,8 +745,9 @@ pub fn render_scene(config: &AnimConfig) -> Result<Field, String> {
     let volume = bounds(config.extents());
     let grid = grid_config();
     let background = config.background()?;
-    let mut logs = Vec::with_capacity(config.parts.len());
-    for part in &config.parts {
+    let parts = config.declared_parts();
+    let mut logs = Vec::with_capacity(parts.len());
+    for part in &parts {
         logs.push(read_actions(&config.actions_for(part))?);
     }
     let field = compose_scene(volume, &grid, &logs);

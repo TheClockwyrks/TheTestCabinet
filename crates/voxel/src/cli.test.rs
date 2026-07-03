@@ -23,7 +23,7 @@
 //! need no GPU and are never gated.
 
 use super::*;
-use crate::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
+use crate::rig::{Drive, Interp, Joint, JointKind, Keyframe, Part, Rig};
 use clap::Parser;
 
 /// A minimal parser that flattens [`OpCommand`] so a single operation can be parsed
@@ -134,7 +134,6 @@ fn anim_config_templates_per_part_paths() {
         height: 32,
         depth: 32,
         background: "transparent".to_string(),
-        parts: vec!["chassis".to_string(), "turret".to_string()],
         actions: "parts/{part}.actions.json".to_string(),
         preview: "parts/{part}.png".to_string(),
         mesh: "parts/{part}.mesh.json".to_string(),
@@ -155,6 +154,44 @@ fn anim_config_templates_per_part_paths() {
         PathBuf::from("parts/chassis.mesh.json")
     );
     assert_eq!(config.scene_for("front"), PathBuf::from("scene/front.png"));
+}
+
+#[test]
+fn declared_parts_and_has_part_read_the_rig() {
+    // Parts are model-invented: the config's authoritative part list is whatever the
+    // rig (`rig.json`) carries, not a fixed declared set. Before any part exists (no
+    // rig file), the list is empty; once the rig names a part, it appears.
+    let dir = tempdir();
+    let rig_path = dir.join("rig.json");
+    let config = AnimConfig {
+        width: 8,
+        height: 8,
+        depth: 8,
+        background: "transparent".to_string(),
+        actions: "parts/{part}.actions.json".to_string(),
+        preview: "parts/{part}.png".to_string(),
+        mesh: "parts/{part}.mesh.json".to_string(),
+        scene: "scene/{view}.png".to_string(),
+        rig: rig_path.clone(),
+        live: None,
+    };
+    // No rig file yet: no parts are defined.
+    assert!(config.declared_parts().is_empty());
+    assert!(!config.has_part("chassis"));
+
+    // A rig naming `chassis` makes it — and only it — a valid target.
+    Rig {
+        parts: vec![Part {
+            name: "chassis".to_string(),
+            parent: None,
+            pivot: [0, 0, 0],
+        }],
+        joints: Vec::new(),
+        animations: Vec::new(),
+    }
+    .save(&rig_path)
+    .expect("save rig");
+    assert_eq!(config.declared_parts(), vec!["chassis".to_string()]);
     assert!(config.has_part("chassis"));
     assert!(!config.has_part("barrel"));
 }
@@ -198,7 +235,6 @@ fn render_scene_writes_every_view() {
         height: 6,
         depth: 6,
         background: "transparent".to_string(),
-        parts: vec!["chassis".to_string()],
         actions: dir
             .join("parts/{part}.actions.json")
             .to_string_lossy()

@@ -91,9 +91,6 @@ pub struct AnimConfig {
     /// Preview clear color: `transparent` or a hex color.
     #[serde(default = "default_background")]
     pub background: String,
-    /// The part names this rig declares. `init` initializes each; an operation must
-    /// target one of these.
-    pub parts: Vec<String>,
     /// Template for a part's action-log path, with `{part}` replaced by the part
     /// name (for example `parts/{part}.actions.json`).
     #[serde(default = "default_anim_actions")]
@@ -155,9 +152,21 @@ impl AnimConfig {
         PathBuf::from(self.scene.replace("{view}", view))
     }
 
-    /// Whether `part` is one of the declared parts.
+    /// The parts currently defined in the rig (`rig.json`). Parts are **model-
+    /// invented**: an animated case fixes no parts, so the model creates them at run
+    /// time with `define-part` and `rig.json` is the authoritative, growing registry.
+    /// Returns an empty list before any part is defined (or if the rig file is absent
+    /// or unreadable) — the model has simply not defined a part yet.
+    pub fn declared_parts(&self) -> Vec<String> {
+        crate::rig::Rig::load(&self.rig)
+            .map(|rig| rig.parts.into_iter().map(|p| p.name).collect())
+            .unwrap_or_default()
+    }
+
+    /// Whether `part` has been defined in the rig (`define-part`), so a field
+    /// operation may target it.
     pub fn has_part(&self, part: &str) -> bool {
-        self.parts.iter().any(|p| p == part)
+        self.declared_parts().iter().any(|p| p == part)
     }
 }
 

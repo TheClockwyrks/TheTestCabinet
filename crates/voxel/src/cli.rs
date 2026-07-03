@@ -677,8 +677,9 @@ pub fn compose_scene(dims: &Dims, part_logs: &[Vec<Operation>]) -> VoxelSet {
 pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
     let volume = dims(config.extents());
     let background = config.background()?;
-    let mut logs = Vec::with_capacity(config.parts.len());
-    for part in &config.parts {
+    let parts = config.declared_parts();
+    let mut logs = Vec::with_capacity(parts.len());
+    for part in &parts {
         logs.push(read_actions(&config.actions_for(part))?);
     }
     let set = compose_scene(&volume, &logs);

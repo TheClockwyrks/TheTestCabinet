@@ -2,9 +2,7 @@
 
 use std::fs;
 
-use super::{
-    AssetKind, AxisSpec, BuildCommands, DriveKindSpec, JointKindSpec, TestCaseCatalog, TestType,
-};
+use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -499,9 +497,10 @@ variants = [\"variants/base.toml\"]\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the model is to the brief.\"\n";
 
-/// A complete, valid animated voxel (`voxel-animation`) manifest: a `chassis` root,
-/// a `turret` child, and a caller-driven `turret_yaw` rotation joint. The
-/// preview/action paths are `{part}` templates since every part is a separate file.
+/// A complete, valid animated voxel (`voxel-animation`) manifest. Its rig contract is
+/// only the required animations — a single `walk` — because parts and joints are
+/// model-invented. The preview/action paths are `{part}` templates since every part
+/// is a separate file.
 const VALID_VOXEL_ANIM_MANIFEST: &str = "\
 slug = \"sprite\"\n\
 name = \"Tank\"\n\
@@ -514,10 +513,7 @@ variants = [\"variants/base.toml\"]\n\
 [voxel]\nwidth = 24\nheight = 16\ndepth = 24\nbackground = \"transparent\"\n\
 [tool]\nbinary = \"voxel-anim\"\npreview = \"parts/{part}.png\"\n\
 [output]\nactions = \"parts/{part}.actions.json\"\n\
-[[model.part]]\nname = \"chassis\"\npivot = [0, 0, 0]\n\
-[[model.part]]\nname = \"turret\"\nparent = \"chassis\"\npivot = [12, 8, 12]\n\
-[[model.joint]]\nname = \"turret_yaw\"\npart = \"turret\"\nkind = \"rotation\"\n\
-axis = \"y\"\npivot = [12, 8, 12]\nmin = -3.14159\nmax = 3.14159\nrest = 0.0\ndrive = \"caller\"\n\
+[[model.animation]]\nname = \"walk\"\n\
 [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
 [[domain]]\nid = \"fidelity\"\ndescription = \"How close the tank is to the brief.\"\n";
 
@@ -564,8 +560,7 @@ fn voxel_model_rejects_a_part_token() {
 
 #[test]
 fn voxel_model_rejects_a_model_table() {
-    let manifest =
-        format!("{VALID_VOXEL_MODEL_MANIFEST}[[model.part]]\nname = \"body\"\npivot = [0, 0, 0]\n");
+    let manifest = format!("{VALID_VOXEL_MODEL_MANIFEST}[[model.animation]]\nname = \"idle\"\n");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -584,78 +579,78 @@ fn voxel_animation_resolves_its_model() {
     let voxel = version.voxel.as_ref().expect("voxel");
     assert_eq!((voxel.width, voxel.height, voxel.depth), (24, 16, 24));
     let model = version.model.as_ref().expect("model");
-    // Parts resolve in declared order; the first is the root (no parent).
-    assert_eq!(model.parts.len(), 2);
-    assert_eq!(model.parts[0].name, "chassis");
-    assert!(model.parts[0].parent.is_none());
-    assert_eq!(model.parts[0].pivot, [0, 0, 0]);
-    assert_eq!(model.parts[1].name, "turret");
-    assert_eq!(model.parts[1].parent.as_deref(), Some("chassis"));
-    // The required caller joint the game drives.
-    assert_eq!(model.joints.len(), 1);
-    let joint = &model.joints[0];
-    assert_eq!(joint.name, "turret_yaw");
-    assert_eq!(joint.part, "turret");
-    assert_eq!(joint.kind, JointKindSpec::Rotation);
-    assert_eq!(joint.axis, AxisSpec::Y);
-    assert_eq!(joint.drive, DriveKindSpec::Caller);
-    assert_eq!(joint.rest, 0.0);
-    // A case with no [[model.animation]] resolves to no animation declarations.
-    assert!(model.animations.is_empty());
+    // The contract is animations-only: parts and joints are model-invented, so the
+    // required model declares none of them.
+    assert!(model.parts.is_empty(), "parts are model-invented");
+    assert!(model.joints.is_empty(), "joints are model-invented");
+    // A single required animation, `walk`, defaulting to looping and non-auto-play.
+    assert_eq!(model.animations.len(), 1);
+    let animation = &model.animations[0];
+    assert_eq!(animation.name, "walk");
+    assert!(animation.looping, "loop defaults to true");
+    assert!(!animation.auto_play, "auto_play defaults to false");
+    // The period and driven joints are the model's to choose, so the declaration
+    // carries a placeholder period and no joints/keyframes.
+    assert_eq!(animation.period_ms, 0);
+    assert!(animation.joints.is_empty());
+    assert!(animation.tracks.is_empty());
 }
 
 #[test]
-fn voxel_animation_resolves_a_required_animation() {
-    // A `[[model.animation]]` declares a required animation the model must author:
-    // its name, intent, and driven joints — but no keyframes (empty `tracks`).
+fn voxel_animation_resolves_a_self_playing_animation() {
+    // A required animation may declare its identity — `loop`/`auto_play` — but never
+    // parts, joints, a period, or keyframes.
     let manifest = format!(
-        "{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"sweep\"\nperiod_ms = 2000\n\
-         loop = true\nauto_play = true\njoints = [\"turret_yaw\"]\n"
+        "{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"radar_spin\"\n\
+         loop = true\nauto_play = true\n"
     );
     let version = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
         .expect("resolve");
     let model = version.model.as_ref().expect("model");
-    assert_eq!(model.animations.len(), 1);
-    let animation = &model.animations[0];
-    assert_eq!(animation.name, "sweep");
-    assert_eq!(animation.period_ms, 2000);
-    assert!(animation.looping);
-    assert!(animation.auto_play);
-    assert_eq!(animation.joints, vec!["turret_yaw".to_string()]);
+    assert_eq!(model.animations.len(), 2);
+    let spin = &model.animations[1];
+    assert_eq!(spin.name, "radar_spin");
+    assert!(spin.looping);
+    assert!(spin.auto_play, "a self-playing idle");
+    assert_eq!(spin.period_ms, 0, "the model chooses the period");
+    assert!(spin.joints.is_empty(), "joints are model-invented");
+}
+
+#[test]
+fn voxel_animation_rejects_a_model_with_no_animation() {
+    // A [model] whose only job is to name required animations must name at least one:
+    // an empty [model] table is rejected.
+    let manifest =
+        VALID_VOXEL_ANIM_MANIFEST.replace("[[model.animation]]\nname = \"walk\"\n", "[model]\n");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [model] with no animation is rejected");
     assert!(
-        animation.tracks.is_empty(),
-        "a required declaration carries no keyframes"
+        format!("{err}").contains("at least one [[model.animation]]"),
+        "got: {err}"
     );
 }
 
 #[test]
-fn voxel_animation_rejects_an_animation_naming_an_undeclared_joint() {
-    let manifest = format!(
-        "{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"sweep\"\nperiod_ms = 2000\n\
-         loop = true\njoints = [\"ghost\"]\n"
-    );
+fn voxel_animation_rejects_a_duplicate_animation_name() {
+    let manifest = format!("{VALID_VOXEL_ANIM_MANIFEST}[[model.animation]]\nname = \"walk\"\n");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("an animation naming an undeclared joint is rejected");
+        .expect_err("two required animations of the same name are rejected");
     assert!(
-        format!("{err}").contains("names joint `ghost`, which is not a declared joint"),
+        format!("{err}").contains("duplicate model animation name `walk`"),
         "got: {err}"
     );
 }
 
 #[test]
 fn voxel_animation_requires_a_model_table() {
-    // Drop the whole [model] block (both parts, the joint).
-    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace(
-        "[[model.part]]\nname = \"chassis\"\npivot = [0, 0, 0]\n\
-[[model.part]]\nname = \"turret\"\nparent = \"chassis\"\npivot = [12, 8, 12]\n\
-[[model.joint]]\nname = \"turret_yaw\"\npart = \"turret\"\nkind = \"rotation\"\n\
-axis = \"y\"\npivot = [12, 8, 12]\nmin = -3.14159\nmax = 3.14159\nrest = 0.0\ndrive = \"caller\"\n",
-        "",
-    );
+    // Drop the whole [model] block (its one animation declaration).
+    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("[[model.animation]]\nname = \"walk\"\n", "");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -679,74 +674,6 @@ fn voxel_animation_requires_a_part_token() {
         format!("{err}").contains("must contain `{part}`"),
         "got: {err}"
     );
-}
-
-#[test]
-fn voxel_animation_rejects_a_dangling_parent() {
-    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("parent = \"chassis\"", "parent = \"nope\"");
-    let err = asset_catalog(&manifest)
-        .1
-        .resolve("sprite", "v1.0.0")
-        .expect_err("a part naming an undeclared parent is rejected");
-    assert!(
-        format!("{err}").contains("names parent `nope`, which is not a declared part"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn voxel_animation_rejects_a_dangling_joint_part() {
-    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("part = \"turret\"", "part = \"ghost\"");
-    let err = asset_catalog(&manifest)
-        .1
-        .resolve("sprite", "v1.0.0")
-        .expect_err("a joint naming an undeclared part is rejected");
-    assert!(
-        format!("{err}").contains("names part `ghost`, which is not a declared part"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn voxel_animation_rejects_rest_out_of_range() {
-    let manifest = VALID_VOXEL_ANIM_MANIFEST.replace("rest = 0.0", "rest = 9.0");
-    let err = asset_catalog(&manifest)
-        .1
-        .resolve("sprite", "v1.0.0")
-        .expect_err("a rest outside [min, max] is rejected");
-    assert!(
-        format!("{err}").contains("min <= rest <= max"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn voxel_animation_rejects_a_parent_cycle() {
-    // Three parts: a root plus two that name each other as parents. The root has no
-    // parent (so the root check passes) and every parent reference is declared, but
-    // `b` and `c` form a cycle.
-    let manifest = "\
-slug = \"sprite\"\n\
-name = \"Cycle\"\n\
-difficulty = \"hard\"\n\
-tags = [\"asset-generation\"]\n\
-prompt = \"prompt.hbs\"\n\
-type = \"asset-generation\"\n\
-asset_kind = \"voxel-animation\"\n\
-variants = [\"variants/base.toml\"]\n\
-[voxel]\nwidth = 8\nheight = 8\ndepth = 8\nbackground = \"transparent\"\n\
-[tool]\nbinary = \"voxel-anim\"\npreview = \"parts/{part}.png\"\n\
-[output]\nactions = \"parts/{part}.actions.json\"\n\
-[[model.part]]\nname = \"root\"\npivot = [0, 0, 0]\n\
-[[model.part]]\nname = \"b\"\nparent = \"c\"\npivot = [0, 0, 0]\n\
-[[model.part]]\nname = \"c\"\nparent = \"b\"\npivot = [0, 0, 0]\n\
-[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
-[[domain]]\nid = \"fidelity\"\ndescription = \"x\"\n";
-    let err = asset_catalog(manifest)
-        .1
-        .resolve("sprite", "v1.0.0")
-        .expect_err("a parent cycle is rejected");
-    assert!(format!("{err}").contains("parent cycle"), "got: {err}");
 }
 
 #[test]

@@ -271,7 +271,11 @@ fn run(cli: Cli) -> Result<(), String> {
             let config: AnimConfig = cli::read_config(&cli.config)?;
             let volume = cli::bounds(config.extents());
             let background = config.background()?;
-            for part in &config.parts {
+            // Parts are model-invented; `define-part` initializes each part's files as
+            // it is created, so init only (re)initializes whatever the rig already
+            // carries and renders the (blank) assembled scene.
+            let parts = config.declared_parts();
+            for part in &parts {
                 cli::init_target(
                     volume,
                     background,
@@ -280,13 +284,11 @@ fn run(cli: Cli) -> Result<(), String> {
                     &config.mesh_for(part),
                 )?;
             }
-            // Render the (blank) assembled scene too, so every scene view exists from
-            // the start and updates in step with the per-part previews.
             cli::render_scene(&config)?;
             println!(
                 "initialized {} part{} of {}x{}x{}",
-                config.parts.len(),
-                if config.parts.len() == 1 { "" } else { "s" },
+                parts.len(),
+                if parts.len() == 1 { "" } else { "s" },
                 config.width,
                 config.height,
                 config.depth
@@ -306,8 +308,24 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::DefinePart { name, parent } => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
             let mut rig = Rig::load(&config.rig)?;
+            let is_new = !rig.parts.iter().any(|p| p.name == name);
             rig.upsert_part(&name, parent);
             rig.save(&config.rig)?;
+            // A newly defined part gets its files initialized (empty log, blank
+            // preview, empty mesh) so it exists as a target immediately — even an
+            // attach socket that is never sculpted. Redefining an existing part (e.g.
+            // to re-parent it) leaves its sculpt untouched.
+            if is_new {
+                let volume = cli::bounds(config.extents());
+                let background = config.background()?;
+                cli::init_target(
+                    volume,
+                    background,
+                    &config.actions_for(&name),
+                    &config.preview_for(&name),
+                    &config.mesh_for(&name),
+                )?;
+            }
             println!("defined part {name}");
             Ok(())
         }
@@ -421,8 +439,9 @@ fn run(cli: Cli) -> Result<(), String> {
             let config: AnimConfig = cli::read_config(&cli.config)?;
             if !config.has_part(&part) {
                 return Err(format!(
-                    "part `{part}` is not a declared part (declared: {:?})",
-                    config.parts
+                    "part `{part}` is not defined — define it with `define-part` before \
+                     sculpting it (defined: {:?})",
+                    config.declared_parts()
                 ));
             }
             let volume = cli::bounds(config.extents());
@@ -443,7 +462,11 @@ fn run(cli: Cli) -> Result<(), String> {
             // Stream this part's re-rendered preview and geometry to the live viewer,
             // keyed by its part index. Best-effort; a no-op for an unobserved run.
             if let Some(live) = &config.live {
-                let index = config.parts.iter().position(|p| *p == part).unwrap_or(0) as u32;
+                let index = config
+                    .declared_parts()
+                    .iter()
+                    .position(|p| *p == part)
+                    .unwrap_or(0) as u32;
                 cli::send_live_preview(
                     &live.endpoint,
                     &live.token,
