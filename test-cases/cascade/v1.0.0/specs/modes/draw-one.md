@@ -1,4 +1,6 @@
-# Cascade — Deal mode: Draw One
+# Draw One
+
+## Overview
 
 This mode spec defines the one setting that varies by mode: the stock's **turn
 count**. It builds on the stock and waste rules in `specs/rules.md` and the layout
