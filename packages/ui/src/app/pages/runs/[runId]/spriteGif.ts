@@ -1,3 +1,4 @@
+/// <reference path="../../../../gifenc.d.ts" />
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
 // Sprites are tiny; scale the exported frame up so a downloaded loop is legible
