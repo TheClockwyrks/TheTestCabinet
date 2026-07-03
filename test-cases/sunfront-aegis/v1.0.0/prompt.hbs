@@ -1,7 +1,8 @@
 Sculpt and rig the **Sunfront Aegis**, a colossal multi-gun walking fortress that
-strides on six heavy legs, whose main cannon aims forward and whose two side turrets
-each traverse to cover their own flank, as an 88x80x104 opaque-voxel model using
-only the voxel-anim tool.
+strides on six independent, two-jointed legs, whose main cannon aims forward, whose
+two side-mounted turrets each traverse to cover only their own flank, and whose
+radar vane sweeps on its own, as an 88x80x104 opaque-voxel model using only the
+voxel-anim tool.
 
 ## How sculpting and rigging works
 
@@ -24,7 +25,7 @@ in place at `{{workspace}}`.
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part chassis --x0 8 --y0 24 --z0 8 --x1 79 --y1 60 --z1 96 --color "#c69a4b"
+voxel-anim fill-box --part chassis --x0 8 --y0 30 --z0 8 --x1 79 --y1 60 --z1 96 --color "#c69a4b"
 ```
 
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
@@ -34,11 +35,12 @@ authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
 whole fortress composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the main
-turret sits centered on the hull, the cannon meets the turret front, and each side
-turret seats on its sponson. Because each part is sculpted in the shared volume's
-coordinates, position each part where it belongs on the finished fortress; the
-scene simply composes them there.
+scene views are how you confirm the parts actually fit together: that the six legs
+seat under the hull and reach the ground, the main turret sits centered on the
+citadel, the cannon meets the turret front, and each side turret seats out on its
+sponson. Because each part is sculpted in the shared volume's coordinates, position
+each part where it belongs on the finished fortress; the scene simply composes them
+there.
 
 ## What to read first
 
@@ -50,24 +52,28 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, the four required
-caller joints — `main_turret_yaw` and `main_gun_pitch` for the main turret and
-cannon, and `left_turret_yaw` / `right_turret_yaw` for the two independently
-traversing side turrets — and the two auto `legs_left_stride` / `legs_right_stride`
-joints that walk the six legs on their own. Run `voxel-anim --help` for the exact
+form of the fortress, the required parts and their pivots, and the required joints:
+**twelve leg joints** — a `hip_*` and a `knee_*` per leg (`lf, lm, lr, rf, rm, rr`)
+so each of the six legs swings and bends independently and lifts its foot clear of
+the ground; the four gun joints — `main_turret_yaw` and `main_gun_pitch` for the
+main turret and cannon, and `left_turret_yaw` / `right_turret_yaw` for the two
+independently traversing side turrets; and the one auto `radar_spin` joint that
+sweeps the decorative radar on its own. Run `voxel-anim --help` for the exact
 operation and rig contract.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an armored hull raised on six heavy legs
-carrying a big main turret and cannon, with a rotating secondary gun turret on each
-flank. The required interface is four caller joints — **`main_turret_yaw`** (fine-aim
-the main turret within a narrow forward cone) and **`main_gun_pitch`** (elevate the
-main cannon), plus **`left_turret_yaw`** and **`right_turret_yaw`**, which traverse
-the two side turrets so each covers its own flank arc — and the two auto stride
-joints **`legs_left_stride`** / **`legs_right_stride`** that walk the six legs.
-Produce **every** required part and joint; you may add your own extra parts, joints,
-or auto-play clips on top, but do not drop or contradict the required interface. When you are satisfied, stop: the recorded per-part logs
-and `rig.json` are your finished submission.
+correctly, and the rig is complete: a tiered, prowed armored citadel raised on six
+independent two-jointed legs, carrying a big main turret and cannon, a side-mounted
+turret out on each sponson, and a sweeping radar vane. The required interface is
+**sixteen caller joints** — the twelve leg joints (`hip_*` swing each leg,
+`knee_*` bends each shin to lift the foot), plus `main_turret_yaw` (fine-aim within
+a narrow forward cone), `main_gun_pitch` (elevate the cannon), and `left_turret_yaw`
+/ `right_turret_yaw` (traverse each side turret across its own flank) — and **one
+auto joint**, `radar_spin`, that sweeps the radar on its own. Produce **every**
+required part and joint; you may add your own extra parts, joints, or auto-play
+clips on top, but do not drop or contradict the required interface. When you are
+satisfied, stop: the recorded per-part logs and `rig.json` are your finished
+submission.

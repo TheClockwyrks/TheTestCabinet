@@ -150,3 +150,5 @@ Skyworks
 hatchery
 Flak
 hitscan
+prowed
+sponsons

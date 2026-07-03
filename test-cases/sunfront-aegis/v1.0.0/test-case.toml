@@ -2,12 +2,13 @@ name = "Sunfront Aegis"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Aegis: an 88x80x104 opaque-voxel colossal six-legged \
-walking fortress that dwarfs every buildable unit, bristling with guns, whose \
-central main turret makes only fine corrections within a narrow forward cone and \
-elevates its cannon on caller-driven joints while two independently-traversing \
-side turrets each swing to cover their own flank and the fortress strides on six \
-heavy legs, built and rigged one recorded operation at a time."""
+Sculpt and rig the Sunfront Aegis: an 88x80x104 opaque-voxel colossal walking \
+fortress that dwarfs every buildable unit, striding on six independent, two-jointed \
+legs (a hip and a knee each) so every foot lifts clear of the ground, its central \
+main turret fine-correcting within a narrow forward cone while its cannon elevates, \
+and two side-mounted turrets each traversing to cover only their own flank — built \
+and rigged one recorded operation at a time, with a caller-driven walk and a \
+weapon-only bombardment the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -52,27 +53,92 @@ actions = "parts/{part}.actions.json"
 # parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
 # this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
 # pre-seeded from this table so the contract exists from the first operation.
+#
+# The rig has three kinds of moving part, and the drive of each is deliberate:
+#   * The SIX legs and the two gun controls are `caller` — a game (and the review
+#     viewer's `march` / `bombardment` animations) drive them by name; at rest they
+#     hold still, so the weapon animation can pose the guns while the legs stay
+#     planted and the walk animation can stride the legs while the guns stay put.
+#   * The `radar` sensor vane is `auto` — it turns on its own forever (a decorative
+#     part), so it keeps sweeping under BOTH animations and at idle.
 [model]
 
-# The armored fortress hull, raised up on six legs: the root part (no parent),
-# fixed to the world. It carries all four turrets and the six leg-hips.
+# The armored fortress hull: the root part (no parent), fixed to the world. A
+# tiered, prowed citadel — NOT a plain box — that carries the main turret up top, a
+# side turret out on each sponson, the sweeping radar mast, and the six leg hips
+# tucked under its belly. It rides raised well off the ground on the legs.
 [[model.part]]
 name = "chassis"
 pivot = [0, 0, 0]
 
-# The left bank of legs — three heavy legs sculpted as one part, mounted low on the
-# left flank of the hull. It strides on `legs_left_stride`.
-[[model.part]]
-name = "legs_left"
-parent = "chassis"
-pivot = [18, 16, 52]
+# --- The six legs. Each leg is TWO parts (an upper thigh + a lower shin) with two
+# pivots (a hip on the chassis and a knee between the segments), so the knee can
+# bend to lift the foot clear of the ground on its swing instead of dragging it
+# through the dirt. The legs are INDEPENDENT — one part per leg, each on its own
+# hip directly above its own foot — so no single pivot drags a fore-and-aft bank of
+# feet below ground. Three legs down each side: front (f), middle (m), rear (r). ---
 
-# The right bank of legs — three heavy legs as one part, mirroring the left. It
-# strides on `legs_right_stride` in opposite phase.
+# Left-front thigh, hung from its hip under the left-front corner of the hull.
 [[model.part]]
-name = "legs_right"
+name = "leg_lf"
 parent = "chassis"
-pivot = [70, 16, 52]
+pivot = [14, 30, 78]
+
+# Left-front shin, hung from the left-front knee down to the foot.
+[[model.part]]
+name = "shin_lf"
+parent = "leg_lf"
+pivot = [10, 14, 78]
+
+[[model.part]]
+name = "leg_lm"
+parent = "chassis"
+pivot = [14, 30, 52]
+
+[[model.part]]
+name = "shin_lm"
+parent = "leg_lm"
+pivot = [10, 14, 52]
+
+[[model.part]]
+name = "leg_lr"
+parent = "chassis"
+pivot = [14, 30, 26]
+
+[[model.part]]
+name = "shin_lr"
+parent = "leg_lr"
+pivot = [10, 14, 26]
+
+[[model.part]]
+name = "leg_rf"
+parent = "chassis"
+pivot = [73, 30, 78]
+
+[[model.part]]
+name = "shin_rf"
+parent = "leg_rf"
+pivot = [77, 14, 78]
+
+[[model.part]]
+name = "leg_rm"
+parent = "chassis"
+pivot = [73, 30, 52]
+
+[[model.part]]
+name = "shin_rm"
+parent = "leg_rm"
+pivot = [77, 14, 52]
+
+[[model.part]]
+name = "leg_rr"
+parent = "chassis"
+pivot = [73, 30, 26]
+
+[[model.part]]
+name = "shin_rr"
+parent = "leg_rr"
+pivot = [77, 14, 26]
 
 # The big central main turret, mounted on top-center of the hull. It makes only
 # fine corrections about its vertical mount via the caller-driven `main_turret_yaw`
@@ -90,46 +156,169 @@ name = "main_gun"
 parent = "main_turret"
 pivot = [44, 66, 74]
 
-# The left side turret: a rotating secondary gun on a sponson off the left flank of
-# the hull. It traverses on its own via the caller-driven `left_turret_yaw`,
-# sweeping an arc that covers the fortress's left side.
+# The left side turret: a rotating secondary gun mounted OUT ON THE LEFT SPONSON —
+# a shelf that protrudes from the left face of the hull — so it plainly reads as a
+# side gun that only bears on the left. It traverses on its own via the
+# caller-driven `left_turret_yaw`, sweeping only the fortress's left flank.
 [[model.part]]
 name = "left_turret"
 parent = "chassis"
-pivot = [16, 56, 52]
+pivot = [12, 44, 52]
 
-# The right side turret, mirroring the left on the right flank. It traverses on its
-# own via the caller-driven `right_turret_yaw`, sweeping an arc that covers the
-# right side.
+# The right side turret, mirroring the left on the right sponson. It traverses on
+# its own via the caller-driven `right_turret_yaw`, sweeping only the right flank.
 [[model.part]]
 name = "right_turret"
 parent = "chassis"
-pivot = [71, 56, 52]
+pivot = [75, 44, 52]
 
-# The left leg bank's own looping stride. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the fortress walks on its own without a caller.
+# The decorative radar/sensor vane atop the command citadel. An `auto` part that
+# turns forever on `radar_spin` — it sweeps on its own under every animation and at
+# idle, giving the fortress a living, always-moving detail. It is NOT a weapon.
+[[model.part]]
+name = "radar"
+parent = "chassis"
+pivot = [44, 72, 40]
+
+# --- Joints ---
+
+# The six hip joints: each swings its whole leg fore-and-aft about the hip. Caller
+# so they hold at rest (planted, standing) unless the `march` animation strides
+# them. rot x, range ±0.4, rest 0.
 [[model.joint]]
-name = "legs_left_stride"
-part = "legs_left"
+name = "hip_lf"
+part = "leg_lf"
 kind = "rotation"
 axis = "x"
-pivot = [18, 16, 52]
-min = -0.5
-max = 0.5
+pivot = [14, 30, 78]
+min = -0.4
+max = 0.4
 rest = 0.0
-drive = "auto"
+drive = "caller"
 
-# The right leg bank's stride, in opposite phase to the left.
 [[model.joint]]
-name = "legs_right_stride"
-part = "legs_right"
+name = "hip_lm"
+part = "leg_lm"
 kind = "rotation"
 axis = "x"
-pivot = [70, 16, 52]
-min = -0.5
-max = 0.5
+pivot = [14, 30, 52]
+min = -0.4
+max = 0.4
 rest = 0.0
-drive = "auto"
+drive = "caller"
+
+[[model.joint]]
+name = "hip_lr"
+part = "leg_lr"
+kind = "rotation"
+axis = "x"
+pivot = [14, 30, 26]
+min = -0.4
+max = 0.4
+rest = 0.0
+drive = "caller"
+
+[[model.joint]]
+name = "hip_rf"
+part = "leg_rf"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 78]
+min = -0.4
+max = 0.4
+rest = 0.0
+drive = "caller"
+
+[[model.joint]]
+name = "hip_rm"
+part = "leg_rm"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 52]
+min = -0.4
+max = 0.4
+rest = 0.0
+drive = "caller"
+
+[[model.joint]]
+name = "hip_rr"
+part = "leg_rr"
+kind = "rotation"
+axis = "x"
+pivot = [73, 30, 26]
+min = -0.4
+max = 0.4
+rest = 0.0
+drive = "caller"
+
+# The six knee joints: each bends the shin to lift the foot on its swing so it
+# clears the ground. Caller so they hold at a slight standing bend at rest. rot x,
+# range -0.2..1.0, rest 0.1.
+[[model.joint]]
+name = "knee_lf"
+part = "shin_lf"
+kind = "rotation"
+axis = "x"
+pivot = [10, 14, 78]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
+
+[[model.joint]]
+name = "knee_lm"
+part = "shin_lm"
+kind = "rotation"
+axis = "x"
+pivot = [10, 14, 52]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
+
+[[model.joint]]
+name = "knee_lr"
+part = "shin_lr"
+kind = "rotation"
+axis = "x"
+pivot = [10, 14, 26]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
+
+[[model.joint]]
+name = "knee_rf"
+part = "shin_rf"
+kind = "rotation"
+axis = "x"
+pivot = [77, 14, 78]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
+
+[[model.joint]]
+name = "knee_rm"
+part = "shin_rm"
+kind = "rotation"
+axis = "x"
+pivot = [77, 14, 52]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
+
+[[model.joint]]
+name = "knee_rr"
+part = "shin_rr"
+kind = "rotation"
+axis = "x"
+pivot = [77, 14, 26]
+min = -0.2
+max = 1.0
+rest = 0.1
+drive = "caller"
 
 # The required caller-driven main-turret traverse: a game addresses `main_turret_yaw`
 # by name to make FINE corrections that keep the main cannon pointed forward. It is
@@ -170,7 +359,7 @@ name = "left_turret_yaw"
 part = "left_turret"
 kind = "rotation"
 axis = "y"
-pivot = [16, 56, 52]
+pivot = [12, 44, 52]
 min = -1.6
 max = 0.0
 rest = -0.8
@@ -184,33 +373,104 @@ name = "right_turret_yaw"
 part = "right_turret"
 kind = "rotation"
 axis = "y"
-pivot = [71, 56, 52]
+pivot = [75, 44, 52]
 min = 0.0
 max = 1.6
 rest = 0.8
 drive = "caller"
 
-# The auto-play stride clips — one per leg bank, in opposite phase, so the fortress
-# walks on its own. Only `auto` joints take a clip; the caller-driven turret and gun
-# joints take none. Keyframes are inline `[t_ms, value]` pairs (radians).
-[[model.clip]]
-joint = "legs_left_stride"
-period_ms = 1200
-loop = true
-keyframes = [[0, 0.0], [300, 0.5], [600, 0.0], [900, -0.5], [1200, 0.0]]
+# The decorative radar sweep: an `auto` joint driven by a looping clip, so the vane
+# turns on its own forever. rot y, a full turn each way. It is the only auto joint —
+# it keeps sweeping under both the `march` and `bombardment` animations.
+[[model.joint]]
+name = "radar_spin"
+part = "radar"
+kind = "rotation"
+axis = "y"
+pivot = [44, 72, 40]
+min = -3.14159
+max = 3.14159
+rest = 0.0
+drive = "auto"
 
+# The auto-play clip for the decorative radar. Only `auto` joints take a clip; the
+# caller-driven legs and guns take none. Keyframes are inline `[t_ms, value]` pairs
+# (radians).
 [[model.clip]]
-joint = "legs_right_stride"
-period_ms = 1200
+joint = "radar_spin"
+period_ms = 3000
 loop = true
-keyframes = [[0, 0.0], [300, -0.5], [600, 0.0], [900, 0.5], [1200, 0.0]]
+keyframes = [[0, -3.14159], [3000, 3.14159]]
 
-# A predetermined animation the review viewer offers as a play button, so a
-# reviewer can watch the fortress fight without dragging the joint sliders by hand.
-# Each `[[model.animation.track]]` drives one joint over the shared `period_ms`
-# timeline; keyframes are inline `[t_ms, value]` pairs (radians). `bombardment` keeps
-# the main cannon lobbing forward within its narrow cone while the two side turrets
-# each sweep their own flank arc independently and out of phase.
+# --- Case-authored playback animations (viewer play buttons; NOT part of rig.json) ---
+
+# `march`: the WALK. It drives only the twelve leg joints — the hips swing
+# fore-and-aft and the knees bend to lift each foot — in an alternating-tripod gait
+# (legs lf/rm/lr step together, opposite rf/lm/rr), so the reviewer sees exactly how
+# the fortress strides across the map when spawned. It touches NO gun joint, so the
+# turrets and cannon hold at rest; the `auto` radar keeps sweeping on its own.
+[[model.animation]]
+name = "march"
+period_ms = 1600
+loop = true
+
+# Tripod A (lf, rm, lr): stance 0..800 (hip forward->back), swing 800..1600 (hip
+# back->forward, knee lifts the foot at ~1200).
+[[model.animation.track]]
+joint = "hip_lf"
+keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
+
+[[model.animation.track]]
+joint = "knee_lf"
+keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
+
+[[model.animation.track]]
+joint = "hip_lr"
+keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
+
+[[model.animation.track]]
+joint = "knee_lr"
+keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
+
+[[model.animation.track]]
+joint = "hip_rm"
+keyframes = [[0, 0.35], [800, -0.35], [1600, 0.35]]
+
+[[model.animation.track]]
+joint = "knee_rm"
+keyframes = [[0, 0.1], [800, 0.1], [1200, 0.8], [1600, 0.1]]
+
+# Tripod B (rf, lm, rr): half a period out of phase — swing 0..800 (knee lifts at
+# ~400), stance 800..1600.
+[[model.animation.track]]
+joint = "hip_rf"
+keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
+
+[[model.animation.track]]
+joint = "knee_rf"
+keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
+
+[[model.animation.track]]
+joint = "hip_lm"
+keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
+
+[[model.animation.track]]
+joint = "knee_lm"
+keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
+
+[[model.animation.track]]
+joint = "hip_rr"
+keyframes = [[0, -0.35], [800, 0.35], [1600, -0.35]]
+
+[[model.animation.track]]
+joint = "knee_rr"
+keyframes = [[0, 0.1], [400, 0.8], [800, 0.1], [1600, 0.1]]
+
+# `bombardment`: the WEAPON showcase. It drives only the four gun joints — the main
+# cannon lobs forward within its narrow cone while the two side turrets each sweep
+# their own flank arc independently and out of phase. It touches NO leg joint, so
+# the legs hold planted (the fortress stands still and fights); the `auto` radar
+# keeps sweeping on its own.
 [[model.animation]]
 name = "bombardment"
 period_ms = 4000
@@ -241,12 +501,13 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Aegis and \
-poses correctly — a colossal six-legged walking fortress, far larger than any \
-buildable unit, striding on six heavy legs, whose central main turret \
-fine-traverses within a narrow forward cone and whose cannon elevates on their \
-caller joints without detaching while the two side turrets independently swing to \
-cover their own flanks, the six legs stride on their own, and the hull stays put, \
-with a clear solar-amber accent and the disciplined Duneforged palette."""
+poses correctly — a colossal walking fortress, far larger than any buildable unit, \
+striding on six independent two-jointed legs whose feet lift clear of the ground, \
+whose central main turret fine-traverses within a narrow forward cone and whose \
+cannon elevates on their caller joints without detaching while the two side-mounted \
+turrets independently swing to cover their own flanks, the decorative radar sweeps \
+on its own, and the hull stays put, with a clear solar-amber accent and the \
+disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-fortress"
@@ -254,10 +515,23 @@ title = "Reads as a giant six-legged walking fortress"
 text = """
 From more than one angle the model reads unmistakably as a giant six-legged walking \
 fortress — plainly far bigger and broader than an ordinary war machine, a colossal \
-striding stronghold that dwarfs every buildable unit: an immense, heavily armored \
-hull riding raised on six heavy legs (three down each side), a big main turret with \
-a long forward cannon on top, and a rotating secondary gun turret out on each \
-flank. It is a bristling multi-gun war machine, not an abstract stack of boxes."""
+striding stronghold that dwarfs every buildable unit: a tiered, prowed armored \
+citadel (not a plain box) riding raised on six heavy legs (three down each side), a \
+big main turret with a long forward cannon on top, a rotating secondary turret out \
+on each side sponson, and a sweeping radar vane above. It is a bristling, detailed \
+multi-gun war machine, not an abstract stack of boxes on legs."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "legs-walk"
+title = "Legs stride independently without clipping the ground"
+text = """
+Playing `march` strides the fortress on its six legs: each leg swings on its own \
+`hip_*` joint and bends at its own `knee_*` so the foot lifts clear of the ground on \
+its swing and plants again — the legs step in an alternating-tripod gait, NOT as one \
+rigid bank, and no foot is dragged or driven down through the ground. Each leg's \
+shin stays attached to its thigh and each thigh to the hull across the whole range."""
 weight = 3
 domain = "fidelity"
 
@@ -269,42 +543,30 @@ Driving `main_turret_yaw` makes only small corrections that keep the main cannon
 pointed forward within a narrow cone — it does NOT spin the turret to the sides — \
 and driving `main_gun_pitch` raises and lowers the cannon, with no voxel tearing \
 away from the mount or clipping into the hull across either joint's range."""
-weight = 3
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "side-turrets-traverse"
-title = "Side turrets rotate to aim on their own"
+title = "Side turrets are side-mounted and traverse their own flank"
 text = """
-Each side turret rotates to aim independently through its caller joint — \
-`left_turret_yaw` and `right_turret_yaw` — swinging within an arc that covers its \
-own flank (the left turret sweeping the left side, the right turret the right), \
-each about its own sponson mount without detaching from the hull."""
+Each side turret is plainly mounted OUT ON ITS OWN SPONSON on the side of the hull \
+(not on top) and rotates to aim independently through its caller joint — \
+`left_turret_yaw` and `right_turret_yaw` — swinging only within an arc that covers \
+its own flank (the left turret sweeping the left side, the right turret the right), \
+each about its own mount without detaching from the hull."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "hull-fixed"
-title = "Hull stays put while the legs stride"
+title = "Hull stays put; only the moving parts move"
 text = """
-Only the moving parts move: the turrets and the cannon when their caller joints are \
-driven, and the six legs as they stride. The armored hull stays put — it is the \
-fixed root of the rig, not carried along by the turrets' motion or the legs. The \
-two leg banks stride on their own through the `legs_left_stride` and \
-`legs_right_stride` auto joints, stepping in opposite phase without dragging the \
-hull with them."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "guns-attached"
-title = "Guns and legs stay attached"
-text = """
-Each child stays attached to its parent across its joint's range: the cannon meets \
-the front of the main turret, the main turret meets the top of the hull, each side \
-turret meets its sponson, and each leg bank meets the hull's flank at its mount — \
-with no gap and never floating free as the turrets traverse and swing and the legs \
-stride."""
+The armored hull is the fixed root of the rig: it stays put, never carried along by \
+the turrets, the legs, or the radar. When `bombardment` plays, only the guns move \
+and the legs stay planted; when `march` plays, only the legs move and the guns stay \
+put; the decorative radar vane sweeps on its own throughout. Nothing but the moving \
+parts moves."""
 weight = 2
 domain = "fidelity"
 
