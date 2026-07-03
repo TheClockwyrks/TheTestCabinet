@@ -691,15 +691,15 @@ pub const DC_CONFIG_DEST: &str = "dc.config.json";
 pub const DC_ANIM_CONFIG_DEST: &str = "dc-anim.config.json";
 
 /// The run-workspace-relative path a **static** surface-meshed run emits its single
-/// `PartMesh`-shaped geometry file to (the `mc`/`sn`/`dc` binaries). The seeded
-/// config threads this path to the binary and the validator parses the emitted file
-/// from it.
-pub const MESH_DEST: &str = "mesh.json";
+/// `PartMesh`-shaped geometry file to (the `mc`/`sn`/`dc` binaries), a per-part
+/// binary-glTF (`.glb`). The seeded config threads this path to the binary and the
+/// validator parses the emitted file from it.
+pub const MESH_DEST: &str = "mesh.glb";
 /// The run-workspace-relative `{part}` template an **animated** surface-meshed run
 /// emits one `PartMesh`-shaped geometry file per declared part to (the `mc-anim`/
-/// `sn-anim`/`dc-anim` binaries), the mesh analog of the per-part preview/action-log
-/// templates.
-pub const MESH_PART_DEST: &str = "meshes/{part}.json";
+/// `sn-anim`/`dc-anim` binaries), a per-part binary-glTF (`.glb`) — the mesh analog
+/// of the per-part preview/action-log templates.
+pub const MESH_PART_DEST: &str = "meshes/{part}.glb";
 
 /// The run-workspace-relative path a voxel-animation run's rig structure
 /// (`rig.json`) is seeded to and produced at. Seeding pre-populates it from the
@@ -848,13 +848,13 @@ pub enum AssetKind {
     VoxelAnimation,
     /// A static surface-meshed 3D model built with the **marching cubes** `mc`
     /// binary: the model composites a signed-distance field of CSG primitives, which
-    /// the mesher extracts to a per-model `mesh.json`. Declares a `[voxel]` table
+    /// the mesher extracts to a per-model `.glb`. Declares a `[voxel]` table
     /// (the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted
     /// **low-poly** surface.
     McModel,
     /// A rigged, animatable surface-meshed 3D model built with the **marching cubes**
     /// `mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed
-    /// field extracted to its own `mesh.json`; declares a `[voxel]` and a `[model]`
+    /// field extracted to its own `.glb`; declares a `[voxel]` and a `[model]`
     /// table.
     McAnimation,
     /// A static surface-meshed 3D model built with the **surface nets** `sn` binary.
@@ -909,7 +909,7 @@ impl AssetKind {
 
     /// Whether this kind is one of the six **surface-meshed** kinds (`mc`/`sn`/`dc`
     /// and their `-anim` siblings), which composite a signed-distance field and emit
-    /// a `PartMesh`-shaped `mesh.json` — as opposed to the two cube kinds, which
+    /// a `PartMesh`-shaped `.glb` — as opposed to the two cube kinds, which
     /// regenerate `voxels.json`. Selects the mesh-parsing validation path and the
     /// per-binary mesh output threading.
     pub fn is_meshed(self) -> bool {
@@ -925,9 +925,9 @@ impl AssetKind {
     }
 
     /// The run-workspace-relative path (or `{part}` template, for an animated kind)
-    /// a **meshed** kind emits its `mesh.json` geometry to — [`MESH_DEST`] for a
+    /// a **meshed** kind emits its `.glb` geometry to — [`MESH_DEST`] for a
     /// static meshed kind, [`MESH_PART_DEST`] for an animated one. `None` for the
-    /// cube kinds and the 2D sprite kinds, which emit no `mesh.json`. Shared by the
+    /// cube kinds and the 2D sprite kinds, which emit no `.glb`. Shared by the
     /// seeded tool config (so the binary writes here), manifest path-claiming, and
     /// the validator (so it reads the same path).
     pub fn mesh_dest(self) -> Option<&'static str> {
@@ -942,13 +942,13 @@ impl AssetKind {
     }
 
     /// The run-workspace-relative path (or `{part}` template, for an animated kind)
-    /// the client-facing `PartMesh` geometry (`mesh.json`) every **voxel-family** kind
+    /// the client-facing `PartMesh` geometry (`.glb`) every **voxel-family** kind
     /// emits — [`MESH_DEST`] for a static kind, [`MESH_PART_DEST`] for an animated
     /// one. `None` for the 2D sprite kinds, which emit no geometry.
     ///
     /// Unlike [`Self::mesh_dest`] — which is `Some` only for the six surface-meshed
     /// kinds and selects the mesh-parsing validation path — this is `Some` for the
-    /// two **cube** kinds as well: their binaries also emit a face-culled `mesh.json`,
+    /// two **cube** kinds as well: their binaries also emit a face-culled `.glb`,
     /// and the 3D client renders from that mesh for every voxel-family kind. Threaded
     /// by seeding into the tool config so every voxel binary writes here, claimed in
     /// manifest resolution, and read back by the validator as the served geometry.
@@ -3464,7 +3464,7 @@ impl TestCaseCatalog {
             // each resolved path is claimed.
             if let (Some(tool), Some(output)) = (&tool, &output) {
                 // Every voxel-family kind additionally emits a per-part (`{part}`) or
-                // single `mesh.json`; claim it so a spec can never land on the geometry
+                // single `.glb`; claim it so a spec can never land on the geometry
                 // the binary writes.
                 let mesh_template = manifest.asset_kind.voxel_mesh_dest();
                 if let Some(model) = &model {

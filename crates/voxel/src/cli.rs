@@ -501,10 +501,14 @@ impl record::SculptBackend for CubeBackend {
         // The face-culled surface mesh is the single source of geometry: it is what
         // the preview renderer draws and what every downstream consumer reads.
         let part_mesh = build_part_mesh(&set);
-        let mesh_json =
-            serde_json::to_string(&part_mesh).map_err(|err| format!("serializing mesh: {err}"))?;
+        let mesh_glb = test_cabinet_model_core::part_mesh_to_glb(
+            &part_mesh.positions,
+            &part_mesh.normals,
+            &part_mesh.colors,
+            &part_mesh.indices,
+        );
         record::ensure_parent(mesh)?;
-        fs::write(mesh, mesh_json.as_bytes())
+        fs::write(mesh, &mesh_glb)
             .map_err(|err| format!("writing mesh {}: {err}", mesh.display()))?;
 
         let image = mesh_render::render_png(
@@ -519,10 +523,10 @@ impl record::SculptBackend for CubeBackend {
 
         Ok(record::Rendered {
             image,
-            // Stream the face-culled `mesh.json` (the `PartMesh` the 3D client
+            // Stream the face-culled part `.glb` (the `PartMesh` the 3D client
             // renders) — the same geometry every voxel-family binary streams live,
             // so the live viewer rebuilds the model from a mesh, never re-meshing.
-            live_body: mesh_json,
+            live_body: mesh_glb,
         })
     }
 }

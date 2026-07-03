@@ -314,22 +314,23 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     assert_eq!(on_disk, expected);
     assert_eq!(returned, expected);
 
-    // The returned live body is the same sparse `voxels.json` the set regenerates
-    // to, so a live viewer can rebuild the model in 3D from the stream.
-    assert_eq!(live_body, render(&dims, &logged).to_voxels_json());
+    // The returned live body is the part's `.glb` bytes (the same geometry emitted to
+    // disk), so a live viewer can rebuild the model in 3D from the stream.
+    assert_eq!(&live_body[0..4], b"glTF", "live body is a glb");
+    let on_disk_mesh = std::fs::read(&mesh).expect("mesh written");
+    assert_eq!(live_body, on_disk_mesh);
 
-    // A `mesh.json` is emitted alongside the preview, deserializing to the runtime's
+    // A per-part `.glb` is emitted alongside the preview, decoding to the runtime's
     // PartMesh shape (a face-culled surface with one quad → six indices per face).
-    let mesh_json = std::fs::read_to_string(&mesh).expect("mesh written");
-    let part_mesh: crate::mesh::PartMesh =
-        serde_json::from_str(&mesh_json).expect("valid PartMesh shape");
+    let arrays =
+        test_cabinet_model_core::glb_to_part_mesh(&on_disk_mesh).expect("valid PartMesh glb");
     assert_eq!(
-        part_mesh.indices.len(),
+        arrays.indices.len(),
         36,
         "one lone voxel: 6 faces * 6 indices"
     );
     assert_eq!(
-        part_mesh.positions.len(),
+        arrays.positions.len(),
         6 * 4 * 3,
         "6 faces * 4 verts * 3 coords"
     );

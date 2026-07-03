@@ -27,7 +27,7 @@ use test_cabinet_model_core::render::View;
 
 use test_cabinet_voxel_mesh::{
     Algorithm, Axis, Dims, Field, FieldOp, GridConfig, Mesher, PreviewBackground, Rgb,
-    SurfaceNetsMesher, render, to_mesh_json,
+    SurfaceNetsMesher, render, to_mesh_glb,
 };
 
 // Re-export the generic config/record surface the binaries reach as
@@ -536,9 +536,9 @@ impl record::SculptBackend for FieldBackend {
         // The extracted surface mesh is the single source of geometry: it is what the
         // preview renderer draws and what every downstream consumer reads.
         let part_mesh = mesh_field(&field);
-        let mesh_json = to_mesh_json(&part_mesh)?;
+        let mesh_glb = to_mesh_glb(&part_mesh);
         record::ensure_parent(mesh)?;
-        fs::write(mesh, mesh_json.as_bytes())
+        fs::write(mesh, &mesh_glb)
             .map_err(|err| format!("writing mesh {}: {err}", mesh.display()))?;
 
         let image = mesh_render::render_png(
@@ -553,7 +553,7 @@ impl record::SculptBackend for FieldBackend {
 
         Ok(record::Rendered {
             image,
-            live_body: mesh_json,
+            live_body: mesh_glb,
         })
     }
 }

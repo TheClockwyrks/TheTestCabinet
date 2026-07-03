@@ -61,9 +61,15 @@ pub fn render(bounds: Dims, config: &GridConfig, operations: &[FieldOp]) -> Fiel
     field
 }
 
-/// Serialize a [`Mesh`] to the `mesh.json` string every consumer reads. Available
-/// with the `cli` feature (the meshing binaries), which links `serde_json`.
+/// Encode a [`Mesh`] to the per-part binary-glTF (`.glb`) bytes every consumer
+/// reads, via the shared [`part_mesh_to_glb`](test_cabinet_model_core::part_mesh_to_glb)
+/// codec. Available with the `cli` feature (the meshing binaries).
 #[cfg(feature = "cli")]
-pub fn to_mesh_json(mesh: &Mesh) -> Result<String, String> {
-    serde_json::to_string(mesh).map_err(|err| format!("serializing mesh: {err}"))
+pub fn to_mesh_glb(mesh: &Mesh) -> Vec<u8> {
+    test_cabinet_model_core::part_mesh_to_glb(
+        &mesh.positions,
+        &mesh.normals,
+        &mesh.colors,
+        &mesh.indices,
+    )
 }

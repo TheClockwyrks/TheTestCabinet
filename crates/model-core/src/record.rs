@@ -2,7 +2,7 @@
 //! shares.
 //!
 //! A tool records the model's operations to an action log and, after every
-//! operation, re-renders the derived artifacts (a preview PNG and a `mesh.json`)
+//! operation, re-renders the derived artifacts (a preview PNG and a per-part `.glb`)
 //! from the **whole** log so the recorded log is always the single source of truth.
 //! That loop — read the log, append one operation, write it back, re-render, and
 //! (best-effort) stream the frame to a live viewer — is identical across the cube
@@ -32,10 +32,10 @@ pub trait SculptBackend {
     type Op: Clone + Serialize + DeserializeOwned;
 
     /// Render `ops` into this target's artifacts: write the preview PNG to `preview`
-    /// and the surface mesh (`PartMesh` shape) to `mesh`, returning the PNG bytes
-    /// (so a caller streaming a live frame need not re-read them) and the
-    /// live-stream body (the geometry payload a live viewer rebuilds the model
-    /// from).
+    /// and the surface mesh (the per-part `.glb` encoding the `PartMesh` arrays) to
+    /// `mesh`, returning the PNG bytes (so a caller streaming a live frame need not
+    /// re-read them) and the live-stream body (the glb bytes a live viewer rebuilds
+    /// the model from).
     fn render_target(
         &self,
         ops: &[Self::Op],
@@ -45,13 +45,14 @@ pub trait SculptBackend {
 }
 
 /// The rendered artifacts of one target: the preview PNG bytes and the live-stream
-/// body (the geometry payload — every voxel tool sends its `PartMesh`-shaped
-/// `mesh.json` text, the same geometry the 3D client renders).
+/// body (the geometry payload — every voxel tool sends its part's `.glb` bytes, the
+/// same glTF geometry the 3D client renders).
 pub struct Rendered {
     /// The re-rendered preview PNG.
     pub image: Vec<u8>,
-    /// The live-stream body appended after the PNG on the wire.
-    pub live_body: String,
+    /// The live-stream body appended after the PNG on the wire: the part's `.glb`
+    /// bytes.
+    pub live_body: Vec<u8>,
 }
 
 /// The outcome of applying one operation: the running operation count plus the
@@ -62,9 +63,9 @@ pub struct ApplyResult {
     pub count: usize,
     /// The re-rendered preview PNG.
     pub image: Vec<u8>,
-    /// The live-stream body (the geometry payload — the `PartMesh`-shaped `mesh.json`
-    /// every voxel tool streams).
-    pub live_body: String,
+    /// The live-stream body (the geometry payload — the part's `.glb` bytes every
+    /// voxel tool streams).
+    pub live_body: Vec<u8>,
 }
 
 /// Read an action log, treating an absent file as an empty log so the first
@@ -128,7 +129,7 @@ pub fn apply<B: SculptBackend>(
 /// authoritative output regardless of whether a frame reaches a viewer. The wire
 /// form is one JSON header line (`{ token, frame, operation, operationCount,
 /// length, meshLength }`) followed by exactly `length` raw PNG bytes and then
-/// `meshLength` bytes of the live body text (the `mesh.json`); the listener
+/// `meshLength` bytes of the live body (the part's `.glb` bytes); the listener
 /// validates the token before accepting the frame. `frame` carries the part index
 /// (0 for a single static model). The body lets the live viewer rebuild the model in
 /// 3D — a PNG-only viewer simply ignores it.
@@ -139,7 +140,7 @@ pub fn send_live_preview(
     operation: &str,
     operation_count: usize,
     image: &[u8],
-    body: &str,
+    body: &[u8],
 ) {
     let _ = try_send_live_preview(
         endpoint,
@@ -160,7 +161,7 @@ fn try_send_live_preview(
     operation: &str,
     operation_count: usize,
     image: &[u8],
-    body: &str,
+    body: &[u8],
 ) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind, Write};
     use std::net::{TcpStream, ToSocketAddrs};
@@ -175,7 +176,7 @@ fn try_send_live_preview(
         .ok_or_else(|| Error::new(ErrorKind::NotFound, "live endpoint resolved to no address"))?;
     let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
     stream.set_write_timeout(Some(TIMEOUT))?;
-    let body_bytes = body.as_bytes();
+    let body_bytes = body;
     let mut header = serde_json::to_vec(&serde_json::json!({
         "token": token,
         "frame": frame,

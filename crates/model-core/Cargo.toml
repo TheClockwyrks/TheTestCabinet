@@ -19,15 +19,16 @@ path = "src/lib.rs"
 
 [features]
 # `cli` pulls in `clap` (for the `ValueEnum` derives on the rig/axis enums the tool
-# subcommands parse), `serde_json` (config/action-log/rig I/O), and the wgpu+Mesa
-# mesh preview renderer (`render`) plus its PNG/math/GPU-buffer support crates. It
-# is on by default for the binaries; a library consumer such as `crates/core` links
-# this crate with `default-features = false` to get only the pure model types (and
-# never compiles wgpu into the backend/driver release builds, where nothing renders).
+# subcommands parse) and the wgpu+Mesa mesh preview renderer (`render`) plus its
+# PNG/math/GPU-buffer support crates. It is on by default for the binaries; a library
+# consumer such as `crates/core` links this crate with `default-features = false` to
+# get only the pure model types plus the `gltf` glb codec (and never compiles wgpu
+# into the backend/driver release builds, where nothing renders). `serde_json` is a
+# base dependency (not CLI-gated) because the `gltf` glb encoder/decoder every build
+# of this crate exposes needs it.
 default = ["cli"]
 cli = [
     "dep:clap",
-    "dep:serde_json",
     "dep:wgpu",
     "dep:glam",
     "dep:bytemuck",
@@ -37,9 +38,9 @@ cli = [
 
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 # The headless mesh preview renderer's stack (`render`): `wgpu` drives Mesa
 # lavapipe (software Vulkan) to draw offscreen, `glam` builds the camera matrices,
 # `bytemuck` casts the vertex/uniform structs to GPU bytes, `pollster` blocks on
@@ -49,9 +50,6 @@ glam = { workspace = true, optional = true }
 bytemuck = { workspace = true, optional = true }
 pollster = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
-
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

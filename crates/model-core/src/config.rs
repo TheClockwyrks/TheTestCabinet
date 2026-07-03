@@ -50,8 +50,8 @@ pub struct Config {
     /// Run-workspace-relative path the current preview is re-rendered to.
     #[serde(default = "default_preview")]
     pub preview: PathBuf,
-    /// Run-workspace-relative path the current surface mesh (`mesh.json`) is written
-    /// to after every operation — the single source of geometry consumers read.
+    /// Run-workspace-relative path the current surface mesh (a per-part `.glb`) is
+    /// written to after every operation — the single source of geometry consumers read.
     #[serde(default = "default_mesh")]
     pub mesh: PathBuf,
     /// The live-preview endpoint, when a viewer is observing this run. Absent for
@@ -102,7 +102,7 @@ pub struct AnimConfig {
     #[serde(default = "default_anim_preview")]
     pub preview: String,
     /// Template for a part's mesh path, with `{part}` replaced by the part name (for
-    /// example `parts/{part}.mesh.json`).
+    /// example `parts/{part}.mesh.glb`).
     #[serde(default = "default_anim_mesh")]
     pub mesh: String,
     /// Template for the **assembled-scene** preview path, with `{view}` replaced by
@@ -185,7 +185,7 @@ fn default_preview() -> PathBuf {
 }
 
 fn default_mesh() -> PathBuf {
-    PathBuf::from("mesh.json")
+    PathBuf::from("mesh.glb")
 }
 
 fn default_anim_actions() -> String {
@@ -197,7 +197,7 @@ fn default_anim_preview() -> String {
 }
 
 fn default_anim_mesh() -> String {
-    "parts/{part}.mesh.json".to_string()
+    "parts/{part}.mesh.glb".to_string()
 }
 
 fn default_anim_scene() -> String {

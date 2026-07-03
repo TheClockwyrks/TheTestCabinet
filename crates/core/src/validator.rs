@@ -498,7 +498,7 @@ fn score_frame(
 ///
 /// The six **surface-meshed** kinds (`mc`/`sn`/`dc` and their `-anim` siblings) take
 /// the same shape but a different geometry path: rather than regenerating
-/// `voxels.json` from the log, the validator **parses the `mesh.json` the binary
+/// `voxels.json` from the log, the validator **decodes the `.glb` the binary
 /// emitted** (per model for a static kind, per part for an animated one) and confirms
 /// it is a well-formed `PartMesh` (see [`score_mesh_part`]). It never re-meshes; the
 /// emitted mesh plus reviewer judgment of the model's preview is the scored artifact.
@@ -519,21 +519,21 @@ impl VoxelGenValidator {
 /// The per-part plan the validator evaluates: where this part's recorded log and
 /// preview live, and where its geometry lives.
 ///
-/// [`Self::mesh_client_rel`] is the `PartMesh`-shaped `mesh.json` **every**
+/// [`Self::mesh_client_rel`] is the `PartMesh`-shaped `.glb` **every**
 /// voxel-family kind emits and the 3D client renders from. For a **cube** kind the
 /// validator additionally regenerates the sparse `voxels.json` from the log at
 /// [`Self::regenerated_voxels_rel`] (a secondary artifact); for a **meshed** kind it
-/// reads (does not regenerate) the emitted `mesh.json` at [`Self::mesh_rel`] to
+/// reads (does not regenerate) the emitted `.glb` at [`Self::mesh_rel`] to
 /// validate it, and `regenerated_voxels_rel` repeats that mesh path.
 struct PartPlan {
     name: String,
     ops_rel: PathBuf,
     preview_rel: PathBuf,
     regenerated_voxels_rel: String,
-    /// The client-facing `mesh.json` path (the geometry the 3D viewer loads), for
+    /// The client-facing `.glb` path (the geometry the 3D viewer loads), for
     /// every voxel-family kind — the cube kinds emit it too.
     mesh_client_rel: String,
-    /// The run-relative path of the emitted `mesh.json` a **meshed** kind parses to
+    /// The run-relative path of the emitted `.glb` a **meshed** kind parses to
     /// validate; `None` for a cube kind (which regenerates `voxels.json` instead).
     mesh_rel: Option<PathBuf>,
 }
@@ -583,10 +583,10 @@ impl Validator for VoxelGenValidator {
             depth: voxel_spec.depth,
         };
 
-        // A meshed kind (mc/sn/dc + `-anim`) reads the `mesh.json` its binary
+        // A meshed kind (mc/sn/dc + `-anim`) reads the `.glb` its binary
         // emitted; a cube kind regenerates `voxels.json` from the log. `mesh_template`
         // is the meshed-only parse path; `client_mesh_template` is the client-facing
-        // `mesh.json` **every** voxel kind emits (both are `{part}` templates for an
+        // `.glb` **every** voxel kind emits (both are `{part}` templates for an
         // animated kind, a single file for a static one).
         let mesh_template = test_case.asset_kind.mesh_dest();
         let is_meshed = test_case.asset_kind.is_meshed();
@@ -664,7 +664,7 @@ impl Validator for VoxelGenValidator {
 
         let mut parts = Vec::with_capacity(plans.len());
         for plan in &plans {
-            // A meshed kind parses the emitted `mesh.json` (never re-meshing); a cube
+            // A meshed kind parses the emitted `.glb` (never re-meshing); a cube
             // kind regenerates `voxels.json` from the recorded log.
             let scored = if is_meshed {
                 score_mesh_part(repo, plan)
@@ -791,7 +791,7 @@ fn score_part(
     })
 }
 
-/// Evaluate one part of a **surface-meshed** run: parse the `mesh.json` the binary
+/// Evaluate one part of a **surface-meshed** run: decode the `.glb` the binary
 /// emitted and confirm it is a well-formed `PartMesh`. Unlike [`score_part`], this
 /// regenerates **no** geometry — the emitted mesh is the scored artifact, so the
 /// validator only reads and validates it.
@@ -835,19 +835,25 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
         }
     };
 
-    // Parse and well-formedness-check the emitted `mesh.json` (the `PartMesh` shape:
-    // positions/normals/colors/indices). Its vertex count is recorded in place of a
-    // voxel count. A missing mesh is a recorded gap; a malformed one is fatal.
+    // Decode and well-formedness-check the emitted per-part `.glb` (the `PartMesh`
+    // shape: positions/normals/colors/indices). Its vertex count is recorded in place
+    // of a voxel count. A missing mesh is a recorded gap; a malformed one is fatal.
     let mesh_path = repo.join(mesh_rel);
-    let vertex_count = match std::fs::read_to_string(&mesh_path) {
-        Ok(raw) => {
-            let mesh: test_cabinet_voxel_mesh::Mesh =
-                serde_json::from_str(&raw).map_err(|err| {
+    let vertex_count = match std::fs::read(&mesh_path) {
+        Ok(bytes) => {
+            let arrays =
+                test_cabinet_model_core::glb_to_part_mesh(&bytes).map_err(|err| {
                     format!(
-                        "emitted mesh `{}` is not a well-formed PartMesh: {err}",
+                        "emitted mesh `{}` is not a well-formed glb PartMesh: {err}",
                         rel_string(mesh_rel)
                     )
                 })?;
+            let mesh = test_cabinet_voxel_mesh::Mesh {
+                positions: arrays.positions,
+                normals: arrays.normals,
+                colors: arrays.colors,
+                indices: arrays.indices,
+            };
             validate_mesh(&mesh)
                 .map_err(|err| format!("emitted mesh `{}` {err}", rel_string(mesh_rel)))?;
             mesh.positions.len() / 3
@@ -868,7 +874,7 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
     // and cheat divergence is retired.
     Ok(VoxelPartResult {
         name: plan.name.clone(),
-        // The emitted `mesh.json` is what the client renders in 3D; a meshed kind has
+        // The emitted `.glb` is what the client renders in 3D; a meshed kind has
         // no `voxels.json`, so `regenerated_voxels` repeats the same mesh path.
         mesh: plan.mesh_client_rel.clone(),
         regenerated_voxels: plan.regenerated_voxels_rel.clone(),
@@ -887,6 +893,17 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
 /// trailing clause (`"has …"`, `"references …"`) the caller prefixes with the mesh
 /// path.
 fn validate_mesh(mesh: &test_cabinet_voxel_mesh::Mesh) -> std::result::Result<(), String> {
+    // Every position/normal/color float must be finite (a NaN or infinity would poison
+    // the geometry the client renders).
+    if let Some(bad) = mesh
+        .positions
+        .iter()
+        .chain(mesh.normals.iter())
+        .chain(mesh.colors.iter())
+        .find(|f| !f.is_finite())
+    {
+        return Err(format!("has a non-finite vertex value ({bad})"));
+    }
     if !mesh.positions.len().is_multiple_of(3) {
         return Err(format!(
             "has {} position floats, not a multiple of 3",

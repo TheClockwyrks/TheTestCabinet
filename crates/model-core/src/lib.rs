@@ -16,6 +16,7 @@
 
 pub mod axis;
 pub mod color;
+pub mod gltf;
 pub mod rig;
 
 #[cfg(feature = "cli")]
@@ -27,4 +28,5 @@ pub mod render;
 
 pub use axis::Axis;
 pub use color::{ColorError, PreviewBackground, Rgb};
+pub use gltf::{PartMeshArrays, glb_to_part_mesh, part_mesh_to_glb};
 pub use rig::{Animation, Drive, Interp, Joint, JointKind, Keyframe, Part, Rig, Track};

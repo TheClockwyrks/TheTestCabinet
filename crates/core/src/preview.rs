@@ -47,7 +47,7 @@ pub const HOST_GATEWAY_ADD_HOST: &str = "host.docker.internal:host-gateway";
 /// any real frame; a header over it is dropped rather than allocated.
 const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 
-/// A cap on the `mesh.json` body a voxel frame may append after its PNG. A
+/// A cap on the `.glb` mesh body a voxel frame may append after its PNG. A
 /// face-culled surface mesh is far smaller than this even at the largest declared
 /// dimensions, so a header advertising more is dropped rather than allocated.
 const MAX_MESH_BYTES: usize = 32 * 1024 * 1024;
@@ -62,8 +62,8 @@ const READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// the frame's PNG, base64-encoded so it travels in the same JSON transport as
 /// every other live update, and `frame`/`operationCount` let the UI show which
 /// frame changed and how far along it is. A voxel run additionally carries the
-/// frame's current [`mesh`](Self::mesh) — the `PartMesh`-shaped `mesh.json` every
-/// voxel-family binary emits — so the live viewer can rebuild the part in 3D and
+/// frame's current [`mesh`](Self::mesh) — decoded from the `PartMesh`-shaped `.glb`
+/// every voxel-family binary emits — so the live viewer can rebuild the part in 3D and
 /// assemble the scene; a 2D sprite run leaves it `None`. It is never persisted — the
 /// post-run view regenerates the asset from the recorded action log instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,10 +83,10 @@ pub struct AssetPreview {
     /// The frame's PNG, base64-encoded (no `data:` prefix; a viewer builds the
     /// data URL).
     pub image: String,
-    /// The frame's current surface mesh, for a voxel run — the same `PartMesh`-shaped
-    /// `mesh.json` the post-run viewer loads, so the live viewer can rebuild the part
-    /// in 3D directly (it never re-meshes). `None` for a 2D sprite run (which streams
-    /// only the PNG).
+    /// The frame's current surface mesh, for a voxel run — decoded from the same
+    /// `PartMesh`-shaped `.glb` the post-run viewer loads, so the live viewer can
+    /// rebuild the part in 3D directly (it never re-meshes). `None` for a 2D sprite run
+    /// (which streams only the PNG).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mesh: Option<test_cabinet_voxel_mesh::Mesh>,
 }
@@ -197,7 +197,7 @@ struct FrameHeader {
     operation: Option<String>,
     /// The number of PNG bytes that follow the header line.
     length: usize,
-    /// The number of `mesh.json` text bytes that follow the PNG body, for a voxel
+    /// The number of `.glb` mesh bytes that follow the PNG body, for a voxel
     /// run. `0` (or absent, for a 2D sprite run) means no mesh body follows.
     #[serde(default)]
     mesh_length: usize,
@@ -241,14 +241,21 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
     let mut image = vec![0u8; header.length];
     reader.read_exact(&mut image).await.ok()?;
 
-    // A voxel run appends its current `mesh.json` after the PNG so the live viewer
-    // can rebuild the model in 3D. Read and parse it when present; a malformed or
+    // A voxel run appends its current part `.glb` after the PNG so the live viewer
+    // can rebuild the model in 3D. Read and decode it when present; a malformed or
     // oversized body simply drops the mesh (the PNG preview still stands) rather
     // than the whole frame.
     let mesh = if header.mesh_length > 0 {
         let mut buf = vec![0u8; header.mesh_length];
         reader.read_exact(&mut buf).await.ok()?;
-        serde_json::from_slice::<test_cabinet_voxel_mesh::Mesh>(&buf).ok()
+        test_cabinet_model_core::glb_to_part_mesh(&buf)
+            .ok()
+            .map(|arrays| test_cabinet_voxel_mesh::Mesh {
+                positions: arrays.positions,
+                normals: arrays.normals,
+                colors: arrays.colors,
+                indices: arrays.indices,
+            })
     } else {
         None
     };
