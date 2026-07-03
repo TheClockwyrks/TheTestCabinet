@@ -449,6 +449,12 @@
 // single shared 3D canvas, split by a divider. The columns stretch to a common
 // height so the sidebar gets the full height of the (tall) preview rather than
 // collapsing to its own content.
+// The rig view-mode switch, above the split view. It sits in the full section width
+// (not the narrow sidebar), so the segmented control's labels always fit.
+.rigModeSwitch {
+  margin-bottom: t.$space-sm;
+}
+
 .rigPreview {
   display: grid;
   grid-template-columns: minmax(10rem, 18rem) 1fr;
@@ -521,7 +527,9 @@
   gap: t.$space-sm;
   flex: 1 1 0;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .voxelPickerButton {
@@ -563,6 +571,22 @@
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+  min-width: 0;
+
+  // Long joint names wrap rather than forcing the sidebar wider.
+  .voxelPickerName {
+    overflow-wrap: anywhere;
+  }
+}
+
+// The caller-joint posing slider: constrained to its column so it never overflows the
+// sidebar, whatever the viewport width.
+.voxelRange {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 // The per-frame grid reuses the `.checks` table; this just keeps the image and

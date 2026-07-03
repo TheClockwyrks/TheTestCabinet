@@ -509,6 +509,16 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
         slider), and its individual <strong>meshes</strong> (each part on its
         own). Drag the model to orbit it.
       </p>
+      {/* The mode switch spans the section (not the narrow sidebar), so its three
+          labels always fit rather than overflowing the sidebar. */}
+      <div className={styles.rigModeSwitch}>
+        <SegmentedControl
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={setMode}
+          ariaLabel="Rig view mode"
+        />
+      </div>
       <div
         className={styles.rigPreview}
         style={
@@ -516,12 +526,6 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
         }
       >
         <div className={styles.rigPreviewSidebar}>
-          <SegmentedControl
-            options={MODE_OPTIONS}
-            value={mode}
-            onChange={setMode}
-            ariaLabel="Rig view mode"
-          />
           {stats ? <GeometryStats stats={stats} /> : null}
           <div className={styles.voxelModeList}>
             {mode === "animations" ? (
@@ -583,7 +587,7 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                           }))
                         }
                         aria-label={`${joint.name} value`}
-                        style={{ width: "100%" }}
+                        className={styles.voxelRange}
                       />
                     </div>
                   );
