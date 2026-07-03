@@ -14,7 +14,8 @@ one voxel-and-raster implementation:
 - **`voxel-anim`** — for a rigged, animated model (`asset_kind =
   "voxel-animation"`): the same operations plus a required `--part <name>` on every
   op, so **each part is a separate volume** with its own log and preview, and a set
-  of **rig subcommands** that build the parts/joints hierarchy.
+  of **rig subcommands** that build the parts and joints hierarchy **and author the
+  animations**.
 
 The binaries are built from `crates/voxel` and each is baked into its own
 [run-container image](/components/core/execution/#containerization): `voxel` into
@@ -180,38 +181,80 @@ the per-part previews, the scene is **not** a scored artifact.
 
 ### Rig subcommands
 
-Beyond sculpting voxels, `voxel-anim` edits the **rig structure** in `rig.json`.
-The case pre-seeds the required parts and joints from its `[model]` table; these
-subcommands let the model **add its own** parts, joints, and auto-play clips on top
-(the produced `rig.json` carries the required set plus everything the model adds):
+Beyond sculpting voxels, `voxel-anim` edits the **rig structure** in `rig.json`:
+its parts, its joints, and its **animations**. The case pre-seeds the required parts
+and joints and the **required animation declarations** (a name, the joints each
+drives, and its loop/auto-play intent — but no keyframes) from its `[model]` table;
+these subcommands let the model **author** each required animation's motion and **add
+its own** parts, joints, and animations on top (the produced `rig.json` carries the
+required set plus everything the model adds):
 
 ```
 voxel-anim define-part  --name skirt --parent chassis
 voxel-anim set-pivot    --part turret --x 16 --y 9 --z 16
-voxel-anim define-joint --name recoil --part barrel --kind translation --axis z \
-                        --pivot-x 16 --pivot-y 10 --pivot-z 20 --min=-2 --max 0 --rest 0 --drive auto
+voxel-anim define-joint --name turret_yaw --part turret --kind rotation --axis y \
+                        --pivot-x 16 --pivot-y 9 --pivot-z 16 --min=-3.14159 --max 3.14159 --rest 0 --drive caller
 voxel-anim define-joint --name barrel_mount --part barrel --kind rotation --axis x \
                         --pivot-x 16 --pivot-y 10 --pivot-z 20 --min 0 --max 0 --rest 0 \
                         --orient-x 0.2 --offset-y 1   # a fixed compound attach: mount tilted + raised
-voxel-anim define-clip  --joint recoil --period-ms 600 --loop false \
-                        --keyframe 0:0 --keyframe 100:-2 --keyframe 600:0
+voxel-anim define-animation --name walk --period-ms 1200 --loop true --auto-play false
+voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 0    --value 0.35 --interp bezier
+voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 600  --value=-0.35 --interp ease-in
+voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 1200 --value 0.35 --interp bezier
 ```
 
 - **`define-part`** adds a part under a declared `--parent`; it then becomes a
-  `--part` target for sculpting. Set its pivot with `set-pivot`.
+  `--part` target for sculpting. Set its pivot with `set-pivot`. A part sculpted with
+  **no voxels** is an **attach point** (a `muzzle`, an exhaust) — an empty named node
+  a game reads as a socket for a projectile or effect.
 - **`set-pivot`** sets an existing part's pivot — the point, in the shared volume's
   coordinates, its joints rotate about.
 - **`define-joint`** adds a named degree of freedom on a part — its `--kind`
   (`rotation`/`translation`), `--axis`, `--pivot`, `--min`/`--max`/`--rest` range,
-  and `--drive` (`caller` for a game-supplied value, `auto` for a clip). A joint may
-  also carry a **fixed compound mount** applied in addition to its driven motion:
-  `--offset-x/y/z` (a fixed translation in voxels) and `--orient-x/y/z` (a fixed
-  rotation in radians, applied as Euler X→Y→Z about the pivot). This is how a
+  and `--drive`. A **`caller`** joint is the **procedural interface** a consuming game
+  drives per frame (a turret's yaw, a gun's pitch), exported so the game can drive it
+  within its limits; an **`auto`** joint is driven only by the model's animations. A
+  joint may also carry a **fixed compound mount** applied in addition to its driven
+  motion: `--offset-x/y/z` (a fixed translation in voxels) and `--orient-x/y/z` (a
+  fixed rotation in radians, applied as Euler X→Y→Z about the pivot). This is how a
   component is attached at a custom rotation **and** translation — a joint with an
   empty driven range (`--min 0 --max 0 --rest 0`) but a non-zero mount is a purely
   static attachment; a joint with both a range and a mount does both.
-- **`define-clip`** attaches an auto-play timeline to a `--drive auto` joint: a set
-  of `--keyframe <t_ms>:<value>` samples over a `--period-ms`, looping or holding.
+- **`define-animation`** creates or redefines a named animation: its `--period-ms`
+  (one loop), `--loop` (loop vs. play once and hold), and `--auto-play` (whether it
+  plays continuously by default — a decorative idle such as a sweeping radar — versus
+  a named playable the game triggers, such as a walk or a recoil). Its tracks are
+  added with `add-keyframe`.
+- **`add-keyframe`** adds or replaces one keyframe on an animation's track for a
+  `--joint` (the first keyframe for a joint creates that track): its `--t-ms`,
+  `--value`, and `--interp` — the [F-curve](#f-curves) interpolation of the segment
+  leaving this key (`constant` | `linear` | `bezier`, or an easing preset `ease-in` |
+  `ease-out` | `ease-in-out`) — with optional `--out-handle <dt,dv>` and
+  `--in-handle <dt,dv>` Bézier tangent handles (omitted, a `bezier` key uses auto
+  tangents).
+
+#### F-curves
+
+An animation track is an **F-curve** — the graph-editor curve real 3D tools use — so
+motion carries weight and snap instead of sliding linearly between poses. Each
+keyframe's `--interp` sets how the curve **leaves** it:
+
+- **`constant`** holds the value until the next key (a step),
+- **`linear`** draws a straight line to it,
+- **`bezier`** draws a smooth curve shaped by tangent **handles** — an out-handle on
+  this key and an in-handle on the next, each a control point offset from its key as
+  `<dt_ms,dvalue>`; the segment is the cubic Bézier through them (a `bezier` key with
+  no handles uses smooth auto tangents).
+
+The **easing presets** expand to standard handles so common shaping needs no
+hand-computed tangents: **`ease-in`** starts slow and accelerates into the next key
+(the "thump" of a foot-plant or a recoil kick), **`ease-out`** starts fast and
+decelerates, **`ease-in-out`** eases both ends (a smooth, weighty motion). The
+[voxel-runtime](/components/voxel-runtime/overview/) samples these curves when it
+poses the rig, and the [glTF exporter](/components/voxel-runtime/overview/#exporting-to-gltf)
+bakes them so the eased motion survives into a game engine. See
+[Rigging and animating walkers](/testing/asset-generation/rigging-walkers/) for how
+to choose curves for a walk cycle.
 
 #### Rotation direction
 

@@ -41,10 +41,12 @@ The runtime consumes exactly the two artifacts the
 [validator regenerates](/testing/asset-generation/evaluation/#voxel-regeneration):
 
 - **`rig.json`** — the full rig the model produced: the parts (a parent/child
-  hierarchy, each with an attachment pivot) and the joints (named degrees of
-  freedom, each caller-driven or auto-play), matching the
+  hierarchy, each with an attachment pivot), the joints (named degrees of freedom,
+  each caller-driven or `auto`), and the model-authored **animations** (named
+  F-curve timelines), matching the
   [`ModelSpec`/`PartSpec`/`JointSpec`](/components/core/run-records/) contract. This
-  is the required parts and joints the case declared **plus** any the model added.
+  is the required parts, joints, and animations the case declared **plus** any the
+  model added.
 - **`voxels.json`** — the sparse voxel data for a part (or the whole model, for a
   static case): the bounding `dims` and the occupied cells, each an opaque
   `#rrggbb` color, matching the `VoxelsFile` contract. One per part.
@@ -79,9 +81,32 @@ joint's driven parameter comes from one of two sources, by its `drive`:
 - **caller-driven** joints take their value from the `caller` map the consumer
   supplies (a game setting `turret_yaw`), **clamped** to the joint's `[min, max]`
   and defaulting to `rest` when the caller omits it;
-- **auto-play** joints sample their value from their keyframe clip at `time`,
-  looping over the clip period (or holding the last keyframe when the clip does not
-  loop).
+- **`auto`** joints carry no procedural value of their own — they are driven only
+  by the model's animations, and hold at `rest` until one overlays them.
+
+### Animation sampling
+
+The model's own **animations** ride in `rig.json`: each is a named timeline of
+**tracks**, one per joint it drives, and each track is an **F-curve** — the
+graph-editor curve real DCC tools use, not a linear-only key list. The pure-core
+`sampleKeyframes` evaluates an F-curve at a query time, honouring each keyframe's
+per-segment interpolation:
+
+- `constant` — hold the value until the next key (a step),
+- `linear` — a straight line to the next key,
+- `bezier` — a smooth curve shaped by tangent handles (auto tangents when handles
+  are omitted),
+
+plus the `ease-in` / `ease-out` / `ease-in-out` **presets**, which expand to fixed
+Bézier tangent handles so a model eases without hand-solving tangents. Sampling is
+no longer linear-only, so eased motion — a walk's weight, a recoil's snap — reaches
+the pose instead of being flattened to straight ramps.
+
+An animation is either **`auto_play`** — played continuously by default (the
+decorative idle, a radar spin) — or a named **playable** (walk, recoil) triggered
+on demand. Playing one **overlays only the joints its tracks drive**: every joint
+it does not touch holds at its caller/rest pose, so a game can play a `recoil` clip
+while it keeps driving the `turret_yaw` caller joint from aim state.
 
 Transforms are plain flat `Float32Array(16)` matrices, so the result is usable by
 any renderer without pulling in three.
@@ -97,16 +122,17 @@ parts under the rig hierarchy:
 - **`root`** — a `THREE.Group` the game adds to its scene (the whole posed model).
 - **`pose(caller)`** — set the caller-driven joint values (for example
   `rig.pose({ turret_yaw: 0.64 })`); values are clamped to each joint's range.
-- **`play(clip)` / `update(dt)`** — start an auto-play clip and advance all
-  auto-play joints by `dt` each frame.
-- **`playAnimation(animation)` / `update(dt)`** — play a named, case-authored
-  [`AnimationSpec`](/testing/asset-generation/manifests/) (or `null` to stop): each
-  of its tracks poses its joint from the animation sampled at the current clock, so
-  driving `update(dt)` walks the whole choreography forward. The pure-core
-  `sampleAnimation(animation, timeMs)` samples one into a `{ joint: value }` map if
-  you would rather pose the rig yourself.
-- **`jointNames(drive)`** — the joint names for a `drive` (`"caller"` to discover
-  the game-facing controls, `"auto"` for the self-animating ones).
+- **`playAnimation(name)` / `update(dt)`** — play one of the model's
+  [`AnimationSpec`](/testing/asset-generation/manifests/) animations by name (or
+  `null` to stop): each of its tracks poses its joint from the F-curve sampled at
+  the current clock, overlaying only the joints the animation drives while the rest
+  hold at their caller/rest pose, so driving `update(dt)` walks the whole
+  choreography forward. An `auto_play` animation runs continuously by default. The
+  pure-core `sampleAnimation(animation, timeMs)` samples one into a
+  `{ joint: value }` map if you would rather pose the rig yourself.
+- **`jointNames(drive)`** — the joint names for a `drive`. `jointNames("caller")`
+  **is the procedural interface** — the joints a game drives per frame (turret yaw,
+  gun pitch); `"auto"` lists the ones only animations drive.
 - **`jointRange(name)`** — a joint's `{ min, max, rest }`, e.g. to build a slider.
 - **`dispose()`** — release the GPU geometries and materials when the model is
   torn down.
@@ -125,27 +151,44 @@ ready-made, animated mesh asset — rather than shipping `rig.json` + per-part
 standard **glTF 2.0 / GLB**:
 
 ```sh
-# A rigged, animated model (rig.json + voxels/<part>.json):
+# A rigged, animated model (rig.json carries the parts, joints, and animations):
 node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb
-# …with the case's named animations baked in as well:
-node scripts/voxel-to-gltf.mjs --rig rig.json --voxels voxels/ --out model.glb \
-     --animations model.animations.json
 # A static model (one voxels.json, no rig):
 node scripts/voxel-to-gltf.mjs --voxels voxels.json --out model.glb
 ```
 
 The output carries **one mesh per part** (culled, vertex-colored, built from the
-same core `buildPartMesh`), a **node hierarchy** matching the part tree (each node
-named after its part, so a game can find and drive it), and one glTF **animation**
-per case-authored animation plus one (`auto-play`) for the rig's own auto-play
-clips. Each part's geometry is baked into its rest-local frame, so a node's default
-transform reproduces the rest pose and the animation channels drive it from there —
-a game can play the baked clips *or* pose the caller joints itself by transforming
-the named nodes, exactly as `VoxelRig` does. The tool is dependency-free (its mesh
-and rig math mirror the tested core) and accepts either the raw produced `rig.json`
-or a run record's resolved `ModelSpec` rig. It is **not** exposed to voxel test
-cases — it is an authoring/build step for the games that consume the assets. Output
-is GLB by default, or a `.gltf` + `.bin` pair when `--out` ends in `.gltf`.
+same core `buildPartMesh`) and a **node hierarchy** matching the part tree (each
+node named after its part, so a game can find and drive it). A part sculpted with
+**no voxels** exports as an empty **attach socket** node — a `muzzle` or `exhaust`
+a game hangs VFX on or spawns projectiles from. Each part's geometry is baked into
+its rest-local frame, so a node's default transform reproduces the rest pose.
+
+Alongside the mesh the exporter emits the two things a game consumes, one per
+**consumption path**:
+
+- **Baked animations** — the *played clips*. Each of the model's animations becomes
+  a glTF **animation**, carrying its `loop` intent, with its F-curves **baked** so
+  the eased motion survives to the engine: the curves are **dense-sampled** (or
+  emitted as **CUBICSPLINE** tangents derived from the F-curve) so Unreal and others
+  reproduce the weight and snap instead of re-linearising it, and the `auto_play`
+  animation is marked as the default idle. A game plays these as AnimSequences /
+  AnimMontages.
+- **The joint interface** — the *procedural drives*. A sidecar
+  **`<model>.interface.json`** (mirrored into each driven node's glTF `extras`)
+  lists every **`caller`** joint as `{ node, kind, axis, min, max, rest }` — exactly
+  what a game reads to rotate the turret or pitch the gun within its limits (Unreal
+  imports it as a DataTable and wires a Modify-Bone / Control Rig node with the
+  right axis and clamps). It is the portable form of `jointNames("caller")` /
+  `jointRange` the review UI drives.
+
+So a game can play the baked clips *or* drive the caller joints itself by
+transforming the named nodes within their limits, exactly as `VoxelRig` does. The
+tool is dependency-free (its mesh and rig math mirror the tested core) and accepts
+either the raw produced `rig.json` or a run record's resolved `ModelSpec` rig. It is
+**not** exposed to voxel test cases — it is an authoring/build step for the games
+that consume the assets. Output is GLB by default, or a `.gltf` + `.bin` pair when
+`--out` ends in `.gltf`.
 
 ## Status
 

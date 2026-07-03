@@ -128,20 +128,42 @@ A rig is:
   `voxel-anim --part <name>`.
 - **Joints** — named **degrees of freedom** on a part: a rotation (radians about
   an axis through a pivot) or a translation (voxel units along an axis), with a
-  `min`/`max`/`rest` range. A joint is either **caller-driven** (a consuming game
-  supplies the value at runtime — the game-facing control, e.g. `turret_yaw`) or
-  **auto-play** (the model defines the motion as a looping keyframe clip the
-  viewer and a game play back automatically).
+  `min`/`max`/`rest` range. A joint's **drive** is one of two kinds: a
+  **`caller`** joint is the **procedural interface** a consuming game drives per
+  frame from game state (the game-facing control, e.g. `turret_yaw`) and is
+  exported as machine-readable metadata; an **`auto`** joint is driven only by
+  animations and is not part of that procedural interface.
+- **Animations** — the single, **model-authored** timeline concept. An animation
+  has a `name`, a `period`, a `loop` flag (loop vs play-once-and-hold), and an
+  `auto_play` flag — an `auto_play` animation is a continuous decorative idle
+  (a radar spin) the viewer and a game play by default, while a non-`auto_play`
+  animation is a named playable (walk, recoil) triggered on demand. Each
+  animation carries one or more **tracks**, each driving one joint over an
+  **F-curve** — a rich Bézier curve (the graph-editor curve real 3D tools use),
+  not linear interpolation — so motion can carry weight and snap.
 
-The manifest's `[model]` table declares the **required** parts and joints — the
-stable, game-facing joint interface and the scoring targets. At run time the model
-may **add** further parts, joints, and auto-play clips of its own; the produced
-`rig.json` carries **everything** (required plus model-added), and the review UI
-scores against the required set while the viewer poses the full rig.
+The manifest's `[model]` table declares the **required** parts, joints, **and
+animations** — the stable, game-facing interface and the scoring targets. The
+model both produces the mesh and **authors the animation keyframes and curves**.
+At run time it may **add** further parts, joints, and animations of its own; the
+produced `rig.json` carries **everything** (required plus model-added), and the
+review UI scores the produced animations (motion quality) against the required
+set — a missing required animation is a contract gap, exactly like a missing
+joint — while the viewer poses the full rig.
+
+#### Procedural drives vs baked animations
+
+A game consumes the asset two ways, and the rig serves both. **Caller joints**
+are procedural DOFs the game sets each frame from game state — a turret aimed at
+a target — and are exported as an **interface** (node + axis + `min`/`max`/`rest`
+limits) the game wires up. **Animations** are baked clips the game plays back —
+walk, recoil, a spinning idle — with their easing captured in F-curves. The
+turret is not a clip (the game rotates the `turret` joint itself, clamped to its
+limits); the walk is not a caller joint (the game just plays it).
 
 See [The voxel binaries](/testing/asset-generation/voxel-binaries/) for how the
 model sculpts and rigs, the [voxel-runtime](/components/voxel-runtime/overview/)
 package for how a game poses a produced rig, and
 [Manifests](/testing/asset-generation/manifests/) for how a case declares its
 canvas or `[voxel]` volume, `asset_kind`, the `[sheet]` frames and sequences, and
-the `[model]` parts and joints.
+the `[model]` parts, joints, and animations.

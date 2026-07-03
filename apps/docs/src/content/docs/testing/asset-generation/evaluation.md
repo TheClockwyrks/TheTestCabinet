@@ -56,16 +56,24 @@ per-part previews are the scored artifacts.
 
 ### The rig
 
-For an animated model the validator also reconciles the model-produced **`rig.json`**
-— the full rig it built (required parts and joints plus any it added) — against the
-case's **required** [`[model]`](/testing/asset-generation/manifests/#voxel-cases)
-contract. A missing required part or joint is a **zero-scored contract gap** that
-is recorded (not a crash): the game-facing joint interface a case declares is a
-scoring target, so failing to produce it counts against the run rather than
-aborting evaluation. The run record carries both the required `model` and the
-produced `rig`, so the review UI can surface each caller joint (for example
-`turret_yaw`) as a live control and the 3D viewer can pose the full rig without a
-separate catalog lookup.
+For an animated model the model authors **both** the mesh **and** the
+**animations** — the timeline motions (a walk, a recoil, an idle) as
+model-authored, first-class curves. The validator reconciles the model-produced
+**`rig.json`** — the full rig it built: required parts, joints, **and animations**
+plus any it added — against the case's **required**
+[`[model]`](/testing/asset-generation/manifests/#voxel-cases) contract. A missing
+required part, joint, **or animation** is a **zero-scored contract gap** that is
+recorded (not a crash): the game-facing joint interface and the required motions a
+case declares are scoring targets, so failing to produce them counts against the
+run rather than aborting evaluation. The run record carries both the required
+`model` and the produced `rig`, so the review UI can surface each caller joint (for
+example `turret_yaw`) as a live control and the 3D viewer can pose the full rig
+without a separate catalog lookup.
+
+The reviewer scores the produced **motion** — how well each required animation
+reads, such as a walk with a planted stance or the snap of a recoil — alongside the
+mesh, and the review UI plays the produced animations back beside each caller
+joint's live control.
 
 ## Cheat detection
 

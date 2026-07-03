@@ -449,6 +449,7 @@ export default defineConfig({
                 "testing/asset-generation/overview",
                 "testing/asset-generation/binaries",
                 "testing/asset-generation/voxel-binaries",
+                "testing/asset-generation/rigging-walkers",
                 "testing/asset-generation/manifests",
                 "testing/asset-generation/evaluation",
               ],

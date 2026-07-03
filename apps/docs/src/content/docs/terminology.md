@@ -185,12 +185,12 @@ reporter-side and is never seeded, so it never reaches the model.
 ## Rig
 
 A rig is the posable structure of a [voxel-animation](#voxel) model: its named
-[parts](#part) in a hierarchy plus the named [joints](#joint) a consuming game (or
-an auto-play clip) drives, so a game can pose the model at runtime — "rotate the
-turret to 37°" — rather than replaying a fixed animation. A case's `[model]` table
-declares the **required** rig (the stable, game-facing joint interface and the
-scoring targets); the model may add parts, joints, and clips beyond it, and the
-produced `rig.json` carries everything. The
+[parts](#part) in a hierarchy, the named [joints](#joint) a consuming game drives
+(so a game can pose the model at runtime — "rotate the turret to 37°"), and the
+model-authored **animations** (named F-curve timelines — a walk, a recoil, an idle
+— a game plays). A case's `[model]` table declares the **required** rig (the stable,
+game-facing interface and the scoring targets); the model may add parts, joints, and
+animations beyond it, and the produced `rig.json` carries everything. The
 [voxel-runtime](/components/voxel-runtime/overview/) poses a produced rig for both
 the review viewer and real games.
 

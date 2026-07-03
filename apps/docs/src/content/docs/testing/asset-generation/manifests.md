@@ -266,9 +266,9 @@ preview = "parts/{part}.png"   # {part} REQUIRED for voxel-animation
 [output]
 actions = "parts/{part}.actions.json"  # {part} REQUIRED for voxel-animation
 
-# The REQUIRED rig: the parts + joints the model must produce. The model may add
-# more of its own; this table fixes the stable, game-facing contract and the
-# scoring targets. Required for — and only for — asset_kind = "voxel-animation".
+# The REQUIRED rig: the parts, joints, and animations the model must produce. The
+# model may add more of its own; this table fixes the stable, game-facing contract
+# and the scoring targets. Required for — and only for — asset_kind = "voxel-animation".
 [model]
 
 [[model.part]]              # >=1 required; the FIRST is the root (no parent)
@@ -294,7 +294,7 @@ pivot = [16, 8, 16]        # joint origin in the part's local voxel coords
 min   = -3.14159           # minimum value (radians for rotation, voxels for translation)
 max   = 3.14159            # maximum value
 rest  = 0.0                # default value, within [min, max]
-drive = "caller"           # "caller" (a game supplies the value) | "auto" (a clip drives it)
+drive = "caller"           # "caller" (a game supplies the value) | "auto" (an animation drives it)
 
 [[model.joint]]
 name   = "barrel_pitch"
@@ -312,33 +312,17 @@ orient = [0.2, 0.0, 0.0]   # optional: a FIXED mount rotation (radians, Euler X-
                            # purely static attach at a custom rotation AND translation.
 drive  = "caller"
 
-# An auto-play clip: the looping motion an `auto` joint plays back on its own.
-# Only for joints whose drive = "auto"; a caller-driven joint takes no clip.
-[[model.clip]]
-joint     = "turret_yaw"   # a declared drive = "auto" joint (this example's turret is caller-driven,
-                           # so a clip here would be a validation error — shown only for the shape)
-period_ms = 4000           # one full loop, in milliseconds
-loop      = true           # loop (true) or hold the last keyframe (false)
-keyframes = [              # >=1, in time order over [0, period_ms]
-  { t_ms = 0,    value = 0.0 },
-  { t_ms = 2000, value = 3.14159 },
-  { t_ms = 4000, value = 0.0 },
-]
-
-# A predetermined animation: a named, case-authored choreography the review viewer
-# offers as a play button, so a reviewer can watch the rig perform without driving
-# its joints by hand. Unlike a clip (one `auto` joint the *model* defines), an
-# animation is authored by the *case*, spans one or more joints, and plays the rig's
-# *caller* joints. Declare as many as you like.
+# A REQUIRED animation the model must author. The case declares the animation's
+# identity and intent — NOT its keyframes: the model authors the motion (the F-curve
+# keyframes) with the voxel-anim `define-animation`/`add-keyframe` subcommands, the
+# produced rig.json carries it, and the reviewer scores the motion it produced.
 [[model.animation]]
-name      = "turret_sweep" # stable, unique name shown in the viewer
-period_ms = 4000           # one full loop across every track, in milliseconds
+name      = "walk"         # stable, unique name (a game plays it by this name)
+period_ms = 1200           # one full loop across every track, in milliseconds
 loop      = true           # loop (true) or play once and hold the last pose (false)
-
-[[model.animation.track]]  # one track per joint the animation drives
-joint     = "turret_yaw"   # a declared joint
-keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]]
-                           # inline [t_ms, value] pairs, in time order over [0, period_ms]
+auto_play = false          # true = plays continuously by default (a decorative idle,
+                           # e.g. a radar spin); false = a named playable (walk, recoil)
+joints    = ["hip_l", "knee_l", "hip_r", "knee_r"]  # the joints the model MUST drive
 ```
 
 - The **`[voxel]`** table fixes the bounding volume: its `width`, `height` (up),
@@ -355,39 +339,43 @@ keyframes = [[0, 0.0], [1000, 1.5708], [2000, 0.0], [3000, -1.5708], [4000, 0.0]
   `actions` **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a
   static `voxel-model` they name single files and must **not** carry `{part}`.
 - The **`[model]`** table is **required for — and only for — `asset_kind =
-  "voxel-animation"`**. It declares the rig's `[[model.part]]` hierarchy and
-  `[[model.joint]]` degrees of freedom (and any `[[model.clip]]` auto-play
-  timelines and `[[model.animation]]` choreographies). Resolution validates that
-  part names are unique, the **first** part is the root (no `parent`), every other
-  `parent` names a declared part, the parents form a **tree** (no cycles), every
-  joint's `part` names a declared part, every joint's `kind`/`axis`/`drive` parse,
-  `min <= rest <= max`, any joint `offset`/`orient` mount is finite, and every
-  `[[model.clip]]` names a declared `drive = "auto"` joint with in-order keyframes
-  over `[0, period_ms]`. A caller-driven joint takes **no** clip. A joint's optional
-  `offset`/`orient` is a **fixed compound mount** (a translation in voxels and a
-  rotation in radians, Euler X→Y→Z about the pivot) applied in addition to its
-  driven motion — how a component is attached at a custom rotation *and* translation.
-- **`[[model.animation]]`** entries are **predetermined, case-authored animations**
-  the review viewer plays back on demand (as a play button beside the manual joint
-  sliders), so a reviewer can watch the finished rig perform a motion — a turret
-  sweep, a recoil, a walk cycle — without posing its joints by hand. Each has a
-  unique `name`, a `period_ms`, a `loop` flag, and one or more
-  `[[model.animation.track]]` tables (each an existing joint plus its inline
-  `[t_ms, value]` keyframes over `[0, period_ms]`); an animation typically drives
-  the rig's **caller** joints. This is distinct from a `[[model.clip]]` — a clip is
-  one `auto` joint's own looping motion that the *model* defines, whereas an
-  animation is authored by the *case*, may span several joints, and is offered as a
-  named playback. Animations are authored playback aids only: they ride on the
-  case's declared model spec and are **not** part of the `rig.json` the model
-  produces, so the model neither adds nor removes them.
+  "voxel-animation"`**. It declares the rig's `[[model.part]]` hierarchy,
+  `[[model.joint]]` degrees of freedom, and the **required `[[model.animation]]`
+  declarations**. Resolution validates that part names are unique, the **first**
+  part is the root (no `parent`), every other `parent` names a declared part, the
+  parents form a **tree** (no cycles), every joint's `part` names a declared part,
+  every joint's `kind`/`axis`/`drive` parse, `min <= rest <= max`, any joint
+  `offset`/`orient` mount is finite, and every `[[model.animation]]` has a unique
+  `name`, a positive `period_ms`, and `joints` that are all declared joints. A
+  joint's optional `offset`/`orient` is a **fixed compound mount** (a translation in
+  voxels and a rotation in radians, Euler X→Y→Z about the pivot) applied in addition
+  to its driven motion — how a component is attached at a custom rotation *and*
+  translation.
+- **`[[model.animation]]`** entries declare the **animations the model must
+  author** — the timeline motions a game plays (a walk, a recoil, a decorative
+  idle) and the reviewer scores. Each declares a unique `name`, a `period_ms`, a
+  `loop` flag (loop vs. play once and hold), an `auto_play` flag (whether it plays
+  continuously by default — a decorative idle such as a radar spin — versus a named
+  playable a game triggers), and the `joints` it must drive. It declares **no
+  keyframes**: the model authors the motion as **F-curves** (per-keyframe
+  `constant`/`linear`/`bezier` interpolation plus `ease-in`/`ease-out`/`ease-in-out`
+  presets — see
+  [The voxel binaries](/testing/asset-generation/voxel-binaries/#f-curves)) with the
+  `voxel-anim` animation subcommands. The produced animations are carried in
+  `rig.json`, exported to glTF for a game to play, and scored against these
+  declarations — a missing required animation is a zero-scored contract gap like a
+  missing joint.
 - **The rig is the *required* contract, not the whole model.** `[model]` fixes the
-  parts and joints the model **must** produce — the stable, game-facing joint
-  interface a consuming game drives and the targets a reviewer scores. At run time
-  the model may **add** further parts, joints, and auto-play clips of its own with
-  the [`voxel-anim` rig subcommands](/testing/asset-generation/voxel-binaries/);
-  the produced `rig.json` carries **everything** (required plus model-added). The
-  review UI scores against the required set and surfaces its caller joints as
-  controls; the 3D viewer poses the full rig. See
+  parts, joints, and animations the model **must** produce — the stable, game-facing
+  interface a consuming game drives and plays, and the targets a reviewer scores. At
+  run time the model may **add** further parts, joints, and animations of its own
+  with the [`voxel-anim` rig subcommands](/testing/asset-generation/voxel-binaries/);
+  the produced `rig.json` carries **everything** (required plus model-added). Its
+  **`caller`** joints are the **procedural interface** a game drives per frame
+  (turret yaw, gun pitch), exported as machine-readable metadata; its **animations**
+  are the baked clips a game plays. The review UI scores against the required set,
+  surfaces caller joints as controls, and plays the produced animations; the 3D
+  viewer poses the full rig. See
   [Evaluation](/testing/asset-generation/evaluation/).
 
 A voxel-animation `[[review_item]]` may name the caller **joints** it is about (the
